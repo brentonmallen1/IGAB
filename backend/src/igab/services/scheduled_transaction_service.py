@@ -1,0 +1,132 @@
+import uuid
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+
+from igab.db.models import ScheduledTransaction
+from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
+from igab.services.transaction_service import TransactionCreate, TransactionService
+
+
+@dataclass
+class ScheduledTransactionCreate:
+    account_id: uuid.UUID
+    amount: Decimal
+    frequency: str
+    start_date: date
+    payee_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    memo: str | None = None
+    end_date: date | None = None
+    auto_create: bool = False
+    days_before_reminder: int = 3
+
+
+class ScheduledTransactionService:
+    def __init__(
+        self,
+        repo: ScheduledTransactionRepository,
+        txn_service: TransactionService,
+    ) -> None:
+        self.repo = repo
+        self.txn_service = txn_service
+
+    async def list(self, budget_id: uuid.UUID) -> list[ScheduledTransaction]:
+        return await self.repo.get_all(budget_id)
+
+    async def create(
+        self, budget_id: uuid.UUID, data: ScheduledTransactionCreate
+    ) -> ScheduledTransaction:
+        return await self.repo.create(
+            budget_id=budget_id,
+            account_id=data.account_id,
+            amount=data.amount,
+            payee_id=data.payee_id,
+            category_id=data.category_id,
+            memo=data.memo,
+            frequency=data.frequency,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            auto_create=data.auto_create,
+            days_before_reminder=data.days_before_reminder,
+            next_occurrence_date=data.start_date,
+        )
+
+    async def update(self, id: uuid.UUID, **kwargs) -> ScheduledTransaction:
+        return await self.repo.update(id, **kwargs)
+
+    async def delete(self, id: uuid.UUID) -> None:
+        await self.repo.soft_delete(id)
+
+    async def skip(self, id: uuid.UUID) -> ScheduledTransaction:
+        sched = await self.repo.get(id)
+        if sched is None:
+            return None  # type: ignore
+        next_date = calculate_next(sched)
+        return await self.repo.update(id, next_occurrence_date=next_date)
+
+    async def enter_now(self, sched_id: uuid.UUID, budget_id: uuid.UUID) -> None:
+        sched = await self.repo.get(sched_id)
+        if sched is None:
+            return
+        await self.txn_service.create(
+            budget_id,
+            TransactionCreate(
+                account_id=sched.account_id,
+                date=date.today(),
+                amount=sched.amount,
+                payee_id=sched.payee_id,
+                category_id=sched.category_id,
+                memo=sched.memo,
+                cleared="uncleared",
+                approved=True,
+            ),
+        )
+        next_date = calculate_next(sched)
+        await self.repo.update(sched_id, last_created_date=date.today(), next_occurrence_date=next_date)
+
+    async def process_due(self, budget_id: uuid.UUID) -> int:
+        today = date.today()
+        due = [s for s in await self.repo.get_due(today) if str(s.budget_id) == str(budget_id)]
+        created = 0
+        for sched in due:
+            if sched.end_date and today > sched.end_date:
+                await self.repo.soft_delete(sched.id)
+                continue
+            if sched.auto_create:
+                await self.enter_now(sched.id, budget_id)
+                created += 1
+            else:
+                next_date = calculate_next(sched)
+                await self.repo.update(sched.id, next_occurrence_date=next_date)
+        return created
+
+
+def calculate_next(sched: ScheduledTransaction) -> date:
+    current = sched.next_occurrence_date
+    freq = sched.frequency
+    if freq == "daily":
+        from datetime import timedelta
+        return current + timedelta(days=1)
+    elif freq == "weekly":
+        from datetime import timedelta
+        return current + timedelta(weeks=1)
+    elif freq == "biweekly":
+        from datetime import timedelta
+        return current + timedelta(weeks=2)
+    elif freq == "monthly":
+        m = current.month + 1
+        y = current.year
+        if m > 12:
+            m = 1
+            y += 1
+        day = min(current.day, _days_in_month(y, m))
+        return current.replace(year=y, month=m, day=day)
+    elif freq == "yearly":
+        return current.replace(year=current.year + 1)
+    return current
+
+
+def _days_in_month(year: int, month: int) -> int:
+    import calendar
+    return calendar.monthrange(year, month)[1]

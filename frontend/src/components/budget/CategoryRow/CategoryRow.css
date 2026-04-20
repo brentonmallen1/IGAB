@@ -1,0 +1,194 @@
+.category-row {
+  display: grid;
+  grid-template-columns: 20px 1fr 120px 120px 120px;
+  padding: 6px var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-primary);
+  transition: background-color var(--transition-fast);
+  align-items: center;
+  min-height: 36px;
+}
+
+.category-row:hover {
+  background-color: var(--row-hover-bg);
+}
+
+.category-row--selected {
+  background-color: var(--row-selected-bg, rgba(108, 140, 247, 0.08)) !important;
+}
+
+.category-row__checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.category-row__checkbox--visible,
+.category-row:hover .category-row__checkbox,
+.category-row--selected .category-row__checkbox {
+  opacity: 1;
+}
+
+.category-row__checkbox input[type='checkbox'] {
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.category-row__name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.category-row__name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.category-row__name-input {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: var(--input-bg);
+  border: 1px solid var(--input-focus-ring);
+  border-radius: var(--border-radius-sm);
+  padding: 1px 6px;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(108, 140, 247, 0.2);
+  width: 100%;
+  min-width: 0;
+}
+
+.category-row__target-btn {
+  background: none;
+  border: none;
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.category-row:hover .category-row__target-btn {
+  opacity: 1;
+}
+
+.category-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.category-row:hover .category-row__actions {
+  opacity: 1;
+}
+
+.category-row__action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.category-row__action-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.category-row__action-btn--danger:hover {
+  color: var(--color-negative);
+}
+
+.category-row__action-btn--confirm {
+  color: var(--color-positive);
+}
+
+.category-row__action-btn--confirm:hover {
+  color: var(--color-positive);
+}
+
+/* Hidden category */
+.category-row--hidden {
+  opacity: 0.5;
+}
+
+.category-row--hidden .category-row__name-text::after {
+  content: '(hidden)';
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.category-row__assigned,
+.category-row__activity,
+.category-row__available {
+  text-align: right;
+  padding: 0 var(--spacing-sm);
+}
+
+.category-row__editable {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid transparent;
+  width: 100%;
+  text-align: right;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.category-row__editable:hover {
+  border-color: var(--input-border);
+  background-color: var(--input-bg);
+}
+
+.category-row__input {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-focus-ring);
+  border-radius: var(--border-radius-sm);
+  padding: 2px 6px;
+  width: 100%;
+  text-align: right;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(108, 140, 247, 0.2);
+}
+
+.category-row__zero {
+  color: var(--text-muted);
+}
+
+.positive {
+  color: var(--color-positive);
+}
+
+.negative {
+  color: var(--color-negative);
+}
+
+.zero {
+  color: var(--text-muted);
+}

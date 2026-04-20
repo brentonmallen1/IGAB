@@ -1,0 +1,56 @@
+# ── Secrets & environment ─────────────────────────────────────────────────────
+.env
+!.env.example
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+**/.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.sw?
+*.ntvs*
+*.njsproj
+*.sln
+.history/
+
+# ── Python / Backend ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[oc]
+*.egg-info/
+.venv/
+dist/
+build/
+wheels/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Keep docker-compose.yml tracked; ignore override files with local secrets
+docker-compose.override.yml
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+
+.history/
+.claude/

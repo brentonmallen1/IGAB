@@ -1,0 +1,200 @@
+.settings-page {
+  padding: var(--spacing-xl);
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.settings-section {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.settings-section__header {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-section__title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-section__body {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.settings-row__label {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.settings-row__desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.settings-select {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  padding: 5px 10px;
+  outline: none;
+  cursor: pointer;
+  min-width: 180px;
+}
+
+.settings-select:focus {
+  border-color: var(--input-focus-ring);
+}
+
+.settings-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.settings-account-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+}
+
+.settings-account-item:last-child {
+  border-bottom: none;
+}
+
+.settings-account-item__name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-account-item__type {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: capitalize;
+}
+
+.settings-account-item__balance {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-account-item__balance.negative {
+  color: var(--color-negative);
+}
+
+.settings-account-item__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.settings-account-item--closed .settings-account-item__name {
+  color: var(--text-muted);
+}
+
+.settings-account-edit {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-account-edit .settings-input {
+  width: auto;
+  flex: 1;
+}
+
+.settings-btn--danger {
+  border: 1px solid var(--color-negative);
+  color: var(--color-negative);
+}
+
+.settings-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-add-form__row {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: var(--spacing-sm);
+}
+
+.settings-input {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  padding: 6px 10px;
+  outline: none;
+  width: 100%;
+}
+
+.settings-input:focus {
+  border-color: var(--input-focus-ring);
+}
+
+.settings-btn {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: opacity var(--transition-fast);
+}
+
+.settings-btn--primary {
+  background-color: var(--color-accent);
+  color: var(--text-inverse);
+}
+
+.settings-btn--secondary {
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.settings-btn:hover {
+  opacity: 0.8;
+}
+
+.settings-budget-name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.settings-budget-name__id {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: monospace;
+  margin-top: 2px;
+}

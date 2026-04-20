@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; color: #333; max-width: 480px; margin: 0 auto; padding: 24px;">
+  <h2>Monthly Summary — {{ month_label }}</h2>
+  <p>Budget: <strong>{{ budget_name }}</strong></p>
+  <table style="border-collapse: collapse; width: 100%;">
+    <tr>
+      <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Income</td>
+      <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right; color: #59a14f;">
+        ${{ "%.2f"|format(total_income) }}
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 0; border-bottom: 1px solid #eee;">Expenses</td>
+      <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right; color: #e15759;">
+        ${{ "%.2f"|format(total_expenses) }}
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 0; font-weight: bold;">Net</td>
+      <td style="padding: 8px 0; text-align: right; font-weight: bold;">
+        ${{ "%.2f"|format(net) }}
+      </td>
+    </tr>
+  </table>
+  <p style="color: #888; font-size: 12px; margin-top: 24px;">Sent by IGAB</p>
+</body>
+</html>

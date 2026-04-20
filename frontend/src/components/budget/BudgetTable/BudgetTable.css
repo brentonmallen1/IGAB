@@ -1,0 +1,94 @@
+.budget-table {
+  width: 100%;
+  min-width: 600px;
+}
+
+.budget-table__header {
+  display: grid;
+  grid-template-columns: 1fr 120px 120px 120px;
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.budget-table__col {
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.budget-table__col--money {
+  text-align: right;
+}
+
+.budget-table__body {
+  /* Groups are rendered inline */
+}
+
+.budget-table__empty,
+.budget-table__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.budget-table__col--name {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.budget-table__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.budget-table__header-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+  text-transform: none;
+  letter-spacing: 0;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.budget-table__header-btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.budget-table__header-btn.active {
+  color: var(--color-accent);
+}
+
+.budget-table__add-group-input {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--input-bg);
+  border: 1px solid var(--input-focus-ring);
+  border-radius: var(--border-radius-sm);
+  padding: 2px 6px;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(108, 140, 247, 0.2);
+  width: 140px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}

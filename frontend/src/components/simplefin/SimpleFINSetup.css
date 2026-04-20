@@ -1,0 +1,42 @@
+.sf-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.sf-setup__desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.sf-setup__input {
+  flex: 1;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.sf-setup__btn {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: 1px solid var(--accent-color);
+  border-radius: var(--border-radius);
+  background: var(--accent-color);
+  color: var(--bg-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sf-setup__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sf-setup__error {
+  font-size: var(--font-size-sm);
+  color: var(--color-negative);
+}

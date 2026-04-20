@@ -1,0 +1,38 @@
+/* Nord */
+[data-theme="nord"] {
+  --bg-primary: #2e3440;
+  --bg-secondary: #242933;
+  --bg-tertiary: #3b4252;
+  --bg-elevated: #434c5e;
+  --bg-hover: #3b4252;
+
+  --text-primary: #eceff4;
+  --text-secondary: #d8dee9;
+  --text-muted: #4c566a;
+  --text-inverse: #2e3440;
+
+  --color-accent: #88c0d0;
+  --color-accent-hover: #81a1c1;
+  --color-positive: #a3be8c;
+  --color-negative: #bf616a;
+  --color-warning: #ebcb8b;
+  --color-info: #5e81ac;
+
+  --border-color: #3b4252;
+  --border-subtle: #2e3440;
+  --input-bg: #242933;
+  --input-border: #4c566a;
+  --input-focus-ring: #88c0d0;
+
+  --row-hover-bg: rgba(136, 192, 208, 0.06);
+  --row-selected-bg: rgba(136, 192, 208, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  --sidebar-bg: #242933;
+  --header-bg: #242933;
+  --card-bg: #3b4252;
+  --card-border: #434c5e;
+}

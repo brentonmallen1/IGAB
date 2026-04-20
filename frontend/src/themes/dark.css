@@ -1,0 +1,39 @@
+/* IGAB Dark Theme (default) */
+[data-theme="dark"],
+:root:not([data-theme]) {
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d27;
+  --bg-tertiary: #252836;
+  --bg-elevated: #2d3047;
+  --bg-hover: #2a2d3e;
+
+  --text-primary: #e8eaf0;
+  --text-secondary: #9da3b4;
+  --text-muted: #6b7280;
+  --text-inverse: #0f1117;
+
+  --color-accent: #6c8cf7;
+  --color-accent-hover: #8aa3f9;
+  --color-positive: #4ade80;
+  --color-negative: #f87171;
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
+
+  --border-color: #2d3047;
+  --border-subtle: #1e2235;
+  --input-bg: #1a1d27;
+  --input-border: #3a3e54;
+  --input-focus-ring: #6c8cf7;
+
+  --row-hover-bg: rgba(108, 140, 247, 0.06);
+  --row-selected-bg: rgba(108, 140, 247, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  --sidebar-bg: #13161f;
+  --header-bg: #13161f;
+  --card-bg: #1a1d27;
+  --card-border: #252836;
+}
