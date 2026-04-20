@@ -1,0 +1,31 @@
+.target-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.target-badge[role='button'] {
+  cursor: pointer;
+}
+
+.target-badge--funded {
+  background-color: color-mix(in srgb, var(--color-positive) 20%, transparent);
+  color: var(--color-positive);
+}
+
+.target-badge--underfunded {
+  background-color: color-mix(in srgb, var(--color-negative) 20%, transparent);
+  color: var(--color-negative);
+}
+
+.target-badge--overfunded {
+  background-color: color-mix(in srgb, var(--color-warning, #f28e2b) 20%, transparent);
+  color: var(--color-warning, #f28e2b);
+}

@@ -1,0 +1,317 @@
+import { CheckCircle, Circle, Clock, Lock, MoreHorizontal } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { useUpdateTransaction } from '../../../api/transactions'
+import { useAppStore } from '../../../stores/appStore'
+import { useTransactionEditStore } from '../../../stores/transactionEditStore'
+import { formatDate } from '../../../utils/dates'
+import { formatMoney } from '../../../utils/money'
+import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
+import { InlineInput } from '../../common/InlineInput/InlineInput'
+import { DatePicker } from '../../common/DatePicker/DatePicker'
+import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
+import type { Transaction, Category, CategoryGroup, Payee } from '../../../types'
+import './TransactionRow.css'
+
+interface Props {
+  transaction: Transaction
+  onEdit: (txn: Transaction) => void
+  payeeMap: Map<string, string>
+  categoryMap: Map<string, string>
+  payees: Payee[]
+  categories: Category[]
+  categoryGroups: CategoryGroup[]
+  isSelected: boolean
+  orderedIds: string[]
+  onSelect: (id: string, shiftKey: boolean) => void
+  onStartSplit: (txn: Transaction) => void
+}
+
+const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
+  { id: 'duplicate', label: 'Duplicate', shortcut: 'shift D' },
+  { id: 'make_repeating', label: 'Make Repeating', shortcut: 'shift T' },
+  { id: 'separator1', label: '', separator: true },
+  { id: 'enter_now', label: 'Enter Now' },
+  { id: 'approve', label: 'Approve' },
+  { id: 'separator2', label: '', separator: true },
+  { id: 'delete', label: 'Delete', shortcut: 'delete', danger: true },
+]
+
+export function TransactionRow({
+  transaction: txn,
+  onEdit,
+  payeeMap,
+  categoryMap,
+  payees,
+  categories,
+  categoryGroups,
+  isSelected,
+  orderedIds,
+  onSelect,
+  onStartSplit,
+}: Props) {
+  const budgetId = useAppStore((s) => s.currentBudgetId!)
+  const updateTxn = useUpdateTransaction(budgetId)
+  const { editingField, startEditing, stopEditing } = useTransactionEditStore()
+  const [contextMenuOpen, setContextMenuOpen] = useState(false)
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
+  const moreRef = useRef<HTMLButtonElement>(null)
+
+  const isOutflow = Number(txn.amount) < 0
+  const outflow = isOutflow ? Math.abs(Number(txn.amount)) : 0
+  const inflow = !isOutflow ? Number(txn.amount) : 0
+
+  const payeeName = txn.transfer_id
+    ? 'Transfer'
+    : (txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—')
+
+  const categoryName = txn.is_split
+    ? 'Split Transaction'
+    : (txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : '—')
+
+  const isEditing = (field: string) =>
+    editingField?.transactionId === txn.id && editingField.field === field
+
+  const isReconciled = txn.cleared === 'reconciled'
+  const isPending = txn.cleared === 'pending'
+
+  function toggleCleared() {
+    const next = txn.cleared === 'cleared' ? 'uncleared' : 'cleared'
+    updateTxn.mutate({ id: txn.id, cleared: next })
+  }
+
+  function commitField(field: string, value: unknown) {
+    if (value !== undefined) {
+      updateTxn.mutate({ id: txn.id, [field]: value } as Parameters<typeof updateTxn.mutate>[0])
+    }
+    stopEditing()
+  }
+
+  function commitAmount(raw: string, sign: 1 | -1) {
+    const num = parseFloat(raw.replace(/[^0-9.]/g, ''))
+    if (!isNaN(num) && num !== 0) {
+      updateTxn.mutate({ id: txn.id, amount: num * sign })
+    }
+    stopEditing()
+  }
+
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault()
+    setContextMenuPos({ x: e.clientX, y: e.clientY })
+    setContextMenuOpen(true)
+  }
+
+  function handleMoreClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    const rect = moreRef.current?.getBoundingClientRect()
+    if (rect) setContextMenuPos({ x: rect.left, y: rect.bottom + 4 })
+    setContextMenuOpen(true)
+  }
+
+  function handleContextAction(id: string) {
+    switch (id) {
+      case 'enter_now':
+        updateTxn.mutate({ id: txn.id, cleared: 'uncleared' })
+        break
+      case 'approve':
+        updateTxn.mutate({ id: txn.id, approved: true })
+        break
+      case 'delete':
+        updateTxn.mutate({ id: txn.id } as Parameters<typeof updateTxn.mutate>[0])
+        break
+    }
+  }
+
+  const payeeOptions: ComboboxOption[] = payees
+    .filter((p) => !p.transfer_account_id)
+    .map((p) => ({ id: p.id, label: p.name }))
+
+  const categoryOptions: ComboboxOption[] = [
+    { id: '__split__', label: 'Split Transaction…', group: '' },
+    ...categories.map((c) => {
+      const group = categoryGroups.find((g) => g.id === c.category_group_id)
+      return { id: c.id, label: c.name, group: group?.name ?? '' }
+    }),
+  ]
+
+  function handleCategoryChange(id: string | null) {
+    if (id === '__split__') {
+      onStartSplit(txn)
+      stopEditing()
+      return
+    }
+    commitField('category_id', id)
+  }
+
+  const contextItems = ROW_CONTEXT_ITEMS.filter((item) => {
+    if (item.id === 'enter_now') return isPending
+    if (item.id === 'approve') return !txn.approved
+    return true
+  })
+
+  return (
+    <div
+      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''}`}
+      role="row"
+      onDoubleClick={() => !isReconciled && onEdit(txn)}
+      onContextMenu={handleContextMenu}
+    >
+      {/* Checkbox */}
+      <div className="txn-col txn-col--checkbox" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          className="txn-checkbox"
+          checked={isSelected}
+          onChange={(e) => onSelect(txn.id, e.nativeEvent.shiftKey)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+
+      {/* Date */}
+      <div
+        className="txn-col txn-col--date"
+        onClick={() => !isReconciled && startEditing(txn.id, 'date')}
+      >
+        {isEditing('date') ? (
+          <DatePicker
+            value={txn.date}
+            onChange={(date) => commitField('date', date)}
+            onClose={stopEditing}
+          />
+        ) : (
+          formatDate(txn.date)
+        )}
+      </div>
+
+      {/* Payee */}
+      <div
+        className="txn-col txn-col--payee txn-text-clip"
+        onClick={() => !isReconciled && !txn.transfer_id && startEditing(txn.id, 'payee')}
+      >
+        {isEditing('payee') ? (
+          <Combobox
+            value={txn.payee_id}
+            options={payeeOptions}
+            onChange={(id) => commitField('payee_id', id)}
+            placeholder="Search payees…"
+            autoFocus
+            onBlurClose={stopEditing}
+          />
+        ) : (
+          <span className="txn-cell-text">{payeeName}</span>
+        )}
+      </div>
+
+      {/* Category */}
+      <div
+        className="txn-col txn-col--category txn-text-clip"
+        onClick={() => !isReconciled && startEditing(txn.id, 'category')}
+      >
+        {isEditing('category') ? (
+          <Combobox
+            value={txn.category_id}
+            options={categoryOptions}
+            onChange={handleCategoryChange}
+            placeholder="Search categories…"
+            autoFocus
+            onBlurClose={stopEditing}
+          />
+        ) : (
+          <span className={`txn-cell-text ${txn.is_split ? 'txn-split-label' : ''} ${!txn.category_id && !txn.is_split ? 'txn-uncategorized' : ''}`}>
+            {categoryName}
+          </span>
+        )}
+      </div>
+
+      {/* Memo */}
+      <div
+        className="txn-col txn-col--memo txn-text-clip"
+        onClick={() => !isReconciled && startEditing(txn.id, 'memo')}
+      >
+        {isEditing('memo') ? (
+          <InlineInput
+            value={txn.memo ?? ''}
+            onCommit={(val) => commitField('memo', val || null)}
+            onCancel={stopEditing}
+            placeholder="Add memo…"
+          />
+        ) : (
+          <span className="txn-cell-text">{txn.memo ?? ''}</span>
+        )}
+      </div>
+
+      {/* Outflow */}
+      <div
+        className="txn-col txn-col--outflow tabular"
+        onClick={() => !isReconciled && startEditing(txn.id, 'outflow')}
+      >
+        {isEditing('outflow') ? (
+          <InlineInput
+            value={outflow > 0 ? outflow.toFixed(2) : ''}
+            onCommit={(val) => commitAmount(val, -1)}
+            onCancel={stopEditing}
+            type="currency"
+            placeholder="0.00"
+          />
+        ) : (
+          outflow > 0 ? <span className="txn-outflow">{formatMoney(outflow)}</span> : ''
+        )}
+      </div>
+
+      {/* Inflow */}
+      <div
+        className="txn-col txn-col--inflow tabular"
+        onClick={() => !isReconciled && startEditing(txn.id, 'inflow')}
+      >
+        {isEditing('inflow') ? (
+          <InlineInput
+            value={inflow > 0 ? inflow.toFixed(2) : ''}
+            onCommit={(val) => commitAmount(val, 1)}
+            onCancel={stopEditing}
+            type="currency"
+            placeholder="0.00"
+          />
+        ) : (
+          inflow > 0 ? <span className="txn-inflow">{formatMoney(inflow)}</span> : ''
+        )}
+      </div>
+
+      {/* Cleared */}
+      <div className="txn-col txn-col--cleared">
+        {isReconciled ? (
+          <span className="txn-cleared-btn txn-cleared-btn--locked" title="Reconciled — locked">
+            <Lock size={12} />
+          </span>
+        ) : isPending ? (
+          <span className="txn-cleared-btn txn-cleared-btn--pending" title="Pending — not yet posted">
+            <Clock size={14} />
+          </span>
+        ) : (
+          <button
+            className={`txn-cleared-btn ${txn.cleared !== 'uncleared' ? 'cleared' : ''}`}
+            onClick={(e) => { e.stopPropagation(); toggleCleared() }}
+            title={txn.cleared}
+          >
+            {txn.cleared !== 'uncleared' ? <CheckCircle size={14} /> : <Circle size={14} />}
+          </button>
+        )}
+        <button
+          ref={moreRef}
+          className="txn-more-btn"
+          onClick={handleMoreClick}
+          title="More actions"
+        >
+          <MoreHorizontal size={12} />
+        </button>
+      </div>
+
+      {contextMenuOpen && (
+        <ContextMenu
+          items={contextItems}
+          onSelect={handleContextAction}
+          onClose={() => setContextMenuOpen(false)}
+          position={contextMenuPos}
+        />
+      )}
+    </div>
+  )
+}

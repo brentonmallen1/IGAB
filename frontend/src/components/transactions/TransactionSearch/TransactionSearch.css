@@ -1,0 +1,106 @@
+.txn-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 0 var(--spacing-xs);
+  min-width: 200px;
+  transition: border-color var(--transition-fast);
+}
+
+.txn-search--focused {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.txn-search__icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.txn-search__input {
+  flex: 1;
+  padding: 5px 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  outline: none;
+  min-width: 0;
+}
+
+.txn-search__input::placeholder {
+  color: var(--text-muted);
+}
+
+.txn-search__clear {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  padding: 2px;
+  border-radius: 50%;
+  transition: color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.txn-search__clear:hover {
+  color: var(--text-primary);
+}
+
+.txn-search__suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 50;
+  overflow: hidden;
+}
+
+.txn-search__suggestions-header {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.txn-search__suggestion {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: 6px var(--spacing-sm);
+  text-align: left;
+  font-size: var(--font-size-sm);
+  transition: background-color var(--transition-fast);
+}
+
+.txn-search__suggestion:hover {
+  background-color: var(--row-hover-bg);
+}
+
+.txn-search__syntax {
+  font-family: monospace;
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.txn-search__desc {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}

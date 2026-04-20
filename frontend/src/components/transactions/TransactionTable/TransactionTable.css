@@ -1,0 +1,108 @@
+.transaction-table {
+  width: 100%;
+}
+
+.transaction-table__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+
+.transaction-table__add-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  background-color: var(--color-accent);
+  color: var(--text-inverse);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: opacity var(--transition-fast);
+}
+
+.transaction-table__add-btn:hover {
+  opacity: 0.85;
+}
+
+.transaction-table__header {
+  display: grid;
+  grid-template-columns: 32px 100px 1fr 1fr 1fr 90px 90px 60px;
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  position: sticky;
+  top: 44px;
+  z-index: 5;
+}
+
+.txn-col {
+  padding: 0 var(--spacing-xs);
+}
+
+.txn-col--checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.txn-col--outflow,
+.txn-col--inflow {
+  text-align: center;
+}
+
+.txn-col--cleared {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.txn-sort-header {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+  background: none;
+  border: none;
+  padding: 0 var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.txn-sort-header:hover {
+  color: var(--text-primary);
+}
+
+.txn-sort-header--active {
+  color: var(--color-accent);
+}
+
+.transaction-table__loading,
+.transaction-table__empty {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 768px) {
+  .transaction-table__header {
+    display: none;
+  }
+}

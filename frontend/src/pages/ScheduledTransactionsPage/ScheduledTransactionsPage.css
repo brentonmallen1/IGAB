@@ -1,0 +1,101 @@
+.sched-page {
+  padding: var(--spacing-xl);
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.sched-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sched-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.sched-btn {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.sched-btn--primary {
+  background: var(--accent-color);
+  color: var(--bg-primary);
+  border-color: var(--accent-color);
+}
+
+.sched-btn--secondary {
+  color: var(--text-muted);
+}
+
+.sched-btn--sm {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.sched-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: var(--spacing-xl);
+  font-size: var(--font-size-sm);
+}
+
+.sched-table {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.sched-table__head {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 60px auto;
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--bg-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sched-table__row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 60px auto;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle, var(--border-color));
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.sched-table__row:hover {
+  background: var(--row-hover-bg, var(--bg-secondary));
+}
+
+.sched-table__row:last-child {
+  border-bottom: none;
+}
+
+.sched-table__actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.positive { color: var(--color-positive); }
+.negative { color: var(--color-negative); }

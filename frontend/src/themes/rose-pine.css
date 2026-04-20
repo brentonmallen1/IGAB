@@ -1,0 +1,77 @@
+/* Rosé Pine */
+[data-theme="rose-pine"] {
+  --bg-primary: #191724;
+  --bg-secondary: #1f1d2e;
+  --bg-tertiary: #26233a;
+  --bg-elevated: #403d52;
+  --bg-hover: #26233a;
+
+  --text-primary: #e0def4;
+  --text-secondary: #908caa;
+  --text-muted: #6e6a86;
+  --text-inverse: #191724;
+
+  --color-accent: #c4a7e7;
+  --color-accent-hover: #ebbcba;
+  --color-positive: #31748f;
+  --color-negative: #eb6f92;
+  --color-warning: #f6c177;
+  --color-info: #9ccfd8;
+
+  --border-color: #26233a;
+  --border-subtle: #1f1d2e;
+  --input-bg: #1f1d2e;
+  --input-border: #403d52;
+  --input-focus-ring: #c4a7e7;
+
+  --row-hover-bg: rgba(196, 167, 231, 0.06);
+  --row-selected-bg: rgba(196, 167, 231, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  --sidebar-bg: #1f1d2e;
+  --header-bg: #1f1d2e;
+  --card-bg: #1f1d2e;
+  --card-border: #26233a;
+}
+
+/* Rosé Pine Moon */
+[data-theme="rose-pine-moon"] {
+  --bg-primary: #232136;
+  --bg-secondary: #2a273f;
+  --bg-tertiary: #393552;
+  --bg-elevated: #44415a;
+  --bg-hover: #393552;
+
+  --text-primary: #e0def4;
+  --text-secondary: #908caa;
+  --text-muted: #6e6a86;
+  --text-inverse: #232136;
+
+  --color-accent: #c4a7e7;
+  --color-accent-hover: #ea9a97;
+  --color-positive: #3e8fb0;
+  --color-negative: #eb6f92;
+  --color-warning: #f6c177;
+  --color-info: #9ccfd8;
+
+  --border-color: #393552;
+  --border-subtle: #2a273f;
+  --input-bg: #2a273f;
+  --input-border: #44415a;
+  --input-focus-ring: #c4a7e7;
+
+  --row-hover-bg: rgba(196, 167, 231, 0.06);
+  --row-selected-bg: rgba(196, 167, 231, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  --sidebar-bg: #2a273f;
+  --header-bg: #2a273f;
+  --card-bg: #2a273f;
+  --card-border: #393552;
+}

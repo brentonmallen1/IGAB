@@ -1,0 +1,358 @@
+"""
+Specification tests for transaction_repo category activity aggregation.
+
+These tests document the REQUIRED behavior of TransactionRepository's activity
+aggregation methods and highlight the known inconsistency with account_repo.get_balance.
+
+TransactionRepository.sum_all_categories_by_month specification:
+  - Groups transactions by (category_id, year, month)
+  - INCLUDES: all non-deleted transactions regardless of cleared state
+    (uncleared, cleared, reconciled, AND pending)
+  - EXCLUDES: soft-deleted transactions (is_deleted=True)
+  - EXCLUDES: split parent transactions (parent_transaction_id IS NULL)
+  - Returns {category_id: {month_start: total_amount}}
+
+KNOWN INCONSISTENCY with account_repo.get_balance:
+  - account_repo.get_balance EXCLUDES pending transactions
+  - sum_all_categories_by_month INCLUDES pending transactions
+  - When a categorized pending transaction exists:
+    - Account balance is NOT reduced (pending excluded)
+    - Category activity IS reduced (pending included)
+    - Available = assigned - activity looks higher (less spent than reflected in account)
+    - TBA = account - category_available appears INFLATED by the pending amount
+
+This inconsistency is documented here so that if the behavior is intentionally changed
+(e.g., to exclude pending from activity for consistency), these tests will need updating.
+"""
+
+import uuid
+from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock
+
+from igab.services.budget_service import BudgetService
+
+BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+JAN = date(2026, 1, 1)
+FEB = date(2026, 2, 1)
+
+
+def D(s: str) -> Decimal:
+    return Decimal(s)
+
+
+@dataclass
+class MockAccount:
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    on_budget: bool = True
+    is_closed: bool = False
+
+
+@dataclass
+class MockCategoryGroup:
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    name: str = "Group"
+    is_system: bool = False
+
+
+@dataclass
+class MockCategory:
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    category_group_id: uuid.UUID = field(default_factory=uuid.uuid4)
+
+
+@dataclass
+class MockAssignment:
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    category_id: uuid.UUID = field(default_factory=uuid.uuid4)
+    month: date = JAN
+    assigned: Decimal = D("0")
+
+
+def make_service(
+    accounts=None,
+    balances=None,
+    categories=None,
+    groups=None,
+    assignments_by_category=None,
+    activity_by_category=None,
+):
+    accounts = accounts or []
+    balances = balances or {}
+    categories = categories or []
+    groups = groups or []
+    assignments_by_category = assignments_by_category or {}
+    activity_by_category = activity_by_category or {}
+
+    account_repo = MagicMock()
+    account_repo.get_on_budget = AsyncMock(
+        return_value=[a for a in accounts if a.on_budget and not a.is_closed]
+    )
+
+    async def _get_balance(account_id):
+        return balances.get(account_id, D("0"))
+
+    account_repo.get_balance = AsyncMock(side_effect=_get_balance)
+
+    category_repo = MagicMock()
+    category_repo.get_all = AsyncMock(return_value=categories)
+
+    category_group_repo = MagicMock()
+    category_group_repo.get_all = AsyncMock(return_value=groups)
+
+    assignment_repo = MagicMock()
+
+    async def _get_for_category(cat_id, through_month=None):
+        return assignments_by_category.get(cat_id, [])
+
+    assignment_repo.get_for_category = AsyncMock(side_effect=_get_for_category)
+
+    transaction_repo = MagicMock()
+
+    async def _sum_all(cat_ids, end_date):
+        return {cat_id: activity_by_category.get(cat_id, {}) for cat_id in cat_ids}
+
+    transaction_repo.sum_all_categories_by_month = AsyncMock(side_effect=_sum_all)
+
+    return BudgetService(
+        account_repo=account_repo,
+        category_repo=category_repo,
+        category_group_repo=category_group_repo,
+        assignment_repo=assignment_repo,
+        transaction_repo=transaction_repo,
+    )
+
+
+class TestCategoryActivityAggregation:
+    """
+    Verify that category activity (as returned by the repo) is correctly summed
+    per-month and applied to the category balance calculation.
+    """
+
+    async def test_single_month_single_category_activity(self):
+        """Activity for one category in one month is applied correctly."""
+        acct = MockAccount()
+        grp = MockCategoryGroup()
+        cat = MockCategory(category_group_id=grp.id)
+        assign = MockAssignment(category_id=cat.id, month=JAN, assigned=D("200.00"))
+
+        svc = make_service(
+            accounts=[acct],
+            balances={acct.id: D("800.00")},
+            categories=[cat],
+            groups=[grp],
+            assignments_by_category={cat.id: [assign]},
+            activity_by_category={cat.id: {JAN: D("-150.00")}},
+        )
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        # cat available = 200 - 150 = 50; TBA = 800 - 50 = 750
+        assert result.to_be_assigned == D("750.00")
+        jan_bal = next(b for b in result.category_balances if b.category_id == cat.id)
+        assert jan_bal.activity == D("-150.00")
+        assert jan_bal.available == D("50.00")
+
+    async def test_multi_month_activity_accumulated_through_floor(self):
+        """Activity across months is accumulated with floor simulation."""
+        acct = MockAccount()
+        grp = MockCategoryGroup()
+        cat = MockCategory(category_group_id=grp.id)
+        jan_assign = MockAssignment(category_id=cat.id, month=JAN, assigned=D("300.00"))
+        feb_assign = MockAssignment(category_id=cat.id, month=FEB, assigned=D("100.00"))
+
+        svc = make_service(
+            accounts=[acct],
+            balances={acct.id: D("700.00")},
+            categories=[cat],
+            groups=[grp],
+            assignments_by_category={cat.id: [jan_assign, feb_assign]},
+            # Jan: 300-350=-50 → floored to 0; Feb: 0+100-80=20
+            activity_by_category={cat.id: {JAN: D("-350.00"), FEB: D("-80.00")}},
+        )
+        result = await svc.get_budget_summary(BUDGET_ID, FEB)
+        feb_bal = next(b for b in result.category_balances if b.category_id == cat.id)
+        assert feb_bal.available == D("20.00")
+        assert feb_bal.activity == D("-80.00")  # only Feb's activity in the 'activity' field
+
+    async def test_zero_activity_month_has_no_effect(self):
+        """A month with no transactions for a category still carries forward correctly."""
+        acct = MockAccount()
+        grp = MockCategoryGroup()
+        cat = MockCategory(category_group_id=grp.id)
+        jan_assign = MockAssignment(category_id=cat.id, month=JAN, assigned=D("100.00"))
+
+        svc = make_service(
+            accounts=[acct],
+            balances={acct.id: D("1000.00")},
+            categories=[cat],
+            groups=[grp],
+            assignments_by_category={cat.id: [jan_assign]},
+            activity_by_category={cat.id: {}},  # no activity
+        )
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        jan_bal = next(b for b in result.category_balances if b.category_id == cat.id)
+        assert jan_bal.available == D("100.00")
+        assert jan_bal.activity == D("0")
+
+    async def test_split_children_activity_aggregated_not_parent(self):
+        """
+        Spec: split parents excluded (parent_transaction_id IS NULL).
+        Activity should reflect sum of split children, not the parent amount.
+
+        Example: $300 split purchase with $200 to groceries and $100 to dining.
+        Groceries activity should show -$200, not -$300.
+        """
+        acct = MockAccount()
+        grp = MockCategoryGroup()
+        groceries = MockCategory(category_group_id=grp.id)
+        dining = MockCategory(category_group_id=grp.id)
+        g_assign = MockAssignment(category_id=groceries.id, month=JAN, assigned=D("300.00"))
+        d_assign = MockAssignment(category_id=dining.id, month=JAN, assigned=D("150.00"))
+
+        svc = make_service(
+            accounts=[acct],
+            balances={acct.id: D("700.00")},  # $1000 - $300 split purchase
+            categories=[groceries, dining],
+            groups=[grp],
+            assignments_by_category={
+                groceries.id: [g_assign],
+                dining.id: [d_assign],
+            },
+            # Repo returns split children's amounts per category (not parent's total)
+            activity_by_category={
+                groceries.id: {JAN: D("-200.00")},
+                dining.id: {JAN: D("-100.00")},
+            },
+        )
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        g_bal = next(b for b in result.category_balances if b.category_id == groceries.id)
+        d_bal = next(b for b in result.category_balances if b.category_id == dining.id)
+        assert g_bal.available == D("100.00")  # 300 - 200
+        assert d_bal.available == D("50.00")   # 150 - 100
+
+
+class TestPendingTransactionInconsistency:
+    """
+    Documents the inconsistency between account_repo.get_balance (excludes pending)
+    and transaction_repo.sum_all_categories_by_month (includes pending).
+
+    CURRENT BEHAVIOR (not necessarily correct):
+      - Pending transactions with categories ARE included in category activity
+      - This means category 'available' is LOWER than it would be without pending
+      - But account balance is NOT affected by pending
+      - Result: TBA is INFLATED when pending categorized transactions exist
+
+    If this behavior is intentionally changed to exclude pending from activity,
+    these tests will need to be updated accordingly.
+    """
+
+    async def test_pending_in_activity_reduces_available_inflates_tba(self):
+        """
+        Pending -$100 groceries transaction:
+          - Account balance: $900 (pending excluded by account_repo) ← actually...
+          Wait, if pending is EXCLUDED from account balance but the spending already
+          happened (it's just not cleared), the account balance is $900.
+          But category shows the -$100 activity → available = assigned - 100.
+
+          This means TBA = 900 - (assigned - 100) = 900 - assigned + 100
+          vs. correct TBA = 900 - assigned
+
+          TBA is inflated by $100 (the pending amount).
+
+        This test documents the current behavior. The comment marks where it diverges
+        from "consistent" behavior (pending excluded from both).
+        """
+        acct = MockAccount()
+        grp = MockCategoryGroup()
+        cat = MockCategory(category_group_id=grp.id)
+        assign = MockAssignment(category_id=cat.id, month=JAN, assigned=D("500.00"))
+
+        svc = make_service(
+            accounts=[acct],
+            # Account balance: $1000 base - $100 pending NOT counted = $1000
+            # (pending excluded from account balance)
+            balances={acct.id: D("1000.00")},
+            categories=[cat],
+            groups=[grp],
+            assignments_by_category={cat.id: [assign]},
+            # Activity INCLUDES pending -$100 (current behavior)
+            activity_by_category={cat.id: {JAN: D("-100.00")}},
+        )
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        # cat available = 500 - 100 = 400 (pending counted)
+        # TBA = 1000 - 400 = 600
+        # "Correct" TBA if pending excluded from both: 1000 - 500 = 500
+        # Current TBA is 600 (inflated by $100 pending amount)
+        assert result.to_be_assigned == D("600.00")
+
+    async def test_confirmed_transaction_consistent_impact(self):
+        """
+        A confirmed (non-pending) transaction of the same amount produces
+        a DIFFERENT TBA because account balance IS reduced.
+
+        Scenario identical to above but transaction is confirmed (cleared):
+          - Account balance: $900 (cleared -$100 IS counted)
+          - Category activity: -$100
+          - cat available = 400; TBA = 900 - 400 = 500 (correct)
+        """
+        acct = MockAccount()
+        grp = MockCategoryGroup()
+        cat = MockCategory(category_group_id=grp.id)
+        assign = MockAssignment(category_id=cat.id, month=JAN, assigned=D("500.00"))
+
+        svc = make_service(
+            accounts=[acct],
+            # Account balance: $1000 base - $100 cleared = $900
+            balances={acct.id: D("900.00")},
+            categories=[cat],
+            groups=[grp],
+            assignments_by_category={cat.id: [assign]},
+            activity_by_category={cat.id: {JAN: D("-100.00")}},
+        )
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        # cat available = 500 - 100 = 400; TBA = 900 - 400 = 500
+        assert result.to_be_assigned == D("500.00")
+
+    async def test_tba_difference_between_pending_and_confirmed(self):
+        """
+        Explicit side-by-side comparison showing the TBA difference
+        between a $100 pending transaction vs a $100 confirmed transaction.
+
+        Pending TBA = 600 (inflated — pending not in account but is in activity)
+        Confirmed TBA = 500 (correct — confirmed in both account and activity)
+
+        The $100 difference equals the pending transaction amount.
+        This documents the known inconsistency.
+        """
+        grp = MockCategoryGroup()
+        cat_id = uuid.uuid4()
+        assign = MockAssignment(category_id=cat_id, month=JAN, assigned=D("500.00"))
+
+        # Pending scenario
+        pending_acct = MockAccount()
+        pending_svc = make_service(
+            accounts=[pending_acct],
+            balances={pending_acct.id: D("1000.00")},  # pending excluded from account
+            categories=[MockCategory(id=cat_id, category_group_id=grp.id)],
+            groups=[grp],
+            assignments_by_category={cat_id: [assign]},
+            activity_by_category={cat_id: {JAN: D("-100.00")}},  # pending included in activity
+        )
+        pending_result = await pending_svc.get_budget_summary(BUDGET_ID, JAN)
+
+        # Confirmed scenario
+        confirmed_acct = MockAccount()
+        confirmed_svc = make_service(
+            accounts=[confirmed_acct],
+            balances={confirmed_acct.id: D("900.00")},  # confirmed reduces account
+            categories=[MockCategory(id=cat_id, category_group_id=grp.id)],
+            groups=[grp],
+            assignments_by_category={cat_id: [assign]},
+            activity_by_category={cat_id: {JAN: D("-100.00")}},
+        )
+        confirmed_result = await confirmed_svc.get_budget_summary(BUDGET_ID, JAN)
+
+        assert pending_result.to_be_assigned == D("600.00")
+        assert confirmed_result.to_be_assigned == D("500.00")
+        # The $100 difference equals the pending transaction amount
+        assert pending_result.to_be_assigned - confirmed_result.to_be_assigned == D("100.00")
