@@ -16,7 +16,7 @@ interface Props {
   items: ContextMenuItem[]
   onSelect: (id: string) => void
   onClose: () => void
-  position?: { x: number; y: number }
+  position?: { x: number; y: number; alignRight?: boolean }
   className?: string
 }
 
@@ -41,7 +41,9 @@ export function ContextMenu({ items, onSelect, onClose, position, className = ''
   }, [onClose])
 
   const style = position
-    ? { position: 'fixed' as const, top: position.y, left: position.x }
+    ? position.alignRight
+      ? { position: 'fixed' as const, top: position.y, right: window.innerWidth - position.x }
+      : { position: 'fixed' as const, top: position.y, left: position.x }
     : undefined
 
   return (

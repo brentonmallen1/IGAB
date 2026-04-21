@@ -17,6 +17,14 @@ class TargetRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_category_ids(self, category_ids: list[uuid.UUID]) -> list[CategoryTarget]:
+        if not category_ids:
+            return []
+        result = await self.session.execute(
+            select(CategoryTarget).where(CategoryTarget.category_id.in_(category_ids))
+        )
+        return list(result.scalars().all())
+
     async def create(self, **kwargs: Any) -> CategoryTarget:
         obj = CategoryTarget(**kwargs)
         self.session.add(obj)

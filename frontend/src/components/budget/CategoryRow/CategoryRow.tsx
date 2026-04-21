@@ -36,6 +36,9 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const toggleCategorySelection = useUIStore((s) => s.toggleCategorySelection)
+  const selectOnlyCategory = useUIStore((s) => s.selectOnlyCategory)
+  const setCategoryInspectorOpen = useUIStore((s) => s.setCategoryInspectorOpen)
+  const inspectorUserClosed = useUIStore((s) => s.inspectorUserClosed)
   const isSelected = selectedCategoryIds.has(category.id)
   const anySelected = selectedCategoryIds.size > 0
 
@@ -92,6 +95,13 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
     toggleCategorySelection(category.id, e.nativeEvent instanceof MouseEvent ? (e.nativeEvent as MouseEvent).shiftKey : false, orderedIds)
   }
 
+  function handleRowClick(e: React.MouseEvent) {
+    const target = e.target as Element
+    if (target.closest('input, button')) return
+    selectOnlyCategory(category.id)
+    if (!inspectorUserClosed) setCategoryInspectorOpen(true)
+  }
+
   const availableClass = available < 0 ? 'negative' : available > 0 ? 'positive' : 'zero'
 
   function getTargetStatus(): 'funded' | 'underfunded' | 'overfunded' | null {
@@ -115,8 +125,10 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
         />
       )}
       <div
-        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''}`}
+        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${available < 0 ? 'category-row--overspent' : ''}`}
         role="row"
+        onClick={handleRowClick}
+        style={{ cursor: 'default' }}
       >
         <div className={`category-row__checkbox ${anySelected ? 'category-row__checkbox--visible' : ''}`}>
           <input

@@ -39,7 +39,9 @@ export function Combobox({
   onBlurClose,
 }: Props) {
   const selectedOption = value ? options.find((o) => o.id === value) : null
-  const [query, setQuery] = useState(selectedOption?.label ?? '')
+  // When auto-focused (inline edit), start with empty query so all options are visible.
+  // The selected option is still highlighted in the list via CSS.
+  const [query, setQuery] = useState(autoFocus ? '' : (selectedOption?.label ?? ''))
   const [open, setOpen] = useState(autoFocus)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)

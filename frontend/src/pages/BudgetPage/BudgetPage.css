@@ -39,6 +39,37 @@
   color: var(--text-muted);
 }
 
+.budget-page__auto-assign-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 3px 8px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.budget-page__auto-assign-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.budget-page__overspent-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 6px var(--spacing-lg);
+  background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-negative) 30%, transparent);
+  color: var(--color-negative);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
 .budget-page__body {
   flex: 1;
   display: flex;

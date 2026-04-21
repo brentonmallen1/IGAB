@@ -3,6 +3,21 @@ import { apiClient } from './client'
 import type { Budget, BudgetMonth } from '../types'
 import type { YnabImportResult } from './imports'
 
+export interface FillTargetsPreviewItem {
+  category_id: string
+  category_name: string
+  current_assigned: number
+  proposed_addition: number
+  new_assigned: number
+}
+
+export interface FillTargetsPreviewResponse {
+  items: FillTargetsPreviewItem[]
+  total_addition: number
+  tba_before: number
+  tba_after: number
+}
+
 export interface YnabImportBudgetResult {
   budget: Budget
   import_result: YnabImportResult
@@ -83,6 +98,30 @@ export function useDeleteBudget() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/budgets/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
+  })
+}
+
+export function useFillTargetsPreview(budgetId: string | null, month: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['fillTargetsPreview', budgetId, month],
+    queryFn: () =>
+      apiClient
+        .get<FillTargetsPreviewResponse>(`/${budgetId}/auto-assign/preview`, { params: { month } })
+        .then((r) => r.data),
+    enabled: !!budgetId && enabled,
+    staleTime: 0,
+  })
+}
+
+export function useFillTargetsApply(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { month: string; items: FillTargetsPreviewItem[] }) =>
+      apiClient.post(`/${budgetId}/auto-assign/apply`, data),
+    onSuccess: (_, { month }) => {
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['fillTargetsPreview', budgetId, month] })
+    },
   })
 }
 

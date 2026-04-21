@@ -129,6 +129,15 @@
   color: var(--color-positive);
 }
 
+/* Overspent category */
+.category-row--overspent {
+  border-left: 2px solid var(--color-negative);
+}
+
+.category-row--overspent .category-row__available {
+  font-weight: 600;
+}
+
 /* Hidden category */
 .category-row--hidden {
   opacity: 0.5;

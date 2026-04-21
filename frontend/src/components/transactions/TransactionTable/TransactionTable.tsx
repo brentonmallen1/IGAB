@@ -1,6 +1,6 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useEffect } from 'react'
 import { Plus, ChevronUp, ChevronDown } from 'lucide-react'
-import { useTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions } from '../../../api/transactions'
+import { useTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction } from '../../../api/transactions'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -12,6 +12,7 @@ import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
 import { TransactionSearch } from '../TransactionSearch/TransactionSearch'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch, filterTransactions } from '../../../utils/searchParser'
+import { useHistoryStore } from '../../../stores/historyStore'
 import type { Transaction, ClearedStatus } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import './TransactionTable.css'
@@ -38,6 +39,23 @@ export function TransactionTable({ accountId, budgetId }: Props) {
   const bulkSetCleared = useBulkUpdateCleared(budgetId)
   const bulkCategorize = useBulkCategorize(budgetId)
   const bulkDelete = useBulkDeleteTransactions(budgetId)
+  const undoTxn = useUpdateTransaction(budgetId)
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== 'z' || e.shiftKey) return
+      const active = document.activeElement
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return
+      e.preventDefault()
+      const entry = useHistoryStore.getState().undo()
+      if (entry) {
+        undoTxn.mutate({ id: entry.transactionId, [entry.field]: entry.before } as Parameters<typeof undoTxn.mutate>[0])
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const {
     selectedTransactionIds,

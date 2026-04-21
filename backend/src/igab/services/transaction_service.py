@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Transaction
+from igab.db.models import Payee, Transaction
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
@@ -69,9 +69,15 @@ class TransactionService:
             return await self._create_transfer(budget_id, data)
 
         # Resolve or create payee
-        payee_id = await self._resolve_payee(budget_id, data)
+        payee = await self._resolve_payee(budget_id, data)
+        payee_id = payee.id if payee else None
 
-        # Update payee default category (memory)
+        # Apply payee default category when none provided (auto-categorization memory)
+        category_id = data.category_id
+        if payee and not category_id and payee.default_category_id:
+            category_id = payee.default_category_id
+
+        # Update payee default category memory when user explicitly sets one
         if payee_id and data.category_id:
             await self.payee_repo.update(payee_id, default_category_id=data.category_id)
 
@@ -81,7 +87,7 @@ class TransactionService:
             date=data.date,
             amount=data.amount,
             payee_id=payee_id,
-            category_id=data.category_id,
+            category_id=category_id,
             memo=data.memo,
             cleared=data.cleared,
             approved=data.approved,
@@ -197,10 +203,10 @@ class TransactionService:
 
     async def _resolve_payee(
         self, budget_id: uuid.UUID, data: TransactionCreate
-    ) -> uuid.UUID | None:
+    ) -> Payee | None:
         if data.payee_id:
-            return data.payee_id
+            result = await self.session.get(Payee, data.payee_id)
+            return result
         if data.payee_name:
-            payee = await self.payee_repo.find_or_create(budget_id, data.payee_name)
-            return payee.id
+            return await self.payee_repo.find_or_create(budget_id, data.payee_name)
         return None
