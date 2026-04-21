@@ -1,14 +1,19 @@
 import { useState } from 'react'
-import { ChevronDown, Zap } from 'lucide-react'
+import { ChevronDown, Clock, Zap } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
 import { useCategoryHistoryBatch, useAutoAssign } from '../../../api/categoryHistory'
+import { useTargetsByBudget } from '../../../api/targets'
+import { useDeleteTarget } from '../../../api/targets'
 import { useAppStore } from '../../../stores/appStore'
 import { formatMoney } from '../../../utils/money'
-import type { AutoAssignAction, CategoryHistory } from '../../../types'
+import { today, formatDate } from '../../../utils/dates'
+import { TargetEditor } from '../TargetEditor'
+import type { AutoAssignAction, Category, CategoryHistory, CategoryTarget } from '../../../types'
 
 interface Props {
   budgetId: string
   allCategoryIds: string[]
+  categories: Category[]
 }
 
 function formatMonthLabel(month: string) {
@@ -16,15 +21,56 @@ function formatMonthLabel(month: string) {
   return date.toLocaleDateString('en-US', { month: 'long' })
 }
 
-export function MonthSummary({ budgetId, allCategoryIds }: Props) {
+function PastTargetRow({ target, categoryName, onEdit, budgetId }: {
+  target: CategoryTarget
+  categoryName: string
+  onEdit: () => void
+  budgetId: string
+}) {
+  const deleteTarget = useDeleteTarget(target.category_id)
+  return (
+    <div className="past-target-row">
+      <div className="past-target-row__info">
+        <span className="past-target-row__name">{categoryName}</span>
+        <span className="past-target-row__meta">
+          {formatMoney(Number(target.target_amount))} · {target.target_date ? formatDate(target.target_date) : ''}
+        </span>
+      </div>
+      <div className="past-target-row__actions">
+        <button className="past-target-row__btn" onClick={onEdit} title="Edit target to reuse">
+          Edit
+        </button>
+        <button
+          className="past-target-row__btn past-target-row__btn--danger"
+          onClick={() => deleteTarget.mutate()}
+          title="Delete target"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
   const month = useAppStore((s) => s.selectedMonth)
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const { data: histories } = useCategoryHistoryBatch(budgetId, allCategoryIds)
+  const { data: allTargets } = useTargetsByBudget(budgetId)
   const autoAssign = useAutoAssign(budgetId, month)
 
   const [summaryOpen, setSummaryOpen] = useState(true)
   const [autoAssignOpen, setAutoAssignOpen] = useState(true)
   const [futureOpen, setFutureOpen] = useState(false)
+  const [pastTargetsOpen, setPastTargetsOpen] = useState(false)
+  const [editingTarget, setEditingTarget] = useState<{ categoryId: string; categoryName: string; target: CategoryTarget } | null>(null)
+
+  const todayStr = today()
+  const categoryMap = new Map(categories.map((c) => [c.id, c]))
+
+  const pastTargets = (allTargets ?? []).filter(
+    (t) => t.target_date && t.target_date < todayStr
+  )
 
   const monthLabel = formatMonthLabel(month)
 
@@ -152,6 +198,54 @@ export function MonthSummary({ budgetId, allCategoryIds }: Props) {
           </div>
         </button>
       </div>
+
+      {/* Past Targets */}
+      {pastTargets.length > 0 && (
+        <div className="month-summary__section">
+          <button
+            className="month-summary__section-header"
+            onClick={() => setPastTargetsOpen((v) => !v)}
+          >
+            <span className="month-summary__section-header-icon">
+              <Clock size={13} />
+              Past Targets
+            </span>
+            <div className="month-summary__section-header-right">
+              <span className="month-summary__past-count">{pastTargets.length}</span>
+              <ChevronDown
+                size={14}
+                className={`month-summary__chevron ${pastTargetsOpen ? 'month-summary__chevron--open' : ''}`}
+              />
+            </div>
+          </button>
+          {pastTargetsOpen && (
+            <div className="month-summary__section-body">
+              {pastTargets.map((t) => {
+                const cat = categoryMap.get(t.category_id)
+                if (!cat) return null
+                return (
+                  <PastTargetRow
+                    key={t.id}
+                    target={t}
+                    categoryName={cat.name}
+                    onEdit={() => setEditingTarget({ categoryId: cat.id, categoryName: cat.name, target: t })}
+                    budgetId={budgetId}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {editingTarget && (
+        <TargetEditor
+          categoryId={editingTarget.categoryId}
+          categoryName={editingTarget.categoryName}
+          existing={editingTarget.target}
+          onClose={() => setEditingTarget(null)}
+        />
+      )}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import {
   useEnterScheduledTransaction,
 } from '../../api/scheduledTransactions'
 import { useAccounts } from '../../api/accounts'
+import { usePayees } from '../../api/transactions'
 import { ScheduledTransactionEditor } from '../../components/scheduled/ScheduledTransactionEditor'
 import { formatMoney } from '../../utils/money'
 import type { ScheduledTransaction } from '../../types'
@@ -23,6 +24,7 @@ export function ScheduledTransactionsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: scheduled = [] } = useScheduledTransactions(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)
+  const { data: payees = [] } = usePayees(budgetId)
   const skip = useSkipScheduledTransaction(budgetId ?? '')
   const enter = useEnterScheduledTransaction(budgetId ?? '')
   const [editing, setEditing] = useState<ScheduledTransaction | null | 'new'>(null)
@@ -33,6 +35,12 @@ export function ScheduledTransactionsPage() {
 
   function accountName(id: string) {
     return accounts.find((a) => a.id === id)?.name ?? id
+  }
+
+  function payeeName(s: ScheduledTransaction) {
+    if (s.transfer_account_id) return `Transfer: ${accountName(s.transfer_account_id)}`
+    if (s.payee_id) return payees.find((p) => p.id === s.payee_id)?.name ?? '—'
+    return '—'
   }
 
   return (
@@ -58,6 +66,7 @@ export function ScheduledTransactionsPage() {
         <div className="sched-table">
           <div className="sched-table__head">
             <span>Account</span>
+            <span>Payee</span>
             <span>Amount</span>
             <span>Frequency</span>
             <span>Next Date</span>
@@ -67,6 +76,7 @@ export function ScheduledTransactionsPage() {
           {scheduled.map((s) => (
             <div key={s.id} className="sched-table__row" onClick={() => setEditing(s)}>
               <span>{accountName(s.account_id)}</span>
+              <span>{payeeName(s)}</span>
               <span className={Number(s.amount) < 0 ? 'negative' : 'positive'}>
                 {formatMoney(Math.abs(Number(s.amount)))}
                 {Number(s.amount) < 0 ? ' out' : ' in'}

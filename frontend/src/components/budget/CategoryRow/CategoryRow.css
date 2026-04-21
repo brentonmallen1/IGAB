@@ -7,6 +7,149 @@
   transition: background-color var(--transition-fast);
   align-items: center;
   min-height: 36px;
+  position: relative;
+}
+
+.category-row__target-led {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.category-row__target-led:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 4px currentColor;
+}
+
+.category-row__target-led--funded {
+  background-color: var(--color-positive);
+}
+
+.category-row__target-led--underfunded {
+  background-color: var(--color-warning);
+}
+
+.category-row__target-expired {
+  font-size: 10px;
+  color: var(--text-muted);
+  background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  border-radius: 8px;
+  padding: 1px 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.category-row--has-pill {
+  border-bottom: none;
+}
+
+.target-pill-row {
+  display: grid;
+  grid-template-columns: 20px 1fr 120px 120px 120px;
+  padding: 0 var(--spacing-md) 5px;
+  background-color: var(--bg-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  align-items: center;
+  gap: 0;
+  transition: background-color var(--transition-fast);
+}
+
+.category-row--selected + .target-pill-row {
+  background-color: var(--row-selected-bg, rgba(108, 140, 247, 0.08));
+}
+
+.category-row:hover + .target-pill-row {
+  background-color: var(--row-hover-bg);
+}
+
+.target-pill-wrap {
+  grid-column: 2;
+  padding-right: var(--spacing-md);
+}
+
+.target-pill-stats {
+  grid-column: 3 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+}
+
+.target-pill-stat {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.target-pill-stat--funded {
+  color: var(--color-positive);
+  font-weight: 600;
+}
+
+.target-pill-track {
+  height: 10px;
+  border-radius: 5px;
+  position: relative;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+}
+
+.target-pill-track--funded {
+  background-color: color-mix(in srgb, var(--color-positive) 18%, transparent);
+}
+
+.target-pill-track--underfunded {
+  background-color: color-mix(in srgb, var(--color-warning) 18%, transparent);
+}
+
+.target-pill-track--overfunded {
+  background-color: color-mix(in srgb, var(--color-positive) 18%, transparent);
+}
+
+.target-pill-fill {
+  height: 100%;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: visible;
+  transition: width 0.35s ease;
+  min-width: 10px;
+  position: relative;
+}
+
+.target-pill-fill--funded {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-positive) 70%, transparent), var(--color-positive));
+}
+
+.target-pill-fill--underfunded {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-warning) 70%, transparent), var(--color-warning));
+}
+
+.target-pill-fill--overfunded {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-positive) 70%, transparent), var(--color-positive));
+}
+
+.target-pill-pct {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--bg-primary);
+  padding-right: 5px;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.target-pill-pct--outside {
+  color: var(--text-muted);
+  padding-right: 0;
+  padding-left: 5px;
+  position: absolute;
+  left: 100%;
 }
 
 .category-row:hover {

@@ -173,6 +173,7 @@ export interface ScheduledTransaction {
   auto_create: boolean
   days_before_reminder: number
   next_occurrence_date: string
+  transfer_account_id: string | null
   is_deleted: boolean
   created_at: string
   updated_at: string

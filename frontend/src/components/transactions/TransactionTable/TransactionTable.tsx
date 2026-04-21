@@ -1,6 +1,6 @@
-import { useMemo, useRef, useEffect } from 'react'
+import { useMemo, useRef, useEffect, useState } from 'react'
 import { Plus, ChevronUp, ChevronDown } from 'lucide-react'
-import { useTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction } from '../../../api/transactions'
+import { useTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction, useCreateTransaction } from '../../../api/transactions'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -8,12 +8,16 @@ import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { TransactionRow } from '../TransactionRow/TransactionRow'
 import { TransactionEditor } from '../TransactionEditor/TransactionEditor'
 import { SplitTransactionEditor } from '../SplitTransactionEditor/SplitTransactionEditor'
+import { ScheduledTransactionEditor } from '../../scheduled/ScheduledTransactionEditor'
+import { useScheduledTransactionsByAccount, useEnterScheduledTransaction, useSkipScheduledTransaction } from '../../../api/scheduledTransactions'
 import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
 import { TransactionSearch } from '../TransactionSearch/TransactionSearch'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch, filterTransactions } from '../../../utils/searchParser'
 import { useHistoryStore } from '../../../stores/historyStore'
-import type { Transaction, ClearedStatus } from '../../../types'
+import { today } from '../../../utils/dates'
+import { formatMoney } from '../../../utils/money'
+import type { Transaction, ClearedStatus, ScheduledTransaction } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import './TransactionTable.css'
 
@@ -40,6 +44,12 @@ export function TransactionTable({ accountId, budgetId }: Props) {
   const bulkCategorize = useBulkCategorize(budgetId)
   const bulkDelete = useBulkDeleteTransactions(budgetId)
   const undoTxn = useUpdateTransaction(budgetId)
+  const createTxn = useCreateTransaction(budgetId)
+  const [makeRepeatingTxn, setMakeRepeatingTxn] = useState<Transaction | null>(null)
+  const [editingScheduledTxn, setEditingScheduledTxn] = useState<ScheduledTransaction | null>(null)
+  const { data: upcomingScheduled = [] } = useScheduledTransactionsByAccount(budgetId, accountId)
+  const enterScheduled = useEnterScheduledTransaction(budgetId)
+  const skipScheduled = useSkipScheduledTransaction(budgetId)
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -199,6 +209,27 @@ export function TransactionTable({ accountId, budgetId }: Props) {
     bulkDelete.mutate(eligibleIds, { onSuccess: clearTransactionSelection })
   }
 
+  function duplicateTransaction(txn: Transaction) {
+    createTxn.mutate({
+      account_id: txn.account_id,
+      date: today(),
+      amount: Number(txn.amount),
+      payee_id: txn.payee_id ?? undefined,
+      category_id: txn.category_id ?? undefined,
+      memo: txn.memo ?? undefined,
+      cleared: 'uncleared',
+      approved: false,
+    })
+  }
+
+  function handleBulkDuplicate() {
+    const selected = [...selectedTransactionIds]
+      .map((id) => transactions.find((t) => t.id === id))
+      .filter((t): t is Transaction => !!t && t.cleared !== 'reconciled' && !t.parent_transaction_id)
+    selected.forEach(duplicateTransaction)
+    clearTransactionSelection()
+  }
+
   const categoryComboboxOptions: ComboboxOption[] = categories.map((c) => {
     const group = categoryGroups.find((g) => g.id === c.category_group_id)
     return { id: c.id, label: c.name, group: group?.name ?? '' }
@@ -212,6 +243,54 @@ export function TransactionTable({ accountId, budgetId }: Props) {
         {label}
         {isActive && (dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
       </button>
+    )
+  }
+
+  const FREQ_LABELS: Record<string, string> = {
+    daily: 'Daily', weekly: 'Weekly', biweekly: 'Every 2 weeks', monthly: 'Monthly', yearly: 'Yearly',
+  }
+
+  function renderUpcomingRow(s: ScheduledTransaction) {
+    const amount = Number(s.amount)
+    const isOutflow = amount < 0
+    const payeeName = payeeMap.get(s.payee_id ?? '') ?? (s.transfer_account_id ? 'Transfer' : '—')
+    const catName = s.category_id ? categoryMap.get(s.category_id) ?? '—' : '—'
+
+    return (
+      <div key={s.id} className="upcoming-row" onClick={() => setEditingScheduledTxn(s)}>
+        <div className="txn-col txn-col--checkbox" />
+        <div className="txn-col txn-col--date upcoming-row__date">
+          {s.next_occurrence_date}
+          <span className="upcoming-row__freq">{FREQ_LABELS[s.frequency] ?? s.frequency}</span>
+        </div>
+        <div className="txn-col txn-col--payee txn-text-clip">{payeeName}</div>
+        <div className="txn-col txn-col--category txn-text-clip">{catName}</div>
+        <div className="txn-col txn-col--memo txn-text-clip">{s.memo ?? ''}</div>
+        <div className="txn-col txn-col--outflow tabular">
+          {isOutflow ? formatMoney(Math.abs(amount)) : ''}
+        </div>
+        <div className="txn-col txn-col--inflow tabular">
+          {!isOutflow ? formatMoney(amount) : ''}
+        </div>
+        <div className="txn-col txn-col--cleared upcoming-row__actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="upcoming-row__btn"
+            title="Enter now"
+            onClick={() => enterScheduled.mutate(s.id)}
+            disabled={enterScheduled.isPending}
+          >
+            Enter
+          </button>
+          <button
+            className="upcoming-row__btn upcoming-row__btn--secondary"
+            title="Skip next occurrence"
+            onClick={() => skipScheduled.mutate(s.id)}
+            disabled={skipScheduled.isPending}
+          >
+            Skip
+          </button>
+        </div>
+      </div>
     )
   }
 
@@ -230,6 +309,8 @@ export function TransactionTable({ accountId, budgetId }: Props) {
           orderedIds={allOrderedIds}
           onSelect={handleSelect}
           onStartSplit={handleStartSplit}
+          onDuplicate={duplicateTransaction}
+          onMakeRepeating={setMakeRepeatingTxn}
         />
         {splitEditing?.transactionId === txn.id && (
           <SplitTransactionEditor
@@ -244,6 +325,28 @@ export function TransactionTable({ accountId, budgetId }: Props) {
 
   return (
     <div className="transaction-table">
+      {makeRepeatingTxn && (
+        <ScheduledTransactionEditor
+          budgetId={budgetId}
+          existing={null}
+          initial={{
+            account_id: makeRepeatingTxn.account_id,
+            amount: Number(makeRepeatingTxn.amount),
+            category_id: makeRepeatingTxn.category_id ?? undefined,
+            memo: makeRepeatingTxn.memo ?? undefined,
+          }}
+          onClose={() => setMakeRepeatingTxn(null)}
+        />
+      )}
+
+      {editingScheduledTxn && (
+        <ScheduledTransactionEditor
+          budgetId={budgetId}
+          existing={editingScheduledTxn}
+          onClose={() => setEditingScheduledTxn(null)}
+        />
+      )}
+
       {/* Toolbar */}
       <div className="transaction-table__toolbar">
         <TransactionSearch
@@ -264,7 +367,7 @@ export function TransactionTable({ accountId, budgetId }: Props) {
           onCategorize={handleBulkCategorize}
           onSetCleared={handleBulkSetCleared}
           onDelete={handleBulkDelete}
-          onDuplicate={() => {}}
+          onDuplicate={handleBulkDuplicate}
           onClear={clearTransactionSelection}
         />
       )}
@@ -304,6 +407,17 @@ export function TransactionTable({ accountId, budgetId }: Props) {
         </div>
       ) : (
         <>
+          {upcomingScheduled.length > 0 && (
+            <Collapsible
+              title="Upcoming"
+              count={upcomingScheduled.length}
+              isOpen={!collapsedSections.has('upcoming')}
+              onToggle={() => toggleSection('upcoming')}
+            >
+              {upcomingScheduled.map(renderUpcomingRow)}
+            </Collapsible>
+          )}
+
           {pendingTxns.length > 0 && (
             <Collapsible
               title="Pending"

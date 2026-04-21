@@ -29,6 +29,14 @@ export function useScheduledTransactions(budgetId: string | null) {
   })
 }
 
+export function useScheduledTransactionsByAccount(budgetId: string | null, accountId: string | null) {
+  const query = useScheduledTransactions(budgetId)
+  return {
+    ...query,
+    data: query.data?.filter((s) => s.account_id === accountId) ?? [],
+  }
+}
+
 export function useCreateScheduledTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({

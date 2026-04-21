@@ -2,6 +2,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { CategoryTarget } from '../types'
 
+export function useTargetsByBudget(budgetId: string | null) {
+  return useQuery({
+    queryKey: ['targets', 'budget', budgetId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CategoryTarget[]>(`/${budgetId}/targets`)
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: 30_000,
+  })
+}
+
 export interface TargetUpsert {
   target_type: string
   target_amount: number
@@ -30,6 +42,7 @@ export function useUpsertTarget(categoryId: string) {
       apiClient.post<CategoryTarget>(`/categories/${categoryId}/target`, body).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['target', categoryId] })
+      qc.invalidateQueries({ queryKey: ['targets', 'budget'] })
     },
   })
 }
@@ -40,6 +53,7 @@ export function useDeleteTarget(categoryId: string) {
     mutationFn: () => apiClient.delete(`/categories/${categoryId}/target`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['target', categoryId] })
+      qc.invalidateQueries({ queryKey: ['targets', 'budget'] })
     },
   })
 }

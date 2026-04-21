@@ -25,7 +25,3 @@
   color: var(--color-negative);
 }
 
-.target-badge--overfunded {
-  background-color: color-mix(in srgb, var(--color-warning, #f28e2b) 20%, transparent);
-  color: var(--color-warning, #f28e2b);
-}

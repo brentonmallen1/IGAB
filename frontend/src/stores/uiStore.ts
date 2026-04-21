@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 type TransactionSortColumn = 'date' | 'payee' | 'category' | 'memo' | 'amount'
 type SortDirection = 'asc' | 'desc'
-type CollapsibleSection = 'pending' | 'uncategorized'
+type CollapsibleSection = 'pending' | 'uncategorized' | 'upcoming'
 
 interface UIState {
   collapsedGroups: Set<string>
@@ -10,6 +10,8 @@ interface UIState {
   editingTransactionId: string | null
   isAccountEditorOpen: boolean
   mobileSidebarOpen: boolean
+  sidebarCollapsed: boolean
+  budgetRowMode: 'expanded' | 'compressed'
   selectedCategoryIds: Set<string>
   categoryInspectorOpen: boolean
   inspectorUserClosed: boolean
@@ -31,6 +33,8 @@ interface UIState {
   openAccountEditor: () => void
   closeAccountEditor: () => void
   setMobileSidebarOpen: (open: boolean) => void
+  toggleSidebarCollapsed: () => void
+  toggleBudgetRowMode: () => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
   selectOnlyCategory: (id: string) => void
   selectGroupCategories: (ids: string[]) => void
@@ -70,6 +74,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   editingTransactionId: null,
   isAccountEditorOpen: false,
   mobileSidebarOpen: false,
+  sidebarCollapsed: false,
+  budgetRowMode: 'expanded',
   selectedCategoryIds: new Set(),
   categoryInspectorOpen: true,
   inspectorUserClosed: false,
@@ -104,6 +110,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   closeAccountEditor: () => set({ isAccountEditorOpen: false }),
 
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+  toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  toggleBudgetRowMode: () => set((s) => ({ budgetRowMode: s.budgetRowMode === 'expanded' ? 'compressed' : 'expanded' })),
 
   toggleCategorySelection: (id, shiftKey = false, orderedIds = []) => {
     const { selectedCategoryIds, lastSelectedCategoryId } = get()

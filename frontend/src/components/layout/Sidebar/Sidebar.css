@@ -13,6 +13,9 @@
 .sidebar__logo {
   padding: var(--spacing-md) var(--spacing-md) var(--spacing-sm);
   border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 
 .sidebar__logo-text {
@@ -182,6 +185,101 @@
 .sidebar__close-btn:hover {
   background-color: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.sidebar__collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__collapse-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__accounts-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.sidebar__accounts-mini-divider {
+  width: 28px;
+  height: 1px;
+  background: var(--border-subtle);
+  margin-bottom: 4px;
+}
+
+.sidebar__account-mini {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--border-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.sidebar__account-mini:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.sidebar__account-mini-letter {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sidebar__account-mini-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-warning);
+  border: 1px solid var(--sidebar-bg);
+}
+
+.sidebar--collapsed {
+  width: 52px;
+  min-width: 52px;
+  overflow-x: hidden;
+}
+
+.sidebar--collapsed .sidebar__logo {
+  justify-content: center;
+  padding: var(--spacing-md) var(--spacing-xs) var(--spacing-sm);
+}
+
+.sidebar--collapsed .sidebar__nav {
+  padding: var(--spacing-sm) var(--spacing-xs);
+  align-items: center;
+}
+
+.sidebar--collapsed .sidebar__nav-item {
+  justify-content: center;
+  padding: var(--spacing-xs);
+  width: 36px;
+  height: 36px;
 }
 
 @media (max-width: 768px) {

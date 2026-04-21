@@ -14,13 +14,21 @@ const FREQUENCIES = [
   { value: 'yearly', label: 'Yearly' },
 ]
 
+interface InitialValues {
+  account_id?: string
+  amount?: number
+  category_id?: string
+  memo?: string
+}
+
 interface Props {
   budgetId: string
   existing: ScheduledTransaction | null
+  initial?: InitialValues
   onClose: () => void
 }
 
-export function ScheduledTransactionEditor({ budgetId, existing, onClose }: Props) {
+export function ScheduledTransactionEditor({ budgetId, existing, initial, onClose }: Props) {
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
@@ -29,13 +37,21 @@ export function ScheduledTransactionEditor({ budgetId, existing, onClose }: Prop
   const update = useUpdateScheduledTransaction(budgetId)
   const del = useDeleteScheduledTransaction(budgetId)
 
-  const [accountId, setAccountId] = useState(existing?.account_id ?? '')
-  const [amount, setAmount] = useState(existing ? String(Math.abs(Number(existing.amount))) : '')
-  const [isOutflow, setIsOutflow] = useState(existing ? Number(existing.amount) < 0 : true)
+  const [accountId, setAccountId] = useState(existing?.account_id ?? initial?.account_id ?? '')
+  const [amount, setAmount] = useState(
+    existing ? String(Math.abs(Number(existing.amount)))
+    : initial?.amount ? String(Math.abs(initial.amount))
+    : ''
+  )
+  const [isOutflow, setIsOutflow] = useState(
+    existing ? Number(existing.amount) < 0
+    : initial?.amount !== undefined ? initial.amount < 0
+    : true
+  )
   const [frequency, setFrequency] = useState(existing?.frequency ?? 'monthly')
   const [startDate, setStartDate] = useState(existing?.start_date ?? today())
-  const [categoryId, setCategoryId] = useState(existing?.category_id ?? '')
-  const [memo, setMemo] = useState(existing?.memo ?? '')
+  const [categoryId, setCategoryId] = useState(existing?.category_id ?? initial?.category_id ?? '')
+  const [memo, setMemo] = useState(existing?.memo ?? initial?.memo ?? '')
   const [autoCreate, setAutoCreate] = useState(existing?.auto_create ?? false)
 
   const groupedCategories = categoryGroups
