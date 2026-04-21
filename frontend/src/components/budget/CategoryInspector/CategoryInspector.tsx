@@ -82,7 +82,7 @@ export function CategoryInspector({ budgetId }: Props) {
 
           <div className="category-inspector__body">
             {count === 0 ? (
-              <MonthSummary budgetId={budgetId} allCategoryIds={allCategoryIds} />
+              <MonthSummary budgetId={budgetId} allCategoryIds={allCategoryIds} categories={categories ?? []} />
             ) : (
               <>
                 <AvailableBreakdown balances={selectedBalances} />

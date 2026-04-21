@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, X, ChevronLeft } from 'lucide-react'
+import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, X, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAccounts } from '../../../api/accounts'
 import { useBudgets } from '../../../api/budgets'
 import { useAppStore } from '../../../stores/appStore'
@@ -38,6 +38,8 @@ export function Sidebar() {
   const { data: budgets = [] } = useBudgets()
   const mobileSidebarOpen = useUIStore((s) => s.mobileSidebarOpen)
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
+  const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
 
   const currentBudgetName = budgets.find((b) => b.id === budgetId)?.name ?? null
 
@@ -63,16 +65,26 @@ export function Sidebar() {
     setMobileSidebarOpen(false)
   }
 
+  const collapsed = sidebarCollapsed && !mobileSidebarOpen
+
   return (
-    <aside className={`sidebar ${mobileSidebarOpen ? 'sidebar--mobile-open' : ''}`}>
+    <aside className={`sidebar ${mobileSidebarOpen ? 'sidebar--mobile-open' : ''} ${collapsed ? 'sidebar--collapsed' : ''}`}>
       <div className="sidebar__logo">
-        <span className="sidebar__logo-text">IGAB</span>
+        {!collapsed && <span className="sidebar__logo-text">IGAB</span>}
         <button className="sidebar__close-btn" onClick={() => setMobileSidebarOpen(false)} aria-label="Close menu">
           <X size={18} />
         </button>
+        <button
+          className="sidebar__collapse-btn"
+          onClick={toggleSidebarCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
       </div>
 
-      {currentBudgetName && (
+      {currentBudgetName && !collapsed && (
         <button className="sidebar__budget-back" onClick={handleAllBudgets} title="Switch budget">
           <ChevronLeft size={14} />
           <span className="sidebar__budget-name">{currentBudgetName}</span>
@@ -80,38 +92,38 @@ export function Sidebar() {
       )}
 
       <nav className="sidebar__nav">
-        <NavLink to="/budget" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick}>
+        <NavLink to="/budget" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Budget">
           <LayoutDashboard size={16} />
-          <span>Budget</span>
+          {!collapsed && <span>Budget</span>}
         </NavLink>
-        <NavLink to="/reports" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick}>
+        <NavLink to="/reports" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Reports">
           <BarChart2 size={16} />
-          <span>Reports</span>
+          {!collapsed && <span>Reports</span>}
         </NavLink>
-        <NavLink to="/scheduled" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick}>
+        <NavLink to="/scheduled" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Scheduled">
           <CalendarClock size={16} />
-          <span>Scheduled</span>
+          {!collapsed && <span>Scheduled</span>}
         </NavLink>
-        <NavLink to="/payees" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick}>
+        <NavLink to="/payees" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Payees">
           <Users size={16} />
-          <span>Payees</span>
+          {!collapsed && <span>Payees</span>}
         </NavLink>
-        <NavLink to="/import" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick}>
+        <NavLink to="/import" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Import">
           <Upload size={16} />
-          <span>Import</span>
+          {!collapsed && <span>Import</span>}
         </NavLink>
-        <NavLink to="/settings" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick}>
+        <NavLink to="/settings" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Settings">
           <Settings size={16} />
-          <span>Settings</span>
+          {!collapsed && <span>Settings</span>}
         </NavLink>
       </nav>
 
-      <div className="sidebar__section-header">
+      {!collapsed && <div className="sidebar__section-header">
         <span>Budget Accounts</span>
         <span className="sidebar__total tabular">{formatMoney(onBudgetTotal)}</span>
-      </div>
+      </div>}
 
-      {onBudgetTypes.map((type) => {
+      {!collapsed && onBudgetTypes.map((type) => {
         const typeAccounts: Account[] = grouped.get(type) ?? []
         if (typeAccounts.length === 0) return null
         return (
@@ -140,7 +152,7 @@ export function Sidebar() {
         )
       })}
 
-      {((grouped.get('tracking') ?? []) as Account[]).length > 0 && (
+      {!collapsed && ((grouped.get('tracking') ?? []) as Account[]).length > 0 && (
         <>
           <div className="sidebar__section-header">
             <span>Tracking Accounts</span>
@@ -160,10 +172,33 @@ export function Sidebar() {
         </>
       )}
 
+      {collapsed && accounts && accounts.length > 0 && (
+        <div className="sidebar__accounts-mini">
+          <div className="sidebar__accounts-mini-divider" />
+          {[...onBudgetTypes, 'tracking'].flatMap((type) =>
+            (grouped.get(type) ?? []).map((acc) => (
+              <button
+                key={acc.id}
+                className="sidebar__account-mini"
+                onClick={() => handleAccountClick(acc)}
+                title={`${acc.name}\n${formatMoney(Number(acc.balance))}`}
+              >
+                <span className="sidebar__account-mini-letter">
+                  {acc.name.charAt(0).toUpperCase()}
+                </span>
+                {acc.uncategorized_count > 0 && (
+                  <span className="sidebar__account-mini-dot" />
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
       {!budgetId && (
         <div className="sidebar__empty">
           <Wallet size={20} />
-          <span>No budget selected</span>
+          {!collapsed && <span>No budget selected</span>}
         </div>
       )}
     </aside>

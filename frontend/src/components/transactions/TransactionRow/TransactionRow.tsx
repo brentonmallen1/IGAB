@@ -25,6 +25,8 @@ interface Props {
   orderedIds: string[]
   onSelect: (id: string, shiftKey: boolean) => void
   onStartSplit: (txn: Transaction) => void
+  onDuplicate: (txn: Transaction) => void
+  onMakeRepeating: (txn: Transaction) => void
 }
 
 const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
@@ -50,6 +52,8 @@ export function TransactionRow({
   orderedIds,
   onSelect,
   onStartSplit,
+  onDuplicate,
+  onMakeRepeating,
 }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const updateTxn = useUpdateTransaction(budgetId)
@@ -68,7 +72,7 @@ export function TransactionRow({
 
   const categoryName = txn.is_split
     ? 'Split Transaction'
-    : (txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : '—')
+    : (txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : null)
 
   const isEditing = (field: string) =>
     editingField?.transactionId === txn.id && editingField.field === field
@@ -123,6 +127,12 @@ export function TransactionRow({
     switch (id) {
       case 'split':
         onStartSplit(txn)
+        break
+      case 'duplicate':
+        onDuplicate(txn)
+        break
+      case 'make_repeating':
+        onMakeRepeating(txn)
         break
       case 'enter_now':
         updateTxn.mutate({ id: txn.id, cleared: 'uncleared' })
@@ -232,8 +242,10 @@ export function TransactionRow({
             autoFocus
             onBlurClose={stopEditing}
           />
+        ) : categoryName === null ? (
+          <span className="txn-needs-category">Needs Category</span>
         ) : (
-          <span className={`txn-cell-text ${txn.is_split ? 'txn-split-label' : ''} ${!txn.category_id && !txn.is_split ? 'txn-uncategorized' : ''}`}>
+          <span className={`txn-cell-text ${txn.is_split ? 'txn-split-label' : ''}`}>
             {categoryName}
           </span>
         )}

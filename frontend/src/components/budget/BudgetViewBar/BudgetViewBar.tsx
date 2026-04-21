@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ListFilter, Plus, Settings2 } from 'lucide-react'
+import { ListFilter, Plus, Settings2, AlignJustify, AlignLeft } from 'lucide-react'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore } from '../../../stores/uiStore'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
@@ -14,6 +14,8 @@ export function BudgetViewBar({ budgetId }: Props) {
   const activeBudgetViewId = useUIStore((s) => s.activeBudgetViewId)
   const setActiveBudgetView = useUIStore((s) => s.setActiveBudgetView)
   const openViewModal = useUIStore((s) => s.openViewModal)
+  const budgetRowMode = useUIStore((s) => s.budgetRowMode)
+  const toggleBudgetRowMode = useUIStore((s) => s.toggleBudgetRowMode)
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
@@ -45,6 +47,13 @@ export function BudgetViewBar({ budgetId }: Props) {
       ))}
 
       <div className="budget-view-bar__menu-wrap">
+        <button
+          className="budget-view-bar__menu-btn"
+          onClick={toggleBudgetRowMode}
+          title={budgetRowMode === 'expanded' ? 'Switch to compact rows' : 'Switch to expanded rows'}
+        >
+          {budgetRowMode === 'expanded' ? <AlignLeft size={14} /> : <AlignJustify size={14} />}
+        </button>
         <button
           ref={menuAnchorRef}
           className="budget-view-bar__menu-btn"

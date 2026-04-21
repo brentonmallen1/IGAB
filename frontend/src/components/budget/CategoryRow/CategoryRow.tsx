@@ -4,9 +4,10 @@ import { useSetAssignment } from '../../../api/budgets'
 import { useTarget } from '../../../api/targets'
 import { useDeleteCategory, useUpdateCategory } from '../../../api/categories'
 import { useUIStore } from '../../../stores/uiStore'
-import { TargetBadge } from '../TargetBadge'
+import { TargetBadge, getTargetTooltip } from '../TargetBadge'
 import { TargetEditor } from '../TargetEditor'
 import { formatMoney, parseMoney } from '../../../utils/money'
+import { today } from '../../../utils/dates'
 import type { Category, CategoryBalance } from '../../../types'
 import './CategoryRow.css'
 
@@ -39,6 +40,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const selectOnlyCategory = useUIStore((s) => s.selectOnlyCategory)
   const setCategoryInspectorOpen = useUIStore((s) => s.setCategoryInspectorOpen)
   const inspectorUserClosed = useUIStore((s) => s.inspectorUserClosed)
+  const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const isSelected = selectedCategoryIds.has(category.id)
   const anySelected = selectedCategoryIds.size > 0
 
@@ -104,15 +106,35 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
   const availableClass = available < 0 ? 'negative' : available > 0 ? 'positive' : 'zero'
 
-  function getTargetStatus(): 'funded' | 'underfunded' | 'overfunded' | null {
-    if (!target) return null
+  const isTargetExpired = !!(target?.target_date && String(target.target_date) < today())
+
+  function getTargetStatus(): 'funded' | 'underfunded' | null {
+    if (!target || isTargetExpired) return null
     const needed = Number(target.target_amount)
-    if (assigned >= needed * 1.05) return 'overfunded'
     if (assigned >= needed) return 'funded'
     return 'underfunded'
   }
 
   const targetStatus = getTargetStatus()
+
+  const targetProgress = (() => {
+    if (!target || isTargetExpired) return null
+    const amount = Number(target.target_amount)
+    if (amount <= 0) return null
+    const numerator = target.target_type === 'savings_balance' ? available : assigned
+    return Math.min(Math.max(numerator / amount, 0), 1)
+  })()
+
+  const monthlyNeeded = (() => {
+    if (!target || target.target_type !== 'savings_balance' || !target.target_date) return null
+    const targetDate = new Date(target.target_date + 'T00:00:00')
+    const now = new Date()
+    const monthsLeft = (targetDate.getFullYear() - now.getFullYear()) * 12 + (targetDate.getMonth() - now.getMonth())
+    if (monthsLeft <= 0) return null
+    const remaining = Number(target.target_amount) - available
+    if (remaining <= 0) return 0
+    return remaining / monthsLeft
+  })()
 
   return (
     <>
@@ -125,7 +147,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
         />
       )}
       <div
-        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${available < 0 ? 'category-row--overspent' : ''}`}
+        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''}`}
         role="row"
         onClick={handleRowClick}
         style={{ cursor: 'default' }}
@@ -155,8 +177,28 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
               <span className="category-row__name-text" onDoubleClick={startRename}>
                 {category.name}
               </span>
-              {targetStatus ? (
-                <TargetBadge status={targetStatus} onClick={() => setShowTargetEditor(true)} />
+              {isTargetExpired ? (
+                <span
+                  className="category-row__target-expired"
+                  title="Target date has passed — click to update"
+                  onClick={(e) => { e.stopPropagation(); setShowTargetEditor(true) }}
+                >
+                  expired
+                </span>
+              ) : targetStatus ? (
+                budgetRowMode === 'compressed' ? (
+                  <span
+                    className={`category-row__target-led category-row__target-led--${targetStatus}`}
+                    title={getTargetTooltip(targetStatus, monthlyNeeded ?? undefined)}
+                    onClick={(e) => { e.stopPropagation(); setShowTargetEditor(true) }}
+                  />
+                ) : (
+                  <TargetBadge
+                    status={targetStatus}
+                    monthlyNeeded={monthlyNeeded ?? undefined}
+                    onClick={() => setShowTargetEditor(true)}
+                  />
+                )
               ) : (
                 <button
                   className="category-row__target-btn"
@@ -243,7 +285,43 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
         <div className={`category-row__available tabular ${availableClass}`}>
           {formatMoney(available)}
         </div>
+
       </div>
+
+      {targetProgress !== null && targetStatus !== null && budgetRowMode === 'expanded' && (() => {
+        const pct = Math.round(targetProgress * 100)
+        const isSavings = target!.target_type === 'savings_balance'
+        const amountRemaining = Math.max(0, Number(target!.target_amount) - (isSavings ? available : assigned))
+        const pctInside = targetProgress > 0.22
+
+        return (
+          <div className="target-pill-row">
+            <div className="target-pill-wrap">
+              <div className={`target-pill-track target-pill-track--${targetStatus}`}>
+                <div
+                  className={`target-pill-fill target-pill-fill--${targetStatus}`}
+                  style={{ width: `${targetProgress * 100}%` }}
+                >
+                  {pctInside && <span className="target-pill-pct">{pct}%</span>}
+                </div>
+                {!pctInside && <span className="target-pill-pct target-pill-pct--outside">{pct}%</span>}
+              </div>
+            </div>
+            <div className="target-pill-stats">
+              {targetStatus === 'funded' ? (
+                <span className="target-pill-stat target-pill-stat--funded">Funded</span>
+              ) : amountRemaining > 0 ? (
+                <span className="target-pill-stat">
+                  {isSavings ? `Save ${formatMoney(amountRemaining)} more` : `Need ${formatMoney(amountRemaining)} this month`}
+                </span>
+              ) : null}
+              {monthlyNeeded !== null && monthlyNeeded > 0 && (
+                <span className="target-pill-stat">{formatMoney(monthlyNeeded)}/mo to goal</span>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 })

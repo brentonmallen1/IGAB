@@ -116,9 +116,19 @@
   background-color: var(--row-hover-bg);
 }
 
-.txn-uncategorized {
-  color: var(--text-muted);
-  font-style: italic;
+.txn-needs-category {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background-color: color-mix(in srgb, var(--color-warning) 20%, transparent);
+  color: var(--color-warning);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .txn-split-label {

@@ -237,6 +237,19 @@ async def delete_category_target(
     await target_svc.delete(category_id)
 
 
+@router.get("/{budget_id}/targets", response_model=list[CategoryTargetResponse])
+async def list_budget_targets(
+    budget_id: uuid.UUID,
+    current_user: CurrentUser,
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    target_repo: Annotated[TargetRepository, Depends(get_target_repo)],
+) -> list[CategoryTargetResponse]:
+    categories = await category_repo.get_all(budget_id)
+    category_ids = [c.id for c in categories]
+    targets = await target_repo.get_by_category_ids(category_ids)
+    return [CategoryTargetResponse.model_validate(t) for t in targets]
+
+
 @router.patch("/categories/{category_id}/assignment", status_code=status.HTTP_204_NO_CONTENT)
 async def set_category_assignment(
     category_id: uuid.UUID,
