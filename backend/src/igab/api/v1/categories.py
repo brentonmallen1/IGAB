@@ -1,5 +1,6 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,10 +20,14 @@ from igab.api.v1.schemas.category import (
     CategoryTargetCreate,
     CategoryTargetResponse,
     CategoryUpdate,
+    FillTargetsApplyRequest,
+    FillTargetsPreviewItem,
+    FillTargetsPreviewResponse,
 )
-from igab.dependencies import CurrentUser, get_budget_service, get_category_group_repo, get_category_repo, get_target_service
+from igab.dependencies import CurrentUser, get_budget_service, get_category_group_repo, get_category_repo, get_target_repo, get_target_service
 from igab.domain.exceptions import NotFoundError
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
+from igab.repositories.target_repo import TargetRepository
 from igab.services.budget_service import BudgetService
 from igab.services.target_service import TargetService
 
@@ -300,3 +305,90 @@ async def auto_assign_categories(
 ) -> None:
     for cat_id in body.category_ids:
         await budget_service.auto_assign(budget_id, cat_id, body.month, body.action)
+
+
+@router.get(
+    "/{budget_id}/auto-assign/preview",
+    response_model=FillTargetsPreviewResponse,
+)
+async def fill_targets_preview(
+    budget_id: uuid.UUID,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    target_repo: Annotated[TargetRepository, Depends(get_target_repo)],
+    target_service: Annotated[TargetService, Depends(get_target_service)],
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    month: date = Query(default=None),
+) -> FillTargetsPreviewResponse:
+    from datetime import date as date_cls
+    current_month = month or date_cls.today()
+
+    summary = await budget_service.get_budget_summary(budget_id, current_month)
+    tba = summary.to_be_assigned
+    balance_map = {b.category_id: b for b in summary.category_balances}
+
+    category_ids = list(balance_map.keys())
+    targets = await target_repo.get_by_category_ids(category_ids)
+    target_map = {t.category_id: t for t in targets}
+
+    categories = await category_repo.get_all(budget_id, include_hidden=True)
+    name_map = {c.id: c.name for c in categories}
+
+    items_with_need: list[tuple[uuid.UUID, Decimal]] = []
+    for cat_id, target in target_map.items():
+        bal = balance_map.get(cat_id)
+        if bal is None:
+            continue
+        needed = target_service.calculate_needed(
+            target,
+            Decimal(str(bal.assigned)),
+            Decimal(str(bal.available)),
+        )
+        if needed > 0:
+            items_with_need.append((cat_id, needed))
+
+    available_tba = max(Decimal("0"), tba)
+    total_shortfall = sum(n for _, n in items_with_need)
+
+    preview_items: list[FillTargetsPreviewItem] = []
+    for cat_id, needed in items_with_need:
+        bal = balance_map[cat_id]
+        if total_shortfall > 0:
+            proportion = needed / total_shortfall
+            proposed = min(needed, (proportion * available_tba).quantize(Decimal("0.01")))
+        else:
+            proposed = Decimal("0")
+        current_assigned = Decimal(str(bal.assigned))
+        preview_items.append(
+            FillTargetsPreviewItem(
+                category_id=cat_id,
+                category_name=name_map.get(cat_id, "Unknown"),
+                current_assigned=current_assigned,
+                proposed_addition=proposed,
+                new_assigned=current_assigned + proposed,
+            )
+        )
+
+    preview_items.sort(key=lambda x: x.proposed_addition, reverse=True)
+    total_addition = sum(i.proposed_addition for i in preview_items)
+
+    return FillTargetsPreviewResponse(
+        items=preview_items,
+        total_addition=total_addition,
+        tba_before=tba,
+        tba_after=tba - total_addition,
+    )
+
+
+@router.post("/{budget_id}/auto-assign/apply", status_code=status.HTTP_204_NO_CONTENT)
+async def fill_targets_apply(
+    budget_id: uuid.UUID,
+    body: FillTargetsApplyRequest,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+) -> None:
+    for item in body.items:
+        if item.proposed_addition > 0:
+            await budget_service.set_assignment(
+                budget_id, item.category_id, body.month, item.new_assigned
+            )

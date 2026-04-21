@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { X, Trash2, Sparkles } from 'lucide-react'
+import { X, Trash2, Sparkles, Split, Plus } from 'lucide-react'
 import {
   useCreateTransaction,
   useUpdateTransaction,
@@ -11,6 +11,7 @@ import { useAccounts } from '../../../api/accounts'
 import { useSuggestCategory } from '../../../api/ai'
 import { today } from '../../../utils/dates'
 import type { Transaction, Payee } from '../../../types'
+import type { SplitDraft } from '../../../stores/transactionEditStore'
 import './TransactionEditor.css'
 
 interface Props {
@@ -54,6 +55,11 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   const [isTransfer, setIsTransfer] = useState(!!transaction?.transfer_id)
   const [transferAccountId, setTransferAccountId] = useState('')
   const [showPayeeDropdown, setShowPayeeDropdown] = useState(false)
+  const [isSplit, setIsSplit] = useState(false)
+  const [splits, setSplits] = useState<SplitDraft[]>([
+    { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
+    { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
+  ])
 
   const payeeRef = useRef<HTMLDivElement>(null)
   const payeeInitialized = useRef(false)
@@ -121,11 +127,45 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
     if (e.target.value) setOutflow('')
   }
 
+  function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
+    setSplits((prev) => prev.map((s) => s.tempId === tempId ? { ...s, ...data } : s))
+  }
+
+  function addSplit() {
+    setSplits((prev) => [...prev, { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' }])
+  }
+
+  function removeSplit(tempId: string) {
+    setSplits((prev) => prev.length > 2 ? prev.filter((s) => s.tempId !== tempId) : prev)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const outflowVal = parseFloat(outflow) || 0
     const inflowVal = parseFloat(inflow) || 0
     const amount = outflowVal > 0 ? -outflowVal : inflowVal
+    const sign = amount < 0 ? -1 : 1
+
+    if (isSplit && !isTransfer) {
+      const splitPayload = {
+        account_id: accountId,
+        date,
+        amount,
+        memo: memo || undefined,
+        cleared,
+        approved: true,
+        payee_id: selectedPayeeId || undefined,
+        payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
+        splits: splits.map((s) => ({
+          amount: parseFloat(s.amount) * sign,
+          category_id: s.categoryId ?? undefined,
+          memo: s.memo || undefined,
+        })),
+      }
+      await createTxn.mutateAsync(splitPayload)
+      onClose()
+      return
+    }
 
     const payload = {
       account_id: accountId,
@@ -159,6 +199,13 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   }
 
   const isPending = createTxn.isPending || updateTxn.isPending || deleteTxn.isPending
+
+  const splitIsValid = (() => {
+    if (!isSplit) return true
+    const totalAmt = Math.abs((parseFloat(outflow) || 0) || (parseFloat(inflow) || 0))
+    const splitTotal = splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0)
+    return Math.abs(splitTotal - totalAmt) < 0.01 && splits.every((s) => s.categoryId && parseFloat(s.amount) > 0)
+  })()
 
   return (
     <div
@@ -261,10 +308,87 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
                 ))}
               </select>
             </div>
+          ) : isSplit ? (
+            <div className="txn-editor__field">
+              <label className="txn-editor__label">
+                Split Transaction
+                <button
+                  type="button"
+                  className="txn-editor__ai-btn"
+                  onClick={() => { setIsSplit(false); setCategoryId('') }}
+                  title="Switch to single category"
+                >
+                  <X size={12} />
+                  Cancel split
+                </button>
+              </label>
+              <div className="txn-editor__splits">
+                {splits.map((s) => (
+                  <div key={s.tempId} className="txn-editor__split-row">
+                    <select
+                      className="txn-editor__select txn-editor__split-category"
+                      value={s.categoryId ?? ''}
+                      onChange={(e) => updateSplit(s.tempId, { categoryId: e.target.value || null })}
+                    >
+                      <option value="">Category…</option>
+                      {groupedCategories.map(({ group, cats }) => (
+                        <optgroup key={group.id} label={group.name}>
+                          {cats.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <input
+                      className="txn-editor__input txn-editor__split-amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={s.amount}
+                      onChange={(e) => updateSplit(s.tempId, { amount: e.target.value })}
+                      placeholder="0.00"
+                    />
+                    <button
+                      type="button"
+                      className="txn-editor__split-remove"
+                      onClick={() => removeSplit(s.tempId)}
+                      disabled={splits.length <= 2}
+                      title="Remove"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+                <div className="txn-editor__split-footer">
+                  <button type="button" className="txn-editor__split-add" onClick={addSplit}>
+                    <Plus size={12} /> Add split
+                  </button>
+                  {(() => {
+                    const splitTotal = splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0)
+                    const totalAmt = Math.abs((parseFloat(outflow) || 0) || (parseFloat(inflow) || 0))
+                    const remaining = totalAmt - splitTotal
+                    return (
+                      <span className={`txn-editor__split-remaining ${Math.abs(remaining) < 0.01 ? 'txn-editor__split-remaining--done' : ''}`}>
+                        {Math.abs(remaining) < 0.01 ? 'Fully assigned' : `Remaining: $${remaining.toFixed(2)}`}
+                      </span>
+                    )
+                  })()}
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="txn-editor__field">
               <label className="txn-editor__label">
                 Category
+                <button
+                  type="button"
+                  className="txn-editor__ai-btn"
+                  title="Split this transaction"
+                  onClick={() => setIsSplit(true)}
+                >
+                  <Split size={12} />
+                  Split
+                </button>
                 <button
                   type="button"
                   className="txn-editor__ai-btn"
@@ -370,7 +494,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
             <button
               type="submit"
               className="txn-editor__btn txn-editor__btn--primary"
-              disabled={isPending}
+              disabled={isPending || !splitIsValid}
             >
               {isEdit ? 'Save' : 'Add'}
             </button>

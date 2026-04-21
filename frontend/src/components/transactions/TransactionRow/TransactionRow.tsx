@@ -3,6 +3,7 @@ import { useState, useRef } from 'react'
 import { useUpdateTransaction } from '../../../api/transactions'
 import { useAppStore } from '../../../stores/appStore'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
+import { useHistoryStore } from '../../../stores/historyStore'
 import { formatDate } from '../../../utils/dates'
 import { formatMoney } from '../../../utils/money'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
@@ -27,6 +28,7 @@ interface Props {
 }
 
 const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
+  { id: 'split', label: 'Split Transaction…' },
   { id: 'duplicate', label: 'Duplicate', shortcut: 'shift D' },
   { id: 'make_repeating', label: 'Make Repeating', shortcut: 'shift T' },
   { id: 'separator1', label: '', separator: true },
@@ -53,7 +55,7 @@ export function TransactionRow({
   const updateTxn = useUpdateTransaction(budgetId)
   const { editingField, startEditing, stopEditing } = useTransactionEditStore()
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
-  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 })
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number; alignRight?: boolean }>({ x: 0, y: 0 })
   const moreRef = useRef<HTMLButtonElement>(null)
 
   const isOutflow = Number(txn.amount) < 0
@@ -81,6 +83,11 @@ export function TransactionRow({
 
   function commitField(field: string, value: unknown) {
     if (value !== undefined) {
+      useHistoryStore.getState().push({
+        transactionId: txn.id,
+        field,
+        before: txn[field as keyof typeof txn],
+      })
       updateTxn.mutate({ id: txn.id, [field]: value } as Parameters<typeof updateTxn.mutate>[0])
     }
     stopEditing()
@@ -89,6 +96,11 @@ export function TransactionRow({
   function commitAmount(raw: string, sign: 1 | -1) {
     const num = parseFloat(raw.replace(/[^0-9.]/g, ''))
     if (!isNaN(num) && num !== 0) {
+      useHistoryStore.getState().push({
+        transactionId: txn.id,
+        field: 'amount',
+        before: txn.amount,
+      })
       updateTxn.mutate({ id: txn.id, amount: num * sign })
     }
     stopEditing()
@@ -103,20 +115,20 @@ export function TransactionRow({
   function handleMoreClick(e: React.MouseEvent) {
     e.stopPropagation()
     const rect = moreRef.current?.getBoundingClientRect()
-    if (rect) setContextMenuPos({ x: rect.left, y: rect.bottom + 4 })
+    if (rect) setContextMenuPos({ x: rect.right, y: rect.bottom + 4, alignRight: true })
     setContextMenuOpen(true)
   }
 
   function handleContextAction(id: string) {
     switch (id) {
+      case 'split':
+        onStartSplit(txn)
+        break
       case 'enter_now':
         updateTxn.mutate({ id: txn.id, cleared: 'uncleared' })
         break
       case 'approve':
         updateTxn.mutate({ id: txn.id, approved: true })
-        break
-      case 'delete':
-        updateTxn.mutate({ id: txn.id } as Parameters<typeof updateTxn.mutate>[0])
         break
     }
   }
@@ -143,6 +155,7 @@ export function TransactionRow({
   }
 
   const contextItems = ROW_CONTEXT_ITEMS.filter((item) => {
+    if (item.id === 'split') return !isReconciled
     if (item.id === 'enter_now') return isPending
     if (item.id === 'approve') return !txn.approved
     return true
@@ -204,7 +217,11 @@ export function TransactionRow({
       {/* Category */}
       <div
         className="txn-col txn-col--category txn-text-clip"
-        onClick={() => !isReconciled && startEditing(txn.id, 'category')}
+        onClick={() => {
+          if (isReconciled) return
+          if (txn.is_split) onStartSplit(txn)
+          else startEditing(txn.id, 'category')
+        }}
       >
         {isEditing('category') ? (
           <Combobox

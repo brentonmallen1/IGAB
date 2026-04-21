@@ -12,6 +12,7 @@ interface UIState {
   mobileSidebarOpen: boolean
   selectedCategoryIds: Set<string>
   categoryInspectorOpen: boolean
+  inspectorUserClosed: boolean
   lastSelectedCategoryId: string | null
 
   // Transaction table state
@@ -31,6 +32,7 @@ interface UIState {
   closeAccountEditor: () => void
   setMobileSidebarOpen: (open: boolean) => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
+  selectOnlyCategory: (id: string) => void
   selectGroupCategories: (ids: string[]) => void
   clearCategorySelection: () => void
   setCategoryInspectorOpen: (open: boolean) => void
@@ -70,6 +72,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   mobileSidebarOpen: false,
   selectedCategoryIds: new Set(),
   categoryInspectorOpen: true,
+  inspectorUserClosed: false,
   lastSelectedCategoryId: null,
 
   selectedTransactionIds: new Set(),
@@ -125,6 +128,16 @@ export const useUIStore = create<UIState>((set, get) => ({
     set({ selectedCategoryIds: next, lastSelectedCategoryId: next.has(id) ? id : lastSelectedCategoryId })
   },
 
+  selectOnlyCategory: (id) => {
+    const { selectedCategoryIds } = get()
+    // Clicking the already-sole selection deselects it
+    if (selectedCategoryIds.size === 1 && selectedCategoryIds.has(id)) {
+      set({ selectedCategoryIds: new Set(), lastSelectedCategoryId: null })
+    } else {
+      set({ selectedCategoryIds: new Set([id]), lastSelectedCategoryId: id })
+    }
+  },
+
   selectGroupCategories: (ids) => {
     const { selectedCategoryIds } = get()
     const allSelected = ids.every((id) => selectedCategoryIds.has(id))
@@ -139,7 +152,7 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   clearCategorySelection: () => set({ selectedCategoryIds: new Set(), lastSelectedCategoryId: null }),
 
-  setCategoryInspectorOpen: (open) => set({ categoryInspectorOpen: open }),
+  setCategoryInspectorOpen: (open) => set({ categoryInspectorOpen: open, inspectorUserClosed: !open }),
 
   toggleTransactionSelection: (id, shiftKey = false, orderedIds = []) => {
     const { selectedTransactionIds, lastSelectedTransactionId } = get()

@@ -7,10 +7,16 @@ import { AvailableBreakdown } from './AvailableBreakdown'
 import { TargetSection } from './TargetSection'
 import { AutoAssignSection } from './AutoAssignSection'
 import { CategoryNotesSection } from './CategoryNotesSection'
+import { MonthSummary } from './MonthSummary'
 import './CategoryInspector.css'
 
 interface Props {
   budgetId: string
+}
+
+function formatMonthLabel(month: string) {
+  const date = new Date(month + 'T00:00:00')
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
 export function CategoryInspector({ budgetId }: Props) {
@@ -21,12 +27,13 @@ export function CategoryInspector({ budgetId }: Props) {
   const clearCategorySelection = useUIStore((s) => s.clearCategorySelection)
 
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
-  const { data: categories } = useCategories(budgetId, true)
+  const { data: categories } = useCategories(budgetId)
 
   const selectedIds = Array.from(selectedCategoryIds)
   const count = selectedIds.length
 
   const selectedCategories = categories?.filter((c) => selectedCategoryIds.has(c.id)) ?? []
+  const allCategoryIds = categories?.map((c) => c.id) ?? []
 
   const selectedBalances = budgetMonth?.category_balances.filter((b) =>
     selectedCategoryIds.has(b.category_id)
@@ -35,9 +42,11 @@ export function CategoryInspector({ budgetId }: Props) {
   const isSingle = count === 1
   const singleCategory = isSingle ? selectedCategories[0] : null
 
-  const title = isSingle
-    ? singleCategory?.name ?? 'Category'
-    : `${count} categories selected`
+  const headerTitle = count === 0
+    ? formatMonthLabel(month)
+    : isSingle
+      ? (singleCategory?.name ?? 'Category')
+      : `${count} categories selected`
 
   return (
     <div className={`category-inspector ${categoryInspectorOpen ? '' : 'category-inspector--collapsed'}`}>
@@ -59,33 +68,41 @@ export function CategoryInspector({ budgetId }: Props) {
             >
               <ChevronRight size={14} />
             </button>
-            <span className="category-inspector__title" title={title}>{title}</span>
-            <button
-              className="category-inspector__close-btn"
-              onClick={clearCategorySelection}
-              title="Clear selection"
-            >
-              <X size={14} />
-            </button>
+            <span className="category-inspector__title" title={headerTitle}>{headerTitle}</span>
+            {count > 0 && (
+              <button
+                className="category-inspector__close-btn"
+                onClick={clearCategorySelection}
+                title="Clear selection"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
           <div className="category-inspector__body">
-            <AvailableBreakdown balances={selectedBalances} />
+            {count === 0 ? (
+              <MonthSummary budgetId={budgetId} allCategoryIds={allCategoryIds} />
+            ) : (
+              <>
+                <AvailableBreakdown balances={selectedBalances} />
 
-            {isSingle && singleCategory && (
-              <TargetSection categoryId={singleCategory.id} />
-            )}
-            {!isSingle && (
-              <div className="inspector-section">
-                <div className="inspector-section__title">Target</div>
-                <p className="inspector-multi-notice">Multiple categories selected</p>
-              </div>
-            )}
+                {isSingle && singleCategory && (
+                  <TargetSection categoryId={singleCategory.id} />
+                )}
+                {!isSingle && (
+                  <div className="inspector-section">
+                    <div className="inspector-section__title">Target</div>
+                    <p className="inspector-multi-notice">Multiple categories selected</p>
+                  </div>
+                )}
 
-            <AutoAssignSection categoryIds={selectedIds} budgetId={budgetId} />
+                <AutoAssignSection categoryIds={selectedIds} budgetId={budgetId} />
 
-            {isSingle && singleCategory && (
-              <CategoryNotesSection category={singleCategory} budgetId={budgetId} />
+                {isSingle && singleCategory && (
+                  <CategoryNotesSection category={singleCategory} budgetId={budgetId} />
+                )}
+              </>
             )}
           </div>
         </>

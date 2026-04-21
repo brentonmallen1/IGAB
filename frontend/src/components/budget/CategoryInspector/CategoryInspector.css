@@ -52,7 +52,7 @@
   transition: color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.category-inspector__collapse-btn {
+.category-inspector__expand-btn svg {
   transform: rotate(180deg);
 }
 
@@ -352,4 +352,65 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* ─── Month Summary ─────────────────────────────────────────────────────── */
+
+.month-summary {
+  display: flex;
+  flex-direction: column;
+}
+
+.month-summary__section {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.month-summary__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: left;
+  transition: background-color var(--transition-fast);
+  gap: var(--spacing-xs);
+}
+
+.month-summary__section-header:hover {
+  background-color: var(--bg-hover);
+}
+
+.month-summary__section-header-icon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.month-summary__section-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.month-summary__future-amount {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.month-summary__chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.month-summary__chevron--open {
+  transform: rotate(180deg);
+}
+
+.month-summary__section-body {
+  padding: 0 var(--spacing-md) var(--spacing-md);
 }

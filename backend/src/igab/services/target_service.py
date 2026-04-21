@@ -41,6 +41,33 @@ class TargetService:
     async def delete(self, category_id: uuid.UUID) -> None:
         await self.repo.delete(category_id)
 
+    def calculate_needed(
+        self,
+        target: CategoryTarget,
+        assigned: Decimal,
+        available: Decimal,
+    ) -> Decimal:
+        """Returns the amount still needed this month to reach the target."""
+        today = date.today()
+
+        if target.target_type == "monthly_funding":
+            needed = max(Decimal("0"), target.target_amount - assigned)
+        elif target.target_type == "savings_balance":
+            needed = max(Decimal("0"), target.target_amount - available)
+        elif target.target_type == "needed_for_spending":
+            if target.target_date:
+                months_left = _months_between(today, target.target_date)
+                per_month = max(Decimal("0"), (target.target_amount - available)) / max(1, months_left)
+                needed = max(Decimal("0"), per_month - assigned)
+            else:
+                needed = max(Decimal("0"), target.target_amount - assigned)
+        elif target.target_type == "weekly_funding":
+            needed = max(Decimal("0"), target.target_amount - assigned)
+        else:
+            needed = max(Decimal("0"), target.target_amount - assigned)
+
+        return needed
+
     def calculate_status(
         self,
         target: CategoryTarget,
