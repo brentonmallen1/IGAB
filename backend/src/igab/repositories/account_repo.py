@@ -75,9 +75,7 @@ class AccountRepository(BaseRepository[Account]):
         )
         await super().soft_delete(id)
 
-    async def get_by_simplefin_id(
-        self, budget_id: uuid.UUID, simplefin_id: str
-    ) -> Account | None:
+    async def get_by_simplefin_id(self, budget_id: uuid.UUID, simplefin_id: str) -> Account | None:
         result = await self.session.execute(
             select(Account).where(
                 Account.budget_id == budget_id,

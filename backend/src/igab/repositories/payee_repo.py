@@ -76,9 +76,7 @@ class PayeeRepository(BaseRepository[Payee]):
     async def merge(self, source_id: uuid.UUID, target_id: uuid.UUID) -> None:
         """Reassign all transactions from source to target, then soft-delete source."""
         await self.session.execute(
-            update(Transaction)
-            .where(Transaction.payee_id == source_id)
-            .values(payee_id=target_id)
+            update(Transaction).where(Transaction.payee_id == source_id).values(payee_id=target_id)
         )
         await self.soft_delete(source_id)
         await self.session.flush()

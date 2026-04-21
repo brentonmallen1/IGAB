@@ -89,9 +89,9 @@ db-shell:
 api-shell:
     docker compose exec api bash
 
-# Run backend tests
+# Run backend tests with coverage report
 test-backend:
-    docker compose exec api uv run pytest
+    docker compose exec api uv run pytest --cov=igab --cov-report=term-missing
 
 # Run backend linting
 lint-backend:
@@ -101,6 +101,21 @@ lint-backend:
 # Format backend code
 format-backend:
     docker compose exec api uv run ruff format src/
+
+# Run pyright type checking
+typecheck-backend:
+    docker compose exec api uv run pyright src/
+
+# Run all backend quality checks (lint + typecheck)
+check-backend:
+    just lint-backend
+    just typecheck-backend
+
+# Auto-fix ruff issues, format, then type-check with pyright (runs locally)
+quality:
+    cd backend && uv run ruff check --fix src/
+    cd backend && uv run ruff format src/
+    cd backend && uv run pyright src/
 
 # ─── Frontend ─────────────────────────────────────────────────────────────────
 

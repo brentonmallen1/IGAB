@@ -10,7 +10,9 @@ from igab.repositories.base import BaseRepository
 class CategoryGroupRepository(BaseRepository[CategoryGroup]):
     model = CategoryGroup
 
-    async def get_all(self, budget_id: uuid.UUID, include_hidden: bool = False) -> list[CategoryGroup]:
+    async def get_all(
+        self, budget_id: uuid.UUID, include_hidden: bool = False
+    ) -> list[CategoryGroup]:
         q = select(CategoryGroup).where(
             CategoryGroup.budget_id == budget_id,
             CategoryGroup.is_deleted == False,  # noqa: E712
@@ -25,9 +27,7 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
 class CategoryRepository(BaseRepository[Category]):
     model = Category
 
-    async def get_all(
-        self, budget_id: uuid.UUID, include_hidden: bool = False
-    ) -> list[Category]:
+    async def get_all(self, budget_id: uuid.UUID, include_hidden: bool = False) -> list[Category]:
         q = select(Category).where(
             Category.budget_id == budget_id,
             Category.is_deleted == False,  # noqa: E712
@@ -62,9 +62,7 @@ class CategoryRepository(BaseRepository[Category]):
 class BudgetAssignmentRepository(BaseRepository[BudgetAssignment]):
     model = BudgetAssignment
 
-    async def get_for_month(
-        self, budget_id: uuid.UUID, month: date
-    ) -> list[BudgetAssignment]:
+    async def get_for_month(self, budget_id: uuid.UUID, month: date) -> list[BudgetAssignment]:
         result = await self.session.execute(
             select(BudgetAssignment).where(
                 BudgetAssignment.budget_id == budget_id,

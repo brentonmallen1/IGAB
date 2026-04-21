@@ -168,19 +168,14 @@ async def import_csv(
     bad_mask = null_date_mask | null_amount_mask
     bad_count = bad_mask.sum()
     if bad_count:
-        skipped += bad_count
+        skipped += int(bad_count)
         df = df.filter(~bad_mask)
 
     if df.is_empty():
         return ImportResult(imported=0, skipped=skipped, errors=errors)
 
     # Parse amount: strip currency symbols/commas, cast to float then Decimal-compatible
-    amount_col = (
-        df["amount"]
-        .cast(pl.String)
-        .str.replace_all(r"[$,]", "")
-        .str.strip_chars()
-    )
+    amount_col = df["amount"].cast(pl.String).str.replace_all(r"[$,]", "").str.strip_chars()
     df = df.with_columns(amount_col.alias("amount_str"))
 
     # Identify rows where amount can't be parsed
@@ -217,21 +212,23 @@ async def import_csv(
         payee_id = payee_map.get(payee_name) if payee_name else None
         memo = (row.get("memo") or "").strip() or None
 
-        rows_to_insert.append({
-            "id": uuid.uuid4(),
-            "budget_id": budget_id,
-            "account_id": account_id,
-            "date": row["date"],
-            "amount": row["amount_f64"],
-            "payee_id": uuid.UUID(payee_id) if payee_id else None,
-            "category_id": None,
-            "memo": memo,
-            "cleared": "cleared",
-            "approved": False,
-            "import_batch_id": batch_id,
-            "is_split": False,
-            "is_deleted": False,
-        })
+        rows_to_insert.append(
+            {
+                "id": uuid.uuid4(),
+                "budget_id": budget_id,
+                "account_id": account_id,
+                "date": row["date"],
+                "amount": row["amount_f64"],
+                "payee_id": uuid.UUID(payee_id) if payee_id else None,
+                "category_id": None,
+                "memo": memo,
+                "cleared": "cleared",
+                "approved": False,
+                "import_batch_id": batch_id,
+                "is_split": False,
+                "is_deleted": False,
+            }
+        )
 
     imported = await transaction_repo.bulk_create(rows_to_insert)
     return ImportResult(imported=imported, skipped=skipped, errors=errors)

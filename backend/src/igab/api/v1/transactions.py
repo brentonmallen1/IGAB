@@ -23,13 +23,16 @@ from igab.dependencies import (
     get_transaction_repo,
     get_transaction_service,
 )
-
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.transaction_service import (
     TransactionCreate as SvcTxnCreate,
+)
+from igab.services.transaction_service import (
     TransactionService,
+)
+from igab.services.transaction_service import (
     TransactionUpdate as SvcTxnUpdate,
 )
 
@@ -50,8 +53,11 @@ async def list_account_transactions(
     end_date: date | None = None,
 ) -> list[TransactionResponse]:
     txns = await txn_repo.get_for_account(
-        account_id, limit=limit, offset=offset,
-        start_date=start_date, end_date=end_date,
+        account_id,
+        limit=limit,
+        offset=offset,
+        start_date=start_date,
+        end_date=end_date,
     )
     return [TransactionResponse.model_validate(t) for t in txns]
 
@@ -170,9 +176,7 @@ async def bulk_update_cleared(
 ) -> None:
     for txn_id in body.transaction_ids:
         try:
-            await txn_service.update(
-                budget_id, txn_id, SvcTxnUpdate(cleared=body.cleared)
-            )
+            await txn_service.update(budget_id, txn_id, SvcTxnUpdate(cleared=body.cleared))
         except (NotFoundError, InvariantViolation):
             pass
 
@@ -186,9 +190,7 @@ async def bulk_categorize(
 ) -> None:
     for txn_id in body.transaction_ids:
         try:
-            await txn_service.update(
-                budget_id, txn_id, SvcTxnUpdate(category_id=body.category_id)
-            )
+            await txn_service.update(budget_id, txn_id, SvcTxnUpdate(category_id=body.category_id))
         except (NotFoundError, InvariantViolation):
             pass
 

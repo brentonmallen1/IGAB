@@ -83,7 +83,9 @@ class ScheduledTransactionService:
             ),
         )
         next_date = calculate_next(sched)
-        await self.repo.update(sched_id, last_created_date=date.today(), next_occurrence_date=next_date)
+        await self.repo.update(
+            sched_id, last_created_date=date.today(), next_occurrence_date=next_date
+        )
 
     async def process_due(self, budget_id: uuid.UUID) -> int:
         today = date.today()
@@ -107,12 +109,15 @@ def calculate_next(sched: ScheduledTransaction) -> date:
     freq = sched.frequency
     if freq == "daily":
         from datetime import timedelta
+
         return current + timedelta(days=1)
     elif freq == "weekly":
         from datetime import timedelta
+
         return current + timedelta(weeks=1)
     elif freq == "biweekly":
         from datetime import timedelta
+
         return current + timedelta(weeks=2)
     elif freq == "monthly":
         m = current.month + 1
@@ -129,4 +134,5 @@ def calculate_next(sched: ScheduledTransaction) -> date:
 
 def _days_in_month(year: int, month: int) -> int:
     import calendar
+
     return calendar.monthrange(year, month)[1]

@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Payee, Transaction
-from igab.domain.exceptions import InvariantViolation, NotFoundError
+from igab.domain.exceptions import InvariantViolation
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
@@ -58,9 +58,7 @@ class TransactionService:
         self.category_repo = category_repo
         self.payee_repo = payee_repo
 
-    async def create(
-        self, budget_id: uuid.UUID, data: TransactionCreate
-    ) -> Transaction:
+    async def create(self, budget_id: uuid.UUID, data: TransactionCreate) -> Transaction:
         account = await self.account_repo.get_or_raise(data.account_id)
         if str(account.budget_id) != str(budget_id):
             raise InvariantViolation("Account does not belong to this budget")
@@ -157,9 +155,9 @@ class TransactionService:
 
         await self.transaction_repo.soft_delete(transaction_id)
 
-    async def _create_transfer(
-        self, budget_id: uuid.UUID, data: TransactionCreate
-    ) -> Transaction:
+    async def _create_transfer(self, budget_id: uuid.UUID, data: TransactionCreate) -> Transaction:
+        if data.transfer_account_id is None:
+            raise ValueError("transfer_account_id is required for transfer transactions")
         to_account = await self.account_repo.get_or_raise(data.transfer_account_id)
 
         # Source: outflow from from-account
@@ -201,9 +199,7 @@ class TransactionService:
         name = f"Transfer : {account_name}"
         return await self.payee_repo.find_or_create(budget_id, name)
 
-    async def _resolve_payee(
-        self, budget_id: uuid.UUID, data: TransactionCreate
-    ) -> Payee | None:
+    async def _resolve_payee(self, budget_id: uuid.UUID, data: TransactionCreate) -> Payee | None:
         if data.payee_id:
             result = await self.session.get(Payee, data.payee_id)
             return result

@@ -23,10 +23,12 @@ class ScheduledTransactionRepository:
 
     async def get_all(self, budget_id: uuid.UUID) -> list[ScheduledTransaction]:
         result = await self.session.execute(
-            select(ScheduledTransaction).where(
+            select(ScheduledTransaction)
+            .where(
                 ScheduledTransaction.budget_id == budget_id,
                 ScheduledTransaction.is_deleted == False,  # noqa: E712
-            ).order_by(ScheduledTransaction.next_occurrence_date)
+            )
+            .order_by(ScheduledTransaction.next_occurrence_date)
         )
         return list(result.scalars().all())
 

@@ -126,7 +126,9 @@ def get_budget_service(
     assignment_repo: Annotated[BudgetAssignmentRepository, Depends(get_assignment_repo)],
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
 ) -> BudgetService:
-    return BudgetService(account_repo, category_repo, category_group_repo, assignment_repo, transaction_repo)
+    return BudgetService(
+        account_repo, category_repo, category_group_repo, assignment_repo, transaction_repo
+    )
 
 
 def get_transaction_service(

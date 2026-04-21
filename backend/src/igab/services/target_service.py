@@ -57,7 +57,9 @@ class TargetService:
         elif target.target_type == "needed_for_spending":
             if target.target_date:
                 months_left = _months_between(today, target.target_date)
-                per_month = max(Decimal("0"), (target.target_amount - available)) / max(1, months_left)
+                per_month = max(Decimal("0"), (target.target_amount - available)) / max(
+                    1, months_left
+                )
                 needed = max(Decimal("0"), per_month - assigned)
             else:
                 needed = max(Decimal("0"), target.target_amount - assigned)

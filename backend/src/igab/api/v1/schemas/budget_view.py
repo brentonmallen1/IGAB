@@ -1,6 +1,5 @@
 import datetime
 import uuid
-from typing import Optional
 
 from pydantic import BaseModel, model_validator
 
@@ -13,8 +12,8 @@ class BudgetViewCreate(BaseModel):
 
 
 class BudgetViewUpdate(BaseModel):
-    name: Optional[str] = None
-    category_ids: Optional[list[uuid.UUID]] = None
+    name: str | None = None
+    category_ids: list[uuid.UUID] | None = None
 
 
 class BudgetViewResponse(BaseModel):

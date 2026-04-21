@@ -14,8 +14,18 @@ _CLEARED_MAP = {
 }
 
 _MONTH_ABBREVS = {
-    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
-    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+    "Jan": 1,
+    "Feb": 2,
+    "Mar": 3,
+    "Apr": 4,
+    "May": 5,
+    "Jun": 6,
+    "Jul": 7,
+    "Aug": 8,
+    "Sep": 9,
+    "Oct": 10,
+    "Nov": 11,
+    "Dec": 12,
 }
 
 
@@ -101,16 +111,18 @@ class YNABParser:
 
             cleared = _CLEARED_MAP.get(cleared_raw, "uncleared")
 
-            transactions.append(YNABTransaction(
-                account_name=account,
-                date=txn_date,
-                payee=payee,
-                category_group=category_group,
-                category=category,
-                memo=memo,
-                amount=amount,
-                cleared=cleared,
-            ))
+            transactions.append(
+                YNABTransaction(
+                    account_name=account,
+                    date=txn_date,
+                    payee=payee,
+                    category_group=category_group,
+                    category=category,
+                    memo=memo,
+                    amount=amount,
+                    cleared=cleared,
+                )
+            )
 
         return transactions
 
@@ -134,11 +146,13 @@ class YNABParser:
             if assigned == 0:
                 continue
 
-            entries.append(YNABBudgetEntry(
-                month=month,
-                category_group=category_group,
-                category=category,
-                assigned=assigned,
-            ))
+            entries.append(
+                YNABBudgetEntry(
+                    month=month,
+                    category_group=category_group,
+                    category=category,
+                    assigned=assigned,
+                )
+            )
 
         return entries

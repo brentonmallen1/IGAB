@@ -4,7 +4,11 @@ from datetime import date
 from decimal import Decimal
 
 from igab.repositories.account_repo import AccountRepository
-from igab.repositories.category_repo import BudgetAssignmentRepository, CategoryGroupRepository, CategoryRepository
+from igab.repositories.category_repo import (
+    BudgetAssignmentRepository,
+    CategoryGroupRepository,
+    CategoryRepository,
+)
 from igab.repositories.transaction_repo import TransactionRepository
 
 
@@ -115,7 +119,11 @@ class BudgetService:
         for m in all_months:
             if m > month_start:
                 break
-            end_of_month = carryover + assignments_by_month.get(m, Decimal("0")) + activity_by_month.get(m, Decimal("0"))
+            end_of_month = (
+                carryover
+                + assignments_by_month.get(m, Decimal("0"))
+                + activity_by_month.get(m, Decimal("0"))
+            )
             # Floor the carryover into the next month; current month can show negative
             carryover = max(Decimal("0"), end_of_month)
 
@@ -212,13 +220,16 @@ class BudgetService:
         spent_by_month = {m: -v for m, v in activity_by_month.items() if v < 0}
 
         last_month = past_months[0] if past_months else None
-        last_assigned = assigned_by_month.get(last_month, Decimal("0")) if last_month else Decimal("0")
+        last_assigned = (
+            assigned_by_month.get(last_month, Decimal("0")) if last_month else Decimal("0")
+        )
         last_spent = spent_by_month.get(last_month, Decimal("0")) if last_month else Decimal("0")
 
         months_with_data = [m for m in past_months if m in assigned_by_month or m in spent_by_month]
         n = len(months_with_data) if months_with_data else 1
-        avg_assigned = sum(assigned_by_month.get(m, Decimal("0")) for m in past_months) / n
-        avg_spent = sum(spent_by_month.get(m, Decimal("0")) for m in past_months) / n
+        zero = Decimal("0")
+        avg_assigned = sum((assigned_by_month.get(m, zero) for m in past_months), zero) / n
+        avg_spent = sum((spent_by_month.get(m, zero) for m in past_months), zero) / n
 
         return CategoryHistory(
             category_id=category_id,
@@ -267,4 +278,6 @@ class BudgetService:
 
         new_from = from_assignment.assigned - amount
         await self.assignment_repo.update(from_assignment.id, assigned=new_from)
-        await self.assignment_repo.update(to_assignment.id, assigned=to_assignment.assigned + amount)
+        await self.assignment_repo.update(
+            to_assignment.id, assigned=to_assignment.assigned + amount
+        )

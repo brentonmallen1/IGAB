@@ -33,7 +33,9 @@ async def list_accounts(
     return result
 
 
-@router.post("/{budget_id}/accounts", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{budget_id}/accounts", response_model=AccountResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_account(
     budget_id: uuid.UUID,
     body: AccountCreate,

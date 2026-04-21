@@ -140,12 +140,8 @@ class Payee(Base):
     )
 
     budget: Mapped["Budget"] = relationship(back_populates="payees")
-    default_category: Mapped["Category | None"] = relationship(
-        foreign_keys=[default_category_id]
-    )
-    transfer_account: Mapped["Account | None"] = relationship(
-        foreign_keys=[transfer_account_id]
-    )
+    default_category: Mapped["Category | None"] = relationship(foreign_keys=[default_category_id])
+    transfer_account: Mapped["Account | None"] = relationship(foreign_keys=[transfer_account_id])
 
 
 # ─── Category Groups ──────────────────────────────────────────────────────────
@@ -153,9 +149,7 @@ class Payee(Base):
 
 class CategoryGroup(Base):
     __tablename__ = "category_groups"
-    __table_args__ = (
-        UniqueConstraint("budget_id", "name", name="uq_category_group_budget_name"),
-    )
+    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_category_group_budget_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -184,9 +178,7 @@ class CategoryGroup(Base):
 
 class Category(Base):
     __tablename__ = "categories"
-    __table_args__ = (
-        UniqueConstraint("category_group_id", "name", name="uq_category_group_name"),
-    )
+    __table_args__ = (UniqueConstraint("category_group_id", "name", name="uq_category_group_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     category_group_id: Mapped[uuid.UUID] = mapped_column(
@@ -217,9 +209,7 @@ class Category(Base):
         back_populates="linked_category", foreign_keys=[linked_account_id]
     )
     assignments: Mapped[list["BudgetAssignment"]] = relationship(back_populates="category")
-    target: Mapped["CategoryTarget | None"] = relationship(
-        back_populates="category", uselist=False
-    )
+    target: Mapped["CategoryTarget | None"] = relationship(back_populates="category", uselist=False)
 
 
 # ─── Category Targets ─────────────────────────────────────────────────────────
@@ -262,7 +252,7 @@ class Transaction(Base):
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
     )
-    date: Mapped[date] = mapped_column(Date, nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)  # type: ignore[reportGeneralTypeIssues]
     amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
     payee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("payees.id", ondelete="SET NULL")
@@ -317,7 +307,9 @@ class Transaction(Base):
 
 class BudgetAssignment(Base):
     __tablename__ = "budget_assignments"
-    __table_args__ = (UniqueConstraint("category_id", "month", name="uq_assignment_category_month"),)
+    __table_args__ = (
+        UniqueConstraint("category_id", "month", name="uq_assignment_category_month"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -409,9 +401,7 @@ class ReconciliationSnapshot(Base):
 
 class BudgetView(Base):
     __tablename__ = "budget_views"
-    __table_args__ = (
-        UniqueConstraint("budget_id", "name", name="uq_budget_view_budget_name"),
-    )
+    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_view_budget_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -435,9 +425,7 @@ class BudgetView(Base):
 
 class BudgetViewCategory(Base):
     __tablename__ = "budget_view_categories"
-    __table_args__ = (
-        UniqueConstraint("view_id", "category_id", name="uq_view_category"),
-    )
+    __table_args__ = (UniqueConstraint("view_id", "category_id", name="uq_view_category"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     view_id: Mapped[uuid.UUID] = mapped_column(

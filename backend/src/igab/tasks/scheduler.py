@@ -4,6 +4,9 @@ scheduler = AsyncIOScheduler()
 
 
 async def process_due_scheduled_transactions() -> None:
+    from sqlalchemy import select
+
+    from igab.db.models import Budget
     from igab.db.session import AsyncSessionLocal
     from igab.repositories.account_repo import AccountRepository
     from igab.repositories.category_repo import CategoryRepository
@@ -12,8 +15,6 @@ async def process_due_scheduled_transactions() -> None:
     from igab.repositories.transaction_repo import TransactionRepository
     from igab.services.scheduled_transaction_service import ScheduledTransactionService
     from igab.services.transaction_service import TransactionService
-    from igab.db.models import Budget
-    from sqlalchemy import select
 
     async with AsyncSessionLocal() as session:
         try:

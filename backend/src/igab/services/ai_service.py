@@ -36,7 +36,7 @@ class AIService:
             f"Transaction: payee='{payee_name}', amount={amount}"
             + (f", memo='{memo}'" if memo else "")
             + f"\n\nAvailable categories:\n{cat_list}"
-            + "\n\nRespond with JSON: {\"category_id\": \"<uuid>\", \"confidence\": <0-1>}. "
+            + '\n\nRespond with JSON: {"category_id": "<uuid>", "confidence": <0-1>}. '
             "Choose the most appropriate category. Only output valid JSON."
         )
         system = "You are a financial transaction categorizer. Return only JSON."
@@ -161,10 +161,12 @@ class AIService:
             for g in groups:
                 valid_ids = [i for i in g.get("ids", []) if i in payee_map]
                 if len(valid_ids) >= 2:
-                    result_groups.append({
-                        "canonical": g.get("canonical", payee_map[valid_ids[0]]),
-                        "payees": [{"id": i, "name": payee_map[i]} for i in valid_ids],
-                    })
+                    result_groups.append(
+                        {
+                            "canonical": g.get("canonical", payee_map[valid_ids[0]]),
+                            "payees": [{"id": i, "name": payee_map[i]} for i in valid_ids],
+                        }
+                    )
             return result_groups
         except Exception:
             return []
