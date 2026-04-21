@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from igab.api.v1.schemas.auth import LoginRequest, RefreshRequest, TokenResponse, UserResponse
 from igab.dependencies import CurrentUser, get_auth_service
-from igab.domain.exceptions import AuthenticationError, DuplicateError
+from igab.domain.exceptions import AuthenticationError
 from igab.services.auth_service import AuthService
 
 router = APIRouter()

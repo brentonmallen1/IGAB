@@ -11,6 +11,8 @@ from igab.api.v1.schemas.scheduled_transaction import (
 from igab.dependencies import CurrentUser, get_scheduled_transaction_service
 from igab.services.scheduled_transaction_service import (
     ScheduledTransactionCreate as ServiceCreate,
+)
+from igab.services.scheduled_transaction_service import (
     ScheduledTransactionService,
 )
 

@@ -1,7 +1,6 @@
 import datetime
 import uuid
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -10,34 +9,34 @@ from igab.domain.enums import ClearedStatus
 
 class SplitCreate(BaseModel):
     amount: Decimal
-    category_id: Optional[uuid.UUID] = None
-    payee_id: Optional[uuid.UUID] = None
-    payee_name: Optional[str] = None
-    memo: Optional[str] = None
+    category_id: uuid.UUID | None = None
+    payee_id: uuid.UUID | None = None
+    payee_name: str | None = None
+    memo: str | None = None
 
 
 class TransactionCreate(BaseModel):
     account_id: uuid.UUID
     date: datetime.date
     amount: Decimal
-    payee_id: Optional[uuid.UUID] = None
-    payee_name: Optional[str] = None
-    category_id: Optional[uuid.UUID] = None
-    memo: Optional[str] = None
+    payee_id: uuid.UUID | None = None
+    payee_name: str | None = None
+    category_id: uuid.UUID | None = None
+    memo: str | None = None
     cleared: ClearedStatus = ClearedStatus.UNCLEARED
     approved: bool = True
-    transfer_account_id: Optional[uuid.UUID] = None
-    splits: Optional[list[SplitCreate]] = None
+    transfer_account_id: uuid.UUID | None = None
+    splits: list[SplitCreate] | None = None
 
 
 class TransactionUpdate(BaseModel):
-    date: Optional[datetime.date] = None
-    amount: Optional[Decimal] = None
-    payee_id: Optional[uuid.UUID] = None
-    category_id: Optional[uuid.UUID] = None
-    memo: Optional[str] = None
-    cleared: Optional[ClearedStatus] = None
-    approved: Optional[bool] = None
+    date: datetime.date | None = None
+    amount: Decimal | None = None
+    payee_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    memo: str | None = None
+    cleared: ClearedStatus | None = None
+    approved: bool | None = None
 
 
 class TransactionResponse(BaseModel):
@@ -46,15 +45,15 @@ class TransactionResponse(BaseModel):
     account_id: uuid.UUID
     date: datetime.date
     amount: Decimal
-    payee_id: Optional[uuid.UUID]
-    category_id: Optional[uuid.UUID]
-    memo: Optional[str]
+    payee_id: uuid.UUID | None
+    category_id: uuid.UUID | None
+    memo: str | None
     cleared: str
     approved: bool
-    transfer_id: Optional[uuid.UUID]
-    parent_transaction_id: Optional[uuid.UUID]
+    transfer_id: uuid.UUID | None
+    parent_transaction_id: uuid.UUID | None
     is_split: bool
-    import_id: Optional[str]
+    import_id: str | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -80,16 +79,16 @@ class PayeeCreate(BaseModel):
 
 
 class PayeeUpdate(BaseModel):
-    name: Optional[str] = None
-    default_category_id: Optional[uuid.UUID] = None
+    name: str | None = None
+    default_category_id: uuid.UUID | None = None
 
 
 class PayeeResponse(BaseModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str
-    default_category_id: Optional[uuid.UUID]
-    transfer_account_id: Optional[uuid.UUID]
+    default_category_id: uuid.UUID | None
+    transfer_account_id: uuid.UUID | None
 
     model_config = {"from_attributes": True}
 

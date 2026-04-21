@@ -122,9 +122,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         result = await self.session.execute(q)
         return result.scalar_one()
 
-    async def find_by_import_id(
-        self, account_id: uuid.UUID, import_id: str
-    ) -> Transaction | None:
+    async def find_by_import_id(self, account_id: uuid.UUID, import_id: str) -> Transaction | None:
         result = await self.session.execute(
             select(Transaction).where(
                 Transaction.account_id == account_id,

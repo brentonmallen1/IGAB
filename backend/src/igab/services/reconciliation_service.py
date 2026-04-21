@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC
 from decimal import Decimal
 
 from sqlalchemy import select, update
@@ -112,12 +113,13 @@ class ReconciliationService:
         )
 
         # Update account reconciliation metadata
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         await self.session.execute(
             update(Account)
             .where(Account.id == account_id)
             .values(
-                last_reconciled_at=datetime.now(tz=timezone.utc),
+                last_reconciled_at=datetime.now(tz=UTC),
                 last_reconciled_balance=statement_balance,
             )
         )

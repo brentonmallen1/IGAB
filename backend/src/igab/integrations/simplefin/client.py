@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -30,7 +30,7 @@ class SimpleFINClient:
     ) -> list[dict]:
         params = {}
         if since:
-            params["start-date"] = int(since.replace(tzinfo=timezone.utc).timestamp())
+            params["start-date"] = int(since.replace(tzinfo=UTC).timestamp())
 
         accounts_url = access_url.rstrip("/") + "/accounts"
         async with httpx.AsyncClient(timeout=60) as client:

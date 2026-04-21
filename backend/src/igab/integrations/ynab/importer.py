@@ -173,20 +173,22 @@ class YNABImporter:
                     transfer_txns.append((txn, account, category_id))
                 else:
                     payee_id = payee_map.get(txn.payee) if txn.payee else None
-                    regular_rows.append({
-                        "id": uuid.uuid4(),
-                        "budget_id": self.budget_id,
-                        "account_id": account.id,
-                        "date": txn.date,
-                        "amount": txn.amount,
-                        "payee_id": payee_id,
-                        "category_id": category_id,
-                        "memo": txn.memo or None,
-                        "cleared": txn.cleared,
-                        "approved": True,
-                        "is_split": False,
-                        "is_deleted": False,
-                    })
+                    regular_rows.append(
+                        {
+                            "id": uuid.uuid4(),
+                            "budget_id": self.budget_id,
+                            "account_id": account.id,
+                            "date": txn.date,
+                            "amount": txn.amount,
+                            "payee_id": payee_id,
+                            "category_id": category_id,
+                            "memo": txn.memo or None,
+                            "cleared": txn.cleared,
+                            "approved": True,
+                            "is_split": False,
+                            "is_deleted": False,
+                        }
+                    )
 
             except Exception as e:
                 result.errors.append(f"Transaction {txn.date} {txn.payee}: {e}")
@@ -199,7 +201,7 @@ class YNABImporter:
         # Handle transfers individually (they need paired linking via TransactionService)
         for txn, account, category_id in transfer_txns:
             try:
-                target_name = txn.payee[len(_TRANSFER_PREFIX):]
+                target_name = txn.payee[len(_TRANSFER_PREFIX) :]
                 target_account = await self._get_or_create_account(target_name, result)
                 data = TransactionCreate(
                     account_id=account.id,

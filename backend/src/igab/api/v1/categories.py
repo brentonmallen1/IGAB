@@ -24,7 +24,14 @@ from igab.api.v1.schemas.category import (
     FillTargetsPreviewItem,
     FillTargetsPreviewResponse,
 )
-from igab.dependencies import CurrentUser, get_budget_service, get_category_group_repo, get_category_repo, get_target_repo, get_target_service
+from igab.dependencies import (
+    CurrentUser,
+    get_budget_service,
+    get_category_group_repo,
+    get_category_repo,
+    get_target_repo,
+    get_target_service,
+)
 from igab.domain.exceptions import NotFoundError
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
@@ -257,6 +264,7 @@ async def get_category_history(
     month: date = Query(default=None),
 ) -> CategoryHistoryResponse:
     from datetime import date as date_cls
+
     current = month or date_cls.today()
     history = await budget_service.get_category_history(category_id, current)
     return CategoryHistoryResponse(
@@ -281,18 +289,21 @@ async def get_category_history_batch(
     month: date = Query(default=None),
 ) -> list[CategoryHistoryResponse]:
     from datetime import date as date_cls
+
     current = month or date_cls.today()
     results = []
     for cat_id in body.category_ids:
         h = await budget_service.get_category_history(cat_id, current)
-        results.append(CategoryHistoryResponse(
-            category_id=h.category_id,
-            last_month_assigned=h.last_month_assigned,
-            last_month_spent=h.last_month_spent,
-            average_assigned=h.average_assigned,
-            average_spent=h.average_spent,
-            months_included=h.months_included,
-        ))
+        results.append(
+            CategoryHistoryResponse(
+                category_id=h.category_id,
+                last_month_assigned=h.last_month_assigned,
+                last_month_spent=h.last_month_spent,
+                average_assigned=h.average_assigned,
+                average_spent=h.average_spent,
+                months_included=h.months_included,
+            )
+        )
     return results
 
 
@@ -321,6 +332,7 @@ async def fill_targets_preview(
     month: date = Query(default=None),
 ) -> FillTargetsPreviewResponse:
     from datetime import date as date_cls
+
     current_month = month or date_cls.today()
 
     summary = await budget_service.get_budget_summary(budget_id, current_month)
@@ -370,7 +382,7 @@ async def fill_targets_preview(
         )
 
     preview_items.sort(key=lambda x: x.proposed_addition, reverse=True)
-    total_addition = sum(i.proposed_addition for i in preview_items)
+    total_addition = sum((i.proposed_addition for i in preview_items), Decimal("0"))
 
     return FillTargetsPreviewResponse(
         items=preview_items,

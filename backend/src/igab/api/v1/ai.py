@@ -25,9 +25,7 @@ async def suggest_category(
     current_user: CurrentUser,
     ai_svc: Annotated[AIService, Depends(get_ai_service)],
 ) -> SuggestCategoryResponse:
-    result = await ai_svc.suggest_category(
-        budget_id, body.payee_name, body.amount, body.memo
-    )
+    result = await ai_svc.suggest_category(budget_id, body.payee_name, body.amount, body.memo)
     return SuggestCategoryResponse(**result)
 
 

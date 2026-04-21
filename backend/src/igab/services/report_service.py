@@ -74,9 +74,7 @@ class ReportService:
         ]
         return categories, Decimal(str(grand_total))
 
-    async def income_vs_expense(
-        self, budget_id: uuid.UUID, months: int = 12
-    ) -> list[dict]:
+    async def income_vs_expense(self, budget_id: uuid.UUID, months: int = 12) -> list[dict]:
         today = date.today()
         first_of_month = today.replace(day=1)
         start = _subtract_months(first_of_month, months - 1)
@@ -121,9 +119,7 @@ class ReportService:
             .sort("month")
         )
 
-        month_map = {
-            row["month"]: row for row in monthly.iter_rows(named=True)
-        }
+        month_map = {row["month"]: row for row in monthly.iter_rows(named=True)}
 
         results = []
         for i in range(months - 1, -1, -1):

@@ -1,7 +1,7 @@
-import enum
+from enum import StrEnum
 
 
-class AccountType(str, enum.Enum):
+class AccountType(StrEnum):
     CHECKING = "checking"
     SAVINGS = "savings"
     CREDIT_CARD = "credit_card"
@@ -9,21 +9,21 @@ class AccountType(str, enum.Enum):
     TRACKING = "tracking"
 
 
-class ClearedStatus(str, enum.Enum):
+class ClearedStatus(StrEnum):
     PENDING = "pending"
     UNCLEARED = "uncleared"
     CLEARED = "cleared"
     RECONCILED = "reconciled"
 
 
-class TargetType(str, enum.Enum):
+class TargetType(StrEnum):
     NEEDED_FOR_SPENDING = "needed_for_spending"
     SAVINGS_BALANCE = "savings_balance"
     MONTHLY_FUNDING = "monthly_funding"
     WEEKLY_FUNDING = "weekly_funding"
 
 
-class ScheduleFrequency(str, enum.Enum):
+class ScheduleFrequency(StrEnum):
     DAILY = "daily"
     WEEKLY = "weekly"
     BIWEEKLY = "biweekly"
@@ -32,13 +32,13 @@ class ScheduleFrequency(str, enum.Enum):
     YEARLY = "yearly"
 
 
-class ImportSource(str, enum.Enum):
+class ImportSource(StrEnum):
     SIMPLEFIN = "simplefin"
     CSV = "csv"
     YNAB = "ynab"
     MANUAL = "manual"
 
 
-class OverspendingHandling(str, enum.Enum):
+class OverspendingHandling(StrEnum):
     ALLOW = "allow"
     WARN = "warn"

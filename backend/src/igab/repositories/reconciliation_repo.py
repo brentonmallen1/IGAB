@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -28,7 +28,7 @@ class ReconciliationRepository:
             adjustment_amount=adjustment_amount,
             adjustment_transaction_id=adjustment_transaction_id,
             note=note,
-            reconciled_at=datetime.now(tz=timezone.utc),
+            reconciled_at=datetime.now(tz=UTC),
         )
         self.session.add(snap)
         await self.session.flush()

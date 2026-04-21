@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +65,9 @@ class SimpleFINService:
         for t in txns:
             import_id = f"sf:{t.get('id', '')}"
             acct_sf_id = t.get("account_id")
+            if not acct_sf_id:
+                skipped += 1
+                continue
 
             account = await self.account_repo.get_by_simplefin_id(budget_id, acct_sf_id)
             if account is None:
@@ -80,7 +83,7 @@ class SimpleFINService:
             transacted_ts = t.get("transacted_at")
             timestamp = posted_ts or transacted_ts
             txn_date = (
-                datetime.fromtimestamp(timestamp, tz=timezone.utc).date()
+                datetime.fromtimestamp(timestamp, tz=UTC).date()
                 if isinstance(timestamp, (int, float))
                 else date.today()
             )
@@ -106,7 +109,7 @@ class SimpleFINService:
         requests_today = conn.requests_today + 1 if conn.last_request_date == today else 1
         await self.repo.update(
             connection_id,
-            last_sync_at=datetime.now(tz=timezone.utc),
+            last_sync_at=datetime.now(tz=UTC),
             last_request_date=today,
             requests_today=requests_today,
         )

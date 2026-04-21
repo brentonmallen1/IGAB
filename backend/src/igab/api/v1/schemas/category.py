@@ -1,7 +1,6 @@
 import datetime
 import uuid
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -14,9 +13,9 @@ class CategoryGroupCreate(BaseModel):
 
 
 class CategoryGroupUpdate(BaseModel):
-    name: Optional[str] = None
-    sort_order: Optional[int] = None
-    is_hidden: Optional[bool] = None
+    name: str | None = None
+    sort_order: int | None = None
+    is_hidden: bool | None = None
 
 
 class CategoryGroupResponse(BaseModel):
@@ -36,22 +35,22 @@ class CategoryCreate(BaseModel):
     category_group_id: uuid.UUID
     name: str
     sort_order: int = 0
-    note: Optional[str] = None
+    note: str | None = None
 
 
 class CategoryUpdate(BaseModel):
-    name: Optional[str] = None
-    sort_order: Optional[int] = None
-    note: Optional[str] = None
-    is_hidden: Optional[bool] = None
-    category_group_id: Optional[uuid.UUID] = None
+    name: str | None = None
+    sort_order: int | None = None
+    note: str | None = None
+    is_hidden: bool | None = None
+    category_group_id: uuid.UUID | None = None
 
 
 class CategoryTargetCreate(BaseModel):
     target_type: TargetType
     target_amount: Decimal
-    target_date: Optional[datetime.date] = None
-    repeat_frequency: Optional[str] = None
+    target_date: datetime.date | None = None
+    repeat_frequency: str | None = None
 
 
 class CategoryTargetResponse(BaseModel):
@@ -59,8 +58,8 @@ class CategoryTargetResponse(BaseModel):
     category_id: uuid.UUID
     target_type: str
     target_amount: Decimal
-    target_date: Optional[datetime.date]
-    repeat_frequency: Optional[str]
+    target_date: datetime.date | None
+    repeat_frequency: str | None
 
     model_config = {"from_attributes": True}
 
@@ -79,9 +78,9 @@ class CategoryResponse(BaseModel):
     budget_id: uuid.UUID
     name: str
     sort_order: int
-    note: Optional[str]
+    note: str | None
     is_hidden: bool
-    linked_account_id: Optional[uuid.UUID]
+    linked_account_id: uuid.UUID | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 

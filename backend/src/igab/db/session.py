@@ -19,7 +19,7 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_session() -> AsyncGenerator[AsyncSession]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -32,6 +32,6 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     from igab.db.models import Base  # noqa: F401 — ensure models are registered
 
-    async with engine.begin() as conn:
+    async with engine.begin():
         # Tables are managed by Alembic; this is a safety check only
         pass
