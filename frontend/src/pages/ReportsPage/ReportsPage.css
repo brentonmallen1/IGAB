@@ -1,48 +1,105 @@
 .reports-page {
-  padding: var(--spacing-xl);
-  max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  height: 100%;
+  overflow: hidden;
 }
 
-.reports-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xl);
-  flex-wrap: wrap;
-}
+/* ─── Navigation ─────────────────────────────────────────────────────────── */
 
-.reports-title {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.reports-tabs {
-  display: flex;
-  gap: var(--spacing-xs);
-}
-
-.reports-tab {
-  padding: var(--spacing-xs) var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
+.reports-nav {
   background: var(--bg-primary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  transition: background 0.15s;
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  flex-shrink: 0;
 }
 
-.reports-tab.active {
+.reports-nav::-webkit-scrollbar {
+  height: 4px;
+}
+
+.reports-nav::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}
+
+.reports-nav__groups {
+  display: flex;
+  gap: 0;
+  min-width: max-content;
+}
+
+.reports-nav__group {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-color);
+}
+
+.reports-nav__group:last-child {
+  border-right: none;
+}
+
+.reports-nav__group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 6px var(--spacing-md) 4px;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.reports-nav__group--active .reports-nav__group-label {
+  color: var(--accent-color);
+}
+
+.reports-nav__group-label:hover {
+  color: var(--text-secondary);
+}
+
+.reports-nav__group-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 var(--spacing-xs) var(--spacing-xs);
+}
+
+.reports-nav__tab {
+  padding: 4px var(--spacing-sm);
+  border: 1px solid transparent;
+  border-radius: var(--border-radius);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+
+.reports-nav__tab:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.reports-nav__tab--active {
   background: var(--accent-color);
   color: var(--bg-primary);
   border-color: var(--accent-color);
+  font-weight: 600;
+  box-shadow: 0 1px 6px rgba(108, 140, 247, 0.35);
 }
 
-.reports-section {
+/* ─── Content area ────────────────────────────────────────────────────────── */
+
+.reports-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-xl);
+}
+
+/* ─── Shared report section card ─────────────────────────────────────────── */
+
+.report-section {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
@@ -52,38 +109,67 @@
   gap: var(--spacing-lg);
 }
 
-.reports-controls {
+.report-section__title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.report-section__subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.report-section__controls {
   display: flex;
-  gap: var(--spacing-lg);
-  align-items: flex-end;
+  gap: var(--spacing-md);
+  align-items: center;
   flex-wrap: wrap;
 }
 
-.reports-controls label {
+/* ─── Metric cards row ───────────────────────────────────────────────────── */
+
+.report-metrics {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
 }
 
-.reports-input {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+/* ─── Chart container ────────────────────────────────────────────────────── */
+
+.report-chart {
+  min-height: 300px;
+}
+
+/* ─── Loading / empty ────────────────────────────────────────────────────── */
+
+.reports-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: var(--spacing-xl) var(--spacing-xl) calc(var(--spacing-xl) * 2);
   font-size: var(--font-size-sm);
 }
 
-.reports-export {
+.report-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* ─── Export row ─────────────────────────────────────────────────────────── */
+
+.report-export {
   display: flex;
   gap: var(--spacing-xs);
   align-items: center;
   margin-left: auto;
 }
 
-.reports-btn {
+.report-btn {
   padding: var(--spacing-xs) var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
@@ -92,56 +178,65 @@
   font-size: var(--font-size-sm);
   text-decoration: none;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.12s;
 }
 
-.reports-btn:hover {
+.report-btn:hover {
   background: var(--bg-hover);
 }
 
-.reports-empty {
-  color: var(--text-muted);
-  text-align: center;
-  padding: var(--spacing-xl);
-  font-size: var(--font-size-sm);
+.report-btn--active {
+  background: var(--accent-color);
+  color: var(--bg-primary);
+  border-color: var(--accent-color);
 }
 
-.spending-chart {
+.report-btn--active:hover {
+  background: var(--accent-color);
+}
+
+/* ─── Toggle (checkbox-style button group) ───────────────────────────────── */
+
+.report-toggle {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-}
-
-.spending-chart__total {
+  align-items: center;
+  gap: var(--spacing-xs);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
 }
 
-.spending-table {
-  width: 100%;
-  border-collapse: collapse;
+.report-toggle input[type="checkbox"] {
+  accent-color: var(--accent-color);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ─── Sankey legend ──────────────────────────────────────────────────────── */
+
+.sankey-legend {
+  display: flex;
+  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.sankey-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sankey-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sankey-legend__label {
   font-size: var(--font-size-sm);
-}
-
-.spending-table th {
-  text-align: left;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.spending-table th.num,
-.spending-table td.num {
-  text-align: right;
-}
-
-.spending-table td {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-primary);
-}
-
-.spending-table td.muted {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }

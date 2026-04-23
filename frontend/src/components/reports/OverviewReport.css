@@ -1,0 +1,111 @@
+.overview-report {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-lg);
+}
+
+@media (min-width: 1100px) {
+  .overview-report {
+    grid-template-columns: 1fr 320px;
+  }
+
+  .overview-report__metrics-section {
+    grid-column: 1 / -1;
+  }
+}
+
+.overview-report__metrics-section {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+}
+
+.overview-report__section-heading {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 var(--spacing-md);
+}
+
+.overview-report__metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--spacing-md);
+}
+
+/* Top spending categories */
+.overview-report__top {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+}
+
+.overview-report__top-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.overview-report__top-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.overview-report__top-item:last-child {
+  border-bottom: none;
+}
+
+.overview-report__top-rank {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.overview-report__top-item:first-child .overview-report__top-rank {
+  background: color-mix(in srgb, var(--accent-color) 20%, var(--bg-secondary));
+  color: var(--accent-color);
+}
+
+.overview-report__top-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.overview-report__top-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overview-report__top-group {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.overview-report__top-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}

@@ -1,81 +1,93 @@
-import type { Transaction, ClearedStatus } from '../types'
-
-export interface ParsedSearch {
-  text: string
-  clearedStatuses: ClearedStatus[]
-  categoryIds: string[]
-  payeeIds: string[]
-  amountMin: number | null
-  amountMax: number | null
+export interface TransactionFilters {
+  text?: string
+  cleared?: string
+  uncategorized?: boolean
+  unapproved?: boolean
+  categoryIds?: string[]
+  payeeIds?: string[]
+  amountMin?: number | null
+  amountMax?: number | null
+  isOrMode?: boolean
 }
 
-const CLEARED_ALIASES: Record<string, ClearedStatus> = {
-  cleared: 'cleared',
-  uncleared: 'uncleared',
-  pending: 'pending',
-  reconciled: 'reconciled',
+export function hasActiveFilters(f: TransactionFilters): boolean {
+  return !!(
+    f.text ||
+    f.cleared ||
+    f.uncategorized ||
+    f.unapproved ||
+    (f.categoryIds?.length ?? 0) > 0 ||
+    (f.payeeIds?.length ?? 0) > 0 ||
+    f.amountMin != null ||
+    f.amountMax != null
+  )
 }
 
-export function parseTransactionSearch(
-  query: string,
+const CLEARED_VALUES = new Set(['cleared', 'uncleared', 'pending', 'reconciled'])
+
+function parseSegment(
+  tokens: string[],
   categoryMap: Map<string, string>,
   payeeMap: Map<string, string>
-): ParsedSearch {
-  const result: ParsedSearch = {
-    text: '',
-    clearedStatuses: [],
-    categoryIds: [],
-    payeeIds: [],
-    amountMin: null,
-    amountMax: null,
-  }
-
-  const tokens = tokenize(query)
+): TransactionFilters {
+  const result: TransactionFilters = {}
   const textParts: string[] = []
 
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
     const lower = token.toLowerCase()
 
-    // is:cleared / is:uncleared / is:pending / is:reconciled
+    // is: value  (space-separated)  or  is:value  (compact)
+    if (lower === 'is:') {
+      const val = tokens[i + 1]?.toLowerCase()
+      if (val === 'uncategorized') { result.uncategorized = true; i++; continue }
+      if (val === 'unapproved') { result.unapproved = true; i++; continue }
+      if (val && CLEARED_VALUES.has(val)) { result.cleared = val; i++; continue }
+      continue
+    }
     const isMatch = lower.match(/^is:(\w+)$/)
     if (isMatch) {
-      const status = CLEARED_ALIASES[isMatch[1]]
-      if (status) result.clearedStatuses.push(status)
+      if (isMatch[1] === 'uncategorized') result.uncategorized = true
+      else if (isMatch[1] === 'unapproved') result.unapproved = true
+      else if (CLEARED_VALUES.has(isMatch[1])) result.cleared = isMatch[1]
       continue
     }
 
-    // category:"name" or category:name
-    const catMatch = lower.match(/^category:(.+)$/)
-    if (catMatch) {
-      const catQuery = catMatch[1].replace(/^"|"$/g, '').toLowerCase()
+    // category: value  or  category:value
+    const catPrefix = lower === 'category:' ? tokens[i + 1] : lower.match(/^category:(.+)$/)?.[1]
+    if (catPrefix !== undefined) {
+      if (lower === 'category:') i++
+      const catQuery = catPrefix.replace(/^"|"$/g, '').toLowerCase()
+      const ids: string[] = []
       for (const [id, name] of categoryMap) {
-        if (name.toLowerCase().includes(catQuery)) result.categoryIds.push(id)
+        if (name.toLowerCase().includes(catQuery)) ids.push(id)
       }
+      if (ids.length) result.categoryIds = ids
       continue
     }
 
-    // payee:"name" or payee:name
-    const payeeMatch = lower.match(/^payee:(.+)$/)
-    if (payeeMatch) {
-      const payeeQuery = payeeMatch[1].replace(/^"|"$/g, '').toLowerCase()
+    // payee: value  or  payee:value
+    const payeePrefix = lower === 'payee:' ? tokens[i + 1] : lower.match(/^payee:(.+)$/)?.[1]
+    if (payeePrefix !== undefined) {
+      if (lower === 'payee:') i++
+      const payeeQuery = payeePrefix.replace(/^"|"$/g, '').toLowerCase()
+      const ids: string[] = []
       for (const [id, name] of payeeMap) {
-        if (name.toLowerCase().includes(payeeQuery)) result.payeeIds.push(id)
+        if (name.toLowerCase().includes(payeeQuery)) ids.push(id)
       }
+      if (ids.length) result.payeeIds = ids
       continue
     }
 
-    // amount:>100 or amount:<50 or amount:100-200
-    const amountMatch = lower.match(/^amount:(.+)$/)
-    if (amountMatch) {
-      const expr = amountMatch[1]
-      if (expr.startsWith('>')) result.amountMin = parseFloat(expr.slice(1))
-      else if (expr.startsWith('<')) result.amountMax = parseFloat(expr.slice(1))
+    // amount:>x  amount:<x  amount:x-y
+    const amountExpr = lower === 'amount:' ? tokens[i + 1] : lower.match(/^amount:(.+)$/)?.[1]
+    if (amountExpr !== undefined) {
+      if (lower === 'amount:') i++
+      if (amountExpr?.startsWith('>')) result.amountMin = parseFloat(amountExpr.slice(1))
+      else if (amountExpr?.startsWith('<')) result.amountMax = parseFloat(amountExpr.slice(1))
       else {
-        const range = expr.match(/^([\d.]+)-([\d.]+)$/)
-        if (range) {
-          result.amountMin = parseFloat(range[1])
-          result.amountMax = parseFloat(range[2])
-        }
+        const range = amountExpr?.match(/^([\d.]+)-([\d.]+)$/)
+        if (range) { result.amountMin = parseFloat(range[1]); result.amountMax = parseFloat(range[2]) }
       }
       continue
     }
@@ -83,8 +95,56 @@ export function parseTransactionSearch(
     textParts.push(token)
   }
 
-  result.text = textParts.join(' ').trim()
+  const text = textParts.join(' ').trim()
+  if (text) result.text = text
   return result
+}
+
+export function parseTransactionSearch(
+  query: string,
+  categoryMap: Map<string, string>,
+  payeeMap: Map<string, string>
+): TransactionFilters {
+  const tokens = tokenize(query)
+
+  // Split at OR keyword into segments
+  const segments: string[][] = []
+  let current: string[] = []
+  for (const token of tokens) {
+    if (token.toUpperCase() === 'OR') {
+      segments.push(current)
+      current = []
+    } else {
+      current.push(token)
+    }
+  }
+  segments.push(current)
+
+  const parsed = segments.map((seg) => parseSegment(seg, categoryMap, payeeMap))
+  if (parsed.length === 1) return parsed[0]
+
+  // Merge multiple segments with OR semantics
+  const merged: TransactionFilters = { isOrMode: true }
+  const textParts: string[] = []
+  const allCategoryIds: string[] = []
+  const allPayeeIds: string[] = []
+
+  for (const seg of parsed) {
+    if (seg.unapproved) merged.unapproved = true
+    if (seg.uncategorized) merged.uncategorized = true
+    if (seg.cleared) merged.cleared = seg.cleared
+    if (seg.text) textParts.push(seg.text)
+    if (seg.categoryIds) allCategoryIds.push(...seg.categoryIds)
+    if (seg.payeeIds) allPayeeIds.push(...seg.payeeIds)
+    if (seg.amountMin != null) merged.amountMin = seg.amountMin
+    if (seg.amountMax != null) merged.amountMax = seg.amountMax
+  }
+
+  if (textParts.length) merged.text = textParts.join(' ')
+  if (allCategoryIds.length) merged.categoryIds = allCategoryIds
+  if (allPayeeIds.length) merged.payeeIds = allPayeeIds
+
+  return merged
 }
 
 function tokenize(query: string): string[] {
@@ -108,48 +168,16 @@ function tokenize(query: string): string[] {
   return tokens.filter(Boolean)
 }
 
-export function filterTransactions(
-  transactions: Transaction[],
-  search: ParsedSearch,
-  payeeMap: Map<string, string>
-): Transaction[] {
-  return transactions.filter((txn) => {
-    if (search.clearedStatuses.length > 0 && !search.clearedStatuses.includes(txn.cleared)) {
-      return false
-    }
-
-    if (search.categoryIds.length > 0 && !search.categoryIds.includes(txn.category_id ?? '')) {
-      return false
-    }
-
-    if (search.payeeIds.length > 0 && !search.payeeIds.includes(txn.payee_id ?? '')) {
-      return false
-    }
-
-    const absAmount = Math.abs(Number(txn.amount))
-    if (search.amountMin !== null && absAmount < search.amountMin) return false
-    if (search.amountMax !== null && absAmount > search.amountMax) return false
-
-    if (search.text) {
-      const q = search.text.toLowerCase()
-      const payeeName = (txn.payee_id ? payeeMap.get(txn.payee_id) : '') ?? ''
-      const memo = txn.memo ?? ''
-      if (!payeeName.toLowerCase().includes(q) && !memo.toLowerCase().includes(q)) {
-        return false
-      }
-    }
-
-    return true
-  })
-}
-
 export const SEARCH_SUGGESTIONS = [
-  { syntax: 'is:cleared', description: 'Show cleared transactions' },
-  { syntax: 'is:uncleared', description: 'Show uncleared transactions' },
-  { syntax: 'is:pending', description: 'Show pending transactions' },
-  { syntax: 'is:reconciled', description: 'Show reconciled transactions' },
+  { syntax: 'is: unapproved ', description: 'Transactions not yet approved' },
+  { syntax: 'is: uncategorized ', description: 'Transactions without a category' },
+  { syntax: 'is: cleared ', description: 'Cleared transactions' },
+  { syntax: 'is: uncleared ', description: 'Uncleared transactions' },
+  { syntax: 'is: pending ', description: 'Pending transactions' },
+  { syntax: 'is: reconciled ', description: 'Reconciled transactions' },
   { syntax: 'category:', description: 'Filter by category name' },
   { syntax: 'payee:', description: 'Filter by payee name' },
-  { syntax: 'amount:>100', description: 'Amount greater than' },
-  { syntax: 'amount:<50', description: 'Amount less than' },
+  { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },
+  { syntax: 'amount:<', description: 'Amount less than (e.g. amount:<50)' },
+  { syntax: 'OR', description: 'Combine filters with OR logic (e.g. is: unapproved OR is: uncategorized)' },
 ]

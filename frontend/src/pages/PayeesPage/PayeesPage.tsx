@@ -14,6 +14,7 @@ export function PayeesPage() {
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
+  const [editMappings, setEditMappings] = useState('')
   const [mergeSource, setMergeSource] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [showWizard, setShowWizard] = useState(false)
@@ -28,13 +29,20 @@ export function PayeesPage() {
     (p) => !p.transfer_account_id && p.name.toLowerCase().includes(search.toLowerCase()),
   )
 
-  function startEdit(id: string, name: string) {
+  function startEdit(id: string, name: string, mappings: string | null) {
     setEditingId(id)
     setEditName(name)
+    setEditMappings(mappings ?? '')
   }
 
   async function saveEdit(id: string) {
-    if (editName.trim()) await updatePayee.mutateAsync({ id, name: editName.trim() })
+    if (editName.trim()) {
+      await updatePayee.mutateAsync({
+        id,
+        name: editName.trim(),
+        mapping_samples: editMappings.trim() || null,
+      })
+    }
     setEditingId(null)
   }
 
@@ -143,28 +151,58 @@ export function PayeesPage() {
             <span></span>
           </div>
           {filtered.map((p) => (
-            <div key={p.id} className="payees-table__row">
+            <div key={p.id} className={`payees-table__row ${editingId === p.id ? 'payees-table__row--editing' : ''}`}>
               <span className="payees-table__name">
                 {editingId === p.id ? (
-                  <input
-                    className="payees-edit-input"
-                    value={editName}
-                    autoFocus
-                    onChange={(e) => setEditName(e.target.value)}
-                    onBlur={() => saveEdit(p.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveEdit(p.id)
-                      if (e.key === 'Escape') setEditingId(null)
-                    }}
-                  />
+                  <div className="payees-edit-fields">
+                    <input
+                      className="payees-edit-input"
+                      value={editName}
+                      autoFocus
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveEdit(p.id)
+                        if (e.key === 'Escape') setEditingId(null)
+                      }}
+                      placeholder="Payee name"
+                    />
+                    <input
+                      className="payees-edit-input payees-edit-input--mappings"
+                      value={editMappings}
+                      onChange={(e) => setEditMappings(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveEdit(p.id)
+                        if (e.key === 'Escape') setEditingId(null)
+                      }}
+                      placeholder="Match samples (optional): NORTHWIND PAYSERV, NORTHWIND PAYROLL"
+                    />
+                    <span className="payees-edit-hint">
+                      Bank names that should match this payee, comma-separated
+                    </span>
+                    <div className="payees-edit-btns">
+                      <button className="payees-btn payees-btn--sm payees-btn--primary" onClick={() => saveEdit(p.id)}>
+                        Save
+                      </button>
+                      <button className="payees-btn payees-btn--sm" onClick={() => setEditingId(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 ) : (
-                  <span
-                    className="payees-table__name-text"
-                    onDoubleClick={() => startEdit(p.id, p.name)}
-                    title="Double-click to rename"
-                  >
-                    {p.name}
-                  </span>
+                  <div className="payees-table__name-cell">
+                    <span
+                      className="payees-table__name-text"
+                      onDoubleClick={() => startEdit(p.id, p.name, p.mapping_samples)}
+                      title="Double-click to rename"
+                    >
+                      {p.name}
+                    </span>
+                    {p.mapping_samples && (
+                      <span className="payees-table__mappings" title={`Match samples: ${p.mapping_samples}`}>
+                        {p.mapping_samples}
+                      </span>
+                    )}
+                  </div>
                 )}
               </span>
               <span className="payees-table__count">{p.transaction_count}</span>
@@ -179,13 +217,13 @@ export function PayeesPage() {
                   >
                     Merge →
                   </button>
-                ) : (
+                ) : editingId === p.id ? null : (
                   <>
                     <button
                       className="payees-btn payees-btn--sm"
-                      onClick={() => startEdit(p.id, p.name)}
+                      onClick={() => startEdit(p.id, p.name, p.mapping_samples)}
                     >
-                      Rename
+                      Edit
                     </button>
                     <button
                       className="payees-btn payees-btn--sm"

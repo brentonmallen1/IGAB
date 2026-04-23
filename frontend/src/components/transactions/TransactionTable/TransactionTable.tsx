@@ -1,6 +1,7 @@
 import { useMemo, useRef, useEffect, useState } from 'react'
 import { Plus, ChevronUp, ChevronDown } from 'lucide-react'
-import { useTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction, useCreateTransaction } from '../../../api/transactions'
+import toast from 'react-hot-toast'
+import { useInfiniteTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction, useCreateTransaction, useBulkApprove, useMergeTransactions, usePendingReviewCountForAccount } from '../../../api/transactions'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -11,9 +12,10 @@ import { SplitTransactionEditor } from '../SplitTransactionEditor/SplitTransacti
 import { ScheduledTransactionEditor } from '../../scheduled/ScheduledTransactionEditor'
 import { useScheduledTransactionsByAccount, useEnterScheduledTransaction, useSkipScheduledTransaction } from '../../../api/scheduledTransactions'
 import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
+import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { TransactionSearch } from '../TransactionSearch/TransactionSearch'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
-import { parseTransactionSearch, filterTransactions } from '../../../utils/searchParser'
+import { parseTransactionSearch } from '../../../utils/searchParser'
 import { useHistoryStore } from '../../../stores/historyStore'
 import { today } from '../../../utils/dates'
 import { formatMoney } from '../../../utils/money'
@@ -36,13 +38,15 @@ const HEADER_COLS: { key: SortColumn; label: string }[] = [
 ]
 
 export function TransactionTable({ accountId, budgetId }: Props) {
-  const { data: transactions = [], isLoading } = useTransactions(accountId)
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
   const bulkSetCleared = useBulkUpdateCleared(budgetId)
   const bulkCategorize = useBulkCategorize(budgetId)
   const bulkDelete = useBulkDeleteTransactions(budgetId)
+  const bulkApprove = useBulkApprove(budgetId)
+  const mergeTxns = useMergeTransactions(budgetId)
+  const [showMergeModal, setShowMergeModal] = useState(false)
   const undoTxn = useUpdateTransaction(budgetId)
   const createTxn = useCreateTransaction(budgetId)
   const [makeRepeatingTxn, setMakeRepeatingTxn] = useState<Transaction | null>(null)
@@ -90,31 +94,43 @@ export function TransactionTable({ accountId, budgetId }: Props) {
   const payeeMap = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
   const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
 
+  const filters = useMemo(
+    () => parseTransactionSearch(transactionSearchQuery, categoryMap, payeeMap),
+    [transactionSearchQuery, categoryMap, payeeMap]
+  )
+
+  const {
+    data: txnPages,
+    isLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteTransactions(accountId, filters)
+
+  const transactions = useMemo(() => txnPages?.pages.flat() ?? [], [txnPages])
+
   const editingTxn = useMemo(
     () => transactions.find((t) => t.id === editingTransactionId) ?? null,
     [transactions, editingTransactionId]
   )
 
-  // Parse search
-  const parsedSearch = useMemo(
-    () => parseTransactionSearch(transactionSearchQuery, categoryMap, payeeMap),
-    [transactionSearchQuery, categoryMap, payeeMap]
-  )
+  // Load more pages only while important transactions aren't fully loaded yet.
+  // Backend sorts pending → needs-category → uncleared → rest, so these always arrive first.
+  const { data: reviewCounts } = usePendingReviewCountForAccount(accountId)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!hasNextPage || isFetching) return
+    const loadedImportant = transactions.filter(
+      (t) => t.cleared === 'pending' || (!t.category_id && !t.transfer_id && !t.is_split)
+    ).length
+    const knownImportant = (reviewCounts?.unapproved ?? 0) + (reviewCounts?.uncategorized ?? 0)
+    if (loadedImportant < knownImportant) fetchNextPage()
+  }, [isFetching, hasNextPage, fetchNextPage, transactions, reviewCounts])
 
-  // Filter top-level transactions (exclude split children)
-  const topLevel = useMemo(
-    () => transactions.filter((t) => !t.parent_transaction_id),
-    [transactions]
-  )
-
-  const filtered = useMemo(
-    () => transactionSearchQuery ? filterTransactions(topLevel, parsedSearch, payeeMap) : topLevel,
-    [topLevel, transactionSearchQuery, parsedSearch, payeeMap]
-  )
-
-  // Sort
+  // Sort (server returns date-desc; client sort applies across loaded pages)
   const sorted = useMemo(() => {
-    return [...filtered].sort((a, b) => {
+    return [...transactions].sort((a, b) => {
       let cmp = 0
       switch (transactionSortColumn) {
         case 'date':
@@ -135,22 +151,29 @@ export function TransactionTable({ accountId, budgetId }: Props) {
       }
       return transactionSortDirection === 'asc' ? cmp : -cmp
     })
-  }, [filtered, transactionSortColumn, transactionSortDirection, payeeMap, categoryMap])
+  }, [transactions, transactionSortColumn, transactionSortDirection, payeeMap, categoryMap])
 
   // Partition into sections
   const pendingTxns = useMemo(() => sorted.filter((t) => t.cleared === 'pending'), [sorted])
   const uncategorizedTxns = useMemo(
-    () => sorted.filter((t) => t.cleared !== 'pending' && !t.category_id && !t.is_split),
+    () => sorted.filter((t) => t.cleared !== 'pending' && !t.category_id && !t.transfer_id && !t.is_split),
     [sorted]
   )
   const regularTxns = useMemo(
-    () => sorted.filter((t) => t.cleared !== 'pending' && (t.category_id || t.is_split)),
+    () => sorted.filter((t) => t.cleared !== 'pending' && (t.category_id || t.transfer_id || t.is_split)),
     [sorted]
   )
 
   const allOrderedIds = sorted.map((t) => t.id)
   const allSelected = sorted.length > 0 && sorted.every((t) => selectedTransactionIds.has(t.id))
   const someSelected = sorted.some((t) => selectedTransactionIds.has(t.id))
+
+  const selectedTotal = useMemo(
+    () => transactions
+      .filter((t) => selectedTransactionIds.has(t.id))
+      .reduce((sum, t) => sum + Number(t.amount), 0),
+    [transactions, selectedTransactionIds]
+  )
   const headerCheckboxRef = useRef<HTMLInputElement>(null)
 
   if (headerCheckboxRef.current) {
@@ -228,6 +251,32 @@ export function TransactionTable({ accountId, budgetId }: Props) {
       .filter((t): t is Transaction => !!t && t.cleared !== 'reconciled' && !t.parent_transaction_id)
     selected.forEach(duplicateTransaction)
     clearTransactionSelection()
+  }
+
+  function handleBulkApprove() {
+    bulkApprove.mutate([...selectedTransactionIds], { onSuccess: clearTransactionSelection })
+  }
+
+  const mergeEligiblePair = useMemo((): [Transaction, Transaction] | null => {
+    if (selectedTransactionIds.size !== 2) return null
+    const [id1, id2] = [...selectedTransactionIds]
+    const t1 = transactions.find((t) => t.id === id1)
+    const t2 = transactions.find((t) => t.id === id2)
+    if (!t1 || !t2) return null
+    if (t1.account_id !== t2.account_id) return null
+    if (t1.cleared === 'reconciled' || t2.cleared === 'reconciled') return null
+    if (t1.is_split || t2.is_split || t1.parent_transaction_id || t2.parent_transaction_id) return null
+    if (t1.transfer_id || t2.transfer_id) return null
+    return [t1, t2]
+  }, [selectedTransactionIds, transactions])
+
+  async function handleConfirmMerge(survivorId?: string) {
+    await mergeTxns.mutateAsync(
+      { transactionIds: [...selectedTransactionIds], survivorId },
+    )
+    setShowMergeModal(false)
+    clearTransactionSelection()
+    toast.success('Transactions merged')
   }
 
   const categoryComboboxOptions: ComboboxOption[] = categories.map((c) => {
@@ -324,7 +373,18 @@ export function TransactionTable({ accountId, budgetId }: Props) {
   }
 
   return (
-    <div className="transaction-table">
+    <div className="transaction-table" data-selection-open={someSelected ? '' : undefined}>
+      {showMergeModal && mergeEligiblePair && (
+        <MergePreviewModal
+          transactions={mergeEligiblePair}
+          payeeMap={payeeMap}
+          categoryMap={categoryMap}
+          onConfirm={handleConfirmMerge}
+          onCancel={() => setShowMergeModal(false)}
+          isPending={mergeTxns.isPending}
+        />
+      )}
+
       {makeRepeatingTxn && (
         <ScheduledTransactionEditor
           budgetId={budgetId}
@@ -363,12 +423,16 @@ export function TransactionTable({ accountId, budgetId }: Props) {
       {someSelected && (
         <SelectionActionBar
           selectedCount={selectedTransactionIds.size}
+          selectedTotal={selectedTotal}
           categoryOptions={categoryComboboxOptions}
           onCategorize={handleBulkCategorize}
           onSetCleared={handleBulkSetCleared}
           onDelete={handleBulkDelete}
           onDuplicate={handleBulkDuplicate}
           onClear={clearTransactionSelection}
+          onApprove={handleBulkApprove}
+          onMerge={() => setShowMergeModal(true)}
+          canMerge={!!mergeEligiblePair}
         />
       )}
 
@@ -443,6 +507,10 @@ export function TransactionTable({ accountId, budgetId }: Props) {
           <div className="transaction-table__body">
             {renderRows(regularTxns)}
           </div>
+          <div ref={sentinelRef} className="transaction-table__sentinel" />
+          {isFetchingNextPage && (
+            <div className="transaction-table__loading">Loading more…</div>
+          )}
         </>
       )}
 

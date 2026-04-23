@@ -1,5 +1,8 @@
+import hashlib
 import io
 import uuid
+from datetime import date
+from decimal import Decimal
 
 import polars as pl
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -30,6 +33,11 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.transaction_service import TransactionService
 
 router = APIRouter()
+
+
+def _generate_import_id(account_id: uuid.UUID, txn_date: date, amount: Decimal, payee: str) -> str:
+    content = f"{account_id}|{txn_date.isoformat()}|{amount}|{payee}"
+    return f"csv:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
 class ImportResult(BaseModel):
@@ -212,13 +220,15 @@ async def import_csv(
         payee_id = payee_map.get(payee_name) if payee_name else None
         memo = (row.get("memo") or "").strip() or None
 
+        txn_date = row["date"]
+        amount = Decimal(str(row["amount_f64"]))
         rows_to_insert.append(
             {
                 "id": uuid.uuid4(),
                 "budget_id": budget_id,
                 "account_id": account_id,
-                "date": row["date"],
-                "amount": row["amount_f64"],
+                "date": txn_date,
+                "amount": amount,
                 "payee_id": uuid.UUID(payee_id) if payee_id else None,
                 "category_id": None,
                 "memo": memo,
@@ -227,8 +237,15 @@ async def import_csv(
                 "import_batch_id": batch_id,
                 "is_split": False,
                 "is_deleted": False,
+                "import_id": _generate_import_id(account_id, txn_date, amount, payee_name),
             }
         )
 
-    imported = await transaction_repo.bulk_create(rows_to_insert)
+    # Deduplicate against existing import_ids before inserting
+    all_import_ids = [r["import_id"] for r in rows_to_insert if r.get("import_id")]
+    existing_ids = await transaction_repo.get_existing_import_ids(budget_id, all_import_ids)
+    new_rows = [r for r in rows_to_insert if r.get("import_id") not in existing_ids]
+    skipped += len(rows_to_insert) - len(new_rows)
+
+    imported = await transaction_repo.bulk_create(new_rows)
     return ImportResult(imported=imported, skipped=skipped, errors=errors)

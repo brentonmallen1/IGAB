@@ -13,6 +13,7 @@
 
   --color-accent: #c4a7e7;
   --color-accent-hover: #ebbcba;
+  --accent-color: var(--color-accent);
   --color-positive: #31748f;
   --color-negative: #eb6f92;
   --color-warning: #f6c177;
@@ -35,6 +36,17 @@
   --header-bg: #1f1d2e;
   --card-bg: #1f1d2e;
   --card-border: #26233a;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
 }
 
 /* Rosé Pine Moon */
@@ -52,6 +64,7 @@
 
   --color-accent: #c4a7e7;
   --color-accent-hover: #ea9a97;
+  --accent-color: var(--color-accent);
   --color-positive: #3e8fb0;
   --color-negative: #eb6f92;
   --color-warning: #f6c177;
@@ -74,4 +87,15 @@
   --header-bg: #2a273f;
   --card-bg: #2a273f;
   --card-border: #393552;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
 }

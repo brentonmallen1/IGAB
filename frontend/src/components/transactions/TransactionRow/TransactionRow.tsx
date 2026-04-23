@@ -1,6 +1,7 @@
-import { CheckCircle, Circle, Clock, Lock, MoreHorizontal } from 'lucide-react'
+import { CheckCircle, Circle, Clock, Lock, MoreHorizontal, Split } from 'lucide-react'
 import { useState, useRef } from 'react'
-import { useUpdateTransaction } from '../../../api/transactions'
+import { useUpdateTransaction, useDeleteTransaction } from '../../../api/transactions'
+import { useCreateCategory } from '../../../api/categories'
 import { useAppStore } from '../../../stores/appStore'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useHistoryStore } from '../../../stores/historyStore'
@@ -10,6 +11,7 @@ import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
+import { TransactionLinkIcon } from '../../simplefin/TransactionLinkPopup'
 import type { Transaction, Category, CategoryGroup, Payee } from '../../../types'
 import './TransactionRow.css'
 
@@ -57,6 +59,8 @@ export function TransactionRow({
 }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const updateTxn = useUpdateTransaction(budgetId)
+  const deleteTxn = useDeleteTransaction(budgetId)
+  const createCat = useCreateCategory(budgetId)
   const { editingField, startEditing, stopEditing } = useTransactionEditStore()
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number; alignRight?: boolean }>({ x: 0, y: 0 })
@@ -140,6 +144,9 @@ export function TransactionRow({
       case 'approve':
         updateTxn.mutate({ id: txn.id, approved: true })
         break
+      case 'delete':
+        deleteTxn.mutate({ id: txn.id, accountId: txn.account_id })
+        break
     }
   }
 
@@ -147,22 +154,35 @@ export function TransactionRow({
     .filter((p) => !p.transfer_account_id)
     .map((p) => ({ id: p.id, label: p.name }))
 
-  const categoryOptions: ComboboxOption[] = [
-    { id: '__split__', label: 'Split Transaction…', group: '' },
-    ...categories.map((c) => {
-      const group = categoryGroups.find((g) => g.id === c.category_group_id)
-      return { id: c.id, label: c.name, group: group?.name ?? '' }
-    }),
-  ]
+  const categoryOptions: ComboboxOption[] = categories.map((c) => {
+    const group = categoryGroups.find((g) => g.id === c.category_group_id)
+    return { id: c.id, label: c.name, group: group?.name ?? '' }
+  })
 
   function handleCategoryChange(id: string | null) {
-    if (id === '__split__') {
-      onStartSplit(txn)
-      stopEditing()
-      return
-    }
     commitField('category_id', id)
   }
+
+  async function handleCreateCategory(name: string): Promise<ComboboxOption | void> {
+    const defaultGroup = categoryGroups.find((g) => !g.is_hidden && !g.is_system)
+    if (!defaultGroup || !name.trim()) return
+    const cat = await createCat.mutateAsync({
+      category_group_id: defaultGroup.id,
+      name: name.trim(),
+    })
+    return { id: cat.id, label: cat.name, group: defaultGroup.name }
+  }
+
+  const categorySplitFooter = !isReconciled ? (
+    <button
+      className="combobox__footer-action"
+      type="button"
+      onMouseDown={(e) => { e.preventDefault(); onStartSplit(txn); stopEditing() }}
+    >
+      <Split size={12} />
+      Split (Multiple Categories)
+    </button>
+  ) : undefined
 
   const contextItems = ROW_CONTEXT_ITEMS.filter((item) => {
     if (item.id === 'split') return !isReconciled
@@ -209,6 +229,7 @@ export function TransactionRow({
       <div
         className="txn-col txn-col--payee txn-text-clip"
         onClick={() => !isReconciled && !txn.transfer_id && startEditing(txn.id, 'payee')}
+        title={txn.import_description ?? undefined}
       >
         {isEditing('payee') ? (
           <Combobox
@@ -238,6 +259,8 @@ export function TransactionRow({
             value={txn.category_id}
             options={categoryOptions}
             onChange={handleCategoryChange}
+            onCreateNew={handleCreateCategory}
+            footerSlot={categorySplitFooter}
             placeholder="Search categories…"
             autoFocus
             onBlurClose={stopEditing}
@@ -306,6 +329,12 @@ export function TransactionRow({
 
       {/* Cleared */}
       <div className="txn-col txn-col--cleared">
+        {txn.linked_transaction_id && (
+          <TransactionLinkIcon
+            transaction={txn}
+            budgetId={txn.budget_id}
+          />
+        )}
         {isReconciled ? (
           <span className="txn-cleared-btn txn-cleared-btn--locked" title="Reconciled — locked">
             <Lock size={12} />

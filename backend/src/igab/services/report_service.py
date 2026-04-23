@@ -5,21 +5,32 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import polars as pl
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Category, CategoryGroup, Transaction
+from igab.db.models import (
+    Account,
+    BudgetAssignment,
+    Category,
+    CategoryGroup,
+    Payee,
+    Transaction,
+)
 
 
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    # ─── Existing ─────────────────────────────────────────────────────────────
+
     async def spending_by_category(
         self,
         budget_id: uuid.UUID,
         start_date: date,
         end_date: date,
+        category_ids: list[uuid.UUID] | None = None,
+        account_ids: list[uuid.UUID] | None = None,
     ) -> tuple[list[dict], Decimal]:
         q = (
             select(
@@ -39,6 +50,10 @@ class ReportService:
                 Transaction.parent_transaction_id.is_(None),
             )
         )
+        if category_ids:
+            q = q.where(Transaction.category_id.in_(category_ids))
+        if account_ids:
+            q = q.where(Transaction.account_id.in_(account_ids))
         result = await self.session.execute(q)
         rows = result.all()
 
@@ -89,7 +104,6 @@ class ReportService:
         rows = (await self.session.execute(q)).all()
 
         if not rows:
-            # Return zeroed months
             return [
                 {
                     "month": _subtract_months(first_of_month, i),
@@ -105,7 +119,7 @@ class ReportService:
                 "date": [r[0] for r in rows],
                 "amount": [float(r[1]) for r in rows],
             },
-            schema={"date": pl.Date, "amount": pl.Float64},
+            schema_overrides={"date": pl.Date, "amount": pl.Float64},
         )
 
         monthly = (
@@ -211,6 +225,1340 @@ class ReportService:
         buf = io.BytesIO()
         df.write_csv(buf)
         return buf.getvalue().decode("utf-8"), "text/csv"
+
+    # ─── Dashboard ────────────────────────────────────────────────────────────
+
+    async def dashboard_metrics(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+    ) -> dict:
+        today = date.today()
+        prev_start = (
+            start_date.replace(month=start_date.month - 1)
+            if start_date.month > 1
+            else start_date.replace(year=start_date.year - 1, month=12)
+        )
+        prev_end = start_date - timedelta(days=1)
+
+        # All non-deleted, non-split-child transactions for the budget
+        q = select(
+            Transaction.id,
+            Transaction.date,
+            Transaction.amount,
+            Transaction.category_id,
+            Transaction.payee_id,
+            Transaction.transfer_id,
+            Transaction.account_id,
+        ).where(
+            Transaction.budget_id == budget_id,
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.parent_transaction_id.is_(None),
+        )
+        all_txns = (await self.session.execute(q)).all()
+
+        # Account info for on_budget classification
+        acct_q = select(
+            Account.id, Account.on_budget, Account.account_type, Account.is_deleted
+        ).where(
+            Account.budget_id == budget_id,
+            Account.is_deleted == False,  # noqa: E712
+        )
+        accounts = {str(r.id): r for r in (await self.session.execute(acct_q)).all()}
+
+        # Category info for spending
+        cat_q = (
+            select(Category.id, Category.name, CategoryGroup.name.label("group_name"))
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Category.budget_id == budget_id,
+                Category.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+        )
+        cats = {str(r.id): r for r in (await self.session.execute(cat_q)).all()}
+
+        if not all_txns:
+            return _empty_dashboard()
+
+        df = pl.DataFrame(
+            {
+                "id": [str(r.id) for r in all_txns],
+                "date": [r.date for r in all_txns],
+                "amount": [float(r.amount) for r in all_txns],
+                "account_id": [str(r.account_id) for r in all_txns],
+                "category_id": [str(r.category_id) if r.category_id else "" for r in all_txns],
+                "is_transfer": [r.transfer_id is not None for r in all_txns],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64, "is_transfer": pl.Boolean},
+        )
+
+        on_budget_ids = {aid for aid, a in accounts.items() if a.on_budget}
+        df = df.with_columns(pl.col("account_id").is_in(list(on_budget_ids)).alias("on_budget"))
+
+        # Net worth = sum of all on_budget account transactions (transfers cancel each other)
+        net_worth = Decimal(
+            str(df.filter(pl.col("on_budget")).select(pl.col("amount").sum()).item() or 0)
+        )
+
+        # Previous net worth: sum up to start_date
+        net_worth_prev = Decimal(
+            str(
+                df.filter(pl.col("on_budget") & (pl.col("date") < start_date))
+                .select(pl.col("amount").sum())
+                .item()
+                or 0
+            )
+        )
+
+        # Non-transfer expenses only
+        expenses_df = df.filter(~pl.col("is_transfer") & (pl.col("amount") < 0))
+
+        # Current period income/expenses
+        period_df = df.filter(
+            (pl.col("date") >= start_date) & (pl.col("date") <= end_date) & ~pl.col("is_transfer")
+        )
+        income_this = Decimal(
+            str(period_df.filter(pl.col("amount") > 0).select(pl.col("amount").sum()).item() or 0)
+        )
+        expenses_this = Decimal(
+            str(
+                period_df.filter(pl.col("amount") < 0).select(pl.col("amount").abs().sum()).item()
+                or 0
+            )
+        )
+
+        # Previous period expenses
+        prev_df = df.filter(
+            (pl.col("date") >= prev_start) & (pl.col("date") <= prev_end) & ~pl.col("is_transfer")
+        )
+        expenses_prev = Decimal(
+            str(
+                prev_df.filter(pl.col("amount") < 0).select(pl.col("amount").abs().sum()).item()
+                or 0
+            )
+        )
+
+        # Burn rates (annualized to monthly)
+        thirty_ago = today - timedelta(days=30)
+        ninety_ago = today - timedelta(days=90)
+        burn_30 = Decimal(
+            str(
+                expenses_df.filter(pl.col("date") >= thirty_ago)
+                .select(pl.col("amount").abs().sum())
+                .item()
+                or 0
+            )
+        )
+        burn_90_raw = Decimal(
+            str(
+                expenses_df.filter(pl.col("date") >= ninety_ago)
+                .select(pl.col("amount").abs().sum())
+                .item()
+                or 0
+            )
+        )
+        burn_90 = burn_90_raw / 3  # Monthly equivalent
+
+        # Savings rate
+        savings_rate = (
+            float((income_this - expenses_this) / income_this) if income_this > 0 else 0.0
+        )
+
+        # Days until zero
+        daily_burn = float(burn_30) / 30 if burn_30 > 0 else 0
+        days_until_zero: float | None = (
+            float(net_worth) / daily_burn if daily_burn > 0 and net_worth > 0 else None
+        )
+
+        # Top 3 categories in current period
+        cat_df = expenses_df.filter(
+            (pl.col("date") >= start_date)
+            & (pl.col("date") <= end_date)
+            & (pl.col("category_id") != "")
+        )
+        top_cats: list[dict] = []
+        if not cat_df.is_empty():
+            cat_agg = (
+                cat_df.group_by("category_id")
+                .agg(pl.col("amount").abs().sum().alias("total"))
+                .sort("total", descending=True)
+                .head(3)
+            )
+            for row in cat_agg.iter_rows(named=True):
+                cat_info = cats.get(row["category_id"])
+                if cat_info:
+                    top_cats.append(
+                        {
+                            "id": row["category_id"],
+                            "name": cat_info.name,
+                            "group_name": cat_info.group_name,
+                            "total": Decimal(str(row["total"])),
+                        }
+                    )
+
+        return {
+            "net_worth": net_worth,
+            "net_worth_prev": net_worth_prev,
+            "burn_rate_30": burn_30,
+            "burn_rate_90": burn_90,
+            "savings_rate": savings_rate,
+            "days_until_zero": days_until_zero,
+            "income_this_month": income_this,
+            "expenses_this_month": expenses_this,
+            "expenses_prev_month": expenses_prev,
+            "top_categories": top_cats,
+        }
+
+    # ─── Net Worth History ────────────────────────────────────────────────────
+
+    async def net_worth_history(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+    ) -> list[dict]:
+        acct_q = select(Account.id, Account.name, Account.account_type, Account.on_budget).where(
+            Account.budget_id == budget_id,
+            Account.is_deleted == False,  # noqa: E712
+            Account.on_budget == True,  # noqa: E712
+        )
+        accounts = (await self.session.execute(acct_q)).all()
+        if not accounts:
+            return []
+
+        account_map = {str(a.id): a for a in accounts}
+
+        q = select(Transaction.date, Transaction.amount, Transaction.account_id).where(
+            Transaction.budget_id == budget_id,
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.parent_transaction_id.is_(None),
+            Transaction.account_id.in_([a.id for a in accounts]),
+        )
+        txns = (await self.session.execute(q)).all()
+
+        today = date.today()
+        first_of_month = today.replace(day=1)
+
+        if not txns:
+            return [
+                {
+                    "date": _subtract_months(first_of_month, i),
+                    "total_assets": Decimal("0"),
+                    "total_liabilities": Decimal("0"),
+                    "net_worth": Decimal("0"),
+                    "accounts": [],
+                }
+                for i in range(months - 1, -1, -1)
+            ]
+
+        df = pl.DataFrame(
+            {
+                "date": [r.date for r in txns],
+                "amount": [float(r.amount) for r in txns],
+                "account_id": [str(r.account_id) for r in txns],
+                "account_name": [account_map[str(r.account_id)].name for r in txns],
+                "account_type": [account_map[str(r.account_id)].account_type for r in txns],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64},
+        )
+
+        results = []
+        for i in range(months - 1, -1, -1):
+            month_start = _subtract_months(first_of_month, i)
+            month_end = _last_day(month_start)
+            month_df = df.filter(pl.col("date") <= month_end)
+
+            acct_balances = month_df.group_by(["account_id", "account_name", "account_type"]).agg(
+                pl.col("amount").sum().alias("balance")
+            )
+
+            snapshots = []
+            total_assets = Decimal("0")
+            total_liabilities = Decimal("0")
+
+            for row in acct_balances.iter_rows(named=True):
+                bal = Decimal(str(row["balance"]))
+                snapshots.append(
+                    {
+                        "account_id": row["account_id"],
+                        "account_name": row["account_name"],
+                        "account_type": row["account_type"],
+                        "balance": bal,
+                    }
+                )
+                if row["account_type"] in ("checking", "savings", "tracking"):
+                    if bal > 0:
+                        total_assets += bal
+                elif row["account_type"] in ("credit_card", "loan"):
+                    if bal < 0:
+                        total_liabilities += abs(bal)
+                    else:
+                        total_assets += bal
+
+            results.append(
+                {
+                    "date": month_start,
+                    "total_assets": total_assets,
+                    "total_liabilities": total_liabilities,
+                    "net_worth": total_assets - total_liabilities,
+                    "accounts": snapshots,
+                }
+            )
+
+        return results
+
+    # ─── Account Composition ─────────────────────────────────────────────────
+
+    async def account_composition(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+    ) -> list[dict]:
+        history = await self.net_worth_history(budget_id, months)
+        results = []
+        for point in history:
+            by_type: dict[str, Decimal] = {
+                "checking": Decimal("0"),
+                "savings": Decimal("0"),
+                "credit_card": Decimal("0"),
+                "loan": Decimal("0"),
+                "tracking": Decimal("0"),
+            }
+            for snap in point["accounts"]:
+                t = snap["account_type"]
+                if t in by_type:
+                    by_type[t] = by_type[t] + snap["balance"]
+            results.append({"date": point["date"], **by_type})
+        return results
+
+    # ─── Burn Rate ────────────────────────────────────────────────────────────
+
+    async def burn_rate(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+    ) -> list[dict]:
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        start = _subtract_months(first_of_month, months - 1 + 3)  # extra months for rolling
+
+        q = select(Transaction.date, Transaction.amount).where(
+            Transaction.budget_id == budget_id,
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.amount < 0,
+            Transaction.date >= start,
+            Transaction.date <= today,
+            Transaction.parent_transaction_id.is_(None),
+            Transaction.transfer_id.is_(None),
+        )
+        txns = (await self.session.execute(q)).all()
+
+        results = []
+        for i in range(months - 1, -1, -1):
+            month_start = _subtract_months(first_of_month, i)
+            month_end = _last_day(month_start)
+
+            # 30-day: sum expenses in 30 days ending at month_end
+            d30 = month_end - timedelta(days=29)
+            # 90-day: sum expenses in 90 days ending at month_end, divided by 3
+            d90 = month_end - timedelta(days=89)
+
+            r30 = sum(abs(float(r.amount)) for r in txns if d30 <= r.date <= month_end)
+            r90 = sum(abs(float(r.amount)) for r in txns if d90 <= r.date <= month_end) / 3
+
+            results.append(
+                {
+                    "date": month_start,
+                    "rolling_30": Decimal(str(round(r30, 4))),
+                    "rolling_90": Decimal(str(round(r90, 4))),
+                }
+            )
+
+        return results
+
+    # ─── Cash Flow Sankey ─────────────────────────────────────────────────────
+
+    async def cash_flow_sankey(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        mode: str = "spent",  # "spent" or "budgeted"
+        account_ids: list[uuid.UUID] | None = None,
+    ) -> dict:
+        if mode == "budgeted":
+            return await self._cash_flow_budgeted(budget_id, start_date, end_date)
+        return await self._cash_flow_spent(budget_id, start_date, end_date, account_ids)
+
+    async def _cash_flow_budgeted(
+        self, budget_id: uuid.UUID, start_date: date, end_date: date
+    ) -> dict:
+        """Sankey based on budget assignments (no payee data)."""
+        months = _months_in_range(start_date, end_date)
+
+        # Get budget assignments with category/group info
+        q = (
+            select(
+                BudgetAssignment.category_id,
+                BudgetAssignment.assigned,
+                Category.name.label("category_name"),
+                CategoryGroup.id.label("group_id"),
+                CategoryGroup.name.label("group_name"),
+            )
+            .join(Category, BudgetAssignment.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                BudgetAssignment.budget_id == budget_id,
+                BudgetAssignment.month.in_(months),
+                Category.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+        )
+        rows = (await self.session.execute(q)).all()
+
+        # Get total income from transactions
+        income_q = select(func.sum(Transaction.amount)).where(
+            Transaction.budget_id == budget_id,
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.date >= start_date,
+            Transaction.date <= end_date,
+            Transaction.amount > 0,
+            Transaction.parent_transaction_id.is_(None),
+            Transaction.transfer_id.is_(None),
+        )
+        total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
+
+        if not rows:
+            return {
+                "nodes": [],
+                "links": [],
+                "total_income": total_income,
+                "total_expense": Decimal("0"),
+                "category_payees": {},
+                "group_categories": {},
+            }
+
+        # Aggregate by category and group
+        group_totals: dict[str, float] = {}
+        cat_totals: dict[str, float] = {}
+        cat_to_group: dict[str, tuple[str, str]] = {}
+        cat_names: dict[str, str] = {}
+
+        for r in rows:
+            if r.assigned <= 0:
+                continue
+            cat_id = str(r.category_id)
+            gid = str(r.group_id)
+            gname = r.group_name or "Unknown"
+
+            group_totals[gid] = group_totals.get(gid, 0) + float(r.assigned)
+            cat_totals[cat_id] = cat_totals.get(cat_id, 0) + float(r.assigned)
+            cat_to_group[cat_id] = (gid, gname)
+            cat_names[cat_id] = r.category_name or cat_id
+
+        total_budgeted = sum(group_totals.values())
+
+        nodes: list[dict] = []
+        links: list[dict] = []
+        node_ids: dict[str, int] = {}
+
+        def get_node(nid: str, name: str, ntype: str) -> int:
+            if nid not in node_ids:
+                node_ids[nid] = len(nodes)
+                nodes.append({"id": nid, "name": name, "type": ntype})
+            return node_ids[nid]
+
+        get_node("__budget__", "Budget", "budget")
+
+        # Groups
+        for gid, total in sorted(group_totals.items(), key=lambda x: -x[1]):
+            gname = next((v[1] for k, v in cat_to_group.items() if v[0] == gid), gid)
+            get_node(f"g_{gid}", gname, "category_group")
+            links.append(
+                {
+                    "source": "__budget__",
+                    "target": f"g_{gid}",
+                    "value": Decimal(str(round(total, 4))),
+                }
+            )
+
+        # Categories
+        group_to_cats: dict[str, list[str]] = {}
+        for cat_id, (gid, _) in cat_to_group.items():
+            group_to_cats.setdefault(gid, []).append(cat_id)
+            get_node(f"c_{cat_id}", cat_names.get(cat_id, cat_id), "category")
+            links.append(
+                {
+                    "source": f"g_{gid}",
+                    "target": f"c_{cat_id}",
+                    "value": Decimal(str(round(cat_totals[cat_id], 4))),
+                }
+            )
+
+        # Group categories for tooltip
+        group_categories: dict[str, list[dict]] = {}
+        for gid, cats in group_to_cats.items():
+            top10 = sorted(cats, key=lambda c: -cat_totals.get(c, 0))[:10]
+            group_categories[f"g_{gid}"] = [
+                {"name": cat_names.get(c, c), "total": Decimal(str(round(cat_totals.get(c, 0), 4)))}
+                for c in top10
+            ]
+
+        return {
+            "nodes": [{"id": n["id"], "name": n["name"], "type": n["type"]} for n in nodes],
+            "links": links,
+            "total_income": total_income,
+            "total_expense": Decimal(str(round(total_budgeted, 4))),
+            "category_payees": {},  # No payees in budgeted mode
+            "group_categories": group_categories,
+        }
+
+    async def _cash_flow_spent(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        account_ids: list[uuid.UUID] | None = None,
+    ) -> dict:
+        """Sankey based on actual transactions (includes payee data)."""
+        q = (
+            select(
+                Transaction.id,
+                Transaction.amount,
+                Transaction.payee_id,
+                Transaction.category_id,
+                Transaction.transfer_id,
+                Payee.name.label("payee_name"),
+                Category.name.label("category_name"),
+                CategoryGroup.id.label("group_id"),
+                CategoryGroup.name.label("group_name"),
+            )
+            .outerjoin(Payee, Transaction.payee_id == Payee.id)
+            .outerjoin(Category, Transaction.category_id == Category.id)
+            .outerjoin(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.transfer_id.is_(None),
+            )
+        )
+        if account_ids:
+            q = q.where(Transaction.account_id.in_(account_ids))
+        rows = (await self.session.execute(q)).all()
+
+        if not rows:
+            return {
+                "nodes": [],
+                "links": [],
+                "total_income": Decimal("0"),
+                "total_expense": Decimal("0"),
+                "category_payees": {},
+                "group_categories": {},
+            }
+
+        income_rows = [r for r in rows if r.amount > 0]
+        expense_rows = [r for r in rows if r.amount < 0]
+
+        total_income = Decimal(str(sum(float(r.amount) for r in income_rows)))
+        total_expense = Decimal(str(abs(sum(float(r.amount) for r in expense_rows))))
+
+        nodes: list[dict] = []
+        links: list[dict] = []
+        node_ids: dict[str, int] = {}
+
+        def get_node(nid: str, name: str, ntype: str) -> int:
+            if nid not in node_ids:
+                node_ids[nid] = len(nodes)
+                nodes.append({"id": nid, "name": name, "type": ntype})
+            return node_ids[nid]
+
+        get_node("__budget__", "Budget", "budget")
+
+        # Income: payees -> budget
+        income_by_payee: dict[str, float] = {}
+        for r in income_rows:
+            pname = r.payee_name or "Unknown Income"
+            pid = f"inc_{r.payee_id or pname}"
+            income_by_payee[pid] = income_by_payee.get(pid, 0) + float(r.amount)
+
+        for pid, total in sorted(income_by_payee.items(), key=lambda x: -x[1])[:15]:
+            pname = next(
+                (
+                    r.payee_name or "Unknown"
+                    for r in income_rows
+                    if f"inc_{r.payee_id or r.payee_name}" == pid
+                ),
+                pid,
+            )
+            get_node(pid, pname, "income_payee")
+            links.append(
+                {
+                    "source": pid,
+                    "target": "__budget__",
+                    "value": Decimal(str(round(total, 4))),
+                }
+            )
+
+        # Expenses: budget -> category group -> category -> top payees
+        group_totals: dict[str, float] = {}
+        cat_totals: dict[str, float] = {}
+        cat_to_group: dict[str, tuple[str, str]] = {}
+        payee_by_cat: dict[str, dict[str, float]] = {}
+
+        for r in expense_rows:
+            if not r.category_id:
+                continue
+            cat_id = str(r.category_id)
+            gid = str(r.group_id) if r.group_id else "__uncategorized__"
+            gname = r.group_name or "Uncategorized"
+
+            group_totals[gid] = group_totals.get(gid, 0) + abs(float(r.amount))
+            cat_totals[cat_id] = cat_totals.get(cat_id, 0) + abs(float(r.amount))
+            cat_to_group[cat_id] = (gid, gname)
+
+            pname = r.payee_name or "Unknown"
+            pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
+            if cat_id not in payee_by_cat:
+                payee_by_cat[cat_id] = {}
+            payee_by_cat[cat_id][pid] = payee_by_cat[cat_id].get(pid, 0) + abs(float(r.amount))
+
+        for gid, total in sorted(group_totals.items(), key=lambda x: -x[1]):
+            gname = next((v[1] for k, v in cat_to_group.items() if v[0] == gid), gid)
+            get_node(f"g_{gid}", gname, "category_group")
+            links.append(
+                {
+                    "source": "__budget__",
+                    "target": f"g_{gid}",
+                    "value": Decimal(str(round(total, 4))),
+                }
+            )
+
+        payee_names: dict[str, str] = {}
+        for r in expense_rows:
+            pname = r.payee_name or "Unknown"
+            pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
+            payee_names[pid] = pname
+
+        group_to_cats: dict[str, list[str]] = {}
+        cat_names: dict[str, str] = {}
+
+        category_payees: dict[str, list[dict]] = {}
+        for cat_id, cat_payees in payee_by_cat.items():
+            cat_info = cat_to_group.get(cat_id)
+            if not cat_info:
+                continue
+            gid, _ = cat_info
+            cat_rows = [r for r in expense_rows if r.category_id and str(r.category_id) == cat_id]
+            cat_name = next((r.category_name for r in cat_rows if r.category_name), cat_id)
+            cat_names[cat_id] = cat_name or cat_id
+            group_to_cats.setdefault(gid, []).append(cat_id)
+            get_node(f"c_{cat_id}", cat_name or cat_id, "category")
+            links.append(
+                {
+                    "source": f"g_{gid}",
+                    "target": f"c_{cat_id}",
+                    "value": Decimal(str(round(cat_totals[cat_id], 4))),
+                }
+            )
+            top10 = sorted(cat_payees.items(), key=lambda x: -x[1])[:10]
+            category_payees[f"c_{cat_id}"] = [
+                {"name": payee_names.get(pid, "Unknown"), "total": Decimal(str(round(ptotal, 4)))}
+                for pid, ptotal in top10
+            ]
+
+        group_categories: dict[str, list[dict]] = {}
+        for gid, cats in group_to_cats.items():
+            top10 = sorted(cats, key=lambda c: -cat_totals.get(c, 0))[:10]
+            group_categories[f"g_{gid}"] = [
+                {"name": cat_names.get(c, c), "total": Decimal(str(round(cat_totals.get(c, 0), 4)))}
+                for c in top10
+            ]
+
+        return {
+            "nodes": [{"id": n["id"], "name": n["name"], "type": n["type"]} for n in nodes],
+            "links": links,
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "category_payees": category_payees,
+            "group_categories": group_categories,
+        }
+
+    # ─── Budget vs Actual ─────────────────────────────────────────────────────
+
+    async def budget_vs_actual(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        category_ids: list[uuid.UUID] | None = None,
+    ) -> dict:
+        months_in_range = _months_in_range(start_date, end_date)
+
+        # Assignments for those months
+        assign_q = (
+            select(
+                BudgetAssignment.category_id,
+                BudgetAssignment.month,
+                BudgetAssignment.assigned,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+            )
+            .join(Category, BudgetAssignment.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                BudgetAssignment.budget_id == budget_id,
+                BudgetAssignment.month.in_(months_in_range),
+                Category.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+        )
+
+        # Activity (expenses) in range
+        spend_q = select(Transaction.category_id, Transaction.amount).where(
+            Transaction.budget_id == budget_id,
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.amount < 0,
+            Transaction.date >= start_date,
+            Transaction.date <= end_date,
+            Transaction.parent_transaction_id.is_(None),
+            Transaction.transfer_id.is_(None),
+            Transaction.category_id.isnot(None),
+        )
+        if category_ids:
+            assign_q = assign_q.where(BudgetAssignment.category_id.in_(category_ids))
+            spend_q = spend_q.where(Transaction.category_id.in_(category_ids))
+
+        assignments = (await self.session.execute(assign_q)).all()
+        spending = (await self.session.execute(spend_q)).all()
+
+        if not assignments and not spending:
+            return {"categories": [], "total_assigned": Decimal("0"), "total_spent": Decimal("0")}
+
+        # Aggregate assignments by category
+        assign_by_cat: dict[str, dict] = {}
+        for r in assignments:
+            cid = str(r.category_id)
+            if cid not in assign_by_cat:
+                assign_by_cat[cid] = {
+                    "category_id": cid,
+                    "category_name": r.category_name,
+                    "category_group_name": r.group_name,
+                    "assigned": Decimal("0"),
+                    "spent": Decimal("0"),
+                }
+            assign_by_cat[cid]["assigned"] += Decimal(str(r.assigned))
+
+        # Aggregate spending by category
+        for r in spending:
+            cid = str(r.category_id)
+            if cid not in assign_by_cat:
+                assign_by_cat[cid] = {
+                    "category_id": cid,
+                    "category_name": "Unknown",
+                    "category_group_name": "",
+                    "assigned": Decimal("0"),
+                    "spent": Decimal("0"),
+                }
+            assign_by_cat[cid]["spent"] += abs(Decimal(str(r.amount)))
+
+        categories = []
+        total_assigned = Decimal("0")
+        total_spent = Decimal("0")
+
+        for item in sorted(assign_by_cat.values(), key=lambda x: x["spent"], reverse=True):
+            variance = item["assigned"] - item["spent"]
+            variance_pct = float(variance / item["assigned"] * 100) if item["assigned"] > 0 else 0.0
+            categories.append({**item, "variance": variance, "variance_pct": variance_pct})
+            total_assigned += item["assigned"]
+            total_spent += item["spent"]
+
+        return {
+            "categories": categories,
+            "total_assigned": total_assigned,
+            "total_spent": total_spent,
+        }
+
+    # ─── Cumulative Variance ──────────────────────────────────────────────────
+
+    async def cumulative_variance(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+    ) -> list[dict]:
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        months_list = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+
+        assign_q = (
+            select(BudgetAssignment.month, BudgetAssignment.assigned)
+            .join(Category, BudgetAssignment.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                BudgetAssignment.budget_id == budget_id,
+                BudgetAssignment.month.in_(months_list),
+                CategoryGroup.is_system == False,  # noqa: E712
+                Category.is_deleted == False,  # noqa: E712
+            )
+        )
+        assignments = (await self.session.execute(assign_q)).all()
+
+        start = months_list[0]
+        end = _last_day(months_list[-1])
+        spend_q = select(Transaction.date, Transaction.amount).where(
+            Transaction.budget_id == budget_id,
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.amount < 0,
+            Transaction.date >= start,
+            Transaction.date <= end,
+            Transaction.parent_transaction_id.is_(None),
+            Transaction.transfer_id.is_(None),
+            Transaction.category_id.isnot(None),
+        )
+        spending = (await self.session.execute(spend_q)).all()
+
+        assign_by_month: dict[date, Decimal] = {}
+        for r in assignments:
+            m = r.month if isinstance(r.month, date) else date.fromisoformat(str(r.month))
+            assign_by_month[m] = assign_by_month.get(m, Decimal("0")) + Decimal(str(r.assigned))
+
+        spend_by_month: dict[date, Decimal] = {}
+        for r in spending:
+            m = r.date.replace(day=1)
+            spend_by_month[m] = spend_by_month.get(m, Decimal("0")) + abs(Decimal(str(r.amount)))
+
+        results = []
+        cumulative = Decimal("0")
+        for month in months_list:
+            assigned = assign_by_month.get(month, Decimal("0"))
+            spent = spend_by_month.get(month, Decimal("0"))
+            variance = assigned - spent
+            cumulative += variance
+            results.append(
+                {
+                    "month": month,
+                    "budget_assigned": assigned,
+                    "actual_spent": spent,
+                    "monthly_variance": variance,
+                    "cumulative_variance": cumulative,
+                }
+            )
+
+        return results
+
+    # ─── Category Volatility ─────────────────────────────────────────────────
+
+    async def category_volatility(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+    ) -> list[dict]:
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        start = _subtract_months(first_of_month, months - 1)
+
+        q = (
+            select(
+                Transaction.date,
+                Transaction.amount,
+                Transaction.category_id,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+            )
+            .join(Category, Transaction.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.amount < 0,
+                Transaction.date >= start,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.transfer_id.is_(None),
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+        )
+        rows = (await self.session.execute(q)).all()
+
+        if not rows:
+            return []
+
+        df = pl.DataFrame(
+            {
+                "date": [r.date for r in rows],
+                "amount": [abs(float(r.amount)) for r in rows],
+                "category_id": [str(r.category_id) for r in rows],
+                "category_name": [r.category_name for r in rows],
+                "group_name": [r.group_name for r in rows],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64},
+        )
+
+        monthly = (
+            df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
+            .group_by(["category_id", "category_name", "group_name", "month"])
+            .agg(pl.col("amount").sum().alias("monthly_total"))
+        )
+
+        stats = (
+            monthly.group_by(["category_id", "category_name", "group_name"])
+            .agg(
+                pl.col("monthly_total").mean().alias("mean"),
+                pl.col("monthly_total").std().alias("std_dev"),
+                pl.col("monthly_total").min().alias("min_val"),
+                pl.col("monthly_total").max().alias("max_val"),
+                pl.col("monthly_total").quantile(0.25).alias("p25"),
+                pl.col("monthly_total").quantile(0.75).alias("p75"),
+                pl.col("monthly_total").count().alias("months_included"),
+            )
+            .sort("mean", descending=True)
+        )
+
+        return [
+            {
+                "category_id": row["category_id"],
+                "category_name": row["category_name"],
+                "category_group_name": row["group_name"],
+                "mean": Decimal(str(round(row["mean"] or 0, 4))),
+                "std_dev": Decimal(str(round(row["std_dev"] or 0, 4))),
+                "min_val": Decimal(str(round(row["min_val"] or 0, 4))),
+                "max_val": Decimal(str(round(row["max_val"] or 0, 4))),
+                "p25": Decimal(str(round(row["p25"] or 0, 4))),
+                "p75": Decimal(str(round(row["p75"] or 0, 4))),
+                "months_included": int(row["months_included"]),
+            }
+            for row in stats.iter_rows(named=True)
+        ]
+
+    # ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────
+
+    async def spending_grouped(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        category_ids: list[uuid.UUID] | None = None,
+        account_ids: list[uuid.UUID] | None = None,
+    ) -> tuple[list[dict], Decimal]:
+        q = (
+            select(
+                Category.id,
+                Category.name,
+                CategoryGroup.id.label("group_id"),
+                CategoryGroup.name.label("group_name"),
+                Transaction.amount,
+            )
+            .join(Transaction, Transaction.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.amount < 0,
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.transfer_id.is_(None),
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+        )
+        if category_ids:
+            q = q.where(Transaction.category_id.in_(category_ids))
+        if account_ids:
+            q = q.where(Transaction.account_id.in_(account_ids))
+        rows = (await self.session.execute(q)).all()
+
+        if not rows:
+            return [], Decimal("0")
+
+        df = pl.DataFrame(
+            {
+                "cat_id": [str(r.id) for r in rows],
+                "cat_name": [r.name for r in rows],
+                "group_id": [str(r.group_id) for r in rows],
+                "group_name": [r.group_name for r in rows],
+                "amount": [abs(float(r.amount)) for r in rows],
+            }
+        )
+
+        cat_agg = (
+            df.group_by(["cat_id", "cat_name", "group_id", "group_name"])
+            .agg(
+                pl.col("amount").sum().alias("total"),
+                pl.col("amount").count().alias("count"),
+            )
+            .sort("total", descending=True)
+        )
+
+        grand_total = float(cat_agg["total"].sum())
+
+        items = [
+            {
+                "id": row["cat_id"],
+                "name": row["cat_name"],
+                "parent_id": row["group_id"],
+                "parent_name": row["group_name"],
+                "total": Decimal(str(row["total"])),
+                "count": int(row["count"]),
+                "pct": float(row["total"] / grand_total * 100) if grand_total else 0.0,
+            }
+            for row in cat_agg.iter_rows(named=True)
+        ]
+
+        return items, Decimal(str(grand_total))
+
+    # ─── Seasonality ─────────────────────────────────────────────────────────
+
+    async def seasonality(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+    ) -> dict:
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        start = _subtract_months(first_of_month, months - 1)
+
+        q = (
+            select(
+                Transaction.date,
+                Transaction.amount,
+                Transaction.category_id,
+                Category.name.label("category_name"),
+            )
+            .join(Category, Transaction.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.amount < 0,
+                Transaction.date >= start,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.transfer_id.is_(None),
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+        )
+        rows = (await self.session.execute(q)).all()
+
+        months_list = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+
+        if not rows:
+            return {"cells": [], "months": months_list, "categories": []}
+
+        df = pl.DataFrame(
+            {
+                "date": [r.date for r in rows],
+                "amount": [abs(float(r.amount)) for r in rows],
+                "category_id": [str(r.category_id) for r in rows],
+                "category_name": [r.category_name for r in rows],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64},
+        )
+
+        agg = (
+            df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
+            .group_by(["category_id", "category_name", "month"])
+            .agg(pl.col("amount").sum().alias("total"))
+            .sort(["month", "total"], descending=[False, True])
+        )
+
+        cells = [
+            {
+                "category_id": row["category_id"],
+                "category_name": row["category_name"],
+                "month": row["month"],
+                "total": Decimal(str(row["total"])),
+            }
+            for row in agg.iter_rows(named=True)
+        ]
+
+        # Top categories by total spend across period
+        cat_totals = (
+            agg.group_by(["category_id", "category_name"])
+            .agg(pl.col("total").sum().alias("grand_total"))
+            .sort("grand_total", descending=True)
+            .head(20)
+        )
+        categories = [
+            {"id": row["category_id"], "name": row["category_name"]}
+            for row in cat_totals.iter_rows(named=True)
+        ]
+
+        return {"cells": cells, "months": months_list, "categories": categories}
+
+    # ─── Payee Analysis ───────────────────────────────────────────────────────
+
+    async def payee_analysis(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        limit: int = 25,
+        payee_ids: list[uuid.UUID] | None = None,
+        account_ids: list[uuid.UUID] | None = None,
+    ) -> tuple[list[dict], Decimal]:
+        q = (
+            select(
+                Transaction.date,
+                Transaction.amount,
+                Transaction.payee_id,
+                Transaction.category_id,
+                Payee.name.label("payee_name"),
+                Category.name.label("category_name"),
+            )
+            .outerjoin(Payee, Transaction.payee_id == Payee.id)
+            .outerjoin(Category, Transaction.category_id == Category.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.amount < 0,
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.transfer_id.is_(None),
+                Transaction.payee_id.isnot(None),
+            )
+        )
+        if payee_ids:
+            q = q.where(Transaction.payee_id.in_(payee_ids))
+        if account_ids:
+            q = q.where(Transaction.account_id.in_(account_ids))
+        rows = (await self.session.execute(q)).all()
+
+        if not rows:
+            return [], Decimal("0")
+
+        df = pl.DataFrame(
+            {
+                "date": [r.date for r in rows],
+                "amount": [abs(float(r.amount)) for r in rows],
+                "payee_id": [str(r.payee_id) for r in rows],
+                "payee_name": [r.payee_name or "Unknown" for r in rows],
+                "category_id": [str(r.category_id) if r.category_id else "" for r in rows],
+                "category_name": [r.category_name or "Uncategorized" for r in rows],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64},
+        )
+
+        payee_agg = (
+            df.group_by(["payee_id", "payee_name"])
+            .agg(
+                pl.col("amount").sum().alias("total"),
+                pl.col("amount").count().alias("count"),
+            )
+            .sort("total", descending=True)
+            .head(limit)
+        )
+
+        grand_total = Decimal(str(payee_agg["total"].sum()))
+
+        payees = []
+        for row in payee_agg.iter_rows(named=True):
+            pid = row["payee_id"]
+            payee_df = df.filter(pl.col("payee_id") == pid)
+
+            # Monthly trend
+            trend = (
+                payee_df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
+                .group_by("month")
+                .agg(pl.col("amount").sum().alias("total"))
+                .sort("month")
+            )
+            monthly_trend = [
+                {"month": r["month"], "total": Decimal(str(r["total"]))}
+                for r in trend.iter_rows(named=True)
+            ]
+
+            # Top categories
+            top_cats = (
+                payee_df.filter(pl.col("category_name") != "Uncategorized")
+                .group_by("category_name")
+                .agg(pl.col("amount").sum().alias("total"))
+                .sort("total", descending=True)
+                .head(3)
+            )
+            top_categories = [
+                {"category_name": r["category_name"], "total": Decimal(str(r["total"]))}
+                for r in top_cats.iter_rows(named=True)
+            ]
+
+            # Recurring: appears in >= 3 different months
+            months_active = payee_df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))[
+                "month"
+            ].n_unique()
+            is_recurring = months_active >= 3
+
+            payees.append(
+                {
+                    "payee_id": pid,
+                    "payee_name": row["payee_name"],
+                    "total": Decimal(str(row["total"])),
+                    "count": int(row["count"]),
+                    "monthly_trend": monthly_trend,
+                    "top_categories": top_categories,
+                    "is_recurring": is_recurring,
+                }
+            )
+
+        return payees, grand_total
+
+    # ─── Day Patterns ─────────────────────────────────────────────────────────
+
+    async def day_patterns(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        category_ids: list[uuid.UUID] | None = None,
+        account_ids: list[uuid.UUID] | None = None,
+    ) -> list[dict]:
+        q = select(Transaction.date, Transaction.amount).where(
+            Transaction.budget_id == budget_id,
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.amount < 0,
+            Transaction.date >= start_date,
+            Transaction.date <= end_date,
+            Transaction.parent_transaction_id.is_(None),
+            Transaction.transfer_id.is_(None),
+        )
+        if category_ids:
+            q = q.where(Transaction.category_id.in_(category_ids))
+        if account_ids:
+            q = q.where(Transaction.account_id.in_(account_ids))
+        rows = (await self.session.execute(q)).all()
+
+        if not rows:
+            return [
+                {
+                    "day_of_week": i,
+                    "day_name": _DAY_NAMES[i],
+                    "total": Decimal("0"),
+                    "count": 0,
+                    "avg_transaction": Decimal("0"),
+                }
+                for i in range(7)
+            ]
+
+        df = pl.DataFrame(
+            {
+                "date": [r.date for r in rows],
+                "amount": [abs(float(r.amount)) for r in rows],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64},
+        )
+
+        agg = (
+            df.with_columns(((pl.col("date").dt.weekday() - 1) % 7).alias("dow"))
+            .group_by("dow")
+            .agg(
+                pl.col("amount").sum().alias("total"),
+                pl.col("amount").count().alias("count"),
+                pl.col("amount").mean().alias("avg"),
+            )
+            .sort("dow")
+        )
+
+        dow_map = {row["dow"]: row for row in agg.iter_rows(named=True)}
+
+        return [
+            {
+                "day_of_week": i,
+                "day_name": _DAY_NAMES[i],
+                "total": (
+                    Decimal(str(round(dow_map[i]["total"], 4))) if i in dow_map else Decimal("0")
+                ),
+                "count": int(dow_map[i]["count"]) if i in dow_map else 0,
+                "avg_transaction": (
+                    Decimal(str(round(dow_map[i]["avg"], 4))) if i in dow_map else Decimal("0")
+                ),
+            }
+            for i in range(7)
+        ]
+
+    # ─── Large Transactions (Timeline) ────────────────────────────────────────
+
+    async def large_transactions(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        limit: int = 50,
+        category_ids: list[uuid.UUID] | None = None,
+        account_ids: list[uuid.UUID] | None = None,
+    ) -> list[dict]:
+        q = (
+            select(
+                Transaction.id,
+                Transaction.date,
+                Transaction.amount,
+                Transaction.memo,
+                Payee.name.label("payee_name"),
+                Category.name.label("category_name"),
+            )
+            .outerjoin(Payee, Transaction.payee_id == Payee.id)
+            .outerjoin(Category, Transaction.category_id == Category.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.transfer_id.is_(None),
+            )
+        )
+        if category_ids:
+            q = q.where(Transaction.category_id.in_(category_ids))
+        if account_ids:
+            q = q.where(Transaction.account_id.in_(account_ids))
+        q = q.order_by(Transaction.amount).limit(limit)  # most negative first
+        rows = (await self.session.execute(q)).all()
+
+        return [
+            {
+                "id": str(r.id),
+                "date": r.date,
+                "amount": Decimal(str(r.amount)),
+                "payee_name": r.payee_name,
+                "category_name": r.category_name,
+                "memo": r.memo,
+            }
+            for r in rows
+        ]
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _empty_dashboard() -> dict:
+    return {
+        "net_worth": Decimal("0"),
+        "net_worth_prev": Decimal("0"),
+        "burn_rate_30": Decimal("0"),
+        "burn_rate_90": Decimal("0"),
+        "savings_rate": 0.0,
+        "days_until_zero": None,
+        "income_this_month": Decimal("0"),
+        "expenses_this_month": Decimal("0"),
+        "expenses_prev_month": Decimal("0"),
+        "top_categories": [],
+    }
+
+
+def _months_in_range(start_date: date, end_date: date) -> list[date]:
+    months = []
+    cur = start_date.replace(day=1)
+    while cur <= end_date:
+        months.append(cur)
+        if cur.month == 12:
+            cur = cur.replace(year=cur.year + 1, month=1)
+        else:
+            cur = cur.replace(month=cur.month + 1)
+    return months
 
 
 def _subtract_months(d: date, months: int) -> date:

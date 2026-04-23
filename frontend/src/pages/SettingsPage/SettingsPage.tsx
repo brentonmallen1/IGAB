@@ -5,14 +5,17 @@ import { useBudgets } from '../../api/budgets'
 import { useSettings, useUpdateSetting } from '../../api/settings'
 import {
   useSimpleFINConnections,
-  useSetupSimpleFIN,
-  useUpdateSimpleFINInterval,
+  useSimpleFINRateLimitStatus,
+  useUpdateSimpleFINConnection,
   useDeleteSimpleFINConnection,
 } from '../../api/simplefin'
 import { SimpleFINSetup } from '../../components/simplefin/SimpleFINSetup'
+import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { formatMoney } from '../../utils/money'
+import { useUIStore } from '../../stores/uiStore'
 import type { AccountType } from '../../types'
 import './SettingsPage.css'
+
 
 const THEMES: { value: Theme; label: string }[] = [
   { value: 'dark', label: 'Dark' },
@@ -47,9 +50,7 @@ export function SettingsPage() {
   const updateAccount = useUpdateAccount(budgetId ?? '')
   const deleteAccount = useDeleteAccount(budgetId ?? '')
 
-  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
-  const [editAccName, setEditAccName] = useState('')
-  const [editAccType, setEditAccType] = useState<AccountType>('checking')
+  const { isAccountEditorOpen, editingAccountId, openAccountEditor, closeAccountEditor } = useUIStore()
 
   const { data: appSettings } = useSettings()
   const updateSetting = useUpdateSetting()
@@ -76,21 +77,11 @@ export function SettingsPage() {
   }
 
   const { data: sfConnections } = useSimpleFINConnections()
-  const updateInterval = useUpdateSimpleFINInterval()
+  const updateConnection = useUpdateSimpleFINConnection()
   const deleteConnection = useDeleteSimpleFINConnection()
 
-  function startEditAccount(acc: { id: string; name: string; account_type: AccountType }) {
-    setEditingAccountId(acc.id)
-    setEditAccName(acc.name)
-    setEditAccType(acc.account_type)
-  }
-
-  async function saveEditAccount(e: React.FormEvent) {
-    e.preventDefault()
-    if (!editingAccountId || !editAccName.trim()) return
-    await updateAccount.mutateAsync({ id: editingAccountId, name: editAccName.trim(), account_type: editAccType })
-    setEditingAccountId(null)
-  }
+  const firstConnectionId = sfConnections && sfConnections.length > 0 ? sfConnections[0].id : null
+  const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(firstConnectionId)
 
   async function handleDeleteAccount(id: string, name: string) {
     if (!confirm(`Delete account "${name}"? This cannot be undone.`)) return
@@ -184,62 +175,41 @@ export function SettingsPage() {
           </div>
           <div className="settings-section__body">
             <div className="settings-account-list">
-              {accounts?.map((acc) =>
-                editingAccountId === acc.id ? (
-                  <form key={acc.id} className="settings-account-edit" onSubmit={saveEditAccount}>
-                    <input
-                      className="settings-input"
-                      value={editAccName}
-                      onChange={(e) => setEditAccName(e.target.value)}
-                      autoFocus
-                    />
-                    <select
-                      className="settings-input"
-                      value={editAccType}
-                      onChange={(e) => setEditAccType(e.target.value as AccountType)}
-                    >
-                      {ACCOUNT_TYPES.map((t) => (
-                        <option key={t.value} value={t.value}>{t.label}</option>
-                      ))}
-                    </select>
-                    <button type="submit" className="settings-btn settings-btn--primary">Save</button>
-                    <button type="button" className="settings-btn settings-btn--secondary" onClick={() => setEditingAccountId(null)}>Cancel</button>
-                  </form>
-                ) : (
-                  <div key={acc.id} className={`settings-account-item ${acc.is_closed ? 'settings-account-item--closed' : ''}`}>
-                    <div>
-                      <div className="settings-account-item__name">{acc.name}</div>
-                      <div className="settings-account-item__type">
-                        {acc.account_type.replace('_', ' ')}
-                        {acc.is_closed ? ' · closed' : ''}
-                      </div>
-                    </div>
-                    <div className="settings-account-item__actions">
-                      <span className={`settings-account-item__balance ${Number(acc.balance) < 0 ? 'negative' : ''}`}>
-                        {formatMoney(Number(acc.balance))}
-                      </span>
-                      <button
-                        className="settings-btn settings-btn--secondary"
-                        onClick={() => startEditAccount(acc)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="settings-btn settings-btn--secondary"
-                        onClick={() => handleToggleClose(acc.id, acc.is_closed ?? false)}
-                      >
-                        {acc.is_closed ? 'Reopen' : 'Close'}
-                      </button>
-                      <button
-                        className="settings-btn settings-btn--danger"
-                        onClick={() => handleDeleteAccount(acc.id, acc.name)}
-                      >
-                        Delete
-                      </button>
+              {accounts?.map((acc) => (
+                <div key={acc.id} className={`settings-account-item ${acc.is_closed ? 'settings-account-item--closed' : ''}`}>
+                  <div>
+                    <div className="settings-account-item__name">{acc.name}</div>
+                    <div className="settings-account-item__type">
+                      {acc.account_type.replace('_', ' ')}
+                      {acc.simplefin_account_name ? ` · ${acc.simplefin_account_name}` : ''}
+                      {acc.is_closed ? ' · closed' : ''}
                     </div>
                   </div>
-                )
-              )}
+                  <div className="settings-account-item__actions">
+                    <span className={`settings-account-item__balance ${Number(acc.balance) < 0 ? 'negative' : ''}`}>
+                      {formatMoney(Number(acc.balance))}
+                    </span>
+                    <button
+                      className="settings-btn settings-btn--secondary"
+                      onClick={() => openAccountEditor(acc.id)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="settings-btn settings-btn--secondary"
+                      onClick={() => handleToggleClose(acc.id, acc.is_closed ?? false)}
+                    >
+                      {acc.is_closed ? 'Reopen' : 'Close'}
+                    </button>
+                    <button
+                      className="settings-btn settings-btn--danger"
+                      onClick={() => handleDeleteAccount(acc.id, acc.name)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <form className="settings-add-form" onSubmit={handleAddAccount}>
@@ -279,33 +249,91 @@ export function SettingsPage() {
         <div className="settings-section__body">
           {sfConnections && sfConnections.length > 0 ? (
             sfConnections.map((conn) => (
-              <div key={conn.id} className="settings-row" style={{ flexWrap: 'wrap', gap: '8px' }}>
-                <div>
-                  <div className="settings-row__label">Connection</div>
-                  <div className="settings-row__desc">
-                    Last synced: {conn.last_sync_at ? new Date(conn.last_sync_at).toLocaleString() : 'Never'}
-                    {' · '}Requests today: {conn.requests_today}
+              <div key={conn.id} className="sf-connection">
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Sync enabled</div>
+                    <div className="settings-row__desc">
+                      Last synced: {conn.last_sync_at ? new Date(conn.last_sync_at).toLocaleString() : 'Never'}
+                    </div>
                   </div>
+                  <input
+                    type="checkbox"
+                    checked={conn.sync_enabled}
+                    onChange={(e) => updateConnection.mutate({ id: conn.id, sync_enabled: e.target.checked })}
+                  />
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Daily auto-sync time</div>
+                    <div className="settings-row__desc">Hour of day (UTC) to automatically sync</div>
+                  </div>
                   <select
                     className="settings-select"
-                    value={conn.sync_interval_hours}
-                    onChange={(e) =>
-                      updateInterval.mutate({ id: conn.id, sync_interval_hours: Number(e.target.value) })
-                    }
+                    value={conn.daily_sync_time ? String(parseInt(conn.daily_sync_time.split(':')[0], 10)) : ''}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      updateConnection.mutate({
+                        id: conn.id,
+                        daily_sync_time: val === '' ? null : `${val.padStart(2, '0')}:00:00`,
+                      })
+                    }}
+                    style={{ minWidth: 130 }}
                   >
-                    {[1, 4, 8, 12, 24, 48].map((h) => (
-                      <option key={h} value={h}>{h}h interval</option>
+                    <option value="">Disabled</option>
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={String(i)}>
+                        {String(i).padStart(2, '0')}:00 UTC
+                      </option>
                     ))}
                   </select>
+                </div>
+
+                {rateLimitStatus && (
+                  <div className="sf-usage">
+                    <div className="sf-usage__row">
+                      <span className="sf-usage__label">Global syncs today</span>
+                      <span className="sf-usage__count">{rateLimitStatus.global_used} / 12</span>
+                    </div>
+                    <div className="sf-usage__bar">
+                      <div
+                        className="sf-usage__fill"
+                        style={{ width: `${Math.min(100, (rateLimitStatus.global_used / 12) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="sf-usage__row" style={{ marginTop: 6 }}>
+                      <span className="sf-usage__label">Account syncs today</span>
+                      <span className="sf-usage__count">{rateLimitStatus.account_used} / 12</span>
+                    </div>
+                    <div className="sf-usage__bar">
+                      <div
+                        className="sf-usage__fill"
+                        style={{ width: `${Math.min(100, (rateLimitStatus.account_used / 12) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="sf-usage__reset">Resets at midnight UTC</div>
+                  </div>
+                )}
+
+                {conn.last_sync_error && (
+                  <div className="sf-error">
+                    <span className="sf-error__label">Last sync error</span>
+                    <span className="sf-error__msg">{conn.last_sync_error}</span>
+                    {conn.last_sync_error_at && (
+                      <span className="sf-error__time">{new Date(conn.last_sync_error_at).toLocaleString()}</span>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ paddingTop: 4 }}>
                   <button
-                    className="settings-btn settings-btn--secondary"
+                    className="settings-btn settings-btn--danger"
                     onClick={() => {
                       if (confirm('Remove this SimpleFIN connection?')) deleteConnection.mutate(conn.id)
                     }}
                   >
-                    Remove
+                    Remove connection
                   </button>
                 </div>
               </div>
@@ -315,6 +343,7 @@ export function SettingsPage() {
           )}
         </div>
       </div>
+
 
       {/* AI Settings */}
       <div className="settings-section">
@@ -385,6 +414,10 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {isAccountEditorOpen && editingAccountId && (
+        <AccountSettingsModal accountId={editingAccountId} onClose={closeAccountEditor} />
+      )}
     </div>
   )
 }

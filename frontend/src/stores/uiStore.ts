@@ -9,6 +9,7 @@ interface UIState {
   isTransactionEditorOpen: boolean
   editingTransactionId: string | null
   isAccountEditorOpen: boolean
+  editingAccountId: string | null
   mobileSidebarOpen: boolean
   sidebarCollapsed: boolean
   budgetRowMode: 'expanded' | 'compressed'
@@ -30,7 +31,7 @@ interface UIState {
   expandAll: () => void
   openTransactionEditor: (transactionId?: string) => void
   closeTransactionEditor: () => void
-  openAccountEditor: () => void
+  openAccountEditor: (accountId: string) => void
   closeAccountEditor: () => void
   setMobileSidebarOpen: (open: boolean) => void
   toggleSidebarCollapsed: () => void
@@ -73,6 +74,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   isTransactionEditorOpen: false,
   editingTransactionId: null,
   isAccountEditorOpen: false,
+  editingAccountId: null,
   mobileSidebarOpen: false,
   sidebarCollapsed: false,
   budgetRowMode: 'expanded',
@@ -106,8 +108,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   closeTransactionEditor: () =>
     set({ isTransactionEditorOpen: false, editingTransactionId: null }),
 
-  openAccountEditor: () => set({ isAccountEditorOpen: true }),
-  closeAccountEditor: () => set({ isAccountEditorOpen: false }),
+  openAccountEditor: (accountId) => set({ isAccountEditorOpen: true, editingAccountId: accountId }),
+  closeAccountEditor: () => set({ isAccountEditorOpen: false, editingAccountId: null }),
 
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

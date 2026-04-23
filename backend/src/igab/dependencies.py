@@ -20,6 +20,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.settings_repo import SettingsRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.target_repo import TargetRepository
+from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.user_repo import UserRepository
 from igab.services.ai_service import AIService
@@ -31,6 +32,7 @@ from igab.services.scheduled_transaction_service import ScheduledTransactionServ
 from igab.services.settings_service import SettingsService
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.target_service import TargetService
+from igab.services.transaction_matching_service import TransactionMatchingService
 from igab.services.transaction_service import TransactionService
 
 bearer_scheme = HTTPBearer()
@@ -141,14 +143,30 @@ def get_transaction_service(
     return TransactionService(session, transaction_repo, account_repo, category_repo, payee_repo)
 
 
+def get_transaction_match_repo(session: SessionDep) -> TransactionMatchRepository:
+    return TransactionMatchRepository(session)
+
+
+def get_transaction_matching_service(
+    session: SessionDep,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    match_repo: Annotated[TransactionMatchRepository, Depends(get_transaction_match_repo)],
+    payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+) -> TransactionMatchingService:
+    return TransactionMatchingService(session, txn_repo, match_repo, payee_repo)
+
+
 def get_simplefin_service(
     session: SessionDep,
     repo: Annotated[SimpleFINRepository, Depends(get_simplefin_repo)],
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    matching_service: Annotated[
+        TransactionMatchingService, Depends(get_transaction_matching_service)
+    ],
 ) -> SimpleFINService:
-    return SimpleFINService(session, repo, account_repo, txn_repo, txn_service)
+    return SimpleFINService(session, repo, account_repo, txn_repo, txn_service, matching_service)
 
 
 def get_reconciliation_service(

@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Toaster } from 'react-hot-toast'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { MainLayout } from './components/layout/MainLayout/MainLayout'
 import { LoginPage } from './pages/LoginPage/LoginPage'
@@ -10,6 +11,7 @@ import { ImportPage } from './pages/ImportPage/ImportPage'
 import { ReportsPage } from './pages/ReportsPage/ReportsPage'
 import { ScheduledTransactionsPage } from './pages/ScheduledTransactionsPage/ScheduledTransactionsPage'
 import { PayeesPage } from './pages/PayeesPage/PayeesPage'
+import { AccountsOverviewPage } from './pages/AccountsOverviewPage/AccountsOverviewPage'
 import { useAppStore } from './stores/appStore'
 
 const queryClient = new QueryClient({
@@ -39,6 +41,13 @@ function BudgetRedirect() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          duration: 4000,
+          style: { fontSize: '13px', maxWidth: '400px' },
+        }}
+      />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -46,6 +55,7 @@ function App() {
             <Route path="/budgets" element={<BudgetSelectorPage />} />
             <Route element={<MainLayout />}>
               <Route path="/budget" element={<BudgetPage />} />
+              <Route path="/accounts" element={<AccountsOverviewPage />} />
               <Route path="/accounts/:accountId" element={<AccountPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/import" element={<ImportPage />} />

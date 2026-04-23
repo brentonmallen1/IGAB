@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
-import { X, Trash2, Sparkles, Split, Plus } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   useCreateTransaction,
   useUpdateTransaction,
   useDeleteTransaction,
   usePayees,
+  useSimilarTransactions,
 } from '../../../api/transactions'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
@@ -55,6 +56,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   const [isTransfer, setIsTransfer] = useState(!!transaction?.transfer_id)
   const [transferAccountId, setTransferAccountId] = useState('')
   const [showPayeeDropdown, setShowPayeeDropdown] = useState(false)
+  const [showSimilar, setShowSimilar] = useState(false)
   const [isSplit, setIsSplit] = useState(false)
   const [splits, setSplits] = useState<SplitDraft[]>([
     { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
@@ -199,6 +201,21 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   }
 
   const isPending = createTxn.isPending || updateTxn.isPending || deleteTxn.isPending
+
+  const similarAmount = useMemo(() => {
+    const o = parseFloat(outflow)
+    const i = parseFloat(inflow)
+    if (o > 0) return -o
+    if (i > 0) return i
+    return null
+  }, [outflow, inflow])
+
+  const { data: similarTxns = [] } = useSimilarTransactions(
+    accountId,
+    similarAmount,
+    date || null,
+    transaction?.id ?? null,
+  )
 
   const splitIsValid = (() => {
     if (!isSplit) return true
@@ -467,6 +484,35 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
             </div>
           </div>
         </div>
+
+        {similarTxns.length > 0 && (
+          <div className="txn-editor__similar">
+            <button
+              type="button"
+              className="txn-editor__similar-toggle"
+              onClick={() => setShowSimilar((v) => !v)}
+            >
+              <AlertTriangle size={13} />
+              {similarTxns.length} similar transaction{similarTxns.length !== 1 ? 's' : ''} found
+              {showSimilar ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {showSimilar && (
+              <ul className="txn-editor__similar-list">
+                {similarTxns.map((t) => (
+                  <li key={t.id} className="txn-editor__similar-item">
+                    <span className="txn-editor__similar-date">{t.date}</span>
+                    <span className={t.amount < 0 ? 'txn-outflow' : 'txn-inflow'}>
+                      {t.amount < 0 ? `-$${Math.abs(t.amount).toFixed(2)}` : `$${t.amount.toFixed(2)}`}
+                    </span>
+                    <span className="txn-editor__similar-desc">
+                      {t.import_description || t.memo || '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         <div className="txn-editor__footer">
           {isEdit ? (

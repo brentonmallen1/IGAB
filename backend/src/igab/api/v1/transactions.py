@@ -1,18 +1,23 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from igab.api.v1.schemas.transaction import (
+    BulkApprove,
     BulkCategorize,
     BulkClearedUpdate,
     BulkDelete,
+    MergeTransactionsRequest,
     PayeeCreate,
     PayeeMergeRequest,
     PayeeResponse,
     PayeeUpdate,
     PayeeWithCount,
+    PendingReviewCount,
+    SimilarTransactionResponse,
     TransactionCreate,
     TransactionResponse,
     TransactionUpdate,
@@ -47,19 +52,60 @@ async def list_account_transactions(
     account_id: uuid.UUID,
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
-    limit: int = Query(100, le=500),
+    limit: int = Query(100, le=5000),
     offset: int = 0,
     start_date: date | None = None,
     end_date: date | None = None,
+    search: str | None = None,
+    cleared: str | None = None,
+    uncategorized: bool = False,
+    unapproved: bool = False,
+    is_or_mode: bool = False,
+    category_ids: str | None = None,
+    payee_ids: str | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
 ) -> list[TransactionResponse]:
+    parsed_cat_ids = [uuid.UUID(x) for x in category_ids.split(",") if x] if category_ids else None
+    parsed_pay_ids = [uuid.UUID(x) for x in payee_ids.split(",") if x] if payee_ids else None
     txns = await txn_repo.get_for_account(
         account_id,
         limit=limit,
         offset=offset,
         start_date=start_date,
         end_date=end_date,
+        search=search,
+        cleared=cleared,
+        uncategorized=uncategorized,
+        unapproved=unapproved,
+        is_or_mode=is_or_mode,
+        category_ids=parsed_cat_ids,
+        payee_ids=parsed_pay_ids,
+        amount_min=amount_min,
+        amount_max=amount_max,
     )
     return [TransactionResponse.model_validate(t) for t in txns]
+
+
+@router.get(
+    "/accounts/{account_id}/transactions/similar",
+    response_model=list[SimilarTransactionResponse],
+)
+async def find_similar_transactions(
+    account_id: uuid.UUID,
+    current_user: CurrentUser,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    amount: float = Query(...),
+    date: date = Query(...),
+    exclude_id: uuid.UUID | None = None,
+) -> list[SimilarTransactionResponse]:
+    txns = await txn_repo.find_similar_transactions(
+        account_id,
+        Decimal(str(amount)),
+        date,
+        exclude_id,
+    )
+    return [SimilarTransactionResponse.model_validate(t) for t in txns]
 
 
 @router.post(
@@ -217,6 +263,54 @@ async def approve_transaction(
 ) -> TransactionResponse:
     txn = await txn_repo.update(transaction_id, approved=True)
     return TransactionResponse.model_validate(txn)
+
+
+@router.patch("/{budget_id}/transactions/bulk-approve", status_code=status.HTTP_204_NO_CONTENT)
+async def bulk_approve(
+    budget_id: uuid.UUID,
+    body: BulkApprove,
+    current_user: CurrentUser,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+) -> None:
+    for txn_id in body.transaction_ids:
+        try:
+            await txn_repo.update(txn_id, approved=True)
+        except NotFoundError:
+            pass
+
+
+@router.post("/{budget_id}/transactions/merge", response_model=TransactionResponse)
+async def merge_transactions(
+    budget_id: uuid.UUID,
+    body: MergeTransactionsRequest,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+) -> TransactionResponse:
+    try:
+        txn = await txn_service.merge(budget_id, body.transaction_ids, body.survivor_id)
+    except (InvariantViolation, NotFoundError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return TransactionResponse.model_validate(txn)
+
+
+@router.get("/{budget_id}/transactions/pending-review-count", response_model=PendingReviewCount)
+async def get_pending_review_count(
+    budget_id: uuid.UUID,
+    current_user: CurrentUser,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+) -> PendingReviewCount:
+    counts = await txn_repo.count_pending_review(budget_id)
+    return PendingReviewCount(**counts)
+
+
+@router.get("/accounts/{account_id}/pending-review-count", response_model=PendingReviewCount)
+async def get_pending_review_count_for_account(
+    account_id: uuid.UUID,
+    current_user: CurrentUser,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+) -> PendingReviewCount:
+    counts = await txn_repo.count_pending_review_for_account(account_id)
+    return PendingReviewCount(**counts)
 
 
 # ─── Payees ───────────────────────────────────────────────────────────────────

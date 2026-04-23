@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -11,6 +11,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
@@ -94,6 +95,11 @@ class Account(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
     simplefin_account_id: Mapped[str | None] = mapped_column(String(255))
+    simplefin_account_name: Mapped[str | None] = mapped_column(String(255))
+    simplefin_sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    first_sync_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_simplefin_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    simplefin_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     last_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_reconciled_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -131,6 +137,7 @@ class Payee(Base):
     transfer_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
     )
+    mapping_samples: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -275,7 +282,14 @@ class Transaction(Base):
     # Import deduplication
     import_id: Mapped[str | None] = mapped_column(String(255))
     import_batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    import_description: Mapped[str | None] = mapped_column(Text)
     scheduled_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # SimpleFIN match link
+    linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL")
+    )
+    link_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
+    has_sync_source: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -299,6 +313,10 @@ class Transaction(Base):
     )
     parent: Mapped["Transaction | None"] = relationship(
         foreign_keys=[parent_transaction_id], back_populates="splits", remote_side="Transaction.id"
+    )
+    # SimpleFIN link partner
+    linked_transaction: Mapped["Transaction | None"] = relationship(
+        foreign_keys=[linked_transaction_id], remote_side="Transaction.id"
     )
 
 
@@ -467,6 +485,12 @@ class SimpleFINConnection(Base):
     requests_today: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_request_date: Mapped[date | None] = mapped_column(Date)
     sync_interval_hours: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
+    sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    daily_sync_time: Mapped[time | None] = mapped_column(Time)
+    global_requests_today: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    account_requests_today: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_sync_error: Mapped[str | None] = mapped_column(Text)
+    last_sync_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -496,3 +520,26 @@ class ImportBatch(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_message: Mapped[str | None] = mapped_column(Text)
+
+
+# ─── Transaction Matches ──────────────────────────────────────────────────────
+
+
+class TransactionMatch(Base):
+    __tablename__ = "transaction_matches"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    synced_transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
+    )
+    manual_transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
+    )
+    confidence_score: Mapped[Decimal] = mapped_column(Numeric(3, 2), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    synced_transaction: Mapped["Transaction"] = relationship(foreign_keys=[synced_transaction_id])
+    manual_transaction: Mapped["Transaction"] = relationship(foreign_keys=[manual_transaction_id])

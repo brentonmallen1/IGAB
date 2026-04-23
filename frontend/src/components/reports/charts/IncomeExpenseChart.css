@@ -1,0 +1,5 @@
+.report-btn--active {
+  background: var(--accent-color);
+  color: var(--bg-primary);
+  border-color: var(--accent-color);
+}

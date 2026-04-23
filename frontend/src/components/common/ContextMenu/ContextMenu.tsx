@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
 import './ContextMenu.css'
 
@@ -40,13 +41,17 @@ export function ContextMenu({ items, onSelect, onClose, position, className = ''
     }
   }, [onClose])
 
+  const menuHeight = 280 // conservative estimate; real height not known until paint
+  const clampedY = position
+    ? Math.min(position.y, window.innerHeight - menuHeight)
+    : 0
   const style = position
     ? position.alignRight
-      ? { position: 'fixed' as const, top: position.y, right: window.innerWidth - position.x }
-      : { position: 'fixed' as const, top: position.y, left: position.x }
+      ? { position: 'fixed' as const, top: clampedY, right: window.innerWidth - position.x }
+      : { position: 'fixed' as const, top: clampedY, left: position.x }
     : undefined
 
-  return (
+  return createPortal(
     <div ref={menuRef} className={`context-menu ${className}`} style={style} role="menu">
       {items.map((item) => {
         if (item.separator) {
@@ -73,6 +78,7 @@ export function ContextMenu({ items, onSelect, onClose, position, className = ''
           </button>
         )
       })}
-    </div>
+    </div>,
+    document.body
   )
 }

@@ -127,6 +127,13 @@
   color: var(--color-accent);
 }
 
+.payees-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
 .payees-edit-input {
   width: 100%;
   padding: 2px 6px;
@@ -135,6 +142,44 @@
   background: var(--input-bg);
   color: var(--text-primary);
   font-size: var(--font-size-sm);
+  box-sizing: border-box;
+}
+
+.payees-edit-input--mappings {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.payees-edit-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.payees-edit-btns {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.payees-table__row--editing {
+  align-items: start;
+  padding-top: var(--spacing-sm);
+  padding-bottom: var(--spacing-sm);
+}
+
+.payees-table__name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.payees-table__mappings {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .payees-table__count {

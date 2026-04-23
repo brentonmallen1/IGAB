@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Settings } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
 import { ReconcileBanner } from '../../components/accounts/ReconcileBanner'
+import { PendingReviewBanner } from '../../components/accounts/PendingReviewBanner'
+import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
+import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
+import { formatSyncAge } from '../../components/simplefin/SyncStatusIcon'
 import { useAccounts } from '../../api/accounts'
-import { useSimpleFINConnections, useSyncSimpleFIN } from '../../api/simplefin'
+import {
+  useSimpleFINConnections,
+  useSyncSimpleFIN,
+  usePendingMatches,
+} from '../../api/simplefin'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { formatMoney } from '../../utils/money'
@@ -16,11 +26,14 @@ export function AccountPage() {
   const { data: accounts } = useAccounts(budgetId)
 
   const account = accounts?.find((a) => a.id === accountId)
-  const { isReconciling, reconcileAccountId, startReconciliation } = useUIStore()
+  const { isReconciling, reconcileAccountId, startReconciliation, setTransactionSearch } = useUIStore()
   const { data: sfConnections } = useSimpleFINConnections()
-  const firstConnection = sfConnections?.[0]
+  const firstConnection = sfConnections?.[0] ?? null
   const sync = useSyncSimpleFIN(budgetId)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const { isAccountEditorOpen, editingAccountId, openAccountEditor, closeAccountEditor } = useUIStore()
+  const { data: pendingMatches = [] } = usePendingMatches(budgetId)
+  const [showMatchModal, setShowMatchModal] = useState(false)
 
   const showReconcileBanner = isReconciling && reconcileAccountId === accountId
 
@@ -30,13 +43,26 @@ export function AccountPage() {
   }, [accountId, setSelectedAccount])
 
   async function handleSync() {
-    if (!firstConnection) return
+    if (!firstConnection || !account?.simplefin_account_id) return
     setSyncMsg(null)
     try {
-      const result = await sync.mutateAsync(firstConnection.id)
-      setSyncMsg(`Imported ${result.imported}, skipped ${result.skipped}`)
+      const result = await sync.mutateAsync({
+        connectionId: firstConnection.id,
+        accountSimplefinId: account.simplefin_account_id,
+      })
+      if (result.error) {
+        toast.error(result.error)
+        setSyncMsg(null)
+      } else {
+        const parts = [`Imported ${result.imported}`, `skipped ${result.skipped}`]
+        if (result.cleared) parts.push(`cleared ${result.cleared}`)
+        const msg = parts.join(', ')
+        setSyncMsg(msg)
+        toast.success(msg)
+      }
     } catch {
-      setSyncMsg('Sync failed')
+      toast.error('Sync failed — check your connection')
+      setSyncMsg(null)
     }
   }
 
@@ -66,12 +92,23 @@ export function AccountPage() {
           >
             Reconcile
           </button>
-          {account.simplefin_account_id && firstConnection && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            className="account-page__settings-btn"
+            onClick={() => openAccountEditor(accountId!)}
+            aria-label="Account settings"
+            title="Account settings"
+          >
+            <Settings size={14} />
+          </button>
+          {account.simplefin_account_id && account.simplefin_sync_enabled && (
+            <div className="account-page__sync-strip">
+              <span className="account-page__sync-age">
+                {formatSyncAge(account.last_simplefin_sync_at ?? null)}
+              </span>
               <button
                 className="account-page__sync-btn"
                 onClick={handleSync}
-                disabled={sync.isPending}
+                disabled={sync.isPending || !firstConnection}
               >
                 {sync.isPending ? 'Syncing…' : 'Sync Now'}
               </button>
@@ -105,9 +142,36 @@ export function AccountPage() {
         <ReconcileBanner accountId={accountId} accountName={account.name} />
       )}
 
+      {!showReconcileBanner && budgetId && (
+        <PendingReviewBanner budgetId={budgetId} accountId={accountId ?? undefined} onView={setTransactionSearch} />
+      )}
+
+      {pendingMatches.length > 0 && (
+        <div className="account-page__match-banner">
+          <span>
+            {pendingMatches.length} possible duplicate{pendingMatches.length !== 1 ? 's' : ''} found
+            — may match a manually entered transaction
+          </span>
+          <button
+            className="account-page__match-btn account-page__match-btn--review"
+            onClick={() => setShowMatchModal(true)}
+          >
+            Review
+          </button>
+        </div>
+      )}
+
+      {showMatchModal && pendingMatches.length > 0 && (
+        <MatchReviewModal matches={pendingMatches} onClose={() => setShowMatchModal(false)} />
+      )}
+
       <div className="account-page__body">
         <TransactionTable accountId={accountId} budgetId={budgetId} />
       </div>
+
+      {isAccountEditorOpen && editingAccountId && (
+        <AccountSettingsModal accountId={editingAccountId} onClose={closeAccountEditor} />
+      )}
     </div>
   )
 }

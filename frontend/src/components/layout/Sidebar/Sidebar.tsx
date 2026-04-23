@@ -1,7 +1,10 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, X, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useBudgets } from '../../../api/budgets'
+import { useSimpleFINConnections, useSyncSimpleFIN, useSimpleFINRateLimitStatus } from '../../../api/simplefin'
+import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { formatMoney } from '../../../utils/money'
@@ -40,6 +43,34 @@ export function Sidebar() {
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
+
+  const { data: connections = [] } = useSimpleFINConnections()
+  const primaryConnection = connections[0] ?? null
+  const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(primaryConnection?.id ?? null)
+  const syncMutation = useSyncSimpleFIN(budgetId)
+  const syncingAccountId = syncMutation.isPending ? (syncMutation.variables as { accountSimplefinId?: string })?.accountSimplefinId : undefined
+
+  function handleAccountSync(account: Account, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!primaryConnection || !budgetId || !account.simplefin_account_id || syncMutation.isPending) return
+    if (rateLimitStatus && !rateLimitStatus.can_sync_account) {
+      toast.error('Daily sync limit reached. Resets at midnight UTC.')
+      return
+    }
+    syncMutation.mutate(
+      { connectionId: primaryConnection.id, accountSimplefinId: account.simplefin_account_id },
+      {
+        onSuccess: (result) => {
+          if (result.error) {
+            toast.error(result.error)
+          } else {
+            toast.success(`Synced ${account.name}`)
+          }
+        },
+        onError: () => toast.error(`Failed to sync ${account.name}`),
+      },
+    )
+  }
 
   const currentBudgetName = budgets.find((b) => b.id === budgetId)?.name ?? null
 
@@ -119,7 +150,13 @@ export function Sidebar() {
       </nav>
 
       {!collapsed && <div className="sidebar__section-header">
-        <span>Budget Accounts</span>
+        <button
+          className="sidebar__section-header-link"
+          onClick={() => { navigate('/accounts'); setMobileSidebarOpen(false) }}
+          title="All accounts"
+        >
+          Budget Accounts
+        </button>
         <span className="sidebar__total tabular">{formatMoney(onBudgetTotal)}</span>
       </div>}
 
@@ -143,8 +180,18 @@ export function Sidebar() {
                     </span>
                   )}
                 </span>
-                <span className={`sidebar__account-balance tabular ${Number(acc.balance) < 0 ? 'negative' : ''}`}>
-                  {formatMoney(Number(acc.balance))}
+                <span className="sidebar__account-right">
+                  {acc.simplefin_account_id && (
+                    <SyncStatusIcon
+                      account={acc}
+                      isSyncing={syncMutation.isPending && syncingAccountId === acc.simplefin_account_id}
+                      onSyncClick={(e) => handleAccountSync(acc, e)}
+                      lastSyncError={primaryConnection?.last_sync_error}
+                    />
+                  )}
+                  <span className={`sidebar__account-balance tabular ${Number(acc.balance) < 0 ? 'negative' : ''}`}>
+                    {formatMoney(Number(acc.balance))}
+                  </span>
                 </span>
               </button>
             ))}

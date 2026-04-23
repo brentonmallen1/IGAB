@@ -7,7 +7,8 @@ Rules:
   2. When a transaction is created with both a payee AND a category, the provided
      category is used and the payee's default_category_id is updated to that category.
   3. When a payee has no default_category_id and no category is provided, the
-     transaction is created with no category.
+     system falls back to the most common historical category for that payee.
+     If there is no historical category either, the transaction has no category.
   4. When there is no payee at all, no category is inferred.
 
 These rules allow the system to "remember" categorizations from past transactions
@@ -68,11 +69,15 @@ def make_service(payee: MockPayee | None) -> TransactionService:
     account_repo.get_or_raise = AsyncMock(return_value=account)
 
     payee_repo = MagicMock()
-    payee_repo.find_or_create = AsyncMock(return_value=payee) if payee else AsyncMock(return_value=None)
+    # _resolve_payee calls find_by_name first, then find_best_match, then create
+    payee_repo.find_by_name = AsyncMock(return_value=payee)
+    payee_repo.find_best_match = AsyncMock(return_value=None)
+    payee_repo.create = AsyncMock(return_value=payee)
     payee_repo.update = AsyncMock()
 
     txn_repo = MagicMock()
     txn_repo.create = AsyncMock(return_value=txn)
+    txn_repo.get_most_common_category_for_payee = AsyncMock(return_value=None)
 
     session = AsyncMock()
     session.get = AsyncMock(return_value=payee)

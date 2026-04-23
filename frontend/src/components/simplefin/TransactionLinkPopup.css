@@ -1,0 +1,196 @@
+.txn-link-indicator {
+  display: inline-flex;
+  align-items: center;
+}
+
+.txn-link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-accent);
+  opacity: 0.7;
+  border-radius: 3px;
+  transition: opacity 0.15s;
+}
+
+.txn-link-btn:hover {
+  opacity: 1;
+}
+
+/* Overlay */
+.link-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.link-popup {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: var(--spacing-lg);
+  width: 560px;
+  max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.link-popup__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+
+.link-popup__title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.link-popup__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.link-popup__close:hover {
+  color: var(--color-text);
+  background: var(--hover-bg);
+}
+
+.link-popup__confidence {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.link-popup__confidence-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.link-popup__confidence-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.link-popup__confidence-pct {
+  font-weight: 600;
+  min-width: 32px;
+  text-align: right;
+}
+
+.link-popup__columns {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.link-popup__col {
+  min-width: 0;
+}
+
+.link-popup__col-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-sm);
+}
+
+.link-popup__divider {
+  width: 1px;
+  background: var(--color-border);
+  align-self: stretch;
+}
+
+.link-popup__txn-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.link-popup__txn-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+}
+
+.link-popup__txn-label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.link-popup__txn-memo {
+  color: var(--color-text-muted);
+  font-style: italic;
+  text-align: right;
+  word-break: break-word;
+}
+
+.link-popup__cleared {
+  font-size: 10px;
+  text-transform: capitalize;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.link-popup__cleared--cleared { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
+.link-popup__cleared--uncleared { background: color-mix(in srgb, var(--color-text-muted) 15%, transparent); color: var(--color-text-muted); }
+.link-popup__cleared--pending { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
+.link-popup__cleared--reconciled { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
+
+.link-popup__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--spacing-sm);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.link-popup__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  color: var(--color-text-muted);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

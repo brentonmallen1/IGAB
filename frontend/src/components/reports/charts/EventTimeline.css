@@ -1,0 +1,123 @@
+.timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-md) 0;
+}
+
+.timeline__track {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border-color);
+  transform: translateX(-50%);
+}
+
+.timeline__event {
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: var(--spacing-md);
+}
+
+.timeline__event--left {
+  flex-direction: row-reverse;
+}
+
+.timeline__event--right {
+  flex-direction: row;
+}
+
+.timeline__dot {
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--bg-primary);
+  z-index: 1;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  transition: transform 0.1s;
+}
+
+.timeline__event--left .timeline__dot {
+  margin-left: auto;
+  margin-right: auto;
+  position: absolute;
+  left: 50%;
+}
+
+.timeline__event--right .timeline__dot {
+  position: absolute;
+  left: 50%;
+}
+
+.timeline__dot--expense {
+  background: var(--color-negative, #e15759);
+}
+
+.timeline__dot--income {
+  background: var(--color-positive, #59a14f);
+}
+
+.timeline__card {
+  width: calc(50% - var(--spacing-xl));
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-sm) var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timeline__card--left {
+  margin-right: auto;
+  text-align: right;
+}
+
+.timeline__card--right {
+  margin-left: auto;
+}
+
+.timeline__date {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.timeline__payee {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.timeline__category {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.timeline__amount {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.timeline__amount--expense {
+  color: var(--color-negative, #e15759);
+}
+
+.timeline__amount--income {
+  color: var(--color-positive, #59a14f);
+}
+
+.timeline__memo {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

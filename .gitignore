@@ -1,6 +1,7 @@
 # ── Secrets & environment ─────────────────────────────────────────────────────
 .env
 !.env.example
+backend/.simplefin_access_url
 
 # ── macOS ─────────────────────────────────────────────────────────────────────
 **/.DS_Store

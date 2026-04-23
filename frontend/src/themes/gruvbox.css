@@ -13,6 +13,7 @@
 
   --color-accent: #d79921;
   --color-accent-hover: #fabd2f;
+  --accent-color: var(--color-accent);
   --color-positive: #b8bb26;
   --color-negative: #fb4934;
   --color-warning: #fabd2f;
@@ -35,6 +36,17 @@
   --header-bg: #1d2021;
   --card-bg: #32302f;
   --card-border: #504945;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
 }
 
 /* Gruvbox Light */
@@ -52,6 +64,7 @@
 
   --color-accent: #d79921;
   --color-accent-hover: #b57614;
+  --accent-color: var(--color-accent);
   --color-positive: #79740e;
   --color-negative: #cc241d;
   --color-warning: #d79921;
@@ -74,4 +87,15 @@
   --header-bg: #f9f5d7;
   --card-bg: #f9f5d7;
   --card-border: #d5c4a1;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
 }
