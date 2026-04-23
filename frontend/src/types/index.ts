@@ -20,6 +20,11 @@ export interface Account {
   sort_order: number
   note: string | null
   simplefin_account_id: string | null
+  simplefin_account_name: string | null
+  simplefin_sync_enabled: boolean
+  first_sync_complete: boolean
+  last_simplefin_sync_at: string | null
+  simplefin_balance: number | null
   balance: number
   cleared_balance: number
   uncleared_balance: number
@@ -90,6 +95,10 @@ export interface Transaction {
   parent_transaction_id: string | null
   is_split: boolean
   import_id: string | null
+  import_description: string | null
+  has_sync_source: boolean
+  linked_transaction_id: string | null
+  link_confidence: number | null
   created_at: string
   updated_at: string
 }
@@ -102,6 +111,7 @@ export interface Payee {
   name: string
   default_category_id: string | null
   transfer_account_id: string | null
+  mapping_samples: string | null
 }
 
 export interface TransactionCreate {
@@ -195,12 +205,247 @@ export type AutoAssignAction =
   | 'average_spent'
   | 'reset'
 
+// ─── Report Types ───────────────────────────────────────────────────────────
+
+export interface DashboardMetrics {
+  to_be_assigned: number
+  net_worth: number
+  net_worth_prev: number
+  burn_rate_30: number
+  burn_rate_90: number
+  savings_rate: number
+  days_until_zero: number | null
+  income_this_month: number
+  expenses_this_month: number
+  expenses_prev_month: number
+  top_categories: { id: string; name: string; group_name: string; total: number }[]
+}
+
+export interface NetWorthPoint {
+  date: string
+  total_assets: number
+  total_liabilities: number
+  net_worth: number
+  accounts: { account_id: string; account_name: string; account_type: string; balance: number }[]
+}
+
+export interface NetWorthReport {
+  points: NetWorthPoint[]
+}
+
+export interface AccountCompositionPoint {
+  date: string
+  checking: number
+  savings: number
+  credit_card: number
+  loan: number
+  tracking: number
+}
+
+export interface AccountCompositionReport {
+  points: AccountCompositionPoint[]
+}
+
+export interface BurnRatePoint {
+  date: string
+  rolling_30: number
+  rolling_90: number
+}
+
+export interface BurnRateReport {
+  points: BurnRatePoint[]
+}
+
+export interface SankeyNode {
+  id: string
+  name: string
+  type: 'income_payee' | 'budget' | 'category_group' | 'category' | 'expense_payee'
+}
+
+export interface SankeyLink {
+  source: string
+  target: string
+  value: number
+}
+
+export interface CategoryPayee {
+  name: string
+  total: number
+}
+
+export interface CashFlowReport {
+  nodes: SankeyNode[]
+  links: SankeyLink[]
+  total_income: number
+  total_expense: number
+  category_payees: Record<string, CategoryPayee[]>
+  group_categories: Record<string, CategoryPayee[]>
+}
+
+export interface BudgetActualItem {
+  category_id: string
+  category_name: string
+  category_group_name: string
+  assigned: number
+  spent: number
+  variance: number
+  variance_pct: number
+}
+
+export interface BudgetActualReport {
+  categories: BudgetActualItem[]
+  total_assigned: number
+  total_spent: number
+}
+
+export interface VariancePoint {
+  month: string
+  budget_assigned: number
+  actual_spent: number
+  cumulative_variance: number
+}
+
+export interface VarianceReport {
+  points: VariancePoint[]
+}
+
+export interface VolatilityItem {
+  category_id: string
+  category_name: string
+  category_group_name: string
+  mean: number
+  std_dev: number
+  min: number
+  max: number
+  p25: number
+  p75: number
+  months_included: number
+}
+
+export interface VolatilityReport {
+  categories: VolatilityItem[]
+}
+
+export interface SpendingGroupItem {
+  id: string
+  name: string
+  parent_id: string | null
+  parent_name: string | null
+  total: number
+  count: number
+  pct: number
+  children?: SpendingGroupItem[]
+}
+
+export interface SpendingGroupedReport {
+  groups: SpendingGroupItem[]
+  total: number
+}
+
+export interface SeasonalityCell {
+  category_id: string
+  category_name: string
+  month: string
+  total: number
+}
+
+export interface SeasonalityReport {
+  cells: SeasonalityCell[]
+  months: string[]
+  categories: { id: string; name: string }[]
+}
+
+export interface PayeeSpending {
+  payee_id: string
+  payee_name: string
+  total: number
+  count: number
+  monthly_trend: { month: string; total: number }[]
+  top_categories: { category_name: string; total: number }[]
+  is_recurring: boolean
+}
+
+export interface PayeeAnalysisReport {
+  payees: PayeeSpending[]
+  total: number
+}
+
+export interface DayPatternItem {
+  day_of_week: number
+  day_name: string
+  total: number
+  count: number
+  avg_transaction: number
+}
+
+export interface DayPatternsReport {
+  days: DayPatternItem[]
+}
+
+export interface TimelineTransaction {
+  id: string
+  date: string
+  amount: number
+  payee_name: string | null
+  category_name: string | null
+  memo: string | null
+}
+
+export interface TimelineReport {
+  transactions: TimelineTransaction[]
+}
+
+export interface SimilarTransaction {
+  id: string
+  date: string
+  amount: number
+  payee_id: string | null
+  memo: string | null
+  cleared: ClearedStatus
+  import_description: string | null
+}
+
 export interface SimpleFINConnection {
   id: string
   user_id: string
   last_sync_at: string | null
   sync_interval_hours: number
-  requests_today: number
+  sync_enabled: boolean
+  daily_sync_time: string | null
+  global_requests_today: number
+  account_requests_today: number
+  last_sync_error: string | null
+  last_sync_error_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface SimpleFINRateLimitStatus {
+  global_used: number
+  global_remaining: number
+  account_used: number
+  account_remaining: number
+  can_sync_global: boolean
+  can_sync_account: boolean
+  resets_at: string
+}
+
+export interface SyncResult {
+  imported: number
+  skipped: number
+  cleared: number
+  error: string | null
+  global_used: number | null
+  global_remaining: number | null
+  account_used: number | null
+  account_remaining: number | null
+}
+
+export interface TransactionMatch {
+  id: string
+  synced_transaction_id: string
+  manual_transaction_id: string
+  confidence_score: number
+  status: 'pending' | 'accepted' | 'rejected'
+  created_at: string
 }

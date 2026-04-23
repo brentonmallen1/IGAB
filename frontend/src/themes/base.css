@@ -4,6 +4,9 @@
   --border-radius-md: 8px;
   --border-radius-lg: 12px;
 
+  /* Shorthand alias — prefer --border-radius-sm/md/lg for new code */
+  --border-radius: var(--border-radius-md);
+
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;

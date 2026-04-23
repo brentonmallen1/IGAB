@@ -331,3 +331,65 @@
 .txn-editor__split-remaining--done {
   color: var(--color-positive);
 }
+
+.txn-editor__similar {
+  border-top: 1px solid var(--border-color);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  flex-shrink: 0;
+}
+
+.txn-editor__similar-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--color-warning, #d97706);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+}
+
+.txn-editor__similar-toggle:hover {
+  opacity: 0.8;
+}
+
+.txn-editor__similar-toggle > svg:last-child {
+  margin-left: auto;
+}
+
+.txn-editor__similar-list {
+  list-style: none;
+  margin: var(--spacing-xs) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.txn-editor__similar-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-warning, #d97706) 8%, transparent);
+}
+
+.txn-editor__similar-date {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.txn-editor__similar-desc {
+  color: var(--text-muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

@@ -1,0 +1,52 @@
+.sync-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.sync-status-icon:hover {
+  opacity: 1;
+}
+
+.sync-status-icon--fresh {
+  color: var(--color-success, #4caf50);
+}
+
+.sync-status-icon--stale {
+  color: var(--color-warning, #ff9800);
+}
+
+.sync-status-icon--error,
+.sync-status-icon--never {
+  color: var(--color-danger, #f44336);
+}
+
+.sync-status-icon--disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+  opacity: 0.4;
+}
+
+.sync-status-icon--syncing {
+  color: var(--color-accent);
+  cursor: default;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.sync-status-icon__spin {
+  animation: spin 1s linear infinite;
+}

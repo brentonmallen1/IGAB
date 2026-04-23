@@ -1,0 +1,243 @@
+.accounts-overview {
+  padding: var(--spacing-xl);
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.accounts-overview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.accounts-overview__title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.accounts-overview__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.accounts-overview__sync-msg {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.accounts-overview__sync-all-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.accounts-overview__sync-all-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.accounts-overview__sync-all-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.accounts-overview__sync-all-btn--spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+.accounts-overview__sync-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--color-accent);
+  color: var(--text-inverse);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.accounts-overview__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.accounts-overview__group-label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-sm);
+}
+
+.accounts-overview__group-rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.accounts-overview__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--bg-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.accounts-overview__row:last-child {
+  border-bottom: none;
+}
+
+.accounts-overview__row:hover {
+  background: var(--bg-hover);
+}
+
+.accounts-overview__row--closed {
+  opacity: 0.55;
+}
+
+.accounts-overview__row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.accounts-overview__row-name-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.accounts-overview__row-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.accounts-overview__tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.accounts-overview__tag--closed {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.accounts-overview__uncat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--color-warning, #f59e0b);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: help;
+}
+
+.accounts-overview__row-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.accounts-overview__sync-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+}
+
+.accounts-overview__sync-info--fresh { color: var(--color-positive, #22c55e); }
+.accounts-overview__sync-info--stale { color: var(--color-warning, #f59e0b); }
+.accounts-overview__sync-info--error { color: var(--color-negative); }
+.accounts-overview__sync-info--never { color: var(--color-negative); }
+.accounts-overview__sync-info--disabled,
+.accounts-overview__sync-info--manual { color: var(--text-muted); }
+.accounts-overview__sync-info--syncing { color: var(--color-accent); }
+
+.accounts-overview__separator {
+  color: var(--border-color);
+  font-size: var(--font-size-xs);
+}
+
+.accounts-overview__reconciled {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.accounts-overview__row-balances {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.accounts-overview__balance-main {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.accounts-overview__balance-main.negative { color: var(--color-negative); }
+
+.accounts-overview__balance-detail {
+  display: flex;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.accounts-overview__balance-detail .negative { color: var(--color-negative); }
+.accounts-overview__balance-detail .positive { color: var(--color-positive, #22c55e); }
+
+.accounts-overview__empty {
+  padding: var(--spacing-xl);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

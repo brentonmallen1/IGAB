@@ -1,0 +1,191 @@
+.merge-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.merge-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: var(--spacing-lg);
+  width: 560px;
+  max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.merge-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.merge-modal__title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.merge-modal__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.merge-modal__close:hover {
+  color: var(--color-text);
+  background: var(--hover-bg);
+}
+
+.merge-modal__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.merge-modal__columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+}
+
+.merge-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--spacing-sm);
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--color-surface);
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+  width: 100%;
+}
+
+.merge-card:hover:not(.merge-card--selected) {
+  border-color: var(--color-text-muted);
+  background: var(--hover-bg);
+}
+
+.merge-card--selected {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+}
+
+.merge-card__badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  background: var(--color-accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 0 4px 0 4px;
+}
+
+.merge-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+}
+
+.merge-card__label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.merge-card__value {
+  text-align: right;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.merge-card__value--muted {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.merge-card__cleared {
+  font-size: 10px;
+  text-transform: capitalize;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.merge-card__cleared--cleared { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
+.merge-card__cleared--uncleared { background: color-mix(in srgb, var(--color-text-muted) 15%, transparent); color: var(--color-text-muted); }
+.merge-card__cleared--pending { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
+.merge-card__cleared--reconciled { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
+
+.merge-modal__note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 4px;
+}
+
+.merge-modal__footer {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--spacing-sm);
+}
+
+.merge-modal__btn {
+  padding: 6px 16px;
+  border-radius: 5px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.merge-modal__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.merge-modal__btn--cancel {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.merge-modal__btn--cancel:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.merge-modal__btn--confirm {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.merge-modal__btn--confirm:hover:not(:disabled) {
+  opacity: 0.85;
+}

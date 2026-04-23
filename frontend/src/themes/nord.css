@@ -13,6 +13,7 @@
 
   --color-accent: #88c0d0;
   --color-accent-hover: #81a1c1;
+  --accent-color: var(--color-accent);
   --color-positive: #a3be8c;
   --color-negative: #bf616a;
   --color-warning: #ebcb8b;
@@ -35,4 +36,15 @@
   --header-bg: #242933;
   --card-bg: #3b4252;
   --card-border: #434c5e;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
 }

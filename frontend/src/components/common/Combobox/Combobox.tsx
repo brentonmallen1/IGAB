@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, useCallback, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, Plus } from 'lucide-react'
 import './Combobox.css'
@@ -14,6 +14,7 @@ interface Props {
   options: ComboboxOption[]
   onChange: (id: string | null) => void
   onCreateNew?: (query: string) => Promise<ComboboxOption> | void
+  footerSlot?: ReactNode
   placeholder?: string
   disabled?: boolean
   className?: string
@@ -32,6 +33,7 @@ export function Combobox({
   options,
   onChange,
   onCreateNew,
+  footerSlot,
   placeholder = 'Search…',
   disabled = false,
   className = '',
@@ -39,8 +41,6 @@ export function Combobox({
   onBlurClose,
 }: Props) {
   const selectedOption = value ? options.find((o) => o.id === value) : null
-  // When auto-focused (inline edit), start with empty query so all options are visible.
-  // The selected option is still highlighted in the list via CSS.
   const [query, setQuery] = useState(autoFocus ? '' : (selectedOption?.label ?? ''))
   const [open, setOpen] = useState(autoFocus)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -48,6 +48,7 @@ export function Combobox({
   const inputRef = useRef<HTMLInputElement>(null)
   const triggerRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const filtered = options.filter((o) =>
     o.label.toLowerCase().includes(query.toLowerCase())
@@ -63,11 +64,6 @@ export function Combobox({
     }
     return acc
   }, [])
-
-  const showCreate = onCreateNew && query.trim() && !filtered.some(
-    (o) => o.label.toLowerCase() === query.toLowerCase()
-  )
-  const totalItems = filtered.length + (showCreate ? 1 : 0)
 
   function measureAndOpen() {
     const rect = triggerRef.current?.getBoundingClientRect()
@@ -91,19 +87,19 @@ export function Combobox({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFocus])
 
-  // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       const target = e.target as Node
       const inTrigger = triggerRef.current?.contains(target)
-      const inList = listRef.current?.contains(target)
-      if (!inTrigger && !inList) {
+      const inDropdown = dropdownRef.current?.contains(target)
+      if (!inTrigger && !inDropdown) {
         setOpen(false)
         onBlurClose?.()
       }
     }
-    function handleScroll() {
-      // Reposition on scroll
+    function handleScroll(e: Event) {
+      // Ignore scroll events from within the dropdown list itself to prevent jumpiness
+      if (dropdownRef.current?.contains(e.target as Node)) return
       const rect = triggerRef.current?.getBoundingClientRect()
       if (rect) {
         setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: rect.width })
@@ -119,10 +115,20 @@ export function Combobox({
     }
   }, [open, onBlurClose])
 
-  // Scroll highlighted item into view
+  // Scroll highlighted item into view within the list (manual to avoid page scroll side-effects)
   useEffect(() => {
-    const item = listRef.current?.children[highlightedIndex] as HTMLElement | undefined
-    item?.scrollIntoView({ block: 'nearest' })
+    const list = listRef.current
+    const item = list?.querySelector<HTMLElement>(`[data-option-index="${highlightedIndex}"]`)
+    if (!list || !item) return
+    const itemTop = item.offsetTop
+    const itemBottom = itemTop + item.offsetHeight
+    const listTop = list.scrollTop
+    const listBottom = listTop + list.clientHeight
+    if (itemTop < listTop) {
+      list.scrollTop = itemTop
+    } else if (itemBottom > listBottom) {
+      list.scrollTop = itemBottom - list.clientHeight
+    }
   }, [highlightedIndex])
 
   const selectOption = useCallback(
@@ -136,7 +142,10 @@ export function Combobox({
   )
 
   const handleCreateNew = useCallback(async () => {
-    if (!onCreateNew || !query.trim()) return
+    if (!onCreateNew || !query.trim()) {
+      inputRef.current?.focus()
+      return
+    }
     const result = await onCreateNew(query.trim())
     if (result) {
       onChange(result.id)
@@ -157,7 +166,7 @@ export function Combobox({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
-        setHighlightedIndex((i) => Math.min(i + 1, totalItems - 1))
+        setHighlightedIndex((i) => Math.min(i + 1, filtered.length - 1))
         break
       case 'ArrowUp':
         e.preventDefault()
@@ -167,7 +176,7 @@ export function Combobox({
         e.preventDefault()
         if (highlightedIndex < filtered.length) {
           selectOption(filtered[highlightedIndex])
-        } else if (showCreate) {
+        } else if (onCreateNew && query.trim()) {
           handleCreateNew()
         }
         break
@@ -191,10 +200,9 @@ export function Combobox({
   }
 
   const dropdown = open && dropdownPos ? createPortal(
-    <ul
-      ref={listRef}
-      className="combobox__list"
-      role="listbox"
+    <div
+      ref={dropdownRef}
+      className="combobox__dropdown"
       style={{
         position: 'fixed',
         top: dropdownPos.top,
@@ -203,45 +211,59 @@ export function Combobox({
         zIndex: 9999,
       }}
     >
-      {grouped.length === 0 && !showCreate && (
-        <li className="combobox__empty">No results</li>
+      {onCreateNew && (
+        <div className="combobox__dropdown-header">
+          <button
+            className="combobox__create-btn"
+            onMouseDown={(e) => { e.preventDefault(); handleCreateNew() }}
+            type="button"
+          >
+            <Plus size={12} />
+            {query.trim() ? `Create "${query}"` : 'New Category…'}
+          </button>
+        </div>
       )}
 
-      {grouped.map(({ group, items }) => (
-        <li key={group || '__ungrouped'} className="combobox__group">
-          {group && <div className="combobox__group-header">{group}</div>}
-          <ul>
-            {items.map((opt) => {
-              const idx = filtered.indexOf(opt)
-              return (
-                <li
-                  key={opt.id}
-                  className={`combobox__option ${idx === highlightedIndex ? 'combobox__option--highlighted' : ''} ${opt.id === value ? 'combobox__option--selected' : ''}`}
-                  onMouseDown={(e) => { e.preventDefault(); selectOption(opt) }}
-                  onMouseEnter={() => setHighlightedIndex(idx)}
-                  role="option"
-                  aria-selected={opt.id === value}
-                >
-                  {opt.label}
-                </li>
-              )
-            })}
-          </ul>
-        </li>
-      ))}
+      <ul
+        ref={listRef}
+        className="combobox__list"
+        role="listbox"
+      >
+        {grouped.length === 0 && (
+          <li className="combobox__empty">No results</li>
+        )}
 
-      {showCreate && (
-        <li
-          className={`combobox__option combobox__option--create ${filtered.length === highlightedIndex ? 'combobox__option--highlighted' : ''}`}
-          onMouseDown={(e) => { e.preventDefault(); handleCreateNew() }}
-          onMouseEnter={() => setHighlightedIndex(filtered.length)}
-          role="option"
-        >
-          <Plus size={12} />
-          <span>Create &ldquo;{query}&rdquo;</span>
-        </li>
+        {grouped.map(({ group, items }) => (
+          <li key={group || '__ungrouped'} className="combobox__group">
+            {group && <div className="combobox__group-header">{group}</div>}
+            <ul>
+              {items.map((opt) => {
+                const idx = filtered.indexOf(opt)
+                return (
+                  <li
+                    key={opt.id}
+                    data-option-index={idx}
+                    className={`combobox__option ${idx === highlightedIndex ? 'combobox__option--highlighted' : ''} ${opt.id === value ? 'combobox__option--selected' : ''}`}
+                    onMouseDown={(e) => { e.preventDefault(); selectOption(opt) }}
+                    onMouseEnter={() => setHighlightedIndex(idx)}
+                    role="option"
+                    aria-selected={opt.id === value}
+                  >
+                    {opt.label}
+                  </li>
+                )
+              })}
+            </ul>
+          </li>
+        ))}
+      </ul>
+
+      {footerSlot && (
+        <div className="combobox__dropdown-footer">
+          {footerSlot}
+        </div>
       )}
-    </ul>,
+    </div>,
     document.body
   ) : null
 

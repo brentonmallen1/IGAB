@@ -90,6 +90,20 @@
   color: var(--text-muted);
 }
 
+.sidebar__section-header-link {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  text-align: left;
+  transition: color var(--transition-fast);
+}
+
+.sidebar__section-header-link:hover {
+  color: var(--text-primary);
+}
+
 .sidebar__total {
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
@@ -151,14 +165,67 @@
   line-height: 1;
 }
 
-.sidebar__account-balance {
-  font-size: var(--font-size-xs);
+.sidebar__account-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
   margin-left: var(--spacing-xs);
 }
 
+.sidebar__account-balance {
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
 .sidebar__account-balance.negative {
   color: var(--color-negative);
+}
+
+.sidebar__section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.sidebar__sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.sidebar__sync-btn:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--hover-bg);
+}
+
+.sidebar__sync-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.sidebar__sync-btn--spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.sidebar__sync-badge {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-accent);
+  min-width: 12px;
 }
 
 .sidebar__empty {

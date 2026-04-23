@@ -1,0 +1,32 @@
+.treemap-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.treemap-crumb {
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 2px 4px;
+  border-radius: var(--border-radius);
+}
+
+.treemap-crumb:hover {
+  background: var(--bg-secondary);
+}
+
+.treemap-crumb--active {
+  color: var(--text-primary);
+  cursor: default;
+}
+
+.treemap-crumb--active:hover {
+  background: none;
+}
+
+.treemap-crumb-sep {
+  color: var(--text-muted);
+}

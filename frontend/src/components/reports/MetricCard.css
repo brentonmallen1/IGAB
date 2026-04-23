@@ -1,0 +1,58 @@
+.metric-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md) var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.metric-card--accent {
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-secondary));
+}
+
+.metric-card__label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metric-card__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.metric-card__delta {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.metric-card__delta--pos {
+  color: var(--color-positive, #59a14f);
+}
+
+.metric-card__delta--neg {
+  color: var(--color-negative, #e15759);
+}
+
+.metric-card__delta--neutral {
+  color: var(--text-muted);
+}
+
+.metric-card__delta-label {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.metric-card__sub {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}

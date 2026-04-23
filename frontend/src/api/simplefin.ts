@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
-import type { SimpleFINConnection } from '../types'
+import type {
+  SimpleFINConnection,
+  SimpleFINRateLimitStatus,
+  SyncResult,
+  TransactionMatch,
+} from '../types'
 
 export function useSimpleFINConnections() {
   return useQuery({
@@ -10,6 +15,22 @@ export function useSimpleFINConnections() {
       return data
     },
     staleTime: 30_000,
+  })
+}
+
+export function useSimpleFINRateLimitStatus(connectionId: string | null) {
+  return useQuery({
+    queryKey: ['simplefin-rate-limit', connectionId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SimpleFINRateLimitStatus>(
+        `/simplefin/connections/${connectionId}/status`,
+      )
+      return data
+    },
+    enabled: !!connectionId,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchInterval: 30_000,
   })
 }
 
@@ -26,12 +47,20 @@ export function useSetupSimpleFIN() {
   })
 }
 
-export function useUpdateSimpleFINInterval() {
+export function useUpdateSimpleFINConnection() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, sync_interval_hours }: { id: string; sync_interval_hours: number }) =>
+    mutationFn: ({
+      id,
+      ...updates
+    }: {
+      id: string
+      sync_interval_hours?: number
+      sync_enabled?: boolean
+      daily_sync_time?: string | null
+    }) =>
       apiClient
-        .put<SimpleFINConnection>(`/simplefin/connections/${id}`, { sync_interval_hours })
+        .put<SimpleFINConnection>(`/simplefin/connections/${id}`, updates)
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
@@ -52,17 +81,30 @@ export function useDeleteSimpleFINConnection() {
 export function useSyncSimpleFIN(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (connectionId: string) =>
+    mutationFn: ({
+      connectionId,
+      accountSimplefinId,
+    }: {
+      connectionId: string
+      accountSimplefinId?: string
+    }) =>
       apiClient
-        .post<{ imported: number; skipped: number }>(
+        .post<SyncResult>(
           `/simplefin/connections/${connectionId}/sync`,
           {},
-          { params: { budget_id: budgetId } },
+          {
+            params: {
+              budget_id: budgetId,
+              ...(accountSimplefinId ? { account_simplefin_id: accountSimplefinId } : {}),
+            },
+          },
         )
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: ['accounts'] })
       qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
+      qc.invalidateQueries({ queryKey: ['simplefin-rate-limit'] })
     },
   })
 }
@@ -70,8 +112,11 @@ export function useSyncSimpleFIN(budgetId: string | null) {
 export function useLinkSimpleFINAccount(accountId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (simplefin_account_id: string) =>
-      apiClient.post(`/accounts/${accountId}/link-simplefin`, { simplefin_account_id }),
+    mutationFn: ({ id, name }: { id: string; name: string | null }) =>
+      apiClient.post(`/accounts/${accountId}/link-simplefin`, {
+        simplefin_account_id: id,
+        simplefin_account_name: name,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts'] })
     },
@@ -82,6 +127,19 @@ export function useUnlinkSimpleFINAccount(accountId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => apiClient.delete(`/accounts/${accountId}/link-simplefin`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts'] })
+    },
+  })
+}
+
+export function useUpdateAccountSimpleFINSettings(accountId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (simplefin_sync_enabled: boolean) =>
+      apiClient.patch(`/accounts/${accountId}/simplefin-settings`, null, {
+        params: { simplefin_sync_enabled },
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts'] })
     },
@@ -99,5 +157,42 @@ export function useSimpleFINRemoteAccounts(connectionId: string | null) {
     },
     enabled: !!connectionId,
     staleTime: 60_000,
+  })
+}
+
+export function usePendingMatches(budgetId: string | null) {
+  return useQuery({
+    queryKey: ['simplefin-matches', budgetId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TransactionMatch[]>('/simplefin/matches', {
+        params: { budget_id: budgetId },
+      })
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: 15_000,
+  })
+}
+
+export function useAcceptMatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (matchId: string) =>
+      apiClient.post(`/simplefin/matches/${matchId}/accept`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+    },
+  })
+}
+
+export function useRejectMatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (matchId: string) =>
+      apiClient.post(`/simplefin/matches/${matchId}/reject`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
+    },
   })
 }

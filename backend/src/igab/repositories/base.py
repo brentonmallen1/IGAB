@@ -16,8 +16,8 @@ class BaseRepository[ModelT: Base]:
     async def get(self, id: uuid.UUID) -> ModelT | None:
         result = await self.session.execute(
             select(self.model).where(
-                self.model.id == id,  # type: ignore[attr-defined]
-                self.model.is_deleted == False,  # type: ignore[attr-defined]  # noqa: E712
+                self.model.id == id,  # type: ignore
+                self.model.is_deleted == False,  # type: ignore  # noqa: E712
             )
         )
         return result.scalar_one_or_none()
@@ -40,7 +40,7 @@ class BaseRepository[ModelT: Base]:
     async def update(self, id: uuid.UUID, **kwargs: Any) -> ModelT:
         kwargs["updated_at"] = func.now()
         await self.session.execute(
-            update(self.model).where(self.model.id == id).values(**kwargs)  # type: ignore[attr-defined]
+            update(self.model).where(self.model.id == id).values(**kwargs)  # type: ignore
         )
         await self.session.flush()
         return await self.get_or_raise(id)
@@ -48,7 +48,7 @@ class BaseRepository[ModelT: Base]:
     async def soft_delete(self, id: uuid.UUID) -> None:
         await self.session.execute(
             update(self.model)
-            .where(self.model.id == id)  # type: ignore[attr-defined]
+            .where(self.model.id == id)  # type: ignore
             .values(is_deleted=True, updated_at=func.now())
         )
         await self.session.flush()

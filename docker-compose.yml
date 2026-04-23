@@ -26,6 +26,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${DB_USER:-igab}:${DB_PASSWORD}@db:${DB_PORT:-5432}/${DB_NAME:-igab}
+      UVICORN_RELOAD: "true"
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -36,6 +37,9 @@ services:
         - action: sync
           path: ./backend/src
           target: /app/src
+        - action: sync
+          path: ./backend/tests
+          target: /app/tests
 
   frontend:
     build:

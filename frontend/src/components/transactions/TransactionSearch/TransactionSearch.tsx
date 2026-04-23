@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, startTransition } from 'react'
 import { Search, X } from 'lucide-react'
 import { SEARCH_SUGGESTIONS } from '../../../utils/searchParser'
 import './TransactionSearch.css'
+
+const DEBOUNCE_MS = 150
 
 interface Props {
   value: string
@@ -10,18 +12,30 @@ interface Props {
 }
 
 export function TransactionSearch({ value, onChange, placeholder = 'Search transactions…' }: Props) {
+  const [localValue, setLocalValue] = useState(value)
   const [focused, setFocused] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Show suggestions on empty input when focused
-  const shouldShowSuggestions = focused && showSuggestions && value.length === 0
+  // Sync when parent clears the value externally
+  useEffect(() => {
+    setLocalValue(value)
+  }, [value])
 
-  // Show autocomplete for partial "is:" etc.
+  // Use the trimmed value so trailing spaces don't produce an empty last token
+  const trimmedValue = localValue.trimEnd()
+  const lastToken = trimmedValue.split(' ').at(-1) ?? ''
   const activeSuggestions = SEARCH_SUGGESTIONS.filter(
-    (s) => !value || s.syntax.startsWith(value.split(' ').at(-1) ?? '')
+    (s) => !trimmedValue || s.syntax.startsWith(lastToken)
   )
+  const shouldShowSuggestions = focused && showSuggestions &&
+    (localValue.length === 0 || activeSuggestions.length > 0)
+
+  // Reset active index when suggestion list changes
+  useEffect(() => { setActiveIndex(-1) }, [activeSuggestions.length])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -33,23 +47,72 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  function propagate(v: string, immediate = false) {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    if (immediate) {
+      startTransition(() => onChange(v))
+    } else {
+      debounceTimer.current = setTimeout(() => startTransition(() => onChange(v)), DEBOUNCE_MS)
+    }
+  }
+
   function handleChange(v: string) {
-    onChange(v)
+    setLocalValue(v)
     setShowSuggestions(true)
+    setActiveIndex(-1)
+    propagate(v)
   }
 
   function appendSuggestion(syntax: string) {
-    const parts = value.split(' ')
-    parts[parts.length - 1] = syntax
-    onChange(parts.join(' '))
+    // Replace the current (possibly partial) last token, ignoring trailing spaces
+    const lastSpaceIdx = trimmedValue.lastIndexOf(' ')
+    const prefix = lastSpaceIdx >= 0 ? trimmedValue.slice(0, lastSpaceIdx + 1) : ''
+    const next = prefix + syntax
+    setLocalValue(next)
+    propagate(next, true)
     inputRef.current?.focus()
     setShowSuggestions(false)
+    setActiveIndex(-1)
+  }
+
+  function handleClear() {
+    setLocalValue('')
+    propagate('', true)
+    inputRef.current?.focus()
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (shouldShowSuggestions && activeSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveIndex((i) => (i + 1) % activeSuggestions.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveIndex((i) => (i <= 0 ? activeSuggestions.length - 1 : i - 1))
+        return
+      }
+      if (e.key === 'Enter' && activeIndex >= 0) {
+        e.preventDefault()
+        appendSuggestion(activeSuggestions[activeIndex].syntax)
+        return
+      }
+      if (e.key === 'Tab' && activeIndex >= 0) {
+        e.preventDefault()
+        appendSuggestion(activeSuggestions[activeIndex].syntax)
+        return
+      }
+    }
+
     if (e.key === 'Escape') {
-      if (value) onChange('')
-      else { setShowSuggestions(false); inputRef.current?.blur() }
+      if (localValue) {
+        setLocalValue('')
+        propagate('', true)
+      } else {
+        setShowSuggestions(false)
+        inputRef.current?.blur()
+      }
     }
   }
 
@@ -59,7 +122,7 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
       <input
         ref={inputRef}
         className="txn-search__input"
-        value={value}
+        value={localValue}
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => { setFocused(true); setShowSuggestions(true) }}
         onBlur={() => setFocused(false)}
@@ -68,20 +131,21 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
         autoComplete="off"
         spellCheck={false}
       />
-      {value && (
-        <button className="txn-search__clear" onClick={() => { onChange(''); inputRef.current?.focus() }}>
+      {localValue && (
+        <button className="txn-search__clear" onClick={handleClear}>
           <X size={12} />
         </button>
       )}
 
-      {(shouldShowSuggestions || (focused && value && activeSuggestions.length > 0)) && (
+      {shouldShowSuggestions && (
         <div className="txn-search__suggestions">
           <div className="txn-search__suggestions-header">Search syntax</div>
-          {activeSuggestions.map((s) => (
+          {activeSuggestions.map((s, i) => (
             <button
               key={s.syntax}
-              className="txn-search__suggestion"
+              className={`txn-search__suggestion ${i === activeIndex ? 'txn-search__suggestion--active' : ''}`}
               onMouseDown={(e) => { e.preventDefault(); appendSuggestion(s.syntax) }}
+              onMouseEnter={() => setActiveIndex(i)}
             >
               <code className="txn-search__syntax">{s.syntax}</code>
               <span className="txn-search__desc">{s.description}</span>

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import datetime
 import uuid
 from dataclasses import dataclass
-from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,7 @@ from igab.repositories.transaction_repo import TransactionRepository
 @dataclass
 class TransactionCreate:
     account_id: uuid.UUID
-    date: date
+    date: datetime.date
     amount: Decimal
     payee_id: uuid.UUID | None = None
     payee_name: str | None = None
@@ -30,11 +30,12 @@ class TransactionCreate:
     parent_transaction_id: uuid.UUID | None = None
     import_id: str | None = None
     import_batch_id: uuid.UUID | None = None
+    import_description: str | None = None
 
 
 @dataclass
 class TransactionUpdate:
-    date: date | None = None
+    date: datetime.date | None = None
     amount: Decimal | None = None
     payee_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
@@ -72,8 +73,13 @@ class TransactionService:
 
         # Apply payee default category when none provided (auto-categorization memory)
         category_id = data.category_id
-        if payee and not category_id and payee.default_category_id:
-            category_id = payee.default_category_id
+        if payee and not category_id:
+            if payee.default_category_id:
+                category_id = payee.default_category_id
+            else:
+                category_id = await self.transaction_repo.get_most_common_category_for_payee(
+                    budget_id, payee.id
+                )
 
         # Update payee default category memory when user explicitly sets one
         if payee_id and data.category_id:
@@ -92,6 +98,7 @@ class TransactionService:
             parent_transaction_id=data.parent_transaction_id,
             import_id=data.import_id,
             import_batch_id=data.import_batch_id,
+            import_description=data.import_description,
         )
         return txn
 
@@ -129,6 +136,10 @@ class TransactionService:
             raise InvariantViolation("Cannot edit a reconciled transaction")
 
         changes = {k: v for k, v in vars(data).items() if v is not None}
+
+        # Update payee default category when user explicitly sets one
+        if data.category_id is not None and txn.payee_id is not None:
+            await self.payee_repo.update(txn.payee_id, default_category_id=data.category_id)
 
         # If updating transfer's amount, also update the paired transaction
         if "amount" in changes and txn.transfer_id:
@@ -199,10 +210,71 @@ class TransactionService:
         name = f"Transfer : {account_name}"
         return await self.payee_repo.find_or_create(budget_id, name)
 
+    async def merge(
+        self,
+        budget_id: uuid.UUID,
+        transaction_ids: list[uuid.UUID],
+        survivor_id: uuid.UUID | None = None,
+    ) -> Transaction:
+        """Merge two transactions. Survivor keeps its data; import metadata is merged."""
+        if len(transaction_ids) != 2:
+            raise InvariantViolation("Exactly 2 transactions are required for a merge")
+
+        txn1 = await self.transaction_repo.get_or_raise(transaction_ids[0])
+        txn2 = await self.transaction_repo.get_or_raise(transaction_ids[1])
+
+        for txn in (txn1, txn2):
+            if str(txn.budget_id) != str(budget_id):
+                raise InvariantViolation("All transactions must belong to this budget")
+            if txn.cleared == "reconciled":
+                raise InvariantViolation("Cannot merge reconciled transactions")
+            if txn.is_split or txn.parent_transaction_id:
+                raise InvariantViolation("Cannot merge split transactions")
+            if txn.transfer_id:
+                raise InvariantViolation("Cannot merge transfer transactions")
+
+        if txn1.account_id != txn2.account_id:
+            raise InvariantViolation("Transactions must be in the same account")
+
+        # Determine survivor — explicit choice or the older transaction
+        if survivor_id is not None:
+            if survivor_id not in transaction_ids:
+                raise InvariantViolation("survivor_id must be one of the transaction_ids")
+            survivor = txn1 if txn1.id == survivor_id else txn2
+            deleted = txn2 if txn1.id == survivor_id else txn1
+        else:
+            if txn1.created_at <= txn2.created_at:
+                survivor, deleted = txn1, txn2
+            else:
+                survivor, deleted = txn2, txn1
+
+        # Merge import metadata from deleted into survivor if survivor lacks it
+        updates: dict = {}
+        if not survivor.import_id and deleted.import_id:
+            updates["import_id"] = deleted.import_id
+        if not survivor.import_description and deleted.import_description:
+            updates["import_description"] = deleted.import_description
+        if deleted.has_sync_source or survivor.has_sync_source:
+            updates["has_sync_source"] = True
+        if updates:
+            await self.transaction_repo.update(survivor.id, **updates)
+
+        await self.transaction_repo.soft_delete(deleted.id)
+        await self.session.refresh(survivor)
+        return survivor
+
     async def _resolve_payee(self, budget_id: uuid.UUID, data: TransactionCreate) -> Payee | None:
         if data.payee_id:
-            result = await self.session.get(Payee, data.payee_id)
-            return result
-        if data.payee_name:
-            return await self.payee_repo.find_or_create(budget_id, data.payee_name)
-        return None
+            return await self.session.get(Payee, data.payee_id)
+        if not data.payee_name:
+            return None
+        # Exact match first
+        existing = await self.payee_repo.find_by_name(budget_id, data.payee_name)
+        if existing:
+            return existing
+        # Fuzzy match against names and mapping_samples
+        similar = await self.payee_repo.find_best_match(budget_id, data.payee_name)
+        if similar:
+            return similar
+        # Create new payee
+        return await self.payee_repo.create(budget_id=budget_id, name=data.payee_name)

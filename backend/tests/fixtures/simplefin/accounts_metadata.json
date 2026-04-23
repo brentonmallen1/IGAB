@@ -1,0 +1,22 @@
+{
+  "errors": [],
+  "accounts": [
+    {
+      "id": "ACT-d0cdb6e7-22a0-435f-ab98-b006b25c29d7",
+      "name": "EVERYDAY CHECKING ...2177 (2177)",
+      "currency": "USD",
+      "balance": "17531.19",
+      "available-balance": "17031.95",
+      "balance-date": 1776773400,
+      "transactions": [],
+      "holdings": [],
+      "org": {
+        "domain": "www.wellsfargo.com",
+        "name": "Wells Fargo",
+        "sfin-url": "https://beta-bridge.simplefin.org/simplefin",
+        "url": "https://www.wellsfargo.com",
+        "id": "www.wellsfargo.com"
+      }
+    }
+  ]
+}

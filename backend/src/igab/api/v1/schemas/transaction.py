@@ -54,6 +54,8 @@ class TransactionResponse(BaseModel):
     parent_transaction_id: uuid.UUID | None
     is_split: bool
     import_id: str | None
+    import_description: str | None
+    has_sync_source: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -74,6 +76,32 @@ class BulkDelete(BaseModel):
     transaction_ids: list[uuid.UUID]
 
 
+class BulkApprove(BaseModel):
+    transaction_ids: list[uuid.UUID]
+
+
+class PendingReviewCount(BaseModel):
+    unapproved: int
+    uncategorized: int
+
+
+class MergeTransactionsRequest(BaseModel):
+    transaction_ids: list[uuid.UUID]
+    survivor_id: uuid.UUID | None = None
+
+
+class SimilarTransactionResponse(BaseModel):
+    id: uuid.UUID
+    date: datetime.date
+    amount: Decimal
+    payee_id: uuid.UUID | None
+    memo: str | None
+    cleared: str
+    import_description: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class PayeeCreate(BaseModel):
     name: str
 
@@ -81,6 +109,7 @@ class PayeeCreate(BaseModel):
 class PayeeUpdate(BaseModel):
     name: str | None = None
     default_category_id: uuid.UUID | None = None
+    mapping_samples: str | None = None
 
 
 class PayeeResponse(BaseModel):
@@ -89,6 +118,7 @@ class PayeeResponse(BaseModel):
     name: str
     default_category_id: uuid.UUID | None
     transfer_account_id: uuid.UUID | None
+    mapping_samples: str | None
 
     model_config = {"from_attributes": True}
 

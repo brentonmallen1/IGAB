@@ -1,5 +1,8 @@
+import hashlib
 import uuid
 from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +21,11 @@ from igab.services.transaction_service import TransactionCreate, TransactionServ
 
 _TRANSFER_PREFIX = "Transfer : "
 _YNAB_INFLOW_GROUP = "Inflow"
+
+
+def _generate_import_id(account_name: str, txn_date: date, amount: Decimal, payee: str) -> str:
+    content = f"{account_name}|{txn_date.isoformat()}|{amount}|{payee}"
+    return f"csv:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 _SYSTEM_INCOME_GROUP = "Income"
 
 
@@ -187,6 +195,9 @@ class YNABImporter:
                             "approved": True,
                             "is_split": False,
                             "is_deleted": False,
+                            "import_id": _generate_import_id(
+                                txn.account_name, txn.date, txn.amount, txn.payee or ""
+                            ),
                         }
                     )
 
@@ -194,8 +205,25 @@ class YNABImporter:
                 result.errors.append(f"Transaction {txn.date} {txn.payee}: {e}")
                 result.transactions_skipped += 1
 
-        # Bulk insert regular transactions
-        inserted = await self.transaction_repo.bulk_create(regular_rows)
+        # Make import_ids unique within the batch: two transactions with identical
+        # (account, date, amount, payee) produce the same hash, so append ":N" for N>0.
+        seen_keys: dict[tuple[uuid.UUID, str], int] = {}
+        for row in regular_rows:
+            key = (row["account_id"], row["import_id"])
+            count = seen_keys.get(key, 0)
+            if count > 0:
+                row["import_id"] = f"{row['import_id']}:{count}"
+            seen_keys[key] = count + 1
+
+        # Deduplicate against existing import_ids before inserting
+        all_import_ids = [r["import_id"] for r in regular_rows if r.get("import_id")]
+        existing_ids = await self.transaction_repo.get_existing_import_ids(
+            self.budget_id, all_import_ids
+        )
+        new_rows = [r for r in regular_rows if r.get("import_id") not in existing_ids]
+        result.transactions_skipped += len(regular_rows) - len(new_rows)
+
+        inserted = await self.transaction_repo.bulk_create(new_rows)
         result.transactions_imported += inserted
 
         # Handle transfers individually (they need paired linking via TransactionService)

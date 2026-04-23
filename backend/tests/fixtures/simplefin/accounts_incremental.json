@@ -1,0 +1,63 @@
+{
+  "errors": [],
+  "accounts": [
+    {
+      "id": "ACT-d0cdb6e7-22a0-435f-ab98-b006b25c29d7",
+      "name": "EVERYDAY CHECKING ...2177 (2177)",
+      "currency": "USD",
+      "balance": "17531.19",
+      "available-balance": "17031.95",
+      "balance-date": 1776773400,
+      "transactions": [
+        {
+          "id": "TRN-c21e800e-6ce6-434a-bd3a-0e40902e5aaf",
+          "posted": 0,
+          "amount": "-14.99",
+          "description": "PURCHASE YOU NEED A B +18016109169  UT CARD3951",
+          "payee": "You Need a",
+          "memo": "",
+          "transacted_at": 1776772800,
+          "pending": true
+        },
+        {
+          "id": "TRN-dd9d140c-6f6c-4980-b5a1-4745ee723ba5",
+          "posted": 0,
+          "amount": "-109.80",
+          "description": "PURCHASE PAYPAL *OLIV 4029357733    CA CARD3951",
+          "payee": "Oliv",
+          "memo": "",
+          "transacted_at": 1776772800,
+          "pending": true
+        },
+        {
+          "id": "TRN-2eafea66-da8e-4771-a65c-e314e1ae5b23",
+          "posted": 0,
+          "amount": "-36.77",
+          "description": "PURCHASE PAYPAL *ILNP 7023390720    NV CARD3951",
+          "payee": "Ilnp",
+          "memo": "",
+          "transacted_at": 1776772800,
+          "pending": true
+        },
+        {
+          "id": "TRN-38080811-d188-41bd-94a0-3acf61ac1032",
+          "posted": 0,
+          "amount": "-11.30",
+          "description": "PURCHASE BISCUITVILLE GRAHAM        NC CARD3951",
+          "payee": "Biscuitville",
+          "memo": "",
+          "transacted_at": 1776772800,
+          "pending": true
+        }
+      ],
+      "holdings": [],
+      "org": {
+        "domain": "www.wellsfargo.com",
+        "name": "Wells Fargo",
+        "sfin-url": "https://beta-bridge.simplefin.org/simplefin",
+        "url": "https://www.wellsfargo.com",
+        "id": "www.wellsfargo.com"
+      }
+    }
+  ]
+}

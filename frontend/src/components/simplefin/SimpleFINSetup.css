@@ -4,10 +4,34 @@
   gap: var(--spacing-sm);
 }
 
-.sf-setup__desc {
+.sf-setup__steps {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sf-setup__steps a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.sf-setup__steps code {
+  font-family: monospace;
+  font-size: var(--font-size-xs);
+  background: var(--bg-secondary);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.sf-setup__note {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0;
+  font-style: italic;
 }
 
 .sf-setup__input {

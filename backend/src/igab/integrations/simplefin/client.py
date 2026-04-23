@@ -1,24 +1,69 @@
 import base64
+import logging
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+
+def _extract_auth(access_url: str) -> tuple[str, tuple[str, str]]:
+    """Split access_url into (bare_url, (username, password)).
+
+    SimpleFIN returns URLs like https://user:pass@bridge.simplefin.org/simplefin.
+    httpx doesn't always forward embedded credentials on redirects, so we
+    extract them and pass auth explicitly.
+    """
+    parsed = urlparse(access_url)
+    bare_url = parsed._replace(netloc=parsed.hostname or "").geturl()
+    if parsed.port:
+        bare_url = parsed._replace(netloc=f"{parsed.hostname}:{parsed.port}").geturl()
+    username = parsed.username or ""
+    password = parsed.password or ""
+    return bare_url, (username, password)
 
 
 class SimpleFINClient:
     """Thin async wrapper around the SimpleFIN Bridge API."""
 
     async def claim_access_url(self, setup_token: str) -> str:
-        """Exchange a setup token for an access URL."""
-        decoded = base64.b64decode(setup_token).decode()
+        """Exchange a setup token for an access URL.
+
+        The setup token is a URL-safe base64-encoded claim URL. We POST to it
+        with an empty body (Content-Length: 0) to receive the access URL.
+        """
+        # URL-safe base64 with padding normalisation
+        token = setup_token.strip()
+        padding = 4 - len(token) % 4
+        if padding != 4:
+            token += "=" * padding
+        try:
+            claim_url = base64.urlsafe_b64decode(token).decode()
+        except Exception as exc:
+            logger.error("Failed to base64-decode setup token: %s", exc)
+            raise ValueError(f"Invalid setup token (base64 decode failed): {exc}") from exc
+
+        logger.info("Claiming SimpleFIN access URL from: %s", claim_url[:60])
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(decoded)
+            resp = await client.post(
+                claim_url,
+                content=b"",
+                headers={"Content-Length": "0"},
+            )
+            logger.info("Claim response status: %s", resp.status_code)
+            if not resp.is_success:
+                logger.error("Claim failed — status %s body: %s", resp.status_code, resp.text[:200])
             resp.raise_for_status()
-            return resp.text.strip()
+            access_url = resp.text.strip()
+            logger.info("Received access URL (masked): %s...%s", access_url[:20], access_url[-10:])
+            return access_url
 
     async def get_accounts(self, access_url: str) -> list[dict]:
-        accounts_url = access_url.rstrip("/") + "/accounts"
+        bare_url, auth = _extract_auth(access_url)
+        accounts_url = bare_url.rstrip("/") + "/accounts"
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(accounts_url)
+            resp = await client.get(accounts_url, auth=auth, params={"version": "2"})
             resp.raise_for_status()
             data = resp.json()
             return data.get("accounts", [])
@@ -28,15 +73,20 @@ class SimpleFINClient:
         access_url: str,
         since: datetime | None = None,
     ) -> list[dict]:
-        params = {}
+        bare_url, auth = _extract_auth(access_url)
+        params: dict[str, str | int] = {"version": "2", "pending": "1"}
         if since:
             params["start-date"] = int(since.replace(tzinfo=UTC).timestamp())
 
-        accounts_url = access_url.rstrip("/") + "/accounts"
+        accounts_url = bare_url.rstrip("/") + "/accounts"
+        logger.info("Fetching SimpleFIN transactions from %s with params %s", accounts_url, params)
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.get(accounts_url, params=params)
+            resp = await client.get(accounts_url, auth=auth, params=params)
             resp.raise_for_status()
             data = resp.json()
+
+        if data.get("errors"):
+            logger.warning("SimpleFIN errlist: %s", data["errors"])
 
         transactions = []
         for account in data.get("accounts", []):

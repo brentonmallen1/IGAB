@@ -84,3 +84,25 @@ class AccountRepository(BaseRepository[Account]):
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_linked_simplefin_accounts(self, budget_id: uuid.UUID) -> list[Account]:
+        result = await self.session.execute(
+            select(Account).where(
+                Account.budget_id == budget_id,
+                Account.simplefin_account_id.isnot(None),
+                Account.is_deleted == False,  # noqa: E712
+                Account.is_closed == False,  # noqa: E712
+            )
+        )
+        return list(result.scalars().all())
+
+    async def get_sync_status(self, budget_id: uuid.UUID) -> list[Account]:
+        """Return all accounts with SimpleFIN link info for sidebar status display."""
+        result = await self.session.execute(
+            select(Account).where(
+                Account.budget_id == budget_id,
+                Account.simplefin_account_id.isnot(None),
+                Account.is_deleted == False,  # noqa: E712
+            )
+        )
+        return list(result.scalars().all())

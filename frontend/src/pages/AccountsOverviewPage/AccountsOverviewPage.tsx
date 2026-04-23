@@ -1,0 +1,243 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { RefreshCw, CloudOff } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { useAccounts } from '../../api/accounts'
+import {
+  useSimpleFINConnections,
+  useSyncSimpleFIN,
+  useSimpleFINRateLimitStatus,
+} from '../../api/simplefin'
+import { SyncStatusIcon, getSyncState } from '../../components/simplefin/SyncStatusIcon'
+import { useAppStore } from '../../stores/appStore'
+import { formatMoney } from '../../utils/money'
+import { formatDate } from '../../utils/dates'
+import type { Account } from '../../types'
+import './AccountsOverviewPage.css'
+
+const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'credit_card', 'loan'] as const
+const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  checking: 'Checking',
+  savings: 'Savings',
+  credit_card: 'Credit Cards',
+  loan: 'Loans',
+  tracking: 'Tracking',
+}
+
+function groupAccounts(accounts: Account[]): Map<string, Account[]> {
+  const groups = new Map<string, Account[]>()
+  for (const acc of accounts) {
+    const key = acc.on_budget ? acc.account_type : 'tracking'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(acc)
+  }
+  return groups
+}
+
+function formatSyncAge(lastSyncAt: string | null): string {
+  if (!lastSyncAt) return 'Never synced'
+  const ageMs = Date.now() - new Date(lastSyncAt).getTime()
+  const ageMin = Math.floor(ageMs / 60_000)
+  if (ageMin < 2) return 'Just synced'
+  if (ageMin < 60) return `${ageMin}m ago`
+  const ageH = Math.floor(ageMin / 60)
+  if (ageH < 24) return `${ageH}h ago`
+  return `${Math.floor(ageH / 24)}d ago`
+}
+
+function formatReconciled(lastReconciledAt: string | null): string {
+  if (!lastReconciledAt) return 'Never reconciled'
+  return `Reconciled ${formatDate(lastReconciledAt.split('T')[0])}`
+}
+
+interface AccountRowProps {
+  account: Account
+  isSyncing: boolean
+  onSyncClick: (e: React.MouseEvent) => void
+}
+
+function AccountRow({ account, isSyncing, onSyncClick }: AccountRowProps) {
+  const navigate = useNavigate()
+  const state = getSyncState(account, isSyncing)
+  const balance = Number(account.balance)
+  const cleared = Number(account.cleared_balance)
+  const uncleared = Number(account.uncleared_balance)
+
+  return (
+    <div
+      className={`accounts-overview__row ${account.is_closed ? 'accounts-overview__row--closed' : ''}`}
+      onClick={() => navigate(`/accounts/${account.id}`)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && navigate(`/accounts/${account.id}`)}
+    >
+      <div className="accounts-overview__row-main">
+        <div className="accounts-overview__row-name-group">
+          <span className="accounts-overview__row-name">{account.name}</span>
+          {account.is_closed && <span className="accounts-overview__tag accounts-overview__tag--closed">Closed</span>}
+          {account.uncategorized_count > 0 && (
+            <span
+              className="accounts-overview__uncat-badge"
+              title={`${account.uncategorized_count} uncategorized transaction${account.uncategorized_count !== 1 ? 's' : ''}`}
+            >
+              {account.uncategorized_count}
+            </span>
+          )}
+        </div>
+
+        <div className="accounts-overview__row-meta">
+          {account.simplefin_account_id ? (
+            <span className={`accounts-overview__sync-info accounts-overview__sync-info--${state}`}>
+              <SyncStatusIcon account={account} isSyncing={isSyncing} onSyncClick={onSyncClick} />
+              <span>{formatSyncAge(account.last_simplefin_sync_at)}</span>
+            </span>
+          ) : (
+            <span className="accounts-overview__sync-info accounts-overview__sync-info--manual">
+              <CloudOff size={12} />
+              <span>Manual</span>
+            </span>
+          )}
+          <span className="accounts-overview__separator">·</span>
+          <span className="accounts-overview__reconciled">{formatReconciled(account.last_reconciled_at)}</span>
+        </div>
+      </div>
+
+      <div className="accounts-overview__row-balances">
+        <span className={`accounts-overview__balance-main ${balance < 0 ? 'negative' : ''}`}>
+          {formatMoney(balance)}
+        </span>
+        <span className="accounts-overview__balance-detail">
+          <span title="Cleared balance">C {formatMoney(cleared)}</span>
+          {uncleared !== 0 && (
+            <span title="Uncleared balance" className={uncleared < 0 ? 'negative' : 'positive'}>
+              {uncleared > 0 ? '+' : ''}{formatMoney(uncleared)}
+            </span>
+          )}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+export function AccountsOverviewPage() {
+  const budgetId = useAppStore((s) => s.currentBudgetId)
+  const { data: accounts } = useAccounts(budgetId)
+  const { data: connections = [] } = useSimpleFINConnections()
+  const primaryConnection = connections[0] ?? null
+  const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(primaryConnection?.id ?? null)
+  const syncMutation = useSyncSimpleFIN(budgetId)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+
+  const syncingAccountId =
+    syncMutation.isPending
+      ? (syncMutation.variables as { accountSimplefinId?: string })?.accountSimplefinId
+      : undefined
+
+  async function handleSyncAll() {
+    if (!primaryConnection || !budgetId || syncMutation.isPending) return
+    if (rateLimitStatus && !rateLimitStatus.can_sync_global) {
+      toast.error(`Daily sync limit reached. Resets at midnight UTC.`)
+      return
+    }
+    setSyncMsg(null)
+    try {
+      const result = await syncMutation.mutateAsync({ connectionId: primaryConnection.id })
+      if (result.error) {
+        toast.error(result.error)
+        setSyncMsg(null)
+      } else {
+        const parts = [`Imported ${result.imported}`, `skipped ${result.skipped}`]
+        if (result.cleared) parts.push(`cleared ${result.cleared}`)
+        const msg = parts.join(', ')
+        setSyncMsg(msg)
+        toast.success(msg)
+      }
+    } catch {
+      toast.error('Sync failed — check your connection')
+      setSyncMsg(null)
+    }
+  }
+
+  function handleAccountSync(account: Account, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!primaryConnection || !budgetId || !account.simplefin_account_id || syncMutation.isPending) return
+    if (rateLimitStatus && !rateLimitStatus.can_sync_account) {
+      toast.error('Daily sync limit reached. Resets at midnight UTC.')
+      return
+    }
+    syncMutation.mutate(
+      { connectionId: primaryConnection.id, accountSimplefinId: account.simplefin_account_id },
+      {
+        onSuccess: (result) => {
+          if (result.error) {
+            toast.error(result.error)
+          } else {
+            toast.success(`Synced ${account.name}`)
+          }
+        },
+        onError: () => toast.error(`Failed to sync ${account.name}`),
+      },
+    )
+  }
+
+  if (!budgetId) {
+    return <div className="accounts-overview__empty">No budget selected.</div>
+  }
+
+  const grouped = accounts ? groupAccounts(accounts) : new Map<string, Account[]>()
+  const allTypes = [...ACCOUNT_TYPE_ORDER, 'tracking'] as string[]
+
+  const hasSyncConnection = !!primaryConnection
+  const canSyncAll = hasSyncConnection && !syncMutation.isPending && (rateLimitStatus?.can_sync_global ?? true)
+
+  return (
+    <div className="accounts-overview">
+      <div className="accounts-overview__header">
+        <h1 className="accounts-overview__title">Accounts</h1>
+        <div className="accounts-overview__header-actions">
+          {syncMsg && <span className="accounts-overview__sync-msg">{syncMsg}</span>}
+          {hasSyncConnection && (
+            <button
+              className={`accounts-overview__sync-all-btn ${syncMutation.isPending && !syncingAccountId ? 'accounts-overview__sync-all-btn--spinning' : ''}`}
+              onClick={handleSyncAll}
+              disabled={!canSyncAll}
+              title={
+                rateLimitStatus
+                  ? `Sync all accounts · ${rateLimitStatus.global_remaining}/12 remaining`
+                  : 'Sync all accounts'
+              }
+            >
+              <RefreshCw size={14} />
+              <span>Sync All</span>
+              {rateLimitStatus && (
+                <span className="accounts-overview__sync-badge">{rateLimitStatus.global_remaining}</span>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="accounts-overview__groups">
+        {allTypes.map((type) => {
+          const typeAccounts = grouped.get(type) ?? []
+          if (typeAccounts.length === 0) return null
+          return (
+            <div key={type} className="accounts-overview__group">
+              <div className="accounts-overview__group-label">{ACCOUNT_TYPE_LABELS[type] ?? type}</div>
+              <div className="accounts-overview__group-rows">
+                {typeAccounts.map((acc) => (
+                  <AccountRow
+                    key={acc.id}
+                    account={acc}
+                    isSyncing={syncMutation.isPending && syncingAccountId === acc.simplefin_account_id}
+                    onSyncClick={(e) => handleAccountSync(acc, e)}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

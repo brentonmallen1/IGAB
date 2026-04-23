@@ -1,9 +1,12 @@
 import uuid
 
+from rapidfuzz import fuzz
 from sqlalchemy import func, select, update
 
 from igab.db.models import Payee, Transaction
 from igab.repositories.base import BaseRepository
+
+PAYEE_FUZZY_THRESHOLD = 80
 
 
 class PayeeRepository(BaseRepository[Payee]):
@@ -40,6 +43,30 @@ class PayeeRepository(BaseRepository[Payee]):
             )
         )
         return result.scalar_one_or_none()
+
+    async def find_best_match(self, budget_id: uuid.UUID, raw_name: str) -> Payee | None:
+        """Fuzzy-match raw_name against payee names and mapping_samples.
+
+        Scores each payee against its canonical name and any comma-separated
+        mapping_samples. Returns the best match above PAYEE_FUZZY_THRESHOLD.
+        """
+        payees = await self.get_all(budget_id)
+        raw_lower = raw_name.lower()
+        best_match: Payee | None = None
+        best_score = 0
+
+        for payee in payees:
+            candidates = [payee.name]
+            if payee.mapping_samples:
+                candidates.extend(s.strip() for s in payee.mapping_samples.split(",") if s.strip())
+
+            for candidate in candidates:
+                score = fuzz.token_set_ratio(raw_lower, candidate.lower())
+                if score > best_score and score >= PAYEE_FUZZY_THRESHOLD:
+                    best_score = score
+                    best_match = payee
+
+        return best_match
 
     async def find_or_create(self, budget_id: uuid.UUID, name: str) -> Payee:
         payee = await self.find_by_name(budget_id, name)

@@ -86,7 +86,8 @@
   transition: background-color var(--transition-fast);
 }
 
-.txn-search__suggestion:hover {
+.txn-search__suggestion:hover,
+.txn-search__suggestion--active {
   background-color: var(--row-hover-bg);
 }
 
@@ -97,7 +98,7 @@
   background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
   padding: 1px 4px;
   border-radius: 3px;
-  white-space: nowrap;
+  white-space: pre;
 }
 
 .txn-search__desc {

@@ -17,6 +17,7 @@ class AccountCreate(BaseModel):
 
 class AccountUpdate(BaseModel):
     name: str | None = None
+    account_type: str | None = None
     on_budget: bool | None = None
     is_closed: bool | None = None
     note: str | None = None
@@ -36,6 +37,13 @@ class AccountResponse(BaseModel):
     last_reconciled_balance: Decimal | None
     created_at: datetime
     updated_at: datetime
+    # SimpleFIN sync
+    simplefin_account_id: str | None = None
+    simplefin_account_name: str | None = None
+    simplefin_sync_enabled: bool = True
+    first_sync_complete: bool = False
+    last_simplefin_sync_at: datetime | None = None
+    simplefin_balance: Decimal | None = None
     # Computed
     balance: Decimal = Decimal("0")
     cleared_balance: Decimal = Decimal("0")

@@ -13,6 +13,7 @@
 
   --color-accent: #cba6f7;
   --color-accent-hover: #b4befe;
+  --accent-color: var(--color-accent);
   --color-positive: #a6e3a1;
   --color-negative: #f38ba8;
   --color-warning: #fab387;
@@ -35,6 +36,17 @@
   --header-bg: #11111b;
   --card-bg: #181825;
   --card-border: #313244;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
 }
 
 /* Catppuccin Latte (Light) */
@@ -52,6 +64,7 @@
 
   --color-accent: #8839ef;
   --color-accent-hover: #7287fd;
+  --accent-color: var(--color-accent);
   --color-positive: #40a02b;
   --color-negative: #d20f39;
   --color-warning: #fe640b;
@@ -74,4 +87,15 @@
   --header-bg: #ffffff;
   --card-bg: #ffffff;
   --card-border: #ccd0da;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
 }

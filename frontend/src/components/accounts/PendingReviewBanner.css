@@ -1,0 +1,38 @@
+.pending-review-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--color-info-text);
+}
+
+.pending-review-banner__icon {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.pending-review-banner__message {
+  flex: 1;
+}
+
+.pending-review-banner__btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--color-info-border);
+  background: var(--color-info-bg);
+  color: var(--color-info-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.pending-review-banner__btn:hover {
+  background: var(--color-info-border);
+}

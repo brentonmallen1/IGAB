@@ -1,16 +1,32 @@
+import asyncio
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import SimpleFINConnection
+from igab.domain.exceptions import IGABError
 from igab.integrations.simplefin.client import SimpleFINClient
 from igab.integrations.simplefin.encryption import decrypt, encrypt
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.transaction_matching_service import TransactionMatchingService
 from igab.services.transaction_service import TransactionCreate, TransactionService
+
+GLOBAL_DAILY_LIMIT = 12
+ACCOUNT_DAILY_LIMIT = 12
+MAX_RETRY_ATTEMPTS = 3
+RETRY_BASE_DELAY = 2.0  # seconds, doubles each attempt
+
+
+class RateLimitError(IGABError):
+    pass
+
+
+SyncType = Literal["global", "account"]
 
 
 class SimpleFINService:
@@ -21,12 +37,14 @@ class SimpleFINService:
         account_repo: AccountRepository,
         txn_repo: TransactionRepository,
         txn_service: TransactionService,
+        matching_service: TransactionMatchingService | None = None,
     ) -> None:
         self.session = session
         self.repo = repo
         self.account_repo = account_repo
         self.txn_repo = txn_repo
         self.txn_service = txn_service
+        self.matching_service = matching_service
         self.client = SimpleFINClient()
 
     async def setup(self, user_id: uuid.UUID, setup_token: str) -> SimpleFINConnection:
@@ -37,10 +55,10 @@ class SimpleFINService:
     async def list_connections(self, user_id: uuid.UUID) -> list[SimpleFINConnection]:
         return await self.repo.get_all_for_user(user_id)
 
-    async def update_interval(
-        self, connection_id: uuid.UUID, sync_interval_hours: int
+    async def update_connection(
+        self, connection_id: uuid.UUID, **kwargs: object
     ) -> SimpleFINConnection:
-        return await self.repo.update(connection_id, sync_interval_hours=sync_interval_hours)
+        return await self.repo.update(connection_id, **kwargs)
 
     async def delete(self, connection_id: uuid.UUID) -> None:
         await self.repo.delete(connection_id)
@@ -52,65 +70,239 @@ class SimpleFINService:
         access_url = decrypt(conn.access_url_encrypted)
         return await self.client.get_accounts(access_url)
 
-    async def sync(self, connection_id: uuid.UUID, budget_id: uuid.UUID) -> dict:
+    def get_rate_limit_status(self, conn: SimpleFINConnection) -> dict:
+        today = date.today()
+        is_new_day = conn.last_request_date != today
+        global_used = 0 if is_new_day else conn.global_requests_today
+        account_used = 0 if is_new_day else conn.account_requests_today
+        return {
+            "global_used": global_used,
+            "global_remaining": max(0, GLOBAL_DAILY_LIMIT - global_used),
+            "account_used": account_used,
+            "account_remaining": max(0, ACCOUNT_DAILY_LIMIT - account_used),
+            "can_sync_global": global_used < GLOBAL_DAILY_LIMIT,
+            "can_sync_account": account_used < ACCOUNT_DAILY_LIMIT,
+            "resets_at": _next_midnight_utc(),
+        }
+
+    def _check_rate_limit(self, conn: SimpleFINConnection, sync_type: SyncType) -> None:
+        today = date.today()
+        is_new_day = conn.last_request_date != today
+        if is_new_day:
+            return
+        used = conn.global_requests_today if sync_type == "global" else conn.account_requests_today
+        limit = GLOBAL_DAILY_LIMIT if sync_type == "global" else ACCOUNT_DAILY_LIMIT
+        if used >= limit:
+            raise RateLimitError(
+                f"Daily {sync_type} sync limit of {limit} requests reached. Resets at midnight UTC."
+            )
+
+    async def _bump_request_count(
+        self, connection_id: uuid.UUID, conn: SimpleFINConnection, sync_type: SyncType
+    ) -> None:
+        today = date.today()
+        is_new_day = conn.last_request_date != today
+        global_today = 0 if is_new_day else conn.global_requests_today
+        account_today = 0 if is_new_day else conn.account_requests_today
+        if sync_type == "global":
+            global_today += 1
+        else:
+            account_today += 1
+        await self.repo.update(
+            connection_id,
+            last_request_date=today,
+            global_requests_today=global_today,
+            account_requests_today=account_today,
+        )
+
+    async def _get_lookback_since(
+        self, account_ids: list[uuid.UUID], first_sync: bool
+    ) -> datetime | None:
+        if first_sync:
+            return datetime.now(UTC) - timedelta(days=90)
+        oldest: date | None = None
+        for acct_id in account_ids:
+            d = await self.txn_repo.get_oldest_cleared_date_for_account(acct_id)
+            if d is not None and (oldest is None or d < oldest):
+                oldest = d
+        if oldest is None:
+            return datetime.now(UTC) - timedelta(days=90)
+        return datetime.combine(oldest, datetime.min.time(), tzinfo=UTC) - timedelta(hours=24)
+
+    async def sync(
+        self,
+        connection_id: uuid.UUID,
+        budget_id: uuid.UUID,
+        sync_type: SyncType = "global",
+        account_simplefin_id: str | None = None,
+    ) -> dict:
         conn = await self.repo.get(connection_id)
         if conn is None:
             return {"imported": 0, "skipped": 0, "error": "Connection not found"}
 
-        access_url = decrypt(conn.access_url_encrypted)
-        txns = await self.client.get_transactions(access_url, since=conn.last_sync_at)
+        if not conn.sync_enabled:
+            return {"imported": 0, "skipped": 0, "error": "Sync is disabled for this connection"}
 
+        try:
+            self._check_rate_limit(conn, sync_type)
+        except RateLimitError as e:
+            return {"imported": 0, "skipped": 0, "error": str(e)}
+
+        # Determine which accounts to sync
+        all_linked = await self.account_repo.get_linked_simplefin_accounts(budget_id)
+        if account_simplefin_id:
+            targets = [a for a in all_linked if a.simplefin_account_id == account_simplefin_id]
+        else:
+            targets = [a for a in all_linked if a.simplefin_sync_enabled]
+
+        if not targets:
+            return {"imported": 0, "skipped": 0, "error": "No linked accounts to sync"}
+
+        target_ids = [a.id for a in targets]
+        is_first_sync = any(not a.first_sync_complete for a in targets)
+        since = await self._get_lookback_since(target_ids, is_first_sync)
+
+        access_url = decrypt(conn.access_url_encrypted)
+
+        txns_raw: list[dict] = []
+        last_error: Exception | None = None
+        for attempt in range(MAX_RETRY_ATTEMPTS):
+            try:
+                txns_raw = await self.client.get_transactions(access_url, since=since)
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt < MAX_RETRY_ATTEMPTS - 1:
+                    await asyncio.sleep(RETRY_BASE_DELAY * (2**attempt))
+
+        if last_error is not None:
+            error_msg = str(last_error)
+            await self.repo.update(
+                connection_id,
+                last_sync_error=error_msg,
+                last_sync_error_at=datetime.now(UTC),
+            )
+            return {"imported": 0, "skipped": 0, "error": error_msg}
+
+        target_sf_ids = {a.simplefin_account_id for a in targets}
         imported = 0
         skipped = 0
-        for t in txns:
-            import_id = f"sf:{t.get('id', '')}"
+        cleared = 0
+
+        for t in txns_raw:
             acct_sf_id = t.get("account_id")
-            if not acct_sf_id:
+            if acct_sf_id not in target_sf_ids:
                 skipped += 1
                 continue
 
-            account = await self.account_repo.get_by_simplefin_id(budget_id, acct_sf_id)
+            account = next((a for a in targets if a.simplefin_account_id == acct_sf_id), None)
             if account is None:
                 skipped += 1
                 continue
 
-            existing = await self.txn_repo.find_by_import_id(account.id, import_id)
-            if existing:
-                skipped += 1
-                continue
-
+            import_id = f"sf:{t.get('id', '')}"
             posted_ts = t.get("posted")
             transacted_ts = t.get("transacted_at")
             timestamp = posted_ts or transacted_ts
             txn_date = (
                 datetime.fromtimestamp(timestamp, tz=UTC).date()
-                if isinstance(timestamp, (int, float))
+                if isinstance(timestamp, (int, float)) and timestamp > 0
                 else date.today()
             )
-            # Transactions without a posted timestamp haven't cleared the bank yet
-            cleared = "uncleared" if posted_ts else "pending"
+            is_posted = bool(posted_ts and posted_ts > 0)
+            new_cleared = "cleared" if is_posted else "pending"
+
+            # Check if already exists (any state)
+            existing = await self.txn_repo.find_by_import_id(account.id, import_id)
+            if existing is not None:
+                # Transition pending → cleared if now posted
+                if existing.cleared == "pending" and is_posted:
+                    await self.txn_repo.update_cleared(existing.id, "cleared")
+                    cleared += 1
+                else:
+                    skipped += 1
+                continue
+
+            # Also check if there's a pending version waiting to be cleared
+            pending_existing = await self.txn_repo.find_pending_by_import_id(account.id, import_id)
+            if pending_existing is not None:
+                if is_posted:
+                    await self.txn_repo.update_cleared(pending_existing.id, "cleared")
+                    cleared += 1
+                else:
+                    skipped += 1
+                continue
+
             amount = Decimal(str(t.get("amount", "0")))
 
-            await self.txn_service.create(
+            # Dedup against cleared/reconciled transactions that may lack import_id
+            # (e.g. YNAB imports, manual entries, CSV imports)
+            existing_match = await self.txn_repo.find_existing_match(
+                account.id, amount, txn_date
+            )
+            if existing_match is not None:
+                updates: dict[str, object] = {}
+                if not existing_match.import_id:
+                    updates["import_id"] = import_id
+                if existing_match.cleared in ("pending", "uncleared") and is_posted:
+                    updates["cleared"] = "cleared"
+                    cleared += 1
+                if updates:
+                    await self.txn_repo.update(existing_match.id, **updates)
+                skipped += 1
+                continue
+
+            new_txn = await self.txn_service.create(
                 budget_id,
                 TransactionCreate(
                     account_id=account.id,
                     date=txn_date,
                     amount=amount,
-                    payee_name=t.get("description", ""),
+                    payee_name=t.get("payee") or t.get("description") or "",
+                    import_description=t.get("description"),
                     import_id=import_id,
-                    cleared=cleared,
+                    cleared=new_cleared,
                     approved=False,
                 ),
             )
+            if self.matching_service is not None and new_txn is not None:
+                await self.matching_service.try_match(new_txn)
             imported += 1
 
-        today = date.today()
-        requests_today = conn.requests_today + 1 if conn.last_request_date == today else 1
+        # Update per-account sync state
+        now = datetime.now(UTC)
+        for account in targets:
+            await self.account_repo.update(
+                account.id,
+                last_simplefin_sync_at=now,
+                first_sync_complete=True,
+            )
+
+        await self._bump_request_count(connection_id, conn, sync_type)
         await self.repo.update(
             connection_id,
-            last_sync_at=datetime.now(tz=UTC),
-            last_request_date=today,
-            requests_today=requests_today,
+            last_sync_at=now,
+            last_sync_error=None,
+            last_sync_error_at=None,
         )
-        return {"imported": imported, "skipped": skipped}
+
+        rate_status = await self._fresh_rate_status(connection_id)
+        return {
+            "imported": imported,
+            "skipped": skipped,
+            "cleared": cleared,
+            **rate_status,
+        }
+
+    async def _fresh_rate_status(self, connection_id: uuid.UUID) -> dict:
+        conn = await self.repo.get(connection_id)
+        if conn is None:
+            return {}
+        return self.get_rate_limit_status(conn)
+
+
+def _next_midnight_utc() -> str:
+    now = datetime.now(UTC)
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight.isoformat()

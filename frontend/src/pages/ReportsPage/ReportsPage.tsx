@@ -1,127 +1,111 @@
-import { useState } from 'react'
 import { useAppStore } from '../../stores/appStore'
-import { useSpendingReport, useIncomeExpenseReport, buildExportUrl } from '../../api/reports'
-import { SpendingChart } from '../../components/reports/SpendingChart'
-import { IncomeExpenseChart } from '../../components/reports/IncomeExpenseChart'
+import {
+  useReportStore,
+  REPORT_TABS,
+  TAB_GROUPS,
+  type ReportTab,
+  type TabGroup,
+} from '../../stores/reportStore'
+import { ReportFiltersBar } from '../../components/reports/ReportFilters/ReportFiltersBar'
+import { OverviewReport } from '../../components/reports/OverviewReport'
+import { NetWorthReport } from '../../components/reports/charts/NetWorthChart'
+import { AccountCompositionReport } from '../../components/reports/charts/AccountCompositionChart'
+import { IncomeExpenseReport } from '../../components/reports/charts/IncomeExpenseChart'
+import { BurnRateReport } from '../../components/reports/charts/BurnRateChart'
+import { CashFlowSankeyReport } from '../../components/reports/charts/CashFlowSankey'
+import { BudgetActualReport } from '../../components/reports/charts/BudgetActualChart'
+import { VarianceReport } from '../../components/reports/charts/VarianceChart'
+import { VolatilityReport } from '../../components/reports/charts/VolatilityChart'
+import { ParetoReport } from '../../components/reports/charts/ParetoChart'
+import { SpendingTreemapReport } from '../../components/reports/charts/SpendingTreemap'
+import { SeasonalityReport } from '../../components/reports/charts/SeasonalityHeatmap'
+import { PayeeReport } from '../../components/reports/charts/PayeeChart'
+import { DayPatternsReport } from '../../components/reports/charts/DayOfWeekChart'
+import { TimelineReport } from '../../components/reports/charts/EventTimeline'
 import './ReportsPage.css'
 
-type Tab = 'spending' | 'income-expense'
-
-function defaultDates() {
-  const today = new Date()
-  const start = new Date(today.getFullYear(), today.getMonth(), 1)
-  return {
-    start: start.toISOString().slice(0, 10),
-    end: today.toISOString().slice(0, 10),
-  }
+const GROUP_LABELS: Record<TabGroup, string> = {
+  overview: 'Overview',
+  financial: 'Financial State',
+  cashflow: 'Cash Flow',
+  budget: 'Budget',
+  spending: 'Spending',
+  insights: 'Insights',
 }
 
 export function ReportsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
-  const [tab, setTab] = useState<Tab>('spending')
-  const [startDate, setStartDate] = useState(defaultDates().start)
-  const [endDate, setEndDate] = useState(defaultDates().end)
-  const [months, setMonths] = useState(12)
-
-  const spending = useSpendingReport(budgetId, startDate, endDate)
-  const incomeExpense = useIncomeExpenseReport(budgetId, months)
+  const { activeTab, setActiveTab } = useReportStore()
 
   if (!budgetId) {
-    return <div className="reports-page"><div className="reports-empty">Select a budget to view reports.</div></div>
+    return (
+      <div className="reports-page">
+        <div className="reports-empty">Select a budget to view reports.</div>
+      </div>
+    )
   }
+
+  function renderReport() {
+    switch (activeTab) {
+      case 'overview': return <OverviewReport budgetId={budgetId!} />
+      case 'net-worth': return <NetWorthReport budgetId={budgetId!} />
+      case 'account-composition': return <AccountCompositionReport budgetId={budgetId!} />
+      case 'income-expense': return <IncomeExpenseReport budgetId={budgetId!} />
+      case 'burn-rate': return <BurnRateReport budgetId={budgetId!} />
+      case 'cash-flow': return <CashFlowSankeyReport budgetId={budgetId!} />
+      case 'budget-actual': return <BudgetActualReport budgetId={budgetId!} />
+      case 'variance': return <VarianceReport budgetId={budgetId!} />
+      case 'volatility': return <VolatilityReport budgetId={budgetId!} />
+      case 'pareto': return <ParetoReport budgetId={budgetId!} />
+      case 'treemap': return <SpendingTreemapReport budgetId={budgetId!} />
+      case 'seasonality': return <SeasonalityReport budgetId={budgetId!} />
+      case 'payees': return <PayeeReport budgetId={budgetId!} />
+      case 'day-patterns': return <DayPatternsReport budgetId={budgetId!} />
+      case 'timeline': return <TimelineReport budgetId={budgetId!} />
+    }
+  }
+
+  const tabsByGroup = REPORT_TABS.reduce<Partial<Record<TabGroup, typeof REPORT_TABS>>>((acc, tab) => {
+    if (!acc[tab.group]) acc[tab.group] = []
+    acc[tab.group]!.push(tab)
+    return acc
+  }, {})
 
   return (
     <div className="reports-page">
-      <div className="reports-header">
-        <h1 className="reports-title">Reports</h1>
-        <div className="reports-tabs">
-          <button
-            className={`reports-tab ${tab === 'spending' ? 'active' : ''}`}
-            onClick={() => setTab('spending')}
-          >
-            Spending
-          </button>
-          <button
-            className={`reports-tab ${tab === 'income-expense' ? 'active' : ''}`}
-            onClick={() => setTab('income-expense')}
-          >
-            Income vs Expenses
-          </button>
+      <nav className="reports-nav" aria-label="Report navigation">
+        <div className="reports-nav__groups">
+          {TAB_GROUPS.map((group) => {
+            const tabs = tabsByGroup[group.id] ?? []
+            const isGroupActive = tabs.some((t) => t.id === activeTab)
+            return (
+              <div key={group.id} className={`reports-nav__group ${isGroupActive ? 'reports-nav__group--active' : ''}`}>
+                <div className="reports-nav__group-label" onClick={() => setActiveTab(tabs[0].id as ReportTab)}>
+                  {GROUP_LABELS[group.id]}
+                </div>
+                <div className="reports-nav__group-tabs">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      className={`reports-nav__tab ${tab.id === activeTab ? 'reports-nav__tab--active' : ''}`}
+                      onClick={() => setActiveTab(tab.id)}
+                      type="button"
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
-      </div>
+      </nav>
 
-      {tab === 'spending' && (
-        <div className="reports-section">
-          <div className="reports-controls">
-            <label>
-              From
-              <input
-                type="date"
-                className="reports-input"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </label>
-            <label>
-              To
-              <input
-                type="date"
-                className="reports-input"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </label>
-            <div className="reports-export">
-              <a
-                className="reports-btn"
-                href={buildExportUrl(budgetId, 'csv', startDate, endDate)}
-                download
-              >
-                Export CSV
-              </a>
-              <a
-                className="reports-btn"
-                href={buildExportUrl(budgetId, 'json', startDate, endDate)}
-                download
-              >
-                Export JSON
-              </a>
-            </div>
-          </div>
-          {spending.isLoading ? (
-            <div className="reports-empty">Loading…</div>
-          ) : (
-            <SpendingChart
-              categories={spending.data?.categories ?? []}
-              total={Number(spending.data?.total ?? 0)}
-            />
-          )}
-        </div>
-      )}
+      <ReportFiltersBar budgetId={budgetId} />
 
-      {tab === 'income-expense' && (
-        <div className="reports-section">
-          <div className="reports-controls">
-            <label>
-              Months
-              <select
-                className="reports-input"
-                value={months}
-                onChange={(e) => setMonths(Number(e.target.value))}
-              >
-                {[3, 6, 12, 24].map((m) => (
-                  <option key={m} value={m}>{m} months</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {incomeExpense.isLoading ? (
-            <div className="reports-empty">Loading…</div>
-          ) : (
-            <IncomeExpenseChart months={incomeExpense.data?.months ?? []} />
-          )}
-        </div>
-      )}
+      <main className="reports-content">
+        {renderReport()}
+      </main>
     </div>
   )
 }

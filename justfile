@@ -102,20 +102,20 @@ lint-backend:
 format-backend:
     docker compose exec api uv run ruff format src/
 
-# Run pyright type checking
+# Run ty type checking
 typecheck-backend:
-    docker compose exec api uv run pyright src/
+    docker compose exec api uv run ty check src/
 
 # Run all backend quality checks (lint + typecheck)
 check-backend:
     just lint-backend
     just typecheck-backend
 
-# Auto-fix ruff issues, format, then type-check with pyright (runs locally)
+# Auto-fix ruff issues, format, then type-check with ty (runs locally)
 quality:
     cd backend && uv run ruff check --fix src/
     cd backend && uv run ruff format src/
-    cd backend && uv run pyright src/
+    cd backend && uv run ty check src/
 
 # ─── Frontend ─────────────────────────────────────────────────────────────────
 

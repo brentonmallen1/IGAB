@@ -25,14 +25,14 @@ PLAN_CSV = """\
 """
 
 
-def _make_zip(register: str, plan: str | None = None) -> Path:
+def _make_zip(tmp_path: Path, register: str, plan: str | None = None) -> Path:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("Budget Export - Register.csv", register)
         if plan is not None:
             zf.writestr("Budget Export - Plan.csv", plan)
     buf.seek(0)
-    path = Path("/tmp/test_ynab_export.zip")
+    path = tmp_path / "test_ynab_export.zip"
     path.write_bytes(buf.read())
     return path
 
@@ -118,24 +118,24 @@ class TestYNABParser:
         assert apr.category == "Groceries"
         assert apr.assigned == Decimal("500.00")
 
-    def test_parse_zip(self):
-        path = _make_zip(REGISTER_CSV, PLAN_CSV)
+    def test_parse_zip(self, tmp_path: Path):
+        path = _make_zip(tmp_path, REGISTER_CSV, PLAN_CSV)
         budget = self.parser.parse_zip(path)
         assert len(budget.transactions) == 4
         assert len(budget.budget_entries) == 3
 
-    def test_parse_zip_without_plan(self):
-        path = _make_zip(REGISTER_CSV)
+    def test_parse_zip_without_plan(self, tmp_path: Path):
+        path = _make_zip(tmp_path, REGISTER_CSV)
         budget = self.parser.parse_zip(path)
         assert len(budget.transactions) == 4
         assert budget.budget_entries == []
 
-    def test_parse_zip_missing_register_raises(self):
+    def test_parse_zip_missing_register_raises(self, tmp_path: Path):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("something.txt", "data")
         buf.seek(0)
-        path = Path("/tmp/test_no_register.zip")
+        path = tmp_path / "test_no_register.zip"
         path.write_bytes(buf.read())
         with pytest.raises(ValueError, match="Register CSV not found"):
             self.parser.parse_zip(path)

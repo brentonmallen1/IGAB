@@ -1,18 +1,23 @@
 import { useState, useRef } from 'react'
-import { X, Tag, CheckCircle, Trash2, MoreHorizontal } from 'lucide-react'
+import { X, Tag, CheckCircle, Trash2, MoreHorizontal, ThumbsUp, GitMerge } from 'lucide-react'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
+import { formatMoney } from '../../../utils/money'
 import type { ClearedStatus } from '../../../types'
 import './SelectionActionBar.css'
 
 interface Props {
   selectedCount: number
+  selectedTotal: number
   categoryOptions: ComboboxOption[]
   onCategorize: (categoryId: string) => void
   onSetCleared: (status: ClearedStatus) => void
   onDelete: () => void
   onDuplicate: () => void
   onClear: () => void
+  onApprove?: () => void
+  onMerge?: () => void
+  canMerge?: boolean
 }
 
 const MORE_ITEMS: ContextMenuItem[] = [
@@ -25,12 +30,16 @@ const MORE_ITEMS: ContextMenuItem[] = [
 
 export function SelectionActionBar({
   selectedCount,
+  selectedTotal,
   categoryOptions,
   onCategorize,
   onSetCleared,
   onDelete,
   onDuplicate,
   onClear,
+  onApprove,
+  onMerge,
+  canMerge,
 }: Props) {
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -60,6 +69,10 @@ export function SelectionActionBar({
 
       <span className="selection-bar__count">
         {selectedCount} Transaction{selectedCount !== 1 ? 's' : ''}
+      </span>
+
+      <span className={`selection-bar__total ${selectedTotal < 0 ? 'selection-bar__total--negative' : selectedTotal > 0 ? 'selection-bar__total--positive' : ''}`}>
+        {formatMoney(selectedTotal)}
       </span>
 
       <div className="selection-bar__divider" />
@@ -97,6 +110,28 @@ export function SelectionActionBar({
         <CheckCircle size={14} />
         Clear
       </button>
+
+      {onApprove && (
+        <button
+          className="selection-bar__btn"
+          onClick={onApprove}
+          title="Approve transactions"
+        >
+          <ThumbsUp size={14} />
+          Approve
+        </button>
+      )}
+
+      {canMerge && onMerge && (
+        <button
+          className="selection-bar__btn"
+          onClick={onMerge}
+          title="Merge selected transactions"
+        >
+          <GitMerge size={14} />
+          Merge
+        </button>
+      )}
 
       <div className="selection-bar__divider" />
 
