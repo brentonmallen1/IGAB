@@ -74,9 +74,11 @@ export function useDeleteTransaction(budgetId: string) {
         .delete(`/transactions/${id}`, { params: { budget_id: budgetId } })
         .then(() => accountId),
     onSuccess: (accountId) => {
-      qc.invalidateQueries({ queryKey: ['transactions', accountId] })
+      qc.refetchQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account', accountId] })
     },
   })
 }
@@ -119,9 +121,11 @@ export function useBulkDeleteTransactions(budgetId: string) {
     mutationFn: (transactionIds: string[]) =>
       apiClient.post(`/${budgetId}/transactions/bulk-delete`, { transaction_ids: transactionIds }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.refetchQueries({ queryKey: ['transactions'] })
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
     },
   })
 }

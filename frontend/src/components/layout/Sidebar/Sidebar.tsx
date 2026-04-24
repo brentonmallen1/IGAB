@@ -1,10 +1,11 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, X, ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, X, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useBudgets } from '../../../api/budgets'
 import { useSimpleFINConnections, useSyncSimpleFIN, useSimpleFINRateLimitStatus } from '../../../api/simplefin'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
+import { useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { formatMoney } from '../../../utils/money'
@@ -43,6 +44,8 @@ export function Sidebar() {
   const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
+
+  const logout = useLogout()
 
   const { data: connections = [] } = useSimpleFINConnections()
   const primaryConnection = connections[0] ?? null
@@ -147,6 +150,10 @@ export function Sidebar() {
           <Settings size={16} />
           {!collapsed && <span>Settings</span>}
         </NavLink>
+        <button className="sidebar__nav-item sidebar__nav-item--logout" onClick={logout} title="Sign out">
+          <LogOut size={16} />
+          {!collapsed && <span>Sign out</span>}
+        </button>
       </nav>
 
       {!collapsed && <div className="sidebar__section-header">

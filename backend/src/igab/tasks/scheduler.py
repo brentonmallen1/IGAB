@@ -21,7 +21,7 @@ async def process_due_scheduled_transactions() -> None:
     async with AsyncSessionLocal() as session:
         try:
             result = await session.execute(
-                select(Budget).where(Budget.is_deleted == False)  # noqa: E712
+                select(Budget)
             )
             budgets = list(result.scalars().all())
 
@@ -80,7 +80,7 @@ async def process_auto_simplefin_sync() -> None:
 
                 # Find all budgets for this user
                 budgets_result = await session.execute(
-                    select(Budget).where(Budget.is_deleted == False)  # noqa: E712
+                    select(Budget)
                 )
                 budgets = list(budgets_result.scalars().all())
 
