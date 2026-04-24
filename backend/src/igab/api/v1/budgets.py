@@ -86,8 +86,17 @@ async def import_ynab_as_budget(
     assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
     txn_service: TransactionService = Depends(get_transaction_service),
 ) -> YNABImportBudgetResponse:
-    # Create the budget first
-    budget = Budget(user_id=current_user.id, name=name.strip(), currency_code="USD")
+    budget_name = name.strip()
+    existing = await session.execute(
+        select(Budget).where(Budget.user_id == current_user.id, Budget.name == budget_name)
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A budget named '{budget_name}' already exists.",
+        )
+
+    budget = Budget(user_id=current_user.id, name=budget_name, currency_code="USD")
     session.add(budget)
     await session.flush()
     await session.refresh(budget)
@@ -140,10 +149,7 @@ async def list_budgets(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[BudgetResponse]:
     result = await session.execute(
-        select(Budget).where(
-            Budget.user_id == current_user.id,
-            Budget.is_deleted == False,  # noqa: E712
-        )
+        select(Budget).where(Budget.user_id == current_user.id)
     )
     budgets = result.scalars().all()
     return [BudgetResponse.model_validate(b) for b in budgets]
@@ -187,11 +193,7 @@ async def get_budget(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BudgetResponse:
     result = await session.execute(
-        select(Budget).where(
-            Budget.id == budget_id,
-            Budget.user_id == current_user.id,
-            Budget.is_deleted == False,  # noqa: E712
-        )
+        select(Budget).where(Budget.id == budget_id, Budget.user_id == current_user.id)
     )
     budget = result.scalar_one_or_none()
     if budget is None:
@@ -232,5 +234,5 @@ async def delete_budget(
     budget = result.scalar_one_or_none()
     if budget is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
-    budget.is_deleted = True
+    await session.delete(budget)
     await session.flush()

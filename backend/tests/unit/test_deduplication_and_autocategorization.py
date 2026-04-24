@@ -11,7 +11,7 @@ These are critical trust-surface tests covering:
 
 import hashlib
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
@@ -522,7 +522,7 @@ class TestSimpleFINSyncDeduplication:
         )
 
     async def test_skips_when_existing_match_found(self, mock_svc):
-        """Should skip import when find_existing_match returns a transaction."""
+        """Should skip import when find_existing_match_candidates returns a high-score match."""
         from unittest.mock import patch
 
         budget_id = uuid.uuid4()
@@ -545,6 +545,8 @@ class TestSimpleFINSyncDeduplication:
         existing_txn = MagicMock()
         existing_txn.id = uuid.uuid4()
         existing_txn.import_id = None  # No import_id yet
+        existing_txn.date = date.today()
+        existing_txn.cleared = "cleared"
 
         mock_svc.repo.get = AsyncMock(return_value=conn)
         mock_svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
@@ -553,7 +555,9 @@ class TestSimpleFINSyncDeduplication:
         )
         mock_svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         mock_svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        mock_svc.txn_repo.find_existing_match = AsyncMock(return_value=existing_txn)
+        mock_svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing_txn, "STORE")]
+        )
         mock_svc.txn_repo.update = AsyncMock()
         mock_svc.account_repo.update = AsyncMock()
         mock_svc.repo.update = AsyncMock(return_value=conn)
@@ -562,7 +566,7 @@ class TestSimpleFINSyncDeduplication:
             {
                 "id": "txn-1",
                 "account_id": account.simplefin_account_id,
-                "posted": int((date.today()).toordinal() * 86400),
+                "posted": int(datetime.now(UTC).timestamp()),
                 "amount": "-25.00",
                 "description": "STORE",
             }
@@ -605,6 +609,8 @@ class TestSimpleFINSyncDeduplication:
         existing_txn = MagicMock()
         existing_txn.id = uuid.uuid4()
         existing_txn.import_id = None  # No import_id
+        existing_txn.date = date.today()
+        existing_txn.cleared = "cleared"
 
         mock_svc.repo.get = AsyncMock(return_value=conn)
         mock_svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
@@ -613,7 +619,9 @@ class TestSimpleFINSyncDeduplication:
         )
         mock_svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         mock_svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        mock_svc.txn_repo.find_existing_match = AsyncMock(return_value=existing_txn)
+        mock_svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing_txn, "STORE")]
+        )
         mock_svc.txn_repo.update = AsyncMock()
         mock_svc.account_repo.update = AsyncMock()
         mock_svc.repo.update = AsyncMock(return_value=conn)
@@ -622,7 +630,7 @@ class TestSimpleFINSyncDeduplication:
             {
                 "id": "txn-abc123",
                 "account_id": account.simplefin_account_id,
-                "posted": int((date.today()).toordinal() * 86400),
+                "posted": int(datetime.now(UTC).timestamp()),
                 "amount": "-25.00",
                 "description": "STORE",
             }
@@ -664,6 +672,8 @@ class TestSimpleFINSyncDeduplication:
         existing_txn = MagicMock()
         existing_txn.id = uuid.uuid4()
         existing_txn.import_id = "csv:existing123"  # Already has import_id
+        existing_txn.date = date.today()
+        existing_txn.cleared = "cleared"
 
         mock_svc.repo.get = AsyncMock(return_value=conn)
         mock_svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
@@ -672,7 +682,9 @@ class TestSimpleFINSyncDeduplication:
         )
         mock_svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         mock_svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        mock_svc.txn_repo.find_existing_match = AsyncMock(return_value=existing_txn)
+        mock_svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing_txn, "STORE")]
+        )
         mock_svc.txn_repo.update = AsyncMock()
         mock_svc.account_repo.update = AsyncMock()
         mock_svc.repo.update = AsyncMock(return_value=conn)
@@ -681,7 +693,7 @@ class TestSimpleFINSyncDeduplication:
             {
                 "id": "txn-abc123",
                 "account_id": account.simplefin_account_id,
-                "posted": int((date.today()).toordinal() * 86400),
+                "posted": int(datetime.now(UTC).timestamp()),
                 "amount": "-25.00",
                 "description": "STORE",
             }
@@ -698,6 +710,149 @@ class TestSimpleFINSyncDeduplication:
 
         # Should NOT have called update to stamp import_id
         mock_svc.txn_repo.update.assert_not_called()
+
+
+# ─── Deduplication Scoring Tests ─────────────────────────────────────────────
+
+
+class TestDedupScoring:
+    """Test payee similarity and deduplication score calculation."""
+
+    def test_payee_similarity_exact(self):
+        from igab.services.simplefin_service import _payee_similarity
+
+        assert _payee_similarity("Starbucks", "Starbucks") == 1.0
+
+    def test_payee_similarity_case_insensitive(self):
+        from igab.services.simplefin_service import _payee_similarity
+
+        assert _payee_similarity("STARBUCKS", "starbucks") == 1.0
+
+    def test_payee_similarity_partial_contains(self):
+        from igab.services.simplefin_service import _payee_similarity
+
+        # Bank appends location/code but payee was cleaned up — treat as strong match
+        assert _payee_similarity("STARBUCKS #12345", "Starbucks") == 1.0
+
+    def test_payee_similarity_fuzzy(self):
+        from igab.services.simplefin_service import _payee_similarity
+
+        score = _payee_similarity("Amazon.com", "Amazon")
+        assert score >= 0.7
+
+    def test_payee_similarity_no_match(self):
+        from igab.services.simplefin_service import _payee_similarity
+
+        assert _payee_similarity("Starbucks", "Walmart") < 0.5
+
+    def test_payee_similarity_none_returns_neutral(self):
+        from igab.services.simplefin_service import _payee_similarity
+
+        assert _payee_similarity(None, "Starbucks") == 0.5
+        assert _payee_similarity("Starbucks", None) == 0.5
+        assert _payee_similarity(None, None) == 0.5
+
+    def test_dedup_score_same_day_same_payee(self):
+        from igab.services.simplefin_service import _calculate_dedup_score
+
+        score = _calculate_dedup_score("Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 15))
+        assert score >= 0.95
+
+    def test_dedup_score_two_days_apart_same_payee(self):
+        from igab.services.simplefin_service import _calculate_dedup_score
+
+        score = _calculate_dedup_score("Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 17))
+        assert score >= DEDUP_AUTO_MATCH_THRESHOLD
+
+    def test_dedup_score_same_day_different_payee(self):
+        from igab.services.simplefin_service import _calculate_dedup_score
+
+        score = _calculate_dedup_score("Starbucks", date(2026, 4, 15), "Walmart", date(2026, 4, 15))
+        assert score < DEDUP_AUTO_MATCH_THRESHOLD
+
+    def test_dedup_score_beyond_window_is_low(self):
+        from igab.services.simplefin_service import _calculate_dedup_score
+
+        # Date beyond DEDUP_DATE_WINDOW_DAYS gets 0 date score; only payee contributes
+        score = _calculate_dedup_score("Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 25))
+        assert score < DEDUP_AUTO_MATCH_THRESHOLD
+
+    async def test_sync_skips_when_score_above_threshold(self, mock_svc=None):
+        """Low-payee-similarity candidates should NOT be treated as duplicates."""
+        from unittest.mock import patch
+
+        from igab.services.simplefin_service import SimpleFINService
+
+        svc = SimpleFINService(
+            session=AsyncMock(),
+            repo=AsyncMock(),
+            account_repo=AsyncMock(),
+            txn_repo=AsyncMock(),
+            txn_service=AsyncMock(),
+        )
+
+        budget_id = uuid.uuid4()
+        conn = MagicMock()
+        conn.id = uuid.uuid4()
+        conn.sync_enabled = True
+        conn.global_requests_today = 0
+        conn.account_requests_today = 0
+        conn.last_request_date = date.today()
+        conn.access_url_encrypted = "encrypted"
+
+        account = MagicMock()
+        account.id = uuid.uuid4()
+        account.budget_id = budget_id
+        account.simplefin_account_id = "sf-acct-1"
+        account.simplefin_sync_enabled = True
+        account.first_sync_complete = True
+
+        # Candidate with completely different payee — should NOT match
+        unrelated_txn = MagicMock()
+        unrelated_txn.id = uuid.uuid4()
+        unrelated_txn.import_id = None
+        unrelated_txn.date = date.today()
+        unrelated_txn.cleared = "cleared"
+
+        svc.repo.get = AsyncMock(return_value=conn)
+        svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
+        svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
+            return_value=date.today() - timedelta(days=5)
+        )
+        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        # Candidate payee is totally different from synced payee "Starbucks"
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(unrelated_txn, "Walmart")]
+        )
+        svc.txn_repo.update = AsyncMock()
+        svc.account_repo.update = AsyncMock()
+        svc.repo.update = AsyncMock(return_value=conn)
+        svc.txn_service.create = AsyncMock(return_value=MagicMock())
+
+        raw_txns = [
+            {
+                "id": "txn-1",
+                "account_id": account.simplefin_account_id,
+                "posted": int(date.today().toordinal() * 86400),
+                "amount": "-25.00",
+                "payee": "Starbucks",
+            }
+        ]
+
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            result = await svc.sync(conn.id, budget_id)
+
+        # Should have imported (not skipped) because payee similarity is too low
+        assert result["imported"] == 1
+        assert result["skipped"] == 0
+        svc.txn_service.create.assert_called_once()
+
+
+DEDUP_AUTO_MATCH_THRESHOLD = 0.85  # mirror service constant for test assertions
 
 
 # ─── Edge Cases ──────────────────────────────────────────────────────────────

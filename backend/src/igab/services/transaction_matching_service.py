@@ -9,7 +9,7 @@ human review.
 import uuid
 from datetime import date
 from decimal import Decimal
-from difflib import SequenceMatcher
+from rapidfuzz import fuzz
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,19 +20,13 @@ from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
 
 AUTO_ACCEPT_THRESHOLD = 0.90
-DATE_WINDOW_DAYS = 3
+DATE_WINDOW_DAYS = 5
 
 
 def _payee_similarity(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
-    a, b = a.lower().strip(), b.lower().strip()
-    if a == b:
-        return 1.0
-    # Partial-match bonus: if one contains the other
-    if a in b or b in a:
-        return 0.85
-    return SequenceMatcher(None, a, b).ratio()
+    return fuzz.token_set_ratio(a.lower(), b.lower()) / 100.0
 
 
 def _date_score(synced: date, manual: date) -> float:

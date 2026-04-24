@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../../stores/appStore'
 import { useAccounts } from '../../api/accounts'
 import { importCsv, type CsvImportResult } from '../../api/imports'
@@ -6,6 +7,7 @@ import './ImportPage.css'
 
 export function ImportPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
+  const qc = useQueryClient()
   const { data: accounts = [] } = useAccounts(budgetId)
 
   const csvFileRef = useRef<HTMLInputElement>(null)
@@ -26,6 +28,11 @@ export function ImportPage() {
       const result = await importCsv(budgetId, csvAccountId, file)
       setCsvResult(result)
       if (csvFileRef.current) csvFileRef.current.value = ''
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: ['accounts'] })
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Import failed'
       setCsvError(msg)

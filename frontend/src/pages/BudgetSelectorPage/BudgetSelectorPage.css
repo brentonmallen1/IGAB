@@ -25,6 +25,26 @@
   margin-top: var(--spacing-xs);
 }
 
+.budget-selector__logout {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.budget-selector__logout:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
 .budget-selector__body {
   width: 100%;
   max-width: 640px;

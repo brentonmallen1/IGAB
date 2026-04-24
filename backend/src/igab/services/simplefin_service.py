@@ -6,7 +6,9 @@ from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import SimpleFINConnection
+from rapidfuzz import fuzz
+
+from igab.db.models import SimpleFINConnection, Transaction
 from igab.domain.exceptions import IGABError
 from igab.integrations.simplefin.client import SimpleFINClient
 from igab.integrations.simplefin.encryption import decrypt, encrypt
@@ -20,6 +22,38 @@ GLOBAL_DAILY_LIMIT = 12
 ACCOUNT_DAILY_LIMIT = 12
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BASE_DELAY = 2.0  # seconds, doubles each attempt
+
+DEDUP_AUTO_MATCH_THRESHOLD = 0.85
+DEDUP_DATE_WINDOW_DAYS = 5
+
+
+def _payee_similarity(a: str | None, b: str | None) -> float:
+    if not a or not b:
+        return 0.5  # Neutral when payee unknown
+    return fuzz.token_set_ratio(a.lower(), b.lower()) / 100.0
+
+
+def _date_proximity_score(synced: date, existing: date) -> float:
+    delta = abs((synced - existing).days)
+    if delta > DEDUP_DATE_WINDOW_DAYS:
+        return 0.0
+    return 1.0 - (delta / (DEDUP_DATE_WINDOW_DAYS + 1))
+
+
+def _calculate_dedup_score(
+    synced_payee: str | None,
+    synced_date: date,
+    existing_payee: str | None,
+    existing_date: date,
+) -> float:
+    # Amount already exact. Date is weighted low because banks post 2-5 days
+    # after YNAB records the due date. Payee carries most of the signal.
+    # Weights: date 20%, payee 80%
+    return round(
+        _date_proximity_score(synced_date, existing_date) * 0.2
+        + _payee_similarity(synced_payee, existing_payee) * 0.8,
+        4,
+    )
 
 
 class RateLimitError(IGABError):
@@ -235,23 +269,34 @@ class SimpleFINService:
                 continue
 
             amount = Decimal(str(t.get("amount", "0")))
+            synced_payee = t.get("payee") or t.get("description") or ""
 
             # Dedup against cleared/reconciled transactions that may lack import_id
             # (e.g. YNAB imports, manual entries, CSV imports)
-            existing_match = await self.txn_repo.find_existing_match(
-                account.id, amount, txn_date
+            candidates = await self.txn_repo.find_existing_match_candidates(
+                account.id, amount, txn_date, date_window_days=DEDUP_DATE_WINDOW_DAYS
             )
-            if existing_match is not None:
-                updates: dict[str, object] = {}
-                if not existing_match.import_id:
-                    updates["import_id"] = import_id
-                if existing_match.cleared in ("pending", "uncleared") and is_posted:
-                    updates["cleared"] = "cleared"
-                    cleared += 1
-                if updates:
-                    await self.txn_repo.update(existing_match.id, **updates)
-                skipped += 1
-                continue
+            if candidates:
+                best_match: Transaction | None = None
+                best_score = 0.0
+                for existing_txn, existing_payee in candidates:
+                    score = _calculate_dedup_score(
+                        synced_payee, txn_date, existing_payee, existing_txn.date
+                    )
+                    if score > best_score:
+                        best_score, best_match = score, existing_txn
+
+                if best_match is not None and best_score >= DEDUP_AUTO_MATCH_THRESHOLD:
+                    updates: dict[str, object] = {}
+                    if not best_match.import_id:
+                        updates["import_id"] = import_id
+                    if best_match.cleared in ("pending", "uncleared") and is_posted:
+                        updates["cleared"] = "cleared"
+                        cleared += 1
+                    if updates:
+                        await self.txn_repo.update(best_match.id, **updates)
+                    skipped += 1
+                    continue
 
             new_txn = await self.txn_service.create(
                 budget_id,
@@ -259,7 +304,7 @@ class SimpleFINService:
                     account_id=account.id,
                     date=txn_date,
                     amount=amount,
-                    payee_name=t.get("payee") or t.get("description") or "",
+                    payee_name=synced_payee,
                     import_description=t.get("description"),
                     import_id=import_id,
                     cleared=new_cleared,

@@ -384,7 +384,7 @@ class TestSyncFlow:
         )
         svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=None)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
@@ -422,7 +422,7 @@ class TestSyncFlow:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(return_value=None)
         svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=None)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
@@ -491,7 +491,7 @@ class TestSyncFlow:
         )
         svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=None)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
@@ -531,7 +531,7 @@ class TestSyncFlow:
         )
         svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=None)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
@@ -570,7 +570,7 @@ class TestSyncFlow:
         )
         svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=None)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
@@ -611,7 +611,7 @@ class TestSyncFlow:
         )
         svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=None)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
@@ -671,7 +671,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id="sf:txn-match", cleared="cleared")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
@@ -692,7 +692,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="cleared")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
@@ -713,7 +713,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id="sf:txn-match", cleared="cleared")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
@@ -733,7 +733,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="pending")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
@@ -757,7 +757,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="uncleared")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
@@ -778,7 +778,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="uncleared")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         # Not posted — pending transaction
         raw_txns = [
@@ -811,7 +811,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="cleared")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
@@ -832,7 +832,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id="sf:txn-match", cleared="cleared")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
@@ -851,7 +851,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="uncleared", amount="-100.00")
-        svc.txn_repo.find_existing_match = AsyncMock(return_value=existing)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         raw_txns = [
             {

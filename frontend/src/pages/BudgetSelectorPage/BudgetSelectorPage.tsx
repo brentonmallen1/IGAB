@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { LogOut } from 'lucide-react'
 import { useBudgets, useCreateBudget, useImportYnabAsBudget, useRenameBudget, useDeleteBudget } from '../../api/budgets'
+import { useLogout } from '../../api/auth'
 import { useAppStore } from '../../stores/appStore'
 import './BudgetSelectorPage.css'
 
@@ -9,6 +11,8 @@ export function BudgetSelectorPage() {
   const setCurrentBudgetId = useAppStore((s) => s.setCurrentBudgetId)
   const currentBudgetId = useAppStore((s) => s.currentBudgetId)
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
+
+  const logout = useLogout()
 
   const { data: budgets = [], isLoading } = useBudgets()
   const createBudget = useCreateBudget()
@@ -73,7 +77,8 @@ export function BudgetSelectorPage() {
       setCurrentBudgetId(result.budget.id)
       navigate('/budget')
     } catch (err: unknown) {
-      setImportError(err instanceof Error ? err.message : 'Import failed')
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setImportError(detail ?? (err instanceof Error ? err.message : 'Import failed'))
     }
   }
 
@@ -82,6 +87,10 @@ export function BudgetSelectorPage() {
       <div className="budget-selector__header">
         <div className="budget-selector__logo">IGAB</div>
         <div className="budget-selector__tagline">I've Got A Budget</div>
+        <button className="budget-selector__logout" onClick={logout} title="Sign out">
+          <LogOut size={15} />
+          <span>Sign out</span>
+        </button>
       </div>
 
       <div className="budget-selector__body">

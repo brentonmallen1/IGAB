@@ -55,12 +55,17 @@ class AuthService:
         return access_token, refresh_token
 
     async def refresh(self, refresh_token: str) -> str:
+        import uuid
+
         payload = decode_token(refresh_token)
         if payload.get("type") != "refresh":
             raise AuthenticationError("Invalid token type")
         user_id = payload.get("sub")
         if not user_id:
             raise AuthenticationError("Invalid token")
+        user = await self.user_repo.get(uuid.UUID(user_id))
+        if user is None:
+            raise AuthenticationError("User not found")
         return create_access_token(user_id)
 
     async def get_current_user(self, token: str) -> User:

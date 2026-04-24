@@ -61,7 +61,6 @@ class Budget(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     currency_code: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -70,11 +69,21 @@ class Budget(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="budgets")
-    accounts: Mapped[list["Account"]] = relationship(back_populates="budget")
-    category_groups: Mapped[list["CategoryGroup"]] = relationship(back_populates="budget")
-    categories: Mapped[list["Category"]] = relationship(back_populates="budget")
-    payees: Mapped[list["Payee"]] = relationship(back_populates="budget")
-    views: Mapped[list["BudgetView"]] = relationship(back_populates="budget")
+    accounts: Mapped[list["Account"]] = relationship(
+        back_populates="budget", passive_deletes=True
+    )
+    category_groups: Mapped[list["CategoryGroup"]] = relationship(
+        back_populates="budget", passive_deletes=True
+    )
+    categories: Mapped[list["Category"]] = relationship(
+        back_populates="budget", passive_deletes=True
+    )
+    payees: Mapped[list["Payee"]] = relationship(
+        back_populates="budget", passive_deletes=True
+    )
+    views: Mapped[list["BudgetView"]] = relationship(
+        back_populates="budget", passive_deletes=True
+    )
 
 
 # ─── Accounts ─────────────────────────────────────────────────────────────────

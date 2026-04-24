@@ -78,6 +78,16 @@
   color: var(--color-accent);
 }
 
+.sidebar__nav-item--logout {
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-top: var(--spacing-xs);
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--spacing-sm);
+}
+
 .sidebar__section-header {
   display: flex;
   justify-content: space-between;

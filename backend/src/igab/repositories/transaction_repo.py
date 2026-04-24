@@ -352,23 +352,26 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return {row[0] for row in result.all() if row[0]}
 
-    async def find_existing_match(
+    async def find_existing_match_candidates(
         self,
         account_id: uuid.UUID,
         amount: Decimal,
         txn_date: date,
-        date_window_days: int = 3,
-    ) -> Transaction | None:
-        """Find a transaction matching by exact amount and within ±3 days.
+        date_window_days: int = 5,
+        limit: int = 5,
+    ) -> list[tuple[Transaction, str | None]]:
+        """Return (Transaction, payee_name) candidates matching by exact amount and date window.
 
         Used to detect duplicates during sync for transactions without import_id.
+        Caller is responsible for scoring and selecting the best match.
         """
         from datetime import timedelta
 
         date_low = txn_date - timedelta(days=date_window_days)
         date_high = txn_date + timedelta(days=date_window_days)
         result = await self.session.execute(
-            select(Transaction)
+            select(Transaction, Payee.name)
+            .outerjoin(Payee, Transaction.payee_id == Payee.id)
             .where(
                 Transaction.account_id == account_id,
                 Transaction.amount == amount,
@@ -377,9 +380,9 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.parent_transaction_id.is_(None),
             )
             .order_by(Transaction.date.desc())
-            .limit(1)
+            .limit(limit)
         )
-        return result.scalar_one_or_none()
+        return [(row[0], row[1]) for row in result.all()]
 
     async def get_most_common_category_for_payee(
         self,

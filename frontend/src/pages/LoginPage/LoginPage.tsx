@@ -13,7 +13,7 @@ export function LoginPage() {
     e.preventDefault()
     try {
       await loginMutation.mutateAsync({ email, password })
-      navigate('/budget', { replace: true })
+      navigate('/', { replace: true })
     } catch {
       // error shown via loginMutation.error
     }
