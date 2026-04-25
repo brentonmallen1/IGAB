@@ -169,9 +169,9 @@
 }
 
 .account-page__match-btn--accept {
-  background: var(--color-success, #4caf50);
-  color: #fff;
-  border-color: var(--color-success, #4caf50);
+  background: var(--color-positive);
+  color: var(--text-inverse);
+  border-color: var(--color-positive);
 }
 
 .account-page__match-btn--reject {
@@ -182,7 +182,7 @@
 
 .account-page__match-btn--review {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--text-inverse);
   border-color: var(--color-accent);
 }
 

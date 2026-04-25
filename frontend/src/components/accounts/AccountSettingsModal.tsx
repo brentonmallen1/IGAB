@@ -115,9 +115,9 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
 
   return (
     <div className="acct-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="acct-modal" role="dialog" aria-modal="true">
+      <div className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="acct-modal-title">
         <div className="acct-modal__header">
-          <span className="acct-modal__title">Account Settings</span>
+          <span id="acct-modal-title" className="acct-modal__title">Account Settings</span>
           <button className="acct-modal__close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>

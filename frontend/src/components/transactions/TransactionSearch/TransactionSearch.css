@@ -92,7 +92,7 @@
 }
 
 .txn-search__syntax {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--color-accent);
   background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);

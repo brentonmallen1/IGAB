@@ -42,10 +42,10 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
 
   return (
     <div className="target-editor-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="target-editor">
+      <div className="target-editor" role="dialog" aria-modal aria-labelledby="target-editor-title">
         <div className="target-editor__header">
-          <span className="target-editor__title">Target: {categoryName}</span>
-          <button className="target-editor__close" onClick={onClose}>×</button>
+          <span id="target-editor-title" className="target-editor__title">Target: {categoryName}</span>
+          <button className="target-editor__close" onClick={onClose} aria-label="Close">×</button>
         </div>
         <form onSubmit={handleSubmit} className="target-editor__form">
           <label className="target-editor__label">

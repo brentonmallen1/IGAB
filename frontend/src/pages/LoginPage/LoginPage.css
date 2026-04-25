@@ -68,7 +68,7 @@
 
 .login-card__input:focus {
   border-color: var(--input-focus-ring);
-  box-shadow: 0 0 0 2px rgba(108, 140, 247, 0.2);
+  box-shadow: var(--input-focus-shadow);
 }
 
 .login-card__submit {
@@ -97,6 +97,6 @@
   color: var(--color-negative);
   text-align: center;
   padding: var(--spacing-sm);
-  background-color: rgba(248, 113, 113, 0.1);
+  background-color: var(--color-negative-bg);
   border-radius: var(--border-radius-sm);
 }

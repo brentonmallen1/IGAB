@@ -50,7 +50,7 @@
 }
 
 .selection-bar__total--positive {
-  color: var(--color-positive, #22c55e);
+  color: var(--color-positive);
 }
 
 .selection-bar__divider {

@@ -20,6 +20,8 @@ interface Props {
   className?: string
   autoFocus?: boolean
   onBlurClose?: () => void
+  'aria-label'?: string
+  'aria-labelledby'?: string
 }
 
 interface DropdownPos {
@@ -39,6 +41,8 @@ export function Combobox({
   className = '',
   autoFocus = false,
   onBlurClose,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledby,
 }: Props) {
   const selectedOption = value ? options.find((o) => o.id === value) : null
   const [query, setQuery] = useState(autoFocus ? '' : (selectedOption?.label ?? ''))
@@ -280,6 +284,12 @@ export function Combobox({
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-autocomplete="list"
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledby}
         />
         <span className="combobox__arrow">
           <ChevronDown size={12} />

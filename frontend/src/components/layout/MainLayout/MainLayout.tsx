@@ -17,13 +17,21 @@ export function MainLayout() {
 
   return (
     <div className="main-layout">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       {mobileSidebarOpen && (
-        <div className="main-layout__backdrop" onClick={() => setMobileSidebarOpen(false)} />
+        <div
+          className="main-layout__backdrop"
+          onClick={() => setMobileSidebarOpen(false)}
+          onKeyDown={(e) => e.key === 'Enter' || e.key === ' ' ? setMobileSidebarOpen(false) : undefined}
+          role="button"
+          tabIndex={0}
+          aria-label="Close sidebar"
+        />
       )}
       <Sidebar />
       <div className="main-layout__content">
         <Header />
-        <main className="main-layout__main">
+        <main id="main-content" className="main-layout__main">
           <Outlet />
         </main>
       </div>

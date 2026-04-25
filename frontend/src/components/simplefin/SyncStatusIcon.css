@@ -20,16 +20,16 @@
 }
 
 .sync-status-icon--fresh {
-  color: var(--color-success, #4caf50);
+  color: var(--color-positive);
 }
 
 .sync-status-icon--stale {
-  color: var(--color-warning, #ff9800);
+  color: var(--color-warning);
 }
 
 .sync-status-icon--error,
 .sync-status-icon--never {
-  color: var(--color-danger, #f44336);
+  color: var(--color-negative);
 }
 
 .sync-status-icon--disabled {

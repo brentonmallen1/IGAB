@@ -74,7 +74,7 @@
 }
 
 .sidebar__nav-item.active {
-  background-color: rgba(var(--color-accent-hover), 0.12);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
   color: var(--color-accent);
 }
 
@@ -167,8 +167,8 @@
   height: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background-color: var(--color-warning, #f59e0b);
-  color: #fff;
+  background-color: var(--color-warning);
+  color: var(--text-inverse);
   font-size: 10px;
   font-weight: 600;
   flex-shrink: 0;
@@ -383,5 +383,15 @@
 
   .sidebar__close-btn {
     display: flex;
+  }
+
+  /* Larger touch targets for nav items and account mini buttons */
+  .sidebar__nav-item {
+    min-height: 44px;
+  }
+
+  .sidebar__account-mini {
+    width: 44px;
+    height: 44px;
   }
 }

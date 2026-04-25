@@ -299,7 +299,7 @@ export function SettingsPage() {
                     <div className="sf-usage__bar">
                       <div
                         className="sf-usage__fill"
-                        style={{ width: `${Math.min(100, (rateLimitStatus.global_used / 12) * 100)}%` }}
+                        style={{ transform: `scaleX(${Math.min(1, rateLimitStatus.global_used / 12)})` }}
                       />
                     </div>
                     <div className="sf-usage__row" style={{ marginTop: 6 }}>
@@ -309,7 +309,7 @@ export function SettingsPage() {
                     <div className="sf-usage__bar">
                       <div
                         className="sf-usage__fill"
-                        style={{ width: `${Math.min(100, (rateLimitStatus.account_used / 12) * 100)}%` }}
+                        style={{ transform: `scaleX(${Math.min(1, rateLimitStatus.account_used / 12)})` }}
                       />
                     </div>
                     <div className="sf-usage__reset">Resets at midnight UTC</div>

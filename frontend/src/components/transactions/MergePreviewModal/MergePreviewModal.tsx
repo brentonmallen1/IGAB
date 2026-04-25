@@ -97,9 +97,9 @@ export function MergePreviewModal({
 
   return (
     <div className="merge-modal-overlay" onClick={onCancel}>
-      <div className="merge-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="merge-modal" role="dialog" aria-modal aria-labelledby="merge-modal-title" onClick={(e) => e.stopPropagation()}>
         <div className="merge-modal__header">
-          <span className="merge-modal__title">
+          <span id="merge-modal-title" className="merge-modal__title">
             <GitMerge size={14} />
             Merge Transactions
           </span>

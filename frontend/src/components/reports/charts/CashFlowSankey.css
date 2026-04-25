@@ -21,7 +21,7 @@
 
 .report-toggle-btn--active {
   background: var(--accent-color);
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .report-toggle-btn--active:hover {

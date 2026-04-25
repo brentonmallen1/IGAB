@@ -231,9 +231,9 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <form className="txn-editor" role="dialog" aria-modal onSubmit={handleSubmit}>
+      <form className="txn-editor" role="dialog" aria-modal aria-labelledby="txn-editor-title" onSubmit={handleSubmit}>
         <div className="txn-editor__header">
-          <span className="txn-editor__title">
+          <span id="txn-editor-title" className="txn-editor__title">
             {isEdit ? 'Edit Transaction' : 'Add Transaction'}
           </span>
           <button type="button" className="txn-editor__close" onClick={onClose} aria-label="Close">

@@ -20,7 +20,7 @@
 }
 
 .sf-setup__steps code {
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   background: var(--bg-secondary);
   padding: 1px 4px;

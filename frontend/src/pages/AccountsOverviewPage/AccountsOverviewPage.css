@@ -165,8 +165,8 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: var(--color-warning, #f59e0b);
-  color: #fff;
+  background: var(--color-warning);
+  color: var(--text-inverse);
   font-size: 10px;
   font-weight: 600;
   cursor: help;
@@ -186,8 +186,8 @@
   font-size: var(--font-size-xs);
 }
 
-.accounts-overview__sync-info--fresh { color: var(--color-positive, #22c55e); }
-.accounts-overview__sync-info--stale { color: var(--color-warning, #f59e0b); }
+.accounts-overview__sync-info--fresh { color: var(--color-positive); }
+.accounts-overview__sync-info--stale { color: var(--color-warning); }
 .accounts-overview__sync-info--error { color: var(--color-negative); }
 .accounts-overview__sync-info--never { color: var(--color-negative); }
 .accounts-overview__sync-info--disabled,
@@ -230,7 +230,7 @@
 }
 
 .accounts-overview__balance-detail .negative { color: var(--color-negative); }
-.accounts-overview__balance-detail .positive { color: var(--color-positive, #22c55e); }
+.accounts-overview__balance-detail .positive { color: var(--color-positive); }
 
 .accounts-overview__empty {
   padding: var(--spacing-xl);
