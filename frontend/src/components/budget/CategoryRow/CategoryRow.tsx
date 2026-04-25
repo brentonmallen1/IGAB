@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from 'react'
+import React, { memo, useCallback, useRef, useState } from 'react'
 import { EyeOff, Pencil, Trash2 } from 'lucide-react'
 import { useSetAssignment } from '../../../api/budgets'
 import { useTarget } from '../../../api/targets'
@@ -174,22 +174,28 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
             />
           ) : (
             <>
-              <span className="category-row__name-text" onDoubleClick={startRename}>
+              <span
+                className="category-row__name-text"
+                onDoubleClick={startRename}
+                title="Double-click to rename"
+              >
                 {category.name}
               </span>
               {isTargetExpired ? (
-                <span
+                <button
                   className="category-row__target-expired"
                   title="Target date has passed — click to update"
+                  aria-label={`${category.name} target expired — click to update`}
                   onClick={(e) => { e.stopPropagation(); setShowTargetEditor(true) }}
                 >
                   expired
-                </span>
+                </button>
               ) : targetStatus ? (
                 budgetRowMode === 'compressed' ? (
-                  <span
+                  <button
                     className={`category-row__target-led category-row__target-led--${targetStatus}`}
                     title={getTargetTooltip(targetStatus, monthlyNeeded ?? undefined)}
+                    aria-label={`${category.name}: ${getTargetTooltip(targetStatus, monthlyNeeded ?? undefined)}`}
                     onClick={(e) => { e.stopPropagation(); setShowTargetEditor(true) }}
                   />
                 ) : (
@@ -208,11 +214,11 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                   +target
                 </button>
               )}
-              <div className="category-row__actions">
-                <button className="category-row__action-btn" onClick={startRename} title="Rename">
+              <div className="category-row__actions" role="group" aria-label={`${category.name} actions`}>
+                <button className="category-row__action-btn" onClick={startRename} title="Rename" aria-label={`Rename ${category.name}`}>
                   <Pencil size={11} />
                 </button>
-                <button className="category-row__action-btn" onClick={handleHide} title="Hide category">
+                <button className="category-row__action-btn" onClick={handleHide} title="Hide category" aria-label={`Hide ${category.name}`}>
                   <EyeOff size={11} />
                 </button>
                 {confirmDelete ? (
@@ -221,6 +227,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                       className="category-row__action-btn category-row__action-btn--confirm"
                       onClick={handleDelete}
                       title="Confirm delete"
+                      aria-label={`Confirm delete ${category.name}`}
                     >
                       ✓
                     </button>
@@ -228,6 +235,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                       className="category-row__action-btn"
                       onClick={() => setConfirmDelete(false)}
                       title="Cancel"
+                      aria-label="Cancel delete"
                     >
                       ✗
                     </button>
@@ -237,6 +245,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                     className="category-row__action-btn category-row__action-btn--danger"
                     onClick={() => setConfirmDelete(true)}
                     title="Delete category"
+                    aria-label={`Delete ${category.name}`}
                   >
                     <Trash2 size={11} />
                   </button>
@@ -300,11 +309,14 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
               <div className={`target-pill-track target-pill-track--${targetStatus}`}>
                 <div
                   className={`target-pill-fill target-pill-fill--${targetStatus}`}
-                  style={{ width: `${targetProgress * 100}%` }}
+                  style={{ '--fill-scale': targetProgress } as React.CSSProperties}
+                />
+                <span
+                  className={`target-pill-pct ${pctInside ? 'target-pill-pct--inside' : 'target-pill-pct--outside'}`}
+                  style={pctInside ? { left: `${targetProgress * 100}%` } : undefined}
                 >
-                  {pctInside && <span className="target-pill-pct">{pct}%</span>}
-                </div>
-                {!pctInside && <span className="target-pill-pct target-pill-pct--outside">{pct}%</span>}
+                  {pct}%
+                </span>
               </div>
             </div>
             <div className="target-pill-stats">

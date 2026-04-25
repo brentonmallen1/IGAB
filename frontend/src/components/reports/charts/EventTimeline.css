@@ -55,11 +55,11 @@
 }
 
 .timeline__dot--expense {
-  background: var(--color-negative, #e15759);
+  background: var(--color-negative);
 }
 
 .timeline__dot--income {
-  background: var(--color-positive, #59a14f);
+  background: var(--color-positive);
 }
 
 .timeline__card {
@@ -106,11 +106,11 @@
 }
 
 .timeline__amount--expense {
-  color: var(--color-negative, #e15759);
+  color: var(--color-negative);
 }
 
 .timeline__amount--income {
-  color: var(--color-positive, #59a14f);
+  color: var(--color-positive);
 }
 
 .timeline__memo {

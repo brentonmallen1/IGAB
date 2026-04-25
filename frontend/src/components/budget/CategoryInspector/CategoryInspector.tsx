@@ -55,6 +55,7 @@ export function CategoryInspector({ budgetId }: Props) {
           className="category-inspector__expand-btn"
           onClick={() => setCategoryInspectorOpen(true)}
           title="Open inspector"
+          aria-label="Open category inspector"
         >
           <ChevronRight size={14} />
         </button>
@@ -65,6 +66,7 @@ export function CategoryInspector({ budgetId }: Props) {
               className="category-inspector__collapse-btn"
               onClick={() => setCategoryInspectorOpen(false)}
               title="Collapse inspector"
+              aria-label="Collapse category inspector"
             >
               <ChevronRight size={14} />
             </button>
@@ -74,6 +76,7 @@ export function CategoryInspector({ budgetId }: Props) {
                 className="category-inspector__close-btn"
                 onClick={clearCategorySelection}
                 title="Clear selection"
+                aria-label="Clear category selection"
               >
                 <X size={14} />
               </button>

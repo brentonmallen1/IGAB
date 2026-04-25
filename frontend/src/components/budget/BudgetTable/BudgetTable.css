@@ -86,7 +86,7 @@
   border-radius: var(--border-radius-sm);
   padding: 2px 6px;
   outline: none;
-  box-shadow: 0 0 0 2px rgba(108, 140, 247, 0.2);
+  box-shadow: var(--input-focus-shadow);
   width: 140px;
   text-transform: none;
   letter-spacing: 0;

@@ -86,7 +86,7 @@
   color: var(--bg-primary);
   border-color: var(--accent-color);
   font-weight: 600;
-  box-shadow: 0 1px 6px rgba(108, 140, 247, 0.35);
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 /* ─── Content area ────────────────────────────────────────────────────────── */

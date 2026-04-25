@@ -11,13 +11,16 @@
 }
 
 .category-row__target-led {
-  display: inline-block;
+  display: inline-flex;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.1s ease;
+  padding: 0;
+  border: none;
+  background: none;
 }
 
 .category-row__target-led:hover {
@@ -41,6 +44,9 @@
   padding: 1px 5px;
   cursor: pointer;
   flex-shrink: 0;
+  border: none;
+  font-family: inherit;
+  line-height: inherit;
 }
 
 .category-row--has-pill {
@@ -59,7 +65,7 @@
 }
 
 .category-row--selected + .target-pill-row {
-  background-color: var(--row-selected-bg, rgba(108, 140, 247, 0.08));
+  background-color: var(--row-selected-bg);
 }
 
 .category-row:hover + .target-pill-row {
@@ -97,6 +103,7 @@
   overflow: visible;
   display: flex;
   align-items: center;
+  isolation: isolate;
 }
 
 .target-pill-track--funded {
@@ -113,43 +120,52 @@
 
 .target-pill-fill {
   height: 100%;
+  width: 100%;
   border-radius: 5px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  overflow: visible;
-  transition: width 0.35s ease;
-  min-width: 10px;
   position: relative;
 }
 
-.target-pill-fill--funded {
+.target-pill-fill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  transform-origin: left center;
+  transform: scaleX(var(--fill-scale, 1));
+  transition: transform 0.35s ease;
+}
+
+.target-pill-fill--funded::before {
   background: linear-gradient(90deg, color-mix(in srgb, var(--color-positive) 70%, transparent), var(--color-positive));
 }
 
-.target-pill-fill--underfunded {
+.target-pill-fill--underfunded::before {
   background: linear-gradient(90deg, color-mix(in srgb, var(--color-warning) 70%, transparent), var(--color-warning));
 }
 
-.target-pill-fill--overfunded {
+.target-pill-fill--overfunded::before {
   background: linear-gradient(90deg, color-mix(in srgb, var(--color-positive) 70%, transparent), var(--color-positive));
 }
 
 .target-pill-pct {
   font-size: 8px;
   font-weight: 700;
-  color: var(--bg-primary);
-  padding-right: 5px;
   white-space: nowrap;
   line-height: 1;
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.target-pill-pct--inside {
+  color: var(--bg-primary);
+  transform: translateX(-100%);
+  padding-right: 4px;
 }
 
 .target-pill-pct--outside {
   color: var(--text-muted);
-  padding-right: 0;
   padding-left: 5px;
-  position: absolute;
-  left: 100%;
 }
 
 .category-row:hover {
@@ -157,7 +173,7 @@
 }
 
 .category-row--selected {
-  background-color: var(--row-selected-bg, rgba(108, 140, 247, 0.08)) !important;
+  background-color: var(--row-selected-bg) !important;
 }
 
 .category-row__checkbox {
@@ -208,7 +224,7 @@
   border-radius: var(--border-radius-sm);
   padding: 1px 6px;
   outline: none;
-  box-shadow: 0 0 0 2px rgba(108, 140, 247, 0.2);
+  box-shadow: var(--input-focus-shadow);
   width: 100%;
   min-width: 0;
 }
@@ -326,7 +342,7 @@
   width: 100%;
   text-align: right;
   outline: none;
-  box-shadow: 0 0 0 2px rgba(108, 140, 247, 0.2);
+  box-shadow: var(--input-focus-shadow);
 }
 
 .category-row__zero {
@@ -343,4 +359,44 @@
 
 .zero {
   color: var(--text-muted);
+}
+
+/* ─── Touch / mobile adaptations ────────────────────────────────────────── */
+
+/* On touch devices, always show actions since hover never fires */
+@media (hover: none) {
+  .category-row__actions {
+    opacity: 1;
+  }
+  .category-row__target-btn {
+    opacity: 1;
+  }
+}
+
+/* On small screens, increase touch target sizes */
+@media (max-width: 768px) {
+  .category-row {
+    min-height: 44px;
+  }
+
+  .category-row__action-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Keep LED visually small but expand hit area */
+  .category-row__target-led {
+    padding: 10px;
+    margin: -10px;
+  }
+
+  /* Expand target button hit area */
+  .category-row__target-btn {
+    padding: 8px 6px;
+  }
+
+  /* Expand expired target hit area */
+  .category-row__target-expired {
+    padding: 8px 8px;
+  }
 }

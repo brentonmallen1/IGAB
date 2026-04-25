@@ -218,7 +218,7 @@
 .inspector-select:focus,
 .inspector-input:focus {
   border-color: var(--input-focus-ring);
-  box-shadow: 0 0 0 2px rgba(79, 110, 247, 0.15);
+  box-shadow: var(--input-focus-shadow);
 }
 
 .inspector-target-form__actions {
@@ -339,7 +339,7 @@
 
 .inspector-notes:focus {
   border-color: var(--input-focus-ring);
-  box-shadow: 0 0 0 2px rgba(79, 110, 247, 0.15);
+  box-shadow: var(--input-focus-shadow);
 }
 
 .inspector-notes::placeholder {

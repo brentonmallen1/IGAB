@@ -135,4 +135,20 @@
   .header__menu-btn {
     display: flex;
   }
+
+  /* Increase touch targets for navigation buttons */
+  .header__month-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .header__today-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .header__theme-btn {
+    width: 44px;
+    height: 44px;
+  }
 }

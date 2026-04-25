@@ -94,7 +94,7 @@
 .txn-editor__input:focus,
 .txn-editor__select:focus {
   border-color: var(--input-focus-ring);
-  box-shadow: 0 0 0 2px rgba(108, 140, 247, 0.2);
+  box-shadow: var(--input-focus-shadow);
 }
 
 .txn-editor__select {
@@ -176,7 +176,7 @@
   width: 14px;
   left: 3px;
   bottom: 3px;
-  background-color: #fff;
+  background-color: var(--toggle-knob);
   border-radius: 50%;
   transition: transform var(--transition-fast);
 }
@@ -343,7 +343,7 @@
   align-items: center;
   gap: 6px;
   font-size: var(--font-size-xs);
-  color: var(--color-warning, #d97706);
+  color: var(--color-warning);
   background: none;
   border: none;
   cursor: pointer;
@@ -376,7 +376,7 @@
   font-size: var(--font-size-xs);
   padding: 4px 8px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--color-warning, #d97706) 8%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
 }
 
 .txn-editor__similar-date {

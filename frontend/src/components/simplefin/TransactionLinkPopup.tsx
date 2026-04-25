@@ -60,7 +60,7 @@ function ConfidenceMeter({ score }: { score: number }) {
       <div className="link-popup__confidence-bar">
         <div
           className="link-popup__confidence-fill"
-          style={{ width: `${pct}%`, background: color }}
+          style={{ transform: `scaleX(${score})`, background: color }}
         />
       </div>
       <span className="link-popup__confidence-pct">{pct}%</span>

@@ -24,9 +24,9 @@ export function AutoAssignModal({ budgetId, month, onClose }: Props) {
       className="auto-assign-overlay"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="auto-assign-modal" role="dialog" aria-modal>
+      <div className="auto-assign-modal" role="dialog" aria-modal aria-labelledby="auto-assign-title">
         <div className="auto-assign-modal__header">
-          <span className="auto-assign-modal__title">Auto-assign to targets</span>
+          <span id="auto-assign-title" className="auto-assign-modal__title">Auto-assign to targets</span>
           <button className="auto-assign-modal__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>

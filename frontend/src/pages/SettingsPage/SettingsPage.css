@@ -226,9 +226,11 @@
 
 .sf-usage__fill {
   height: 100%;
+  width: 100%;
   background: var(--color-accent);
   border-radius: 2px;
-  transition: width 0.3s ease;
+  transform-origin: left center;
+  transition: transform 0.3s ease;
 }
 
 .sf-usage__reset {
@@ -273,6 +275,6 @@
 .settings-budget-name__id {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: var(--font-mono);
   margin-top: 2px;
 }

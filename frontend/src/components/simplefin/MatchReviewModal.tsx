@@ -27,7 +27,7 @@ function ConfidenceBar({ score }: { score: number }) {
     <div className="match-modal__confidence">
       <span className="match-modal__confidence-label">Match confidence</span>
       <div className="match-modal__confidence-bar">
-        <div className="match-modal__confidence-fill" style={{ width: `${pct}%`, background: color }} />
+        <div className="match-modal__confidence-fill" style={{ transform: `scaleX(${score})`, background: color }} />
       </div>
       <span className="match-modal__confidence-pct" style={{ color }}>{pct}%</span>
     </div>
@@ -165,9 +165,9 @@ export function MatchReviewModal({ matches, onClose }: Props) {
 
   return (
     <div className="match-modal-overlay" onClick={onClose}>
-      <div className="match-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="match-modal" role="dialog" aria-modal aria-labelledby="match-modal-title" onClick={(e) => e.stopPropagation()}>
         <div className="match-modal__header">
-          <span className="match-modal__title">
+          <span id="match-modal-title" className="match-modal__title">
             <Link2 size={14} />
             Review Possible Duplicate
           </span>

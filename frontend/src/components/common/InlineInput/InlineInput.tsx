@@ -10,6 +10,7 @@ interface Props {
   className?: string
   disabled?: boolean
   autoFocus?: boolean
+  'aria-label'?: string
 }
 
 export function InlineInput({
@@ -21,6 +22,7 @@ export function InlineInput({
   className = '',
   disabled = false,
   autoFocus = true,
+  'aria-label': ariaLabel,
 }: Props) {
   const [draft, setDraft] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -61,6 +63,7 @@ export function InlineInput({
       disabled={disabled}
       inputMode={type === 'currency' ? 'decimal' : 'text'}
       autoComplete="off"
+      aria-label={ariaLabel}
     />
   )
 }

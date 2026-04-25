@@ -96,9 +96,9 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
       className="view-modal-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <form className="view-modal" onSubmit={handleSubmit} role="dialog" aria-modal>
+      <form className="view-modal" onSubmit={handleSubmit} role="dialog" aria-modal aria-labelledby="view-modal-title">
         <div className="view-modal__header">
-          <span className="view-modal__title">{isEdit ? 'Edit View' : 'New Custom View'}</span>
+          <span id="view-modal-title" className="view-modal__title">{isEdit ? 'Edit View' : 'New Custom View'}</span>
           <button type="button" className="view-modal__close" onClick={onClose}>
             <X size={18} />
           </button>

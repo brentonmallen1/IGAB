@@ -36,11 +36,11 @@
 }
 
 .metric-card__delta--pos {
-  color: var(--color-positive, #59a14f);
+  color: var(--color-positive);
 }
 
 .metric-card__delta--neg {
-  color: var(--color-negative, #e15759);
+  color: var(--color-negative);
 }
 
 .metric-card__delta--neutral {
