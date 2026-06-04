@@ -162,7 +162,7 @@ export function AccountPage() {
       )}
 
       {showMatchModal && pendingMatches.length > 0 && (
-        <MatchReviewModal matches={pendingMatches} onClose={() => setShowMatchModal(false)} />
+        <MatchReviewModal matches={pendingMatches} budgetId={budgetId} onClose={() => setShowMatchModal(false)} />
       )}
 
       <div className="account-page__body">

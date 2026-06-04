@@ -25,7 +25,7 @@ function TxnCard({
   payeeMap: Map<string, string>
   categoryMap: Map<string, string>
   isSelected: boolean
-  onClick: () => void
+  onClick?: () => void
 }) {
   const payeeName = txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—'
   const categoryName = txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : '—'
@@ -86,7 +86,8 @@ export function MergePreviewModal({
   isPending,
 }: Props) {
   const [txn1, txn2] = transactions
-  const defaultSurvivor = txn1.created_at <= txn2.created_at ? txn1.id : txn2.id
+  const reconciledTxn = txn1.cleared === 'reconciled' ? txn1 : txn2.cleared === 'reconciled' ? txn2 : null
+  const defaultSurvivor = reconciledTxn?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
   const [survivorId, setSurvivorId] = useState<string>(defaultSurvivor)
 
   const survivor = survivorId === txn1.id ? txn1 : txn2
@@ -109,7 +110,9 @@ export function MergePreviewModal({
         </div>
 
         <p className="merge-modal__hint">
-          Click a transaction to keep it. The other will be deleted.
+          {reconciledTxn
+            ? 'The reconciled transaction will always be kept.'
+            : 'Click a transaction to keep it. The other will be deleted.'}
         </p>
 
         <div className="merge-modal__columns">
@@ -118,14 +121,14 @@ export function MergePreviewModal({
             payeeMap={payeeMap}
             categoryMap={categoryMap}
             isSelected={survivorId === txn1.id}
-            onClick={() => setSurvivorId(txn1.id)}
+            onClick={reconciledTxn ? undefined : () => setSurvivorId(txn1.id)}
           />
           <TxnCard
             txn={txn2}
             payeeMap={payeeMap}
             categoryMap={categoryMap}
             isSelected={survivorId === txn2.id}
-            onClick={() => setSurvivorId(txn2.id)}
+            onClick={reconciledTxn ? undefined : () => setSurvivorId(txn2.id)}
           />
         </div>
 

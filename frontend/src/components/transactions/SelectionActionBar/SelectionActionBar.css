@@ -1,86 +1,17 @@
-.selection-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-md);
-  background-color: var(--bg-tertiary);
-  border-bottom: 1px solid var(--color-accent);
-  position: sticky;
-  top: 44px;
-  z-index: 6;
-  animation: slideDown 0.15s ease;
+/* Total amount color variants */
+.sab__total--negative {
+  color: var(--bg-primary);
 }
 
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+.sab__total--positive {
+  color: color-mix(in srgb, var(--color-positive) 80%, var(--bg-primary));
 }
 
-.selection-bar__close {
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-  padding: 3px;
-  border-radius: var(--border-radius-sm);
-  transition: color var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.selection-bar__close:hover {
-  color: var(--text-primary);
-}
-
-.selection-bar__count {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-.selection-bar__total {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--text-muted);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.selection-bar__total--negative {
-  color: var(--text-primary);
-}
-
-.selection-bar__total--positive {
-  color: var(--color-positive);
-}
-
-.selection-bar__divider {
-  width: 1px;
-  height: 20px;
-  background-color: var(--border-color);
-  flex-shrink: 0;
-}
-
-.selection-bar__btn {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: 4px var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  border-radius: var(--border-radius-sm);
-  white-space: nowrap;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
-}
-
-.selection-bar__btn:hover {
-  color: var(--text-primary);
-  background-color: var(--row-hover-bg);
-}
-
-.selection-bar__action {
+/* Categorize combobox inline in the bar */
+.sab__categorize {
   position: relative;
 }
 
-.selection-bar__category-picker {
+.sab__category-picker {
   width: 220px;
 }

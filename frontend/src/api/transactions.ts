@@ -24,6 +24,7 @@ export function useInfiniteTransactions(accountId: string | null, filters: Trans
       if (filters.payeeIds?.length) params.payee_ids = filters.payeeIds.join(',')
       if (filters.amountMin != null) params.amount_min = filters.amountMin
       if (filters.amountMax != null) params.amount_max = filters.amountMax
+      if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
       const { data } = await apiClient.get<Transaction[]>(`/accounts/${accountId}/transactions`, { params })
       return data
     },
@@ -46,6 +47,8 @@ export function useCreateTransaction(budgetId: string) {
       qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
     },
   })
 }
@@ -62,6 +65,8 @@ export function useUpdateTransaction(budgetId: string) {
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['reconcile-status'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
     },
   })
 }
@@ -86,13 +91,13 @@ export function useDeleteTransaction(budgetId: string) {
 export function useBulkUpdateCleared(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ transactionIds, cleared }: { transactionIds: string[]; cleared: string }) =>
+    mutationFn: ({ transactionIds, cleared, accountId }: { transactionIds: string[]; cleared: string; accountId: string }) =>
       apiClient.patch(`/${budgetId}/transactions/bulk-cleared`, {
         transaction_ids: transactionIds,
         cleared,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
+      }).then(() => accountId),
+    onSuccess: (accountId) => {
+      qc.invalidateQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['reconcile-status'] })
@@ -103,14 +108,16 @@ export function useBulkUpdateCleared(budgetId: string) {
 export function useBulkCategorize(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ transactionIds, categoryId }: { transactionIds: string[]; categoryId: string }) =>
+    mutationFn: ({ transactionIds, categoryId, accountId }: { transactionIds: string[]; categoryId: string; accountId: string }) =>
       apiClient.patch(`/${budgetId}/transactions/bulk-categorize`, {
         transaction_ids: transactionIds,
         category_id: categoryId,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
+      }).then(() => accountId),
+    onSuccess: (accountId) => {
+      qc.invalidateQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account', accountId] })
     },
   })
 }
@@ -118,14 +125,15 @@ export function useBulkCategorize(budgetId: string) {
 export function useBulkDeleteTransactions(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (transactionIds: string[]) =>
-      apiClient.post(`/${budgetId}/transactions/bulk-delete`, { transaction_ids: transactionIds }),
-    onSuccess: () => {
-      qc.refetchQueries({ queryKey: ['transactions'] })
+    mutationFn: ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string }) =>
+      apiClient.post(`/${budgetId}/transactions/bulk-delete`, { transaction_ids: transactionIds })
+        .then(() => accountId),
+    onSuccess: (accountId) => {
+      qc.refetchQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account', accountId] })
     },
   })
 }
@@ -134,9 +142,14 @@ export function usePendingReviewCount(budgetId: string | null) {
   return useQuery({
     queryKey: ['pending-review-count', budgetId],
     queryFn: async () => {
-      const { data } = await apiClient.get<{ unapproved: number; uncategorized: number }>(
-        `/${budgetId}/transactions/pending-review-count`,
-      )
+      const { data } = await apiClient.get<{
+        unapproved_only: number
+        uncategorized_only: number
+        both: number
+        total: number
+        unapproved: number
+        uncategorized: number
+      }>(`/${budgetId}/transactions/pending-review-count`)
       return data
     },
     enabled: !!budgetId,
@@ -148,9 +161,14 @@ export function usePendingReviewCountForAccount(accountId: string | null) {
   return useQuery({
     queryKey: ['pending-review-count-account', accountId],
     queryFn: async () => {
-      const { data } = await apiClient.get<{ unapproved: number; uncategorized: number }>(
-        `/accounts/${accountId}/pending-review-count`,
-      )
+      const { data } = await apiClient.get<{
+        unapproved_only: number
+        uncategorized_only: number
+        both: number
+        total: number
+        unapproved: number
+        uncategorized: number
+      }>(`/accounts/${accountId}/pending-review-count`)
       return data
     },
     enabled: !!accountId,
@@ -161,11 +179,13 @@ export function usePendingReviewCountForAccount(accountId: string | null) {
 export function useBulkApprove(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (transactionIds: string[]) =>
-      apiClient.patch(`/${budgetId}/transactions/bulk-approve`, { transaction_ids: transactionIds }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
+    mutationFn: ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string }) =>
+      apiClient.patch(`/${budgetId}/transactions/bulk-approve`, { transaction_ids: transactionIds })
+        .then(() => accountId),
+    onSuccess: (accountId) => {
+      qc.invalidateQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['pending-review-count', budgetId] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account', accountId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
     },
   })

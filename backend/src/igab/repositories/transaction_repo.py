@@ -24,6 +24,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         end_date: date | None = None,
         search: str | None = None,
         cleared: str | None = None,
+        exclude_cleared: str | None = None,
         uncategorized: bool = False,
         unapproved: bool = False,
         is_or_mode: bool = False,
@@ -40,11 +41,11 @@ class TransactionRepository(BaseRepository[Transaction]):
         if search:
             q = q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             pattern = f"%{search}%"
-            q = q.where(
-                or_(Payee.name.ilike(pattern), Transaction.memo.ilike(pattern))
-            )
+            q = q.where(or_(Payee.name.ilike(pattern), Transaction.memo.ilike(pattern)))
         if cleared:
             q = q.where(Transaction.cleared == cleared)
+        if exclude_cleared:
+            q = q.where(Transaction.cleared != exclude_cleared)
         if uncategorized and unapproved and is_or_mode:
             q = q.where(
                 or_(
@@ -93,52 +94,58 @@ class TransactionRepository(BaseRepository[Transaction]):
         return list(result.scalars().all())
 
     async def count_pending_review_for_account(self, account_id: uuid.UUID) -> dict:
-        """Count transactions needing attention for a single account."""
-        unapproved_result = await self.session.execute(
-            select(func.count(Transaction.id)).where(
+        """Count transactions needing attention for a single account, with breakdown."""
+        return await self._count_pending_review(
+            and_(
                 Transaction.account_id == account_id,
-                Transaction.approved == False,  # noqa: E712
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
             )
         )
-        uncategorized_result = await self.session.execute(
-            select(func.count(Transaction.id)).where(
-                Transaction.account_id == account_id,
-                Transaction.category_id.is_(None),
-                Transaction.transfer_id.is_(None),
-                Transaction.is_split == False,  # noqa: E712
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-            )
-        )
-        return {
-            "unapproved": unapproved_result.scalar_one(),
-            "uncategorized": uncategorized_result.scalar_one(),
-        }
 
     async def count_pending_review(self, budget_id: uuid.UUID) -> dict:
-        """Count transactions needing attention: unapproved and/or uncategorized."""
-        unapproved_result = await self.session.execute(
-            select(func.count(Transaction.id)).where(
+        """Count transactions needing attention: unapproved and/or uncategorized, with breakdown."""
+        return await self._count_pending_review(
+            and_(
                 Transaction.budget_id == budget_id,
-                Transaction.approved == False,  # noqa: E712
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
             )
         )
-        uncategorized_result = await self.session.execute(
-            select(func.count(Transaction.id)).where(
-                Transaction.budget_id == budget_id,
-                Transaction.category_id.is_(None),
-                Transaction.is_split == False,  # noqa: E712
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-            )
+
+    async def _count_pending_review(self, base_where) -> dict:
+        needs_category = and_(
+            Transaction.category_id.is_(None),
+            Transaction.is_split == False,  # noqa: E712
+            Transaction.transfer_id.is_(None),
         )
+        unapproved = Transaction.approved == False  # noqa: E712
+        not_pending = Transaction.cleared != "pending"
+
+        result = await self.session.execute(
+            select(
+                func.sum(cast(case((and_(unapproved, needs_category), 1), else_=0), Integer)).label(
+                    "both"
+                ),
+                func.sum(
+                    cast(case((and_(unapproved, ~needs_category), 1), else_=0), Integer)
+                ).label("unapproved_only"),
+                func.sum(
+                    cast(case((and_(~unapproved, needs_category), 1), else_=0), Integer)
+                ).label("uncategorized_only"),
+            ).where(and_(base_where, not_pending))
+        )
+        row = result.one()
+        both = row.both or 0
+        unapproved_only = row.unapproved_only or 0
+        uncategorized_only = row.uncategorized_only or 0
         return {
-            "unapproved": unapproved_result.scalar_one(),
-            "uncategorized": uncategorized_result.scalar_one(),
+            "unapproved_only": unapproved_only,
+            "uncategorized_only": uncategorized_only,
+            "both": both,
+            "total": unapproved_only + uncategorized_only + both,
+            "unapproved": unapproved_only + both,
+            "uncategorized": uncategorized_only + both,
         }
 
     async def get_splits(self, parent_id: uuid.UUID) -> list[Transaction]:
@@ -381,6 +388,23 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             .order_by(Transaction.date.desc())
             .limit(limit)
+        )
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def get_all_with_payee_for_account(
+        self,
+        account_id: uuid.UUID,
+    ) -> list[tuple[Transaction, str | None]]:
+        """Return all non-deleted parent transactions with their payee names for an account."""
+        result = await self.session.execute(
+            select(Transaction, Payee.name)
+            .outerjoin(Payee, Transaction.payee_id == Payee.id)
+            .where(
+                Transaction.account_id == account_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.parent_transaction_id.is_(None),
+            )
+            .order_by(Transaction.date.desc())
         )
         return [(row[0], row[1]) for row in result.all()]
 

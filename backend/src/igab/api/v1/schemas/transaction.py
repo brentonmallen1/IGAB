@@ -83,6 +83,10 @@ class BulkApprove(BaseModel):
 class PendingReviewCount(BaseModel):
     unapproved: int
     uncategorized: int
+    unapproved_only: int = 0
+    uncategorized_only: int = 0
+    both: int = 0
+    total: int = 0
 
 
 class MergeTransactionsRequest(BaseModel):

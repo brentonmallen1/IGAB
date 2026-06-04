@@ -148,9 +148,7 @@ async def list_budgets(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[BudgetResponse]:
-    result = await session.execute(
-        select(Budget).where(Budget.user_id == current_user.id)
-    )
+    result = await session.execute(select(Budget).where(Budget.user_id == current_user.id))
     budgets = result.scalars().all()
     return [BudgetResponse.model_validate(b) for b in budgets]
 

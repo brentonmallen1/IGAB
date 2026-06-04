@@ -30,6 +30,45 @@
   border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
+.budget-view-bar__btn--negative {
+  color: var(--color-negative);
+}
+.budget-view-bar__btn--negative:hover {
+  color: var(--color-negative);
+  background-color: color-mix(in srgb, var(--color-negative) 10%, transparent);
+}
+.budget-view-bar__btn--negative.active {
+  color: var(--color-negative);
+  background-color: color-mix(in srgb, var(--color-negative) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-negative) 35%, transparent);
+}
+
+.budget-view-bar__btn--warning {
+  color: var(--color-warning);
+}
+.budget-view-bar__btn--warning:hover {
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);
+}
+.budget-view-bar__btn--warning.active {
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+}
+
+.budget-view-bar__btn--positive {
+  color: var(--color-positive);
+}
+.budget-view-bar__btn--positive:hover {
+  color: var(--color-positive);
+  background-color: color-mix(in srgb, var(--color-positive) 10%, transparent);
+}
+.budget-view-bar__btn--positive.active {
+  color: var(--color-positive);
+  background-color: color-mix(in srgb, var(--color-positive) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-positive) 35%, transparent);
+}
+
 .budget-view-bar__menu-wrap {
   position: relative;
   margin-left: auto;

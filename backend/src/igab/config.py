@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2"
 
+    # Attachments storage
+    ATTACHMENTS_DIR: str = "/data/attachments"
+
     # SMTP (env-only, no UI override)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

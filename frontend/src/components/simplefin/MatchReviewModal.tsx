@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { X, Link2, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { X, Link2, ChevronLeft, ChevronRight, RefreshCw, ArrowRight } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '../../api/client'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
+import { usePayees } from '../../api/payees'
+import { useCategories } from '../../api/categories'
 import { formatMoney } from '../../utils/money'
 import { formatDate } from '../../utils/dates'
 import type { Transaction, TransactionMatch } from '../../types'
@@ -34,9 +36,22 @@ function ConfidenceBar({ score }: { score: number }) {
   )
 }
 
-function TxnDetail({ txn, label }: { txn: Transaction; label: string }) {
+function TxnDetail({
+  txn,
+  label,
+  payeeMap,
+  categoryMap,
+}: {
+  txn: Transaction
+  label: string
+  payeeMap: Map<string, string>
+  categoryMap: Map<string, string>
+}) {
   const outflow = txn.amount < 0 ? Math.abs(txn.amount) : 0
   const inflow = txn.amount >= 0 ? txn.amount : 0
+  const payeeName = txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—'
+  const categoryName = txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : null
+
   return (
     <div className="match-modal__col">
       <div className="match-modal__col-label">{label}</div>
@@ -51,6 +66,16 @@ function TxnDetail({ txn, label }: { txn: Transaction; label: string }) {
             {outflow > 0 ? `-${formatMoney(outflow)}` : formatMoney(inflow)}
           </span>
         </div>
+        <div className="match-modal__txn-row">
+          <span className="match-modal__txn-key">Payee</span>
+          <span className="match-modal__txn-value">{payeeName}</span>
+        </div>
+        {categoryName && (
+          <div className="match-modal__txn-row">
+            <span className="match-modal__txn-key">Category</span>
+            <span className="match-modal__txn-value">{categoryName}</span>
+          </div>
+        )}
         <div className="match-modal__txn-row">
           <span className="match-modal__txn-key">Status</span>
           <span className={`match-modal__cleared match-modal__cleared--${txn.cleared}`}>{txn.cleared}</span>
@@ -72,19 +97,101 @@ function TxnDetail({ txn, label }: { txn: Transaction; label: string }) {
   )
 }
 
+function MergedPreview({
+  syncedTxn,
+  manualTxn,
+  payeeMap,
+  categoryMap,
+}: {
+  syncedTxn: Transaction
+  manualTxn: Transaction
+  payeeMap: Map<string, string>
+  categoryMap: Map<string, string>
+}) {
+  const CLEARED_RANK: Record<string, number> = { reconciled: 3, cleared: 2, uncleared: 1, pending: 0 }
+  const mergedCleared =
+    (CLEARED_RANK[manualTxn.cleared] ?? 0) >= (CLEARED_RANK[syncedTxn.cleared] ?? 0)
+      ? manualTxn.cleared
+      : syncedTxn.cleared
+
+  // Accept logic: manual transaction wins on payee/category/memo, synced wins on date/import data
+  const payeeName = manualTxn.payee_id
+    ? (payeeMap.get(manualTxn.payee_id) ?? '—')
+    : syncedTxn.payee_id
+      ? (payeeMap.get(syncedTxn.payee_id) ?? '—')
+      : '—'
+  const categoryName = manualTxn.category_id
+    ? categoryMap.get(manualTxn.category_id)
+    : null
+  const outflow = manualTxn.amount < 0 ? Math.abs(manualTxn.amount) : 0
+  const inflow = manualTxn.amount >= 0 ? manualTxn.amount : 0
+
+  return (
+    <div className="match-modal__merged">
+      <div className="match-modal__merged-header">
+        <ArrowRight size={11} />
+        Result after accepting
+      </div>
+      <div className="match-modal__merged-row">
+        <span className="match-modal__txn-key">Date</span>
+        <span>{formatDate(syncedTxn.date)}</span>
+      </div>
+      <div className="match-modal__merged-row">
+        <span className="match-modal__txn-key">Amount</span>
+        <span className={manualTxn.amount < 0 ? 'txn-outflow' : 'txn-inflow'}>
+          {outflow > 0 ? `-${formatMoney(outflow)}` : formatMoney(inflow)}
+        </span>
+      </div>
+      <div className="match-modal__merged-row">
+        <span className="match-modal__txn-key">Payee</span>
+        <span className="match-modal__txn-value">{payeeName}</span>
+      </div>
+      {categoryName && (
+        <div className="match-modal__merged-row">
+          <span className="match-modal__txn-key">Category</span>
+          <span className="match-modal__txn-value">{categoryName}</span>
+        </div>
+      )}
+      <div className="match-modal__merged-row">
+        <span className="match-modal__txn-key">Status</span>
+        <span className={`match-modal__cleared match-modal__cleared--${mergedCleared}`}>{mergedCleared}</span>
+      </div>
+      {manualTxn.memo && (
+        <div className="match-modal__merged-row">
+          <span className="match-modal__txn-key">Memo</span>
+          <span className="match-modal__txn-desc">{manualTxn.memo}</span>
+        </div>
+      )}
+      {syncedTxn.import_description && (
+        <div className="match-modal__merged-row">
+          <span className="match-modal__txn-key">Bank desc</span>
+          <span className="match-modal__txn-desc">{syncedTxn.import_description}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MatchCard({
   match,
+  budgetId,
   onAccepted,
   onRejected,
 }: {
   match: TransactionMatch
+  budgetId: string | null
   onAccepted: () => void
   onRejected: () => void
 }) {
   const { data: syncedTxn, isLoading: loadingS } = useTransaction(match.synced_transaction_id)
   const { data: manualTxn, isLoading: loadingM } = useTransaction(match.manual_transaction_id)
+  const { data: payees = [] } = usePayees(budgetId)
+  const { data: categories = [] } = useCategories(budgetId)
   const acceptMatch = useAcceptMatch()
   const rejectMatch = useRejectMatch()
+
+  const payeeMap = new Map(payees.map((p) => [p.id, p.name]))
+  const categoryMap = new Map(categories.map((c) => [c.id, c.name]))
 
   const loading = loadingS || loadingM
 
@@ -107,16 +214,37 @@ function MatchCard({
           <RefreshCw size={16} className="spin" />
         </div>
       ) : (
-        <div className="match-modal__columns">
-          {syncedTxn && <TxnDetail txn={syncedTxn} label="From bank (synced)" />}
-          <div className="match-modal__divider" />
-          {manualTxn && <TxnDetail txn={manualTxn} label="Manually entered" />}
-        </div>
-      )}
+        <>
+          <div className="match-modal__columns">
+            {syncedTxn && (
+              <TxnDetail
+                txn={syncedTxn}
+                label="From bank (synced)"
+                payeeMap={payeeMap}
+                categoryMap={categoryMap}
+              />
+            )}
+            <div className="match-modal__divider" />
+            {manualTxn && (
+              <TxnDetail
+                txn={manualTxn}
+                label="Manually entered"
+                payeeMap={payeeMap}
+                categoryMap={categoryMap}
+              />
+            )}
+          </div>
 
-      <p className="match-modal__hint">
-        Accepting keeps your manual entry (with its category and payee) and removes the bank duplicate.
-      </p>
+          {syncedTxn && manualTxn && (
+            <MergedPreview
+              syncedTxn={syncedTxn}
+              manualTxn={manualTxn}
+              payeeMap={payeeMap}
+              categoryMap={categoryMap}
+            />
+          )}
+        </>
+      )}
 
       <div className="match-modal__actions">
         <button
@@ -140,11 +268,17 @@ function MatchCard({
 
 interface Props {
   matches: TransactionMatch[]
+  budgetId: string | null
   onClose: () => void
+  initialMatchId?: string
 }
 
-export function MatchReviewModal({ matches, onClose }: Props) {
-  const [idx, setIdx] = useState(0)
+export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }: Props) {
+  const [idx, setIdx] = useState(() => {
+    if (!initialMatchId) return 0
+    const i = matches.findIndex((m) => m.id === initialMatchId)
+    return i >= 0 ? i : 0
+  })
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
   const pending = matches.filter((m) => !dismissed.has(m.id))
@@ -184,6 +318,7 @@ export function MatchReviewModal({ matches, onClose }: Props) {
         <MatchCard
           key={current.id}
           match={current}
+          budgetId={budgetId}
           onAccepted={() => handleDismiss(current.id)}
           onRejected={() => handleDismiss(current.id)}
         />

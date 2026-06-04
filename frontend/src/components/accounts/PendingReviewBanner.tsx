@@ -1,5 +1,6 @@
 import { Info } from 'lucide-react'
 import { usePendingReviewCount, usePendingReviewCountForAccount } from '../../api/transactions'
+import { Tooltip } from '../common/Tooltip/Tooltip'
 import './PendingReviewBanner.css'
 
 interface Props {
@@ -13,32 +14,40 @@ export function PendingReviewBanner({ budgetId, accountId, onView }: Props) {
   const accountCounts = usePendingReviewCountForAccount(accountId ?? null)
   const counts = accountId ? accountCounts.data : budgetCounts.data
 
-  if (!counts || (counts.unapproved === 0 && counts.uncategorized === 0)) {
+  const total = counts?.total ?? (counts ? counts.unapproved + counts.uncategorized : 0)
+
+  if (!counts || total === 0) {
     return null
   }
 
-  const total = counts.unapproved + counts.uncategorized
+  const tooltipLines: string[] = []
+  if (counts.unapproved_only > 0) tooltipLines.push(`${counts.unapproved_only} unapproved`)
+  if (counts.uncategorized_only > 0) tooltipLines.push(`${counts.uncategorized_only} need category`)
+  if (counts.both > 0) tooltipLines.push(`${counts.both} unapproved + need category`)
 
-  const parts: string[] = []
-  if (counts.unapproved > 0) parts.push(`${counts.unapproved} unapproved`)
-  if (counts.uncategorized > 0) parts.push(`${counts.uncategorized} uncategorized`)
+  const tooltipContent =
+    tooltipLines.length > 0 ? (
+      <>
+        {tooltipLines.map((line) => (
+          <div key={line}>{line}</div>
+        ))}
+      </>
+    ) : null
 
-  const message =
-    total === 1
-      ? `${parts.join(' and ')} transaction to review.`
-      : `${parts.join(' and ')} transactions to review.`
+  const message = total === 1 ? '1 transaction to review.' : `${total} transactions to review.`
 
   function handleView() {
-    const filters: string[] = []
-    if (counts!.unapproved > 0) filters.push('is: unapproved')
-    if (counts!.uncategorized > 0) filters.push('is: uncategorized')
-    onView(filters.join(' OR '))
+    onView('is: unapproved OR is: uncategorized NOT is: pending')
   }
 
   return (
     <div className="pending-review-banner">
-      <Info size={14} className="pending-review-banner__icon" />
-      <span className="pending-review-banner__message">{message}</span>
+      <Tooltip content={tooltipContent}>
+        <span className="pending-review-banner__message">
+          <Info size={14} className="pending-review-banner__icon" />
+          {message}
+        </span>
+      </Tooltip>
       <button className="pending-review-banner__btn" onClick={handleView}>
         View
       </button>

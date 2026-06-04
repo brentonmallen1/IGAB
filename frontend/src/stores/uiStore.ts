@@ -3,6 +3,9 @@ import { create } from 'zustand'
 type TransactionSortColumn = 'date' | 'payee' | 'category' | 'memo' | 'amount'
 type SortDirection = 'asc' | 'desc'
 type CollapsibleSection = 'pending' | 'uncategorized' | 'upcoming'
+export type QuickFilter = 'overspent' | 'underfunded' | 'money-available' | 'overfunded'
+
+export const ALL_QUICK_FILTERS: QuickFilter[] = ['overspent', 'underfunded', 'money-available', 'overfunded']
 
 interface UIState {
   collapsedGroups: Set<string>
@@ -46,6 +49,13 @@ interface UIState {
   toggleTransactionSelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
   selectAllTransactions: (ids: string[]) => void
   clearTransactionSelection: () => void
+
+  // Payee selection actions
+  selectedPayeeIds: Set<string>
+  lastSelectedPayeeId: string | null
+  togglePayeeSelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
+  selectAllPayees: (ids: string[]) => void
+  clearPayeeSelection: () => void
   toggleSection: (section: CollapsibleSection) => void
   setTransactionSort: (column: TransactionSortColumn, direction: SortDirection) => void
   setTransactionSearch: (query: string) => void
@@ -57,6 +67,17 @@ interface UIState {
   setActiveBudgetView: (viewId: string | null) => void
   openViewModal: (viewId?: string) => void
   closeViewModal: () => void
+
+  // Quick filters
+  activeQuickFilter: QuickFilter | null
+  quickFilterOrder: QuickFilter[]
+  setActiveQuickFilter: (filter: QuickFilter | null) => void
+  reorderQuickFilters: (order: QuickFilter[]) => void
+
+  // Manage views modal
+  isManageViewsModalOpen: boolean
+  openManageViewsModal: () => void
+  closeManageViewsModal: () => void
 
   // Reconciliation mode
   isReconciling: boolean
@@ -85,7 +106,10 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   selectedTransactionIds: new Set(),
   lastSelectedTransactionId: null,
-  collapsedSections: new Set(),
+
+  selectedPayeeIds: new Set(),
+  lastSelectedPayeeId: null,
+  collapsedSections: new Set<CollapsibleSection>(['pending']),
   transactionSortColumn: 'date',
   transactionSortDirection: 'desc',
   transactionSearchQuery: '',
@@ -191,6 +215,33 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   clearTransactionSelection: () => set({ selectedTransactionIds: new Set(), lastSelectedTransactionId: null }),
 
+  togglePayeeSelection: (id, shiftKey = false, orderedIds = []) => {
+    const { selectedPayeeIds, lastSelectedPayeeId } = get()
+    const next = new Set(selectedPayeeIds)
+
+    if (shiftKey && lastSelectedPayeeId && orderedIds.length > 0) {
+      const fromIdx = orderedIds.indexOf(lastSelectedPayeeId)
+      const toIdx = orderedIds.indexOf(id)
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
+        for (let i = start; i <= end; i++) next.add(orderedIds[i])
+        set({ selectedPayeeIds: next, lastSelectedPayeeId: id })
+        return
+      }
+    }
+
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    set({ selectedPayeeIds: next, lastSelectedPayeeId: next.has(id) ? id : lastSelectedPayeeId })
+  },
+
+  selectAllPayees: (ids) => set({ selectedPayeeIds: new Set(ids) }),
+
+  clearPayeeSelection: () => set({ selectedPayeeIds: new Set(), lastSelectedPayeeId: null }),
+
   toggleSection: (section) => {
     const sections = new Set(get().collapsedSections)
     if (sections.has(section)) {
@@ -211,9 +262,18 @@ export const useUIStore = create<UIState>((set, get) => ({
   activeBudgetViewId: null,
   isViewModalOpen: false,
   editingViewId: null,
-  setActiveBudgetView: (viewId) => set({ activeBudgetViewId: viewId }),
+  setActiveBudgetView: (viewId) => set({ activeBudgetViewId: viewId, activeQuickFilter: null }),
   openViewModal: (viewId) => set({ isViewModalOpen: true, editingViewId: viewId ?? null }),
   closeViewModal: () => set({ isViewModalOpen: false, editingViewId: null }),
+
+  activeQuickFilter: null,
+  quickFilterOrder: [...ALL_QUICK_FILTERS],
+  setActiveQuickFilter: (filter) => set({ activeQuickFilter: filter, activeBudgetViewId: null }),
+  reorderQuickFilters: (order) => set({ quickFilterOrder: order }),
+
+  isManageViewsModalOpen: false,
+  openManageViewsModal: () => set({ isManageViewsModalOpen: true }),
+  closeManageViewsModal: () => set({ isManageViewsModalOpen: false }),
 
   isReconciling: false,
   reconcileAccountId: null,

@@ -57,19 +57,6 @@
   border-color: var(--text-muted);
 }
 
-.budget-page__overspent-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: 6px var(--spacing-lg);
-  background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-negative) 30%, transparent);
-  color: var(--color-negative);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
 .budget-page__body {
   flex: 1;
   display: flex;

@@ -20,9 +20,7 @@ async def process_due_scheduled_transactions() -> None:
 
     async with AsyncSessionLocal() as session:
         try:
-            result = await session.execute(
-                select(Budget)
-            )
+            result = await session.execute(select(Budget))
             budgets = list(result.scalars().all())
 
             txn_svc = TransactionService(
@@ -79,9 +77,7 @@ async def process_auto_simplefin_sync() -> None:
                     continue
 
                 # Find all budgets for this user
-                budgets_result = await session.execute(
-                    select(Budget)
-                )
+                budgets_result = await session.execute(select(Budget))
                 budgets = list(budgets_result.scalars().all())
 
                 txn_repo = TransactionRepository(session)

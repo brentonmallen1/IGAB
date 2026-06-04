@@ -1,6 +1,7 @@
 export interface TransactionFilters {
   text?: string
   cleared?: string
+  excludeCleared?: string
   uncategorized?: boolean
   unapproved?: boolean
   categoryIds?: string[]
@@ -14,6 +15,7 @@ export function hasActiveFilters(f: TransactionFilters): boolean {
   return !!(
     f.text ||
     f.cleared ||
+    f.excludeCleared ||
     f.uncategorized ||
     f.unapproved ||
     (f.categoryIds?.length ?? 0) > 0 ||
@@ -100,36 +102,13 @@ function parseSegment(
   return result
 }
 
-export function parseTransactionSearch(
-  query: string,
-  categoryMap: Map<string, string>,
-  payeeMap: Map<string, string>
-): TransactionFilters {
-  const tokens = tokenize(query)
-
-  // Split at OR keyword into segments
-  const segments: string[][] = []
-  let current: string[] = []
-  for (const token of tokens) {
-    if (token.toUpperCase() === 'OR') {
-      segments.push(current)
-      current = []
-    } else {
-      current.push(token)
-    }
-  }
-  segments.push(current)
-
-  const parsed = segments.map((seg) => parseSegment(seg, categoryMap, payeeMap))
-  if (parsed.length === 1) return parsed[0]
-
-  // Merge multiple segments with OR semantics
+function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
   const merged: TransactionFilters = { isOrMode: true }
   const textParts: string[] = []
   const allCategoryIds: string[] = []
   const allPayeeIds: string[] = []
 
-  for (const seg of parsed) {
+  for (const seg of segments) {
     if (seg.unapproved) merged.unapproved = true
     if (seg.uncategorized) merged.uncategorized = true
     if (seg.cleared) merged.cleared = seg.cleared
@@ -145,6 +124,62 @@ export function parseTransactionSearch(
   if (allPayeeIds.length) merged.payeeIds = allPayeeIds
 
   return merged
+}
+
+export function parseTransactionSearch(
+  query: string,
+  categoryMap: Map<string, string>,
+  payeeMap: Map<string, string>
+): TransactionFilters {
+  const tokens = tokenize(query)
+
+  // Extract NOT modifiers globally before OR splitting — they apply to all results
+  const exclusions: TransactionFilters = {}
+  const positiveTokens: string[] = []
+
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].toUpperCase() === 'NOT') {
+      i++
+      if (i >= tokens.length) continue
+      const next = tokens[i]
+      const nextLower = next.toLowerCase()
+
+      // NOT is: value  (space-separated)
+      if (nextLower === 'is:') {
+        const val = tokens[i + 1]?.toLowerCase()
+        if (val && CLEARED_VALUES.has(val)) { exclusions.excludeCleared = val; i++ }
+        continue
+      }
+      // NOT is:value  (compact)
+      const isMatch = nextLower.match(/^is:(\w+)$/)
+      if (isMatch && CLEARED_VALUES.has(isMatch[1])) {
+        exclusions.excludeCleared = isMatch[1]
+        continue
+      }
+      // Unrecognised NOT — pass both tokens through as text
+      positiveTokens.push('NOT', tokens[i])
+    } else {
+      positiveTokens.push(tokens[i])
+    }
+  }
+
+  // Split remaining tokens at OR keyword into segments
+  const segments: string[][] = []
+  let current: string[] = []
+  for (const token of positiveTokens) {
+    if (token.toUpperCase() === 'OR') {
+      segments.push(current)
+      current = []
+    } else {
+      current.push(token)
+    }
+  }
+  segments.push(current)
+
+  const parsed = segments.map((seg) => parseSegment(seg, categoryMap, payeeMap))
+  const positive = parsed.length === 1 ? parsed[0] : mergeWithOr(parsed)
+
+  return Object.keys(exclusions).length ? { ...positive, ...exclusions } : positive
 }
 
 function tokenize(query: string): string[] {
@@ -180,4 +215,6 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },
   { syntax: 'amount:<', description: 'Amount less than (e.g. amount:<50)' },
   { syntax: 'OR', description: 'Combine filters with OR logic (e.g. is: unapproved OR is: uncategorized)' },
+  { syntax: 'NOT is: pending ', description: 'Exclude pending transactions (global, works with OR)' },
+  { syntax: 'NOT is: cleared ', description: 'Exclude cleared transactions' },
 ]
