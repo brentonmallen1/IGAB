@@ -160,6 +160,20 @@ export function useSimpleFINRemoteAccounts(connectionId: string | null) {
   })
 }
 
+export function usePendingMatchesForAccount(accountId: string | null) {
+  return useQuery({
+    queryKey: ['pending-matches-account', accountId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TransactionMatch[]>(
+        `/accounts/${accountId}/pending-matches`,
+      )
+      return data
+    },
+    enabled: !!accountId,
+    staleTime: 15_000,
+  })
+}
+
 export function usePendingMatches(budgetId: string | null) {
   return useQuery({
     queryKey: ['simplefin-matches', budgetId],
@@ -174,25 +188,27 @@ export function usePendingMatches(budgetId: string | null) {
   })
 }
 
-export function useAcceptMatch() {
+export function useAcceptMatch(accountId?: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (matchId: string) =>
       apiClient.post(`/simplefin/matches/${matchId}/accept`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
+      qc.invalidateQueries({ queryKey: ['pending-matches-account', accountId] })
       qc.invalidateQueries({ queryKey: ['transactions'] })
     },
   })
 }
 
-export function useRejectMatch() {
+export function useRejectMatch(accountId?: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (matchId: string) =>
       apiClient.post(`/simplefin/matches/${matchId}/reject`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
+      qc.invalidateQueries({ queryKey: ['pending-matches-account', accountId] })
     },
   })
 }

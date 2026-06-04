@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, CloudOff } from 'lucide-react'
+import { RefreshCw, CloudOff, Plus, Pencil, Trash2, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAccounts } from '../../api/accounts'
+import { useAccounts, useDeleteAccount } from '../../api/accounts'
 import {
   useSimpleFINConnections,
   useSyncSimpleFIN,
   useSimpleFINRateLimitStatus,
 } from '../../api/simplefin'
 import { SyncStatusIcon, getSyncState } from '../../components/simplefin/SyncStatusIcon'
+import { AddAccountModal } from '../../components/accounts/AddAccountModal'
+import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { useAppStore } from '../../stores/appStore'
 import { formatMoney } from '../../utils/money'
 import { formatDate } from '../../utils/dates'
@@ -54,9 +56,11 @@ interface AccountRowProps {
   account: Account
   isSyncing: boolean
   onSyncClick: (e: React.MouseEvent) => void
+  onEdit: (e: React.MouseEvent) => void
+  onDelete: (e: React.MouseEvent) => void
 }
 
-function AccountRow({ account, isSyncing, onSyncClick }: AccountRowProps) {
+function AccountRow({ account, isSyncing, onSyncClick, onEdit, onDelete }: AccountRowProps) {
   const navigate = useNavigate()
   const state = getSyncState(account, isSyncing)
   const balance = Number(account.balance)
@@ -102,18 +106,39 @@ function AccountRow({ account, isSyncing, onSyncClick }: AccountRowProps) {
         </div>
       </div>
 
-      <div className="accounts-overview__row-balances">
-        <span className={`accounts-overview__balance-main ${balance < 0 ? 'negative' : ''}`}>
-          {formatMoney(balance)}
-        </span>
-        <span className="accounts-overview__balance-detail">
-          <span title="Cleared balance">C {formatMoney(cleared)}</span>
-          {uncleared !== 0 && (
-            <span title="Uncleared balance" className={uncleared < 0 ? 'negative' : 'positive'}>
-              {uncleared > 0 ? '+' : ''}{formatMoney(uncleared)}
-            </span>
-          )}
-        </span>
+      <div className="accounts-overview__row-right">
+        <div className="accounts-overview__row-actions">
+          <button
+            className="accounts-overview__action-btn"
+            onClick={onEdit}
+            title="Edit account"
+            aria-label="Edit account"
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            className="accounts-overview__action-btn accounts-overview__action-btn--danger"
+            onClick={onDelete}
+            title="Delete account"
+            aria-label="Delete account"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+
+        <div className="accounts-overview__row-balances">
+          <span className={`accounts-overview__balance-main ${balance < 0 ? 'negative' : ''}`}>
+            {formatMoney(balance)}
+          </span>
+          <span className="accounts-overview__balance-detail">
+            <span title="Cleared balance">C {formatMoney(cleared)}</span>
+            {uncleared !== 0 && (
+              <span title="Uncleared balance" className={uncleared < 0 ? 'negative' : 'positive'}>
+                {uncleared > 0 ? '+' : ''}{formatMoney(uncleared)}
+              </span>
+            )}
+          </span>
+        </div>
       </div>
     </div>
   )
@@ -121,7 +146,13 @@ function AccountRow({ account, isSyncing, onSyncClick }: AccountRowProps) {
 
 export function AccountsOverviewPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
-  const { data: accounts } = useAccounts(budgetId)
+  const [showClosed, setShowClosed] = useState(false)
+  const [isAddOpen, setIsAddOpen] = useState(false)
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
+
+  const { data: accounts } = useAccounts(budgetId, { includeClosed: showClosed })
+  const deleteAccount = useDeleteAccount(budgetId ?? '')
+
   const { data: connections = [] } = useSimpleFINConnections()
   const primaryConnection = connections[0] ?? null
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(primaryConnection?.id ?? null)
@@ -180,12 +211,29 @@ export function AccountsOverviewPage() {
     )
   }
 
+  function handleEdit(account: Account, e: React.MouseEvent) {
+    e.stopPropagation()
+    setEditingAccountId(account.id)
+  }
+
+  async function handleDelete(account: Account, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!confirm(`Delete "${account.name}"? This will also delete all its transactions. This cannot be undone.`)) return
+    try {
+      await deleteAccount.mutateAsync(account.id)
+      toast.success(`Deleted ${account.name}`)
+    } catch {
+      toast.error(`Failed to delete ${account.name}`)
+    }
+  }
+
   if (!budgetId) {
     return <div className="accounts-overview__empty">No budget selected.</div>
   }
 
   const grouped = accounts ? groupAccounts(accounts) : new Map<string, Account[]>()
   const allTypes = [...ACCOUNT_TYPE_ORDER, 'tracking'] as string[]
+  const hasClosedAccounts = accounts?.some((a) => a.is_closed) ?? false
 
   const hasSyncConnection = !!primaryConnection
   const canSyncAll = hasSyncConnection && !syncMutation.isPending && (rateLimitStatus?.can_sync_global ?? true)
@@ -196,6 +244,16 @@ export function AccountsOverviewPage() {
         <h1 className="accounts-overview__title">Accounts</h1>
         <div className="accounts-overview__header-actions">
           {syncMsg && <span className="accounts-overview__sync-msg">{syncMsg}</span>}
+          {(hasClosedAccounts || showClosed) && (
+            <button
+              className="accounts-overview__toggle-closed-btn"
+              onClick={() => setShowClosed((v) => !v)}
+              title={showClosed ? 'Hide closed accounts' : 'Show closed accounts'}
+            >
+              {showClosed ? <EyeOff size={14} /> : <Eye size={14} />}
+              <span>{showClosed ? 'Hide closed' : 'Show closed'}</span>
+            </button>
+          )}
           {hasSyncConnection && (
             <button
               className={`accounts-overview__sync-all-btn ${syncMutation.isPending && !syncingAccountId ? 'accounts-overview__sync-all-btn--spinning' : ''}`}
@@ -214,6 +272,13 @@ export function AccountsOverviewPage() {
               )}
             </button>
           )}
+          <button
+            className="accounts-overview__add-btn"
+            onClick={() => setIsAddOpen(true)}
+          >
+            <Plus size={14} />
+            <span>Add Account</span>
+          </button>
         </div>
       </div>
 
@@ -231,13 +296,32 @@ export function AccountsOverviewPage() {
                     account={acc}
                     isSyncing={syncMutation.isPending && syncingAccountId === acc.simplefin_account_id}
                     onSyncClick={(e) => handleAccountSync(acc, e)}
+                    onEdit={(e) => handleEdit(acc, e)}
+                    onDelete={(e) => handleDelete(acc, e)}
                   />
                 ))}
               </div>
             </div>
           )
         })}
+        {accounts?.length === 0 && (
+          <div className="accounts-overview__empty-state">
+            <p>No accounts yet.</p>
+            <button className="accounts-overview__add-btn" onClick={() => setIsAddOpen(true)}>
+              <Plus size={14} />
+              <span>Add your first account</span>
+            </button>
+          </div>
+        )}
       </div>
+
+      {isAddOpen && <AddAccountModal onClose={() => setIsAddOpen(false)} />}
+      {editingAccountId && (
+        <AccountSettingsModal
+          accountId={editingAccountId}
+          onClose={() => setEditingAccountId(null)}
+        />
+      )}
     </div>
   )
 }

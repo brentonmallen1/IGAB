@@ -1,7 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { GitMerge } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
-import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee } from '../../api/payees'
+import { useUIStore } from '../../stores/uiStore'
+import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, type PayeeWithCount } from '../../api/payees'
 import { usePayeeCleanupSuggestions, type PayeeCleanupGroup } from '../../api/ai'
+import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
+import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
+import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
 import './PayeesPage.css'
 
 export function PayeesPage() {
@@ -12,14 +17,23 @@ export function PayeesPage() {
   const mergePayee = useMergePayee(budgetId)
   const cleanup = usePayeeCleanupSuggestions(budgetId)
 
+  const {
+    selectedPayeeIds,
+    togglePayeeSelection,
+    selectAllPayees,
+    clearPayeeSelection,
+  } = useUIStore()
+
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editMappings, setEditMappings] = useState('')
-  const [mergeSource, setMergeSource] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [showMergeModal, setShowMergeModal] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [wizardGroups, setWizardGroups] = useState<PayeeCleanupGroup[]>([])
   const [wizardIdx, setWizardIdx] = useState(0)
+
+  const headerCheckboxRef = useRef<HTMLInputElement>(null)
 
   if (!budgetId) {
     return <div className="payees-page"><div className="payees-empty">Select a budget to manage payees.</div></div>
@@ -28,6 +42,26 @@ export function PayeesPage() {
   const filtered = payees.filter(
     (p) => !p.transfer_account_id && p.name.toLowerCase().includes(search.toLowerCase()),
   )
+
+  const filteredIds = filtered.map((p) => p.id)
+  const allOrderedIds = filtered.map((p) => p.id)
+  const selectedInFiltered = filteredIds.filter((id) => selectedPayeeIds.has(id))
+  const allFilteredSelected = filtered.length > 0 && selectedInFiltered.length === filtered.length
+  const someFilteredSelected = selectedInFiltered.length > 0
+
+  if (headerCheckboxRef.current) {
+    headerCheckboxRef.current.indeterminate = someFilteredSelected && !allFilteredSelected
+  }
+
+  function handleSelectAllFiltered() {
+    if (allFilteredSelected) {
+      const keep = [...selectedPayeeIds].filter((id) => !filteredIds.includes(id))
+      selectAllPayees(keep)
+    } else {
+      const union = new Set([...selectedPayeeIds, ...filteredIds])
+      selectAllPayees([...union])
+    }
+  }
 
   function startEdit(id: string, name: string, mappings: string | null) {
     setEditingId(id)
@@ -49,11 +83,50 @@ export function PayeesPage() {
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete payee "${name}"? Transactions will have no payee.`)) return
     await deletePayee.mutateAsync(id)
+    clearPayeeSelection()
   }
 
-  async function handleMerge(sourceId: string, targetId: string) {
-    await mergePayee.mutateAsync({ sourceId, targetId })
-    setMergeSource(null)
+  async function executeMerge(config: MergeConfig) {
+    const { targetId, addToMappingSamples, customName } = config
+    const target = payees.find((p) => p.id === targetId)
+    const sources = selectedPayees.filter((p) => p.id !== targetId)
+    if (!target) return
+
+    const absorbedPayees = customName ? selectedPayees : sources
+
+    if (addToMappingSamples && absorbedPayees.length > 0) {
+      const parts = [
+        customName ? null : target.mapping_samples,
+        ...absorbedPayees.map((p) => p.name),
+        ...absorbedPayees.map((p) => p.mapping_samples),
+      ]
+      const seen = new Set<string>()
+      const deduped: string[] = []
+      for (const part of parts) {
+        if (!part) continue
+        for (const s of part.split(',')) {
+          const t = s.trim()
+          if (t && !seen.has(t.toLowerCase())) {
+            seen.add(t.toLowerCase())
+            deduped.push(t)
+          }
+        }
+      }
+      await updatePayee.mutateAsync({
+        id: targetId,
+        ...(customName ? { name: customName } : {}),
+        mapping_samples: deduped.join(', ') || null,
+      })
+    } else if (customName) {
+      await updatePayee.mutateAsync({ id: targetId, name: customName })
+    }
+
+    for (const source of sources) {
+      await mergePayee.mutateAsync({ sourceId: source.id, targetId })
+    }
+
+    setShowMergeModal(false)
+    clearPayeeSelection()
   }
 
   async function runCleanup() {
@@ -84,6 +157,9 @@ export function PayeesPage() {
   }
 
   const currentGroup = wizardGroups[wizardIdx]
+  const selectedPayees: PayeeWithCount[] = payees.filter((p) => selectedPayeeIds.has(p.id))
+  const selectedCount = selectedPayeeIds.size
+  const hiddenSelected = selectedCount - selectedInFiltered.length
 
   return (
     <div className="payees-page">
@@ -139,6 +215,15 @@ export function PayeesPage() {
         </div>
       )}
 
+      {showMergeModal && (
+        <PayeeMergeModal
+          payees={selectedPayees}
+          onConfirm={executeMerge}
+          onCancel={() => setShowMergeModal(false)}
+          isPending={mergePayee.isPending || updatePayee.isPending}
+        />
+      )}
+
       {isLoading ? (
         <div className="payees-empty">Loading…</div>
       ) : filtered.length === 0 ? (
@@ -146,110 +231,130 @@ export function PayeesPage() {
       ) : (
         <div className="payees-table">
           <div className="payees-table__head">
+            <div className="payees-table__checkbox-cell">
+              <input
+                ref={headerCheckboxRef}
+                type="checkbox"
+                className="payees-checkbox"
+                checked={allFilteredSelected}
+                onChange={handleSelectAllFiltered}
+                aria-label="Select all visible payees"
+              />
+            </div>
             <span>Name</span>
             <span>Transactions</span>
             <span></span>
           </div>
-          {filtered.map((p) => (
-            <div key={p.id} className={`payees-table__row ${editingId === p.id ? 'payees-table__row--editing' : ''}`}>
-              <span className="payees-table__name">
-                {editingId === p.id ? (
-                  <div className="payees-edit-fields">
-                    <input
-                      className="payees-edit-input"
-                      value={editName}
-                      autoFocus
-                      onChange={(e) => setEditName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveEdit(p.id)
-                        if (e.key === 'Escape') setEditingId(null)
-                      }}
-                      placeholder="Payee name"
-                    />
-                    <input
-                      className="payees-edit-input payees-edit-input--mappings"
-                      value={editMappings}
-                      onChange={(e) => setEditMappings(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveEdit(p.id)
-                        if (e.key === 'Escape') setEditingId(null)
-                      }}
-                      placeholder="Match samples (optional): NORTHWIND PAYSERV, NORTHWIND PAYROLL"
-                    />
-                    <span className="payees-edit-hint">
-                      Bank names that should match this payee, comma-separated
-                    </span>
-                    <div className="payees-edit-btns">
-                      <button className="payees-btn payees-btn--sm payees-btn--primary" onClick={() => saveEdit(p.id)}>
-                        Save
-                      </button>
-                      <button className="payees-btn payees-btn--sm" onClick={() => setEditingId(null)}>
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="payees-table__name-cell">
-                    <span
-                      className="payees-table__name-text"
-                      onDoubleClick={() => startEdit(p.id, p.name, p.mapping_samples)}
-                      title="Double-click to rename"
-                    >
-                      {p.name}
-                    </span>
-                    {p.mapping_samples && (
-                      <span className="payees-table__mappings" title={`Match samples: ${p.mapping_samples}`}>
-                        {p.mapping_samples}
+          {filtered.map((p) => {
+            const isSelected = selectedPayeeIds.has(p.id)
+            return (
+              <div
+                key={p.id}
+                className={`payees-table__row ${editingId === p.id ? 'payees-table__row--editing' : ''} ${isSelected ? 'payees-table__row--selected' : ''}`}
+              >
+                <div className="payees-table__checkbox-cell">
+                  <input
+                    type="checkbox"
+                    className="payees-checkbox"
+                    checked={isSelected}
+                    onChange={(e) => togglePayeeSelection(p.id, e.nativeEvent.shiftKey, allOrderedIds)}
+                    aria-label={`Select ${p.name}`}
+                  />
+                </div>
+                <span className="payees-table__name">
+                  {editingId === p.id ? (
+                    <div className="payees-edit-fields">
+                      <input
+                        className="payees-edit-input"
+                        value={editName}
+                        autoFocus
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit(p.id)
+                          if (e.key === 'Escape') setEditingId(null)
+                        }}
+                        placeholder="Payee name"
+                      />
+                      <input
+                        className="payees-edit-input payees-edit-input--mappings"
+                        value={editMappings}
+                        onChange={(e) => setEditMappings(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit(p.id)
+                          if (e.key === 'Escape') setEditingId(null)
+                        }}
+                        placeholder="Match samples (optional): NORTHWIND PAYSERV, NORTHWIND PAYROLL"
+                      />
+                      <span className="payees-edit-hint">
+                        Bank names that should match this payee, comma-separated
                       </span>
-                    )}
-                  </div>
-                )}
-              </span>
-              <span className="payees-table__count">{p.transaction_count}</span>
-              <span className="payees-table__actions">
-                {mergeSource === p.id ? (
-                  <span className="payees-merge-hint">Click another payee's Merge → to merge into it</span>
-                ) : mergeSource ? (
-                  <button
-                    className="payees-btn payees-btn--sm payees-btn--primary"
-                    onClick={() => handleMerge(mergeSource, p.id)}
-                    disabled={mergePayee.isPending}
-                  >
-                    Merge →
-                  </button>
-                ) : editingId === p.id ? null : (
-                  <>
-                    <button
-                      className="payees-btn payees-btn--sm"
-                      onClick={() => startEdit(p.id, p.name, p.mapping_samples)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="payees-btn payees-btn--sm"
-                      onClick={() => setMergeSource(p.id)}
-                    >
-                      Merge
-                    </button>
-                    <button
-                      className="payees-btn payees-btn--sm payees-btn--danger"
-                      onClick={() => handleDelete(p.id, p.name)}
-                      disabled={deletePayee.isPending}
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-              </span>
-            </div>
-          ))}
+                      <div className="payees-edit-btns">
+                        <button className="payees-btn payees-btn--sm payees-btn--primary" onClick={() => saveEdit(p.id)}>
+                          Save
+                        </button>
+                        <button className="payees-btn payees-btn--sm" onClick={() => setEditingId(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="payees-table__name-cell">
+                      <span
+                        className="payees-table__name-text"
+                        onDoubleClick={() => startEdit(p.id, p.name, p.mapping_samples)}
+                        title="Double-click to rename"
+                      >
+                        {p.name}
+                      </span>
+                      {p.mapping_samples && (
+                        <span className="payees-table__mappings" title={`Match samples: ${p.mapping_samples}`}>
+                          {p.mapping_samples}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </span>
+                <span className="payees-table__count">{p.transaction_count}</span>
+                <span className="payees-table__actions">
+                  {editingId === p.id ? null : (
+                    <>
+                      <button
+                        className="payees-btn payees-btn--sm"
+                        onClick={() => startEdit(p.id, p.name, p.mapping_samples)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="payees-btn payees-btn--sm payees-btn--danger"
+                        onClick={() => handleDelete(p.id, p.name)}
+                        disabled={deletePayee.isPending}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </span>
+              </div>
+            )
+          })}
         </div>
       )}
-      {mergeSource && (
-        <div className="payees-merge-bar">
-          Merging "{payees.find((p) => p.id === mergeSource)?.name}" — click "Merge →" on the target payee
-          <button className="payees-btn payees-btn--sm" onClick={() => setMergeSource(null)}>Cancel</button>
-        </div>
+
+      {selectedCount > 0 && (
+        <FloatingSelectionBar
+          label={`${selectedCount} payee${selectedCount !== 1 ? 's' : ''} selected`}
+          sublabel={hiddenSelected > 0 ? `(${hiddenSelected} hidden by search)` : undefined}
+          onClose={clearPayeeSelection}
+        >
+          <FloatingSelectionBar.Button
+            onClick={() => setShowMergeModal(true)}
+            disabled={selectedCount < 2}
+            title={selectedCount < 2 ? 'Select at least 2 payees to merge' : `Merge ${selectedCount} payees`}
+          >
+            <GitMerge size={14} />
+            Merge
+          </FloatingSelectionBar.Button>
+        </FloatingSelectionBar>
       )}
     </div>
   )

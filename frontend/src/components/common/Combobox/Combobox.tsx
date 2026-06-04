@@ -14,6 +14,7 @@ interface Props {
   options: ComboboxOption[]
   onChange: (id: string | null) => void
   onCreateNew?: (query: string) => Promise<ComboboxOption> | void
+  createLabel?: string
   footerSlot?: ReactNode
   placeholder?: string
   disabled?: boolean
@@ -35,6 +36,7 @@ export function Combobox({
   options,
   onChange,
   onCreateNew,
+  createLabel = 'New…',
   footerSlot,
   placeholder = 'Search…',
   disabled = false,
@@ -223,7 +225,7 @@ export function Combobox({
             type="button"
           >
             <Plus size={12} />
-            {query.trim() ? `Create "${query}"` : 'New Category…'}
+            {query.trim() ? `Create "${query}"` : createLabel}
           </button>
         </div>
       )}

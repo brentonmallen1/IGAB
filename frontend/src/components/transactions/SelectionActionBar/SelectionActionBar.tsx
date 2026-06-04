@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
-import { X, Tag, CheckCircle, Trash2, MoreHorizontal, ThumbsUp, GitMerge } from 'lucide-react'
+import { Tag, CheckCircle, Trash2, MoreHorizontal, ThumbsUp, GitMerge, Paperclip } from 'lucide-react'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
+import { FloatingSelectionBar } from '../../common/FloatingSelectionBar/FloatingSelectionBar'
 import { formatMoney } from '../../../utils/money'
 import type { ClearedStatus } from '../../../types'
 import './SelectionActionBar.css'
@@ -18,6 +19,7 @@ interface Props {
   onApprove?: () => void
   onMerge?: () => void
   canMerge?: boolean
+  onAttachments?: () => void
 }
 
 const MORE_ITEMS: ContextMenuItem[] = [
@@ -40,11 +42,14 @@ export function SelectionActionBar({
   onApprove,
   onMerge,
   canMerge,
+  onAttachments,
 }: Props) {
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [morePos, setMorePos] = useState({ x: 0, y: 0 })
   const moreRef = useRef<HTMLButtonElement>(null)
+
+  const totalClass = selectedTotal < 0 ? 'negative' : selectedTotal > 0 ? 'positive' : ''
 
   function handleMoreClick() {
     const rect = moreRef.current?.getBoundingClientRect()
@@ -62,24 +67,14 @@ export function SelectionActionBar({
   }
 
   return (
-    <div className="selection-bar">
-      <button className="selection-bar__close" onClick={onClear} title="Clear selection">
-        <X size={14} />
-      </button>
-
-      <span className="selection-bar__count">
-        {selectedCount} Transaction{selectedCount !== 1 ? 's' : ''}
-      </span>
-
-      <span className={`selection-bar__total ${selectedTotal < 0 ? 'selection-bar__total--negative' : selectedTotal > 0 ? 'selection-bar__total--positive' : ''}`}>
-        {formatMoney(selectedTotal)}
-      </span>
-
-      <div className="selection-bar__divider" />
-
-      <div className="selection-bar__action">
+    <FloatingSelectionBar
+      label={`${selectedCount} Transaction${selectedCount !== 1 ? 's' : ''}`}
+      sublabel={<span className={`sab__total sab__total--${totalClass}`}>{formatMoney(selectedTotal)}</span>}
+      onClose={onClear}
+    >
+      <div className="sab__categorize">
         {showCategoryPicker ? (
-          <div className="selection-bar__category-picker">
+          <div className="sab__category-picker">
             <Combobox
               value={null}
               options={categoryOptions}
@@ -92,52 +87,44 @@ export function SelectionActionBar({
             />
           </div>
         ) : (
-          <button
-            className="selection-bar__btn"
-            onClick={() => setShowCategoryPicker(true)}
-          >
+          <FloatingSelectionBar.Button onClick={() => setShowCategoryPicker(true)}>
             <Tag size={14} />
             Categorize
-          </button>
+          </FloatingSelectionBar.Button>
         )}
       </div>
 
-      <button
-        className="selection-bar__btn"
-        onClick={() => onSetCleared('cleared')}
-        title="Mark cleared"
-      >
+      <FloatingSelectionBar.Button onClick={() => onSetCleared('cleared')} title="Mark cleared">
         <CheckCircle size={14} />
         Clear
-      </button>
+      </FloatingSelectionBar.Button>
 
       {onApprove && (
-        <button
-          className="selection-bar__btn"
-          onClick={onApprove}
-          title="Approve transactions"
-        >
+        <FloatingSelectionBar.Button onClick={onApprove} title="Approve transactions">
           <ThumbsUp size={14} />
           Approve
-        </button>
+        </FloatingSelectionBar.Button>
       )}
 
       {canMerge && onMerge && (
-        <button
-          className="selection-bar__btn"
-          onClick={onMerge}
-          title="Merge selected transactions"
-        >
+        <FloatingSelectionBar.Button onClick={onMerge} title="Merge selected transactions">
           <GitMerge size={14} />
           Merge
-        </button>
+        </FloatingSelectionBar.Button>
       )}
 
-      <div className="selection-bar__divider" />
+      {onAttachments && selectedCount === 1 && (
+        <FloatingSelectionBar.Button onClick={onAttachments} title="Manage attachments">
+          <Paperclip size={14} />
+          Attachments
+        </FloatingSelectionBar.Button>
+      )}
+
+      <FloatingSelectionBar.Divider />
 
       <button
         ref={moreRef}
-        className="selection-bar__btn selection-bar__btn--more"
+        className="fsb__btn"
         onClick={handleMoreClick}
       >
         <MoreHorizontal size={14} />
@@ -152,6 +139,6 @@ export function SelectionActionBar({
           position={{ x: morePos.x, y: morePos.y - 160 }}
         />
       )}
-    </div>
+    </FloatingSelectionBar>
   )
 }

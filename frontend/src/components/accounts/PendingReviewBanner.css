@@ -14,10 +14,19 @@
 .pending-review-banner__icon {
   flex-shrink: 0;
   opacity: 0.8;
+  margin-right: 6px;
 }
 
 .pending-review-banner__message {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  cursor: default;
+  text-decoration-style: dashed;
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--color-info-border);
 }
 
 .pending-review-banner__btn {

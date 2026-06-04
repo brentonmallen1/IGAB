@@ -9,6 +9,7 @@ import {
   useCreateCategoryGroup,
 } from '../../../api/categories'
 import { useBudgetViews } from '../../../api/budgetViews'
+import { useTargetsByBudget } from '../../../api/targets'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { BudgetViewBar } from '../BudgetViewBar/BudgetViewBar'
 import type { CategoryBalance, CategoryGroup } from '../../../types'
@@ -22,6 +23,7 @@ export function BudgetTable() {
   const collapseAll = useUIStore((s) => s.collapseAll)
   const expandAll = useUIStore((s) => s.expandAll)
   const activeBudgetViewId = useUIStore((s) => s.activeBudgetViewId)
+  const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
 
   const [showHidden, setShowHidden] = useState(false)
   const [isAddingGroup, setIsAddingGroup] = useState(false)
@@ -32,6 +34,7 @@ export function BudgetTable() {
   const { data: categories, isLoading: catsLoading } = useCategories(budgetId, showHidden)
   const { data: budgetMonth, isLoading: monthLoading } = useBudgetMonth(budgetId, month)
   const { data: views } = useBudgetViews(budgetId)
+  const { data: targets } = useTargetsByBudget(budgetId)
   const createGroup = useCreateCategoryGroup(budgetId ?? '')
 
   if (!budgetId) {
@@ -49,17 +52,33 @@ export function BudgetTable() {
   const balanceMap = new Map<string, CategoryBalance>()
   budgetMonth?.category_balances.forEach((b) => balanceMap.set(b.category_id, b))
 
+  const targetMap = new Map((targets ?? []).map((t) => [t.category_id, t]))
+
   const activeView = views?.find((v) => v.id === activeBudgetViewId) ?? null
   const viewCategoryIds = activeView ? new Set(activeView.category_ids) : null
 
+  function categoryMatchesFilter(catId: string): boolean {
+    if (viewCategoryIds) return viewCategoryIds.has(catId)
+    if (!activeQuickFilter) return true
+    const balance = balanceMap.get(catId)
+    const target = targetMap.get(catId)
+    switch (activeQuickFilter) {
+      case 'overspent': return (balance?.available ?? 0) < 0
+      case 'underfunded': return target != null && (balance?.assigned ?? 0) < target.target_amount
+      case 'money-available': return (balance?.available ?? 0) > 0
+      case 'overfunded': return target != null && (balance?.assigned ?? 0) > target.target_amount
+    }
+  }
+
   const catsByGroup = new Map<string, typeof categories>()
   categories?.forEach((cat) => {
-    if (viewCategoryIds && !viewCategoryIds.has(cat.id)) return
+    if (!categoryMatchesFilter(cat.id)) return
     if (!catsByGroup.has(cat.category_group_id)) catsByGroup.set(cat.category_group_id, [])
     catsByGroup.get(cat.category_group_id)!.push(cat)
   })
 
-  const visibleGroups = viewCategoryIds
+  const isFiltered = viewCategoryIds != null || activeQuickFilter != null
+  const visibleGroups = isFiltered
     ? groups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
     : groups
 
@@ -86,7 +105,11 @@ export function BudgetTable() {
 
   return (
     <div className="budget-table">
-      <BudgetViewBar budgetId={budgetId} />
+      <BudgetViewBar
+        budgetId={budgetId}
+        categoryBalances={budgetMonth?.category_balances ?? []}
+        targets={targets ?? []}
+      />
       <div className="budget-table__header">
         <div className="budget-table__col budget-table__col--name">
           Category

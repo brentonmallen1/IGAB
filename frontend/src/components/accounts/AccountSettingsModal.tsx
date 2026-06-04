@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { useAccounts, useUpdateAccount } from '../../api/accounts'
+import { useAccounts, useUpdateAccount, useScanDuplicates } from '../../api/accounts'
 import {
   useLinkSimpleFINAccount,
   useUnlinkSimpleFINAccount,
@@ -28,7 +28,7 @@ interface Props {
 
 export function AccountSettingsModal({ accountId, onClose }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId)
-  const { data: accounts } = useAccounts(budgetId)
+  const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
   const account = accounts?.find((a) => a.id === accountId)
 
   const updateAccount = useUpdateAccount(budgetId ?? '')
@@ -42,6 +42,8 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const link = useLinkSimpleFINAccount(accountId)
   const unlink = useUnlinkSimpleFINAccount(accountId)
   const updateSyncSettings = useUpdateAccountSimpleFINSettings(accountId)
+  const scanDuplicates = useScanDuplicates()
+  const [scanResult, setScanResult] = useState<number | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
   const [name, setName] = useState(account?.name ?? '')
@@ -51,6 +53,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const [onBudget, setOnBudget] = useState(account?.on_budget ?? true)
   const [note, setNote] = useState(account?.note ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [closeError, setCloseError] = useState<string | null>(null)
 
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -90,6 +93,19 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
       onClose()
     } catch {
       setSaveError('Failed to save — please try again')
+    }
+  }
+
+  async function handleToggleClosed() {
+    if (!account) return
+    setCloseError(null)
+    const action = account.is_closed ? 'reopen' : 'close'
+    if (!confirm(`${action === 'close' ? 'Close' : 'Reopen'} this account?`)) return
+    try {
+      await updateAccount.mutateAsync({ id: accountId, is_closed: !account.is_closed })
+      onClose()
+    } catch {
+      setCloseError(`Failed to ${action} account — please try again`)
     }
   }
 
@@ -247,10 +263,49 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                 )}
               </div>
             )}
+
+            {/* Maintenance section */}
+            <div className="acct-modal__section acct-modal__section--maintenance">
+              <div className="acct-modal__section-title">Maintenance</div>
+              <div className="acct-modal__field acct-modal__field--row acct-modal__field--scan">
+                <span className="acct-modal__scan-label">
+                  Find transactions that may be duplicates
+                </span>
+                <button
+                  type="button"
+                  className="acct-modal__scan-btn"
+                  disabled={scanDuplicates.isPending}
+                  onClick={async () => {
+                    setScanResult(null)
+                    const result = await scanDuplicates.mutateAsync(accountId)
+                    setScanResult(result.created)
+                  }}
+                >
+                  {scanDuplicates.isPending ? 'Scanning…' : 'Scan for Duplicates'}
+                </button>
+              </div>
+              {scanResult !== null && (
+                <p className="acct-modal__scan-result">
+                  {scanResult === 0
+                    ? 'No new potential duplicates found.'
+                    : `Found ${scanResult} potential duplicate pair${scanResult === 1 ? '' : 's'} — review them in the transaction list.`}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="acct-modal__footer">
-            {saveError && <span className="acct-modal__save-error">{saveError}</span>}
+            <button
+              type="button"
+              className={`acct-modal__btn acct-modal__btn--danger`}
+              onClick={handleToggleClosed}
+              disabled={updateAccount.isPending}
+            >
+              {account.is_closed ? 'Reopen Account' : 'Close Account'}
+            </button>
+            {(saveError || closeError) && (
+              <span className="acct-modal__save-error">{saveError ?? closeError}</span>
+            )}
             <button type="button" className="acct-modal__btn acct-modal__btn--cancel" onClick={onClose}>
               Cancel
             </button>

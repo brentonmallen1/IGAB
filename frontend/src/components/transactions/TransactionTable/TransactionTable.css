@@ -1,5 +1,19 @@
 .transaction-table {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.transaction-table--with-panel {
+  flex-direction: row;
+}
+
+.transaction-table--with-panel > .transaction-table__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .transaction-table__toolbar {
@@ -33,7 +47,7 @@
 
 .transaction-table__header {
   display: grid;
-  grid-template-columns: 32px 100px 1fr 1fr 1fr 90px 90px 60px;
+  grid-template-columns: 32px 28px 100px 1fr 1fr 1fr 90px 90px 60px;
   padding: var(--spacing-xs) var(--spacing-md);
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -45,10 +59,6 @@
   position: sticky;
   top: 44px;
   z-index: 5;
-}
-
-.transaction-table[data-selection-open] .transaction-table__header {
-  top: calc(44px + 37px);
 }
 
 .txn-col {
@@ -170,4 +180,92 @@
 .upcoming-row__btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Duplicate group */
+.txn-duplicate-group {
+  position: relative;
+  border-left: 3px solid var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  margin-bottom: 1px;
+}
+
+.txn-duplicate-group__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px var(--spacing-md) 4px calc(var(--spacing-md) + 3px);
+  border-top: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
+}
+
+.txn-duplicate-group__label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--color-warning);
+  opacity: 0.85;
+}
+
+.txn-duplicate-group__actions {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.txn-duplicate-group__btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.txn-duplicate-group__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.txn-duplicate-group__btn--merge {
+  background: var(--color-warning);
+  color: var(--bg-primary);
+}
+
+.txn-duplicate-group__btn--merge:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.txn-duplicate-group__btn--dismiss {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+.txn-duplicate-group__btn--dismiss:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Select linked button */
+.txn-col--checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.txn-select-linked-btn {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  color: var(--text-muted);
+  border-radius: 2px;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.txn-select-linked-btn:hover {
+  opacity: 1;
+  color: var(--color-accent);
 }

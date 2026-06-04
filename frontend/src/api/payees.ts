@@ -18,6 +18,15 @@ export function usePayees(budgetId: string | null) {
   })
 }
 
+export function useCreatePayee(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) =>
+      apiClient.post<Payee>(`/${budgetId}/payees`, { name }).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['payees', budgetId] }),
+  })
+}
+
 export function useUpdatePayee(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({

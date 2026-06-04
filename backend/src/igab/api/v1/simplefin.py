@@ -215,6 +215,19 @@ async def list_pending_matches(
     return [TransactionMatchResponse.model_validate(m) for m in matches]
 
 
+@router.get(
+    "/accounts/{account_id}/pending-matches",
+    response_model=list[TransactionMatchResponse],
+)
+async def list_pending_matches_for_account(
+    account_id: uuid.UUID,
+    current_user: CurrentUser,
+    matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
+) -> list[TransactionMatchResponse]:
+    matches = await matching_svc.match_repo.get_pending_for_account(account_id)
+    return [TransactionMatchResponse.model_validate(m) for m in matches]
+
+
 @router.post("/simplefin/matches/{match_id}/accept", status_code=204)
 async def accept_match(
     match_id: uuid.UUID,

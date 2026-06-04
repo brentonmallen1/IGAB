@@ -8,6 +8,7 @@ from igab.db.models import User
 from igab.db.session import get_session
 from igab.domain.exceptions import AuthenticationError
 from igab.repositories.account_repo import AccountRepository
+from igab.repositories.attachment_repo import AttachmentRepository
 from igab.repositories.budget_view_repo import BudgetViewRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -24,6 +25,7 @@ from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.user_repo import UserRepository
 from igab.services.ai_service import AIService
+from igab.services.attachment_service import AttachmentService
 from igab.services.auth_service import AuthService
 from igab.services.budget_service import BudgetService
 from igab.services.reconciliation_service import ReconciliationService
@@ -77,6 +79,16 @@ def get_ai_service(
 
 def get_account_repo(session: SessionDep) -> AccountRepository:
     return AccountRepository(session)
+
+
+def get_attachment_repo(session: SessionDep) -> AttachmentRepository:
+    return AttachmentRepository(session)
+
+
+def get_attachment_service(
+    repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
+) -> AttachmentService:
+    return AttachmentService(repo)
 
 
 def get_budget_view_repo(session: SessionDep) -> BudgetViewRepository:

@@ -4,9 +4,8 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from rapidfuzz import fuzz
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import SimpleFINConnection, Transaction
 from igab.domain.exceptions import IGABError
@@ -23,14 +22,17 @@ ACCOUNT_DAILY_LIMIT = 12
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BASE_DELAY = 2.0  # seconds, doubles each attempt
 
-DEDUP_AUTO_MATCH_THRESHOLD = 0.85
+DEDUP_AUTO_MATCH_THRESHOLD = 0.80
+DEDUP_REVIEW_THRESHOLD = 0.55
 DEDUP_DATE_WINDOW_DAYS = 5
 
 
 def _payee_similarity(a: str | None, b: str | None) -> float:
     if not a or not b:
         return 0.5  # Neutral when payee unknown
-    return fuzz.token_set_ratio(a.lower(), b.lower()) / 100.0
+    # WRatio combines ratio, partial_ratio, token_sort, and token_set variants,
+    # picking the best score — handles bank descriptions vs cleaned payee names.
+    return fuzz.WRatio(a.lower(), b.lower()) / 100.0
 
 
 def _date_proximity_score(synced: date, existing: date) -> float:
@@ -276,9 +278,9 @@ class SimpleFINService:
             candidates = await self.txn_repo.find_existing_match_candidates(
                 account.id, amount, txn_date, date_window_days=DEDUP_DATE_WINDOW_DAYS
             )
+            best_match: Transaction | None = None
+            best_score = 0.0
             if candidates:
-                best_match: Transaction | None = None
-                best_score = 0.0
                 for existing_txn, existing_payee in candidates:
                     score = _calculate_dedup_score(
                         synced_payee, txn_date, existing_payee, existing_txn.date
@@ -287,16 +289,25 @@ class SimpleFINService:
                         best_score, best_match = score, existing_txn
 
                 if best_match is not None and best_score >= DEDUP_AUTO_MATCH_THRESHOLD:
-                    updates: dict[str, object] = {}
-                    if not best_match.import_id:
-                        updates["import_id"] = import_id
-                    if best_match.cleared in ("pending", "uncleared") and is_posted:
-                        updates["cleared"] = "cleared"
-                        cleared += 1
-                    if updates:
-                        await self.txn_repo.update(best_match.id, **updates)
+                    updates: dict[str, object] = {
+                        "import_id": import_id,
+                        "import_description": t.get("description"),
+                        "has_sync_source": True,
+                    }
+                    if best_match.cleared != "reconciled":
+                        updates["date"] = txn_date
+                        if best_match.cleared in ("pending", "uncleared") and is_posted:
+                            updates["cleared"] = "cleared"
+                            cleared += 1
+                    await self.txn_repo.update(best_match.id, **updates)
                     skipped += 1
                     continue
+
+            near_miss_candidate = (
+                best_match
+                if best_match is not None and best_score >= DEDUP_REVIEW_THRESHOLD
+                else None
+            )
 
             new_txn = await self.txn_service.create(
                 budget_id,
@@ -311,8 +322,15 @@ class SimpleFINService:
                     approved=False,
                 ),
             )
-            if self.matching_service is not None and new_txn is not None:
-                await self.matching_service.try_match(new_txn)
+            if new_txn is not None:
+                if near_miss_candidate is not None and self.matching_service is not None:
+                    await self.matching_service.match_repo.create(
+                        synced_transaction_id=new_txn.id,
+                        manual_transaction_id=near_miss_candidate.id,
+                        confidence_score=best_score,
+                    )
+                elif self.matching_service is not None:
+                    await self.matching_service.try_match(new_txn)
             imported += 1
 
         # Update per-account sync state

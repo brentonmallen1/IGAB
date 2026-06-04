@@ -9,8 +9,8 @@ human review.
 import uuid
 from datetime import date
 from decimal import Decimal
-from rapidfuzz import fuzz
 
+from rapidfuzz import fuzz
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,10 +23,14 @@ AUTO_ACCEPT_THRESHOLD = 0.90
 DATE_WINDOW_DAYS = 5
 
 
+SCAN_REVIEW_THRESHOLD = 0.55
+SCAN_DATE_WINDOW_DAYS = 5
+
+
 def _payee_similarity(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
-    return fuzz.token_set_ratio(a.lower(), b.lower()) / 100.0
+    return fuzz.WRatio(a.lower(), b.lower()) / 100.0
 
 
 def _date_score(synced: date, manual: date) -> float:
@@ -147,9 +151,7 @@ class TransactionMatchingService:
             )
         )
         await self.session.execute(
-            update(Transaction)
-            .where(Transaction.id == synced_txn.id)
-            .values(is_deleted=True)
+            update(Transaction).where(Transaction.id == synced_txn.id).values(is_deleted=True)
         )
         await self.session.flush()
 
@@ -174,6 +176,51 @@ class TransactionMatchingService:
 
     async def reject_match(self, match_id: uuid.UUID) -> None:
         await self.match_repo.update_status(match_id, "rejected")
+
+    async def scan_for_duplicates(self, account_id: uuid.UUID) -> int:
+        """Scan all account transactions for potential duplicates.
+
+        Returns count of new matches created.
+        """
+
+        rows = await self.txn_repo.get_all_with_payee_for_account(account_id)
+        created = 0
+        seen_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+
+        for i, (txn_a, payee_a) in enumerate(rows):
+            for txn_b, payee_b in rows[i + 1 :]:
+                if txn_a.id == txn_b.id:
+                    continue
+                if txn_a.amount != txn_b.amount:
+                    continue
+                if abs((txn_a.date - txn_b.date).days) > SCAN_DATE_WINDOW_DAYS:
+                    continue
+                pair = (min(txn_a.id, txn_b.id), max(txn_a.id, txn_b.id))
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+
+                date_delta = abs((txn_a.date - txn_b.date).days)
+                date_score = 1.0 - (date_delta / (SCAN_DATE_WINDOW_DAYS + 1))
+                payee_score = _payee_similarity(payee_a or "", payee_b or "")
+                score = round(date_score * 0.65 + payee_score * 0.35, 4)
+
+                if score < SCAN_REVIEW_THRESHOLD:
+                    continue
+                already_exists = await self.match_repo.exists_for_pair(txn_a.id, txn_b.id)
+                if already_exists:
+                    continue
+
+                # Treat the newer transaction as "synced" (the potential duplicate)
+                synced, manual = (txn_a, txn_b) if txn_a.date >= txn_b.date else (txn_b, txn_a)
+                await self.match_repo.create(
+                    synced_transaction_id=synced.id,
+                    manual_transaction_id=manual.id,
+                    confidence_score=score,
+                )
+                created += 1
+
+        return created
 
 
 def _best_payee_id(synced: Transaction, manual: Transaction) -> uuid.UUID | None:

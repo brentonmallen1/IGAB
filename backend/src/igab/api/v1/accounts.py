@@ -2,11 +2,13 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from igab.api.v1.schemas.account import AccountCreate, AccountResponse, AccountUpdate
-from igab.dependencies import CurrentUser, get_account_repo
+from igab.dependencies import CurrentUser, get_account_repo, get_transaction_matching_service
 from igab.domain.exceptions import DuplicateError, NotFoundError
 from igab.repositories.account_repo import AccountRepository
+from igab.services.transaction_matching_service import TransactionMatchingService
 
 router = APIRouter()
 
@@ -111,3 +113,19 @@ async def delete_account(
         await account_repo.soft_delete(account_id)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+
+
+class ScanDuplicatesResponse(BaseModel):
+    created: int
+
+
+@router.post("/accounts/{account_id}/scan-duplicates", response_model=ScanDuplicatesResponse)
+async def scan_duplicates(
+    account_id: uuid.UUID,
+    current_user: CurrentUser,
+    matching_service: Annotated[
+        TransactionMatchingService, Depends(get_transaction_matching_service)
+    ],
+) -> ScanDuplicatesResponse:
+    created = await matching_service.scan_for_duplicates(account_id)
+    return ScanDuplicatesResponse(created=created)
