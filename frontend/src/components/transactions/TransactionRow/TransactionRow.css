@@ -1,6 +1,6 @@
 .transaction-row {
   display: grid;
-  grid-template-columns: 32px 100px 1fr 1fr 1fr 90px 90px 60px;
+  grid-template-columns: 32px 28px 100px 1fr 1fr 1fr 90px 90px 60px;
   padding: 7px var(--spacing-md);
   border-bottom: 1px solid var(--border-subtle);
   font-size: var(--font-size-sm);
@@ -39,6 +39,47 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.txn-col--status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.txn-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.txn-status-icon:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.txn-status-icon--unapproved {
+  color: var(--color-warning);
+  opacity: 0.85;
+}
+
+.txn-status-icon--unapproved:hover {
+  opacity: 1;
+  background-color: color-mix(in srgb, var(--color-warning) 15%, transparent);
+}
+
+.txn-status-icon--attachment {
+  color: var(--text-muted);
+  cursor: default;
 }
 
 .txn-col--cleared {

@@ -1,7 +1,8 @@
-import { CheckCircle, Circle, Clock, Lock, MoreHorizontal, Split } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Paperclip, Split, Trash2 } from 'lucide-react'
+import { useState, useRef, useMemo, memo } from 'react'
 import { useUpdateTransaction, useDeleteTransaction } from '../../../api/transactions'
 import { useCreateCategory } from '../../../api/categories'
+import { useCreatePayee } from '../../../api/payees'
 import { useAppStore } from '../../../stores/appStore'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useHistoryStore } from '../../../stores/historyStore'
@@ -29,7 +30,14 @@ interface Props {
   onStartSplit: (txn: Transaction) => void
   onDuplicate: (txn: Transaction) => void
   onMakeRepeating: (txn: Transaction) => void
+  hasAttachment?: boolean
 }
+
+const APPROVE_MENU_ITEMS: ContextMenuItem[] = [
+  { id: 'approve', label: 'Approve', icon: CheckCircle },
+  { id: 'separator', label: '', separator: true },
+  { id: 'delete', label: 'Delete', icon: Trash2, danger: true },
+]
 
 const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
   { id: 'split', label: 'Split Transaction…' },
@@ -42,7 +50,40 @@ const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
   { id: 'delete', label: 'Delete', shortcut: 'delete', danger: true },
 ]
 
-export function TransactionRow({
+function txnPropsEqual(prev: Props, next: Props): boolean {
+  if (prev.isSelected !== next.isSelected) return false
+  const a = prev.transaction
+  const b = next.transaction
+  if (
+    a.id !== b.id ||
+    a.date !== b.date ||
+    a.payee_id !== b.payee_id ||
+    a.category_id !== b.category_id ||
+    a.memo !== b.memo ||
+    a.amount !== b.amount ||
+    a.cleared !== b.cleared ||
+    a.approved !== b.approved ||
+    a.is_split !== b.is_split ||
+    a.transfer_id !== b.transfer_id ||
+    a.linked_transaction_id !== b.linked_transaction_id ||
+    a.has_sync_source !== b.has_sync_source
+  ) return false
+  if (prev.payeeMap !== next.payeeMap) return false
+  if (prev.categoryMap !== next.categoryMap) return false
+  if (prev.payees !== next.payees) return false
+  if (prev.categories !== next.categories) return false
+  if (prev.categoryGroups !== next.categoryGroups) return false
+  if (prev.orderedIds !== next.orderedIds) return false
+  if (prev.onEdit !== next.onEdit) return false
+  if (prev.onSelect !== next.onSelect) return false
+  if (prev.onStartSplit !== next.onStartSplit) return false
+  if (prev.onDuplicate !== next.onDuplicate) return false
+  if (prev.onMakeRepeating !== next.onMakeRepeating) return false
+  if (prev.hasAttachment !== next.hasAttachment) return false
+  return true
+}
+
+export const TransactionRow = memo(function TransactionRow({
   transaction: txn,
   onEdit,
   payeeMap,
@@ -56,15 +97,20 @@ export function TransactionRow({
   onStartSplit,
   onDuplicate,
   onMakeRepeating,
+  hasAttachment,
 }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
   const createCat = useCreateCategory(budgetId)
+  const createPayee = useCreatePayee(budgetId)
   const { editingField, startEditing, stopEditing } = useTransactionEditStore()
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number; alignRight?: boolean }>({ x: 0, y: 0 })
+  const [approveMenuOpen, setApproveMenuOpen] = useState(false)
+  const [approveMenuPos, setApproveMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const moreRef = useRef<HTMLButtonElement>(null)
+  const eyeRef = useRef<HTMLButtonElement>(null)
 
   const isOutflow = Number(txn.amount) < 0
   const outflow = isOutflow ? Math.abs(Number(txn.amount)) : 0
@@ -127,6 +173,18 @@ export function TransactionRow({
     setContextMenuOpen(true)
   }
 
+  function handleEyeClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    const rect = eyeRef.current?.getBoundingClientRect()
+    if (rect) setApproveMenuPos({ x: rect.left, y: rect.bottom + 4 })
+    setApproveMenuOpen(true)
+  }
+
+  function handleApproveAction(id: string) {
+    if (id === 'approve') updateTxn.mutate({ id: txn.id, approved: true })
+    else if (id === 'delete') deleteTxn.mutate({ id: txn.id, accountId: txn.account_id })
+  }
+
   function handleContextAction(id: string) {
     switch (id) {
       case 'split':
@@ -150,17 +208,33 @@ export function TransactionRow({
     }
   }
 
-  const payeeOptions: ComboboxOption[] = payees
-    .filter((p) => !p.transfer_account_id)
-    .map((p) => ({ id: p.id, label: p.name }))
+  const payeeOptions = useMemo<ComboboxOption[]>(
+    () => payees.filter((p) => !p.transfer_account_id).map((p) => ({ id: p.id, label: p.name })),
+    [payees]
+  )
 
-  const categoryOptions: ComboboxOption[] = categories.map((c) => {
-    const group = categoryGroups.find((g) => g.id === c.category_group_id)
-    return { id: c.id, label: c.name, group: group?.name ?? '' }
-  })
+  const categoryOptions = useMemo<ComboboxOption[]>(
+    () => categories.map((c) => {
+      const group = categoryGroups.find((g) => g.id === c.category_group_id)
+      return { id: c.id, label: c.name, group: group?.name ?? '' }
+    }),
+    [categories, categoryGroups]
+  )
 
   function handleCategoryChange(id: string | null) {
-    commitField('category_id', id)
+    if (id !== null && !txn.approved) {
+      useHistoryStore.getState().push({ transactionId: txn.id, field: 'category_id', before: txn.category_id })
+      updateTxn.mutate({ id: txn.id, category_id: id, approved: true })
+      stopEditing()
+    } else {
+      commitField('category_id', id)
+    }
+  }
+
+  async function handleCreatePayee(name: string): Promise<ComboboxOption | void> {
+    if (!name.trim()) return
+    const payee = await createPayee.mutateAsync(name.trim())
+    return { id: payee.id, label: payee.name }
   }
 
   async function handleCreateCategory(name: string): Promise<ComboboxOption | void> {
@@ -209,6 +283,38 @@ export function TransactionRow({
         />
       </div>
 
+      {/* Status icons */}
+      <div className="txn-col txn-col--status" onClick={(e) => e.stopPropagation()}>
+        {!txn.approved && (
+          <button
+            ref={eyeRef}
+            className="txn-status-icon txn-status-icon--unapproved"
+            onClick={handleEyeClick}
+            title="Unapproved — click to approve or delete"
+            aria-label="Unapproved transaction"
+            aria-haspopup="menu"
+          >
+            <Eye size={12} />
+          </button>
+        )}
+        {txn.linked_transaction_id && (
+          <TransactionLinkIcon transaction={txn} budgetId={txn.budget_id} />
+        )}
+        {hasAttachment && (
+          <span className="txn-status-icon txn-status-icon--attachment" title="Has receipt/attachment">
+            <Paperclip size={12} />
+          </span>
+        )}
+        {approveMenuOpen && (
+          <ContextMenu
+            items={APPROVE_MENU_ITEMS}
+            onSelect={handleApproveAction}
+            onClose={() => setApproveMenuOpen(false)}
+            position={approveMenuPos}
+          />
+        )}
+      </div>
+
       {/* Date */}
       <div
         className="txn-col txn-col--date"
@@ -236,6 +342,8 @@ export function TransactionRow({
             value={txn.payee_id}
             options={payeeOptions}
             onChange={(id) => commitField('payee_id', id)}
+            onCreateNew={handleCreatePayee}
+            createLabel="New Payee…"
             placeholder="Search payees…"
             autoFocus
             onBlurClose={stopEditing}
@@ -260,6 +368,7 @@ export function TransactionRow({
             options={categoryOptions}
             onChange={handleCategoryChange}
             onCreateNew={handleCreateCategory}
+            createLabel="New Category…"
             footerSlot={categorySplitFooter}
             placeholder="Search categories…"
             autoFocus
@@ -329,12 +438,6 @@ export function TransactionRow({
 
       {/* Cleared */}
       <div className="txn-col txn-col--cleared">
-        {txn.linked_transaction_id && (
-          <TransactionLinkIcon
-            transaction={txn}
-            budgetId={txn.budget_id}
-          />
-        )}
         {isReconciled ? (
           <span className="txn-cleared-btn txn-cleared-btn--locked" title="Reconciled — locked">
             <Lock size={12} />
@@ -372,4 +475,4 @@ export function TransactionRow({
       )}
     </div>
   )
-}
+}, txnPropsEqual)

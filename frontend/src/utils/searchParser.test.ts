@@ -160,6 +160,47 @@ describe('OR keyword', () => {
   })
 })
 
+// ─── NOT keyword ──────────────────────────────────────────────────────────────
+
+describe('NOT keyword', () => {
+  it('parses NOT is: pending as excludeCleared', () => {
+    expect(parse('NOT is: pending').excludeCleared).toBe('pending')
+  })
+
+  it('parses NOT is: cleared as excludeCleared', () => {
+    expect(parse('NOT is: cleared').excludeCleared).toBe('cleared')
+  })
+
+  it('parses compact NOT is:pending', () => {
+    expect(parse('NOT is:pending').excludeCleared).toBe('pending')
+  })
+
+  it('NOT is case-insensitive', () => {
+    expect(parse('not is: pending').excludeCleared).toBe('pending')
+  })
+
+  it('NOT applies globally with OR segments', () => {
+    const result = parse('is: unapproved OR is: uncategorized NOT is: pending')
+    expect(result.unapproved).toBe(true)
+    expect(result.uncategorized).toBe(true)
+    expect(result.isOrMode).toBe(true)
+    expect(result.excludeCleared).toBe('pending')
+  })
+
+  it('positive filters are preserved alongside NOT', () => {
+    const result = parse('is: unapproved NOT is: pending')
+    expect(result.unapproved).toBe(true)
+    expect(result.excludeCleared).toBe('pending')
+    expect(result.isOrMode).toBeUndefined()
+  })
+
+  it('does not set excludeCleared for unrecognised NOT target', () => {
+    const result = parse('NOT foo')
+    expect(result.excludeCleared).toBeUndefined()
+    expect(result.text).toBe('NOT foo')
+  })
+})
+
 // ─── hasActiveFilters ──────────────────────────────────────────────────────────
 
 describe('hasActiveFilters', () => {
@@ -181,5 +222,9 @@ describe('hasActiveFilters', () => {
 
   it('isOrMode alone does not count as active (no data filter)', () => {
     expect(hasActiveFilters({ isOrMode: true })).toBe(false)
+  })
+
+  it('returns true when excludeCleared is set', () => {
+    expect(hasActiveFilters({ excludeCleared: 'pending' })).toBe(true)
   })
 })

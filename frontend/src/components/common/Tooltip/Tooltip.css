@@ -1,0 +1,21 @@
+.tooltip-host {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-popup {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}

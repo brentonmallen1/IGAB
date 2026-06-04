@@ -226,18 +226,30 @@ class TransactionService:
         for txn in (txn1, txn2):
             if str(txn.budget_id) != str(budget_id):
                 raise InvariantViolation("All transactions must belong to this budget")
-            if txn.cleared == "reconciled":
-                raise InvariantViolation("Cannot merge reconciled transactions")
             if txn.is_split or txn.parent_transaction_id:
                 raise InvariantViolation("Cannot merge split transactions")
             if txn.transfer_id:
                 raise InvariantViolation("Cannot merge transfer transactions")
 
+        if txn1.cleared == "reconciled" and txn2.cleared == "reconciled":
+            raise InvariantViolation("Cannot merge two reconciled transactions")
+
         if txn1.account_id != txn2.account_id:
             raise InvariantViolation("Transactions must be in the same account")
 
-        # Determine survivor — explicit choice or the older transaction
-        if survivor_id is not None:
+        # When one transaction is reconciled it must always be the survivor
+        if txn1.cleared == "reconciled":
+            reconciled_txn = txn1
+        elif txn2.cleared == "reconciled":
+            reconciled_txn = txn2
+        else:
+            reconciled_txn = None
+        if reconciled_txn is not None:
+            if survivor_id is not None and survivor_id != reconciled_txn.id:
+                raise InvariantViolation("The reconciled transaction must be kept as the survivor")
+            survivor = reconciled_txn
+            deleted = txn2 if survivor is txn1 else txn1
+        elif survivor_id is not None:
             if survivor_id not in transaction_ids:
                 raise InvariantViolation("survivor_id must be one of the transaction_ids")
             survivor = txn1 if txn1.id == survivor_id else txn2

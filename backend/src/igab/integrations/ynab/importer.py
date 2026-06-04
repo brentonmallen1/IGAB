@@ -26,6 +26,8 @@ _YNAB_INFLOW_GROUP = "Inflow"
 def _generate_import_id(account_name: str, txn_date: date, amount: Decimal, payee: str) -> str:
     content = f"{account_name}|{txn_date.isoformat()}|{amount}|{payee}"
     return f"csv:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
+
+
 _SYSTEM_INCOME_GROUP = "Income"
 
 

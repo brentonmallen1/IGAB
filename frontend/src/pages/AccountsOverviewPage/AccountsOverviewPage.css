@@ -31,6 +31,54 @@
   color: var(--text-muted);
 }
 
+.accounts-overview__add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--bg-primary);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.accounts-overview__add-btn:hover {
+  opacity: 0.85;
+}
+
+.accounts-overview__toggle-closed-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  background: transparent;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.accounts-overview__toggle-closed-btn:hover {
+  color: var(--text-primary);
+}
+
+.accounts-overview__empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xl) 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .accounts-overview__sync-all-btn {
   display: flex;
   align-items: center;
@@ -204,12 +252,55 @@
   color: var(--text-muted);
 }
 
+.accounts-overview__row-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-shrink: 0;
+}
+
+.accounts-overview__row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.accounts-overview__row:hover .accounts-overview__row-actions,
+.accounts-overview__row:focus-within .accounts-overview__row-actions {
+  opacity: 1;
+}
+
+.accounts-overview__action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--border-radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.accounts-overview__action-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.accounts-overview__action-btn--danger:hover {
+  background: color-mix(in srgb, var(--color-negative) 12%, transparent);
+  color: var(--color-negative);
+}
+
 .accounts-overview__row-balances {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  flex-shrink: 0;
 }
 
 .accounts-overview__balance-main {

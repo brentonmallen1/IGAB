@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from igab.api.v1 import (
     accounts,
     ai,
+    attachments,
     auth,
     budget_views,
     budgets,
@@ -31,3 +32,4 @@ api_router.include_router(simplefin.router, tags=["simplefin"])
 api_router.include_router(scheduled_transactions.router, tags=["scheduled-transactions"])
 api_router.include_router(reconciliation.router, tags=["reconciliation"])
 api_router.include_router(budget_views.router, tags=["budget-views"])
+api_router.include_router(attachments.router, tags=["attachments"])

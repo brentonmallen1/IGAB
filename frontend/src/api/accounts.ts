@@ -17,10 +17,11 @@ export async function fetchAccounts(budgetId: string, include_closed = false): P
   return data
 }
 
-export function useAccounts(budgetId: string | null) {
+export function useAccounts(budgetId: string | null, options?: { includeClosed?: boolean }) {
+  const includeClosed = options?.includeClosed ?? false
   return useQuery({
-    queryKey: ['accounts', budgetId],
-    queryFn: () => fetchAccounts(budgetId!),
+    queryKey: ['accounts', budgetId, { includeClosed }],
+    queryFn: () => fetchAccounts(budgetId!, includeClosed),
     enabled: !!budgetId,
     staleTime: 30_000,
   })
@@ -54,6 +55,19 @@ export function useDeleteAccount(budgetId: string) {
     mutationFn: (accountId: string) => apiClient.delete(`/accounts/${accountId}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+    },
+  })
+}
+
+export function useScanDuplicates() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (accountId: string) =>
+      apiClient
+        .post<{ created: number }>(`/accounts/${accountId}/scan-duplicates`)
+        .then((r) => r.data),
+    onSuccess: (_data, accountId) => {
+      qc.invalidateQueries({ queryKey: ['pending-matches-account', accountId] })
     },
   })
 }

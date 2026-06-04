@@ -69,21 +69,15 @@ class Budget(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="budgets")
-    accounts: Mapped[list["Account"]] = relationship(
-        back_populates="budget", passive_deletes=True
-    )
+    accounts: Mapped[list["Account"]] = relationship(back_populates="budget", passive_deletes=True)
     category_groups: Mapped[list["CategoryGroup"]] = relationship(
         back_populates="budget", passive_deletes=True
     )
     categories: Mapped[list["Category"]] = relationship(
         back_populates="budget", passive_deletes=True
     )
-    payees: Mapped[list["Payee"]] = relationship(
-        back_populates="budget", passive_deletes=True
-    )
-    views: Mapped[list["BudgetView"]] = relationship(
-        back_populates="budget", passive_deletes=True
-    )
+    payees: Mapped[list["Payee"]] = relationship(back_populates="budget", passive_deletes=True)
+    views: Mapped[list["BudgetView"]] = relationship(back_populates="budget", passive_deletes=True)
 
 
 # ─── Accounts ─────────────────────────────────────────────────────────────────
@@ -327,6 +321,10 @@ class Transaction(Base):
     linked_transaction: Mapped["Transaction | None"] = relationship(
         foreign_keys=[linked_transaction_id], remote_side="Transaction.id"
     )
+    # Attachments (receipts, etc.)
+    attachments: Mapped[list["TransactionAttachment"]] = relationship(
+        back_populates="transaction", cascade="all, delete-orphan"
+    )
 
 
 # ─── Budget Assignments ───────────────────────────────────────────────────────
@@ -552,3 +550,28 @@ class TransactionMatch(Base):
 
     synced_transaction: Mapped["Transaction"] = relationship(foreign_keys=[synced_transaction_id])
     manual_transaction: Mapped["Transaction"] = relationship(foreign_keys=[manual_transaction_id])
+
+
+# ─── Transaction Attachments ─────────────────────────────────────────────────
+
+
+class TransactionAttachment(Base):
+    __tablename__ = "transaction_attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    transaction: Mapped["Transaction"] = relationship(
+        back_populates="attachments", foreign_keys=[transaction_id]
+    )
