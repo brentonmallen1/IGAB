@@ -1,6 +1,4 @@
-import tempfile
 import uuid
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -22,7 +20,6 @@ from igab.dependencies import (
     get_transaction_service,
 )
 from igab.integrations.ynab.importer import YNABImporter
-from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -69,6 +66,20 @@ class YNABImportBudgetResponse(BaseModel):
     import_result: YNABImportResult
 
 
+@router.post("/budgets/import-ynab/preview")
+async def preview_ynab_budget_import(
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+):
+    """Parse a YNAB export without creating anything: account list with
+    name-based type suggestions for the mapping step. Budget-less — this
+    flow runs BEFORE the budget exists."""
+    from igab.api.v1.imports import build_ynab_preview, parse_uploaded_ynab_zip
+
+    ynab_budget = await parse_uploaded_ynab_zip(file)
+    return build_ynab_preview(ynab_budget)
+
+
 @router.post(
     "/budgets/import-ynab",
     response_model=YNABImportBudgetResponse,
@@ -78,6 +89,7 @@ async def import_ynab_as_budget(
     current_user: CurrentUser,
     name: Annotated[str, Form()],
     file: UploadFile = File(...),
+    account_types: Annotated[str | None, Form()] = None,
     session: AsyncSession = Depends(get_session),
     account_repo: AccountRepository = Depends(get_account_repo),
     category_group_repo: CategoryGroupRepository = Depends(get_category_group_repo),
@@ -87,6 +99,13 @@ async def import_ynab_as_budget(
     assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
     txn_service: TransactionService = Depends(get_transaction_service),
 ) -> YNABImportBudgetResponse:
+    from igab.api.v1.imports import parse_account_types_form, parse_uploaded_ynab_zip
+
+    # Validate the mapping and the zip BEFORE creating the budget so a bad
+    # request doesn't leave an empty budget behind.
+    type_map = parse_account_types_form(account_types)
+    ynab_budget = await parse_uploaded_ynab_zip(file)
+
     budget_name = name.strip()
     existing = await session.execute(
         select(Budget).where(Budget.user_id == current_user.id, Budget.name == budget_name)
@@ -102,33 +121,19 @@ async def import_ynab_as_budget(
     await session.flush()
     await session.refresh(budget)
 
-    # Parse the ZIP
-    content = await file.read()
-    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
-    try:
-        parser = YNABParser()
-        try:
-            ynab_budget = parser.parse_zip(tmp_path)
-        except (ValueError, KeyError) as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
-        importer = YNABImporter(
-            session=session,
-            budget_id=budget.id,
-            account_repo=account_repo,
-            category_group_repo=category_group_repo,
-            category_repo=category_repo,
-            payee_repo=payee_repo,
-            transaction_repo=transaction_repo,
-            transaction_service=txn_service,
-            assignment_repo=assignment_repo,
-        )
-        result = await importer.import_budget(ynab_budget)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    importer = YNABImporter(
+        session=session,
+        budget_id=budget.id,
+        account_repo=account_repo,
+        category_group_repo=category_group_repo,
+        category_repo=category_repo,
+        payee_repo=payee_repo,
+        transaction_repo=transaction_repo,
+        transaction_service=txn_service,
+        assignment_repo=assignment_repo,
+        account_types=type_map,
+    )
+    result = await importer.import_budget(ynab_budget)
 
     return YNABImportBudgetResponse(
         budget=BudgetResponse.model_validate(budget),
