@@ -263,3 +263,56 @@
   color: var(--color-negative);
   background-color: var(--color-negative-bg);
 }
+
+/* ── YNAB account-type mapping (import preview step) ────────────────────────── */
+
+.ynab-mapping {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, var(--bg-tertiary));
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+}
+
+.ynab-mapping__hint {
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.ynab-mapping__row {
+  display: grid;
+  grid-template-columns: 1fr 130px auto;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.ynab-mapping__name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ynab-mapping__count {
+  margin-left: var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.ynab-mapping__type {
+  width: 100%;
+}
+
+.ynab-mapping__budget-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}

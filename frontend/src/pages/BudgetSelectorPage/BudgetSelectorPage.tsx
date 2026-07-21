@@ -1,10 +1,27 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
-import { useBudgets, useCreateBudget, useImportYnabAsBudget, useRenameBudget, useDeleteBudget } from '../../api/budgets'
+import {
+  useBudgets,
+  useCreateBudget,
+  useImportYnabAsBudget,
+  usePreviewYnabImport,
+  useRenameBudget,
+  useDeleteBudget,
+  type YnabAccountPreview,
+  type YnabAccountTypeChoice,
+} from '../../api/budgets'
 import { useLogout } from '../../api/auth'
 import { useAppStore } from '../../stores/appStore'
 import './BudgetSelectorPage.css'
+
+const ACCOUNT_TYPE_OPTIONS = [
+  { value: 'checking', label: 'Checking' },
+  { value: 'savings', label: 'Savings' },
+  { value: 'credit_card', label: 'Credit Card' },
+  { value: 'loan', label: 'Loan' },
+  { value: 'tracking', label: 'Tracking' },
+]
 
 export function BudgetSelectorPage() {
   const navigate = useNavigate()
@@ -27,10 +44,17 @@ export function BudgetSelectorPage() {
   const [createName, setCreateName] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
 
-  // YNAB import form
+  // YNAB import form — two steps: preview (parse accounts) → mapped import
   const [importName, setImportName] = useState('')
   const importFileRef = useRef<HTMLInputElement>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const previewYnab = usePreviewYnabImport()
+  const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
+  const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
+
+  function updateChoice(name: string, patch: Partial<YnabAccountTypeChoice>) {
+    setAccountChoices((prev) => ({ ...prev, [name]: { ...prev[name], ...patch } }))
+  }
 
   function openBudget(id: string) {
     setCurrentBudgetId(id)
@@ -67,19 +91,51 @@ export function BudgetSelectorPage() {
     }
   }
 
+  async function handlePreview(e: React.FormEvent) {
+    e.preventDefault()
+    const file = importFileRef.current?.files?.[0]
+    if (!file) return
+    setImportError(null)
+    try {
+      const preview = await previewYnab.mutateAsync(file)
+      setPreviewAccounts(preview.accounts)
+      setAccountChoices(
+        Object.fromEntries(
+          preview.accounts.map((a) => [
+            a.name,
+            { account_type: a.suggested_type, on_budget: a.suggested_on_budget },
+          ])
+        )
+      )
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setImportError(detail ?? (err instanceof Error ? err.message : 'Could not read the export'))
+    }
+  }
+
   async function handleImport(e: React.FormEvent) {
     e.preventDefault()
     const file = importFileRef.current?.files?.[0]
     if (!file) return
     setImportError(null)
     try {
-      const result = await importYnab.mutateAsync({ name: importName.trim(), file })
+      const result = await importYnab.mutateAsync({
+        name: importName.trim(),
+        file,
+        accountTypes: accountChoices,
+      })
       setCurrentBudgetId(result.budget.id)
       navigate('/budget')
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setImportError(detail ?? (err instanceof Error ? err.message : 'Import failed'))
     }
+  }
+
+  function resetImportPreview() {
+    setPreviewAccounts(null)
+    setAccountChoices({})
+    setImportError(null)
   }
 
   return (
@@ -187,7 +243,10 @@ export function BudgetSelectorPage() {
               Migrate an existing YNAB budget — creates a new budget from your export ZIP
             </div>
           </div>
-          <form className="selector-card__body" onSubmit={handleImport}>
+          <form
+            className="selector-card__body"
+            onSubmit={previewAccounts ? handleImport : handlePreview}
+          >
             <div className="selector-field">
               <label className="selector-field__label">Budget name</label>
               <input
@@ -207,15 +266,63 @@ export function BudgetSelectorPage() {
                 className="selector-field__input"
                 accept=".zip,application/zip"
                 required
+                onChange={resetImportPreview}
               />
             </div>
+
+            {previewAccounts && (
+              <div className="selector-field">
+                <label className="selector-field__label">
+                  Account types
+                  <span className="ynab-mapping__hint">
+                    {' '}— off-budget accounts (loans, investments) stay out of your budget totals
+                  </span>
+                </label>
+                <div className="ynab-mapping">
+                  {previewAccounts.map((a) => (
+                    <div key={a.name} className="ynab-mapping__row">
+                      <div className="ynab-mapping__name">
+                        {a.name}
+                        <span className="ynab-mapping__count">
+                          {a.transaction_count} txns
+                        </span>
+                      </div>
+                      <select
+                        className="selector-field__input ynab-mapping__type"
+                        value={accountChoices[a.name]?.account_type ?? a.suggested_type}
+                        onChange={(e) => updateChoice(a.name, { account_type: e.target.value })}
+                      >
+                        {ACCOUNT_TYPE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                      <label className="ynab-mapping__budget-toggle">
+                        <input
+                          type="checkbox"
+                          checked={accountChoices[a.name]?.on_budget ?? a.suggested_on_budget}
+                          onChange={(e) => updateChoice(a.name, { on_budget: e.target.checked })}
+                        />
+                        On budget
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="selector-card__footer">
               <button
                 type="submit"
                 className="selector-btn"
-                disabled={importYnab.isPending || !importName.trim()}
+                disabled={previewYnab.isPending || importYnab.isPending || !importName.trim()}
               >
-                {importYnab.isPending ? 'Importing…' : 'Import Budget'}
+                {previewAccounts
+                  ? importYnab.isPending
+                    ? 'Importing…'
+                    : 'Import Budget'
+                  : previewYnab.isPending
+                    ? 'Reading export…'
+                    : 'Review Accounts'}
               </button>
               {importError && (
                 <div className="selector-result selector-result--error">{importError}</div>
