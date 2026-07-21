@@ -1,6 +1,6 @@
 import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Paperclip, Split, Trash2 } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
-import { useUpdateTransaction, useDeleteTransaction } from '../../../api/transactions'
+import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction } from '../../../api/transactions'
 import { useCreateCategory } from '../../../api/categories'
 import { useCreatePayee } from '../../../api/payees'
 import { useAppStore } from '../../../stores/appStore'
@@ -92,7 +92,6 @@ export const TransactionRow = memo(function TransactionRow({
   categories,
   categoryGroups,
   isSelected,
-  orderedIds,
   onSelect,
   onStartSplit,
   onDuplicate,
@@ -102,6 +101,7 @@ export const TransactionRow = memo(function TransactionRow({
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
+  const unreconcileTxn = useUnreconcileTransaction(budgetId)
   const createCat = useCreateCategory(budgetId)
   const createPayee = useCreatePayee(budgetId)
   const { editingField, startEditing, stopEditing } = useTransactionEditStore()
@@ -133,6 +133,16 @@ export const TransactionRow = memo(function TransactionRow({
   function toggleCleared() {
     const next = txn.cleared === 'cleared' ? 'uncleared' : 'cleared'
     updateTxn.mutate({ id: txn.id, cleared: next })
+  }
+
+  function handleUnreconcile() {
+    if (
+      confirm(
+        'Unlock this reconciled transaction? It will return to cleared and become editable again.'
+      )
+    ) {
+      unreconcileTxn.mutate(txn.id)
+    }
   }
 
   function commitField(field: string, value: unknown) {
@@ -278,7 +288,7 @@ export const TransactionRow = memo(function TransactionRow({
           type="checkbox"
           className="txn-checkbox"
           checked={isSelected}
-          onChange={(e) => onSelect(txn.id, e.nativeEvent.shiftKey)}
+          onChange={(e) => onSelect(txn.id, (e.nativeEvent as MouseEvent).shiftKey)}
           onClick={(e) => e.stopPropagation()}
         />
       </div>
@@ -319,6 +329,11 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--date"
         onClick={() => !isReconciled && startEditing(txn.id, 'date')}
+        title={
+          txn.entered_date && txn.entered_date !== txn.date
+            ? `Bank posted date. Originally entered ${formatDate(txn.entered_date)}.`
+            : undefined
+        }
       >
         {isEditing('date') ? (
           <DatePicker
@@ -439,9 +454,14 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Cleared */}
       <div className="txn-col txn-col--cleared">
         {isReconciled ? (
-          <span className="txn-cleared-btn txn-cleared-btn--locked" title="Reconciled — locked">
+          <button
+            className="txn-cleared-btn txn-cleared-btn--locked"
+            onClick={(e) => { e.stopPropagation(); handleUnreconcile() }}
+            title="Reconciled — locked. Click to unlock (unreconcile)."
+            aria-label="Reconciled transaction — click to unreconcile"
+          >
             <Lock size={12} />
-          </span>
+          </button>
         ) : isPending ? (
           <span className="txn-cleared-btn txn-cleared-btn--pending" title="Pending — not yet posted">
             <Clock size={14} />

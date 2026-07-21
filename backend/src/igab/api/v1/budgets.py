@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Budget
 from igab.db.session import get_session
 from igab.dependencies import (
+    BudgetAccess,
     CurrentUser,
     get_account_repo,
     get_assignment_repo,
@@ -186,7 +187,7 @@ async def create_budget(
 
 @router.get("/budgets/{budget_id}", response_model=BudgetResponse)
 async def get_budget(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BudgetResponse:
@@ -201,7 +202,7 @@ async def get_budget(
 
 @router.patch("/budgets/{budget_id}", response_model=BudgetResponse)
 async def update_budget(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: BudgetUpdate,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -222,7 +223,7 @@ async def update_budget(
 
 @router.delete("/budgets/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_budget(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
@@ -234,3 +235,45 @@ async def delete_budget(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
     await session.delete(budget)
     await session.flush()
+
+
+# ─── Financial integrity ──────────────────────────────────────────────────────
+
+
+class IntegrityCheckResponse(BaseModel):
+    name: str
+    description: str
+    passed: bool
+    problem_count: int
+    details: list[str]
+
+
+class IntegrityReportResponse(BaseModel):
+    all_passed: bool
+    checks: list[IntegrityCheckResponse]
+
+
+@router.get("/budgets/{budget_id}/integrity", response_model=IntegrityReportResponse)
+async def run_integrity_checks(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IntegrityReportResponse:
+    """Run the financial invariant suite against live data: money
+    conservation, split/transfer integrity, orphaned matches, stale pendings."""
+    from igab.services.integrity_service import IntegrityService
+
+    report = await IntegrityService(session).run(budget_id)
+    return IntegrityReportResponse(
+        all_passed=report.all_passed,
+        checks=[
+            IntegrityCheckResponse(
+                name=c.name,
+                description=c.description,
+                passed=c.passed,
+                problem_count=c.problem_count,
+                details=c.details,
+            )
+            for c in report.checks
+        ],
+    )

@@ -10,6 +10,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.utils.clock import today_utc
 
 
 class ReconciliationService:
@@ -73,7 +74,6 @@ class ReconciliationService:
         adjustment_amount: Decimal,
     ) -> Transaction:
         """Create a cleared adjustment transaction to bring the account into balance."""
-        from datetime import date
 
         account = await self.account_repo.get_or_raise(account_id)
         payee = await self.payee_repo.find_or_create(
@@ -82,7 +82,7 @@ class ReconciliationService:
         return await self.transaction_repo.create(
             budget_id=account.budget_id,
             account_id=account_id,
-            date=date.today(),
+            date=today_utc(),
             amount=adjustment_amount,
             payee_id=payee.id,
             category_id=None,
@@ -97,11 +97,24 @@ class ReconciliationService:
         statement_balance: Decimal,
         adjustment_transaction_id: uuid.UUID | None = None,
     ) -> ReconciliationSnapshot:
-        """Mark all cleared transactions as reconciled and save a snapshot."""
+        """Mark all cleared transactions as reconciled and save a snapshot.
+
+        The cleared balance is recomputed HERE (not trusted from the UI): any
+        transaction that slipped in between the status call and finish would
+        otherwise be silently swept into a reconciliation that doesn't match
+        the statement. If the recomputed balance still differs, an adjustment
+        transaction is created automatically so reconciliation always locks
+        an account that agrees with the bank statement.
+        """
         status = await self.get_status(account_id)
         cleared_balance = status["cleared_balance"]
 
-        # Mark all cleared → reconciled
+        difference = statement_balance - cleared_balance
+        if difference != 0:
+            adjustment = await self.create_adjustment(account_id, difference)
+            adjustment_transaction_id = adjustment.id
+
+        # Mark all cleared → reconciled (includes the fresh adjustment)
         await self.session.execute(
             update(Transaction)
             .where(
@@ -128,7 +141,7 @@ class ReconciliationService:
             account_id=account_id,
             statement_balance=statement_balance,
             cleared_balance=cleared_balance,
-            adjustment_amount=statement_balance - cleared_balance,
+            adjustment_amount=difference,
             adjustment_transaction_id=adjustment_transaction_id,
         )
         await self.session.flush()

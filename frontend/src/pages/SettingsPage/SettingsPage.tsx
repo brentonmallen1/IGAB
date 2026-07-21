@@ -11,6 +11,7 @@ import {
 } from '../../api/simplefin'
 import { SimpleFINSetup } from '../../components/simplefin/SimpleFINSetup'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
+import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
 import { formatMoney } from '../../utils/money'
 import { useUIStore } from '../../stores/uiStore'
 import type { AccountType } from '../../types'
@@ -399,6 +400,18 @@ export function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* Data integrity */}
+      {budgetId && (
+        <div className="settings-section">
+          <div className="settings-section__header">
+            <div className="settings-section__title">Data Integrity</div>
+          </div>
+          <div className="settings-section__body">
+            <IntegrityPanel budgetId={budgetId} />
+          </div>
+        </div>
+      )}
 
       {/* Session */}
       <div className="settings-section">

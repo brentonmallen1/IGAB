@@ -33,7 +33,7 @@ export function IncomeExpenseChart({ months }: Props) {
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
         <XAxis dataKey="month" tick={{ fontSize: 11 }} />
         <YAxis tickFormatter={(v: number) => formatMoney(v)} tick={{ fontSize: 11 }} width={80} />
-        <Tooltip formatter={(v: number) => formatMoney(v)} />
+        <Tooltip formatter={(v: unknown) => formatMoney(Number(v))} />
         <Legend />
         <Bar dataKey="Income" fill="#59a14f" />
         <Bar dataKey="Expenses" fill="#e15759" />

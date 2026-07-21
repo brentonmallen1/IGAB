@@ -1,4 +1,3 @@
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,7 +7,12 @@ from igab.api.v1.schemas.scheduled_transaction import (
     ScheduledTransactionResponse,
     ScheduledTransactionUpdate,
 )
-from igab.dependencies import CurrentUser, get_scheduled_transaction_service
+from igab.dependencies import (
+    BudgetAccess,
+    CurrentUser,
+    ScheduledAccess,
+    get_scheduled_transaction_service,
+)
 from igab.services.scheduled_transaction_service import (
     ScheduledTransactionCreate as ServiceCreate,
 )
@@ -24,7 +28,7 @@ router = APIRouter()
     response_model=list[ScheduledTransactionResponse],
 )
 async def list_scheduled_transactions(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     svc: Annotated[ScheduledTransactionService, Depends(get_scheduled_transaction_service)],
 ) -> list[ScheduledTransactionResponse]:
@@ -38,7 +42,7 @@ async def list_scheduled_transactions(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_scheduled_transaction(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: ScheduledTransactionCreate,
     current_user: CurrentUser,
     svc: Annotated[ScheduledTransactionService, Depends(get_scheduled_transaction_service)],
@@ -64,7 +68,7 @@ async def create_scheduled_transaction(
     response_model=ScheduledTransactionResponse,
 )
 async def update_scheduled_transaction(
-    id: uuid.UUID,
+    id: ScheduledAccess,
     body: ScheduledTransactionUpdate,
     current_user: CurrentUser,
     svc: Annotated[ScheduledTransactionService, Depends(get_scheduled_transaction_service)],
@@ -76,7 +80,7 @@ async def update_scheduled_transaction(
 
 @router.delete("/scheduled-transactions/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_scheduled_transaction(
-    id: uuid.UUID,
+    id: ScheduledAccess,
     current_user: CurrentUser,
     svc: Annotated[ScheduledTransactionService, Depends(get_scheduled_transaction_service)],
 ) -> None:
@@ -88,7 +92,7 @@ async def delete_scheduled_transaction(
     response_model=ScheduledTransactionResponse,
 )
 async def skip_scheduled_transaction(
-    id: uuid.UUID,
+    id: ScheduledAccess,
     current_user: CurrentUser,
     svc: Annotated[ScheduledTransactionService, Depends(get_scheduled_transaction_service)],
 ) -> ScheduledTransactionResponse:
@@ -100,13 +104,9 @@ async def skip_scheduled_transaction(
 
 @router.post("/scheduled-transactions/{id}/enter", status_code=status.HTTP_204_NO_CONTENT)
 async def enter_scheduled_transaction(
-    id: uuid.UUID,
+    id: ScheduledAccess,
     current_user: CurrentUser,
     svc: Annotated[ScheduledTransactionService, Depends(get_scheduled_transaction_service)],
-    budget_id: uuid.UUID | None = None,
+    budget_id: BudgetAccess,
 ) -> None:
-    if budget_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="budget_id query param required"
-        )
     await svc.enter_now(id, budget_id)

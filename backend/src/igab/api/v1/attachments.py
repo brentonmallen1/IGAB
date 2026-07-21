@@ -6,7 +6,9 @@ from fastapi.responses import FileResponse
 
 from igab.api.v1.schemas.attachment import AttachmentResponse
 from igab.dependencies import (
+    AttachmentAccess,
     CurrentUser,
+    TransactionAccess,
     get_attachment_repo,
     get_attachment_service,
     get_transaction_repo,
@@ -30,7 +32,7 @@ MAX_FILE_SIZE = 20 * 1024 * 1024
 
 @router.get("/transactions/{transaction_id}/attachments", response_model=list[AttachmentResponse])
 async def list_attachments(
-    transaction_id: uuid.UUID,
+    transaction_id: TransactionAccess,
     current_user: CurrentUser,
     attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
 ) -> list[AttachmentResponse]:
@@ -44,7 +46,7 @@ async def list_attachments(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_attachment(
-    transaction_id: uuid.UUID,
+    transaction_id: TransactionAccess,
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     attachment_service: Annotated[AttachmentService, Depends(get_attachment_service)],
@@ -78,7 +80,7 @@ async def upload_attachment(
 
 @router.get("/attachments/{attachment_id}")
 async def get_attachment(
-    attachment_id: uuid.UUID,
+    attachment_id: AttachmentAccess,
     current_user: CurrentUser,
     attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
     attachment_service: Annotated[AttachmentService, Depends(get_attachment_service)],
@@ -110,7 +112,7 @@ async def get_attachment(
 
 @router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_attachment(
-    attachment_id: uuid.UUID,
+    attachment_id: AttachmentAccess,
     current_user: CurrentUser,
     attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
     attachment_service: Annotated[AttachmentService, Depends(get_attachment_service)],

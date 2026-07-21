@@ -18,6 +18,8 @@ interface TreeNode {
   size: number
   pct: number
   fill?: string
+  // Recharts' Treemap data points must satisfy TreemapDataType's index signature.
+  [key: string]: unknown
 }
 
 export function SpendingTreemapReport({ budgetId }: Props) {

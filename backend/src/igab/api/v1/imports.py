@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.session import get_session
 from igab.dependencies import (
+    AccountAccess,
+    BudgetAccess,
     CurrentUser,
     get_account_repo,
     get_assignment_repo,
@@ -20,6 +22,7 @@ from igab.dependencies import (
     get_transaction_repo,
     get_transaction_service,
 )
+from igab.domain.money import parse_csv_amount
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.account_repo import AccountRepository
@@ -58,7 +61,7 @@ class YNABImportResult(BaseModel):
 
 @router.post("/{budget_id}/import/ynab", response_model=YNABImportResult)
 async def import_ynab(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
@@ -118,8 +121,8 @@ async def import_ynab(
 
 @router.post("/{budget_id}/import/csv", response_model=ImportResult)
 async def import_csv(
-    budget_id: uuid.UUID,
-    account_id: uuid.UUID,
+    budget_id: BudgetAccess,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     file: UploadFile = File(...),
     account_repo: AccountRepository = Depends(get_account_repo),
@@ -182,22 +185,9 @@ async def import_csv(
     if df.is_empty():
         return ImportResult(imported=0, skipped=skipped, errors=errors)
 
-    # Parse amount: strip currency symbols/commas, cast to float then Decimal-compatible
-    amount_col = df["amount"].cast(pl.String).str.replace_all(r"[$,]", "").str.strip_chars()
-    df = df.with_columns(amount_col.alias("amount_str"))
-
-    # Identify rows where amount can't be parsed
-    amount_parsed = df["amount_str"].cast(pl.Float64, strict=False)
-    bad_amount_mask = amount_parsed.is_null()
-    if bad_amount_mask.sum():
-        bad_rows = df.filter(bad_amount_mask)
-        for i, row in enumerate(bad_rows.iter_rows(named=True)):
-            errors.append(f"Cannot parse amount '{row['amount_str']}'")
-            skipped += 1
-        df = df.filter(~bad_amount_mask)
-        amount_parsed = amount_parsed.filter(~bad_amount_mask)
-
-    df = df.with_columns(amount_parsed.alias("amount_f64"))
+    # Amounts are parsed string→Decimal in the row loop below (never through
+    # float — exactness is the point of a budgeting app).
+    df = df.with_columns(df["amount"].cast(pl.String).alias("amount_str"))
 
     # Resolve payees in batch
     payee_col = "payee" if "payee" in df.columns else None
@@ -221,7 +211,12 @@ async def import_csv(
         memo = (row.get("memo") or "").strip() or None
 
         txn_date = row["date"]
-        amount = Decimal(str(row["amount_f64"]))
+        try:
+            amount = parse_csv_amount(row["amount_str"])
+        except ValueError as e:
+            errors.append(str(e))
+            skipped += 1
+            continue
         rows_to_insert.append(
             {
                 "id": uuid.uuid4(),
@@ -240,6 +235,17 @@ async def import_csv(
                 "import_id": _generate_import_id(account_id, txn_date, amount, payee_name),
             }
         )
+
+    # Two identical rows in one file (a real double charge) hash to the same
+    # import_id; suffix ":N" so both import and the unique index holds. The
+    # suffixing is order-stable, so re-importing the same file still dedups.
+    seen_ids: dict[str, int] = {}
+    for r in rows_to_insert:
+        base_id = r["import_id"]
+        count = seen_ids.get(base_id, 0)
+        if count > 0:
+            r["import_id"] = f"{base_id}:{count}"
+        seen_ids[base_id] = count + 1
 
     # Deduplicate against existing import_ids before inserting
     all_import_ids = [r["import_id"] for r in rows_to_insert if r.get("import_id")]

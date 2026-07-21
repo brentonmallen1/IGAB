@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from igab.db.models import TransactionAttachment
 from igab.repositories.base import BaseRepository
@@ -26,6 +26,15 @@ class AttachmentRepository(BaseRepository[TransactionAttachment]):
     async def delete_attachment(self, attachment_id: uuid.UUID) -> None:
         await self.session.execute(
             delete(TransactionAttachment).where(TransactionAttachment.id == attachment_id)
+        )
+        await self.session.flush()
+
+    async def reassign(self, from_transaction_id: uuid.UUID, to_transaction_id: uuid.UUID) -> None:
+        """Move all attachments from one transaction to another (merge flow)."""
+        await self.session.execute(
+            update(TransactionAttachment)
+            .where(TransactionAttachment.transaction_id == from_transaction_id)
+            .values(transaction_id=to_transaction_id)
         )
         await self.session.flush()
 

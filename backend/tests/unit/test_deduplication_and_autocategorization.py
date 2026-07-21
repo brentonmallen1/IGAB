@@ -252,8 +252,9 @@ class TestPayeeDefaultCategoryLearning:
             payee_repo=payee_repo,
         )
 
-    async def test_update_with_category_updates_payee_default(self, mock_service):
-        """When updating a transaction with a category, payee default should be updated."""
+    async def test_update_with_category_learns_default_when_unset(self, mock_service):
+        """First categorization teaches the payee its default; an existing
+        default is never silently overwritten."""
         from igab.services.transaction_service import TransactionUpdate
 
         budget_id = uuid.uuid4()
@@ -266,9 +267,15 @@ class TestPayeeDefaultCategoryLearning:
         mock_txn.payee_id = payee_id
         mock_txn.cleared = "cleared"
         mock_txn.transfer_id = None
+        mock_txn.parent_transaction_id = None
+        mock_txn.is_split = False
+
+        mock_payee = MagicMock()
+        mock_payee.default_category_id = None
 
         mock_service.transaction_repo.get_or_raise = AsyncMock(return_value=mock_txn)
         mock_service.transaction_repo.update = AsyncMock(return_value=mock_txn)
+        mock_service.payee_repo.get = AsyncMock(return_value=mock_payee)
         mock_service.payee_repo.update = AsyncMock()
 
         data = TransactionUpdate(category_id=category_id)
@@ -277,6 +284,12 @@ class TestPayeeDefaultCategoryLearning:
         mock_service.payee_repo.update.assert_called_once_with(
             payee_id, default_category_id=category_id
         )
+
+        # Second categorization with a default already learned: no overwrite
+        mock_payee.default_category_id = category_id
+        mock_service.payee_repo.update.reset_mock()
+        await mock_service.update(budget_id, txn_id, TransactionUpdate(category_id=uuid.uuid4()))
+        mock_service.payee_repo.update.assert_not_called()
 
     async def test_update_without_category_does_not_update_payee(self, mock_service):
         """When updating without a category, payee default should not change."""
@@ -291,6 +304,8 @@ class TestPayeeDefaultCategoryLearning:
         mock_txn.payee_id = payee_id
         mock_txn.cleared = "cleared"
         mock_txn.transfer_id = None
+        mock_txn.parent_transaction_id = None
+        mock_txn.is_split = False
 
         mock_service.transaction_repo.get_or_raise = AsyncMock(return_value=mock_txn)
         mock_service.transaction_repo.update = AsyncMock(return_value=mock_txn)
@@ -314,6 +329,8 @@ class TestPayeeDefaultCategoryLearning:
         mock_txn.payee_id = None  # No payee
         mock_txn.cleared = "cleared"
         mock_txn.transfer_id = None
+        mock_txn.parent_transaction_id = None
+        mock_txn.is_split = False
 
         mock_service.transaction_repo.get_or_raise = AsyncMock(return_value=mock_txn)
         mock_service.transaction_repo.update = AsyncMock(return_value=mock_txn)
@@ -513,13 +530,16 @@ class TestSimpleFINSyncDeduplication:
         """Create SimpleFINService with mocked dependencies."""
         from igab.services.simplefin_service import SimpleFINService
 
-        return SimpleFINService(
+        svc = SimpleFINService(
             session=AsyncMock(),
             repo=AsyncMock(),
             account_repo=AsyncMock(),
             txn_repo=AsyncMock(),
             txn_service=AsyncMock(),
         )
+        svc.session.begin_nested = MagicMock(return_value=AsyncMock())
+        svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
+        return svc
 
     async def test_skips_when_existing_match_found(self, mock_svc):
         """Should skip import when find_existing_match_candidates returns a high-score match."""
@@ -544,7 +564,7 @@ class TestSimpleFINSyncDeduplication:
 
         existing_txn = MagicMock()
         existing_txn.id = uuid.uuid4()
-        existing_txn.import_id = None  # No import_id yet
+        existing_txn.sync_id = None
         existing_txn.date = date.today()
         existing_txn.cleared = "cleared"
 
@@ -553,8 +573,8 @@ class TestSimpleFINSyncDeduplication:
         mock_svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        mock_svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        mock_svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        mock_svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        mock_svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         mock_svc.txn_repo.find_existing_match_candidates = AsyncMock(
             return_value=[(existing_txn, "STORE")]
         )
@@ -617,8 +637,8 @@ class TestSimpleFINSyncDeduplication:
         mock_svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        mock_svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        mock_svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        mock_svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        mock_svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         mock_svc.txn_repo.find_existing_match_candidates = AsyncMock(
             return_value=[(existing_txn, "STORE")]
         )
@@ -645,11 +665,16 @@ class TestSimpleFINSyncDeduplication:
         ):
             await mock_svc.sync(conn.id, budget_id)
 
-        # Should have stamped the import_id
-        mock_svc.txn_repo.update.assert_called_once_with(existing_txn.id, import_id="sf:txn-abc123")
+        # Should have stamped sync_id (since existing_txn.sync_id was None)
+        mock_svc.txn_repo.update.assert_called_once()
+        call_kwargs = mock_svc.txn_repo.update.call_args[1]
+        assert call_kwargs["sync_id"] == "txn-abc123"
+        assert call_kwargs["sync_source"] == "simplefin"
+        assert call_kwargs["has_sync_source"] is True
+        assert call_kwargs["import_description"] == "STORE"
 
-    async def test_does_not_stamp_if_already_has_import_id(self, mock_svc):
-        """Should not overwrite import_id if transaction already has one."""
+    async def test_stamps_sync_id_while_preserving_import_id(self, mock_svc):
+        """When matching a YNAB-imported transaction, should stamp sync_id but preserve import_id."""
         from unittest.mock import patch
 
         budget_id = uuid.uuid4()
@@ -669,9 +694,11 @@ class TestSimpleFINSyncDeduplication:
         account.simplefin_sync_enabled = True
         account.first_sync_complete = True
 
+        # Transaction imported from YNAB (has import_id, no sync_id)
         existing_txn = MagicMock()
         existing_txn.id = uuid.uuid4()
-        existing_txn.import_id = "csv:existing123"  # Already has import_id
+        existing_txn.import_id = "csv:existing123"
+        existing_txn.sync_id = None
         existing_txn.date = date.today()
         existing_txn.cleared = "cleared"
 
@@ -680,8 +707,8 @@ class TestSimpleFINSyncDeduplication:
         mock_svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        mock_svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        mock_svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        mock_svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        mock_svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         mock_svc.txn_repo.find_existing_match_candidates = AsyncMock(
             return_value=[(existing_txn, "STORE")]
         )
@@ -708,8 +735,14 @@ class TestSimpleFINSyncDeduplication:
         ):
             await mock_svc.sync(conn.id, budget_id)
 
-        # Should NOT have called update to stamp import_id
-        mock_svc.txn_repo.update.assert_not_called()
+        # Should stamp sync_id (doesn't conflict with import_id)
+        mock_svc.txn_repo.update.assert_called_once()
+        call_kwargs = mock_svc.txn_repo.update.call_args[1]
+        assert call_kwargs["sync_id"] == "txn-abc123"
+        assert call_kwargs["sync_source"] == "simplefin"
+        assert call_kwargs["has_sync_source"] is True
+        # import_id NOT touched (preserved on the model, not in update call)
+        assert "import_id" not in call_kwargs
 
 
 # ─── Deduplication Scoring Tests ─────────────────────────────────────────────
@@ -731,8 +764,10 @@ class TestDedupScoring:
     def test_payee_similarity_partial_contains(self):
         from igab.services.simplefin_service import _payee_similarity
 
-        # Bank appends location/code but payee was cleaned up — treat as strong match
-        assert _payee_similarity("STARBUCKS #12345", "Starbucks") == 1.0
+        # Bank appends location/code but payee was cleaned up — treat as strong
+        # match. WRatio applies a 0.9 partial-match penalty, so assert the
+        # score clears the auto-match bar rather than demanding a perfect 1.0.
+        assert _payee_similarity("STARBUCKS #12345", "Starbucks") >= 0.85
 
     def test_payee_similarity_fuzzy(self):
         from igab.services.simplefin_service import _payee_similarity
@@ -790,6 +825,8 @@ class TestDedupScoring:
             txn_repo=AsyncMock(),
             txn_service=AsyncMock(),
         )
+        svc.session.begin_nested = MagicMock(return_value=AsyncMock())
+        svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
 
         budget_id = uuid.uuid4()
         conn = MagicMock()
@@ -810,7 +847,7 @@ class TestDedupScoring:
         # Candidate with completely different payee — should NOT match
         unrelated_txn = MagicMock()
         unrelated_txn.id = uuid.uuid4()
-        unrelated_txn.import_id = None
+        unrelated_txn.sync_id = None
         unrelated_txn.date = date.today()
         unrelated_txn.cleared = "cleared"
 
@@ -819,8 +856,8 @@ class TestDedupScoring:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         # Candidate payee is totally different from synced payee "Starbucks"
         svc.txn_repo.find_existing_match_candidates = AsyncMock(
             return_value=[(unrelated_txn, "Walmart")]

@@ -87,6 +87,7 @@ class TransactionMatchingService:
             synced_txn.account_id,
             synced_txn.amount,
             synced_txn.date,
+            exclude_id=synced_txn.id,
         )
         if not candidates:
             return
@@ -140,18 +141,64 @@ class TransactionMatchingService:
         manual_txn: Transaction,
         confidence: float,
     ) -> None:
-        """Accept match: copy sync metadata to manual, soft-delete synced."""
-        await self.session.execute(
-            update(Transaction)
-            .where(Transaction.id == manual_txn.id)
-            .values(
-                import_id=synced_txn.import_id,
-                import_description=synced_txn.import_description,
-                has_sync_source=True,
+        """Merge the pair down to one row, keeping the user's transaction.
+
+        The keeper inherits the loser's bank/import identity (sync_id is what
+        prevents the next sync from re-importing the same bank transaction).
+        A reconciled row always wins the keeper role; the loser is soft-deleted
+        BEFORE the identity is written so the partial unique index on
+        (account_id, sync_id) never sees two live rows.
+        """
+        from igab.domain.exceptions import InvariantViolation
+
+        if synced_txn.id == manual_txn.id:
+            return  # a transaction can never be its own duplicate
+        if synced_txn.is_deleted or manual_txn.is_deleted:
+            return  # stale match — one side is already gone
+
+        synced_reconciled = synced_txn.cleared == "reconciled"
+        manual_reconciled = manual_txn.cleared == "reconciled"
+        if synced_reconciled and manual_reconciled:
+            raise InvariantViolation(
+                "Cannot merge two reconciled transactions; unreconcile one first"
             )
+
+        keeper, loser = manual_txn, synced_txn
+        if synced_reconciled:
+            keeper, loser = synced_txn, manual_txn
+
+        if keeper.sync_id and loser.sync_id and keeper.sync_id != loser.sync_id:
+            raise InvariantViolation("Both transactions are linked to different bank transactions")
+
+        updates: dict[str, object] = {"has_sync_source": True}
+        if loser.sync_id and not keeper.sync_id:
+            updates["sync_id"] = loser.sync_id
+            updates["sync_source"] = loser.sync_source
+        if loser.import_id and not keeper.import_id:
+            updates["import_id"] = loser.import_id
+        if loser.import_description and not keeper.import_description:
+            updates["import_description"] = loser.import_description
+
+        # Bank data wins: when the loser is the bank-sourced row and the keeper
+        # is editable, align the keeper's ledger date to the bank date and
+        # preserve the user's date once as provenance.
+        if loser.sync_id and keeper.cleared != "reconciled":
+            if loser.date != keeper.date:
+                updates["date"] = loser.date
+                if keeper.entered_date is None:
+                    updates["entered_date"] = keeper.date
+            if keeper.cleared in ("uncleared", "pending") and loser.cleared in (
+                "cleared",
+                "reconciled",
+            ):
+                updates["cleared"] = "cleared"
+
+        # Delete first, then write identity — unique-index-safe ordering.
+        await self.session.execute(
+            update(Transaction).where(Transaction.id == loser.id).values(is_deleted=True)
         )
         await self.session.execute(
-            update(Transaction).where(Transaction.id == synced_txn.id).values(is_deleted=True)
+            update(Transaction).where(Transaction.id == keeper.id).values(**updates)
         )
         await self.session.flush()
 
@@ -159,70 +206,57 @@ class TransactionMatchingService:
         match = await self.match_repo.get(match_id)
         if match is None or match.status == "accepted":
             return
-        await self.match_repo.update_status(match_id, "accepted")
         from sqlalchemy import select
 
         synced = (
             await self.session.execute(
                 select(Transaction).where(Transaction.id == match.synced_transaction_id)
             )
-        ).scalar_one()
+        ).scalar_one_or_none()
         manual = (
             await self.session.execute(
                 select(Transaction).where(Transaction.id == match.manual_transaction_id)
             )
-        ).scalar_one()
+        ).scalar_one_or_none()
+        if synced is None or manual is None or synced.is_deleted or manual.is_deleted:
+            await self.match_repo.update_status(match_id, "rejected")
+            return
         await self._accept_link(synced, manual, float(match.confidence_score))
+        await self.match_repo.update_status(match_id, "accepted")
 
     async def reject_match(self, match_id: uuid.UUID) -> None:
         await self.match_repo.update_status(match_id, "rejected")
 
     async def scan_for_duplicates(self, account_id: uuid.UUID) -> int:
-        """Scan all account transactions for potential duplicates.
+        """Scan account transactions for potential duplicates.
 
-        Returns count of new matches created.
+        Candidate pairs come pre-filtered from SQL (same amount, date within
+        the window); Python only scores payee similarity. Returns count of
+        new matches created.
         """
-
-        rows = await self.txn_repo.get_all_with_payee_for_account(account_id)
+        pairs = await self.txn_repo.find_duplicate_candidate_pairs(
+            account_id, date_window_days=SCAN_DATE_WINDOW_DAYS
+        )
         created = 0
-        seen_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
 
-        for i, (txn_a, payee_a) in enumerate(rows):
-            for txn_b, payee_b in rows[i + 1 :]:
-                if txn_a.id == txn_b.id:
-                    continue
-                if txn_a.amount != txn_b.amount:
-                    continue
-                if abs((txn_a.date - txn_b.date).days) > SCAN_DATE_WINDOW_DAYS:
-                    continue
-                pair = (min(txn_a.id, txn_b.id), max(txn_a.id, txn_b.id))
-                if pair in seen_pairs:
-                    continue
-                seen_pairs.add(pair)
+        for txn_a, payee_a, txn_b, payee_b in pairs:
+            date_delta = abs((txn_a.date - txn_b.date).days)
+            date_score = 1.0 - (date_delta / (SCAN_DATE_WINDOW_DAYS + 1))
+            payee_score = _payee_similarity(payee_a or "", payee_b or "")
+            score = round(date_score * 0.65 + payee_score * 0.35, 4)
 
-                date_delta = abs((txn_a.date - txn_b.date).days)
-                date_score = 1.0 - (date_delta / (SCAN_DATE_WINDOW_DAYS + 1))
-                payee_score = _payee_similarity(payee_a or "", payee_b or "")
-                score = round(date_score * 0.65 + payee_score * 0.35, 4)
+            if score < SCAN_REVIEW_THRESHOLD:
+                continue
+            if await self.match_repo.exists_for_pair(txn_a.id, txn_b.id):
+                continue
 
-                if score < SCAN_REVIEW_THRESHOLD:
-                    continue
-                already_exists = await self.match_repo.exists_for_pair(txn_a.id, txn_b.id)
-                if already_exists:
-                    continue
-
-                # Treat the newer transaction as "synced" (the potential duplicate)
-                synced, manual = (txn_a, txn_b) if txn_a.date >= txn_b.date else (txn_b, txn_a)
-                await self.match_repo.create(
-                    synced_transaction_id=synced.id,
-                    manual_transaction_id=manual.id,
-                    confidence_score=score,
-                )
-                created += 1
+            # Treat the newer transaction as "synced" (the potential duplicate)
+            synced, manual = (txn_a, txn_b) if txn_a.date >= txn_b.date else (txn_b, txn_a)
+            await self.match_repo.create(
+                synced_transaction_id=synced.id,
+                manual_transaction_id=manual.id,
+                confidence_score=score,
+            )
+            created += 1
 
         return created
-
-
-def _best_payee_id(synced: Transaction, manual: Transaction) -> uuid.UUID | None:
-    """Prefer the manual payee (user-cleaned name) over the raw synced payee."""
-    return manual.payee_id or synced.payee_id

@@ -116,6 +116,7 @@ class BudgetService:
         all_months = sorted(set(assignments_by_month) | set(activity_by_month))
         carryover = Decimal("0")
         end_of_month = Decimal("0")
+        last_simulated: date | None = None
         for m in all_months:
             if m > month_start:
                 break
@@ -126,8 +127,11 @@ class BudgetService:
             )
             # Floor the carryover into the next month; current month can show negative
             carryover = max(Decimal("0"), end_of_month)
+            last_simulated = m
 
-        available = end_of_month
+        # Only the month with its own data may show negative; any later month
+        # starts from the floored carryover (overspending was absorbed by TBA).
+        available = end_of_month if last_simulated == month_start else carryover
 
         return CategoryBalance(
             category_id=category_id,

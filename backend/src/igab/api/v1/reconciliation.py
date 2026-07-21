@@ -1,4 +1,3 @@
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -10,7 +9,7 @@ from igab.api.v1.schemas.reconciliation import (
     ReconciliationStatusResponse,
 )
 from igab.api.v1.schemas.transaction import TransactionResponse
-from igab.dependencies import CurrentUser, get_reconciliation_service
+from igab.dependencies import AccountAccess, CurrentUser, get_reconciliation_service
 from igab.services.reconciliation_service import ReconciliationService
 
 router = APIRouter()
@@ -21,7 +20,7 @@ router = APIRouter()
     response_model=ReconciliationStatusResponse,
 )
 async def reconciliation_status(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     svc: Annotated[ReconciliationService, Depends(get_reconciliation_service)],
 ) -> ReconciliationStatusResponse:
@@ -34,7 +33,7 @@ async def reconciliation_status(
     response_model=ReconciliationSnapshotResponse,
 )
 async def finish_reconciliation(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     body: ReconcileFinishRequest,
     current_user: CurrentUser,
     svc: Annotated[ReconciliationService, Depends(get_reconciliation_service)],
@@ -48,7 +47,7 @@ async def finish_reconciliation(
     response_model=TransactionResponse,
 )
 async def create_reconcile_adjustment(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     body: ReconcileAdjustmentRequest,
     current_user: CurrentUser,
     svc: Annotated[ReconciliationService, Depends(get_reconciliation_service)],
@@ -62,7 +61,7 @@ async def create_reconcile_adjustment(
     response_model=list[ReconciliationSnapshotResponse],
 )
 async def reconciliation_history(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     svc: Annotated[ReconciliationService, Depends(get_reconciliation_service)],
 ) -> list[ReconciliationSnapshotResponse]:

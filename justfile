@@ -93,6 +93,43 @@ api-shell:
 test-backend:
     docker compose exec api uv run pytest --cov=igab --cov-report=term-missing
 
+# Run only the fast mock-based unit tests
+test-backend-unit:
+    docker compose exec api uv run pytest tests/unit
+
+# Run only the real-Postgres integration tests
+test-backend-integration:
+    docker compose exec api uv run pytest tests/integration
+
+# Run backend tests locally against localhost Postgres (db service must be up)
+test-backend-local *ARGS:
+    #!/usr/bin/env bash
+    set -a && source .env && set +a
+    unset CORS_ORIGINS
+    cd backend && DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT:-5432}/${DB_NAME}" \
+        uv run pytest {{ARGS}}
+
+# ─── Backups ──────────────────────────────────────────────────────────────────
+
+# Dump the database to ./backups/igab-<timestamp>.dump (pg_dump custom format)
+backup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p backups
+    file="backups/igab-$(date +%Y%m%d-%H%M%S).dump"
+    docker compose exec -T db pg_dump -U "${DB_USER:-igab}" -Fc "${DB_NAME:-igab}" > "$file"
+    echo "wrote $file ($(du -h "$file" | cut -f1))"
+
+# Restore a dump created by `just backup` — DROPS AND REPLACES the database
+restore FILE:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Restoring {{FILE}} — this REPLACES the current database. Ctrl-C to abort."
+    sleep 3
+    docker compose exec -T db pg_restore -U "${DB_USER:-igab}" -d "${DB_NAME:-igab}" \
+        --clean --if-exists --no-owner < "{{FILE}}"
+    echo "restore complete"
+
 # Run backend linting
 lint-backend:
     docker compose exec api uv run ruff check src/

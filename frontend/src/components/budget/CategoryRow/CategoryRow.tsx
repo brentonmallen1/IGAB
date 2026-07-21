@@ -56,6 +56,11 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
   const handleCommit = useCallback(() => {
     const amount = editValue.trim() === '' ? 0 : parseMoney(editValue)
+    if (isNaN(amount)) {
+      // Unparseable input must never silently write $0 into the budget
+      setIsEditing(false)
+      return
+    }
     setAssignment.mutate({ categoryId: category.id, month, amount })
     setIsEditing(false)
   }, [editValue, category.id, month, setAssignment])

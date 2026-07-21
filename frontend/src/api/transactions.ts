@@ -1,8 +1,17 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { apiClient } from './client'
-import type { Payee, SimilarTransaction, Transaction, TransactionCreate } from '../types'
+import type { BulkActionResult, Payee, SimilarTransaction, Transaction, TransactionCreate } from '../types'
 import type { TransactionFilters } from '../utils/searchParser'
 import { hasActiveFilters } from '../utils/searchParser'
+
+/** Surface per-item bulk failures instead of silently half-applying. */
+function reportBulkFailures(result: BulkActionResult, actionLabel: string) {
+  if (result.failed.length === 0) return
+  const first = result.failed[0].reason
+  const more = result.failed.length > 1 ? ` (+${result.failed.length - 1} more)` : ''
+  toast.error(`${result.failed.length} of ${result.failed.length + result.updated.length} not ${actionLabel}: ${first}${more}`)
+}
 
 const PAGE_SIZE = 100
 const FILTERED_LIMIT = 2000
@@ -92,11 +101,12 @@ export function useBulkUpdateCleared(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ transactionIds, cleared, accountId }: { transactionIds: string[]; cleared: string; accountId: string }) =>
-      apiClient.patch(`/${budgetId}/transactions/bulk-cleared`, {
+      apiClient.patch<BulkActionResult>(`/${budgetId}/transactions/bulk-cleared`, {
         transaction_ids: transactionIds,
         cleared,
-      }).then(() => accountId),
-    onSuccess: (accountId) => {
+      }).then((r) => ({ accountId, result: r.data })),
+    onSuccess: ({ accountId, result }) => {
+      reportBulkFailures(result, 'updated')
       qc.invalidateQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
@@ -109,11 +119,12 @@ export function useBulkCategorize(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ transactionIds, categoryId, accountId }: { transactionIds: string[]; categoryId: string; accountId: string }) =>
-      apiClient.patch(`/${budgetId}/transactions/bulk-categorize`, {
+      apiClient.patch<BulkActionResult>(`/${budgetId}/transactions/bulk-categorize`, {
         transaction_ids: transactionIds,
         category_id: categoryId,
-      }).then(() => accountId),
-    onSuccess: (accountId) => {
+      }).then((r) => ({ accountId, result: r.data })),
+    onSuccess: ({ accountId, result }) => {
+      reportBulkFailures(result, 'categorized')
       qc.invalidateQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['pending-review-count'] })
@@ -126,14 +137,31 @@ export function useBulkDeleteTransactions(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string }) =>
-      apiClient.post(`/${budgetId}/transactions/bulk-delete`, { transaction_ids: transactionIds })
-        .then(() => accountId),
-    onSuccess: (accountId) => {
+      apiClient.post<BulkActionResult>(`/${budgetId}/transactions/bulk-delete`, { transaction_ids: transactionIds })
+        .then((r) => ({ accountId, result: r.data })),
+    onSuccess: ({ accountId, result }) => {
+      reportBulkFailures(result, 'deleted')
       qc.refetchQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['pending-review-count'] })
       qc.invalidateQueries({ queryKey: ['pending-review-count-account', accountId] })
+    },
+  })
+}
+
+export function useUnreconcileTransaction(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient
+        .post<Transaction>(`/transactions/${id}/unreconcile`, null, {
+          params: { budget_id: budgetId },
+        })
+        .then((r) => r.data),
+    onSuccess: (txn) => {
+      qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
+      qc.invalidateQueries({ queryKey: ['reconcile-status'] })
     },
   })
 }
@@ -180,9 +208,10 @@ export function useBulkApprove(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string }) =>
-      apiClient.patch(`/${budgetId}/transactions/bulk-approve`, { transaction_ids: transactionIds })
-        .then(() => accountId),
-    onSuccess: (accountId) => {
+      apiClient.patch<BulkActionResult>(`/${budgetId}/transactions/bulk-approve`, { transaction_ids: transactionIds })
+        .then((r) => ({ accountId, result: r.data })),
+    onSuccess: ({ accountId, result }) => {
+      reportBulkFailures(result, 'approved')
       qc.invalidateQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['pending-review-count', budgetId] })
       qc.invalidateQueries({ queryKey: ['pending-review-count-account', accountId] })

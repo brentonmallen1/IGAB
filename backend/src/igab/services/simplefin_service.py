@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Literal
 
 from rapidfuzz import fuzz
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import SimpleFINConnection, Transaction
@@ -16,6 +17,7 @@ from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.transaction_matching_service import TransactionMatchingService
 from igab.services.transaction_service import TransactionCreate, TransactionService
+from igab.utils.clock import today_utc
 
 GLOBAL_DAILY_LIMIT = 12
 ACCOUNT_DAILY_LIMIT = 12
@@ -107,7 +109,7 @@ class SimpleFINService:
         return await self.client.get_accounts(access_url)
 
     def get_rate_limit_status(self, conn: SimpleFINConnection) -> dict:
-        today = date.today()
+        today = today_utc()
         is_new_day = conn.last_request_date != today
         global_used = 0 if is_new_day else conn.global_requests_today
         account_used = 0 if is_new_day else conn.account_requests_today
@@ -122,7 +124,7 @@ class SimpleFINService:
         }
 
     def _check_rate_limit(self, conn: SimpleFINConnection, sync_type: SyncType) -> None:
-        today = date.today()
+        today = today_utc()
         is_new_day = conn.last_request_date != today
         if is_new_day:
             return
@@ -136,7 +138,7 @@ class SimpleFINService:
     async def _bump_request_count(
         self, connection_id: uuid.UUID, conn: SimpleFINConnection, sync_type: SyncType
     ) -> None:
-        today = date.today()
+        today = today_utc()
         is_new_day = conn.last_request_date != today
         global_today = 0 if is_new_day else conn.global_requests_today
         account_today = 0 if is_new_day else conn.account_requests_today
@@ -237,44 +239,44 @@ class SimpleFINService:
                 skipped += 1
                 continue
 
-            import_id = f"sf:{t.get('id', '')}"
+            # A missing/empty bank id must never dedup by sync_id ("" would
+            # collide every id-less transaction into one row).
+            sync_id = (t.get("id") or "").strip() or None
             posted_ts = t.get("posted")
             transacted_ts = t.get("transacted_at")
             timestamp = posted_ts or transacted_ts
             txn_date = (
                 datetime.fromtimestamp(timestamp, tz=UTC).date()
                 if isinstance(timestamp, (int, float)) and timestamp > 0
-                else date.today()
+                else today_utc()
             )
             is_posted = bool(posted_ts and posted_ts > 0)
             new_cleared = "cleared" if is_posted else "pending"
-
-            # Check if already exists (any state)
-            existing = await self.txn_repo.find_by_import_id(account.id, import_id)
-            if existing is not None:
-                # Transition pending → cleared if now posted
-                if existing.cleared == "pending" and is_posted:
-                    await self.txn_repo.update_cleared(existing.id, "cleared")
-                    cleared += 1
-                else:
-                    skipped += 1
-                continue
-
-            # Also check if there's a pending version waiting to be cleared
-            pending_existing = await self.txn_repo.find_pending_by_import_id(account.id, import_id)
-            if pending_existing is not None:
-                if is_posted:
-                    await self.txn_repo.update_cleared(pending_existing.id, "cleared")
-                    cleared += 1
-                else:
-                    skipped += 1
-                continue
-
             amount = Decimal(str(t.get("amount", "0")))
             synced_payee = t.get("payee") or t.get("description") or ""
 
-            # Dedup against cleared/reconciled transactions that may lack import_id
-            # (e.g. YNAB imports, manual entries, CSV imports)
+            if sync_id is not None:
+                existing = await self.txn_repo.find_by_sync_id(account.id, sync_id)
+                if existing is not None:
+                    # Pending → posted: the bank's posted values win (amounts
+                    # routinely change — tips, gas holds). The prior date is
+                    # preserved once in entered_date as provenance.
+                    if existing.cleared == "pending" and is_posted:
+                        updates: dict[str, object] = {"cleared": "cleared"}
+                        if existing.amount != amount:
+                            updates["amount"] = amount
+                        if existing.date != txn_date:
+                            updates["date"] = txn_date
+                            if existing.entered_date is None:
+                                updates["entered_date"] = existing.date
+                        await self.txn_repo.update(existing.id, **updates)
+                        cleared += 1
+                    else:
+                        skipped += 1
+                    continue
+
+            # Dedup against transactions that lack a sync link
+            # (YNAB imports, manual entries, CSV imports)
             candidates = await self.txn_repo.find_existing_match_candidates(
                 account.id, amount, txn_date, date_window_days=DEDUP_DATE_WINDOW_DAYS
             )
@@ -289,13 +291,20 @@ class SimpleFINService:
                         best_score, best_match = score, existing_txn
 
                 if best_match is not None and best_score >= DEDUP_AUTO_MATCH_THRESHOLD:
-                    updates: dict[str, object] = {
-                        "import_id": import_id,
+                    updates = {
+                        "sync_source": "simplefin",
                         "import_description": t.get("description"),
                         "has_sync_source": True,
                     }
+                    if sync_id is not None:
+                        updates["sync_id"] = sync_id
                     if best_match.cleared != "reconciled":
-                        updates["date"] = txn_date
+                        # Bank posted date wins for ledger alignment; keep the
+                        # user's entered date once as provenance.
+                        if best_match.date != txn_date:
+                            updates["date"] = txn_date
+                            if best_match.entered_date is None:
+                                updates["entered_date"] = best_match.date
                         if best_match.cleared in ("pending", "uncleared") and is_posted:
                             updates["cleared"] = "cleared"
                             cleared += 1
@@ -309,19 +318,27 @@ class SimpleFINService:
                 else None
             )
 
-            new_txn = await self.txn_service.create(
-                budget_id,
-                TransactionCreate(
-                    account_id=account.id,
-                    date=txn_date,
-                    amount=amount,
-                    payee_name=synced_payee,
-                    import_description=t.get("description"),
-                    import_id=import_id,
-                    cleared=new_cleared,
-                    approved=False,
-                ),
-            )
+            try:
+                # Savepoint so a duplicate-identity IntegrityError (unique
+                # partial index) skips this row without poisoning the session.
+                async with self.session.begin_nested():
+                    new_txn = await self.txn_service.create(
+                        budget_id,
+                        TransactionCreate(
+                            account_id=account.id,
+                            date=txn_date,
+                            amount=amount,
+                            payee_name=synced_payee,
+                            import_description=t.get("description"),
+                            sync_id=sync_id,
+                            sync_source="simplefin",
+                            cleared=new_cleared,
+                            approved=False,
+                        ),
+                    )
+            except IntegrityError:
+                skipped += 1
+                continue
             if new_txn is not None:
                 if near_miss_candidate is not None and self.matching_service is not None:
                     await self.matching_service.match_repo.create(
@@ -332,6 +349,24 @@ class SimpleFINService:
                 elif self.matching_service is not None:
                     await self.matching_service.try_match(new_txn)
             imported += 1
+
+        # Sweep stale sync-created pendings: an auth the bank dropped or
+        # re-identified at posting would otherwise linger forever. Only rows
+        # inside the fetched window are judged, and only when the feed
+        # actually returned data (an empty feed proves nothing).
+        removed_pending = 0
+        if txns_raw:
+            feed_sync_ids = {
+                (t.get("id") or "").strip() for t in txns_raw if (t.get("id") or "").strip()
+            }
+            window_start = since.date() if since is not None else None
+            for account in targets:
+                stale_rows = await self.txn_repo.find_stale_pending_synced(
+                    account.id, "simplefin", window_start, feed_sync_ids
+                )
+                for stale in stale_rows:
+                    await self.txn_repo.soft_delete(stale.id)
+                    removed_pending += 1
 
         # Update per-account sync state
         now = datetime.now(UTC)
@@ -355,6 +390,7 @@ class SimpleFINService:
             "imported": imported,
             "skipped": skipped,
             "cleared": cleared,
+            "removed_pending": removed_pending,
             **rate_status,
         }
 

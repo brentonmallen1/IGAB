@@ -85,6 +85,8 @@ export interface Transaction {
   budget_id: string
   account_id: string
   date: string
+  /** The user's originally-entered date when bank data overwrote `date` */
+  entered_date: string | null
   amount: number
   payee_id: string | null
   category_id: string | null
@@ -96,6 +98,8 @@ export interface Transaction {
   is_split: boolean
   import_id: string | null
   import_description: string | null
+  sync_id: string | null
+  sync_source: string | null
   has_sync_source: boolean
   linked_transaction_id: string | null
   link_confidence: number | null
@@ -104,6 +108,12 @@ export interface Transaction {
 }
 
 export type ClearedStatus = 'pending' | 'uncleared' | 'cleared' | 'reconciled'
+
+/** Per-item outcome of a bulk transaction action */
+export interface BulkActionResult {
+  updated: string[]
+  failed: Array<{ id: string; reason: string }>
+}
 
 export interface Payee {
   id: string
@@ -302,6 +312,7 @@ export interface VariancePoint {
   month: string
   budget_assigned: number
   actual_spent: number
+  monthly_variance: number
   cumulative_variance: number
 }
 
@@ -315,8 +326,8 @@ export interface VolatilityItem {
   category_group_name: string
   mean: number
   std_dev: number
-  min: number
-  max: number
+  min_val: number
+  max_val: number
   p25: number
   p75: number
   months_included: number
@@ -360,6 +371,8 @@ export interface PayeeSpending {
   payee_name: string
   total: number
   count: number
+  /** Share of the report's grand total, 0–100 */
+  pct: number
   monthly_trend: { month: string; total: number }[]
   top_categories: { category_name: string; total: number }[]
   is_recurring: boolean

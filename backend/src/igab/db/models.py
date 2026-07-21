@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, time
+from datetime import date as _PyDate  # un-shadowable alias for class-body annotations
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -7,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -14,6 +16,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -254,6 +257,24 @@ class CategoryTarget(Base):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        # DB-level dedup backstop: at most one LIVE row per bank/import identity.
+        # Soft-deleted rows are excluded so links can be re-made after deletes.
+        Index(
+            "uq_transactions_account_sync_id",
+            "account_id",
+            "sync_id",
+            unique=True,
+            postgresql_where=text("sync_id IS NOT NULL AND NOT is_deleted"),
+        ),
+        Index(
+            "uq_transactions_account_import_id",
+            "account_id",
+            "import_id",
+            unique=True,
+            postgresql_where=text("import_id IS NOT NULL AND NOT is_deleted"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -263,6 +284,10 @@ class Transaction(Base):
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
     )
     date: Mapped[date] = mapped_column(Date, nullable=False)  # type: ignore[reportGeneralTypeIssues]
+    # When bank data overwrites `date` (posting, match linking), the prior
+    # user-entered date is preserved here for display as provenance metadata.
+    # _PyDate alias: the `date` name is shadowed by the column above.
+    entered_date: Mapped[_PyDate | None] = mapped_column(Date, nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
     payee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("payees.id", ondelete="SET NULL")
@@ -282,10 +307,13 @@ class Transaction(Base):
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE")
     )
     is_split: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Import deduplication
+    # Import deduplication (CSV/YNAB file imports)
     import_id: Mapped[str | None] = mapped_column(String(255))
     import_batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     import_description: Mapped[str | None] = mapped_column(Text)
+    # Bank sync deduplication (SimpleFIN, future: Plaid, etc.)
+    sync_id: Mapped[str | None] = mapped_column(String(255))
+    sync_source: Mapped[str | None] = mapped_column(String(50))
     scheduled_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # SimpleFIN match link
     linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(

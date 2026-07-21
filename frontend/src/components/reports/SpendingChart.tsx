@@ -32,14 +32,14 @@ export function SpendingChart({ categories, total }: Props) {
             cy="50%"
             outerRadius={110}
             dataKey="value"
-            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(1)}%`}
+            label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(1)}%`}
             labelLine={false}
           >
             {data.map((_, i) => (
               <Cell key={i} fill={COLORS[i % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip formatter={(v: number) => formatMoney(v)} />
+          <Tooltip formatter={(v: unknown) => formatMoney(Number(v))} />
           <Legend />
         </PieChart>
       </ResponsiveContainer>
