@@ -95,6 +95,7 @@ export function MergePreviewModal({
 
   const willCopyImportId = !survivor.import_id && !!deleted.import_id
   const willCopyImportDesc = !survivor.import_description && !!deleted.import_description
+  const willCopySyncId = !survivor.sync_id && !!deleted.sync_id
 
   return (
     <div className="merge-modal-overlay" onClick={onCancel}>
@@ -132,7 +133,7 @@ export function MergePreviewModal({
           />
         </div>
 
-        {(willCopyImportId || willCopyImportDesc) && (
+        {(willCopyImportId || willCopyImportDesc || willCopySyncId) && (
           <p className="merge-modal__note">
             Bank import data will be copied from the deleted transaction.
           </p>

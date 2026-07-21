@@ -13,7 +13,7 @@ interface Props {
   value: string | null
   options: ComboboxOption[]
   onChange: (id: string | null) => void
-  onCreateNew?: (query: string) => Promise<ComboboxOption> | void
+  onCreateNew?: (query: string) => Promise<ComboboxOption | void> | void
   createLabel?: string
   footerSlot?: ReactNode
   placeholder?: string

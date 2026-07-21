@@ -1,11 +1,16 @@
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from igab.api.v1.schemas.account import AccountCreate, AccountResponse, AccountUpdate
-from igab.dependencies import CurrentUser, get_account_repo, get_transaction_matching_service
+from igab.dependencies import (
+    AccountAccess,
+    BudgetAccess,
+    CurrentUser,
+    get_account_repo,
+    get_transaction_matching_service,
+)
 from igab.domain.exceptions import DuplicateError, NotFoundError
 from igab.repositories.account_repo import AccountRepository
 from igab.services.transaction_matching_service import TransactionMatchingService
@@ -15,7 +20,7 @@ router = APIRouter()
 
 @router.get("/{budget_id}/accounts", response_model=list[AccountResponse])
 async def list_accounts(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     include_closed: bool = False,
@@ -39,7 +44,7 @@ async def list_accounts(
     "/{budget_id}/accounts", response_model=AccountResponse, status_code=status.HTTP_201_CREATED
 )
 async def create_account(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: AccountCreate,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
@@ -68,7 +73,7 @@ async def create_account(
 
 @router.get("/accounts/{account_id}", response_model=AccountResponse)
 async def get_account(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> AccountResponse:
@@ -88,7 +93,7 @@ async def get_account(
 
 @router.patch("/accounts/{account_id}", response_model=AccountResponse)
 async def update_account(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     body: AccountUpdate,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
@@ -105,7 +110,7 @@ async def update_account(
 
 @router.delete("/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> None:
@@ -121,7 +126,7 @@ class ScanDuplicatesResponse(BaseModel):
 
 @router.post("/accounts/{account_id}/scan-duplicates", response_model=ScanDuplicatesResponse)
 async def scan_duplicates(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     matching_service: Annotated[
         TransactionMatchingService, Depends(get_transaction_matching_service)

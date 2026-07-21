@@ -106,28 +106,57 @@ def make_adjustment_service(account, payee, created_txn):
 
 
 def make_finish_service(cleared_bal, snapshot, uncleared_count=0, pending_count=0):
-    """ReconciliationService wired for testing finish()."""
+    """ReconciliationService wired for testing finish().
+
+    finish() now auto-creates an adjustment when statement != cleared, so the
+    adjustment path (account lookup, payee find_or_create, txn create) is
+    mocked too, and session.execute serves get_status results first, then
+    generic results for any subsequent UPDATE statements.
+    """
     session = AsyncMock()
-    # 3 execute calls from get_status, then 2 for bulk updates
-    session.execute = AsyncMock(side_effect=[
-        _mock_scalar(cleared_bal),
-        _mock_scalar(uncleared_count),
-        _mock_scalar(pending_count),
-        MagicMock(),  # UPDATE Transaction SET cleared='reconciled'
-        MagicMock(),  # UPDATE Account SET last_reconciled_at=...
-    ])
+    status_results = iter(
+        [
+            _mock_scalar(cleared_bal),
+            _mock_scalar(uncleared_count),
+            _mock_scalar(pending_count),
+        ]
+    )
+
+    async def _execute(stmt):
+        try:
+            return next(status_results)
+        except StopIteration:
+            return MagicMock()
+
+    session.execute = AsyncMock(side_effect=_execute)
     session.flush = AsyncMock()
 
     repo = MagicMock()
     repo.create = AsyncMock(return_value=snapshot)
 
-    return ReconciliationService(
+    account = MagicMock()
+    account.budget_id = BUDGET_ID
+    account_repo = MagicMock()
+    account_repo.get_or_raise = AsyncMock(return_value=account)
+
+    payee = MagicMock()
+    payee_repo = MagicMock()
+    payee_repo.find_or_create = AsyncMock(return_value=payee)
+
+    adjustment = MagicMock()
+    adjustment.id = uuid.uuid4()
+    transaction_repo = MagicMock()
+    transaction_repo.create = AsyncMock(return_value=adjustment)
+
+    svc = ReconciliationService(
         session=session,
         repo=repo,
-        account_repo=MagicMock(),
-        payee_repo=MagicMock(),
-        transaction_repo=MagicMock(),
+        account_repo=account_repo,
+        payee_repo=payee_repo,
+        transaction_repo=transaction_repo,
     )
+    svc._test_adjustment = adjustment  # type: ignore[attr-defined]
+    return svc
 
 
 class TestGetStatus:
@@ -386,16 +415,19 @@ class TestFinish:
 
         assert result is expected
 
-    async def test_adjustment_transaction_id_stored_in_snapshot(self):
-        """When an adjustment transaction was created, its ID is linked in the snapshot."""
-        adj_id = uuid.uuid4()
-        snapshot = MockSnapshot(adjustment_transaction_id=adj_id)
+    async def test_adjustment_transaction_auto_created_on_mismatch(self):
+        """A statement/cleared mismatch auto-creates the adjustment and links
+        it in the snapshot — reconciliation always locks a matching account."""
+        snapshot = MockSnapshot()
         svc = make_finish_service(D("1200.00"), snapshot)
 
-        await svc.finish(ACCOUNT_ID, D("1500.00"), adjustment_transaction_id=adj_id)
+        await svc.finish(ACCOUNT_ID, D("1500.00"))
 
+        svc.transaction_repo.create.assert_called_once()
+        create_kwargs = svc.transaction_repo.create.call_args.kwargs
+        assert create_kwargs["amount"] == D("300.00")
         kwargs = svc.repo.create.call_args.kwargs
-        assert kwargs["adjustment_transaction_id"] == adj_id
+        assert kwargs["adjustment_transaction_id"] == svc._test_adjustment.id
 
     async def test_no_adjustment_transaction_id_is_none(self):
         snapshot = MockSnapshot()

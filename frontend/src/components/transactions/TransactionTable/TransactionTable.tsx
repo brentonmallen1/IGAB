@@ -5,7 +5,6 @@ import { useShallow } from 'zustand/react/shallow'
 import { useInfiniteTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction, useCreateTransaction, useBulkApprove, useMergeTransactions, usePendingReviewCountForAccount } from '../../../api/transactions'
 import { useCheckAttachments } from '../../../api/attachments'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
-import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { TransactionRow } from '../TransactionRow/TransactionRow'
@@ -21,7 +20,7 @@ import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
 import { useHistoryStore } from '../../../stores/historyStore'
-import { usePendingMatchesForAccount, useAcceptMatch, useRejectMatch } from '../../../api/simplefin'
+import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simplefin'
 import { today } from '../../../utils/dates'
 import { formatMoney } from '../../../utils/money'
 import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
@@ -78,44 +77,6 @@ export function TransactionTable({ accountId, budgetId }: Props) {
   const [showAttachmentPanel, setShowAttachmentPanel] = useState(false)
   const [attachmentTxnId, setAttachmentTxnId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (selectedTransactionIds.size !== 1) {
-      setShowAttachmentPanel(false)
-      setAttachmentTxnId(null)
-    } else {
-      const id = Array.from(selectedTransactionIds)[0]
-      if (showAttachmentPanel && id !== attachmentTxnId) {
-        setAttachmentTxnId(id)
-      }
-    }
-  }, [selectedTransactionIds, showAttachmentPanel, attachmentTxnId])
-  const undoTxn = useUpdateTransaction(budgetId)
-  const { data: pendingMatches = [] } = usePendingMatchesForAccount(accountId)
-  const acceptMatch = useAcceptMatch(accountId)
-  const rejectMatch = useRejectMatch(accountId)
-  const createTxn = useCreateTransaction(budgetId)
-  const [makeRepeatingTxn, setMakeRepeatingTxn] = useState<Transaction | null>(null)
-  const [editingScheduledTxn, setEditingScheduledTxn] = useState<ScheduledTransaction | null>(null)
-  const { data: upcomingScheduled = [] } = useScheduledTransactionsByAccount(budgetId, accountId)
-  const enterScheduled = useEnterScheduledTransaction(budgetId)
-  const skipScheduled = useSkipScheduledTransaction(budgetId)
-
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || e.key !== 'z' || e.shiftKey) return
-      const active = document.activeElement
-      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return
-      e.preventDefault()
-      const entry = useHistoryStore.getState().undo()
-      if (entry) {
-        undoTxn.mutate({ id: entry.transactionId, [entry.field]: entry.before } as Parameters<typeof undoTxn.mutate>[0])
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   const {
     selectedTransactionIds,
     collapsedSections,
@@ -151,6 +112,43 @@ export function TransactionTable({ accountId, budgetId }: Props) {
       closeTransactionEditor: s.closeTransactionEditor,
     }))
   )
+
+  useEffect(() => {
+    if (selectedTransactionIds.size !== 1) {
+      setShowAttachmentPanel(false)
+      setAttachmentTxnId(null)
+    } else {
+      const id = Array.from(selectedTransactionIds)[0]
+      if (showAttachmentPanel && id !== attachmentTxnId) {
+        setAttachmentTxnId(id)
+      }
+    }
+  }, [selectedTransactionIds, showAttachmentPanel, attachmentTxnId])
+  const undoTxn = useUpdateTransaction(budgetId)
+  const { data: pendingMatches = [] } = usePendingMatchesForAccount(accountId)
+  const rejectMatch = useRejectMatch(accountId)
+  const createTxn = useCreateTransaction(budgetId)
+  const [makeRepeatingTxn, setMakeRepeatingTxn] = useState<Transaction | null>(null)
+  const [editingScheduledTxn, setEditingScheduledTxn] = useState<ScheduledTransaction | null>(null)
+  const { data: upcomingScheduled = [] } = useScheduledTransactionsByAccount(budgetId, accountId)
+  const enterScheduled = useEnterScheduledTransaction(budgetId)
+  const skipScheduled = useSkipScheduledTransaction(budgetId)
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== 'z' || e.shiftKey) return
+      const active = document.activeElement
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return
+      e.preventDefault()
+      const entry = useHistoryStore.getState().undo()
+      if (entry) {
+        undoTxn.mutate({ id: entry.transactionId, [entry.field]: entry.before } as Parameters<typeof undoTxn.mutate>[0])
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const { splitEditing, startSplitEditing } = useTransactionEditStore()
 

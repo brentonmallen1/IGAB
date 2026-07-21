@@ -39,7 +39,7 @@ from igab.api.v1.schemas.report import (
     VolatilityItem,
     VolatilityResponse,
 )
-from igab.dependencies import CurrentUser, get_report_service
+from igab.dependencies import BudgetAccess, CurrentUser, get_report_service
 from igab.services.report_service import ReportService
 
 router = APIRouter()
@@ -47,7 +47,7 @@ router = APIRouter()
 
 @router.get("/{budget_id}/reports/spending", response_model=SpendingReportResponse)
 async def spending_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
@@ -70,7 +70,7 @@ async def spending_report(
 
 @router.get("/{budget_id}/reports/income-expense", response_model=IncomeExpenseResponse)
 async def income_expense_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: int = 12,
@@ -81,7 +81,7 @@ async def income_expense_report(
 
 @router.get("/{budget_id}/reports/export")
 async def export_transactions(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     format: str = "csv",
@@ -101,7 +101,7 @@ async def export_transactions(
 
 @router.get("/{budget_id}/reports/dashboard", response_model=DashboardMetrics)
 async def dashboard_metrics(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
@@ -119,7 +119,7 @@ async def dashboard_metrics(
 
 @router.get("/{budget_id}/reports/net-worth", response_model=NetWorthResponse)
 async def net_worth_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: int = 12,
@@ -130,7 +130,7 @@ async def net_worth_report(
 
 @router.get("/{budget_id}/reports/account-composition", response_model=AccountCompositionResponse)
 async def account_composition_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: int = 12,
@@ -143,7 +143,7 @@ async def account_composition_report(
 
 @router.get("/{budget_id}/reports/burn-rate", response_model=BurnRateResponse)
 async def burn_rate_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: int = 12,
@@ -154,7 +154,7 @@ async def burn_rate_report(
 
 @router.get("/{budget_id}/reports/cash-flow", response_model=CashFlowResponse)
 async def cash_flow_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
@@ -185,7 +185,7 @@ async def cash_flow_report(
 
 @router.get("/{budget_id}/reports/budget-actual", response_model=BudgetActualResponse)
 async def budget_actual_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
@@ -206,7 +206,7 @@ async def budget_actual_report(
 
 @router.get("/{budget_id}/reports/variance", response_model=VarianceResponse)
 async def variance_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: int = 12,
@@ -217,7 +217,7 @@ async def variance_report(
 
 @router.get("/{budget_id}/reports/volatility", response_model=VolatilityResponse)
 async def volatility_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: int = 12,
@@ -228,7 +228,7 @@ async def volatility_report(
 
 @router.get("/{budget_id}/reports/spending-grouped", response_model=SpendingGroupedResponse)
 async def spending_grouped_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
@@ -250,7 +250,7 @@ async def spending_grouped_report(
 
 @router.get("/{budget_id}/reports/seasonality", response_model=SeasonalityResponse)
 async def seasonality_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: int = 12,
@@ -265,7 +265,7 @@ async def seasonality_report(
 
 @router.get("/{budget_id}/reports/payee-analysis", response_model=PayeeAnalysisResponse)
 async def payee_analysis_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
@@ -287,6 +287,7 @@ async def payee_analysis_report(
                 payee_name=p["payee_name"],
                 total=p["total"],
                 count=p["count"],
+                pct=p["pct"],
                 monthly_trend=[PayeeTrend.model_validate(t) for t in p["monthly_trend"]],
                 top_categories=[PayeeTopCategory.model_validate(c) for c in p["top_categories"]],
                 is_recurring=p["is_recurring"],
@@ -299,7 +300,7 @@ async def payee_analysis_report(
 
 @router.get("/{budget_id}/reports/day-patterns", response_model=DayPatternsResponse)
 async def day_patterns_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
@@ -318,7 +319,7 @@ async def day_patterns_report(
 
 @router.get("/{budget_id}/reports/large-transactions", response_model=TimelineResponse)
 async def timeline_report(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,

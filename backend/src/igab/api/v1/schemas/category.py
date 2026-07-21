@@ -5,6 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 
 from igab.domain.enums import TargetType
+from igab.domain.money import Money
 
 
 class CategoryGroupCreate(BaseModel):
@@ -48,7 +49,7 @@ class CategoryUpdate(BaseModel):
 
 class CategoryTargetCreate(BaseModel):
     target_type: TargetType
-    target_amount: Decimal
+    target_amount: Money
     target_date: datetime.date | None = None
     repeat_frequency: str | None = None
 
@@ -96,7 +97,7 @@ class BudgetMonthResponse(BaseModel):
 
 
 class AssignmentUpdate(BaseModel):
-    amount: Decimal
+    amount: Money
 
 
 class CategoryHistoryResponse(BaseModel):

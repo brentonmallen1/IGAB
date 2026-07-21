@@ -177,7 +177,16 @@ class TestIncomeVsExpense:
 # ─── dashboard_metrics ────────────────────────────────────────────────────────
 
 class TestDashboardMetrics:
-    def _make_txn(self, txn_date, amount, account_id=None, category_id=None, transfer_id=None):
+    def _make_txn(
+        self,
+        txn_date,
+        amount,
+        account_id=None,
+        category_id=None,
+        transfer_id=None,
+        is_split=False,
+        parent_transaction_id=None,
+    ):
         return row(
             id=uuid.uuid4(),
             date=txn_date,
@@ -185,6 +194,8 @@ class TestDashboardMetrics:
             account_id=account_id or ACCT_1,
             category_id=category_id,
             transfer_id=transfer_id,
+            is_split=is_split,
+            parent_transaction_id=parent_transaction_id,
         )
 
     def _make_account(self, acct_id=None, on_budget=True, account_type="checking"):
@@ -613,15 +624,20 @@ class TestPayeeAnalysis:
 # ─── burn_rate ────────────────────────────────────────────────────────────────
 
 class TestBurnRate:
+    # The rolling windows end at the CURRENT MONTH'S last day, so anchor test
+    # dates to month_end (dates relative to today drift out of the window as
+    # the month progresses and made these tests calendar-flaky).
+    @staticmethod
+    def _month_end() -> date:
+        first = date.today().replace(day=1)
+        next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return next_month - timedelta(days=1)
+
     async def test_rolling_30_sums_last_30_days(self):
-        # Use real today to avoid patching the date class.
-        today = date.today()
-        # Transactions in the last 30 days ending today
-        d1 = today - timedelta(days=20)
-        d2 = today - timedelta(days=5)
+        month_end = self._month_end()
         rows = [
-            row(date=d1, amount=D("-200.00")),
-            row(date=d2, amount=D("-300.00")),
+            row(date=month_end - timedelta(days=25), amount=D("-200.00")),
+            row(date=month_end - timedelta(days=3), amount=D("-300.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         result = await svc.burn_rate(BUDGET, months=1)
@@ -630,15 +646,12 @@ class TestBurnRate:
         assert cur["rolling_30"] == D("500.0")
 
     async def test_rolling_90_is_divided_by_3(self):
-        today = date.today()
-        # 900 total spread across 90 days → monthly equivalent = 300
-        d1 = today - timedelta(days=80)
-        d2 = today - timedelta(days=50)
-        d3 = today - timedelta(days=10)
+        month_end = self._month_end()
+        # 900 total inside the 90-day window → monthly equivalent = 300
         rows = [
-            row(date=d1, amount=D("-300.00")),
-            row(date=d2, amount=D("-300.00")),
-            row(date=d3, amount=D("-300.00")),
+            row(date=month_end - timedelta(days=85), amount=D("-300.00")),
+            row(date=month_end - timedelta(days=50), amount=D("-300.00")),
+            row(date=month_end - timedelta(days=10), amount=D("-300.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         result = await svc.burn_rate(BUDGET, months=1)

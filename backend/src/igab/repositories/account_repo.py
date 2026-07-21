@@ -44,14 +44,30 @@ class AccountRepository(BaseRepository[Account]):
         return result.scalar_one()
 
     async def get_uncategorized_count(self, account_id: uuid.UUID) -> int:
+        # Leaf rows: split parents legitimately have no category, while an
+        # uncategorized split child is a real gap the user should fill.
+        # Transfer legs whose partner account is OFF-budget are spending and
+        # need a category too; on-budget↔on-budget legs never do.
+        from sqlalchemy import or_
+        from sqlalchemy.orm import aliased
+
+        partner = aliased(Transaction)
+        partner_account = aliased(Account)
         result = await self.session.execute(
-            select(func.count(Transaction.id)).where(
+            select(func.count(Transaction.id))
+            .select_from(Transaction)
+            .outerjoin(partner, Transaction.transfer_id == partner.id)
+            .outerjoin(partner_account, partner.account_id == partner_account.id)
+            .where(
                 Transaction.account_id == account_id,
                 Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
+                Transaction.is_split == False,  # noqa: E712
                 Transaction.category_id.is_(None),
                 Transaction.cleared != "pending",
-                Transaction.transfer_id.is_(None),
+                or_(
+                    Transaction.transfer_id.is_(None),
+                    partner_account.on_budget == False,  # noqa: E712
+                ),
             )
         )
         return result.scalar_one()

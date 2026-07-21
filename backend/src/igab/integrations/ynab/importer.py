@@ -17,7 +17,7 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.transaction_service import TransactionCreate, TransactionService
+from igab.services.transaction_service import TransactionService
 
 _TRANSFER_PREFIX = "Transfer : "
 _YNAB_INFLOW_GROUP = "Inflow"
@@ -54,6 +54,7 @@ class YNABImporter:
         transaction_repo: TransactionRepository,
         transaction_service: TransactionService,
         assignment_repo: BudgetAssignmentRepository,
+        account_types: dict[str, tuple[str, bool]] | None = None,
     ) -> None:
         self.session = session
         self.budget_id = budget_id
@@ -64,6 +65,9 @@ class YNABImporter:
         self.transaction_repo = transaction_repo
         self.transaction_service = transaction_service
         self.assignment_repo = assignment_repo
+        # account name → (account_type, on_budget) override; YNAB register
+        # exports carry no type info, so callers may supply the mapping.
+        self.account_types = account_types or {}
         # name → Account
         self._account_cache: dict[str, Account] = {}
         # group name → CategoryGroup
@@ -90,11 +94,12 @@ class YNABImporter:
         )
         account = row.scalar_one_or_none()
         if account is None:
+            account_type, on_budget = self.account_types.get(name, ("checking", True))
             account = await self.account_repo.create(
                 budget_id=self.budget_id,
                 name=name,
-                account_type="checking",
-                on_budget=True,
+                account_type=account_type,
+                on_budget=on_budget,
             )
             result.accounts_imported += 1
 
@@ -150,19 +155,22 @@ class YNABImporter:
         return self._category_cache[cache_key]
 
     async def _import_transactions(self, budget: YNABBudget, result: ImportResult) -> None:
-        # Separate non-transfer and transfer transactions
-        regular_rows: list[dict] = []
-        transfer_txns = []
+        """Import every register row — transfers included — as bulk rows with
+        deterministic import_ids (fully idempotent re-import), then link
+        transfer legs mutually via ids generated client-side.
 
-        # Batch-resolve all non-transfer payee names upfront
-        non_transfer_payees = {
-            txn.payee
-            for txn in budget.transactions
-            if txn.payee and not txn.payee.startswith(_TRANSFER_PREFIX)
-        }
-        payee_map = await self.payee_repo.find_or_create_batch(
-            self.budget_id, list(non_transfer_payees)
-        )
+        Per-leg cleared/reconciled state from YNAB is preserved. A transfer
+        leg carrying a category (YNAB's off-budget spending transfer) imports
+        as a plain categorized row and is NOT transfer-linked. Legs whose
+        partner never appears import unlinked so balances stay correct.
+        """
+        rows: list[dict] = []
+        # Pairing pool: (account_a, account_b, date, abs_amount) → unmatched
+        # legs (either sign) awaiting their opposite-sign partner.
+        unpaired_legs: dict[tuple, list[dict]] = {}
+
+        payee_names = {txn.payee for txn in budget.transactions if txn.payee}
+        payee_map = await self.payee_repo.find_or_create_batch(self.budget_id, list(payee_names))
 
         for txn in budget.transactions:
             try:
@@ -175,33 +183,42 @@ class YNABImporter:
                     )
                     category_id = cat.id
 
-                if txn.payee.startswith(_TRANSFER_PREFIX):
-                    # Defer transfers — need both account IDs to link them
-                    if txn.amount >= 0:
-                        result.transactions_skipped += 1
-                        continue
-                    transfer_txns.append((txn, account, category_id))
-                else:
-                    payee_id = payee_map.get(txn.payee) if txn.payee else None
-                    regular_rows.append(
-                        {
-                            "id": uuid.uuid4(),
-                            "budget_id": self.budget_id,
-                            "account_id": account.id,
-                            "date": txn.date,
-                            "amount": txn.amount,
-                            "payee_id": payee_id,
-                            "category_id": category_id,
-                            "memo": txn.memo or None,
-                            "cleared": txn.cleared,
-                            "approved": True,
-                            "is_split": False,
-                            "is_deleted": False,
-                            "import_id": _generate_import_id(
-                                txn.account_name, txn.date, txn.amount, txn.payee or ""
-                            ),
-                        }
+                row = {
+                    "id": uuid.uuid4(),
+                    "budget_id": self.budget_id,
+                    "account_id": account.id,
+                    "date": txn.date,
+                    "amount": txn.amount,
+                    "payee_id": payee_map.get(txn.payee) if txn.payee else None,
+                    "category_id": category_id,
+                    "memo": txn.memo or None,
+                    "cleared": txn.cleared,
+                    "approved": True,
+                    "is_split": False,
+                    "is_deleted": False,
+                    "transfer_id": None,
+                    "import_id": _generate_import_id(
+                        txn.account_name, txn.date, txn.amount, txn.payee or ""
+                    ),
+                }
+                rows.append(row)
+
+                is_transfer_leg = txn.payee.startswith(_TRANSFER_PREFIX) and category_id is None
+                if is_transfer_leg:
+                    target_name = txn.payee[len(_TRANSFER_PREFIX) :]
+                    pair_key = (
+                        *sorted((txn.account_name.lower(), target_name.lower())),
+                        txn.date,
+                        abs(txn.amount),
                     )
+                    waiting = unpaired_legs.setdefault(pair_key, [])
+                    partner = next((r for r in waiting if r["amount"] == -txn.amount), None)
+                    if partner is not None:
+                        waiting.remove(partner)
+                        row["transfer_id"] = partner["id"]
+                        partner["transfer_id"] = row["id"]
+                    else:
+                        waiting.append(row)
 
             except Exception as e:
                 result.errors.append(f"Transaction {txn.date} {txn.payee}: {e}")
@@ -210,43 +227,30 @@ class YNABImporter:
         # Make import_ids unique within the batch: two transactions with identical
         # (account, date, amount, payee) produce the same hash, so append ":N" for N>0.
         seen_keys: dict[tuple[uuid.UUID, str], int] = {}
-        for row in regular_rows:
+        for row in rows:
             key = (row["account_id"], row["import_id"])
             count = seen_keys.get(key, 0)
             if count > 0:
                 row["import_id"] = f"{row['import_id']}:{count}"
             seen_keys[key] = count + 1
 
-        # Deduplicate against existing import_ids before inserting
-        all_import_ids = [r["import_id"] for r in regular_rows if r.get("import_id")]
+        # Deduplicate against existing import_ids before inserting. If one leg
+        # of a linked pair already exists, drop the link on the fresh leg
+        # rather than pointing at a row that won't be inserted.
+        all_import_ids = [r["import_id"] for r in rows if r.get("import_id")]
         existing_ids = await self.transaction_repo.get_existing_import_ids(
             self.budget_id, all_import_ids
         )
-        new_rows = [r for r in regular_rows if r.get("import_id") not in existing_ids]
-        result.transactions_skipped += len(regular_rows) - len(new_rows)
+        new_rows = [r for r in rows if r.get("import_id") not in existing_ids]
+        result.transactions_skipped += len(rows) - len(new_rows)
+
+        new_ids = {r["id"] for r in new_rows}
+        for row in new_rows:
+            if row["transfer_id"] is not None and row["transfer_id"] not in new_ids:
+                row["transfer_id"] = None
 
         inserted = await self.transaction_repo.bulk_create(new_rows)
         result.transactions_imported += inserted
-
-        # Handle transfers individually (they need paired linking via TransactionService)
-        for txn, account, category_id in transfer_txns:
-            try:
-                target_name = txn.payee[len(_TRANSFER_PREFIX) :]
-                target_account = await self._get_or_create_account(target_name, result)
-                data = TransactionCreate(
-                    account_id=account.id,
-                    date=txn.date,
-                    amount=txn.amount,
-                    memo=txn.memo,
-                    cleared=txn.cleared,
-                    approved=True,
-                    transfer_account_id=target_account.id,
-                )
-                await self.transaction_service.create(self.budget_id, data)
-                result.transactions_imported += 1
-            except Exception as e:
-                result.errors.append(f"Transfer {txn.date} {txn.payee}: {e}")
-                result.transactions_skipped += 1
 
     async def _import_assignments(self, budget: YNABBudget, result: ImportResult) -> None:
         for entry in budget.budget_entries:

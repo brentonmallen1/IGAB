@@ -1,28 +1,19 @@
 """
-Specification tests for transaction_repo category activity aggregation.
+Specification tests for BudgetService category-balance math given repo outputs.
 
-These tests document the REQUIRED behavior of TransactionRepository's activity
-aggregation methods and highlight the known inconsistency with account_repo.get_balance.
-
-TransactionRepository.sum_all_categories_by_month specification:
+TransactionRepository.sum_all_categories_by_month specification (enforced by
+integration tests in tests/integration/test_category_activity.py and
+test_pending_consistency.py against a real database):
   - Groups transactions by (category_id, year, month)
-  - INCLUDES: all non-deleted transactions regardless of cleared state
-    (uncleared, cleared, reconciled, AND pending)
+  - INCLUDES: leaf rows only (is_split == False) — plain transactions and
+    split children; split parents carry no category
+  - EXCLUDES: pending transactions (cleared == 'pending'), matching
+    account_repo.get_balance so TBA never skews while a bank auth is pending
   - EXCLUDES: soft-deleted transactions (is_deleted=True)
-  - EXCLUDES: split parent transactions (parent_transaction_id IS NULL)
   - Returns {category_id: {month_start: total_amount}}
 
-KNOWN INCONSISTENCY with account_repo.get_balance:
-  - account_repo.get_balance EXCLUDES pending transactions
-  - sum_all_categories_by_month INCLUDES pending transactions
-  - When a categorized pending transaction exists:
-    - Account balance is NOT reduced (pending excluded)
-    - Category activity IS reduced (pending included)
-    - Available = assigned - activity looks higher (less spent than reflected in account)
-    - TBA = account - category_available appears INFLATED by the pending amount
-
-This inconsistency is documented here so that if the behavior is intentionally changed
-(e.g., to exclude pending from activity for consistency), these tests will need updating.
+The tests below mock the repo and verify only the BudgetService formula:
+available carryover flooring, TBA composition, and system-group exclusion.
 """
 
 import uuid
@@ -231,37 +222,16 @@ class TestCategoryActivityAggregation:
         assert d_bal.available == D("50.00")   # 150 - 100
 
 
-class TestPendingTransactionInconsistency:
+class TestPendingConsistency:
     """
-    Documents the inconsistency between account_repo.get_balance (excludes pending)
-    and transaction_repo.sum_all_categories_by_month (includes pending).
-
-    CURRENT BEHAVIOR (not necessarily correct):
-      - Pending transactions with categories ARE included in category activity
-      - This means category 'available' is LOWER than it would be without pending
-      - But account balance is NOT affected by pending
-      - Result: TBA is INFLATED when pending categorized transactions exist
-
-    If this behavior is intentionally changed to exclude pending from activity,
-    these tests will need to be updated accordingly.
+    Pending transactions are excluded from BOTH account balances and category
+    activity (enforced in SQL; see tests/integration/test_pending_consistency.py).
+    Given consistent repo feeds, TBA equals the hand-computed value and a
+    transaction posting moves both sides at once.
     """
 
-    async def test_pending_in_activity_reduces_available_inflates_tba(self):
-        """
-        Pending -$100 groceries transaction:
-          - Account balance: $900 (pending excluded by account_repo) ← actually...
-          Wait, if pending is EXCLUDED from account balance but the spending already
-          happened (it's just not cleared), the account balance is $900.
-          But category shows the -$100 activity → available = assigned - 100.
-
-          This means TBA = 900 - (assigned - 100) = 900 - assigned + 100
-          vs. correct TBA = 900 - assigned
-
-          TBA is inflated by $100 (the pending amount).
-
-        This test documents the current behavior. The comment marks where it diverges
-        from "consistent" behavior (pending excluded from both).
-        """
+    async def test_posted_transaction_moves_account_and_activity_together(self):
+        """A posted -$100 appears in both feeds: TBA = 900 - (500-100) = 500."""
         acct = MockAccount()
         grp = MockCategoryGroup()
         cat = MockCategory(category_group_id=grp.id)
@@ -269,40 +239,6 @@ class TestPendingTransactionInconsistency:
 
         svc = make_service(
             accounts=[acct],
-            # Account balance: $1000 base - $100 pending NOT counted = $1000
-            # (pending excluded from account balance)
-            balances={acct.id: D("1000.00")},
-            categories=[cat],
-            groups=[grp],
-            assignments_by_category={cat.id: [assign]},
-            # Activity INCLUDES pending -$100 (current behavior)
-            activity_by_category={cat.id: {JAN: D("-100.00")}},
-        )
-        result = await svc.get_budget_summary(BUDGET_ID, JAN)
-        # cat available = 500 - 100 = 400 (pending counted)
-        # TBA = 1000 - 400 = 600
-        # "Correct" TBA if pending excluded from both: 1000 - 500 = 500
-        # Current TBA is 600 (inflated by $100 pending amount)
-        assert result.to_be_assigned == D("600.00")
-
-    async def test_confirmed_transaction_consistent_impact(self):
-        """
-        A confirmed (non-pending) transaction of the same amount produces
-        a DIFFERENT TBA because account balance IS reduced.
-
-        Scenario identical to above but transaction is confirmed (cleared):
-          - Account balance: $900 (cleared -$100 IS counted)
-          - Category activity: -$100
-          - cat available = 400; TBA = 900 - 400 = 500 (correct)
-        """
-        acct = MockAccount()
-        grp = MockCategoryGroup()
-        cat = MockCategory(category_group_id=grp.id)
-        assign = MockAssignment(category_id=cat.id, month=JAN, assigned=D("500.00"))
-
-        svc = make_service(
-            accounts=[acct],
-            # Account balance: $1000 base - $100 cleared = $900
             balances={acct.id: D("900.00")},
             categories=[cat],
             groups=[grp],
@@ -310,49 +246,23 @@ class TestPendingTransactionInconsistency:
             activity_by_category={cat.id: {JAN: D("-100.00")}},
         )
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
-        # cat available = 500 - 100 = 400; TBA = 900 - 400 = 500
         assert result.to_be_assigned == D("500.00")
 
-    async def test_tba_difference_between_pending_and_confirmed(self):
-        """
-        Explicit side-by-side comparison showing the TBA difference
-        between a $100 pending transaction vs a $100 confirmed transaction.
-
-        Pending TBA = 600 (inflated — pending not in account but is in activity)
-        Confirmed TBA = 500 (correct — confirmed in both account and activity)
-
-        The $100 difference equals the pending transaction amount.
-        This documents the known inconsistency.
-        """
+    async def test_pending_transaction_moves_neither_side(self):
+        """While pending, the repo feeds exclude the amount from both sides:
+        balance stays $1000, activity stays 0, TBA = 1000 - 500 = 500."""
+        acct = MockAccount()
         grp = MockCategoryGroup()
-        cat_id = uuid.uuid4()
-        assign = MockAssignment(category_id=cat_id, month=JAN, assigned=D("500.00"))
+        cat = MockCategory(category_group_id=grp.id)
+        assign = MockAssignment(category_id=cat.id, month=JAN, assigned=D("500.00"))
 
-        # Pending scenario
-        pending_acct = MockAccount()
-        pending_svc = make_service(
-            accounts=[pending_acct],
-            balances={pending_acct.id: D("1000.00")},  # pending excluded from account
-            categories=[MockCategory(id=cat_id, category_group_id=grp.id)],
+        svc = make_service(
+            accounts=[acct],
+            balances={acct.id: D("1000.00")},
+            categories=[cat],
             groups=[grp],
-            assignments_by_category={cat_id: [assign]},
-            activity_by_category={cat_id: {JAN: D("-100.00")}},  # pending included in activity
+            assignments_by_category={cat.id: [assign]},
+            activity_by_category={cat.id: {}},
         )
-        pending_result = await pending_svc.get_budget_summary(BUDGET_ID, JAN)
-
-        # Confirmed scenario
-        confirmed_acct = MockAccount()
-        confirmed_svc = make_service(
-            accounts=[confirmed_acct],
-            balances={confirmed_acct.id: D("900.00")},  # confirmed reduces account
-            categories=[MockCategory(id=cat_id, category_group_id=grp.id)],
-            groups=[grp],
-            assignments_by_category={cat_id: [assign]},
-            activity_by_category={cat_id: {JAN: D("-100.00")}},
-        )
-        confirmed_result = await confirmed_svc.get_budget_summary(BUDGET_ID, JAN)
-
-        assert pending_result.to_be_assigned == D("600.00")
-        assert confirmed_result.to_be_assigned == D("500.00")
-        # The $100 difference equals the pending transaction amount
-        assert pending_result.to_be_assigned - confirmed_result.to_be_assigned == D("100.00")
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        assert result.to_be_assigned == D("500.00")

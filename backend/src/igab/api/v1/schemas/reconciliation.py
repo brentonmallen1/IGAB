@@ -4,14 +4,16 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
+from igab.domain.money import Money
+
 
 class ReconcileFinishRequest(BaseModel):
-    statement_balance: Decimal
+    statement_balance: Money
     adjustment_transaction_id: uuid.UUID | None = None
 
 
 class ReconcileAdjustmentRequest(BaseModel):
-    adjustment_amount: Decimal
+    adjustment_amount: Money
 
 
 class ReconciliationStatusResponse(BaseModel):

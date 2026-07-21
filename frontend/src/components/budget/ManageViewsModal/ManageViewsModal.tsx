@@ -114,7 +114,13 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
                   <span className={`manage-views-modal__filter-badge manage-views-modal__filter-badge--${QUICK_FILTER_VARIANTS[filter]}`}>
                     {QUICK_FILTER_LABELS[filter]}
                   </span>
-                  <Lock size={12} className="manage-views-modal__lock" title="Built-in filter — cannot be edited" />
+                  <span
+                    className="manage-views-modal__lock"
+                    style={{ display: 'inline-flex' }}
+                    title="Built-in filter — cannot be edited"
+                  >
+                    <Lock size={12} />
+                  </span>
                 </div>
               ))}
               {ALL_QUICK_FILTERS.filter((f) => !quickFilterOrder.includes(f)).length > 0 && (

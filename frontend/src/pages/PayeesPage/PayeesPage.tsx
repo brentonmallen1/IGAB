@@ -257,7 +257,7 @@ export function PayeesPage() {
                     type="checkbox"
                     className="payees-checkbox"
                     checked={isSelected}
-                    onChange={(e) => togglePayeeSelection(p.id, e.nativeEvent.shiftKey, allOrderedIds)}
+                    onChange={(e) => togglePayeeSelection(p.id, (e.nativeEvent as MouseEvent).shiftKey, allOrderedIds)}
                     aria-label={`Select ${p.name}`}
                   />
                 </div>

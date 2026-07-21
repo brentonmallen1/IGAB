@@ -164,9 +164,21 @@ class TestExplicitCategoryOverridesDefault:
         create_call = svc.transaction_repo.create.call_args
         assert create_call.kwargs["category_id"] == EXPLICIT_CAT_ID
 
-    async def test_explicit_category_updates_payee_default(self):
-        """When user explicitly sets a category, the payee memory is updated."""
+    async def test_explicit_category_does_not_overwrite_existing_default(self):
+        """The payee memory is learned once; a differently-categorized
+        transaction must not silently rewrite it."""
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
+        svc = make_service(payee)
+
+        data = base_txn_data(payee_name="Grocery Store", category_id=EXPLICIT_CAT_ID)
+        txn_call = await svc.create(BUDGET_ID, data)
+        assert txn_call is not None
+
+        svc.payee_repo.update.assert_not_called()
+
+    async def test_explicit_category_learned_when_payee_has_no_default(self):
+        """First categorization teaches the payee its default."""
+        payee = MockPayee(default_category_id=None)
         svc = make_service(payee)
 
         data = base_txn_data(payee_name="Grocery Store", category_id=EXPLICIT_CAT_ID)

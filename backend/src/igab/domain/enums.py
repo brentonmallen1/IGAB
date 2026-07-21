@@ -16,6 +16,15 @@ class ClearedStatus(StrEnum):
     RECONCILED = "reconciled"
 
 
+class UserClearedStatus(StrEnum):
+    """Cleared values a user may set directly. `pending` belongs to bank sync;
+    `reconciled` is granted only by the reconciliation flow (and removed only
+    via the explicit unreconcile action)."""
+
+    UNCLEARED = "uncleared"
+    CLEARED = "cleared"
+
+
 class TargetType(StrEnum):
     NEEDED_FOR_SPENDING = "needed_for_spending"
     SAVINGS_BALANCE = "savings_balance"

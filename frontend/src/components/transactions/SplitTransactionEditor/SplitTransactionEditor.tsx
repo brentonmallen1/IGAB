@@ -1,8 +1,8 @@
 import { Plus, Trash2, X } from 'lucide-react'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
-import { useCreateTransaction, useUpdateTransaction } from '../../../api/transactions'
+import { useCreateTransaction, useDeleteTransaction } from '../../../api/transactions'
 import { useAppStore } from '../../../stores/appStore'
-import { formatMoney } from '../../../utils/money'
+import { formatMoney, fromCents, sumToCents, toCents } from '../../../utils/money'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import type { Category, CategoryGroup, Transaction } from '../../../types'
 import './SplitTransactionEditor.css'
@@ -17,14 +17,21 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const { splitEditing, updateSplit, addSplit, removeSplit, stopSplitEditing } = useTransactionEditStore()
   const createTxn = useCreateTransaction(budgetId)
-  const updateTxn = useUpdateTransaction(budgetId)
+  const deleteTxn = useDeleteTransaction(budgetId)
 
   if (!splitEditing || splitEditing.transactionId !== txn.id) return null
 
   const { totalAmount, splits } = splitEditing
-  const assignedTotal = splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0)
-  const remaining = Math.abs(totalAmount) - assignedTotal
-  const isValid = Math.abs(remaining) < 0.01 && splits.every((s) => s.categoryId && parseFloat(s.amount) > 0)
+  // Integer-cents math: float sums would reject valid splits (0.10 problems)
+  const assignedCents = sumToCents(splits.map((s) => s.amount))
+  const remainingCents = Math.abs(toCents(totalAmount)) - assignedCents
+  const remaining = fromCents(remainingCents)
+  const isValid =
+    remainingCents === 0 &&
+    splits.every((s) => {
+      const cents = toCents(s.amount)
+      return s.categoryId && !isNaN(cents) && cents > 0
+    })
 
   const categoryOptions: ComboboxOption[] = categories.map((c) => {
     const group = categoryGroups.find((g) => g.id === c.category_group_id)
@@ -34,27 +41,22 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   async function handleSave() {
     if (!isValid) return
     const sign = totalAmount < 0 ? -1 : 1
-    await updateTxn.mutateAsync({
-      id: txn.id,
-      is_split: true,
-      category_id: null,
-    })
-    // Re-create via the create endpoint that accepts splits
-    // The backend handles clearing old splits and creating new ones
-    // We send a patch with the splits payload
-    createTxn.mutate({
+    // Create the split version first, then remove the original row — the
+    // split replaces it (previously both survived and double-counted).
+    await createTxn.mutateAsync({
       account_id: txn.account_id,
       date: txn.date,
       amount: totalAmount,
       payee_id: txn.payee_id ?? undefined,
       memo: txn.memo ?? undefined,
-      cleared: txn.cleared,
+      cleared: txn.cleared === 'reconciled' || txn.cleared === 'pending' ? 'cleared' : txn.cleared,
       splits: splits.map((s) => ({
         amount: parseFloat(s.amount) * sign,
         category_id: s.categoryId ?? undefined,
         memo: s.memo || undefined,
       })),
     })
+    await deleteTxn.mutateAsync({ id: txn.id, accountId: txn.account_id })
     stopSplitEditing()
   }
 
@@ -119,8 +121,8 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
           Add split
         </button>
 
-        <div className={`split-editor__remaining ${Math.abs(remaining) < 0.01 ? 'split-editor__remaining--done' : ''}`}>
-          {Math.abs(remaining) < 0.01
+        <div className={`split-editor__remaining ${remainingCents === 0 ? 'split-editor__remaining--done' : ''}`}>
+          {remainingCents === 0
             ? 'Fully assigned'
             : `Remaining: ${formatMoney(remaining)}`}
         </div>
@@ -130,7 +132,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
           <button
             className="split-editor__save"
             onClick={handleSave}
-            disabled={!isValid || createTxn.isPending}
+            disabled={!isValid || createTxn.isPending || deleteTxn.isPending}
           >
             Save Split
           </button>

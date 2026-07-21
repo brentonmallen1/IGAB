@@ -14,12 +14,11 @@ class BaseRepository[ModelT: Base]:
         self.session = session
 
     async def get(self, id: uuid.UUID) -> ModelT | None:
-        result = await self.session.execute(
-            select(self.model).where(
-                self.model.id == id,  # type: ignore
-                self.model.is_deleted == False,  # type: ignore  # noqa: E712
-            )
-        )
+        conditions = [self.model.id == id]  # type: ignore
+        # Not every model is soft-deletable (e.g. BudgetAssignment)
+        if hasattr(self.model, "is_deleted"):
+            conditions.append(self.model.is_deleted == False)  # noqa: E712
+        result = await self.session.execute(select(self.model).where(*conditions))
         return result.scalar_one_or_none()
 
     async def get_or_raise(self, id: uuid.UUID) -> ModelT:

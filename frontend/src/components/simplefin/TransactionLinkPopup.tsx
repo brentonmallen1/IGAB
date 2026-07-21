@@ -1,16 +1,11 @@
 import { useState } from 'react'
-import { Link2, X, Check, RefreshCw } from 'lucide-react'
+import { Link2, X, RefreshCw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '../../api/client'
 import { formatMoney } from '../../utils/money'
 import { formatDate } from '../../utils/dates'
-import type { Transaction, TransactionMatch } from '../../types'
+import type { Transaction } from '../../types'
 import './TransactionLinkPopup.css'
-
-interface LinkedTransactionDetail {
-  transaction: Transaction
-  match: TransactionMatch | null
-}
 
 interface Props {
   transaction: Transaction
@@ -29,25 +24,6 @@ function useLinkedTransaction(linkedId: string | null) {
     },
     enabled: !!linkedId,
     staleTime: 60_000,
-  })
-}
-
-function useMatchForTransactions(synced_id: string | null, manual_id: string | null) {
-  return useQuery({
-    queryKey: ['transaction-link-match', synced_id, manual_id],
-    queryFn: async () => {
-      // Find the match record for these two transactions
-      const { data } = await apiClient.get<TransactionMatch[]>('/simplefin/matches', {
-        params: { budget_id: 'current' },
-      })
-      return data.find(
-        (m) =>
-          (m.synced_transaction_id === synced_id && m.manual_transaction_id === manual_id) ||
-          (m.synced_transaction_id === manual_id && m.manual_transaction_id === synced_id),
-      ) ?? null
-    },
-    enabled: !!(synced_id && manual_id),
-    staleTime: 15_000,
   })
 }
 
@@ -120,12 +96,10 @@ export function TransactionLinkPopup({
   transaction,
   budgetId: _budgetId,
   onClose,
-  onAccept,
-  onReject,
 }: Props) {
   const { data: linked, isLoading } = useLinkedTransaction(transaction.linked_transaction_id)
 
-  const isSynced = !!transaction.import_id
+  const isSynced = !!transaction.sync_id
   const syncedTxn = isSynced ? transaction : linked
   const manualTxn = isSynced ? linked : transaction
 

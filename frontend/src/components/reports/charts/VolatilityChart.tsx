@@ -76,7 +76,7 @@ export function VolatilityReport({ budgetId }: Props) {
               <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={130} />
               <Tooltip
-                formatter={(v: number, name: string) => [formatMoney(v), name]}
+                formatter={(v: unknown, name: unknown) => [formatMoney(Number(v)), String(name)]}
                 offset={16}
                 isAnimationActive={false}
               />

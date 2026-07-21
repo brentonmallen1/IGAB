@@ -7,6 +7,7 @@ from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, upd
 
 from igab.db.models import Payee, Transaction
 from igab.repositories.base import BaseRepository
+from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
 
 if TYPE_CHECKING:
     import polars as pl
@@ -162,7 +163,11 @@ class TransactionRepository(BaseRepository[Transaction]):
         category_id: uuid.UUID,
         end_date: date,
     ) -> dict[date, Decimal]:
-        """Return {month_start: total_amount} for all months up to end_date."""
+        """Return {month_start: total_amount} for all months up to end_date.
+
+        Category activity sums LEAF rows (plain transactions + split children;
+        split parents carry no category) and only POSTED amounts.
+        """
         yr = cast(func.extract("year", Transaction.date), Integer)
         mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
@@ -173,8 +178,9 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             .where(
                 Transaction.category_id == category_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
+                NOT_DELETED,
+                LEAF,
+                POSTED,
                 Transaction.date <= end_date,
             )
             .group_by(yr, mo)
@@ -200,8 +206,9 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             .where(
                 Transaction.category_id.in_(category_ids),
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
+                NOT_DELETED,
+                LEAF,
+                POSTED,
                 Transaction.date <= end_date,
             )
             .group_by(Transaction.category_id, yr, mo)
@@ -211,37 +218,6 @@ class TransactionRepository(BaseRepository[Transaction]):
             month = date(row["yr"], row["mo"], 1)
             out.setdefault(row["category_id"], {})[month] = row["total"]
         return out
-
-    async def sum_by_category(
-        self,
-        category_id: uuid.UUID,
-        start_date: date | None = None,
-        end_date: date | None = None,
-    ) -> Decimal:
-        q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.category_id == category_id,
-            Transaction.is_deleted == False,  # noqa: E712
-            Transaction.parent_transaction_id.is_(None),
-        )
-        if start_date:
-            q = q.where(Transaction.date >= start_date)
-        if end_date:
-            q = q.where(Transaction.date <= end_date)
-        result = await self.session.execute(q)
-        return result.scalar_one()
-
-    async def find_by_import_id(self, account_id: uuid.UUID, import_id: str) -> Transaction | None:
-        result = await self.session.execute(
-            select(Transaction)
-            .where(
-                Transaction.account_id == account_id,
-                Transaction.import_id == import_id,
-                Transaction.is_deleted == False,  # noqa: E712
-            )
-            .order_by(Transaction.created_at.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
 
     _BULK_CHUNK = 1000  # ~12k params/chunk, well under asyncpg's 65535 limit
 
@@ -259,22 +235,44 @@ class TransactionRepository(BaseRepository[Transaction]):
         """Bulk insert transactions from a Polars DataFrame."""
         return await self.bulk_create(df.to_dicts())
 
-    async def find_pending_by_import_id(
-        self, account_id: uuid.UUID, import_id: str
-    ) -> Transaction | None:
-        """Find a pending (not-yet-posted) transaction by import_id for clearing."""
+    async def find_by_sync_id(self, account_id: uuid.UUID, sync_id: str) -> Transaction | None:
+        """Find a transaction by bank sync ID (SimpleFIN, Plaid, etc.)."""
         result = await self.session.execute(
             select(Transaction)
             .where(
                 Transaction.account_id == account_id,
-                Transaction.import_id == import_id,
-                Transaction.cleared == "pending",
+                Transaction.sync_id == sync_id,
                 Transaction.is_deleted == False,  # noqa: E712
             )
             .order_by(Transaction.created_at.desc())
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def find_stale_pending_synced(
+        self,
+        account_id: uuid.UUID,
+        sync_source: str,
+        window_start: date | None,
+        active_sync_ids: set[str],
+    ) -> list[Transaction]:
+        """Sync-created pending rows inside the fetched window whose bank id no
+        longer appears in the feed — the bank dropped the auth or re-identified
+        it at posting. Never matches user-created rows (sync_source filter).
+        """
+        q = select(Transaction).where(
+            Transaction.account_id == account_id,
+            Transaction.cleared == "pending",
+            Transaction.sync_source == sync_source,
+            Transaction.sync_id.isnot(None),
+            Transaction.is_deleted == False,  # noqa: E712
+        )
+        if window_start is not None:
+            q = q.where(Transaction.date >= window_start)
+        if active_sync_ids:
+            q = q.where(Transaction.sync_id.notin_(active_sync_ids))
+        result = await self.session.execute(q)
+        return list(result.scalars().all())
 
     async def update_cleared(self, transaction_id: uuid.UUID, cleared: str) -> None:
         await self.session.execute(
@@ -325,23 +323,26 @@ class TransactionRepository(BaseRepository[Transaction]):
         amount: Decimal,
         txn_date: date,
         date_window_days: int = 3,
+        exclude_id: uuid.UUID | None = None,
     ) -> list[Transaction]:
         """Find manual transactions that could match a synced transaction."""
         from datetime import timedelta
 
         date_low = txn_date - timedelta(days=date_window_days)
         date_high = txn_date + timedelta(days=date_window_days)
-        result = await self.session.execute(
-            select(Transaction).where(
-                Transaction.account_id == account_id,
-                Transaction.amount == amount,
-                Transaction.date.between(date_low, date_high),
-                Transaction.import_id.is_(None),
-                Transaction.linked_transaction_id.is_(None),
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-            )
+        q = select(Transaction).where(
+            Transaction.account_id == account_id,
+            Transaction.amount == amount,
+            Transaction.date.between(date_low, date_high),
+            Transaction.import_id.is_(None),
+            Transaction.sync_id.is_(None),
+            Transaction.linked_transaction_id.is_(None),
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.parent_transaction_id.is_(None),
         )
+        if exclude_id is not None:
+            q = q.where(Transaction.id != exclude_id)
+        result = await self.session.execute(q)
         return list(result.scalars().all())
 
     async def get_existing_import_ids(
@@ -383,6 +384,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.account_id == account_id,
                 Transaction.amount == amount,
                 Transaction.date.between(date_low, date_high),
+                Transaction.sync_id.is_(None),  # Exclude already-synced transactions
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
             )
@@ -407,6 +409,50 @@ class TransactionRepository(BaseRepository[Transaction]):
             .order_by(Transaction.date.desc())
         )
         return [(row[0], row[1]) for row in result.all()]
+
+    async def find_duplicate_candidate_pairs(
+        self,
+        account_id: uuid.UUID,
+        date_window_days: int = 5,
+    ) -> list[tuple[Transaction, str | None, Transaction, str | None]]:
+        """Same-amount transaction pairs within a date window, paired in SQL.
+
+        Replaces an O(n²) Python sweep: the self-join emits only pairs that
+        already match on amount and date proximity; the caller scores payees.
+        Returns (txn_a, payee_a_name, txn_b, payee_b_name) with a.id < b.id
+        so each pair appears exactly once.
+        """
+        from datetime import timedelta
+
+        from sqlalchemy.orm import aliased
+
+        other = aliased(Transaction)
+        payee_a = aliased(Payee)
+        payee_b = aliased(Payee)
+        window = timedelta(days=date_window_days)
+
+        result = await self.session.execute(
+            select(Transaction, payee_a.name, other, payee_b.name)
+            .join(
+                other,
+                and_(
+                    other.account_id == Transaction.account_id,
+                    other.amount == Transaction.amount,
+                    other.id > Transaction.id,
+                    other.date.between(Transaction.date - window, Transaction.date + window),
+                    other.is_deleted == False,  # noqa: E712
+                    other.parent_transaction_id.is_(None),
+                ),
+            )
+            .outerjoin(payee_a, Transaction.payee_id == payee_a.id)
+            .outerjoin(payee_b, other.payee_id == payee_b.id)
+            .where(
+                Transaction.account_id == account_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.parent_transaction_id.is_(None),
+            )
+        )
+        return [(row[0], row[1], row[2], row[3]) for row in result.all()]
 
     async def get_most_common_category_for_payee(
         self,
