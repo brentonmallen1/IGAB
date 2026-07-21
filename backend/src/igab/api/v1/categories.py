@@ -25,6 +25,9 @@ from igab.api.v1.schemas.category import (
     FillTargetsPreviewResponse,
 )
 from igab.dependencies import (
+    BudgetAccess,
+    CategoryAccess,
+    CategoryGroupAccess,
     CurrentUser,
     get_budget_service,
     get_category_group_repo,
@@ -46,7 +49,7 @@ router = APIRouter()
 
 @router.get("/{budget_id}/category-groups", response_model=list[CategoryGroupResponse])
 async def list_category_groups(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
     include_hidden: bool = False,
@@ -61,7 +64,7 @@ async def list_category_groups(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_category_group(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: CategoryGroupCreate,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
@@ -76,7 +79,7 @@ async def create_category_group(
 
 @router.patch("/category-groups/{group_id}", response_model=CategoryGroupResponse)
 async def update_category_group(
-    group_id: uuid.UUID,
+    group_id: CategoryGroupAccess,
     body: CategoryGroupUpdate,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
@@ -91,7 +94,7 @@ async def update_category_group(
 
 @router.delete("/category-groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category_group(
-    group_id: uuid.UUID,
+    group_id: CategoryGroupAccess,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
 ) -> None:
@@ -109,7 +112,7 @@ async def delete_category_group(
 
 @router.get("/{budget_id}/categories", response_model=list[CategoryResponse])
 async def list_categories(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     include_hidden: bool = False,
@@ -124,7 +127,7 @@ async def list_categories(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_category(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: CategoryCreate,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
@@ -141,7 +144,7 @@ async def create_category(
 
 @router.patch("/categories/{category_id}", response_model=CategoryResponse)
 async def update_category(
-    category_id: uuid.UUID,
+    category_id: CategoryAccess,
     body: CategoryUpdate,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
@@ -156,7 +159,7 @@ async def update_category(
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
-    category_id: uuid.UUID,
+    category_id: CategoryAccess,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
 ) -> None:
@@ -168,7 +171,7 @@ async def delete_category(
 
 @router.get("/{budget_id}/months/{month}", response_model=BudgetMonthResponse)
 async def get_budget_month(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     month: date,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
@@ -201,7 +204,7 @@ async def get_budget_month(
     status_code=status.HTTP_201_CREATED,
 )
 async def upsert_category_target(
-    category_id: uuid.UUID,
+    category_id: CategoryAccess,
     body: CategoryTargetCreate,
     current_user: CurrentUser,
     target_svc: Annotated[TargetService, Depends(get_target_service)],
@@ -218,7 +221,7 @@ async def upsert_category_target(
 
 @router.get("/categories/{category_id}/target", response_model=CategoryTargetResponse | None)
 async def get_category_target(
-    category_id: uuid.UUID,
+    category_id: CategoryAccess,
     current_user: CurrentUser,
     target_svc: Annotated[TargetService, Depends(get_target_service)],
 ) -> CategoryTargetResponse | None:
@@ -230,7 +233,7 @@ async def get_category_target(
 
 @router.delete("/categories/{category_id}/target", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category_target(
-    category_id: uuid.UUID,
+    category_id: CategoryAccess,
     current_user: CurrentUser,
     target_svc: Annotated[TargetService, Depends(get_target_service)],
 ) -> None:
@@ -239,7 +242,7 @@ async def delete_category_target(
 
 @router.get("/{budget_id}/targets", response_model=list[CategoryTargetResponse])
 async def list_budget_targets(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     target_repo: Annotated[TargetRepository, Depends(get_target_repo)],
@@ -252,12 +255,12 @@ async def list_budget_targets(
 
 @router.patch("/categories/{category_id}/assignment", status_code=status.HTTP_204_NO_CONTENT)
 async def set_category_assignment(
-    category_id: uuid.UUID,
+    category_id: CategoryAccess,
     body: AssignmentUpdate,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    budget_id: BudgetAccess,
     month: date = Query(...),
-    budget_id: uuid.UUID = Query(...),
 ) -> None:
     await budget_service.set_assignment(budget_id, category_id, month, body.amount)
 
@@ -270,7 +273,7 @@ async def set_category_assignment(
     response_model=CategoryHistoryResponse,
 )
 async def get_category_history(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     category_id: uuid.UUID,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
@@ -295,7 +298,7 @@ async def get_category_history(
     response_model=list[CategoryHistoryResponse],
 )
 async def get_category_history_batch(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: CategoryHistoryBatchRequest,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
@@ -322,7 +325,7 @@ async def get_category_history_batch(
 
 @router.post("/{budget_id}/categories/auto-assign", status_code=status.HTTP_204_NO_CONTENT)
 async def auto_assign_categories(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: AutoAssignRequest,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
@@ -336,7 +339,7 @@ async def auto_assign_categories(
     response_model=FillTargetsPreviewResponse,
 )
 async def fill_targets_preview(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
     target_repo: Annotated[TargetRepository, Depends(get_target_repo)],
@@ -407,7 +410,7 @@ async def fill_targets_preview(
 
 @router.post("/{budget_id}/auto-assign/apply", status_code=status.HTTP_204_NO_CONTENT)
 async def fill_targets_apply(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: FillTargetsApplyRequest,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],

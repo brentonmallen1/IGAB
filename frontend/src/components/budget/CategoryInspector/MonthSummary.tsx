@@ -21,7 +21,7 @@ function formatMonthLabel(month: string) {
   return date.toLocaleDateString('en-US', { month: 'long' })
 }
 
-function PastTargetRow({ target, categoryName, onEdit, budgetId }: {
+function PastTargetRow({ target, categoryName, onEdit }: {
   target: CategoryTarget
   categoryName: string
   onEdit: () => void

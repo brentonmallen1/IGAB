@@ -17,6 +17,12 @@ from igab.db.models import (
     Transaction,
 )
 
+# CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
+# transfers to off-budget accounts count as real income/expense; internal
+# uncategorized transfers never do). For category-scoped queries the
+# predicate is vacuously true, keeping one uniform rule.
+from igab.repositories.txn_filters import CASH_FLOW_ROW, LEAF, NOT_DELETED, PARENT_ROW, POSTED
+
 
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
@@ -43,11 +49,13 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
                 Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                Transaction.parent_transaction_id.is_(None),
+                LEAF,
+                CASH_FLOW_ROW,
             )
         )
         if category_ids:
@@ -96,10 +104,12 @@ class ReportService:
 
         q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
+            NOT_DELETED,
+            POSTED,
             Transaction.date >= start,
             Transaction.date <= today,
-            Transaction.parent_transaction_id.is_(None),
+            PARENT_ROW,
+            CASH_FLOW_ROW,
         )
         rows = (await self.session.execute(q)).all()
 
@@ -242,7 +252,9 @@ class ReportService:
         )
         prev_end = start_date - timedelta(days=1)
 
-        # All non-deleted, non-split-child transactions for the budget
+        # All posted rows for the budget: parent rows feed money flows
+        # (net worth, income/expenses, burn); leaf rows feed the category
+        # breakdown (split children carry the categories).
         q = select(
             Transaction.id,
             Transaction.date,
@@ -251,10 +263,12 @@ class ReportService:
             Transaction.payee_id,
             Transaction.transfer_id,
             Transaction.account_id,
+            Transaction.is_split,
+            Transaction.parent_transaction_id,
         ).where(
             Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
-            Transaction.parent_transaction_id.is_(None),
+            NOT_DELETED,
+            POSTED,
         )
         all_txns = (await self.session.execute(q)).all()
 
@@ -291,34 +305,51 @@ class ReportService:
                 "account_id": [str(r.account_id) for r in all_txns],
                 "category_id": [str(r.category_id) if r.category_id else "" for r in all_txns],
                 "is_transfer": [r.transfer_id is not None for r in all_txns],
+                "is_split": [r.is_split for r in all_txns],
+                "is_parent_row": [r.parent_transaction_id is None for r in all_txns],
             },
-            schema_overrides={"date": pl.Date, "amount": pl.Float64, "is_transfer": pl.Boolean},
+            schema_overrides={
+                "date": pl.Date,
+                "amount": pl.Float64,
+                "is_transfer": pl.Boolean,
+                "is_split": pl.Boolean,
+                "is_parent_row": pl.Boolean,
+            },
         )
 
         on_budget_ids = {aid for aid, a in accounts.items() if a.on_budget}
-        df = df.with_columns(pl.col("account_id").is_in(list(on_budget_ids)).alias("on_budget"))
+        df = df.with_columns(
+            pl.col("account_id").is_in(list(on_budget_ids)).alias("on_budget"),
+            # Cash-flow rows: non-transfers plus CATEGORIZED transfer legs
+            # (spending transfers to off-budget accounts)
+            (~pl.col("is_transfer") | (pl.col("category_id") != "")).alias("cash_flow"),
+        )
+
+        # Parent rows carry the account-level amounts (split children would
+        # double-count); leaf rows carry the categories.
+        pdf = df.filter(pl.col("is_parent_row"))
 
         # Net worth = sum of all on_budget account transactions (transfers cancel each other)
         net_worth = Decimal(
-            str(df.filter(pl.col("on_budget")).select(pl.col("amount").sum()).item() or 0)
+            str(pdf.filter(pl.col("on_budget")).select(pl.col("amount").sum()).item() or 0)
         )
 
         # Previous net worth: sum up to start_date
         net_worth_prev = Decimal(
             str(
-                df.filter(pl.col("on_budget") & (pl.col("date") < start_date))
+                pdf.filter(pl.col("on_budget") & (pl.col("date") < start_date))
                 .select(pl.col("amount").sum())
                 .item()
                 or 0
             )
         )
 
-        # Non-transfer expenses only
-        expenses_df = df.filter(~pl.col("is_transfer") & (pl.col("amount") < 0))
+        # Cash-flow expenses only
+        expenses_df = pdf.filter(pl.col("cash_flow") & (pl.col("amount") < 0))
 
         # Current period income/expenses
-        period_df = df.filter(
-            (pl.col("date") >= start_date) & (pl.col("date") <= end_date) & ~pl.col("is_transfer")
+        period_df = pdf.filter(
+            (pl.col("date") >= start_date) & (pl.col("date") <= end_date) & pl.col("cash_flow")
         )
         income_this = Decimal(
             str(period_df.filter(pl.col("amount") > 0).select(pl.col("amount").sum()).item() or 0)
@@ -331,8 +362,8 @@ class ReportService:
         )
 
         # Previous period expenses
-        prev_df = df.filter(
-            (pl.col("date") >= prev_start) & (pl.col("date") <= prev_end) & ~pl.col("is_transfer")
+        prev_df = pdf.filter(
+            (pl.col("date") >= prev_start) & (pl.col("date") <= prev_end) & pl.col("cash_flow")
         )
         expenses_prev = Decimal(
             str(
@@ -373,9 +404,12 @@ class ReportService:
             float(net_worth) / daily_burn if daily_burn > 0 and net_worth > 0 else None
         )
 
-        # Top 3 categories in current period
-        cat_df = expenses_df.filter(
-            (pl.col("date") >= start_date)
+        # Top 3 categories in current period — leaf rows so splits count;
+        # categorized transfer legs (off-budget spending) count too
+        cat_df = df.filter(
+            ~pl.col("is_split")
+            & (pl.col("amount") < 0)
+            & (pl.col("date") >= start_date)
             & (pl.col("date") <= end_date)
             & (pl.col("category_id") != "")
         )
@@ -432,8 +466,9 @@ class ReportService:
 
         q = select(Transaction.date, Transaction.amount, Transaction.account_id).where(
             Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
-            Transaction.parent_transaction_id.is_(None),
+            NOT_DELETED,
+            POSTED,
+            PARENT_ROW,
             Transaction.account_id.in_([a.id for a in accounts]),
         )
         txns = (await self.session.execute(q)).all()
@@ -546,12 +581,13 @@ class ReportService:
 
         q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
+            NOT_DELETED,
+            POSTED,
             Transaction.amount < 0,
             Transaction.date >= start,
             Transaction.date <= today,
-            Transaction.parent_transaction_id.is_(None),
-            Transaction.transfer_id.is_(None),
+            PARENT_ROW,
+            CASH_FLOW_ROW,
         )
         txns = (await self.session.execute(q)).all()
 
@@ -622,12 +658,13 @@ class ReportService:
         # Get total income from transactions
         income_q = select(func.sum(Transaction.amount)).where(
             Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
+            NOT_DELETED,
+            POSTED,
             Transaction.date >= start_date,
             Transaction.date <= end_date,
             Transaction.amount > 0,
-            Transaction.parent_transaction_id.is_(None),
-            Transaction.transfer_id.is_(None),
+            PARENT_ROW,
+            CASH_FLOW_ROW,
         )
         total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
 
@@ -731,6 +768,8 @@ class ReportService:
                 Transaction.payee_id,
                 Transaction.category_id,
                 Transaction.transfer_id,
+                Transaction.is_split,
+                Transaction.parent_transaction_id,
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
                 CategoryGroup.id.label("group_id"),
@@ -741,11 +780,11 @@ class ReportService:
             .outerjoin(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.transfer_id.is_(None),
+                CASH_FLOW_ROW,
             )
         )
         if account_ids:
@@ -762,8 +801,10 @@ class ReportService:
                 "group_categories": {},
             }
 
-        income_rows = [r for r in rows if r.amount > 0]
-        expense_rows = [r for r in rows if r.amount < 0]
+        # Income at parent level (cash-flow view); expense category flows at
+        # leaf level so split children reach their categories.
+        income_rows = [r for r in rows if r.amount > 0 and r.parent_transaction_id is None]
+        expense_rows = [r for r in rows if r.amount < 0 and not r.is_split]
 
         total_income = Decimal(str(sum(float(r.amount) for r in income_rows)))
         total_expense = Decimal(str(abs(sum(float(r.amount) for r in expense_rows))))
@@ -920,15 +961,16 @@ class ReportService:
             )
         )
 
-        # Activity (expenses) in range
+        # Activity (expenses) in range — leaf rows so split children count
         spend_q = select(Transaction.category_id, Transaction.amount).where(
             Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
+            NOT_DELETED,
+            POSTED,
             Transaction.amount < 0,
             Transaction.date >= start_date,
             Transaction.date <= end_date,
-            Transaction.parent_transaction_id.is_(None),
-            Transaction.transfer_id.is_(None),
+            LEAF,
+            CASH_FLOW_ROW,
             Transaction.category_id.isnot(None),
         )
         if category_ids:
@@ -1013,12 +1055,13 @@ class ReportService:
         end = _last_day(months_list[-1])
         spend_q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
+            NOT_DELETED,
+            POSTED,
             Transaction.amount < 0,
             Transaction.date >= start,
             Transaction.date <= end,
-            Transaction.parent_transaction_id.is_(None),
-            Transaction.transfer_id.is_(None),
+            LEAF,
+            CASH_FLOW_ROW,
             Transaction.category_id.isnot(None),
         )
         spending = (await self.session.execute(spend_q)).all()
@@ -1075,11 +1118,12 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
                 Transaction.amount < 0,
                 Transaction.date >= start,
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.transfer_id.is_(None),
+                LEAF,
+                CASH_FLOW_ROW,
                 CategoryGroup.is_system == False,  # noqa: E712
             )
         )
@@ -1157,12 +1201,13 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
                 Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.transfer_id.is_(None),
+                LEAF,
+                CASH_FLOW_ROW,
                 CategoryGroup.is_system == False,  # noqa: E712
             )
         )
@@ -1233,11 +1278,12 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
                 Transaction.amount < 0,
                 Transaction.date >= start,
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.transfer_id.is_(None),
+                LEAF,
+                CASH_FLOW_ROW,
                 CategoryGroup.is_system == False,  # noqa: E712
             )
         )
@@ -1313,12 +1359,15 @@ class ReportService:
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
                 Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.transfer_id.is_(None),
+                # Payee-of-record lives on the parent row; per-child payees on
+                # splits are intentionally not surfaced here.
+                PARENT_ROW,
+                CASH_FLOW_ROW,
                 Transaction.payee_id.isnot(None),
             )
         )
@@ -1397,6 +1446,11 @@ class ReportService:
                     "payee_name": row["payee_name"],
                     "total": Decimal(str(row["total"])),
                     "count": int(row["count"]),
+                    "pct": (
+                        float(Decimal(str(row["total"])) / grand_total * 100)
+                        if grand_total
+                        else 0.0
+                    ),
                     "monthly_trend": monthly_trend,
                     "top_categories": top_categories,
                     "is_recurring": is_recurring,
@@ -1415,14 +1469,16 @@ class ReportService:
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
     ) -> list[dict]:
+        # Leaf rows: with a category filter, split spending must be reachable
         q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
+            NOT_DELETED,
+            POSTED,
             Transaction.amount < 0,
             Transaction.date >= start_date,
             Transaction.date <= end_date,
-            Transaction.parent_transaction_id.is_(None),
-            Transaction.transfer_id.is_(None),
+            LEAF,
+            CASH_FLOW_ROW,
         )
         if category_ids:
             q = q.where(Transaction.category_id.in_(category_ids))
@@ -1502,11 +1558,13 @@ class ReportService:
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.transfer_id.is_(None),
+                # Timeline is parent-centric: one entry per real purchase.
+                PARENT_ROW,
+                CASH_FLOW_ROW,
             )
         )
         if category_ids:

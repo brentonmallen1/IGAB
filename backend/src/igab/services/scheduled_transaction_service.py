@@ -6,6 +6,7 @@ from decimal import Decimal
 from igab.db.models import ScheduledTransaction
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
 from igab.services.transaction_service import TransactionCreate, TransactionService
+from igab.utils.clock import today_utc
 
 
 @dataclass
@@ -73,22 +74,24 @@ class ScheduledTransactionService:
             budget_id,
             TransactionCreate(
                 account_id=sched.account_id,
-                date=date.today(),
+                date=today_utc(),
                 amount=sched.amount,
                 payee_id=sched.payee_id,
                 category_id=sched.category_id,
                 memo=sched.memo,
                 cleared="uncleared",
                 approved=True,
+                # A scheduled transfer must materialize BOTH legs
+                transfer_account_id=sched.transfer_account_id,
             ),
         )
         next_date = calculate_next(sched)
         await self.repo.update(
-            sched_id, last_created_date=date.today(), next_occurrence_date=next_date
+            sched_id, last_created_date=today_utc(), next_occurrence_date=next_date
         )
 
     async def process_due(self, budget_id: uuid.UUID) -> int:
-        today = date.today()
+        today = today_utc()
         due = [s for s in await self.repo.get_due(today) if str(s.budget_id) == str(budget_id)]
         created = 0
         for sched in due:

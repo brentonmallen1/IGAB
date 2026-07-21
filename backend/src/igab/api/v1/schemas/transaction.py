@@ -4,11 +4,12 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from igab.domain.enums import ClearedStatus
+from igab.domain.enums import UserClearedStatus
+from igab.domain.money import Money
 
 
 class SplitCreate(BaseModel):
-    amount: Decimal
+    amount: Money
     category_id: uuid.UUID | None = None
     payee_id: uuid.UUID | None = None
     payee_name: str | None = None
@@ -18,24 +19,27 @@ class SplitCreate(BaseModel):
 class TransactionCreate(BaseModel):
     account_id: uuid.UUID
     date: datetime.date
-    amount: Decimal
+    amount: Money
     payee_id: uuid.UUID | None = None
     payee_name: str | None = None
     category_id: uuid.UUID | None = None
     memo: str | None = None
-    cleared: ClearedStatus = ClearedStatus.UNCLEARED
+    cleared: UserClearedStatus = UserClearedStatus.UNCLEARED
     approved: bool = True
     transfer_account_id: uuid.UUID | None = None
     splits: list[SplitCreate] | None = None
 
 
 class TransactionUpdate(BaseModel):
+    """PATCH body: omitted fields are untouched; an explicit null clears the
+    nullable fields (category_id, payee_id, memo)."""
+
     date: datetime.date | None = None
-    amount: Decimal | None = None
+    amount: Money | None = None
     payee_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
     memo: str | None = None
-    cleared: ClearedStatus | None = None
+    cleared: UserClearedStatus | None = None
     approved: bool | None = None
 
 
@@ -44,6 +48,7 @@ class TransactionResponse(BaseModel):
     budget_id: uuid.UUID
     account_id: uuid.UUID
     date: datetime.date
+    entered_date: datetime.date | None = None
     amount: Decimal
     payee_id: uuid.UUID | None
     category_id: uuid.UUID | None
@@ -55,6 +60,8 @@ class TransactionResponse(BaseModel):
     is_split: bool
     import_id: str | None
     import_description: str | None
+    sync_id: str | None
+    sync_source: str | None
     has_sync_source: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -64,7 +71,7 @@ class TransactionResponse(BaseModel):
 
 class BulkClearedUpdate(BaseModel):
     transaction_ids: list[uuid.UUID]
-    cleared: ClearedStatus
+    cleared: UserClearedStatus
 
 
 class BulkCategorize(BaseModel):
@@ -78,6 +85,16 @@ class BulkDelete(BaseModel):
 
 class BulkApprove(BaseModel):
     transaction_ids: list[uuid.UUID]
+
+
+class BulkItemFailure(BaseModel):
+    id: uuid.UUID
+    reason: str
+
+
+class BulkActionResult(BaseModel):
+    updated: list[uuid.UUID]
+    failed: list[BulkItemFailure]
 
 
 class PendingReviewCount(BaseModel):

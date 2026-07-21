@@ -11,6 +11,7 @@ import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { useSuggestCategory } from '../../../api/ai'
 import { today } from '../../../utils/dates'
+import { fromCents, sumToCents, toCents } from '../../../utils/money'
 import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import './TransactionEditor.css'
@@ -50,9 +51,14 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
     if (!transaction || Number(transaction.amount) < 0) return ''
     return String(Number(transaction.amount))
   })
-  const [cleared, setCleared] = useState<'uncleared' | 'cleared' | 'reconciled'>(
-    (transaction?.cleared === 'pending' ? 'uncleared' : transaction?.cleared) ?? 'uncleared'
-  )
+  const [cleared, setCleared] = useState<'uncleared' | 'cleared'>(() => {
+    // 'pending' belongs to bank sync and 'reconciled' to the reconciliation
+    // flow — neither is user-settable via the API.
+    if (transaction?.cleared === 'cleared' || transaction?.cleared === 'reconciled') {
+      return 'cleared'
+    }
+    return 'uncleared'
+  })
   const [isTransfer, setIsTransfer] = useState(!!transaction?.transfer_id)
   const [transferAccountId, setTransferAccountId] = useState('')
   const [showPayeeDropdown, setShowPayeeDropdown] = useState(false)
@@ -103,6 +109,10 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
     .filter((g) => g.cats.length > 0)
 
   const transferAccounts = accounts.filter((a) => a.id !== accountId)
+  const transferTarget = accounts.find((a) => a.id === transferAccountId)
+  // Off-budget transfers are real spending (YNAB semantics) and may carry a
+  // category on the on-budget side
+  const transferIsOffBudget = isTransfer && !!transferTarget && !transferTarget.on_budget
 
   function handlePayeeSelect(p: Payee) {
     setPayeeQuery(p.name)
@@ -177,7 +187,10 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
       cleared,
       approved: true,
       ...(isTransfer
-        ? { transfer_account_id: transferAccountId }
+        ? {
+            transfer_account_id: transferAccountId,
+            ...(transferIsOffBudget && categoryId ? { category_id: categoryId } : {}),
+          }
         : {
             payee_id: selectedPayeeId || undefined,
             payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
@@ -219,9 +232,16 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
 
   const splitIsValid = (() => {
     if (!isSplit) return true
-    const totalAmt = Math.abs((parseFloat(outflow) || 0) || (parseFloat(inflow) || 0))
-    const splitTotal = splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0)
-    return Math.abs(splitTotal - totalAmt) < 0.01 && splits.every((s) => s.categoryId && parseFloat(s.amount) > 0)
+    // Integer-cents comparison — float sums reject valid splits (0.10 issues)
+    const totalCents = Math.abs(toCents(outflow || inflow || '0')) || 0
+    const splitCents = sumToCents(splits.map((s) => s.amount))
+    return (
+      splitCents === totalCents &&
+      splits.every((s) => {
+        const cents = toCents(s.amount)
+        return s.categoryId && !isNaN(cents) && cents > 0
+      })
+    )
   })()
 
   return (
@@ -309,22 +329,48 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
           </div>
 
           {isTransfer ? (
-            <div className="txn-editor__field">
-              <label className="txn-editor__label">To Account</label>
-              <select
-                className="txn-editor__select"
-                value={transferAccountId}
-                onChange={(e) => setTransferAccountId(e.target.value)}
-                required={isTransfer}
-              >
-                <option value="">Select account…</option>
-                {transferAccounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div className="txn-editor__field">
+                <label className="txn-editor__label">To Account</label>
+                <select
+                  className="txn-editor__select"
+                  value={transferAccountId}
+                  onChange={(e) => setTransferAccountId(e.target.value)}
+                  required={isTransfer}
+                >
+                  <option value="">Select account…</option>
+                  {transferAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {transferIsOffBudget && (
+                <div className="txn-editor__field">
+                  <label className="txn-editor__label">
+                    Category
+                    <span className="txn-editor__label-hint">
+                      {' '}— transfers to off-budget accounts count as spending
+                    </span>
+                  </label>
+                  <select
+                    className="txn-editor__select"
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                  >
+                    <option value="">No category</option>
+                    {groupedCategories.map(({ group, cats }) => (
+                      <optgroup key={group.id} label={group.name}>
+                        {cats.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
           ) : isSplit ? (
             <div className="txn-editor__field">
               <label className="txn-editor__label">
@@ -381,12 +427,12 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
                     <Plus size={12} /> Add split
                   </button>
                   {(() => {
-                    const splitTotal = splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0)
-                    const totalAmt = Math.abs((parseFloat(outflow) || 0) || (parseFloat(inflow) || 0))
-                    const remaining = totalAmt - splitTotal
+                    const splitCents = sumToCents(splits.map((s) => s.amount))
+                    const totalCents = Math.abs(toCents(outflow || inflow || '0')) || 0
+                    const remainingCents = totalCents - splitCents
                     return (
-                      <span className={`txn-editor__split-remaining ${Math.abs(remaining) < 0.01 ? 'txn-editor__split-remaining--done' : ''}`}>
-                        {Math.abs(remaining) < 0.01 ? 'Fully assigned' : `Remaining: $${remaining.toFixed(2)}`}
+                      <span className={`txn-editor__split-remaining ${remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}>
+                        {remainingCents === 0 ? 'Fully assigned' : `Remaining: $${fromCents(remainingCents).toFixed(2)}`}
                       </span>
                     )
                   })()}

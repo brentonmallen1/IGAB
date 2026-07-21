@@ -230,7 +230,7 @@ export function Sidebar() {
         <div className="sidebar__accounts-mini">
           <div className="sidebar__accounts-mini-divider" />
           {[...onBudgetTypes, 'tracking'].flatMap((type) =>
-            (grouped.get(type) ?? []).map((acc) => (
+            (grouped.get(type) ?? []).map((acc: Account) => (
               <button
                 key={acc.id}
                 className="sidebar__account-mini"

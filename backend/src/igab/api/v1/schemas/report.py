@@ -241,6 +241,7 @@ class PayeeSpending(BaseModel):
     payee_name: str
     total: Decimal
     count: int
+    pct: float
     monthly_trend: list[PayeeTrend]
     top_categories: list[PayeeTopCategory]
     is_recurring: bool

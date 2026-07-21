@@ -19,6 +19,8 @@ TRANSACTION_SCHEMA: dict[str, PolarsDataType] = {
     "is_split": pl.Boolean,
     "import_id": pl.String,
     "import_batch_id": pl.String,
+    "sync_id": pl.String,
+    "sync_source": pl.String,
 }
 
 ACCOUNT_SCHEMA: dict[str, PolarsDataType] = {
@@ -70,6 +72,8 @@ TRANSACTION_INSERT_COLUMNS = [
     "approved",
     "import_id",
     "import_batch_id",
+    "sync_id",
+    "sync_source",
     "is_split",
     "is_deleted",
 ]

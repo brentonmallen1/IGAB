@@ -29,16 +29,16 @@ export function PayeeReport({ budgetId }: Props) {
   const chartData = displayed.map((p) => ({
     name: p.payee_name.length > 18 ? p.payee_name.slice(0, 16) + '…' : p.payee_name,
     Amount: Number(p.total),
-    Visits: p.transaction_count,
+    Visits: p.count,
     isRecurring: p.is_recurring,
   }))
 
   const tableRows = displayed.map((p) => ({
     id: p.payee_id,
     name: p.payee_name,
-    subName: p.is_recurring ? 'Recurring' : `${p.transaction_count} transactions`,
+    subName: p.is_recurring ? 'Recurring' : `${p.count} transactions`,
     amount: -Number(p.total),
-    pct: Number(p.pct),
+    pct: p.pct,
   }))
 
   const grandTotal = payees.reduce((s, p) => s + Number(p.total), 0)
@@ -90,8 +90,8 @@ export function PayeeReport({ budgetId }: Props) {
               <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={140} />
               <Tooltip
-                formatter={(v: number, name: string) =>
-                  name === 'Amount' ? [formatMoney(v), name] : [v, name]
+                formatter={(v: unknown, name: unknown) =>
+                  name === 'Amount' ? [formatMoney(Number(v)), name] : [Number(v), String(name)]
                 }
                 offset={16}
                 isAnimationActive={false}

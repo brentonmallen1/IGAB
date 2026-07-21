@@ -77,6 +77,22 @@ class TransactionMatchRepository:
         )
         return result.scalar_one_or_none() is not None
 
+    async def cancel_pending_for_transaction(self, transaction_id: uuid.UUID) -> int:
+        """Reject all pending matches touching a transaction (delete/merge flows)."""
+        from sqlalchemy import update
+
+        result = await self.session.execute(
+            update(TransactionMatch)
+            .where(
+                TransactionMatch.status == "pending",
+                (TransactionMatch.synced_transaction_id == transaction_id)
+                | (TransactionMatch.manual_transaction_id == transaction_id),
+            )
+            .values(status="rejected")
+        )
+        await self.session.flush()
+        return int(getattr(result, "rowcount", 0) or 0)
+
     async def update_status(self, match_id: uuid.UUID, status: str) -> TransactionMatch:
         from sqlalchemy import update
 

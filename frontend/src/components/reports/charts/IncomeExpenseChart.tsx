@@ -3,7 +3,6 @@ import {
   Bar, ComposedChart, CartesianGrid, Legend, Line,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { useReportStore } from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
 import { formatMoney } from '../../../utils/money'
 import { DrillDownTable } from '../DrillDownTable'

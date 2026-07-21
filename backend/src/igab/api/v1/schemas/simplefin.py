@@ -41,6 +41,7 @@ class SyncResult(BaseModel):
     imported: int
     skipped: int
     cleared: int = 0
+    removed_pending: int = 0
     error: str | None = None
     global_used: int | None = None
     global_remaining: int | None = None

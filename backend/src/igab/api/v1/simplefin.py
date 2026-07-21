@@ -1,5 +1,4 @@
 import logging
-import uuid
 from typing import Annotated
 
 import httpx
@@ -16,7 +15,11 @@ from igab.api.v1.schemas.simplefin import (
     TransactionMatchResponse,
 )
 from igab.dependencies import (
+    AccountAccess,
+    BudgetAccess,
+    ConnectionAccess,
     CurrentUser,
+    MatchAccess,
     get_account_repo,
     get_simplefin_service,
     get_transaction_matching_service,
@@ -88,7 +91,7 @@ async def list_connections(
 
 @router.put("/simplefin/connections/{connection_id}", response_model=SimpleFINConnectionResponse)
 async def update_connection(
-    connection_id: uuid.UUID,
+    connection_id: ConnectionAccess,
     body: SimpleFINUpdateRequest,
     current_user: CurrentUser,
     svc: Annotated[SimpleFINService, Depends(get_simplefin_service)],
@@ -100,7 +103,7 @@ async def update_connection(
 
 @router.delete("/simplefin/connections/{connection_id}", status_code=204)
 async def delete_connection(
-    connection_id: uuid.UUID,
+    connection_id: ConnectionAccess,
     current_user: CurrentUser,
     svc: Annotated[SimpleFINService, Depends(get_simplefin_service)],
 ) -> None:
@@ -109,7 +112,7 @@ async def delete_connection(
 
 @router.get("/simplefin/connections/{connection_id}/status", response_model=RateLimitStatus)
 async def get_connection_status(
-    connection_id: uuid.UUID,
+    connection_id: ConnectionAccess,
     current_user: CurrentUser,
     svc: Annotated[SimpleFINService, Depends(get_simplefin_service)],
 ) -> RateLimitStatus:
@@ -121,7 +124,7 @@ async def get_connection_status(
 
 @router.get("/simplefin/connections/{connection_id}/accounts")
 async def get_remote_accounts(
-    connection_id: uuid.UUID,
+    connection_id: ConnectionAccess,
     current_user: CurrentUser,
     svc: Annotated[SimpleFINService, Depends(get_simplefin_service)],
 ) -> list[dict]:
@@ -130,16 +133,12 @@ async def get_remote_accounts(
 
 @router.post("/simplefin/connections/{connection_id}/sync", response_model=SyncResult)
 async def sync_connection(
-    connection_id: uuid.UUID,
+    connection_id: ConnectionAccess,
     current_user: CurrentUser,
     svc: Annotated[SimpleFINService, Depends(get_simplefin_service)],
-    budget_id: uuid.UUID | None = None,
+    budget_id: BudgetAccess,
     account_simplefin_id: str | None = None,
 ) -> SyncResult:
-    if budget_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="budget_id query param is required"
-        )
     sync_type = "account" if account_simplefin_id else "global"
     result = await svc.sync(
         connection_id,
@@ -152,7 +151,7 @@ async def sync_connection(
 
 @router.post("/accounts/{account_id}/link-simplefin", status_code=204)
 async def link_account(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     body: LinkSimpleFINRequest,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
@@ -166,7 +165,7 @@ async def link_account(
 
 @router.delete("/accounts/{account_id}/link-simplefin", status_code=204)
 async def unlink_account(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> None:
@@ -175,7 +174,7 @@ async def unlink_account(
 
 @router.get("/accounts/{account_id}/sync-status", response_model=AccountSyncStatusResponse)
 async def get_account_sync_status(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> AccountSyncStatusResponse:
@@ -185,7 +184,7 @@ async def get_account_sync_status(
 
 @router.patch("/accounts/{account_id}/simplefin-settings", status_code=204)
 async def update_account_simplefin_settings(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     simplefin_sync_enabled: bool | None = None,
@@ -207,10 +206,8 @@ async def update_account_simplefin_settings(
 async def list_pending_matches(
     current_user: CurrentUser,
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
-    budget_id: uuid.UUID | None = None,
+    budget_id: BudgetAccess,
 ) -> list[TransactionMatchResponse]:
-    if budget_id is None:
-        raise HTTPException(status_code=400, detail="budget_id query param is required")
     matches = await matching_svc.match_repo.get_pending_for_budget(budget_id)
     return [TransactionMatchResponse.model_validate(m) for m in matches]
 
@@ -220,7 +217,7 @@ async def list_pending_matches(
     response_model=list[TransactionMatchResponse],
 )
 async def list_pending_matches_for_account(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
 ) -> list[TransactionMatchResponse]:
@@ -230,16 +227,21 @@ async def list_pending_matches_for_account(
 
 @router.post("/simplefin/matches/{match_id}/accept", status_code=204)
 async def accept_match(
-    match_id: uuid.UUID,
+    match_id: MatchAccess,
     current_user: CurrentUser,
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
 ) -> None:
-    await matching_svc.accept_match(match_id)
+    from igab.domain.exceptions import InvariantViolation
+
+    try:
+        await matching_svc.accept_match(match_id)
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.post("/simplefin/matches/{match_id}/reject", status_code=204)
 async def reject_match(
-    match_id: uuid.UUID,
+    match_id: MatchAccess,
     current_user: CurrentUser,
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
 ) -> None:

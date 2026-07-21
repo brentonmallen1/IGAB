@@ -52,6 +52,14 @@ def make_service(txn: MockTransaction) -> TransactionService:
     txn_repo.soft_delete = AsyncMock()
     txn_repo.get_splits = AsyncMock(return_value=[])
 
+    async def _get(txn_id: uuid.UUID) -> MockTransaction:
+        # Transfer-partner lookups get a plain editable partner with that id
+        partner = MockTransaction(cleared="uncleared")
+        partner.id = txn_id
+        return partner
+
+    txn_repo.get = AsyncMock(side_effect=_get)
+
     return TransactionService(
         session=AsyncMock(),
         transaction_repo=txn_repo,
@@ -144,17 +152,17 @@ class TestUpdateNonReconciled:
         kwargs = svc.transaction_repo.update.call_args
         assert kwargs is not None
 
-    async def test_edit_cleared_to_reconcile_state_directly_is_allowed(self):
+    async def test_edit_cleared_to_reconciled_directly_is_blocked(self):
         """
-        Changing cleared status to 'reconciled' directly via update() is technically
-        allowed by the service (it only blocks editing when ALREADY reconciled).
-        The normal flow goes through finish() which does a bulk update.
+        'reconciled' is granted only by the reconciliation finish flow and
+        'pending' belongs to bank sync — neither may be set via update().
         """
         txn = MockTransaction(cleared="cleared")
         svc = make_service(txn)
-        # This does NOT raise — only editing an already-reconciled txn is blocked
-        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(cleared="reconciled"))
-        svc.transaction_repo.update.assert_called_once()
+        for value in ("reconciled", "pending"):
+            with pytest.raises(InvariantViolation):
+                await svc.update(BUDGET_ID, txn.id, TransactionUpdate(cleared=value))
+        svc.transaction_repo.update.assert_not_called()
 
 
 class TestDeleteReconciled:

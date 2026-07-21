@@ -6,10 +6,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from igab.api.v1.schemas.transaction import (
+    BulkActionResult,
     BulkApprove,
     BulkCategorize,
     BulkClearedUpdate,
     BulkDelete,
+    BulkItemFailure,
     MergeTransactionsRequest,
     PayeeCreate,
     PayeeMergeRequest,
@@ -23,7 +25,11 @@ from igab.api.v1.schemas.transaction import (
     TransactionUpdate,
 )
 from igab.dependencies import (
+    AccountAccess,
+    BudgetAccess,
     CurrentUser,
+    PayeeAccess,
+    TransactionAccess,
     get_payee_repo,
     get_transaction_repo,
     get_transaction_service,
@@ -49,7 +55,7 @@ router = APIRouter()
 
 @router.get("/accounts/{account_id}/transactions", response_model=list[TransactionResponse])
 async def list_account_transactions(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     limit: int = Query(100, le=5000),
@@ -94,7 +100,7 @@ async def list_account_transactions(
     response_model=list[SimilarTransactionResponse],
 )
 async def find_similar_transactions(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     amount: float = Query(...),
@@ -116,7 +122,7 @@ async def find_similar_transactions(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_transaction(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: TransactionCreate,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
@@ -167,7 +173,7 @@ async def create_transaction(
 
 @router.get("/transactions/{transaction_id}", response_model=TransactionResponse)
 async def get_transaction(
-    transaction_id: uuid.UUID,
+    transaction_id: TransactionAccess,
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
 ) -> TransactionResponse:
@@ -180,22 +186,16 @@ async def get_transaction(
 
 @router.patch("/transactions/{transaction_id}", response_model=TransactionResponse)
 async def update_transaction(
-    transaction_id: uuid.UUID,
+    transaction_id: TransactionAccess,
     body: TransactionUpdate,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
-    budget_id: uuid.UUID = Query(...),
+    budget_id: BudgetAccess,
 ) -> TransactionResponse:
     try:
-        svc_data = SvcTxnUpdate(
-            date=body.date,
-            amount=body.amount,
-            payee_id=body.payee_id,
-            category_id=body.category_id,
-            memo=body.memo,
-            cleared=body.cleared,
-            approved=body.approved,
-        )
+        # Only fields the client actually sent: omitted fields stay untouched,
+        # explicit nulls clear nullable fields (category/payee/memo).
+        svc_data = SvcTxnUpdate(**body.model_dump(exclude_unset=True))
         txn = await txn_service.update(budget_id, transaction_id, svc_data)
     except (NotFoundError, InvariantViolation) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -204,10 +204,10 @@ async def update_transaction(
 
 @router.delete("/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_transaction(
-    transaction_id: uuid.UUID,
+    transaction_id: TransactionAccess,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
-    budget_id: uuid.UUID = Query(...),
+    budget_id: BudgetAccess,
 ) -> None:
     try:
         await txn_service.delete(budget_id, transaction_id)
@@ -215,75 +215,101 @@ async def delete_transaction(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
-@router.patch("/{budget_id}/transactions/bulk-cleared", status_code=status.HTTP_204_NO_CONTENT)
+async def _run_bulk(transaction_ids: list[uuid.UUID], action) -> BulkActionResult:
+    """Apply an action per id, reporting each failure instead of swallowing it."""
+    updated: list[uuid.UUID] = []
+    failed: list[BulkItemFailure] = []
+    for txn_id in transaction_ids:
+        try:
+            await action(txn_id)
+            updated.append(txn_id)
+        except (NotFoundError, InvariantViolation) as e:
+            failed.append(BulkItemFailure(id=txn_id, reason=str(e)))
+    return BulkActionResult(updated=updated, failed=failed)
+
+
+@router.patch("/{budget_id}/transactions/bulk-cleared", response_model=BulkActionResult)
 async def bulk_update_cleared(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: BulkClearedUpdate,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
-) -> None:
-    for txn_id in body.transaction_ids:
-        try:
-            await txn_service.update(budget_id, txn_id, SvcTxnUpdate(cleared=body.cleared))
-        except (NotFoundError, InvariantViolation):
-            pass
+) -> BulkActionResult:
+    return await _run_bulk(
+        body.transaction_ids,
+        lambda txn_id: txn_service.update(budget_id, txn_id, SvcTxnUpdate(cleared=body.cleared)),
+    )
 
 
-@router.patch("/{budget_id}/transactions/bulk-categorize", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch("/{budget_id}/transactions/bulk-categorize", response_model=BulkActionResult)
 async def bulk_categorize(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: BulkCategorize,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
-) -> None:
-    for txn_id in body.transaction_ids:
-        try:
-            await txn_service.update(budget_id, txn_id, SvcTxnUpdate(category_id=body.category_id))
-        except (NotFoundError, InvariantViolation):
-            pass
+) -> BulkActionResult:
+    return await _run_bulk(
+        body.transaction_ids,
+        lambda txn_id: txn_service.update(
+            budget_id, txn_id, SvcTxnUpdate(category_id=body.category_id)
+        ),
+    )
 
 
-@router.post("/{budget_id}/transactions/bulk-delete", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{budget_id}/transactions/bulk-delete", response_model=BulkActionResult)
 async def bulk_delete(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: BulkDelete,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
-) -> None:
-    for txn_id in body.transaction_ids:
-        try:
-            await txn_service.delete(budget_id, txn_id)
-        except (NotFoundError, InvariantViolation):
-            pass
+) -> BulkActionResult:
+    return await _run_bulk(
+        body.transaction_ids, lambda txn_id: txn_service.delete(budget_id, txn_id)
+    )
 
 
 @router.post("/transactions/{transaction_id}/approve", response_model=TransactionResponse)
 async def approve_transaction(
-    transaction_id: uuid.UUID,
+    transaction_id: TransactionAccess,
     current_user: CurrentUser,
-    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> TransactionResponse:
-    txn = await txn_repo.update(transaction_id, approved=True)
+    try:
+        txn = await txn_service.approve(transaction_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     return TransactionResponse.model_validate(txn)
 
 
-@router.patch("/{budget_id}/transactions/bulk-approve", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/transactions/{transaction_id}/unreconcile", response_model=TransactionResponse)
+async def unreconcile_transaction(
+    transaction_id: TransactionAccess,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    budget_id: BudgetAccess,
+) -> TransactionResponse:
+    try:
+        txn = await txn_service.unreconcile(budget_id, transaction_id)
+    except (NotFoundError, InvariantViolation) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return TransactionResponse.model_validate(txn)
+
+
+@router.patch("/{budget_id}/transactions/bulk-approve", response_model=BulkActionResult)
 async def bulk_approve(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: BulkApprove,
     current_user: CurrentUser,
-    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
-) -> None:
-    for txn_id in body.transaction_ids:
-        try:
-            await txn_repo.update(txn_id, approved=True)
-        except NotFoundError:
-            pass
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+) -> BulkActionResult:
+    return await _run_bulk(
+        body.transaction_ids, lambda txn_id: txn_service.approve(txn_id, budget_id)
+    )
 
 
 @router.post("/{budget_id}/transactions/merge", response_model=TransactionResponse)
 async def merge_transactions(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: MergeTransactionsRequest,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
@@ -297,7 +323,7 @@ async def merge_transactions(
 
 @router.get("/{budget_id}/transactions/pending-review-count", response_model=PendingReviewCount)
 async def get_pending_review_count(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
 ) -> PendingReviewCount:
@@ -307,7 +333,7 @@ async def get_pending_review_count(
 
 @router.get("/accounts/{account_id}/pending-review-count", response_model=PendingReviewCount)
 async def get_pending_review_count_for_account(
-    account_id: uuid.UUID,
+    account_id: AccountAccess,
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
 ) -> PendingReviewCount:
@@ -320,7 +346,7 @@ async def get_pending_review_count_for_account(
 
 @router.get("/{budget_id}/payees", response_model=list[PayeeWithCount])
 async def list_payees(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
 ) -> list[PayeeWithCount]:
@@ -337,7 +363,7 @@ async def list_payees(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_payee(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: PayeeCreate,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
@@ -348,7 +374,7 @@ async def create_payee(
 
 @router.patch("/payees/{payee_id}", response_model=PayeeResponse)
 async def update_payee(
-    payee_id: uuid.UUID,
+    payee_id: PayeeAccess,
     body: PayeeUpdate,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
@@ -360,7 +386,7 @@ async def update_payee(
 
 @router.delete("/payees/{payee_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_payee(
-    payee_id: uuid.UUID,
+    payee_id: PayeeAccess,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
 ) -> None:
@@ -369,7 +395,7 @@ async def delete_payee(
 
 @router.post("/payees/{payee_id}/merge", status_code=status.HTTP_204_NO_CONTENT)
 async def merge_payee(
-    payee_id: uuid.UUID,
+    payee_id: PayeeAccess,
     body: PayeeMergeRequest,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],

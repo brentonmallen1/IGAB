@@ -58,3 +58,5 @@ logs/
 
 .history/
 .claude/
+.chunkhound.json
+backups/

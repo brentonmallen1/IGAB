@@ -1,10 +1,9 @@
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from igab.api.v1.schemas.budget_view import BudgetViewCreate, BudgetViewResponse, BudgetViewUpdate
-from igab.dependencies import CurrentUser, get_budget_view_repo
+from igab.dependencies import BudgetAccess, CurrentUser, ViewAccess, get_budget_view_repo
 from igab.domain.exceptions import NotFoundError
 from igab.repositories.budget_view_repo import BudgetViewRepository
 
@@ -13,7 +12,7 @@ router = APIRouter()
 
 @router.get("/{budget_id}/views", response_model=list[BudgetViewResponse])
 async def list_budget_views(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
 ) -> list[BudgetViewResponse]:
@@ -27,7 +26,7 @@ async def list_budget_views(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_budget_view(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: BudgetViewCreate,
     current_user: CurrentUser,
     view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
@@ -40,7 +39,7 @@ async def create_budget_view(
 
 @router.get("/views/{view_id}", response_model=BudgetViewResponse)
 async def get_budget_view(
-    view_id: uuid.UUID,
+    view_id: ViewAccess,
     current_user: CurrentUser,
     view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
 ) -> BudgetViewResponse:
@@ -52,7 +51,7 @@ async def get_budget_view(
 
 @router.patch("/views/{view_id}", response_model=BudgetViewResponse)
 async def update_budget_view(
-    view_id: uuid.UUID,
+    view_id: ViewAccess,
     body: BudgetViewUpdate,
     current_user: CurrentUser,
     view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
@@ -72,7 +71,7 @@ async def update_budget_view(
 
 @router.delete("/views/{view_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_budget_view(
-    view_id: uuid.UUID,
+    view_id: ViewAccess,
     current_user: CurrentUser,
     view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
 ) -> None:

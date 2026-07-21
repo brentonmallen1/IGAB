@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -145,18 +146,28 @@ def get_budget_service(
     )
 
 
+def get_transaction_match_repo(session: SessionDep) -> TransactionMatchRepository:
+    return TransactionMatchRepository(session)
+
+
 def get_transaction_service(
     session: SessionDep,
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
+    match_repo: Annotated[TransactionMatchRepository, Depends(get_transaction_match_repo)],
 ) -> TransactionService:
-    return TransactionService(session, transaction_repo, account_repo, category_repo, payee_repo)
-
-
-def get_transaction_match_repo(session: SessionDep) -> TransactionMatchRepository:
-    return TransactionMatchRepository(session)
+    return TransactionService(
+        session,
+        transaction_repo,
+        account_repo,
+        category_repo,
+        payee_repo,
+        attachment_repo=attachment_repo,
+        match_repo=match_repo,
+    )
 
 
 def get_transaction_matching_service(
@@ -213,3 +224,195 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+# ─── Resource-ownership scoping ───────────────────────────────────────────────
+# Every budget/account/transaction-scoped endpoint must verify the resource
+# belongs to the authenticated user. 404 (not 403) so foreign ids don't leak
+# existence. binds budget_id/account_id/transaction_id from path or query.
+
+
+async def require_budget_access(
+    budget_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> uuid.UUID:
+    from igab.db.models import Budget
+
+    budget = await session.get(Budget, budget_id)
+    if budget is None or budget.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    return budget_id
+
+
+async def require_account_access(
+    account_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> uuid.UUID:
+    from sqlalchemy import select
+
+    from igab.db.models import Account, Budget
+
+    result = await session.execute(
+        select(Account.id)
+        .join(Budget, Account.budget_id == Budget.id)
+        .where(Account.id == account_id, Budget.user_id == current_user.id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    return account_id
+
+
+async def require_transaction_access(
+    transaction_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> uuid.UUID:
+    from sqlalchemy import select
+
+    from igab.db.models import Budget, Transaction
+
+    result = await session.execute(
+        select(Transaction.id)
+        .join(Budget, Transaction.budget_id == Budget.id)
+        .where(Transaction.id == transaction_id, Budget.user_id == current_user.id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+    return transaction_id
+
+
+async def require_connection_access(
+    connection_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> uuid.UUID:
+    from sqlalchemy import select
+
+    from igab.db.models import SimpleFINConnection
+
+    result = await session.execute(
+        select(SimpleFINConnection.id).where(
+            SimpleFINConnection.id == connection_id,
+            SimpleFINConnection.user_id == current_user.id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
+    return connection_id
+
+
+async def require_attachment_access(
+    attachment_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> uuid.UUID:
+    from sqlalchemy import select
+
+    from igab.db.models import Budget, Transaction, TransactionAttachment
+
+    result = await session.execute(
+        select(TransactionAttachment.id)
+        .join(Transaction, TransactionAttachment.transaction_id == Transaction.id)
+        .join(Budget, Transaction.budget_id == Budget.id)
+        .where(TransactionAttachment.id == attachment_id, Budget.user_id == current_user.id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+    return attachment_id
+
+
+async def _require_budget_child(
+    session: AsyncSession, model, id_value: uuid.UUID, user_id: uuid.UUID, label: str
+) -> uuid.UUID:
+    """Ownership check for models carrying a budget_id column."""
+    from sqlalchemy import select
+
+    from igab.db.models import Budget
+
+    result = await session.execute(
+        select(model.id)
+        .join(Budget, model.budget_id == Budget.id)
+        .where(model.id == id_value, Budget.user_id == user_id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{label} not found")
+    return id_value
+
+
+async def require_payee_access(
+    payee_id: uuid.UUID, current_user: CurrentUser, session: SessionDep
+) -> uuid.UUID:
+    from igab.db.models import Payee
+
+    return await _require_budget_child(session, Payee, payee_id, current_user.id, "Payee")
+
+
+async def require_category_access(
+    category_id: uuid.UUID, current_user: CurrentUser, session: SessionDep
+) -> uuid.UUID:
+    from igab.db.models import Category
+
+    return await _require_budget_child(session, Category, category_id, current_user.id, "Category")
+
+
+async def require_category_group_access(
+    group_id: uuid.UUID, current_user: CurrentUser, session: SessionDep
+) -> uuid.UUID:
+    from igab.db.models import CategoryGroup
+
+    return await _require_budget_child(
+        session, CategoryGroup, group_id, current_user.id, "Category group"
+    )
+
+
+async def require_view_access(
+    view_id: uuid.UUID, current_user: CurrentUser, session: SessionDep
+) -> uuid.UUID:
+    from igab.db.models import BudgetView
+
+    return await _require_budget_child(session, BudgetView, view_id, current_user.id, "View")
+
+
+async def require_scheduled_access(
+    id: uuid.UUID,  # noqa: A002 — must match the `{id}` path param on scheduled routes
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> uuid.UUID:
+    from igab.db.models import ScheduledTransaction
+
+    return await _require_budget_child(
+        session, ScheduledTransaction, id, current_user.id, "Scheduled transaction"
+    )
+
+
+async def require_match_access(
+    match_id: uuid.UUID, current_user: CurrentUser, session: SessionDep
+) -> uuid.UUID:
+    from sqlalchemy import select
+
+    from igab.db.models import Budget, Transaction, TransactionMatch
+
+    result = await session.execute(
+        select(TransactionMatch.id)
+        .join(Transaction, TransactionMatch.synced_transaction_id == Transaction.id)
+        .join(Budget, Transaction.budget_id == Budget.id)
+        .where(TransactionMatch.id == match_id, Budget.user_id == current_user.id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+    return match_id
+
+
+BudgetAccess = Annotated[uuid.UUID, Depends(require_budget_access)]
+AccountAccess = Annotated[uuid.UUID, Depends(require_account_access)]
+TransactionAccess = Annotated[uuid.UUID, Depends(require_transaction_access)]
+ConnectionAccess = Annotated[uuid.UUID, Depends(require_connection_access)]
+AttachmentAccess = Annotated[uuid.UUID, Depends(require_attachment_access)]
+PayeeAccess = Annotated[uuid.UUID, Depends(require_payee_access)]
+CategoryAccess = Annotated[uuid.UUID, Depends(require_category_access)]
+CategoryGroupAccess = Annotated[uuid.UUID, Depends(require_category_group_access)]
+ViewAccess = Annotated[uuid.UUID, Depends(require_view_access)]
+ScheduledAccess = Annotated[uuid.UUID, Depends(require_scheduled_access)]
+MatchAccess = Annotated[uuid.UUID, Depends(require_match_access)]

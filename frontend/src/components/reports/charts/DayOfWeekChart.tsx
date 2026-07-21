@@ -27,8 +27,8 @@ export function DayPatternsReport({ budgetId }: Props) {
   const chartData = days.map((d) => ({
     name: d.day_name,
     Amount: Number(d.total),
-    Transactions: d.transaction_count,
-    avgPerTxn: d.transaction_count > 0 ? Number(d.total) / d.transaction_count : 0,
+    Transactions: d.count,
+    avgPerTxn: d.count > 0 ? Number(d.total) / d.count : 0,
   }))
 
   return (
@@ -60,8 +60,8 @@ export function DayPatternsReport({ budgetId }: Props) {
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={80} />
             <Tooltip
-              formatter={(v: number, name: string) =>
-                name === 'Amount' ? [formatMoney(v), name] : [v, name]
+              formatter={(v: unknown, name: unknown) =>
+                name === 'Amount' ? [formatMoney(Number(v)), name] : [Number(v), String(name)]
               }
               offset={16}
               isAnimationActive={false}

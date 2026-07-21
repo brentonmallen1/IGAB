@@ -84,6 +84,8 @@ def make_transaction(
     payee_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
     import_id: str | None = None,
+    sync_id: str | None = None,
+    sync_source: str | None = None,
     cleared: str = "cleared",
     linked_transaction_id: uuid.UUID | None = None,
     parent_transaction_id: uuid.UUID | None = None,
@@ -92,10 +94,16 @@ def make_transaction(
     txn.id = uuid.uuid4()
     txn.amount = D(amount)
     txn.date = date_ or date.today()
+    txn.entered_date = None
     txn.payee_id = payee_id
     txn.category_id = category_id
     txn.import_id = import_id
+    txn.import_description = None
+    txn.sync_id = sync_id
+    txn.sync_source = sync_source
     txn.cleared = cleared
+    txn.has_sync_source = False
+    txn.is_deleted = False
     txn.linked_transaction_id = linked_transaction_id
     txn.parent_transaction_id = parent_transaction_id
     txn.account_id = uuid.uuid4()
@@ -257,13 +265,18 @@ class TestLookbackCalculation:
 
 class TestSyncFlow:
     def _make_svc(self) -> SimpleFINService:
-        return SimpleFINService(
+        svc = SimpleFINService(
             session=AsyncMock(),
             repo=AsyncMock(),
             account_repo=AsyncMock(),
             txn_repo=AsyncMock(),
             txn_service=AsyncMock(),
         )
+        # begin_nested is used as an async context manager (savepoint per row)
+        svc.session.begin_nested = MagicMock(return_value=AsyncMock())
+        # The stale-pending sweep iterates this — default to nothing stale
+        svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
+        return svc
 
     @pytest.mark.asyncio
     async def test_returns_error_when_connection_not_found(self) -> None:
@@ -305,8 +318,8 @@ class TestSyncFlow:
             return_value=date.today() - timedelta(days=5)
         )
         existing_txn = make_transaction(import_id="sf:txn-1")
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=existing_txn)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=existing_txn)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
 
@@ -342,10 +355,9 @@ class TestSyncFlow:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        # find_by_import_id returns the existing pending transaction
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=pending_txn)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.update_cleared = AsyncMock()
+        # find_by_sync_id returns the existing pending transaction
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=pending_txn)
+        svc.txn_repo.update = AsyncMock()
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
 
@@ -365,7 +377,13 @@ class TestSyncFlow:
         ):
             result = await svc.sync(conn.id, budget_id)
 
-        svc.txn_repo.update_cleared.assert_called_once_with(pending_txn.id, "cleared")
+        # Posted values win: cleared flips AND the amount updates to the
+        # bank's posted figure (-25.00 vs the pending -50.00).
+        svc.txn_repo.update.assert_called_once()
+        args, kwargs = svc.txn_repo.update.call_args
+        assert args[0] == pending_txn.id
+        assert kwargs["cleared"] == "cleared"
+        assert kwargs["amount"] == D("-25.00")
         assert result["cleared"] == 1
         assert result["imported"] == 0
 
@@ -382,8 +400,8 @@ class TestSyncFlow:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
@@ -420,8 +438,8 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(return_value=None)
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
@@ -489,8 +507,8 @@ class TestSyncFlow:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
@@ -529,8 +547,8 @@ class TestSyncFlow:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
@@ -568,8 +586,8 @@ class TestSyncFlow:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
@@ -609,8 +627,8 @@ class TestSyncFlow:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
         svc.txn_service.create = AsyncMock(return_value=new_txn)
         svc.account_repo.update = AsyncMock()
@@ -647,8 +665,8 @@ class TestSyncFlow:
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
             return_value=date.today() - timedelta(days=5)
         )
-        svc.txn_repo.find_by_import_id = AsyncMock(return_value=None)
-        svc.txn_repo.find_pending_by_import_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
+        svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.update = AsyncMock()
         svc.account_repo.update = AsyncMock()
         svc.repo.update = AsyncMock(return_value=conn)
@@ -702,17 +720,19 @@ class TestSyncFlow:
 
         svc.txn_repo.update.assert_called_once()
         call_kwargs = svc.txn_repo.update.call_args.kwargs
-        assert call_kwargs.get("import_id") == "sf:txn-match"
+        assert call_kwargs.get("sync_id") == "txn-match"
+        assert call_kwargs.get("sync_source") == "simplefin"
 
     @pytest.mark.asyncio
-    async def test_find_existing_match_does_not_overwrite_existing_import_id(self) -> None:
-        """When match already has an import_id, it is not overwritten."""
+    async def test_sync_stamps_sync_id_while_preserving_import_id(self) -> None:
+        """When matching a YNAB-imported transaction (has import_id), stamps sync_id but preserves import_id."""
         svc = self._make_svc()
         conn = make_connection()
         account = make_account(first_sync_complete=True)
         self._base_sync_mocks(svc, account, conn)
 
-        existing = make_transaction(import_id="sf:txn-match", cleared="cleared")
+        # Transaction imported from YNAB (has import_id, no sync_id)
+        existing = make_transaction(import_id="csv:existing123", sync_id=None, cleared="cleared")
         svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
 
         with (
@@ -721,8 +741,12 @@ class TestSyncFlow:
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
-        # No updates needed — import_id already set, already cleared
-        svc.txn_repo.update.assert_not_called()
+        # Should stamp sync_id but NOT touch import_id (preserved on model, not in update)
+        svc.txn_repo.update.assert_called_once()
+        call_kwargs = svc.txn_repo.update.call_args.kwargs
+        assert call_kwargs.get("sync_id") == "txn-match"
+        assert call_kwargs.get("sync_source") == "simplefin"
+        assert "import_id" not in call_kwargs
 
     @pytest.mark.asyncio
     async def test_find_existing_match_advances_pending_to_cleared_when_posted(self) -> None:
@@ -744,7 +768,8 @@ class TestSyncFlow:
         svc.txn_repo.update.assert_called_once()
         call_kwargs = svc.txn_repo.update.call_args.kwargs
         assert call_kwargs.get("cleared") == "cleared"
-        assert call_kwargs.get("import_id") == "sf:txn-match"
+        assert call_kwargs.get("sync_id") == "txn-match"
+        assert call_kwargs.get("sync_source") == "simplefin"
         assert result["cleared"] == 1
         assert result["imported"] == 0
 
@@ -824,23 +849,27 @@ class TestSyncFlow:
         assert result["cleared"] == 0
 
     @pytest.mark.asyncio
-    async def test_find_existing_match_no_update_when_nothing_to_change(self) -> None:
-        """When matched transaction already has import_id and is cleared, no DB update is made."""
+    async def test_exact_sync_id_match_skips_entirely(self) -> None:
+        """When a transaction with exact sync_id already exists, skip without any update."""
         svc = self._make_svc()
         conn = make_connection()
         account = make_account(first_sync_complete=True)
         self._base_sync_mocks(svc, account, conn)
 
-        existing = make_transaction(import_id="sf:txn-match", cleared="cleared")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        # Transaction already has this sync_id from a previous sync
+        existing = make_transaction(sync_id="txn-match", sync_source="simplefin", cleared="cleared")
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=existing)
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
             patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
         ):
-            await svc.sync(conn.id, uuid.uuid4())
+            result = await svc.sync(conn.id, uuid.uuid4())
 
+        # Should skip entirely (not call update or create)
         svc.txn_repo.update.assert_not_called()
+        svc.txn_service.create.assert_not_called()
+        assert result["skipped"] == 1
 
     @pytest.mark.asyncio
     async def test_find_existing_match_deduplicates_expense_transactions(self) -> None:
@@ -1023,16 +1052,14 @@ class TestTransactionMatchingService:
         svc.match_repo.get = AsyncMock(return_value=match)
         svc.match_repo.update_status = AsyncMock()
 
-        synced = make_transaction(amount="-50.00")
+        synced = make_transaction(amount="-50.00", sync_id="t-1", sync_source="simplefin")
         manual = make_transaction(amount="-50.00")
 
-        from sqlalchemy import select as sa_select
+        select_results = iter([synced, manual])
 
         async def mock_execute(stmt):
             result = MagicMock()
-            result.scalar_one = MagicMock(
-                side_effect=[synced, manual]
-            )
+            result.scalar_one_or_none = MagicMock(side_effect=lambda: next(select_results))
             return result
 
         svc.session.execute = AsyncMock(side_effect=mock_execute)
