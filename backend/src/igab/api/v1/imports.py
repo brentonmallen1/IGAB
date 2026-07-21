@@ -1,12 +1,13 @@
 import hashlib
 import io
+import json
 import uuid
 from datetime import date
 from decimal import Decimal
 
 import polars as pl
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.session import get_session
@@ -22,6 +23,7 @@ from igab.dependencies import (
     get_transaction_repo,
     get_transaction_service,
 )
+from igab.domain.enums import AccountType
 from igab.domain.money import parse_csv_amount
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.parser import YNABParser
@@ -59,11 +61,123 @@ class YNABImportResult(BaseModel):
     errors: list[str]
 
 
+class YNABAccountPreview(BaseModel):
+    name: str
+    transaction_count: int
+    suggested_type: str
+    suggested_on_budget: bool
+
+
+class YNABPreviewResult(BaseModel):
+    accounts: list[YNABAccountPreview]
+    transaction_count: int
+    budget_entry_count: int
+
+
+class YNABAccountTypeChoice(BaseModel):
+    account_type: AccountType
+    on_budget: bool
+
+
+# YNAB register exports carry no account-type info; suggest from the name so
+# tracking/loan accounts don't silently land on-budget and pollute TBA.
+_TYPE_HINTS: list[tuple[tuple[str, ...], str, bool]] = [
+    (("mortgage", "loan", "student"), "loan", False),
+    (("credit", "card", "visa", "amex", "mastercard", "discover"), "credit_card", True),
+    (
+        ("invest", "brokerage", "401k", "401(k)", "ira", "hsa", "retirement"),
+        "tracking",
+        False,
+    ),
+    (("saving", "emergency"), "savings", True),
+]
+
+
+def suggest_account_type(name: str) -> tuple[str, bool]:
+    lowered = name.lower()
+    for keywords, account_type, on_budget in _TYPE_HINTS:
+        if any(k in lowered for k in keywords):
+            return account_type, on_budget
+    return "checking", True
+
+
+def parse_account_types_form(account_types: str | None) -> dict[str, tuple[str, bool]]:
+    """Decode the JSON `account_types` multipart form field:
+    {"Account Name": {"account_type": "loan", "on_budget": false}, ...}"""
+    if not account_types:
+        return {}
+    try:
+        raw = json.loads(account_types)
+        parsed = {name: YNABAccountTypeChoice.model_validate(v) for name, v in raw.items()}
+    except (ValueError, ValidationError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid account_types mapping: {e}",
+        ) from e
+    return {name: (choice.account_type.value, choice.on_budget) for name, choice in parsed.items()}
+
+
+def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
+    counts: dict[str, int] = {}
+    for txn in ynab_budget.transactions:
+        counts[txn.account_name] = counts.get(txn.account_name, 0) + 1
+
+    accounts = []
+    for name in sorted(counts):
+        suggested_type, suggested_on_budget = suggest_account_type(name)
+        accounts.append(
+            YNABAccountPreview(
+                name=name,
+                transaction_count=counts[name],
+                suggested_type=suggested_type,
+                suggested_on_budget=suggested_on_budget,
+            )
+        )
+    return YNABPreviewResult(
+        accounts=accounts,
+        transaction_count=len(ynab_budget.transactions),
+        budget_entry_count=len(ynab_budget.budget_entries),
+    )
+
+
+async def parse_uploaded_ynab_zip(file: UploadFile):
+    import tempfile
+    from pathlib import Path
+
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+    try:
+        try:
+            return YNABParser().parse_zip(tmp_path)
+        except (ValueError, KeyError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@router.post("/{budget_id}/import/ynab/preview", response_model=YNABPreviewResult)
+async def preview_ynab(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+) -> YNABPreviewResult:
+    """Parse the export without importing: account list for the type-mapping
+    step, with name-based type suggestions."""
+    ynab_budget = await parse_uploaded_ynab_zip(file)
+    return build_ynab_preview(ynab_budget)
+
+
 @router.post("/{budget_id}/import/ynab", response_model=YNABImportResult)
 async def import_ynab(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     file: UploadFile = File(...),
+    account_types: str | None = Form(None),
     session: AsyncSession = Depends(get_session),
     account_repo: AccountRepository = Depends(get_account_repo),
     category_group_repo: CategoryGroupRepository = Depends(get_category_group_repo),
@@ -73,40 +187,23 @@ async def import_ynab(
     assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
     txn_service: TransactionService = Depends(get_transaction_service),
 ) -> YNABImportResult:
-    import tempfile
-    from pathlib import Path
+    type_map = parse_account_types_form(account_types)
+    ynab_budget = await parse_uploaded_ynab_zip(file)
 
-    content = await file.read()
+    importer = YNABImporter(
+        session=session,
+        budget_id=budget_id,
+        account_repo=account_repo,
+        category_group_repo=category_group_repo,
+        category_repo=category_repo,
+        payee_repo=payee_repo,
+        transaction_repo=transaction_repo,
+        transaction_service=txn_service,
+        assignment_repo=assignment_repo,
+        account_types=type_map,
+    )
 
-    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
-    try:
-        parser = YNABParser()
-        try:
-            ynab_budget = parser.parse_zip(tmp_path)
-        except (ValueError, KeyError) as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            ) from e
-
-        importer = YNABImporter(
-            session=session,
-            budget_id=budget_id,
-            account_repo=account_repo,
-            category_group_repo=category_group_repo,
-            category_repo=category_repo,
-            payee_repo=payee_repo,
-            transaction_repo=transaction_repo,
-            transaction_service=txn_service,
-            assignment_repo=assignment_repo,
-        )
-
-        result = await importer.import_budget(ynab_budget)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    result = await importer.import_budget(ynab_budget)
 
     return YNABImportResult(
         accounts=result.accounts_imported,

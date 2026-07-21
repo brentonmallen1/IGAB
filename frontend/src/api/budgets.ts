@@ -125,13 +125,57 @@ export function useFillTargetsApply(budgetId: string) {
   })
 }
 
+export interface YnabAccountPreview {
+  name: string
+  transaction_count: number
+  suggested_type: string
+  suggested_on_budget: boolean
+}
+
+export interface YnabPreviewResult {
+  accounts: YnabAccountPreview[]
+  transaction_count: number
+  budget_entry_count: number
+}
+
+export interface YnabAccountTypeChoice {
+  account_type: string
+  on_budget: boolean
+}
+
+/** Parse the export without importing — feeds the account-type mapping step */
+export function usePreviewYnabImport() {
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      return apiClient
+        .post<YnabPreviewResult>('/budgets/import-ynab/preview', formData, {
+          headers: MULTIPART_HEADERS,
+        })
+        .then((r) => r.data)
+    },
+  })
+}
+
 export function useImportYnabAsBudget() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ name, file }: { name: string; file: File }) => {
+    mutationFn: ({
+      name,
+      file,
+      accountTypes,
+    }: {
+      name: string
+      file: File
+      accountTypes?: Record<string, YnabAccountTypeChoice>
+    }) => {
       const formData = new FormData()
       formData.append('name', name)
       formData.append('file', file)
+      if (accountTypes && Object.keys(accountTypes).length > 0) {
+        formData.append('account_types', JSON.stringify(accountTypes))
+      }
       return apiClient
         .post<YnabImportBudgetResult>('/budgets/import-ynab', formData, {
           headers: MULTIPART_HEADERS,
