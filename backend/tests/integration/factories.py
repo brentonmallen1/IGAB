@@ -25,6 +25,7 @@ from igab.db.models import (
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.attachment_repo import AttachmentRepository
+from igab.repositories.budget_move_repo import BudgetMoveRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
     CategoryGroupRepository,
@@ -222,7 +223,12 @@ def make_services(session: AsyncSession) -> Services:
         match_repo=match_repo,
     )
     budgets = BudgetService(
-        account_repo, category_repo, category_group_repo, assignment_repo, transaction_repo
+        account_repo,
+        category_repo,
+        category_group_repo,
+        assignment_repo,
+        transaction_repo,
+        move_repo=BudgetMoveRepository(session),
     )
     reconciliation = ReconciliationService(
         session, reconciliation_repo, account_repo, payee_repo, transaction_repo

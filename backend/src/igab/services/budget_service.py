@@ -2,6 +2,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -10,6 +11,9 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.transaction_repo import TransactionRepository
+
+if TYPE_CHECKING:
+    from igab.repositories.budget_move_repo import BudgetMoveRepository
 
 
 def _prev_month(d: date) -> date:
@@ -73,12 +77,14 @@ class BudgetService:
         category_group_repo: CategoryGroupRepository,
         assignment_repo: BudgetAssignmentRepository,
         transaction_repo: TransactionRepository,
+        move_repo: "BudgetMoveRepository | None" = None,
     ) -> None:
         self.account_repo = account_repo
         self.category_repo = category_repo
         self.category_group_repo = category_group_repo
         self.assignment_repo = assignment_repo
         self.transaction_repo = transaction_repo
+        self.move_repo = move_repo
 
     async def get_category_balance(
         self,
@@ -265,23 +271,58 @@ class BudgetService:
     async def move_money(
         self,
         budget_id: uuid.UUID,
-        from_category_id: uuid.UUID,
-        to_category_id: uuid.UUID,
+        from_category_id: uuid.UUID | None,
+        to_category_id: uuid.UUID | None,
         amount: Decimal,
         month: date,
     ) -> None:
-        """Move funds between categories by adjusting assignments."""
+        """Move funds between envelopes by adjusting assignments.
+
+        A NULL side means To-Be-Assigned: from=None pulls money out of TBA
+        into a category; to=None releases a category's money back to TBA.
+        The move is recorded in the budget_moves audit trail.
+        """
+        from igab.domain.exceptions import InvariantViolation
+
+        if amount <= 0:
+            raise InvariantViolation("Amount to move must be positive")
+        if from_category_id == to_category_id:
+            raise InvariantViolation("Choose two different envelopes")
+
         month_start = first_of_month(month)
 
-        from_assignment = await self.assignment_repo.get_or_create(
-            budget_id, from_category_id, month_start
-        )
-        to_assignment = await self.assignment_repo.get_or_create(
-            budget_id, to_category_id, month_start
-        )
+        for category_id in (from_category_id, to_category_id):
+            if category_id is None:
+                continue
+            category = await self.category_repo.get(category_id)
+            if category is None or str(category.budget_id) != str(budget_id):
+                raise InvariantViolation("Category does not belong to this budget")
 
-        new_from = from_assignment.assigned - amount
-        await self.assignment_repo.update(from_assignment.id, assigned=new_from)
-        await self.assignment_repo.update(
-            to_assignment.id, assigned=to_assignment.assigned + amount
-        )
+        if from_category_id is not None:
+            from_assignment = await self.assignment_repo.get_or_create(
+                budget_id, from_category_id, month_start
+            )
+            await self.assignment_repo.update(
+                from_assignment.id, assigned=from_assignment.assigned - amount
+            )
+        if to_category_id is not None:
+            to_assignment = await self.assignment_repo.get_or_create(
+                budget_id, to_category_id, month_start
+            )
+            await self.assignment_repo.update(
+                to_assignment.id, assigned=to_assignment.assigned + amount
+            )
+
+        if self.move_repo is not None:
+            await self.move_repo.create(
+                budget_id=budget_id,
+                month=month_start,
+                from_category_id=from_category_id,
+                to_category_id=to_category_id,
+                amount=amount,
+            )
+
+    async def get_move_history(self, budget_id: uuid.UUID, month: date):
+        if self.move_repo is None:
+            return []
+        return await self.move_repo.get_for_month(budget_id, first_of_month(month))

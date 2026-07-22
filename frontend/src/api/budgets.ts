@@ -73,6 +73,44 @@ export function useSetAssignment(budgetId: string) {
   })
 }
 
+export interface BudgetMove {
+  id: string
+  month: string
+  from_category_id: string | null
+  to_category_id: string | null
+  amount: string
+  created_at: string
+}
+
+/** Move money between envelopes; a null side means To-Be-Assigned */
+export function useMoveMoney(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: {
+      from_category_id: string | null
+      to_category_id: string | null
+      amount: number
+      month: string
+    }) => apiClient.post(`/${budgetId}/budget/move-money`, data),
+    onSuccess: (_, { month }) => {
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
+    },
+  })
+}
+
+export function useMoveHistory(budgetId: string, month: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['budgetMoves', budgetId, month],
+    queryFn: () =>
+      apiClient
+        .get<BudgetMove[]>(`/${budgetId}/budget/moves`, { params: { month } })
+        .then((r) => r.data),
+    enabled,
+    staleTime: 10_000,
+  })
+}
+
 export function useCreateBudget() {
   const qc = useQueryClient()
   return useMutation({

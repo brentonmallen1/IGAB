@@ -286,6 +286,27 @@ def upgrade() -> None:
         sa.UniqueConstraint("category_id", "month", name="uq_assignment_category_month"),
     )
 
+    # Budget moves (envelope-to-envelope audit trail; NULL side = TBA)
+    op.create_table(
+        "budget_moves",
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("budget_id", sa.UUID(), nullable=False),
+        sa.Column("month", sa.Date(), nullable=False),
+        sa.Column("from_category_id", sa.UUID(), nullable=True),
+        sa.Column("to_category_id", sa.UUID(), nullable=True),
+        sa.Column("amount", sa.Numeric(precision=19, scale=4), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["budget_id"], ["budgets.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["from_category_id"], ["categories.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["to_category_id"], ["categories.id"], ondelete="SET NULL"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+
     # Budget view categories
     op.create_table(
         "budget_view_categories",
@@ -570,6 +591,7 @@ def downgrade() -> None:
     op.drop_table("payees")
     op.drop_table("category_targets")
     op.drop_table("budget_view_categories")
+    op.drop_table("budget_moves")
     op.drop_table("budget_assignments")
     op.drop_table("categories")
     op.drop_table("import_batches")

@@ -6,6 +6,7 @@ import { useDeleteCategory, useUpdateCategory } from '../../../api/categories'
 import { useUIStore } from '../../../stores/uiStore'
 import { TargetBadge, getTargetTooltip } from '../TargetBadge'
 import { TargetEditor } from '../TargetEditor'
+import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
 import { formatMoney, parseMoney } from '../../../utils/money'
 import { today } from '../../../utils/dates'
 import type { Category, CategoryBalance } from '../../../types'
@@ -26,6 +27,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [movePopoverPos, setMovePopoverPos] = useState<{ x: number; y: number } | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
@@ -296,9 +298,32 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
           )}
         </div>
 
-        <div className={`category-row__available tabular ${availableClass}`}>
+        <div
+          className={`category-row__available tabular ${availableClass} category-row__available--clickable`}
+          onClick={(e) => {
+            e.stopPropagation()
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+            setMovePopoverPos({ x: Math.max(8, rect.right - 280), y: rect.bottom + 4 })
+          }}
+          title={
+            available < 0
+              ? 'Overspent — click to cover from another envelope'
+              : 'Click to move money to another envelope'
+          }
+        >
           {formatMoney(available)}
         </div>
+
+        {movePopoverPos && (
+          <MoveMoneyPopover
+            budgetId={budgetId}
+            month={month}
+            category={category}
+            available={available}
+            position={movePopoverPos}
+            onClose={() => setMovePopoverPos(null)}
+          />
+        )}
 
       </div>
 
