@@ -9,6 +9,7 @@ from igab.api.v1.schemas.category import (
     AssignmentUpdate,
     AutoAssignRequest,
     BudgetMonthResponse,
+    BudgetMoveResponse,
     CategoryBalance,
     CategoryCreate,
     CategoryGroupCreate,
@@ -23,6 +24,7 @@ from igab.api.v1.schemas.category import (
     FillTargetsApplyRequest,
     FillTargetsPreviewItem,
     FillTargetsPreviewResponse,
+    MoveMoneyRequest,
 )
 from igab.dependencies import (
     BudgetAccess,
@@ -35,7 +37,7 @@ from igab.dependencies import (
     get_target_repo,
     get_target_service,
 )
-from igab.domain.exceptions import NotFoundError
+from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.services.budget_service import BudgetService
@@ -263,6 +265,37 @@ async def set_category_assignment(
     month: date = Query(...),
 ) -> None:
     await budget_service.set_assignment(budget_id, category_id, month, body.amount)
+
+
+@router.post("/{budget_id}/budget/move-money", status_code=status.HTTP_204_NO_CONTENT)
+async def move_money(
+    budget_id: BudgetAccess,
+    body: MoveMoneyRequest,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+) -> None:
+    """Move money between envelopes; a null side means To-Be-Assigned."""
+    try:
+        await budget_service.move_money(
+            budget_id,
+            body.from_category_id,
+            body.to_category_id,
+            body.amount,
+            body.month,
+        )
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.get("/{budget_id}/budget/moves", response_model=list[BudgetMoveResponse])
+async def get_move_history(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    month: date = Query(...),
+) -> list[BudgetMoveResponse]:
+    moves = await budget_service.get_move_history(budget_id, month)
+    return [BudgetMoveResponse.model_validate(m) for m in moves]
 
 
 # ─── Category History ─────────────────────────────────────────────────────────

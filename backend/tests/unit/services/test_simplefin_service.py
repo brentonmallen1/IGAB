@@ -34,7 +34,7 @@ from igab.services.transaction_matching_service import (
     _payee_similarity,
     calculate_confidence,
 )
-
+from igab.utils.clock import today_utc
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ def make_connection(
     conn.sync_enabled = sync_enabled
     conn.global_requests_today = global_requests_today
     conn.account_requests_today = account_requests_today
-    conn.last_request_date = last_request_date or date.today()
+    conn.last_request_date = last_request_date or today_utc()
     conn.last_sync_at = None
     conn.access_url_encrypted = "encrypted"
     return conn
@@ -93,7 +93,7 @@ def make_transaction(
     txn = MagicMock()
     txn.id = uuid.uuid4()
     txn.amount = D(amount)
-    txn.date = date_ or date.today()
+    txn.date = date_ or today_utc()
     txn.entered_date = None
     txn.payee_id = payee_id
     txn.category_id = category_id
@@ -125,14 +125,14 @@ class TestRateLimitCheck:
 
     def test_allows_first_request_of_day(self) -> None:
         svc = self._make_svc()
-        conn = make_connection(global_requests_today=0, last_request_date=date.today())
+        conn = make_connection(global_requests_today=0, last_request_date=today_utc())
         svc._check_rate_limit(conn, "global")  # should not raise
 
     def test_blocks_global_at_limit(self) -> None:
         svc = self._make_svc()
         conn = make_connection(
             global_requests_today=GLOBAL_DAILY_LIMIT,
-            last_request_date=date.today(),
+            last_request_date=today_utc(),
         )
         with pytest.raises(RateLimitError):
             svc._check_rate_limit(conn, "global")
@@ -141,7 +141,7 @@ class TestRateLimitCheck:
         svc = self._make_svc()
         conn = make_connection(
             account_requests_today=ACCOUNT_DAILY_LIMIT,
-            last_request_date=date.today(),
+            last_request_date=today_utc(),
         )
         with pytest.raises(RateLimitError):
             svc._check_rate_limit(conn, "account")
@@ -150,13 +150,13 @@ class TestRateLimitCheck:
         svc = self._make_svc()
         conn = make_connection(
             global_requests_today=GLOBAL_DAILY_LIMIT - 1,
-            last_request_date=date.today(),
+            last_request_date=today_utc(),
         )
         svc._check_rate_limit(conn, "global")  # should not raise
 
     def test_resets_on_new_day(self) -> None:
         svc = self._make_svc()
-        yesterday = date.today() - timedelta(days=1)
+        yesterday = today_utc() - timedelta(days=1)
         # Was at limit yesterday — should be allowed today (new day resets)
         conn = make_connection(
             global_requests_today=GLOBAL_DAILY_LIMIT,
@@ -169,7 +169,7 @@ class TestRateLimitCheck:
         conn = make_connection(
             global_requests_today=GLOBAL_DAILY_LIMIT,
             account_requests_today=0,
-            last_request_date=date.today(),
+            last_request_date=today_utc(),
         )
         svc._check_rate_limit(conn, "account")  # should not raise
 
@@ -178,7 +178,7 @@ class TestRateLimitCheck:
         conn = make_connection(
             global_requests_today=0,
             account_requests_today=ACCOUNT_DAILY_LIMIT,
-            last_request_date=date.today(),
+            last_request_date=today_utc(),
         )
         svc._check_rate_limit(conn, "global")  # should not raise
 
@@ -195,7 +195,7 @@ class TestRateLimitStatus:
 
     def test_status_on_fresh_day(self) -> None:
         svc = self._make_svc()
-        conn = make_connection(global_requests_today=3, last_request_date=date.today())
+        conn = make_connection(global_requests_today=3, last_request_date=today_utc())
         status = svc.get_rate_limit_status(conn)
         assert status["global_used"] == 3
         assert status["global_remaining"] == GLOBAL_DAILY_LIMIT - 3
@@ -203,7 +203,7 @@ class TestRateLimitStatus:
 
     def test_status_resets_on_new_day(self) -> None:
         svc = self._make_svc()
-        yesterday = date.today() - timedelta(days=1)
+        yesterday = today_utc() - timedelta(days=1)
         conn = make_connection(
             global_requests_today=GLOBAL_DAILY_LIMIT,
             last_request_date=yesterday,
@@ -241,7 +241,7 @@ class TestLookbackCalculation:
         self, svc: SimpleFINService
     ) -> None:
         acct_id = uuid.uuid4()
-        oldest = date.today() - timedelta(days=10)
+        oldest = today_utc() - timedelta(days=10)
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(return_value=oldest)
 
         since = await svc._get_lookback_since(account_ids=[acct_id], first_sync=False)
@@ -298,7 +298,7 @@ class TestSyncFlow:
         svc = self._make_svc()
         conn = make_connection(
             global_requests_today=GLOBAL_DAILY_LIMIT,
-            last_request_date=date.today(),
+            last_request_date=today_utc(),
         )
         svc.repo.get = AsyncMock(return_value=conn)
         result = await svc.sync(conn.id, uuid.uuid4(), sync_type="global")
@@ -315,7 +315,7 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
-            return_value=date.today() - timedelta(days=5)
+            return_value=today_utc() - timedelta(days=5)
         )
         existing_txn = make_transaction(import_id="sf:txn-1")
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=existing_txn)
@@ -353,7 +353,7 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
-            return_value=date.today() - timedelta(days=5)
+            return_value=today_utc() - timedelta(days=5)
         )
         # find_by_sync_id returns the existing pending transaction
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=pending_txn)
@@ -398,7 +398,7 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
-            return_value=date.today() - timedelta(days=5)
+            return_value=today_utc() - timedelta(days=5)
         )
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
@@ -505,7 +505,7 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
-            return_value=date.today() - timedelta(days=5)
+            return_value=today_utc() - timedelta(days=5)
         )
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
@@ -545,7 +545,7 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
-            return_value=date.today() - timedelta(days=5)
+            return_value=today_utc() - timedelta(days=5)
         )
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
@@ -584,7 +584,7 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
-            return_value=date.today() - timedelta(days=5)
+            return_value=today_utc() - timedelta(days=5)
         )
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
@@ -625,7 +625,7 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
-            return_value=date.today() - timedelta(days=5)
+            return_value=today_utc() - timedelta(days=5)
         )
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
@@ -663,7 +663,7 @@ class TestSyncFlow:
         svc.repo.get = AsyncMock(return_value=conn)
         svc.account_repo.get_linked_simplefin_accounts = AsyncMock(return_value=[account])
         svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(
-            return_value=date.today() - timedelta(days=5)
+            return_value=today_utc() - timedelta(days=5)
         )
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=None)
         svc.txn_repo.find_pending_by_sync_id = AsyncMock(return_value=None)
@@ -908,8 +908,8 @@ class TestSyncFlow:
 class TestConfidenceScoring:
     def test_perfect_match_returns_1(self) -> None:
         score = calculate_confidence(
-            D("-50.00"), date.today(), "STARBUCKS",
-            D("-50.00"), date.today(), "STARBUCKS",
+            D("-50.00"), today_utc(), "STARBUCKS",
+            D("-50.00"), today_utc(), "STARBUCKS",
         )
         assert score == pytest.approx(1.0, abs=0.01)
 
@@ -923,18 +923,18 @@ class TestConfidenceScoring:
         assert score == 0.0
 
     def test_same_day_date_score(self) -> None:
-        today = date.today()
+        today = today_utc()
         assert _date_score(today, today) == pytest.approx(1.0)
 
     def test_date_score_decays_with_distance(self) -> None:
-        today = date.today()
+        today = today_utc()
         yesterday = today - timedelta(days=1)
         score_1d = _date_score(today, yesterday)
         score_2d = _date_score(today, today - timedelta(days=2))
         assert 0 < score_2d < score_1d < 1.0
 
     def test_date_score_zero_beyond_window(self) -> None:
-        today = date.today()
+        today = today_utc()
         too_far = today - timedelta(days=10)
         assert _date_score(today, too_far) == 0.0
 
@@ -953,7 +953,7 @@ class TestConfidenceScoring:
         assert score < 0.5
 
     def test_full_confidence_components(self) -> None:
-        today = date.today()
+        today = today_utc()
         score = calculate_confidence(
             D("-50.00"), today, "WHOLE FOODS",
             D("-50.00"), today, "WHOLE FOODS MARKET",
@@ -985,7 +985,7 @@ class TestTransactionMatchingService:
     @pytest.mark.asyncio
     async def test_auto_accepts_high_confidence_match(self) -> None:
         svc = self._make_svc()
-        today = date.today()
+        today = today_utc()
         payee_id = uuid.uuid4()
 
         synced = make_transaction(amount="-50.00", date_=today, payee_id=payee_id)
@@ -1005,7 +1005,7 @@ class TestTransactionMatchingService:
     @pytest.mark.asyncio
     async def test_pending_match_created_for_medium_confidence(self) -> None:
         svc = self._make_svc()
-        today = date.today()
+        today = today_utc()
         two_days_ago = today - timedelta(days=2)
 
         synced = make_transaction(amount="-50.00", date_=today)
@@ -1031,7 +1031,7 @@ class TestTransactionMatchingService:
     async def test_no_match_when_best_score_below_threshold(self) -> None:
         svc = self._make_svc()
         # Very different date (beyond window) → low score → no match
-        synced = make_transaction(amount="-50.00", date_=date.today())
+        synced = make_transaction(amount="-50.00", date_=today_utc())
         # find_match_candidates returns empty (date/amount filter already screens them)
         svc.txn_repo.find_match_candidates = AsyncMock(return_value=[])
         await svc.try_match(synced)

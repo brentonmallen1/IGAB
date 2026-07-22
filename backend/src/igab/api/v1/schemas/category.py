@@ -100,6 +100,26 @@ class AssignmentUpdate(BaseModel):
     amount: Money
 
 
+class MoveMoneyRequest(BaseModel):
+    """Move money between envelopes; a null side means To-Be-Assigned."""
+
+    from_category_id: uuid.UUID | None = None
+    to_category_id: uuid.UUID | None = None
+    amount: Money
+    month: datetime.date
+
+
+class BudgetMoveResponse(BaseModel):
+    id: uuid.UUID
+    month: datetime.date
+    from_category_id: uuid.UUID | None
+    to_category_id: uuid.UUID | None
+    amount: Decimal
+    created_at: datetime.datetime
+
+    model_config = {"from_attributes": True}
+
+
 class CategoryHistoryResponse(BaseModel):
     category_id: uuid.UUID
     last_month_assigned: Decimal

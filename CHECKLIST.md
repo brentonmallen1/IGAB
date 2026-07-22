@@ -8,8 +8,8 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 
 ## Cutover blockers (do before/while replacing YNAB)
 
-- [ ] YNAB import: account-type mapping step (backend `account_types` param exists on the importer; the import page has no UI for it — without it every imported account becomes on-budget checking, so tracking/loan accounts pollute TBA on the real import)
-- [ ] Code backup: repo has NO git remote — push to a private remote (the app data has backups now; the code does not)
+- [x] YNAB import: account-type mapping step (preview endpoint + Review Accounts step on the budget selector with name-based type suggestions)
+- [x] Code backup: pushed to private remote github.com/brentonmallen1/IGAB
 - [ ] CI: run `just quality` + backend suite (needs Postgres service) + `npm run typecheck` on push, or at minimum a `just ci` recipe run before commits
 - [ ] Execute cutover per README.md (fresh DB → import → double sync → integrity green → parallel-run one statement cycle)
 
@@ -55,11 +55,12 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 
 _Add items here as they come up during development._
 
-### Budget page money movement (YNAB-parity cluster — service `move_money` exists but has NO endpoint and NO UI)
-- [ ] Move money to/from a category (API endpoint + UI) with history of moves
+### Budget page money movement (YNAB-parity cluster)
+- [x] Move money to/from a category (API endpoint + click-the-available popover, TBA both directions, budget_moves history table + per-month endpoint)
 - [ ] Auto distribute ready-to-assign funds to cover overspent categories
 - [ ] Total overspent display
 - [ ] TBA money up and center (YNAB-style hero) with drawer: auto-fund overspent + total overspend amount
+- [ ] Move-history view beyond the popover (full month log)
 
 ### UI / UX
 - [ ] Entire polish pass — home page budget list, hero-like TBA section, more modern/thoughtful layout
