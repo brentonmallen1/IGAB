@@ -10,7 +10,6 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 
 - [x] YNAB import: account-type mapping step (preview endpoint + Review Accounts step on the budget selector with name-based type suggestions)
 - [x] Code backup: pushed to private remote github.com/brentonmallen1/IGAB
-- [ ] CI: run `just quality` + backend suite (needs Postgres service) + `npm run typecheck` on push, or at minimum a `just ci` recipe run before commits
 - [ ] Execute cutover per README.md (fresh DB → import → double sync → integrity green → parallel-run one statement cycle)
 
 ---
@@ -88,8 +87,9 @@ _Add items here as they come up during development._
 - [ ] Monthly category balance snapshots (O(1) budget summary, invalidate on change) — summary currently recomputes month-by-month per category; fine today, will crawl after years of data
 - [ ] Budget lookback / month comparison (side-by-side via snapshots)
 
-### Testing
-- [ ] Frontend tests for money-critical components (transaction editor, split editor cents math, bulk flows) — backend has 546 tests incl. real-DB integration; frontend has only searchParser tests
+### Testing & CI
+- [ ] CI on push (GitHub Actions: `just quality` + backend suite with a Postgres service container + `npm run typecheck`) — deferred while development is active; run the suite manually before commits meanwhile
+- [ ] Frontend tests for money-critical components (transaction editor, split editor cents math, bulk flows) — backend has 559 tests incl. real-DB integration; frontend has only searchParser tests
 
 ### Localization
 - [ ] Settings for currency, decimal vs comma separator, date format (CSV import now handles EU separators exactly; UI display settings remain)
