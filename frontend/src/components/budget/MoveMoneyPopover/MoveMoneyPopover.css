@@ -1,0 +1,96 @@
+.move-money-popover {
+  position: fixed;
+  z-index: 1000;
+  min-width: 260px;
+  max-width: 320px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color, var(--bg-tertiary));
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.move-money-popover__title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.move-money-popover__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.move-money-popover__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.move-money-popover__field select,
+.move-money-popover__field input {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color, var(--bg-tertiary));
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+}
+
+.move-money-popover__field input:focus,
+.move-money-popover__field select:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.move-money-popover__submit {
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.move-money-popover__submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.move-money-popover__error {
+  color: var(--color-negative);
+  font-size: var(--font-size-xs);
+}
+
+.move-money-popover__history {
+  border-top: 1px solid var(--border-color, var(--bg-tertiary));
+  padding-top: var(--spacing-sm);
+}
+
+.move-money-popover__history-title {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.move-money-popover__history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}

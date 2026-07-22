@@ -134,15 +134,27 @@ def get_auth_service(
     return AuthService(user_repo)
 
 
+def get_budget_move_repo(session: SessionDep):
+    from igab.repositories.budget_move_repo import BudgetMoveRepository
+
+    return BudgetMoveRepository(session)
+
+
 def get_budget_service(
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     category_group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
     assignment_repo: Annotated[BudgetAssignmentRepository, Depends(get_assignment_repo)],
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    move_repo=Depends(get_budget_move_repo),
 ) -> BudgetService:
     return BudgetService(
-        account_repo, category_repo, category_group_repo, assignment_repo, transaction_repo
+        account_repo,
+        category_repo,
+        category_group_repo,
+        assignment_repo,
+        transaction_repo,
+        move_repo=move_repo,
     )
 
 

@@ -400,3 +400,13 @@
     padding: 8px 8px;
   }
 }
+
+.category-row__available--clickable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.category-row__available--clickable:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
