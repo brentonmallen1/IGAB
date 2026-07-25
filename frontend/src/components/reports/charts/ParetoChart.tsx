@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import {
   Bar, Cell, ComposedChart, CartesianGrid, Line,
   ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine,
@@ -10,6 +10,7 @@ import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
 
@@ -19,9 +20,39 @@ const GROUP_LABELS: Record<GroupBy, string> = {
   payee: 'Payee',
 }
 
+function ParetoTooltip({
+  active,
+  payload,
+  label,
+  chartData,
+}: {
+  active?: boolean
+  payload?: { name: string; value: number }[]
+  label?: string
+  chartData: { name: string; fullName: string; group: string | null }[]
+}) {
+  if (!active || !payload?.length) return null
+  const entry = chartData.find((d) => d.name === label)
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip__label">{entry?.fullName ?? label}</div>
+      {entry?.group && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{entry.group}</div>}
+      {payload.map((p) => (
+        <div key={p.name} className="chart-tooltip__row">
+          <span className="chart-tooltip__name">{p.name}</span>
+          <span className="chart-tooltip__value">
+            {p.name === 'Cumulative %' ? `${p.value.toFixed(1)}%` : formatMoney(p.value)}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ParetoReport({ budgetId }: Props) {
-  const { filters } = useReportStore()
+  const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
+  const captureRef = useRef<HTMLDivElement>(null)
 
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
@@ -31,8 +62,8 @@ export function ParetoReport({ budgetId }: Props) {
   const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
   const payeeQ = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
 
-  const spendingItems = spendingQ.data?.groups ?? []
-  const payeeItems = payeeQ.data?.payees ?? []
+  const spendingItems = useMemo(() => spendingQ.data?.groups ?? [], [spendingQ.data])
+  const payeeItems = useMemo(() => payeeQ.data?.payees ?? [], [payeeQ.data])
 
   const groupColorMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -82,24 +113,58 @@ export function ParetoReport({ budgetId }: Props) {
     }
   }, [groupBy, spendingItems, payeeItems, spendingQ.data])
 
+  // Group id → member category ids, for expanding a group drill client-side
+  const groupMembers = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const item of spendingItems) {
+      const key = item.parent_id ?? '__none__'
+      m.set(key, [...(m.get(key) ?? []), item.id])
+    }
+    return m
+  }, [spendingItems])
+
   // All hooks above — safe to conditionally return now
   const isLoading = groupBy === 'payee' ? payeeQ.isLoading : spendingQ.isLoading
   if (isLoading) return <div className="report-loading">Loading…</div>
 
-  let running = 0
-  const chartData = sorted.slice(0, 20).map((item, i) => {
-    running += item.total
-    return {
-      name: item.name.length > 14 ? item.name.slice(0, 12) + '…' : item.name,
-      fullName: item.name,
-      group: item.groupName,
-      Amount: item.total,
-      'Cumulative %': grandTotal > 0 ? (running / grandTotal) * 100 : 0,
-      color: groupBy === 'group'
-        ? CHART_COLORS[i % CHART_COLORS.length]
-        : (groupColorMap.get(item.groupKey ?? '__none__') ?? CHART_COLORS[0]),
+  function drillTo(id: string, name: string) {
+    const window = { startDate: filters.startDate, endDate: filters.endDate }
+    if (groupBy === 'payee') {
+      setDrillDown({
+        kind: 'payee', label: name, scope: 'parent', direction: 'outflow',
+        payeeIds: [id], ...window,
+      })
+    } else if (groupBy === 'group') {
+      const memberIds = groupMembers.get(id) ?? []
+      if (memberIds.length === 0) return
+      setDrillDown({
+        kind: 'category-group', label: name, scope: 'leaf', direction: 'outflow',
+        categoryIds: memberIds, ...window,
+      })
+    } else {
+      setDrillDown({
+        kind: 'category', label: name, scope: 'leaf', direction: 'outflow',
+        categoryIds: [id], ...window,
+      })
     }
-  })
+  }
+
+  const top20 = sorted.slice(0, 20)
+  // Prefix sums without reassignment (react-hooks/immutability)
+  const cumulative = top20.reduce<number[]>(
+    (acc, item) => [...acc, (acc[acc.length - 1] ?? 0) + item.total],
+    [],
+  )
+  const chartData = top20.map((item, i) => ({
+    name: item.name.length > 14 ? item.name.slice(0, 12) + '…' : item.name,
+    fullName: item.name,
+    group: item.groupName,
+    Amount: item.total,
+    'Cumulative %': grandTotal > 0 ? (cumulative[i] / grandTotal) * 100 : 0,
+    color: groupBy === 'group'
+      ? CHART_COLORS[i % CHART_COLORS.length]
+      : (groupColorMap.get(item.groupKey ?? '__none__') ?? CHART_COLORS[0]),
+  }))
 
   const idx80 = chartData.findIndex((d) => d['Cumulative %'] >= 80)
   const pct80coverage = idx80 >= 0 ? ((idx80 + 1) / sorted.length * 100).toFixed(0) : null
@@ -112,25 +177,6 @@ export function ParetoReport({ budgetId }: Props) {
     pct: grandTotal > 0 ? (item.total / grandTotal) * 100 : 0,
   }))
 
-  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number }[]; label?: string }) => {
-    if (!active || !payload?.length) return null
-    const entry = chartData.find((d) => d.name === label)
-    return (
-      <div className="chart-tooltip">
-        <div className="chart-tooltip__label">{entry?.fullName ?? label}</div>
-        {entry?.group && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{entry.group}</div>}
-        {payload.map((p) => (
-          <div key={p.name} className="chart-tooltip__row">
-            <span className="chart-tooltip__name">{p.name}</span>
-            <span className="chart-tooltip__value">
-              {p.name === 'Cumulative %' ? `${p.value.toFixed(1)}%` : formatMoney(p.value)}
-            </span>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
   return (
     <div className="report-section">
       <div className="report-section__controls">
@@ -139,12 +185,29 @@ export function ParetoReport({ budgetId }: Props) {
           <p>The <strong>80/20 rule</strong>: roughly 80% of your spending comes from 20% of your categories. This chart shows where spending concentrates.</p>
           <p><strong>Bars</strong> show individual amounts (colored by category group). The <strong>orange line</strong> is the running cumulative percentage. The <strong>red dashed line</strong> marks 80%.</p>
           <p>Switch the <strong>Group by</strong> filter in the toolbar to see the pattern at the category group, category, or payee level.</p>
+          <p>Click a bar or a table row to see the transactions behind it.</p>
         </ReportInfoButton>
+        <div style={{ marginLeft: 'auto' }}>
+          <ReportExportButton
+            reportId="pareto"
+            getRows={() =>
+              sorted.map((item) => ({
+                name: item.name,
+                group: item.groupName ?? '',
+                total: item.total,
+                pct: grandTotal > 0 ? (item.total / grandTotal) * 100 : 0,
+              }))
+            }
+            captureRef={captureRef}
+            window={{ start: filters.startDate, end: filters.endDate }}
+          />
+        </div>
       </div>
       <p className="report-section__subtitle">
         Which {GROUP_LABELS[groupBy].toLowerCase()}s account for 80% of your spending?
       </p>
 
+      <div ref={captureRef} className="report-capture">
       {grandTotal > 0 && (
         <div className="report-metrics">
           <MetricCard label="Total Spending" value={formatMoney(grandTotal)} />
@@ -168,9 +231,20 @@ export function ParetoReport({ budgetId }: Props) {
               <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-40} textAnchor="end" interval={0} height={70} />
               <YAxis yAxisId="left" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
               <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={50} />
-              <Tooltip content={<CustomTooltip />} offset={16} isAnimationActive={false} />
+              <Tooltip content={<ParetoTooltip chartData={chartData} />} offset={16} isAnimationActive={false} />
               <ReferenceLine yAxisId="right" y={80} stroke="#e15759" strokeDasharray="6 3" label={{ value: '80%', position: 'right', fontSize: 11 }} />
-              <Bar yAxisId="left" dataKey="Amount" radius={[2, 2, 0, 0]}>
+              <Bar
+                yAxisId="left"
+                dataKey="Amount"
+                radius={[2, 2, 0, 0]}
+                cursor="pointer"
+                onClick={(data) => {
+                  const d = data as { fullName?: string; payload?: { fullName?: string } }
+                  const full = d.fullName ?? d.payload?.fullName
+                  const item = sorted.find((s) => s.name === full)
+                  if (item) drillTo(item.id, item.name)
+                }}
+              >
                 {chartData.map((entry, i) => (
                   <Cell key={i} fill={entry.color} fillOpacity={0.85} />
                 ))}
@@ -178,9 +252,14 @@ export function ParetoReport({ budgetId }: Props) {
               <Line yAxisId="right" type="monotone" dataKey="Cumulative %" stroke="#f28e2b" strokeWidth={2} dot={{ r: 3 }} />
             </ComposedChart>
           </ResponsiveContainer>
-          <DrillDownTable rows={tableRows} total={grandTotal} />
+          <DrillDownTable
+            rows={tableRows}
+            total={grandTotal}
+            onRowClick={(row) => drillTo(row.id, row.name)}
+          />
         </>
       )}
+      </div>
     </div>
   )
 }

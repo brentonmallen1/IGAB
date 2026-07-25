@@ -21,6 +21,8 @@ import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
 import { useHistoryStore } from '../../../stores/historyStore'
 import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simplefin'
+import { useShortcut } from '../../../hooks/useShortcut'
+import { SHORTCUTS } from '../../../keyboard/shortcuts'
 import { today } from '../../../utils/dates'
 import { formatMoney } from '../../../utils/money'
 import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
@@ -134,21 +136,12 @@ export function TransactionTable({ accountId, budgetId }: Props) {
   const enterScheduled = useEnterScheduledTransaction(budgetId)
   const skipScheduled = useSkipScheduledTransaction(budgetId)
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || e.key !== 'z' || e.shiftKey) return
-      const active = document.activeElement
-      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return
-      e.preventDefault()
-      const entry = useHistoryStore.getState().undo()
-      if (entry) {
-        undoTxn.mutate({ id: entry.transactionId, [entry.field]: entry.before } as Parameters<typeof undoTxn.mutate>[0])
-      }
+  useShortcut(SHORTCUTS.undo.combo, () => {
+    const entry = useHistoryStore.getState().undo()
+    if (entry) {
+      undoTxn.mutate({ id: entry.transactionId, [entry.field]: entry.before } as Parameters<typeof undoTxn.mutate>[0])
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  })
 
   const { splitEditing, startSplitEditing } = useTransactionEditStore()
 
@@ -339,6 +332,22 @@ export function TransactionTable({ accountId, budgetId }: Props) {
     selected.forEach(duplicateTransaction)
     clearTransactionSelection()
   }, [selectedTransactionIds, transactionMap, duplicateTransaction, clearTransactionSelection])
+
+  // Selection shortcuts share the exact handlers behind the context menu and
+  // selection bar, so menu hints and key behavior can never diverge
+  const hasSelection = selectedTransactionIds.size > 0
+  useShortcut(SHORTCUTS.duplicate.combo, handleBulkDuplicate, { enabled: hasSelection })
+  useShortcut(
+    SHORTCUTS.makeRepeating.combo,
+    () => {
+      const [onlyId] = [...selectedTransactionIds]
+      const txn = onlyId ? transactionMap.get(onlyId) : undefined
+      if (txn && !txn.parent_transaction_id) setMakeRepeatingTxn(txn)
+    },
+    { enabled: selectedTransactionIds.size === 1 }
+  )
+  useShortcut('delete', handleBulkDelete, { enabled: hasSelection })
+  useShortcut('backspace', handleBulkDelete, { enabled: hasSelection })
 
   const handleBulkApprove = useCallback(() => {
     bulkApprove.mutate(

@@ -42,6 +42,8 @@ class TransactionCreate:
     import_description: str | None = None
     sync_id: str | None = None
     sync_source: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 @dataclass
@@ -53,6 +55,8 @@ class TransactionUpdate:
     memo: str | None = UNSET
     cleared: str | None = UNSET
     approved: bool | None = UNSET
+    latitude: float | None = UNSET
+    longitude: float | None = UNSET
 
 
 # Fields that may never be set to NULL via PATCH
@@ -123,6 +127,8 @@ class TransactionService:
             import_description=data.import_description,
             sync_id=data.sync_id,
             sync_source=data.sync_source,
+            latitude=data.latitude,
+            longitude=data.longitude,
         )
         return txn
 

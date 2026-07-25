@@ -1,0 +1,41 @@
+.update-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.update-toast__text {
+  color: var(--text-primary);
+}
+
+.update-toast__button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.update-toast__button:hover {
+  opacity: 0.9;
+}
+
+.update-toast__dismiss {
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.update-toast__dismiss:hover {
+  color: var(--text-primary);
+}

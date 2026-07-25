@@ -41,7 +41,7 @@
 
 .sched-btn--sm {
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .sched-empty {
@@ -63,7 +63,7 @@
   grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr 60px auto;
   padding: var(--spacing-xs) var(--spacing-md);
   background: var(--bg-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -99,3 +99,20 @@
 
 .positive { color: var(--color-positive); }
 .negative { color: var(--color-negative); }
+
+@media (max-width: 768px) {
+  .sched-page {
+    padding: var(--spacing-md);
+  }
+
+  /* Seven columns can't stack meaningfully — scroll the table sideways */
+  .sched-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sched-table__head,
+  .sched-table__row {
+    min-width: 640px;
+  }
+}

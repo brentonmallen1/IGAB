@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Treemap, ResponsiveContainer, Tooltip } from 'recharts'
 import { ChevronRight } from 'lucide-react'
 import { useReportStore } from '../../../stores/reportStore'
@@ -6,6 +6,7 @@ import { useSpendingGroupedReport } from '../../../api/reports'
 import { formatMoney } from '../../../utils/money'
 import { CHART_COLORS, chartColor } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 
 interface Props { budgetId: string }
@@ -23,16 +24,23 @@ interface TreeNode {
 }
 
 export function SpendingTreemapReport({ budgetId }: Props) {
-  const { filters } = useReportStore()
+  const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const captureRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { setSelectedGroup(null) }, [groupBy])
+  // Reset the drill when the group-by mode changes (state adjusted during
+  // render instead of in an effect, per react-hooks/set-state-in-effect)
+  const [prevGroupBy, setPrevGroupBy] = useState(groupBy)
+  if (prevGroupBy !== groupBy) {
+    setPrevGroupBy(groupBy)
+    setSelectedGroup(null)
+  }
 
-  const items = data?.groups ?? []
+  const items = useMemo(() => data?.groups ?? [], [data])
   const grandTotal = Number(data?.total ?? 0)
 
   const groups = useMemo(() => {
@@ -78,8 +86,9 @@ export function SpendingTreemapReport({ budgetId }: Props) {
         }
       })
     }
-    // group (or payee fallback) → show group-level boxes; allow drill-down in group mode
-    if (selectedGroup && groupBy !== 'group') {
+    // group (or payee fallback) → group-level boxes, or the selected group's
+    // categories once drilled (category mode already returned above)
+    if (selectedGroup) {
       return groups.get(selectedGroup)?.children ?? []
     }
     return [...groups.values()].map((g, i) => ({
@@ -104,6 +113,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
         <ReportInfoButton title="Spending Treemap">
           <p>Each rectangle represents a spending bucket — <strong>size is proportional to amount spent</strong>.</p>
           <p><strong>Group</strong> mode: shows category groups only. <strong>Category</strong> mode: shows all categories flat, colored by group. Use the global <em>Group by</em> filter to switch. In Group mode you can click a tile to drill into its categories.</p>
+          <p>Clicking a category tile opens the list of transactions behind it below the chart.</p>
         </ReportInfoButton>
         {groupBy !== 'category' && (
           <div className="treemap-breadcrumb">
@@ -118,18 +128,35 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             )}
           </div>
         )}
+        <div style={{ marginLeft: 'auto' }}>
+          <ReportExportButton
+            reportId="treemap"
+            getRows={() =>
+              items.map((item) => ({
+                category: item.name,
+                group: item.parent_name ?? '',
+                total: Number(item.total),
+                pct: item.pct,
+                count: item.count,
+              }))
+            }
+            captureRef={captureRef}
+            window={{ start: filters.startDate, end: filters.endDate }}
+          />
+        </div>
       </div>
       <p className="report-section__subtitle">
         {groupBy === 'category'
-          ? 'All categories shown flat, colored by group.'
+          ? 'All categories shown flat, colored by group. Click a tile to see its transactions.'
           : selectedGroup
-            ? 'Showing categories in selected group.'
+            ? 'Showing categories in selected group. Click a tile to see its transactions.'
             : 'Click a group to drill down into its categories.'}
       </p>
 
       {visibleItems.length === 0 ? (
         <div className="reports-empty">No spending data for this period.</div>
       ) : (
+        <div ref={captureRef} className="report-capture">
         <ResponsiveContainer width="100%" height={440}>
           <Treemap
             data={visibleItems}
@@ -142,6 +169,21 @@ export function SpendingTreemapReport({ budgetId }: Props) {
               if (groupBy !== 'category' && !selectedGroup) {
                 const gid = [...groups.entries()].find(([, g]) => g.name === node.name)?.[0]
                 if (gid) setSelectedGroup(gid)
+                return
+              }
+              // Category tiles (flat mode, or drilled into a group) open the
+              // transaction panel below the chart
+              const item = visibleItems.find((i) => i.name === node.name)
+              if (item?.id) {
+                setDrillDown({
+                  kind: 'category',
+                  label: item.name,
+                  scope: 'leaf',
+                  direction: 'outflow',
+                  categoryIds: [item.id],
+                  startDate: filters.startDate,
+                  endDate: filters.endDate,
+                })
               }
             }}
           >
@@ -168,6 +210,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             />
           </Treemap>
         </ResponsiveContainer>
+        </div>
       )}
     </div>
   )

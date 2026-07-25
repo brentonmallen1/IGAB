@@ -163,6 +163,54 @@ export function useFillTargetsApply(budgetId: string) {
   })
 }
 
+export interface CoverOverspentPreviewItem {
+  category_id: string
+  category_name: string
+  overspent: number
+  proposed_addition: number
+  remaining_after: number
+}
+
+export interface CoverOverspentPreviewResponse {
+  items: CoverOverspentPreviewItem[]
+  total_overspent: number
+  total_addition: number
+  tba_before: number
+  tba_after: number
+}
+
+export function useCoverOverspentPreview(budgetId: string | null, month: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['coverOverspentPreview', budgetId, month],
+    queryFn: () =>
+      apiClient
+        .get<CoverOverspentPreviewResponse>(`/${budgetId}/cover-overspent/preview`, {
+          params: { month },
+        })
+        .then((r) => r.data),
+    enabled: !!budgetId && enabled,
+    staleTime: 0,
+  })
+}
+
+export function useCoverOverspentApply(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    // proposed_addition is echoed back verbatim (Decimal-as-string) so the
+    // backend re-parses the exact preview amount
+    mutationFn: (data: {
+      month: string
+      items: { category_id: string; proposed_addition: number }[]
+    }) => apiClient.post(`/${budgetId}/cover-overspent/apply`, data),
+    onSuccess: (_, { month }) => {
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['coverOverspentPreview', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['fillTargetsPreview', budgetId, month] })
+    },
+  })
+}
+
 export interface YnabAccountPreview {
   name: string
   transaction_count: number

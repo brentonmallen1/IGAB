@@ -1,11 +1,12 @@
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from igab.api.v1.schemas.transaction import (
+    BudgetTransactionListResponse,
     BulkActionResult,
     BulkApprove,
     BulkCategorize,
@@ -13,6 +14,7 @@ from igab.api.v1.schemas.transaction import (
     BulkDelete,
     BulkItemFailure,
     MergeTransactionsRequest,
+    NearbyPayeeResponse,
     PayeeCreate,
     PayeeMergeRequest,
     PayeeResponse,
@@ -46,6 +48,7 @@ from igab.services.transaction_service import (
 from igab.services.transaction_service import (
     TransactionUpdate as SvcTxnUpdate,
 )
+from igab.utils.geo import bounding_box, haversine_m
 
 router = APIRouter()
 
@@ -95,6 +98,60 @@ async def list_account_transactions(
     return [TransactionResponse.model_validate(t) for t in txns]
 
 
+@router.get("/{budget_id}/transactions", response_model=BudgetTransactionListResponse)
+async def list_budget_transactions(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    start_date: date | None = None,
+    end_date: date | None = None,
+    search: str | None = None,
+    category_ids: str | None = None,
+    payee_ids: str | None = None,
+    account_ids: str | None = None,
+    scope: Literal["parent", "leaf"] = "parent",
+    posted_only: bool = False,
+    cash_flow_only: bool = False,
+    direction: Literal["inflow", "outflow"] | None = None,
+    day_of_week: int | None = Query(None, ge=0, le=6),
+    limit: int = Query(200, le=1000),
+    offset: int = 0,
+) -> BudgetTransactionListResponse:
+    """Budget-wide transaction listing for report drill-downs.
+
+    The filter semantics mirror the report aggregates: leaf scope for
+    category-keyed drills, parent scope for payee/month drills; posted_only
+    and cash_flow_only reproduce the POSTED / CASH_FLOW_ROW predicates.
+    """
+    txns, total_count, total_amount = await txn_repo.list_for_budget(
+        budget_id,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+        category_ids=_parse_uuid_list(category_ids),
+        payee_ids=_parse_uuid_list(payee_ids),
+        account_ids=_parse_uuid_list(account_ids),
+        scope=scope,
+        posted_only=posted_only,
+        cash_flow_only=cash_flow_only,
+        direction=direction,
+        day_of_week=day_of_week,
+        limit=limit,
+        offset=offset,
+    )
+    return BudgetTransactionListResponse(
+        transactions=[TransactionResponse.model_validate(t) for t in txns],
+        total_count=total_count,
+        total_amount=total_amount,
+    )
+
+
+def _parse_uuid_list(value: str | None) -> list[uuid.UUID] | None:
+    if not value:
+        return None
+    return [uuid.UUID(v.strip()) for v in value.split(",") if v.strip()]
+
+
 @router.get(
     "/accounts/{account_id}/transactions/similar",
     response_model=list[SimilarTransactionResponse],
@@ -138,6 +195,8 @@ async def create_transaction(
                 memo=body.memo,
                 cleared=body.cleared,
                 approved=body.approved,
+                latitude=body.latitude,
+                longitude=body.longitude,
             )
             splits = [
                 SvcTxnCreate(
@@ -164,6 +223,8 @@ async def create_transaction(
                 cleared=body.cleared,
                 approved=body.approved,
                 transfer_account_id=body.transfer_account_id,
+                latitude=body.latitude,
+                longitude=body.longitude,
             )
             txn = await txn_service.create(budget_id, svc_data)
     except InvariantViolation as e:
@@ -355,6 +416,49 @@ async def list_payees(
         PayeeWithCount(**PayeeResponse.model_validate(p).model_dump(), transaction_count=count)
         for p, count in rows
     ]
+
+
+@router.get("/{budget_id}/payees/nearby", response_model=list[NearbyPayeeResponse])
+async def nearby_payees(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    radius_m: int = Query(500, ge=50, le=5000),
+    limit: int = Query(8, ge=1, le=25),
+) -> list[NearbyPayeeResponse]:
+    """Payees the user has transacted with near a point, closest first.
+
+    Bounding-box prefilter in SQL, exact haversine here — no PostGIS needed at
+    household scale. Only opt-in located transactions contribute.
+    """
+    min_lat, max_lat, min_lng, max_lng = bounding_box(lat, lng, radius_m)
+    rows = await payee_repo.get_located_visits(budget_id, min_lat, max_lat, min_lng, max_lng)
+
+    grouped: dict[uuid.UUID, dict] = {}
+    for payee_id, name, default_category_id, t_lat, t_lng, t_date in rows:
+        dist = haversine_m(lat, lng, t_lat, t_lng)
+        if dist > radius_m:
+            continue
+        entry = grouped.get(payee_id)
+        if entry is None:
+            grouped[payee_id] = {
+                "id": payee_id,
+                "name": name,
+                "default_category_id": default_category_id,
+                "distance_m": dist,
+                "visit_count": 1,
+                "last_date": t_date,
+            }
+        else:
+            entry["distance_m"] = min(entry["distance_m"], dist)
+            entry["visit_count"] += 1
+            if t_date > entry["last_date"]:
+                entry["last_date"] = t_date
+
+    ranked = sorted(grouped.values(), key=lambda e: e["distance_m"])[:limit]
+    return [NearbyPayeeResponse(**e) for e in ranked]
 
 
 @router.post(

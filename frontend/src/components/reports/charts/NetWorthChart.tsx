@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Area, AreaChart, CartesianGrid, Legend,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -9,12 +9,14 @@ import { ChartTooltip } from './ChartTooltip'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
 
 export function NetWorthReport({ budgetId }: Props) {
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useNetWorthReport(budgetId, months)
+  const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -47,9 +49,22 @@ export function NetWorthReport({ budgetId }: Props) {
               {m}mo
             </button>
           ))}
+          <ReportExportButton
+            reportId="net-worth"
+            getRows={() =>
+              points.map((p) => ({
+                date: p.date,
+                assets: Number(p.total_assets),
+                liabilities: Number(p.total_liabilities),
+                net_worth: Number(p.net_worth),
+              }))
+            }
+            captureRef={captureRef}
+          />
         </div>
       </div>
 
+      <div ref={captureRef} className="report-capture">
       {latest && (
         <div className="report-metrics">
           <MetricCard label="Current Net Worth" value={formatMoney(Number(latest.net_worth))} />
@@ -84,6 +99,7 @@ export function NetWorthReport({ budgetId }: Props) {
           </AreaChart>
         </ResponsiveContainer>
       )}
+      </div>
     </div>
   )
 }

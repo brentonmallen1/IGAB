@@ -1,0 +1,59 @@
+import { useRef, type MouseEvent, type TouchEvent } from 'react'
+
+const MOVE_CANCEL_PX = 10
+
+/**
+ * Touch long-press with click passthrough. Returns handlers to spread on an
+ * element: a hold of `ms` fires onLongPress (and suppresses the synthetic
+ * click that follows); a normal tap falls through to onClick. Movement beyond
+ * a small threshold cancels the press so scrolling never triggers it.
+ */
+export function useLongPress(
+  onLongPress: () => void,
+  onClick?: (e: MouseEvent) => void,
+  ms = 500
+) {
+  const timerRef = useRef<number | null>(null)
+  const triggeredRef = useRef(false)
+  const startPosRef = useRef<{ x: number; y: number } | null>(null)
+
+  const clear = () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+  }
+
+  return {
+    onTouchStart: (e: TouchEvent) => {
+      const t = e.touches[0]
+      startPosRef.current = { x: t.clientX, y: t.clientY }
+      clear()
+      timerRef.current = window.setTimeout(() => {
+        triggeredRef.current = true
+        onLongPress()
+      }, ms)
+    },
+    onTouchMove: (e: TouchEvent) => {
+      if (!startPosRef.current) return
+      const t = e.touches[0]
+      if (
+        Math.abs(t.clientX - startPosRef.current.x) > MOVE_CANCEL_PX ||
+        Math.abs(t.clientY - startPosRef.current.y) > MOVE_CANCEL_PX
+      ) {
+        clear()
+      }
+    },
+    onTouchEnd: () => {
+      clear()
+      startPosRef.current = null
+    },
+    onClick: (e: MouseEvent) => {
+      if (triggeredRef.current) {
+        triggeredRef.current = false
+        return
+      }
+      onClick?.(e)
+    },
+  }
+}

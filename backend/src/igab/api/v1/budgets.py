@@ -187,6 +187,12 @@ async def create_budget(
             )
         )
     await session.flush()
+
+    # Seed system tags
+    from igab.repositories.tag_repo import seed_system_tags
+
+    await seed_system_tags(session, budget.id)
+
     return BudgetResponse.model_validate(budget)
 
 

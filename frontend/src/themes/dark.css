@@ -38,6 +38,16 @@
   --card-bg: #1a1d27;
   --card-border: #252836;
 
+  /* Tag color slots */
+  --tag-red: #f87171;
+  --tag-orange: #fb923c;
+  --tag-yellow: #fbbf24;
+  --tag-green: #4ade80;
+  --tag-teal: #2dd4bf;
+  --tag-blue: #60a5fa;
+  --tag-purple: #a78bfa;
+  --tag-pink: #f472b6;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);

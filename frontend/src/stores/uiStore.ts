@@ -13,8 +13,18 @@ interface UIState {
   editingTransactionId: string | null
   isAccountEditorOpen: boolean
   editingAccountId: string | null
-  mobileSidebarOpen: boolean
   sidebarCollapsed: boolean
+
+  // Mobile shell (bottom nav)
+  quickAddOpen: boolean
+  moreSheetOpen: boolean
+  mobileInspectorOpen: boolean
+  openQuickAdd: () => void
+  closeQuickAdd: () => void
+  openMoreSheet: () => void
+  closeMoreSheet: () => void
+  openMobileInspector: () => void
+  closeMobileInspector: () => void
   budgetRowMode: 'expanded' | 'compressed'
   selectedCategoryIds: Set<string>
   categoryInspectorOpen: boolean
@@ -36,7 +46,6 @@ interface UIState {
   closeTransactionEditor: () => void
   openAccountEditor: (accountId: string) => void
   closeAccountEditor: () => void
-  setMobileSidebarOpen: (open: boolean) => void
   toggleSidebarCollapsed: () => void
   toggleBudgetRowMode: () => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
@@ -79,6 +88,20 @@ interface UIState {
   openManageViewsModal: () => void
   closeManageViewsModal: () => void
 
+  // Command palette
+  isPaletteOpen: boolean
+  openPalette: () => void
+  closePalette: () => void
+  togglePalette: () => void
+
+  // TBA hero (store-driven so the palette can trigger them from anywhere)
+  isAutoAssignOpen: boolean
+  setAutoAssignOpen: (open: boolean) => void
+  isCoverOverspentOpen: boolean
+  setCoverOverspentOpen: (open: boolean) => void
+  tbaDrawerOpen: boolean
+  setTbaDrawerOpen: (open: boolean) => void
+
   // Reconciliation mode
   isReconciling: boolean
   reconcileAccountId: string | null
@@ -96,7 +119,6 @@ export const useUIStore = create<UIState>((set, get) => ({
   editingTransactionId: null,
   isAccountEditorOpen: false,
   editingAccountId: null,
-  mobileSidebarOpen: false,
   sidebarCollapsed: false,
   budgetRowMode: 'expanded',
   selectedCategoryIds: new Set(),
@@ -135,8 +157,17 @@ export const useUIStore = create<UIState>((set, get) => ({
   openAccountEditor: (accountId) => set({ isAccountEditorOpen: true, editingAccountId: accountId }),
   closeAccountEditor: () => set({ isAccountEditorOpen: false, editingAccountId: null }),
 
-  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+
+  quickAddOpen: false,
+  moreSheetOpen: false,
+  mobileInspectorOpen: false,
+  openQuickAdd: () => set({ quickAddOpen: true }),
+  closeQuickAdd: () => set({ quickAddOpen: false }),
+  openMoreSheet: () => set({ moreSheetOpen: true }),
+  closeMoreSheet: () => set({ moreSheetOpen: false }),
+  openMobileInspector: () => set({ mobileInspectorOpen: true }),
+  closeMobileInspector: () => set({ mobileInspectorOpen: false }),
   toggleBudgetRowMode: () => set((s) => ({ budgetRowMode: s.budgetRowMode === 'expanded' ? 'compressed' : 'expanded' })),
 
   toggleCategorySelection: (id, shiftKey = false, orderedIds = []) => {
@@ -274,6 +305,18 @@ export const useUIStore = create<UIState>((set, get) => ({
   isManageViewsModalOpen: false,
   openManageViewsModal: () => set({ isManageViewsModalOpen: true }),
   closeManageViewsModal: () => set({ isManageViewsModalOpen: false }),
+
+  isPaletteOpen: false,
+  openPalette: () => set({ isPaletteOpen: true }),
+  closePalette: () => set({ isPaletteOpen: false }),
+  togglePalette: () => set((s) => ({ isPaletteOpen: !s.isPaletteOpen })),
+
+  isAutoAssignOpen: false,
+  setAutoAssignOpen: (open) => set({ isAutoAssignOpen: open }),
+  isCoverOverspentOpen: false,
+  setCoverOverspentOpen: (open) => set({ isCoverOverspentOpen: open }),
+  tbaDrawerOpen: false,
+  setTbaDrawerOpen: (open) => set({ tbaDrawerOpen: open }),
 
   isReconciling: false,
   reconcileAccountId: null,

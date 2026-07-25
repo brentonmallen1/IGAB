@@ -35,7 +35,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
 }
 

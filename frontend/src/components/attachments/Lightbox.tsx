@@ -1,6 +1,8 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import './Lightbox.css'
+
+const SWIPE_THRESHOLD_PX = 60
 
 interface Props {
   src: string
@@ -13,6 +15,8 @@ interface Props {
 }
 
 export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext }: Props) {
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
     if (e.key === 'ArrowLeft' && hasPrev && onPrev) onPrev()
@@ -28,8 +32,29 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext }
     }
   }, [handleKeyDown])
 
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    const start = touchStartRef.current
+    touchStartRef.current = null
+    if (!start) return
+    const dx = e.changedTouches[0].clientX - start.x
+    const dy = e.changedTouches[0].clientY - start.y
+    // Horizontal swipe navigates; ignore mostly-vertical gestures
+    if (Math.abs(dx) < SWIPE_THRESHOLD_PX || Math.abs(dy) > Math.abs(dx)) return
+    if (dx < 0 && hasNext && onNext) onNext()
+    if (dx > 0 && hasPrev && onPrev) onPrev()
+  }
+
   return (
-    <div className="lightbox-overlay" onClick={onClose}>
+    <div
+      className="lightbox-overlay"
+      onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <button className="lightbox-close" onClick={onClose} aria-label="Close">
         <X size={24} />
       </button>

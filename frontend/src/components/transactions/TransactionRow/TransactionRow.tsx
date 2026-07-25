@@ -4,10 +4,14 @@ import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction }
 import { useCreateCategory } from '../../../api/categories'
 import { useCreatePayee } from '../../../api/payees'
 import { useAppStore } from '../../../stores/appStore'
+import { useUIStore } from '../../../stores/uiStore'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
+import { useLongPress } from '../../../hooks/useLongPress'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useHistoryStore } from '../../../stores/historyStore'
 import { formatDate } from '../../../utils/dates'
 import { formatMoney } from '../../../utils/money'
+import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
@@ -41,13 +45,22 @@ const APPROVE_MENU_ITEMS: ContextMenuItem[] = [
 
 const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
   { id: 'split', label: 'Split Transaction…' },
-  { id: 'duplicate', label: 'Duplicate', shortcut: 'shift D' },
-  { id: 'make_repeating', label: 'Make Repeating', shortcut: 'shift T' },
+  { id: 'duplicate', label: 'Duplicate', shortcut: formatCombo(SHORTCUTS.duplicate.combo) },
+  {
+    id: 'make_repeating',
+    label: 'Make Repeating',
+    shortcut: formatCombo(SHORTCUTS.makeRepeating.combo),
+  },
   { id: 'separator1', label: '', separator: true },
   { id: 'enter_now', label: 'Enter Now' },
   { id: 'approve', label: 'Approve' },
   { id: 'separator2', label: '', separator: true },
-  { id: 'delete', label: 'Delete', shortcut: 'delete', danger: true },
+  {
+    id: 'delete',
+    label: 'Delete',
+    shortcut: formatCombo(SHORTCUTS.deleteSelected.combo),
+    danger: true,
+  },
 ]
 
 function txnPropsEqual(prev: Props, next: Props): boolean {
@@ -105,6 +118,8 @@ export const TransactionRow = memo(function TransactionRow({
   const createCat = useCreateCategory(budgetId)
   const createPayee = useCreatePayee(budgetId)
   const { editingField, startEditing, stopEditing } = useTransactionEditStore()
+  const isMobile = useIsMobile()
+  const anyTxnSelected = useUIStore((s) => s.selectedTransactionIds.size > 0)
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number; alignRight?: boolean }>({ x: 0, y: 0 })
   const [approveMenuOpen, setApproveMenuOpen] = useState(false)
@@ -172,9 +187,26 @@ export const TransactionRow = memo(function TransactionRow({
 
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault()
+    if (isMobile) return // long-press enters selection mode instead
     setContextMenuPos({ x: e.clientX, y: e.clientY })
     setContextMenuOpen(true)
   }
+
+  // Mobile: tap opens the editor (or toggles selection while selecting);
+  // long-press starts selection mode. Inline cell editing is desktop-only.
+  function handleMobileTap(e: React.MouseEvent) {
+    const target = e.target as Element
+    if (target.closest('input, button, a')) return
+    if (anyTxnSelected) {
+      onSelect(txn.id, false)
+      return
+    }
+    if (!isReconciled) onEdit(txn)
+  }
+
+  const longPress = useLongPress(() => {
+    if (!anyTxnSelected) onSelect(txn.id, false)
+  }, handleMobileTap)
 
   function handleMoreClick(e: React.MouseEvent) {
     e.stopPropagation()
@@ -277,10 +309,11 @@ export const TransactionRow = memo(function TransactionRow({
 
   return (
     <div
-      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''}`}
+      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''}`}
       role="row"
-      onDoubleClick={() => !isReconciled && onEdit(txn)}
+      onDoubleClick={() => !isMobile && !isReconciled && onEdit(txn)}
       onContextMenu={handleContextMenu}
+      {...(isMobile ? longPress : {})}
     >
       {/* Checkbox */}
       <div className="txn-col txn-col--checkbox" onClick={(e) => e.stopPropagation()}>
@@ -328,7 +361,7 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Date */}
       <div
         className="txn-col txn-col--date"
-        onClick={() => !isReconciled && startEditing(txn.id, 'date')}
+        onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'date')}
         title={
           txn.entered_date && txn.entered_date !== txn.date
             ? `Bank posted date. Originally entered ${formatDate(txn.entered_date)}.`
@@ -349,7 +382,7 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Payee */}
       <div
         className="txn-col txn-col--payee txn-text-clip"
-        onClick={() => !isReconciled && !txn.transfer_id && startEditing(txn.id, 'payee')}
+        onClick={() => !isMobile && !isReconciled && !txn.transfer_id && startEditing(txn.id, 'payee')}
         title={txn.import_description ?? undefined}
       >
         {isEditing('payee') ? (
@@ -372,7 +405,7 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--category txn-text-clip"
         onClick={() => {
-          if (isReconciled) return
+          if (isMobile || isReconciled) return
           if (txn.is_split) onStartSplit(txn)
           else startEditing(txn.id, 'category')
         }}
@@ -401,7 +434,7 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Memo */}
       <div
         className="txn-col txn-col--memo txn-text-clip"
-        onClick={() => !isReconciled && startEditing(txn.id, 'memo')}
+        onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'memo')}
       >
         {isEditing('memo') ? (
           <InlineInput
@@ -418,7 +451,7 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Outflow */}
       <div
         className="txn-col txn-col--outflow tabular"
-        onClick={() => !isReconciled && startEditing(txn.id, 'outflow')}
+        onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'outflow')}
       >
         {isEditing('outflow') ? (
           <InlineInput
@@ -436,7 +469,7 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Inflow */}
       <div
         className="txn-col txn-col--inflow tabular"
-        onClick={() => !isReconciled && startEditing(txn.id, 'inflow')}
+        onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'inflow')}
       >
         {isEditing('inflow') ? (
           <InlineInput

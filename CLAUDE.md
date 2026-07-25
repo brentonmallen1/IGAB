@@ -64,7 +64,7 @@ Financial data is stressful. IGAB should feel like a reliable tool — not a pro
 ### Aesthetic Direction
 **Refined functional** — beautiful because it works, not because it decorates.
 
-- **Multi-theme is a core feature**: The app ships 7 themes (dark, light, gruvbox dark/light, catppuccin mocha/latte, rosé pine, rosé pine moon, nord). Any design work must preserve and honor all themes — changes to components must use CSS custom properties so all themes benefit. Do NOT hard-code colors.
+- **Multi-theme is a core feature**: The app ships 9 themes (dark, light, gruvbox dark/light, catppuccin mocha/latte, rosé pine, rosé pine moon, nord). Any design work must preserve and honor all themes — changes to components must use CSS custom properties so all themes benefit. Do NOT hard-code colors.
 - Each theme has its own personality (Catppuccin = modern purple, Nord = icy blues, Gruvbox = warm earth tones, Rosé Pine = dusty rose/purple) — honor the source material, don't fight it.
 - Muted, purposeful color — accent reserved for meaningful state, not decoration
 - Information density is a feature, not a problem to design away
@@ -87,6 +87,6 @@ Used when the user has selected multiple items and bulk actions are available. F
 ### Design Principles
 1. **Meaning over decoration** — every visual element earns its place by carrying information or guiding attention
 2. **Calm by default** — restrained palette, color reserved for genuine state changes (overspent, funded, warning)
-3. **Theme integrity** — all 7 themes must work; use CSS custom properties throughout, never hard-code colors
+3. **Theme integrity** — all 9 themes must work; use CSS custom properties throughout, never hard-code colors
 4. **Trust through consistency** — interactions behave predictably, patterns are uniform throughout
 5. **Accessible without fuss** — best-effort WCAG AA: proper contrast, keyboard nav, clear focus indicators

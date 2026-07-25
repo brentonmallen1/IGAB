@@ -21,6 +21,9 @@ from igab.api.v1.schemas.category import (
     CategoryTargetCreate,
     CategoryTargetResponse,
     CategoryUpdate,
+    CoverOverspentApplyRequest,
+    CoverOverspentPreviewItem,
+    CoverOverspentPreviewResponse,
     FillTargetsApplyRequest,
     FillTargetsPreviewItem,
     FillTargetsPreviewResponse,
@@ -184,6 +187,7 @@ async def get_budget_month(
         to_be_assigned=summary.to_be_assigned,
         total_assigned=summary.total_assigned,
         total_activity=summary.total_activity,
+        total_overspent=summary.total_overspent,
         category_balances=[
             CategoryBalance(
                 category_id=b.category_id,
@@ -453,3 +457,52 @@ async def fill_targets_apply(
             await budget_service.set_assignment(
                 budget_id, item.category_id, body.month, item.new_assigned
             )
+
+
+@router.get(
+    "/{budget_id}/cover-overspent/preview",
+    response_model=CoverOverspentPreviewResponse,
+)
+async def cover_overspent_preview(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    month: date = Query(default=None),
+) -> CoverOverspentPreviewResponse:
+    from datetime import date as date_cls
+
+    current_month = month or date_cls.today()
+    preview = await budget_service.cover_overspent_preview(budget_id, current_month)
+    return CoverOverspentPreviewResponse(
+        items=[
+            CoverOverspentPreviewItem(
+                category_id=i.category_id,
+                category_name=i.category_name,
+                overspent=i.overspent,
+                proposed_addition=i.proposed_addition,
+                remaining_after=i.remaining_after,
+            )
+            for i in preview.items
+        ],
+        total_overspent=preview.total_overspent,
+        total_addition=preview.total_addition,
+        tba_before=preview.tba_before,
+        tba_after=preview.tba_after,
+    )
+
+
+@router.post("/{budget_id}/cover-overspent/apply", status_code=status.HTTP_204_NO_CONTENT)
+async def cover_overspent_apply(
+    budget_id: BudgetAccess,
+    body: CoverOverspentApplyRequest,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+) -> None:
+    try:
+        await budget_service.cover_overspent_apply(
+            budget_id,
+            body.month,
+            [(item.category_id, item.proposed_addition) for item in body.items],
+        )
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e

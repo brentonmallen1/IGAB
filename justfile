@@ -11,8 +11,8 @@ init:
 
 # Start all services in dev mode (with live reload); tears down first if already running
 dev:
-    docker compose down --remove-orphans
-    docker compose watch
+    docker compose --profile dev down --remove-orphans
+    docker compose --profile dev watch
 
 # Start only the database container
 dev-db:
@@ -41,19 +41,19 @@ dev-migrate:
 
 # Start all services in Docker with live reload (original docker compose watch)
 dev-docker:
-    docker compose watch
+    docker compose --profile dev watch
 
 # Start all services (no watch)
 up:
-    docker compose up
+    docker compose --profile dev up
 
-# Stop all services
+# Stop all services (any profile)
 down:
-    docker compose down
+    docker compose --profile dev --profile production down
 
 # Rebuild all images
 build:
-    docker compose build
+    docker compose --profile dev build
 
 # Tail logs
 logs service="":
@@ -158,15 +158,15 @@ quality:
 
 # Open a shell in the frontend container
 frontend-shell:
-    docker compose exec frontend sh
+    docker compose --profile dev exec frontend sh
 
 # Run frontend type check
 typecheck:
-    docker compose exec frontend npm run typecheck
+    docker compose --profile dev exec frontend npm run typecheck
 
 # Run frontend tests
 test-frontend:
-    docker compose exec frontend npm test
+    docker compose --profile dev exec frontend npm test
 
 # ─── Production ───────────────────────────────────────────────────────────────
 
@@ -182,4 +182,4 @@ ps:
 
 # Remove all containers and volumes (DESTRUCTIVE)
 clean:
-    docker compose down -v --remove-orphans
+    docker compose --profile dev --profile production down -v --remove-orphans

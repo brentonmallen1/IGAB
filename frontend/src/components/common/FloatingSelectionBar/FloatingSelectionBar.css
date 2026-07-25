@@ -45,7 +45,7 @@
 }
 
 .fsb__sublabel {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   opacity: 0.75;
 }
 
@@ -78,4 +78,15 @@
 .fsb__btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Stack above the mobile bottom nav; allow actions to wrap on narrow screens */
+@media (max-width: 768px) {
+  .fsb {
+    bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + var(--spacing-md));
+    max-width: calc(100vw - 16px);
+    white-space: normal;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 }

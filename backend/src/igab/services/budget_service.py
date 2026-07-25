@@ -1,7 +1,7 @@
 import uuid
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 from igab.repositories.account_repo import AccountRepository
@@ -66,7 +66,55 @@ class BudgetSummary:
     to_be_assigned: Decimal
     total_assigned: Decimal
     total_activity: Decimal
+    total_overspent: Decimal
     category_balances: list[CategoryBalance]
+
+
+@dataclass
+class CoverOverspentItem:
+    category_id: uuid.UUID
+    category_name: str
+    overspent: Decimal
+    proposed_addition: Decimal
+    remaining_after: Decimal
+
+
+@dataclass
+class CoverOverspentPreview:
+    items: list[CoverOverspentItem]
+    total_overspent: Decimal
+    total_addition: Decimal
+    tba_before: Decimal
+    tba_after: Decimal
+
+
+def distribute_cover(
+    shortfalls: dict[uuid.UUID, Decimal],
+    available_tba: Decimal,
+) -> dict[uuid.UUID, Decimal]:
+    """Distribute TBA across overspent categories, proportionally when short.
+
+    When TBA covers the total shortfall, every category is covered in full.
+    When short, each category gets its proportional share rounded DOWN to
+    cents — unlike fill-targets' half-even rounding, this guarantees the sum
+    never exceeds TBA (apply hard-rejects overshoot, so a preview must never
+    propose one). Leftover cents stay in TBA.
+    """
+    available_tba = max(Decimal("0"), available_tba)
+    total_shortfall = sum(shortfalls.values(), Decimal("0"))
+    result: dict[uuid.UUID, Decimal] = {}
+    for cat_id, needed in shortfalls.items():
+        if total_shortfall <= 0 or available_tba <= 0:
+            proposed = Decimal("0")
+        elif total_shortfall <= available_tba:
+            proposed = needed
+        else:
+            # Multiply before dividing: needed/total loses exactness (1/3 ...),
+            # and rounding an exact share like 100.00 down to 99.99 leaks cents.
+            share = needed * available_tba / total_shortfall
+            proposed = min(needed, share.quantize(Decimal("0.01"), rounding=ROUND_DOWN))
+        result[cat_id] = proposed
+    return result
 
 
 class BudgetService:
@@ -175,6 +223,7 @@ class BudgetService:
         total_category_balance = Decimal("0")
         total_assigned = Decimal("0")
         total_activity = Decimal("0")
+        total_overspent = Decimal("0")
 
         for cat in categories:
             bal = await self.get_category_balance(
@@ -184,6 +233,8 @@ class BudgetService:
             # Exclude system (Income) categories: income adds to TBA, not reduces it
             if cat.category_group_id not in system_group_ids:
                 total_category_balance += bal.available
+                if bal.available < 0:
+                    total_overspent += -bal.available
             total_assigned += bal.assigned
             total_activity += bal.activity
 
@@ -193,6 +244,7 @@ class BudgetService:
             to_be_assigned=to_be_assigned,
             total_assigned=total_assigned,
             total_activity=total_activity,
+            total_overspent=total_overspent,
             category_balances=balances,
         )
 
@@ -326,3 +378,86 @@ class BudgetService:
         if self.move_repo is None:
             return []
         return await self.move_repo.get_for_month(budget_id, first_of_month(month))
+
+    async def _overspent_shortfalls(
+        self, budget_id: uuid.UUID, month: date
+    ) -> tuple["BudgetSummary", dict[uuid.UUID, Decimal]]:
+        """Current summary plus {category_id: overspent amount} for non-system
+        categories. Hidden categories are included on purpose — they participate
+        in the TBA math, so covering them is required to zero out overspending."""
+        summary = await self.get_budget_summary(budget_id, month)
+        groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
+        system_group_ids = {g.id for g in groups if g.is_system}
+        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
+        non_system_ids = {c.id for c in categories if c.category_group_id not in system_group_ids}
+        shortfalls = {
+            b.category_id: -b.available
+            for b in summary.category_balances
+            if b.available < 0 and b.category_id in non_system_ids
+        }
+        return summary, shortfalls
+
+    async def cover_overspent_preview(
+        self, budget_id: uuid.UUID, month: date
+    ) -> CoverOverspentPreview:
+        summary, shortfalls = await self._overspent_shortfalls(budget_id, month)
+        proposed = distribute_cover(shortfalls, summary.to_be_assigned)
+
+        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
+        name_map = {c.id: c.name for c in categories}
+
+        items = [
+            CoverOverspentItem(
+                category_id=cat_id,
+                category_name=name_map.get(cat_id, "Unknown"),
+                overspent=shortfall,
+                proposed_addition=proposed[cat_id],
+                remaining_after=shortfall - proposed[cat_id],
+            )
+            for cat_id, shortfall in shortfalls.items()
+        ]
+        items.sort(key=lambda i: (-i.proposed_addition, str(i.category_id)))
+        total_addition = sum((i.proposed_addition for i in items), Decimal("0"))
+
+        return CoverOverspentPreview(
+            items=items,
+            total_overspent=summary.total_overspent,
+            total_addition=total_addition,
+            tba_before=summary.to_be_assigned,
+            tba_after=summary.to_be_assigned - total_addition,
+        )
+
+    async def cover_overspent_apply(
+        self,
+        budget_id: uuid.UUID,
+        month: date,
+        items: list[tuple[uuid.UUID, Decimal]],
+    ) -> None:
+        """Apply a cover-overspent preview by moving money from TBA.
+
+        Re-validates against fresh balances so a stale preview (transactions or
+        assignments changed since it was fetched) cannot over-assign: each
+        addition is capped by the category's current shortfall and the total by
+        current TBA. Each cover routes through move_money, so it lands in the
+        budget_moves audit trail as "TBA → category".
+        """
+        from igab.domain.exceptions import InvariantViolation
+
+        summary, shortfalls = await self._overspent_shortfalls(budget_id, month)
+        available_tba = max(Decimal("0"), summary.to_be_assigned)
+
+        to_apply = [(cat_id, amount) for cat_id, amount in items if amount > 0]
+        total = sum((amount for _, amount in to_apply), Decimal("0"))
+        if total > available_tba:
+            raise InvariantViolation(
+                "Cover amount exceeds Ready to Assign — refresh the preview and try again"
+            )
+        for cat_id, amount in to_apply:
+            shortfall = shortfalls.get(cat_id, Decimal("0"))
+            if amount > shortfall:
+                raise InvariantViolation(
+                    "Cover amount exceeds current overspending — refresh the preview and try again"
+                )
+
+        for cat_id, amount in to_apply:
+            await self.move_money(budget_id, None, cat_id, amount, month)

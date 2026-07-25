@@ -86,7 +86,6 @@ export function useDashboardMetrics(
   budgetId: string | null,
   startDate?: string,
   endDate?: string,
-  _month?: string,
 ) {
   return useQuery({
     queryKey: ['reports', 'dashboard', budgetId, startDate, endDate],
@@ -161,6 +160,7 @@ export function useCashFlowReport(
   endDate?: string,
   mode: 'spent' | 'budgeted' = 'spent',
   accountIds?: string[],
+  options?: { enabled?: boolean },
 ) {
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
@@ -172,7 +172,7 @@ export function useCashFlowReport(
       )
       return data
     },
-    enabled: !!budgetId,
+    enabled: !!budgetId && (options?.enabled ?? true),
     staleTime: STALE,
   })
 }

@@ -1,11 +1,14 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useCashFlowReport } from '../../../api/reports'
+import { usePayees } from '../../../api/payees'
 import { formatMoney } from '../../../utils/money'
+import { previousWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import type { CategoryPayee } from '../../../types'
 import './CashFlowSankey.css'
 
@@ -22,22 +25,42 @@ interface NodeData {
   name: string
   type: string
   id: string
+  /** Previous-window value when compare is on; null = node is new this window */
+  prev?: number | null
+}
+
+/** Signed delta as "+$123 (+12%)"; pct omitted when prev is 0. */
+function formatDelta(current: number, prev: number): string {
+  const delta = current - prev
+  const sign = delta >= 0 ? '+' : '−'
+  const amount = `${sign}${formatMoney(Math.abs(delta))}`
+  if (prev === 0) return amount
+  return `${amount} (${sign}${Math.abs((delta / prev) * 100).toFixed(0)}%)`
+}
+
+/** For income more is good; for expense-side nodes more is bad. */
+function deltaColor(current: number, prev: number, type: string): string {
+  const increased = current >= prev
+  const good = type === 'income' ? increased : !increased
+  return good ? 'var(--color-positive)' : 'var(--color-negative)'
 }
 
 function SankeyNodeRect(props: {
   x?: number; y?: number; width?: number; height?: number
-  payload?: NodeData
+  payload?: NodeData & { value?: number }
 }) {
   const { x = 0, y = 0, width = 0, height = 0, payload } = props
   if (!payload) return null
   const isLeft = payload.type === 'income'
   const color = NODE_COLORS[payload.type] ?? '#999'
+  const value = payload.value ?? 0
+  const hasDelta = payload.prev !== undefined
   return (
     <g>
       <rect x={x} y={y} width={width} height={height} fill={color} />
       <text
         x={isLeft ? x + width + 6 : x - 6}
-        y={y + height / 2}
+        y={y + height / 2 - (hasDelta ? 6 : 0)}
         textAnchor={isLeft ? 'start' : 'end'}
         dominantBaseline="middle"
         fontSize={12}
@@ -46,6 +69,18 @@ function SankeyNodeRect(props: {
       >
         {payload.name.length > 24 ? payload.name.slice(0, 22) + '…' : payload.name}
       </text>
+      {hasDelta && (
+        <text
+          x={isLeft ? x + width + 6 : x - 6}
+          y={y + height / 2 + 8}
+          textAnchor={isLeft ? 'start' : 'end'}
+          dominantBaseline="middle"
+          fontSize={10}
+          fill={payload.prev == null ? 'var(--text-muted)' : deltaColor(value, payload.prev, payload.type)}
+        >
+          {payload.prev == null ? 'new' : formatDelta(value, payload.prev)}
+        </text>
+      )}
     </g>
   )
 }
@@ -55,6 +90,7 @@ interface TooltipData {
   value?: number
   type?: string
   id?: string
+  prev?: number | null
 }
 
 function SankeyTooltip({
@@ -95,6 +131,27 @@ function SankeyTooltip({
         <span className="chart-tooltip__name">Amount</span>
         <span className="chart-tooltip__value">{formatMoney(value)}</span>
       </div>
+      {p?.prev !== undefined && (
+        <>
+          <div className="chart-tooltip__row">
+            <span className="chart-tooltip__name">Previous</span>
+            <span className="chart-tooltip__value">
+              {p.prev == null ? '—' : formatMoney(p.prev)}
+            </span>
+          </div>
+          {p.prev != null && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__name">Change</span>
+              <span
+                className="chart-tooltip__value"
+                style={{ color: deltaColor(value, p.prev, nodeType ?? '') }}
+              >
+                {formatDelta(value, p.prev)}
+              </span>
+            </div>
+          )}
+        </>
+      )}
       {items.length > 0 && (
         <>
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>{itemsLabel}</div>
@@ -111,19 +168,44 @@ function SankeyTooltip({
 }
 
 export function CashFlowSankeyReport({ budgetId }: Props) {
-  const { filters } = useReportStore()
+  const { filters, setDrillDown } = useReportStore()
   const [viewMode, setViewMode] = useState<'spent' | 'budgeted'>('spent')
+  const [compare, setCompare] = useState(false)
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading } = useCashFlowReport(budgetId, filters.startDate, filters.endDate, viewMode, acctIds)
+  const prevWindow = previousWindow(filters.startDate, filters.endDate)
+  const { data: prevData } = useCashFlowReport(
+    budgetId, prevWindow.start, prevWindow.end, viewMode, acctIds, { enabled: compare },
+  )
+  const { data: allPayees } = usePayees(budgetId)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const captureRef = useRef<HTMLDivElement>(null)
 
-  // Reset drill-down when switching modes
+  // Reset drill-down and comparison when switching modes
   const handleModeChange = (mode: 'spent' | 'budgeted') => {
     setViewMode(mode)
     setSelectedGroupId(null)
     setSelectedCategoryId(null)
+    setCompare(false)
   }
+
+  // Previous-window totals keyed by the backend's stable node ids (g_/c_...),
+  // so deltas survive drilling. Payees have no ids at level 3 — match by name.
+  const prevTotals = useMemo(() => {
+    if (!compare || !prevData) return null
+    const groups = new Map<string, number>()
+    const cats = new Map<string, number>()
+    const nodeType = new Map(prevData.nodes.map((n) => [n.id, n.type]))
+    for (const link of prevData.links) {
+      if (link.source === '__budget__') {
+        groups.set(link.target, Number(link.value))
+      } else if (nodeType.get(link.source) === 'category_group') {
+        cats.set(link.target, Number(link.value))
+      }
+    }
+    return { groups, cats }
+  }, [compare, prevData])
 
   // Build simplified sankey: Income → Groups → Categories → Payees (each level on drill)
   const { sankeyData, groupCategories, categoryPayees } = useMemo(() => {
@@ -201,12 +283,28 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
       })
     }
 
+    // Attach previous-window values for the compare overlay. null = new node.
+    if (prevTotals) {
+      const prevPayees = selectedCategoryId
+        ? new Map(
+            (prevData?.category_payees[selectedCategoryId] ?? []).map((p) => [p.name, Number(p.total)]),
+          )
+        : null
+      // The synthetic Income node's value is the sum of visible outflows, not
+      // income — its delta lives on the metric cards instead
+      for (const node of nodes) {
+        if (node.type === 'category_group') node.prev = prevTotals.groups.get(node.id) ?? null
+        else if (node.type === 'category') node.prev = prevTotals.cats.get(node.id) ?? null
+        else if (node.type === 'payee') node.prev = prevPayees?.get(node.name) ?? null
+      }
+    }
+
     return {
       sankeyData: { nodes, links: links.filter((l) => l.value > 0) },
       groupCategories: data.group_categories ?? {},
       categoryPayees: data.category_payees ?? {},
     }
-  }, [data, selectedGroupId, selectedCategoryId])
+  }, [data, selectedGroupId, selectedCategoryId, prevTotals, prevData])
 
   const selectedGroupName = selectedGroupId
     ? data?.nodes.find((n) => n.id === selectedGroupId)?.name ?? null
@@ -232,10 +330,19 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     const nodeData = item?.payload as NodeData | undefined
     if (!nodeData) return
 
+    const window = { startDate: filters.startDate, endDate: filters.endDate }
+
     if (nodeData.type === 'income') {
-      // Clicking income resets to all groups
-      setSelectedGroupId(null)
-      setSelectedCategoryId(null)
+      if (selectedGroupId || selectedCategoryId) {
+        // Clicking income while drilled resets to all groups
+        setSelectedGroupId(null)
+        setSelectedCategoryId(null)
+      } else if (viewMode === 'spent') {
+        // At the top level it opens the income transactions instead
+        setDrillDown({
+          kind: 'month', label: 'Income', scope: 'parent', direction: 'inflow', ...window,
+        })
+      }
     } else if (nodeData.type === 'category_group') {
       if (selectedCategoryId) {
         // Go back to group level
@@ -244,9 +351,26 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         // Drill into group
         setSelectedGroupId(nodeData.id)
       }
-    } else if (nodeData.type === 'category' && selectedGroupId && !selectedCategoryId && viewMode === 'spent') {
-      // Drill into category to show payees (only in spent mode)
-      setSelectedCategoryId(nodeData.id)
+    } else if (nodeData.type === 'category' && selectedGroupId && viewMode === 'spent') {
+      if (!selectedCategoryId) {
+        // Drill into category to show payees (only in spent mode)
+        setSelectedCategoryId(nodeData.id)
+      } else {
+        // Already at payee level — the category node opens its transactions
+        setDrillDown({
+          kind: 'category', label: nodeData.name, scope: 'leaf', direction: 'outflow',
+          categoryIds: [nodeData.id.replace(/^c_/, '')], ...window,
+        })
+      }
+    } else if (nodeData.type === 'payee') {
+      // Level-3 payee nodes carry names only — resolve back to an id
+      const payeeId = (allPayees ?? []).find((p) => p.name === nodeData.name)?.id
+      if (payeeId) {
+        setDrillDown({
+          kind: 'payee', label: nodeData.name, scope: 'parent', direction: 'outflow',
+          payeeIds: [payeeId], ...window,
+        })
+      }
     }
   }
 
@@ -266,6 +390,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         <ReportInfoButton title="Cash Flow Sankey">
           <p>Shows how <strong>income flows into category groups</strong>. Band width = dollar amount.</p>
           <p><strong>Spent</strong>: actual transactions — drill down to payees. <strong>Budgeted</strong>: budget assignments — drill down to categories only.</p>
+          <p><strong>Compare</strong> overlays the change versus the preceding period of equal length on every node. In Spent mode, clicking a payee node (or a category node at the payee level) lists the transactions behind it below the chart.</p>
         </ReportInfoButton>
         <div className="report-toggle-group">
           <button
@@ -281,6 +406,31 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
             Budgeted
           </button>
         </div>
+        <button
+          className={`report-btn${compare ? ' report-btn--active' : ''}`}
+          onClick={() => setCompare((c) => !c)}
+          title={`Compare with ${prevWindow.start} – ${prevWindow.end}`}
+          type="button"
+        >
+          Compare
+        </button>
+        <ReportExportButton
+          reportId="cash-flow"
+          getRows={() => {
+            if (!data) return []
+            const nodeName = new Map(data.nodes.map((n) => [n.id, n.name]))
+            const rows: Record<string, unknown>[] = data.links.map((l) => ({
+              source: nodeName.get(l.source) ?? l.source,
+              target: nodeName.get(l.target) ?? l.target,
+              value: Number(l.value),
+            }))
+            rows.push({ source: 'TOTAL', target: 'income', value: Number(data.total_income) })
+            rows.push({ source: 'TOTAL', target: 'expenses', value: Number(data.total_expense) })
+            return rows
+          }}
+          captureRef={captureRef}
+          window={{ start: filters.startDate, end: filters.endDate }}
+        />
         <div className="sankey-breadcrumb">
           <button className="sankey-crumb" onClick={resetToGroups}>
             All Groups
@@ -309,12 +459,39 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
             : 'Click a category group to drill down.'}
       </p>
 
+      <div ref={captureRef} className="report-capture">
       {data && (
         <div className="report-metrics">
-          <MetricCard label="Total Income" value={formatMoney(Number(data.total_income))} />
-          <MetricCard label="Total Expenses" value={formatMoney(Number(data.total_expense))} />
-          <MetricCard label="Net" value={formatMoney(Number(data.total_income) - Number(data.total_expense))} />
+          <MetricCard
+            label="Total Income"
+            value={formatMoney(Number(data.total_income))}
+            sub={compare && prevData ? formatDelta(Number(data.total_income), Number(prevData.total_income)) : undefined}
+          />
+          <MetricCard
+            label="Total Expenses"
+            value={formatMoney(Number(data.total_expense))}
+            sub={compare && prevData ? formatDelta(Number(data.total_expense), Number(prevData.total_expense)) : undefined}
+          />
+          <MetricCard
+            label="Net"
+            value={formatMoney(Number(data.total_income) - Number(data.total_expense))}
+            sub={
+              compare && prevData
+                ? formatDelta(
+                    Number(data.total_income) - Number(data.total_expense),
+                    Number(prevData.total_income) - Number(prevData.total_expense),
+                  )
+                : undefined
+            }
+          />
         </div>
+      )}
+
+      {compare && prevData && (
+        <p className="report-section__subtitle">
+          Compared with {prevWindow.start} – {prevWindow.end} (previous period of equal length).
+          Groups or payees with no spending this period are not shown.
+        </p>
       )}
 
       <ResponsiveContainer width="100%" height={500}>
@@ -363,6 +540,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
             <span>payee</span>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

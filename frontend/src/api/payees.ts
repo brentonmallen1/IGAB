@@ -6,6 +6,32 @@ export interface PayeeWithCount extends Payee {
   transaction_count: number
 }
 
+export interface NearbyPayee {
+  id: string
+  name: string
+  default_category_id: string | null
+  distance_m: number
+  visit_count: number
+  last_date: string
+}
+
+export function useNearbyPayees(
+  budgetId: string | null,
+  coords: { latitude: number; longitude: number } | null
+) {
+  return useQuery({
+    queryKey: ['nearbyPayees', budgetId, coords?.latitude, coords?.longitude],
+    queryFn: async () => {
+      const { data } = await apiClient.get<NearbyPayee[]>(`/${budgetId}/payees/nearby`, {
+        params: { lat: coords!.latitude, lng: coords!.longitude },
+      })
+      return data
+    },
+    enabled: !!budgetId && !!coords,
+    staleTime: 60_000,
+  })
+}
+
 export function usePayees(budgetId: string | null) {
   return useQuery({
     queryKey: ['payees', budgetId],

@@ -79,6 +79,33 @@ export function useDeleteAttachment(transactionId: string) {
   })
 }
 
+/**
+ * Sequential multi-file upload for flows where the transaction is created
+ * first (quick-add). Failures don't abort the batch — the transaction is the
+ * money record and always wins; callers surface `failed` and let the user
+ * retry from the editor.
+ */
+export async function uploadFilesToTransaction(
+  transactionId: string,
+  files: File[]
+): Promise<{ ok: number; failed: File[] }> {
+  let ok = 0
+  const failed: File[] = []
+  for (const file of files) {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      await apiClient.post(`/transactions/${transactionId}/attachments`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      ok++
+    } catch {
+      failed.push(file)
+    }
+  }
+  return { ok, failed }
+}
+
 export function useCheckAttachments(transactionIds: string[]) {
   return useQuery({
     queryKey: ['attachmentCheck', transactionIds],

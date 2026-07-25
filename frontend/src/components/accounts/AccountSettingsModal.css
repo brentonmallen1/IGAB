@@ -16,7 +16,7 @@
   box-shadow: var(--shadow-lg);
   width: 420px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 120px);
+  max-height: calc(100dvh - 120px);
   display: flex;
   flex-direction: column;
 }
@@ -136,7 +136,7 @@
 }
 
 .acct-modal__sf-badge {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   background: color-mix(in srgb, var(--color-positive) 15%, transparent);
   color: var(--color-positive);

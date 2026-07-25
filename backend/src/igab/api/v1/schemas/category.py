@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
+from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import TargetType
 from igab.domain.money import Money
 
@@ -84,6 +85,7 @@ class CategoryResponse(BaseModel):
     linked_account_id: uuid.UUID | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    tags: list[TagOutSimple] = []
 
     model_config = {"from_attributes": True}
 
@@ -93,6 +95,7 @@ class BudgetMonthResponse(BaseModel):
     to_be_assigned: Decimal
     total_assigned: Decimal
     total_activity: Decimal
+    total_overspent: Decimal
     category_balances: list[CategoryBalance]
 
 
@@ -157,3 +160,29 @@ class FillTargetsPreviewResponse(BaseModel):
 class FillTargetsApplyRequest(BaseModel):
     month: datetime.date
     items: list[FillTargetsPreviewItem]
+
+
+class CoverOverspentPreviewItem(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    overspent: Decimal
+    proposed_addition: Decimal
+    remaining_after: Decimal
+
+
+class CoverOverspentPreviewResponse(BaseModel):
+    items: list[CoverOverspentPreviewItem]
+    total_overspent: Decimal
+    total_addition: Decimal
+    tba_before: Decimal
+    tba_after: Decimal
+
+
+class CoverOverspentApplyItem(BaseModel):
+    category_id: uuid.UUID
+    proposed_addition: Money
+
+
+class CoverOverspentApplyRequest(BaseModel):
+    month: datetime.date
+    items: list[CoverOverspentApplyItem]

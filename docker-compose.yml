@@ -47,6 +47,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: dev
     container_name: igab-frontend
     restart: unless-stopped
     env_file: .env
@@ -54,14 +55,22 @@ services:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
       - api
+    profiles:
+      - dev
     develop:
       watch:
         - action: sync
           path: ./frontend/src
           target: /app/src
 
+  # Production entry point: serves the built frontend (baked into the image)
+  # and proxies /api to the backend. TLS terminates outside compose
+  # (Tailscale Serve or a reverse proxy) — see README "Install on your phone".
   nginx:
-    image: nginx:alpine
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
     container_name: igab-nginx
     restart: unless-stopped
     ports:
@@ -70,7 +79,6 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - api
-      - frontend
     profiles:
       - production
 
@@ -88,13 +96,18 @@ services:
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
     volumes:
       - ${BACKUP_DIR:-./backups}:/backups
-    entrypoint: >
-      sh -c 'while true; do
-        pg_dump -Fc -f "/backups/igab-$$(date +%Y%m%d-%H%M%S).dump"
-        && echo "backup written"
-        && find /backups -name "igab-*.dump" -mtime +$${BACKUP_KEEP_DAYS} -delete;
-        sleep 86400;
-      done'
+    # List form on purpose: compose word-splits a string entrypoint, which
+    # mangles the inline shell loop into "syntax error: unexpected &&"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          pg_dump -Fc -f "/backups/igab-$$(date +%Y%m%d-%H%M%S).dump" \
+            && echo "backup written" \
+            && find /backups -name "igab-*.dump" -mtime +$${BACKUP_KEEP_DAYS} -delete
+          sleep 86400
+        done
     depends_on:
       db:
         condition: service_healthy

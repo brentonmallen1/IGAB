@@ -1,0 +1,59 @@
+.bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--z-bottom-nav);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--header-bg);
+    border-top: 1px solid var(--border-color);
+  }
+
+  .bottom-nav__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .bottom-nav__item--active {
+    color: var(--color-accent);
+  }
+
+  .bottom-nav__add-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Same inverse-on-accent contrast recipe as the FloatingSelectionBar */
+  .bottom-nav__add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin-top: -16px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    color: var(--bg-primary);
+    box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.3));
+  }
+
+  .bottom-nav__add:active {
+    transform: scale(0.95);
+  }
+}

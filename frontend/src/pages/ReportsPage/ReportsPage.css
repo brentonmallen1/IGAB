@@ -40,7 +40,7 @@
 }
 
 .reports-nav__group-label {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -239,4 +239,18 @@
 .sankey-legend__label {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+}
+
+/* ─── PNG-capture wrapper (metrics + chart, excludes controls) ──────────── */
+
+.report-capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+@media (max-width: 768px) {
+  .reports-content {
+    padding: var(--spacing-md);
+  }
 }

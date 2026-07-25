@@ -66,7 +66,7 @@
 
 .payees-btn--sm {
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .payees-empty {
@@ -85,10 +85,10 @@
 
 .payees-table__head {
   display: grid;
-  grid-template-columns: 28px 1fr 90px auto;
+  grid-template-columns: 28px 1fr 140px 90px auto;
   padding: var(--spacing-xs) var(--spacing-md);
   background: var(--bg-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -99,7 +99,7 @@
 
 .payees-table__row {
   display: grid;
-  grid-template-columns: 28px 1fr 90px auto;
+  grid-template-columns: 28px 1fr 140px 90px auto;
   padding: var(--spacing-sm) var(--spacing-md);
   border-bottom: 1px solid var(--border-subtle, var(--border-color));
   font-size: var(--font-size-sm);
@@ -168,12 +168,12 @@
 }
 
 .payees-edit-input--mappings {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
 
 .payees-edit-hint {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   color: var(--text-muted);
 }
 
@@ -197,7 +197,7 @@
 }
 
 .payees-table__mappings {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -254,7 +254,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
   padding: 0 4px;
 }
@@ -312,4 +312,64 @@
   border-top: 1px solid var(--border-color);
   display: flex;
   justify-content: flex-end;
+}
+
+/* Tags column */
+.payees-table__tags {
+  min-width: 0;
+}
+
+.payees-table__tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.payees-table__tags-overflow {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 10px;
+  cursor: help;
+}
+
+.payees-table__no-tags {
+  color: var(--text-muted);
+}
+
+/* Bulk tag picker */
+.payees-bulk-tag-wrapper {
+  position: relative;
+}
+
+.payees-bulk-tag-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: var(--spacing-sm);
+}
+
+@media (max-width: 768px) {
+  .payees-page {
+    padding: var(--spacing-md);
+  }
+
+  .payees-table__head,
+  .payees-table__row {
+    grid-template-columns: 28px minmax(0, 1fr) 90px auto auto;
+  }
+
+  .payees-table__tags {
+    display: none;
+  }
+
+  .payees-table__head span:nth-child(3) {
+    display: none;
+  }
+
+  .payees-table__row {
+    min-height: 44px;
+  }
 }
