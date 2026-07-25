@@ -20,6 +20,7 @@ from igab.db.models import (
     CategoryGroup,
     Payee,
     SimpleFINConnection,
+    Tag,
     Transaction,
     User,
 )
@@ -151,6 +152,8 @@ async def create_transaction(
     sync_id: str | None = None,
     sync_source: str | None = None,
     is_deleted: bool = False,
+    latitude: float | None = None,
+    longitude: float | None = None,
 ) -> Transaction:
     txn = Transaction(
         budget_id=budget.id,
@@ -169,6 +172,8 @@ async def create_transaction(
         sync_id=sync_id,
         sync_source=sync_source,
         is_deleted=is_deleted,
+        latitude=latitude,
+        longitude=longitude,
     )
     session.add(txn)
     await session.flush()
@@ -180,6 +185,25 @@ async def create_simplefin_connection(session: AsyncSession, user: User) -> Simp
     session.add(conn)
     await session.flush()
     return conn
+
+
+async def create_tag(
+    session: AsyncSession,
+    budget: Budget,
+    name: str | None = None,
+    *,
+    system_key: str | None = None,
+    color_slot: str | None = None,
+) -> Tag:
+    tag = Tag(
+        budget_id=budget.id,
+        name=name or _name("Tag"),
+        system_key=system_key,
+        color_slot=color_slot,
+    )
+    session.add(tag)
+    await session.flush()
+    return tag
 
 
 @dataclass

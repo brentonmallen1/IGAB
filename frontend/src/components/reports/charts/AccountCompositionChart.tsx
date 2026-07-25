@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Area, AreaChart, CartesianGrid, Legend,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -8,6 +8,7 @@ import { formatMoney } from '../../../utils/money'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 const TYPE_LABELS: Record<string, string> = {
   checking: 'Checking',
@@ -22,6 +23,7 @@ interface Props { budgetId: string }
 export function AccountCompositionReport({ budgetId }: Props) {
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useAccountCompositionReport(budgetId, months)
+  const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -54,10 +56,25 @@ export function AccountCompositionReport({ budgetId }: Props) {
               {m}mo
             </button>
           ))}
+          <ReportExportButton
+            reportId="account-composition"
+            getRows={() =>
+              points.map((p) => ({
+                date: p.date,
+                checking: Number(p.checking),
+                savings: Number(p.savings),
+                credit_card: Number(p.credit_card),
+                loan: Number(p.loan),
+                tracking: Number(p.tracking),
+              }))
+            }
+            captureRef={captureRef}
+          />
         </div>
       </div>
       <p className="report-section__subtitle">Assets shown positive, liabilities negative.</p>
 
+      <div ref={captureRef} className="report-capture">
       {chartData.length === 0 ? (
         <div className="reports-empty">No account data available.</div>
       ) : (
@@ -83,6 +100,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
           </AreaChart>
         </ResponsiveContainer>
       )}
+      </div>
     </div>
   )
 }

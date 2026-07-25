@@ -2,8 +2,9 @@ import datetime
 import uuid
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
+from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import UserClearedStatus
 from igab.domain.money import Money
 
@@ -28,11 +29,20 @@ class TransactionCreate(BaseModel):
     approved: bool = True
     transfer_account_id: uuid.UUID | None = None
     splits: list[SplitCreate] | None = None
+    # Opt-in mobile capture; powers nearby-payee suggestions. Never money.
+    latitude: float | None = Field(None, ge=-90, le=90)
+    longitude: float | None = Field(None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def _location_both_or_neither(self) -> "TransactionCreate":
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        return self
 
 
 class TransactionUpdate(BaseModel):
     """PATCH body: omitted fields are untouched; an explicit null clears the
-    nullable fields (category_id, payee_id, memo)."""
+    nullable fields (category_id, payee_id, memo, latitude/longitude)."""
 
     date: datetime.date | None = None
     amount: Money | None = None
@@ -41,6 +51,17 @@ class TransactionUpdate(BaseModel):
     memo: str | None = None
     cleared: UserClearedStatus | None = None
     approved: bool | None = None
+    latitude: float | None = Field(None, ge=-90, le=90)
+    longitude: float | None = Field(None, ge=-180, le=180)
+
+    @model_validator(mode="after")
+    def _location_both_or_neither(self) -> "TransactionUpdate":
+        lat_sent = "latitude" in self.model_fields_set
+        lng_sent = "longitude" in self.model_fields_set
+        mismatched_null = lat_sent and (self.latitude is None) != (self.longitude is None)
+        if lat_sent != lng_sent or mismatched_null:
+            raise ValueError("latitude and longitude must be provided together")
+        return self
 
 
 class TransactionResponse(BaseModel):
@@ -63,10 +84,20 @@ class TransactionResponse(BaseModel):
     sync_id: str | None
     sync_source: str | None
     has_sync_source: bool
+    latitude: float | None = None
+    longitude: float | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
     model_config = {"from_attributes": True}
+
+
+class BudgetTransactionListResponse(BaseModel):
+    """Paged drill-down listing; totals cover the full filter match, not just the page."""
+
+    transactions: list[TransactionResponse]
+    total_count: int
+    total_amount: Decimal
 
 
 class BulkClearedUpdate(BaseModel):
@@ -140,6 +171,7 @@ class PayeeResponse(BaseModel):
     default_category_id: uuid.UUID | None
     transfer_account_id: uuid.UUID | None
     mapping_samples: str | None
+    tags: list[TagOutSimple] = []
 
     model_config = {"from_attributes": True}
 
@@ -150,3 +182,14 @@ class PayeeWithCount(PayeeResponse):
 
 class PayeeMergeRequest(BaseModel):
     target_id: uuid.UUID
+
+
+class NearbyPayeeResponse(BaseModel):
+    """A payee the user has transacted with near the given point."""
+
+    id: uuid.UUID
+    name: str
+    default_category_id: uuid.UUID | None
+    distance_m: float
+    visit_count: int
+    last_date: datetime.date

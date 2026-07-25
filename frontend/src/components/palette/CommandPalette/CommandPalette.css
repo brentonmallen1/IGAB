@@ -1,0 +1,129 @@
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 9999;
+}
+
+.palette {
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.palette__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.palette__input-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.palette [cmdk-input] {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  padding: 6px 0;
+  font-family: inherit;
+}
+
+.palette [cmdk-input]::placeholder {
+  color: var(--text-muted);
+}
+
+.palette [cmdk-list] {
+  max-height: min(420px, 55vh);
+  overflow-y: auto;
+  padding: var(--spacing-xs) 0 var(--spacing-sm);
+  scroll-padding-block: var(--spacing-sm);
+}
+
+.palette [cmdk-empty] {
+  padding: var(--spacing-lg);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.palette [cmdk-group-heading] {
+  padding: var(--spacing-sm) var(--spacing-md) 4px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.palette [cmdk-item] {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 7px var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.palette [cmdk-item][data-selected='true'] {
+  background-color: var(--row-selected-bg, var(--bg-hover));
+}
+
+.palette [cmdk-item][data-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.palette__item-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.palette [cmdk-item][data-selected='true'] .palette__item-icon {
+  color: var(--color-accent);
+}
+
+.palette__item-note {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+}
+
+.palette__txn-payee {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.palette__txn-memo {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.palette__txn-meta {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

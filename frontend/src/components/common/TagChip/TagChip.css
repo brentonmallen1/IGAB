@@ -1,0 +1,87 @@
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tag-chip--sm {
+  padding: 1px 6px;
+  font-size: 9px;
+}
+
+.tag-chip--neutral {
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.tag-chip--red {
+  background-color: color-mix(in srgb, var(--tag-red) 18%, transparent);
+  color: var(--tag-red);
+}
+
+.tag-chip--orange {
+  background-color: color-mix(in srgb, var(--tag-orange) 18%, transparent);
+  color: var(--tag-orange);
+}
+
+.tag-chip--yellow {
+  background-color: color-mix(in srgb, var(--tag-yellow) 18%, transparent);
+  color: var(--tag-yellow);
+}
+
+.tag-chip--green {
+  background-color: color-mix(in srgb, var(--tag-green) 18%, transparent);
+  color: var(--tag-green);
+}
+
+.tag-chip--teal {
+  background-color: color-mix(in srgb, var(--tag-teal) 18%, transparent);
+  color: var(--tag-teal);
+}
+
+.tag-chip--blue {
+  background-color: color-mix(in srgb, var(--tag-blue) 18%, transparent);
+  color: var(--tag-blue);
+}
+
+.tag-chip--purple {
+  background-color: color-mix(in srgb, var(--tag-purple) 18%, transparent);
+  color: var(--tag-purple);
+}
+
+.tag-chip--pink {
+  background-color: color-mix(in srgb, var(--tag-pink) 18%, transparent);
+  color: var(--tag-pink);
+}
+
+.tag-chip__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: opacity var(--transition-fast);
+}
+
+.tag-chip__remove:hover {
+  opacity: 1;
+}
+
+.tag-chip__remove:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}

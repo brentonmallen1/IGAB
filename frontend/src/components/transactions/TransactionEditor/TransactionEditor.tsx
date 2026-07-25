@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, Paperclip } from 'lucide-react'
+import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import {
   useCreateTransaction,
   useUpdateTransaction,
@@ -10,6 +11,8 @@ import {
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { useSuggestCategory } from '../../../api/ai'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
+import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { today } from '../../../utils/dates'
 import { fromCents, sumToCents, toCents } from '../../../utils/money'
 import type { Transaction, Payee } from '../../../types'
@@ -33,6 +36,10 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)
+
+  const isMobile = useIsMobile()
+  // Android back / swipe-back cancels the editor instead of leaving the page
+  useHistoryDismissable(isMobile, onClose, 'txn-editor')
 
   const isEdit = !!transaction
 
@@ -63,6 +70,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   const [transferAccountId, setTransferAccountId] = useState('')
   const [showPayeeDropdown, setShowPayeeDropdown] = useState(false)
   const [showSimilar, setShowSimilar] = useState(false)
+  const [showAttachments, setShowAttachments] = useState(false)
   const [isSplit, setIsSplit] = useState(false)
   const [splits, setSplits] = useState<SplitDraft[]>([
     { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
@@ -556,6 +564,23 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
                   </li>
                 ))}
               </ul>
+            )}
+          </div>
+        )}
+
+        {isEdit && transaction && (
+          <div className="txn-editor__attachments">
+            <button
+              type="button"
+              className="txn-editor__similar-toggle"
+              onClick={() => setShowAttachments((v) => !v)}
+            >
+              <Paperclip size={13} />
+              Receipts & attachments
+              {showAttachments ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            {showAttachments && (
+              <AttachmentPanel transactionId={transaction.id} embedded />
             )}
           </div>
         )}

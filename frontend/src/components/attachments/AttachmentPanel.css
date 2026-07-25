@@ -157,7 +157,7 @@
   padding: 4px 6px;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
   color: white;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -180,4 +180,29 @@
 
 .spin {
   animation: spin 1s linear infinite;
+}
+
+.attachment-panel__camera-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  min-height: 40px;
+  margin-top: var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  background: var(--bg-primary);
+}
+
+.attachment-panel__camera-btn:active {
+  background: var(--bg-hover);
+}
+
+.attachment-panel--embedded {
+  padding: 0;
+  border: none;
+  background: transparent;
 }

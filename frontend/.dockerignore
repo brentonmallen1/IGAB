@@ -1,0 +1,9 @@
+# Never ship host artifacts into the image — COPY . . after npm ci would
+# merge macOS node_modules over the container's Linux one (mixed-platform
+# native binaries hang the build).
+node_modules
+dist
+dev-dist
+.vite
+*.log
+.DS_Store

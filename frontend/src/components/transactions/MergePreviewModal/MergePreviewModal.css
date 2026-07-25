@@ -95,7 +95,7 @@
   right: -1px;
   background: var(--color-accent);
   color: white;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 4px 0 4px 0;
@@ -126,7 +126,7 @@
 }
 
 .merge-card__cleared {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   text-transform: capitalize;
   padding: 1px 6px;
   border-radius: 8px;

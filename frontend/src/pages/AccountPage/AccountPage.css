@@ -126,7 +126,7 @@
 }
 
 .account-page__sync-msg {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
 
@@ -156,7 +156,7 @@
 }
 
 .account-page__match-confidence {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   color: var(--text-muted);
 }
 
@@ -196,7 +196,7 @@
 }
 
 .account-page__match-more {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   color: var(--text-muted);
 }
 

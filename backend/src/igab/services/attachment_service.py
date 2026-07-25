@@ -4,10 +4,15 @@ from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
+from pillow_heif import register_heif_opener
 
 from igab.config import settings
 from igab.db.models import Transaction, TransactionAttachment
 from igab.repositories.attachment_repo import AttachmentRepository
+
+# iPhone cameras produce HEIC ("Keep Originals" setting); plain Pillow can't
+# decode it even though the API accepts the content type.
+register_heif_opener()
 
 WEBP_QUALITY = 90
 MAX_DIMENSION = 4096

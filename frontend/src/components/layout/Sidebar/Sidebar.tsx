@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, X, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react'
+import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useBudgets } from '../../../api/budgets'
@@ -40,8 +40,6 @@ export function Sidebar() {
   const navigate = useNavigate()
   const { data: accounts } = useAccounts(budgetId)
   const { data: budgets = [] } = useBudgets()
-  const mobileSidebarOpen = useUIStore((s) => s.mobileSidebarOpen)
-  const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
 
@@ -80,7 +78,6 @@ export function Sidebar() {
   function handleAllBudgets() {
     clearCurrentBudget()
     navigate('/budgets')
-    setMobileSidebarOpen(false)
   }
 
   const grouped = accounts ? groupAccounts(accounts) : new Map()
@@ -92,22 +89,14 @@ export function Sidebar() {
   function handleAccountClick(account: Account) {
     setSelectedAccount(account.id)
     navigate(`/accounts/${account.id}`)
-    setMobileSidebarOpen(false)
   }
 
-  function handleNavClick() {
-    setMobileSidebarOpen(false)
-  }
-
-  const collapsed = sidebarCollapsed && !mobileSidebarOpen
+  const collapsed = sidebarCollapsed
 
   return (
-    <aside className={`sidebar ${mobileSidebarOpen ? 'sidebar--mobile-open' : ''} ${collapsed ? 'sidebar--collapsed' : ''}`}>
+    <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
       <div className="sidebar__logo">
         {!collapsed && <span className="sidebar__logo-text">IGAB</span>}
-        <button className="sidebar__close-btn" onClick={() => setMobileSidebarOpen(false)} aria-label="Close menu">
-          <X size={18} />
-        </button>
         <button
           className="sidebar__collapse-btn"
           onClick={toggleSidebarCollapsed}
@@ -126,27 +115,27 @@ export function Sidebar() {
       )}
 
       <nav className="sidebar__nav">
-        <NavLink to="/budget" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Budget">
+        <NavLink to="/budget" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Budget">
           <LayoutDashboard size={16} />
           {!collapsed && <span>Budget</span>}
         </NavLink>
-        <NavLink to="/reports" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Reports">
+        <NavLink to="/reports" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Reports">
           <BarChart2 size={16} />
           {!collapsed && <span>Reports</span>}
         </NavLink>
-        <NavLink to="/scheduled" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Scheduled">
+        <NavLink to="/scheduled" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Scheduled">
           <CalendarClock size={16} />
           {!collapsed && <span>Scheduled</span>}
         </NavLink>
-        <NavLink to="/payees" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Payees">
+        <NavLink to="/payees" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Payees">
           <Users size={16} />
           {!collapsed && <span>Payees</span>}
         </NavLink>
-        <NavLink to="/import" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Import">
+        <NavLink to="/import" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Import">
           <Upload size={16} />
           {!collapsed && <span>Import</span>}
         </NavLink>
-        <NavLink to="/settings" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} onClick={handleNavClick} title="Settings">
+        <NavLink to="/settings" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Settings">
           <Settings size={16} />
           {!collapsed && <span>Settings</span>}
         </NavLink>
@@ -159,7 +148,7 @@ export function Sidebar() {
       {!collapsed && <div className="sidebar__section-header">
         <button
           className="sidebar__section-header-link"
-          onClick={() => { navigate('/accounts'); setMobileSidebarOpen(false) }}
+          onClick={() => navigate('/accounts')}
           title="All accounts"
         >
           Budget Accounts

@@ -16,7 +16,7 @@
   box-shadow: var(--shadow-lg);
   width: 520px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 120px);
+  max-height: calc(100dvh - 120px);
   display: flex;
   flex-direction: column;
 }
@@ -246,7 +246,7 @@
   background: none;
   border: none;
   color: var(--accent-color);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -392,4 +392,51 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* Full-screen editor on phones */
+@media (max-width: 768px) {
+  .txn-editor-overlay {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .txn-editor {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .txn-editor__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .txn-editor__footer {
+    padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
+  }
+
+  .txn-editor__input,
+  .txn-editor__select {
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS focus-zoom */
+  }
+
+  .txn-editor__payee-option {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+.txn-editor__attachments {
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--spacing-sm) var(--spacing-lg);
 }

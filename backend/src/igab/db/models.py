@@ -5,13 +5,16 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     String,
+    Table,
     Text,
     Time,
     UniqueConstraint,
@@ -155,6 +158,7 @@ class Payee(Base):
     budget: Mapped["Budget"] = relationship(back_populates="payees")
     default_category: Mapped["Category | None"] = relationship(foreign_keys=[default_category_id])
     transfer_account: Mapped["Account | None"] = relationship(foreign_keys=[transfer_account_id])
+    tags: Mapped[list["Tag"]] = relationship(secondary="payee_tags", back_populates="payees")
 
 
 # ─── Category Groups ──────────────────────────────────────────────────────────
@@ -223,6 +227,7 @@ class Category(Base):
     )
     assignments: Mapped[list["BudgetAssignment"]] = relationship(back_populates="category")
     target: Mapped["CategoryTarget | None"] = relationship(back_populates="category", uselist=False)
+    tags: Mapped[list["Tag"]] = relationship(secondary="category_tags", back_populates="categories")
 
 
 # ─── Category Targets ─────────────────────────────────────────────────────────
@@ -274,6 +279,12 @@ class Transaction(Base):
             unique=True,
             postgresql_where=text("import_id IS NOT NULL AND NOT is_deleted"),
         ),
+        # Nearby-payee suggestions scan only located rows
+        Index(
+            "ix_transactions_budget_location",
+            "budget_id",
+            postgresql_where=text("latitude IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -298,6 +309,11 @@ class Transaction(Base):
     memo: Mapped[str | None] = mapped_column(Text)
     cleared: Mapped[str] = mapped_column(String(20), default="uncleared", nullable=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Where the transaction was entered (mobile quick-add, opt-in). Coordinates
+    # are not money: float64 error at Earth scale is far below GPS accuracy,
+    # and they never enter any amount computation.
+    latitude: Mapped[float | None] = mapped_column(Float(53), nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float(53), nullable=True)
     # Paired transfer link
     transfer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL")
@@ -625,3 +641,70 @@ class TransactionAttachment(Base):
     transaction: Mapped["Transaction"] = relationship(
         back_populates="attachments", foreign_keys=[transaction_id]
     )
+
+
+# ─── Tags ────────────────────────────────────────────────────────────────────
+
+
+category_tags = Table(
+    "category_tags",
+    Base.metadata,
+    Column(
+        "category_id",
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id",
+        UUID(as_uuid=True),
+        ForeignKey("tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+payee_tags = Table(
+    "payee_tags",
+    Base.metadata,
+    Column(
+        "payee_id",
+        UUID(as_uuid=True),
+        ForeignKey("payees.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id",
+        UUID(as_uuid=True),
+        ForeignKey("tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (
+        UniqueConstraint("budget_id", "name", name="uq_tag_budget_name"),
+        UniqueConstraint("budget_id", "system_key", name="uq_tag_budget_system_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    system_key: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    color_slot: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    budget: Mapped["Budget"] = relationship()
+    categories: Mapped[list["Category"]] = relationship(
+        secondary=category_tags, back_populates="tags"
+    )
+    payees: Mapped[list["Payee"]] = relationship(secondary=payee_tags, back_populates="tags")

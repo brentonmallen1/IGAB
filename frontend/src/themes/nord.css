@@ -37,6 +37,16 @@
   --card-bg: #3b4252;
   --card-border: #434c5e;
 
+  /* Tag color slots — Nord palette */
+  --tag-red: #bf616a;
+  --tag-orange: #d08770;
+  --tag-yellow: #ebcb8b;
+  --tag-green: #a3be8c;
+  --tag-teal: #8fbcbb;
+  --tag-blue: #81a1c1;
+  --tag-purple: #b48ead;
+  --tag-pink: #b48ead;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);

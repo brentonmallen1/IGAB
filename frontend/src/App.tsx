@@ -2,6 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { MainLayout } from './components/layout/MainLayout/MainLayout'
+import { OfflineBanner } from './components/pwa/OfflineBanner'
+import { UpdateToast } from './components/pwa/UpdateToast'
+import { useIsMobile } from './hooks/useMediaQuery'
 import { LoginPage } from './pages/LoginPage/LoginPage'
 import { BudgetPage } from './pages/BudgetPage/BudgetPage'
 import { BudgetSelectorPage } from './pages/BudgetSelectorPage/BudgetSelectorPage'
@@ -38,16 +41,26 @@ function BudgetRedirect() {
   return <Navigate to="/budgets" replace />
 }
 
+function AppToaster() {
+  // Bottom is owned by the nav/selection bar/sheets on phones
+  const isMobile = useIsMobile()
+  return (
+    <Toaster
+      position={isMobile ? 'top-center' : 'bottom-right'}
+      toastOptions={{
+        duration: 4000,
+        style: { fontSize: '13px', maxWidth: '400px' },
+      }}
+    />
+  )
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Toaster
-        position="bottom-right"
-        toastOptions={{
-          duration: 4000,
-          style: { fontSize: '13px', maxWidth: '400px' },
-        }}
-      />
+      <AppToaster />
+      <UpdateToast />
+      <OfflineBanner />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

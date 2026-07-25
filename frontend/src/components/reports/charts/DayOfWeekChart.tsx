@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import {
   Bar, BarChart, CartesianGrid,
   ResponsiveContainer, Tooltip, XAxis, YAxis, Cell,
@@ -8,14 +9,16 @@ import { formatMoney } from '../../../utils/money'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
 
 export function DayPatternsReport({ budgetId }: Props) {
-  const { filters } = useReportStore()
+  const { filters, setDrillDown } = useReportStore()
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading } = useDayPatternsReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
+  const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -26,10 +29,21 @@ export function DayPatternsReport({ budgetId }: Props) {
 
   const chartData = days.map((d) => ({
     name: d.day_name,
+    dayOfWeek: d.day_of_week,
     Amount: Number(d.total),
     Transactions: d.count,
     avgPerTxn: d.count > 0 ? Number(d.total) / d.count : 0,
   }))
+
+  function drillTo(dayOfWeek: number, dayName: string) {
+    setDrillDown({
+      kind: 'day-of-week', label: `${dayName}s`, scope: 'leaf', direction: 'outflow',
+      dayOfWeek,
+      // Chart respects the active category filter — the panel must too
+      categoryIds: filters.categoryIds.length > 0 ? filters.categoryIds : undefined,
+      startDate: filters.startDate, endDate: filters.endDate,
+    })
+  }
 
   return (
     <div className="report-section">
@@ -38,12 +52,29 @@ export function DayPatternsReport({ budgetId }: Props) {
         <ReportInfoButton title="Day-of-Week Patterns">
           <p>Total spending aggregated by day of week across all transactions in the selected period. The <strong>peak day is highlighted</strong> in a different color.</p>
           <p>High weekday spending often signals structured habits (groceries, work lunches). High weekend spending can indicate impulse or leisure spending. Use this to identify which days need more discipline.</p>
+          <p>Click a bar to see that weekday's transactions.</p>
         </ReportInfoButton>
+        <div style={{ marginLeft: 'auto' }}>
+          <ReportExportButton
+            reportId="day-patterns"
+            getRows={() =>
+              days.map((d) => ({
+                day: d.day_name,
+                total: Number(d.total),
+                count: d.count,
+                avg_transaction: d.count > 0 ? Number(d.total) / d.count : 0,
+              }))
+            }
+            captureRef={captureRef}
+            window={{ start: filters.startDate, end: filters.endDate }}
+          />
+        </div>
       </div>
       <p className="report-section__subtitle">
         When do you spend the most? Reveals impulse vs structured spending habits.
       </p>
 
+      <div ref={captureRef} className="report-capture">
       {days.length > 0 && maxDay && minDay && (
         <div className="report-metrics">
           <MetricCard label="Highest Spending Day" value={maxDay.day_name} sub={formatMoney(Number(maxDay.total))} />
@@ -66,7 +97,18 @@ export function DayPatternsReport({ budgetId }: Props) {
               offset={16}
               isAnimationActive={false}
             />
-            <Bar dataKey="Amount" radius={[3, 3, 0, 0]} barSize={44}>
+            <Bar
+              dataKey="Amount"
+              radius={[3, 3, 0, 0]}
+              barSize={44}
+              cursor="pointer"
+              onClick={(data) => {
+                const d = data as { dayOfWeek?: number; name?: string; payload?: { dayOfWeek?: number; name?: string } }
+                const dow = d.dayOfWeek ?? d.payload?.dayOfWeek
+                const name = d.name ?? d.payload?.name
+                if (dow != null && name) drillTo(dow, name)
+              }}
+            >
               {chartData.map((entry, i) => {
                 const isMax = maxDay && entry.name === maxDay.day_name
                 return (
@@ -81,6 +123,7 @@ export function DayPatternsReport({ budgetId }: Props) {
           </BarChart>
         </ResponsiveContainer>
       )}
+      </div>
     </div>
   )
 }

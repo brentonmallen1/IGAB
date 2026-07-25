@@ -7,11 +7,14 @@ import { AvailableBreakdown } from './AvailableBreakdown'
 import { TargetSection } from './TargetSection'
 import { AutoAssignSection } from './AutoAssignSection'
 import { CategoryNotesSection } from './CategoryNotesSection'
+import { TagsSection } from './TagsSection'
 import { MonthSummary } from './MonthSummary'
 import './CategoryInspector.css'
 
 interface Props {
   budgetId: string
+  /** Skip the collapsed-strip state (used when rendered inside the mobile sheet) */
+  forceOpen?: boolean
 }
 
 function formatMonthLabel(month: string) {
@@ -19,7 +22,7 @@ function formatMonthLabel(month: string) {
   return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
-export function CategoryInspector({ budgetId }: Props) {
+export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const month = useAppStore((s) => s.selectedMonth)
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const categoryInspectorOpen = useUIStore((s) => s.categoryInspectorOpen)
@@ -49,8 +52,8 @@ export function CategoryInspector({ budgetId }: Props) {
       : `${count} categories selected`
 
   return (
-    <div className={`category-inspector ${categoryInspectorOpen ? '' : 'category-inspector--collapsed'}`}>
-      {!categoryInspectorOpen ? (
+    <div className={`category-inspector ${categoryInspectorOpen || forceOpen ? '' : 'category-inspector--collapsed'}`}>
+      {!categoryInspectorOpen && !forceOpen ? (
         <button
           className="category-inspector__expand-btn"
           onClick={() => setCategoryInspectorOpen(true)}
@@ -104,6 +107,10 @@ export function CategoryInspector({ budgetId }: Props) {
 
                 {isSingle && singleCategory && (
                   <CategoryNotesSection category={singleCategory} budgetId={budgetId} />
+                )}
+
+                {isSingle && singleCategory && (
+                  <TagsSection category={singleCategory} budgetId={budgetId} />
                 )}
               </>
             )}

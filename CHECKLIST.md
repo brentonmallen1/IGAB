@@ -14,17 +14,6 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 
 ---
 
-## Phase 2: In Progress
-
-### Reports — Remaining / Polish
-- [ ] Drill-down tables (click chart element → filtered transaction list)
-- [ ] Export per report (CSV / JSON / PNG) — transaction export exists; per-report export does not
-- [ ] Multi-select searchable dropdowns for category / payee / account filters
-- [ ] Spending treemap — needs fix (broken drill-down)
-- [ ] Sankey — comparison with other time windows
-
----
-
 ## Phase 3: Polish & PWA
 
 ### Advanced Accounts
@@ -33,20 +22,30 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 - [ ] Extra payment simulation
 
 ### PWA
-- [ ] App manifest (installable)
-- [ ] Service worker
-- [ ] IndexedDB offline cache
-- [ ] Sync queue for offline mutations
-- [ ] Conflict resolution strategy
+_Scope decision 2026-07-22: the app is network-required — no offline data. PWA = installable + app-shell precache + update prompt + explicit offline state. IndexedDB cache / sync queue / conflict resolution intentionally dropped._
+- [x] App manifest (installable, icons derived from favicon.svg)
+- [x] Service worker (app-shell precache, prompt-style updates via toast)
+- [x] Offline/unreachable-server banner
+- [x] Production profile serves real static build (multi-stage Dockerfile → nginx, cache headers, relative API base)
+- ~~IndexedDB offline cache~~ (dropped — network-required by design)
+- ~~Sync queue for offline mutations~~ (dropped)
+- ~~Conflict resolution strategy~~ (dropped)
 
 ### Mobile UX
-- [ ] Geofencing for payee suggestions — sort/suggest payees by proximity when on mobile (requires location permission, opt-in via settings)
+- [x] Bottom tab bar + bottom-sheet primitives (replaces drawer on phones; BottomSheet/SelectionSheet in common/, Android-back dismissal)
+- [x] Budget page mobile card layout + inspector/move-money sheets (rename/hide/delete moved into inspector sheet on touch)
+- [x] Transactions mobile cards + full-screen editor + long-press select (inline cell editing stays desktop-only)
+- [x] Quick-add sheet (center ＋: amount-first entry, payee-memory category prefill, save-and-add-another)
+- [x] Receipt camera capture (attach in quick-add + Take Photo in attachment panel; pillow-heif fixes real HEIC uploads)
+- [x] Payee proximity suggestions — opt-in per-device setting, foreground-only; lat/lng on transactions (migration 0002), `GET /{budget}/payees/nearby` (bounding box + haversine), "Nearby" section in quick-add payee picker
+- [ ] Deeper mobile polish backlog: chart touch interactions on Reports, pinch-zoom in lightbox, month-swipe on budget
 
 ---
 
 ## Phase 4: Planning
 - [ ] What-if scenarios
 - [ ] Loan calculators
+- [ ] simulations
 
 ---
 
@@ -54,16 +53,19 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 
 _Add items here as they come up during development._
 
-### Budget page money movement (YNAB-parity cluster)
+### Budget page money movement (YNAB-parity cluster) — completed 2026-07-22
 - [x] Move money to/from a category (API endpoint + click-the-available popover, TBA both directions, budget_moves history table + per-month endpoint)
-- [ ] Auto distribute ready-to-assign funds to cover overspent categories
-- [ ] Total overspent display
-- [ ] TBA money up and center (YNAB-style hero) with drawer: auto-fund overspent + total overspend amount
-- [ ] Move-history view beyond the popover (full month log)
+- [x] Auto distribute ready-to-assign funds to cover overspent categories (`cover-overspent/preview` + `apply` mirroring fill-targets; round-down distribution so proposals never exceed TBA; apply revalidates against fresh balances and routes through move_money for the audit trail)
+- [x] Total overspent display (`total_overspent` on the months endpoint + hero chip)
+- [x] TBA money up and center (YNAB-style hero pill with split Assign button, overspent chip, drawer with cover action; BottomSheet drawer on mobile)
+- [x] Move-history view beyond the popover (full month log in the hero drawer)
 
 ### UI / UX
-- [ ] Entire polish pass — home page budget list, hero-like TBA section, more modern/thoughtful layout
-- [ ] Command palette (add transaction, search/filter, budget actions, switch views)
+- [x] Polish pass round 1 (2026-07-22) — TBA hero, budget selector card layout (whole-card open, Current badge, overflow menu, two-column with create/import demoted), Settings reorganized (anchor deep links, integrity + backups surfaced above integrations), typography (font-size tokens incl. 2xs/display, weight tokens, tabular-nums on budget money cells, shared `.section-label` + `.kbd` utilities)
+- [x] Command palette (cmdk, ⌘K + header palette bar; navigation incl. accounts/views, add transaction, auto-assign, cover overspending, move money, month jump, theme switch, integrity/backups deep links, live payee + transaction search via new `search` param on budget-wide transactions endpoint; desktop-only)
+- [x] Real keyboard shortcuts (`?` help overlay from a single source of truth in `keyboard/shortcuts.ts`; `[`/`]`/`T` month nav, Shift+D duplicate, Shift+T repeat, Delete on selection sharing the context-menu handlers; Cmd+Z migrated into the registry)
+- [ ] Polish pass round 2 — remaining layout modernization sweeps (reports, account register aesthetics)
+- [ ] Palette follow-ups: scroll-to/highlight transaction on account page from search result; payee result should filter the payees page
 - [ ] Custom reminder notifications (pay bills, etc.)
 - [ ] Explicit "set as default category" affordance on payees (memory now learns once and never overwrites; changing the default is only possible via the payee edit form)
 
@@ -95,15 +97,17 @@ _Add items here as they come up during development._
 - [ ] Settings for currency, decimal vs comma separator, date format (CSV import now handles EU separators exactly; UI display settings remain)
 - [ ] All numbers rounded to 2 decimal places throughout app
 
-### Future Reports (deferred)
-- [ ] Subscription tracker (detect recurring payments, show renewal cadence)
-  - might be helpful to have tags functionality to be able to label a budget item as a subscription
-- [ ] Debt payoff curves (principal vs interest) — needs loan amortization in CategoryTarget
-- [ ] Anomaly detection with z-scores (flag outliers vs category baseline)
-- [ ] Lag correlation analysis (income events → spending spikes)
-- [ ] Inflation-adjusted spending trends — needs external inflation data
-- [ ] "If invested instead" opportunity cost tracker — needs market proxy data
-- [ ] Forward cash projection fan chart (deterministic + stochastic bands)
+### Future Reports — full designs (backend + UX + test plans) in docs/future-reports-roadmap.md
+- [x] R1 Tags foundation: tags/joins schema, system tags, TagChip + theme color slots, Settings management, inspector + payee pickers, bulk tagging (M)
+- [ ] R2 Tag-aware report semantics — savings node in Sankey, exclude toggle in Pareto/Treemap, tag filter bar (S)
+- [ ] R3 Subscription tracker: interval detection + review-strip curation + report tab (L)
+- [ ] R4 Anomaly detection z-scores, plain-language cards + sparklines (S)
+- [ ] R5 Payday-effect panel in Day Patterns (S, cuttable — reframed lag correlation)
+- [ ] R6 Forward cash projection fan chart, bootstrap bands (M)
+- [ ] R7 Debt data model + amortization engine — standalone Debt entity (managed via linked account, or unmanaged/passive with linked budget category), what-if (M) — supersedes "amortization in CategoryTarget"; pairs with Phase 3 Advanced Accounts
+- [ ] R8 Debts sidebar section + per-debt detail page — schedule table, paydown chart, live payoff-date pill (M-L, depends on R7)
+- [ ] R9 Consolidated Debts report tab — cross-debt rollup + filtering (S, depends on R7)
+- Deferred: inflation-adjusted trends, "if invested instead" — need external_series infra (sketched in roadmap)
 
 ### Other
 - [ ] 2FA (TOTP) support
@@ -112,6 +116,7 @@ _Add items here as they come up during development._
 - [ ] Multi-currency support
 - [ ] Plugin framework + plugin management page
 - [ ] Mock SimpleFIN API for dev (a FakeClient exists in the integration tests; a dev-mode mock server with generated timestamps does not)
+- [ ] Budgeted-mode sankey ignores account filters (pre-existing backend inconsistency; spent mode honors them — compare mode inherits it)
 
 ---
 
@@ -229,6 +234,11 @@ _Add items here as they come up during development._
 - [x] Nord
 
 #### Reports — Completed
+- [x] Drill-down transaction panels (2026-07-21: click a chart element → inline filtered transaction list below the chart; budget-wide `GET /{budget_id}/transactions` with leaf/parent scope + posted/cash-flow semantics so panel totals reconcile with chart values; wired on Pareto, Treemap, Budget vs Actual, Payees, Volatility, Seasonality cells, Day Patterns, Income vs Expenses bars, Sankey category/payee/income nodes, Timeline cards)
+- [x] Export per report (CSV / JSON via papaparse + PNG via html-to-image with theme background; shared ReportExportButton on all 15 tabs; transaction-level export moved to Overview)
+- [x] Multi-select searchable dropdowns for category / payee / account filters (plus per-tab filter support matrix — controls a report ignores are dimmed, not silently ineffective)
+- [x] Spending treemap drill-down fixed (inverted guard in visibleItems; group → categories renders; category tiles open the transaction panel)
+- [x] Sankey — previous-period comparison (Compare toggle fetches the preceding equal-length window; +/-$ and % deltas on nodes and tooltips, "new" badge, delta captions on metric cards)
 - [x] Report infrastructure: tabbed navigation (Overview, Financial State, Cash Flow, Budget, Spending, Insights)
 - [x] Shared filter bar with date range presets (This Month, Last Month, Last 3/6/12 Months, Last Year, Custom)
 - [x] Global group-by filter (Group / Category) applied across Pareto, Treemap, Sankey
@@ -257,3 +267,4 @@ ideas:
 
 
 - receipt extraction into categories and then do a split transaction. need to figure out a way to decode some things, maybe need a upc database interactoin or something to try to decode things and figure out what the item was. maybe have a table per receipt that has a column for the original item string and then the upc actual object name
+

@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "dev-secret-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Non-rotating refresh token: expiry is a hard logout. 90 days keeps the
+    # installed PWA signed in; rotate SECRET_KEY to revoke all sessions.
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 90
 
     # Admin bootstrap
     ADMIN_EMAIL: str = "admin@example.com"

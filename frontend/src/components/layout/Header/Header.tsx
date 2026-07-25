@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, Menu, Palette } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Palette, Search } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
+import { IS_MAC } from '../../../keyboard/shortcuts'
 import { formatMonth, addMonths, currentMonthStart } from '../../../utils/dates'
 import type { Theme } from '../../../stores/appStore'
 import './Header.css'
 
-const THEMES: { value: Theme; label: string }[] = [
+export const THEMES: { value: Theme; label: string }[] = [
   { value: 'dark', label: 'Dark' },
   { value: 'light', label: 'Light' },
   { value: 'gruvbox-dark', label: 'Gruvbox Dark' },
@@ -23,7 +24,7 @@ export function Header() {
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
-  const setMobileSidebarOpen = useUIStore((s) => s.setMobileSidebarOpen)
+  const openPalette = useUIStore((s) => s.openPalette)
   const [themeOpen, setThemeOpen] = useState(false)
   const themeRef = useRef<HTMLDivElement>(null)
 
@@ -40,13 +41,6 @@ export function Header() {
 
   return (
     <header className="header">
-      <button
-        className="header__menu-btn"
-        onClick={() => setMobileSidebarOpen(true)}
-        aria-label="Open menu"
-      >
-        <Menu size={20} />
-      </button>
       <div className="header__month-nav">
         <button
           className="header__month-btn"
@@ -75,7 +69,18 @@ export function Header() {
         )}
       </div>
 
-      <div className="header__spacer" />
+      <div className="header__palette-wrap">
+        <button
+          className="header__palette-btn"
+          onClick={openPalette}
+          aria-label="Open command palette"
+          aria-keyshortcuts={IS_MAC ? 'Meta+K' : 'Control+K'}
+        >
+          <Search size={13} />
+          <span className="header__palette-text">Search or jump to…</span>
+          <kbd className="kbd">{IS_MAC ? '⌘' : 'Ctrl+'}K</kbd>
+        </button>
+      </div>
 
       <div className="header__theme-picker" ref={themeRef}>
         <button

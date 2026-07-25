@@ -117,7 +117,7 @@
   border-radius: 9px;
   background: var(--color-accent);
   color: var(--text-inverse);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
 }
 
@@ -193,7 +193,7 @@
   align-items: center;
   padding: 1px 6px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -215,7 +215,7 @@
   border-radius: 9px;
   background: var(--color-warning);
   color: var(--text-inverse);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   cursor: help;
 }
@@ -331,4 +331,10 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .accounts-overview {
+    padding: var(--spacing-md);
+  }
 }

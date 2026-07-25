@@ -83,7 +83,7 @@
 }
 
 .timeline__date {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   color: var(--text-muted);
   font-weight: 500;
 }
@@ -95,7 +95,7 @@
 }
 
 .timeline__category {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
@@ -114,10 +114,18 @@
 }
 
 .timeline__memo {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-style: italic;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.timeline__card--clickable {
+  cursor: pointer;
+}
+
+.timeline__card--clickable:hover {
+  border-color: var(--color-accent);
 }

@@ -116,7 +116,7 @@
 }
 
 .match-modal__col-label {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -157,7 +157,7 @@
 }
 
 .match-modal__cleared {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   text-transform: capitalize;
   padding: 1px 6px;
   border-radius: 8px;
@@ -191,7 +191,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;

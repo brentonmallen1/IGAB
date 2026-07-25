@@ -58,7 +58,7 @@
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 500;
   color: var(--text-muted);
   padding: 2px 6px;
@@ -91,4 +91,19 @@
   text-transform: none;
   letter-spacing: 0;
   font-weight: 400;
+}
+
+/* Mobile: single-column cards, no horizontal scroll, no money column labels */
+@media (max-width: 768px) {
+  .budget-table {
+    min-width: 0;
+  }
+
+  .budget-table__header {
+    grid-template-columns: 1fr;
+  }
+
+  .budget-table__col--money {
+    display: none;
+  }
 }

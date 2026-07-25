@@ -1,5 +1,5 @@
 .login-page {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -22,7 +22,7 @@
 }
 
 .login-card__logo-text {
-  font-size: 28px;
+  font-size: var(--font-size-display);
   font-weight: 700;
   color: var(--color-accent);
   letter-spacing: 2px;

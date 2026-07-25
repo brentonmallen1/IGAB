@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   CartesianGrid, Legend, Line, LineChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -8,12 +8,14 @@ import { formatMoney } from '../../../utils/money'
 import { ChartTooltip } from './ChartTooltip'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
 
 export function BurnRateReport({ budgetId }: Props) {
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useBurnRateReport(budgetId, months)
+  const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -46,9 +48,21 @@ export function BurnRateReport({ budgetId }: Props) {
               {m}mo
             </button>
           ))}
+          <ReportExportButton
+            reportId="burn-rate"
+            getRows={() =>
+              points.map((p) => ({
+                date: p.date,
+                rolling_30: Number(p.rolling_30),
+                rolling_90: Number(p.rolling_90),
+              }))
+            }
+            captureRef={captureRef}
+          />
         </div>
       </div>
 
+      <div ref={captureRef} className="report-capture">
       {latest && (
         <div className="report-metrics">
           <MetricCard label="Current 30-Day Burn" value={formatMoney(Number(latest.rolling_30))} />
@@ -71,6 +85,7 @@ export function BurnRateReport({ budgetId }: Props) {
           </LineChart>
         </ResponsiveContainer>
       )}
+      </div>
     </div>
   )
 }

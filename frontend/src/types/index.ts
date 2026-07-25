@@ -43,6 +43,12 @@ export interface CategoryGroup {
   is_system: boolean
 }
 
+export interface TagSimple {
+  id: string
+  name: string
+  color_slot: 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'blue' | 'purple' | 'pink' | null
+}
+
 export interface Category {
   id: string
   category_group_id: string
@@ -52,6 +58,7 @@ export interface Category {
   note: string | null
   is_hidden: boolean
   linked_account_id: string | null
+  tags?: TagSimple[]
 }
 
 export interface BudgetView {
@@ -77,7 +84,15 @@ export interface BudgetMonth {
   to_be_assigned: number
   total_assigned: number
   total_activity: number
+  total_overspent: number
   category_balances: CategoryBalance[]
+}
+
+export interface BudgetTransactionsResponse {
+  transactions: Transaction[]
+  total_count: number
+  /** Decimal serialized as string; totals cover the full filter match, not just the page */
+  total_amount: string
 }
 
 export interface Transaction {
@@ -122,6 +137,7 @@ export interface Payee {
   default_category_id: string | null
   transfer_account_id: string | null
   mapping_samples: string | null
+  tags?: TagSimple[]
 }
 
 export interface TransactionCreate {
@@ -136,6 +152,9 @@ export interface TransactionCreate {
   approved?: boolean
   transfer_account_id?: string
   splits?: SplitCreate[]
+  /** Opt-in mobile capture (both or neither) — powers nearby-payee suggestions */
+  latitude?: number
+  longitude?: number
 }
 
 export interface SplitCreate {

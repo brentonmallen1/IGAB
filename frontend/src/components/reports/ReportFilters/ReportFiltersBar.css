@@ -50,7 +50,7 @@
 }
 
 .rfb__groupby-label {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-weight: 500;
   white-space: nowrap;
@@ -76,4 +76,11 @@
   background: var(--accent-color);
   color: var(--bg-primary);
   border-color: var(--accent-color);
+}
+
+/* Controls not consumed by the active report are dimmed, not cleared */
+
+.rfb__inert {
+  opacity: 0.45;
+  pointer-events: none;
 }

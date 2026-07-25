@@ -1,6 +1,6 @@
 .main-layout {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background-color: var(--bg-primary);
 }
@@ -18,16 +18,9 @@
   background-color: var(--bg-primary);
 }
 
-.main-layout__backdrop {
-  display: none;
-}
-
 @media (max-width: 768px) {
-  .main-layout__backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 299;
+  /* Keep scrollable content clear of the fixed bottom nav */
+  .main-layout__main {
+    padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
   }
 }
