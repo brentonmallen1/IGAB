@@ -1,0 +1,11 @@
+# Never ship the host macOS virtualenv (318MB) or caches into the image
+.venv
+__pycache__
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.pyc
+*.pyo
+.coverage
+htmlcov
+.DS_Store

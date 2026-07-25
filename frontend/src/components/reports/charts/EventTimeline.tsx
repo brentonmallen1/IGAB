@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useTimelineReport } from '../../../api/reports'
+import { usePayees } from '../../../api/payees'
 import { formatMoney } from '../../../utils/money'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './EventTimeline.css'
 
 interface Props { budgetId: string }
@@ -11,13 +13,30 @@ interface Props { budgetId: string }
 const LIMITS = [25, 50, 100] as const
 
 export function TimelineReport({ budgetId }: Props) {
-  const { filters } = useReportStore()
+  const { filters, setDrillDown } = useReportStore()
   const [limit, setLimit] = useState<25 | 50 | 100>(25)
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading } = useTimelineReport(budgetId, filters.startDate, filters.endDate, limit, catIds, acctIds)
+  const { data: payees } = usePayees(budgetId)
+  const captureRef = useRef<HTMLDivElement>(null)
+
+  // Timeline rows carry names only — resolve back to ids for the drill-down
+  const payeeIdByName = useMemo(
+    () => new Map((payees ?? []).map((p) => [p.name, p.id])),
+    [payees],
+  )
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+
+  function drillTo(payeeName: string) {
+    const payeeId = payeeIdByName.get(payeeName)
+    if (!payeeId) return
+    setDrillDown({
+      kind: 'payee', label: payeeName, scope: 'parent',
+      payeeIds: [payeeId], startDate: filters.startDate, endDate: filters.endDate,
+    })
+  }
 
   const transactions = data?.transactions ?? []
   const largestAmt = transactions.length > 0 ? Math.abs(Number(transactions[0].amount)) : 0
@@ -50,9 +69,24 @@ export function TimelineReport({ budgetId }: Props) {
               Top {l}
             </button>
           ))}
+          <ReportExportButton
+            reportId="timeline"
+            getRows={() =>
+              transactions.map((tx) => ({
+                date: tx.date,
+                payee: tx.payee_name ?? '',
+                category: tx.category_name ?? '',
+                amount: Number(tx.amount),
+                memo: tx.memo ?? '',
+              }))
+            }
+            captureRef={captureRef}
+            window={{ start: filters.startDate, end: filters.endDate }}
+          />
         </div>
       </div>
 
+      <div ref={captureRef} className="report-capture">
       {transactions.length > 0 && (
         <div className="report-metrics">
           <MetricCard label="Largest Transaction" value={formatMoney(largestAmt)} />
@@ -77,7 +111,10 @@ export function TimelineReport({ budgetId }: Props) {
                   style={{ width: size, height: size }}
                   title={`${tx.date} · ${tx.payee_name ?? 'Unknown'} · ${formatMoney(Math.abs(amt))}`}
                 />
-                <div className={`timeline__card timeline__card--${side}`}>
+                <div
+                  className={`timeline__card timeline__card--${side} ${tx.payee_name && payeeIdByName.has(tx.payee_name) ? 'timeline__card--clickable' : ''}`}
+                  onClick={tx.payee_name ? () => drillTo(tx.payee_name!) : undefined}
+                >
                   <div className="timeline__date">{tx.date}</div>
                   <div className="timeline__payee">{tx.payee_name ?? 'Unknown Payee'}</div>
                   {tx.category_name && (
@@ -93,6 +130,7 @@ export function TimelineReport({ budgetId }: Props) {
           })}
         </div>
       )}
+      </div>
     </div>
   )
 }

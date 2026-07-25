@@ -2,6 +2,7 @@ import uuid
 
 from rapidfuzz import fuzz
 from sqlalchemy import func, select, update
+from sqlalchemy.orm import selectinload
 
 from igab.db.models import Payee, Transaction
 from igab.repositories.base import BaseRepository
@@ -15,10 +16,43 @@ class PayeeRepository(BaseRepository[Payee]):
     async def get_all(self, budget_id: uuid.UUID) -> list[Payee]:
         result = await self.session.execute(
             select(Payee)
+            .options(selectinload(Payee.tags))
             .where(Payee.budget_id == budget_id, Payee.is_deleted == False)  # noqa: E712
             .order_by(Payee.name)
         )
         return list(result.scalars().all())
+
+    async def get_located_visits(
+        self,
+        budget_id: uuid.UUID,
+        min_lat: float,
+        max_lat: float,
+        min_lng: float,
+        max_lng: float,
+    ) -> list[tuple]:
+        """Located, non-deleted transactions joined to their payees within a
+        bounding box: (payee_id, name, default_category_id, lat, lng, date).
+        Exact radius filtering happens in the caller via haversine."""
+        result = await self.session.execute(
+            select(
+                Payee.id,
+                Payee.name,
+                Payee.default_category_id,
+                Transaction.latitude,
+                Transaction.longitude,
+                Transaction.date,
+            )
+            .join(Payee, Payee.id == Transaction.payee_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.latitude.is_not(None),
+                Transaction.latitude.between(min_lat, max_lat),
+                Transaction.longitude.between(min_lng, max_lng),
+                Payee.is_deleted == False,  # noqa: E712
+            )
+        )
+        return [tuple(row) for row in result.all()]
 
     async def get_all_with_counts(self, budget_id: uuid.UUID) -> list[tuple[Payee, int]]:
         payees = await self.get_all(budget_id)

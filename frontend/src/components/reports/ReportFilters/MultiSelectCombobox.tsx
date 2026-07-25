@@ -15,6 +15,9 @@ interface Props {
   onChange: (ids: string[]) => void
   placeholder?: string
   label?: string
+  /** Dimmed and inert — used when the active report ignores this filter */
+  disabled?: boolean
+  title?: string
 }
 
 interface DropdownPos {
@@ -23,7 +26,7 @@ interface DropdownPos {
   width: number
 }
 
-export function MultiSelectCombobox({ selectedIds, options, onChange, placeholder = 'All', label }: Props) {
+export function MultiSelectCombobox({ selectedIds, options, onChange, placeholder = 'All', label, disabled = false, title }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)
@@ -47,6 +50,7 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
   const flatFiltered = grouped.flatMap((g) => g.items)
 
   function measureAndOpen() {
+    if (disabled) return
     const rect = triggerRef.current?.getBoundingClientRect()
     if (rect) setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 220) })
     setOpen(true)
@@ -167,14 +171,15 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
   ) : null
 
   return (
-    <div className="msc">
+    <div className={`msc ${disabled ? 'msc--disabled' : ''}`} title={disabled ? title : undefined}>
       {label && <span className="msc__label">{label}</span>}
       <div
         ref={triggerRef}
         className={`msc__trigger ${open ? 'msc__trigger--open' : ''} ${count > 0 ? 'msc__trigger--active' : ''}`}
         onClick={measureAndOpen}
         role="button"
-        tabIndex={0}
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') measureAndOpen() }}
       >
         <span className="msc__value">{displayLabel}</span>

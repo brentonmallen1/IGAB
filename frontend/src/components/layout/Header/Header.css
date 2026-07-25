@@ -38,23 +38,6 @@
   text-align: center;
 }
 
-.header__menu-btn {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  margin-right: var(--spacing-sm);
-  flex-shrink: 0;
-}
-
-.header__menu-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-}
-
 .header__today-btn {
   display: flex;
   align-items: center;
@@ -71,9 +54,41 @@
   color: var(--text-primary);
 }
 
-.header__spacer {
+.header__palette-wrap {
   flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
 }
+
+.header__palette-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 260px;
+  max-width: 380px;
+  padding: 5px 10px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.header__palette-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+.header__palette-text {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 
 .header__theme-picker {
   position: relative;
@@ -132,8 +147,9 @@
 }
 
 @media (max-width: 768px) {
-  .header__menu-btn {
-    display: flex;
+  /* Palette is desktop-only; the wrap keeps its flex:1 as spacer */
+  .header__palette-btn {
+    display: none;
   }
 
   /* Increase touch targets for navigation buttons */

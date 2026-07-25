@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { syncThemeColorMeta } from '../utils/themeColor'
 
 export type Theme = 'dark' | 'light' | 'gruvbox-dark' | 'gruvbox-light' | 'catppuccin-mocha' | 'catppuccin-latte' | 'rose-pine' | 'rose-pine-moon' | 'nord'
 
@@ -9,6 +10,9 @@ interface AppState {
   selectedAccountId: string | null
   selectedMonth: string // ISO date string: "2024-01-01"
   autoOpenLastBudget: boolean
+  lastQuickAddAccountId: string | null
+  /** Opt-in, device-local: capture location on quick-add to suggest nearby payees */
+  locationEnabled: boolean
 
   setTheme: (theme: Theme) => void
   setCurrentBudgetId: (id: string) => void
@@ -16,6 +20,8 @@ interface AppState {
   setSelectedAccountId: (id: string | null) => void
   setSelectedMonth: (month: string) => void
   setAutoOpenLastBudget: (val: boolean) => void
+  setLastQuickAddAccountId: (id: string) => void
+  setLocationEnabled: (val: boolean) => void
 }
 
 function currentMonthString(): string {
@@ -31,9 +37,12 @@ export const useAppStore = create<AppState>()(
       selectedAccountId: null,
       selectedMonth: currentMonthString(),
       autoOpenLastBudget: true,
+      lastQuickAddAccountId: null,
+      locationEnabled: false,
 
       setTheme: (theme) => {
         document.documentElement.setAttribute('data-theme', theme)
+        syncThemeColorMeta()
         set({ theme })
       },
       setCurrentBudgetId: (id) => set({ currentBudgetId: id, selectedAccountId: null }),
@@ -41,6 +50,8 @@ export const useAppStore = create<AppState>()(
       setSelectedAccountId: (id) => set({ selectedAccountId: id }),
       setSelectedMonth: (month) => set({ selectedMonth: month }),
       setAutoOpenLastBudget: (val) => set({ autoOpenLastBudget: val }),
+      setLastQuickAddAccountId: (id) => set({ lastQuickAddAccountId: id }),
+      setLocationEnabled: (val) => set({ locationEnabled: val }),
     }),
     {
       name: 'igab-app',
@@ -49,6 +60,7 @@ export const useAppStore = create<AppState>()(
         if (state?.theme) {
           document.documentElement.setAttribute('data-theme', state.theme)
         }
+        syncThemeColorMeta()
       },
     }
   )

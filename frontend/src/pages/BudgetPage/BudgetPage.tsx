@@ -1,17 +1,19 @@
 import { useRef, useState } from 'react'
-import { Wand2, FolderInput, Trash2 } from 'lucide-react'
+import { FolderInput, Trash2 } from 'lucide-react'
 import { BudgetTable } from '../../components/budget/BudgetTable/BudgetTable'
 import { CategoryInspector } from '../../components/budget/CategoryInspector/CategoryInspector'
+import { CategoryMobileActions } from '../../components/budget/CategoryInspector/CategoryMobileActions'
+import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
 import { BudgetViewModal } from '../../components/budget/BudgetViewModal/BudgetViewModal'
 import { ManageViewsModal } from '../../components/budget/ManageViewsModal/ManageViewsModal'
-import { AutoAssignModal } from '../../components/budget/AutoAssignModal/AutoAssignModal'
+import { TbaHero } from '../../components/budget/TbaHero/TbaHero'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
-import { useBudgets, useBudgetMonth, useCreateBudget } from '../../api/budgets'
-import { useCategoryGroups, useUpdateCategory, useDeleteCategory } from '../../api/categories'
-import { formatMoney } from '../../utils/money'
+import { useIsMobile } from '../../hooks/useMediaQuery'
+import { useBudgets, useCreateBudget } from '../../api/budgets'
+import { useCategories, useCategoryGroups, useUpdateCategory, useDeleteCategory } from '../../api/categories'
 import './BudgetPage.css'
 
 export function BudgetPage() {
@@ -26,16 +28,18 @@ export function BudgetPage() {
   const closeViewModal = useUIStore((s) => s.closeViewModal)
   const isManageViewsModalOpen = useUIStore((s) => s.isManageViewsModalOpen)
   const closeManageViewsModal = useUIStore((s) => s.closeManageViewsModal)
+  const mobileInspectorOpen = useUIStore((s) => s.mobileInspectorOpen)
+  const closeMobileInspector = useUIStore((s) => s.closeMobileInspector)
+  const isMobile = useIsMobile()
 
   const { data: budgets } = useBudgets()
-  const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
+  const { data: categories = [] } = useCategories(budgetId)
   const updateCategory = useUpdateCategory(budgetId ?? '')
   const deleteCategory = useDeleteCategory(budgetId ?? '')
   const createBudget = useCreateBudget()
 
   const [newName, setNewName] = useState('')
-  const [showAutoAssign, setShowAutoAssign] = useState(false)
   const [moveMenuOpen, setMoveMenuOpen] = useState(false)
   const [moveMenuPos, setMoveMenuPos] = useState({ x: 0, y: 0 })
   const moveRef = useRef<HTMLButtonElement>(null)
@@ -76,9 +80,6 @@ export function BudgetPage() {
   const selectedCount = selectedCategoryIds.size
   const groupMenuItems: ContextMenuItem[] = categoryGroups.map((g) => ({ id: g.id, label: g.name }))
 
-  const tba = budgetMonth?.to_be_assigned ?? 0
-  const tbaClass = tba > 0 ? 'positive' : tba < 0 ? 'negative' : 'zero'
-
   if (!budgetId) {
     return (
       <div className="budget-page">
@@ -104,26 +105,42 @@ export function BudgetPage() {
 
   return (
     <div className="budget-page">
-      <div className="budget-page__tba">
-        <span className="budget-page__tba-label">To Be Assigned</span>
-        <span className={`budget-page__tba-amount ${tbaClass}`}>{formatMoney(tba)}</span>
-        <button
-          className="budget-page__auto-assign-btn"
-          onClick={() => setShowAutoAssign(true)}
-          title="Auto-assign to targets"
-        >
-          <Wand2 size={13} />
-          Auto-assign
-        </button>
-      </div>
+      <TbaHero budgetId={budgetId} month={month} />
       <div className="budget-page__body">
         <div className="budget-page__table-container">
           <BudgetTable />
         </div>
-        {selectedCategoryIds.size > 0 && (
+        {selectedCategoryIds.size > 0 && !isMobile && (
           <CategoryInspector budgetId={budgetId} />
         )}
       </div>
+
+      {isMobile && (
+        <BottomSheet
+          open={mobileInspectorOpen && selectedCategoryIds.size > 0}
+          onClose={() => {
+            closeMobileInspector()
+            clearCategorySelection()
+          }}
+          height="full"
+          historyKey="inspector"
+        >
+          <CategoryInspector budgetId={budgetId} forceOpen />
+          {selectedCategoryIds.size === 1 && (() => {
+            const selected = categories.find((c) => selectedCategoryIds.has(c.id))
+            return selected ? (
+              <CategoryMobileActions
+                budgetId={budgetId}
+                category={selected}
+                onDone={() => {
+                  closeMobileInspector()
+                  clearCategorySelection()
+                }}
+              />
+            ) : null
+          })()}
+        </BottomSheet>
+      )}
 
       {selectedCount > 0 && (
         <FloatingSelectionBar
@@ -163,13 +180,6 @@ export function BudgetPage() {
         <ManageViewsModal
           budgetId={budgetId}
           onClose={closeManageViewsModal}
-        />
-      )}
-      {showAutoAssign && (
-        <AutoAssignModal
-          budgetId={budgetId}
-          month={month}
-          onClose={() => setShowAutoAssign(false)}
         />
       )}
     </div>

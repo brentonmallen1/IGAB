@@ -1,7 +1,14 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient } from './client'
-import type { BulkActionResult, Payee, SimilarTransaction, Transaction, TransactionCreate } from '../types'
+import type {
+  BudgetTransactionsResponse,
+  BulkActionResult,
+  Payee,
+  SimilarTransaction,
+  Transaction,
+  TransactionCreate,
+} from '../types'
 import type { TransactionFilters } from '../utils/searchParser'
 import { hasActiveFilters } from '../utils/searchParser'
 
@@ -44,6 +51,53 @@ export function useInfiniteTransactions(accountId: string | null, filters: Trans
     initialPageParam: 0,
     enabled: !!accountId,
     staleTime: 10_000,
+  })
+}
+
+export interface BudgetTransactionParams {
+  startDate: string
+  endDate: string
+  scope: 'parent' | 'leaf'
+  direction?: 'outflow' | 'inflow'
+  categoryIds?: string[]
+  payeeIds?: string[]
+  accountIds?: string[]
+  dayOfWeek?: number
+  limit?: number
+  offset?: number
+}
+
+/** Budget-wide listing for report drill-downs. Always posted + cash-flow rows
+ * so panel totals reconcile with the report aggregates being drilled into. */
+export function useBudgetTransactions(
+  budgetId: string | null,
+  params: BudgetTransactionParams | null,
+) {
+  return useQuery({
+    queryKey: ['budget-transactions', budgetId, params],
+    queryFn: async () => {
+      const p: Record<string, unknown> = {
+        start_date: params!.startDate,
+        end_date: params!.endDate,
+        scope: params!.scope,
+        posted_only: true,
+        cash_flow_only: true,
+        limit: params!.limit ?? 200,
+        offset: params!.offset ?? 0,
+      }
+      if (params!.direction) p.direction = params!.direction
+      if (params!.dayOfWeek != null) p.day_of_week = params!.dayOfWeek
+      if (params!.categoryIds?.length) p.category_ids = params!.categoryIds.join(',')
+      if (params!.payeeIds?.length) p.payee_ids = params!.payeeIds.join(',')
+      if (params!.accountIds?.length) p.account_ids = params!.accountIds.join(',')
+      const { data } = await apiClient.get<BudgetTransactionsResponse>(
+        `/${budgetId}/transactions`,
+        { params: p },
+      )
+      return data
+    },
+    enabled: !!budgetId && !!params,
+    staleTime: 30_000,
   })
 }
 

@@ -37,6 +37,16 @@
   --card-bg: #32302f;
   --card-border: #504945;
 
+  /* Tag color slots — Gruvbox Dark */
+  --tag-red: #fb4934;
+  --tag-orange: #fe8019;
+  --tag-yellow: #fabd2f;
+  --tag-green: #b8bb26;
+  --tag-teal: #8ec07c;
+  --tag-blue: #83a598;
+  --tag-purple: #d3869b;
+  --tag-pink: #d3869b;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);
@@ -87,6 +97,16 @@
   --header-bg: #f9f5d7;
   --card-bg: #f9f5d7;
   --card-border: #d5c4a1;
+
+  /* Tag color slots — Gruvbox Light */
+  --tag-red: #cc241d;
+  --tag-orange: #d65d0e;
+  --tag-yellow: #d79921;
+  --tag-green: #79740e;
+  --tag-teal: #427b58;
+  --tag-blue: #076678;
+  --tag-purple: #8f3f71;
+  --tag-pink: #b16286;
 
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);

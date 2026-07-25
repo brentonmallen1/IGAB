@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import { Paperclip, Upload, Trash2, X, Loader2 } from 'lucide-react'
+import { Camera, Paperclip, Upload, Trash2, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAttachments, useUploadAttachment, useDeleteAttachment, useAttachmentUrl, type Attachment } from '../../api/attachments'
 import { Lightbox } from './Lightbox'
@@ -69,14 +69,17 @@ function LightboxWithFetch({
 
 interface Props {
   transactionId: string
-  onClose: () => void
+  onClose?: () => void
+  /** Rendered inside another surface (transaction editor): no header chrome */
+  embedded?: boolean
 }
 
-export function AttachmentPanel({ transactionId, onClose }: Props) {
+export function AttachmentPanel({ transactionId, onClose, embedded = false }: Props) {
   const { data: attachments = [], isLoading } = useAttachments(transactionId)
   const upload = useUploadAttachment(transactionId)
   const deleteAttachment = useDeleteAttachment(transactionId)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
 
@@ -117,16 +120,18 @@ export function AttachmentPanel({ transactionId, onClose }: Props) {
   }
 
   return (
-    <div className="attachment-panel">
-      <div className="attachment-panel__header">
-        <span className="attachment-panel__title">
-          <Paperclip size={14} />
-          Attachments
-        </span>
-        <button className="attachment-panel__close" onClick={onClose} aria-label="Close">
-          <X size={14} />
-        </button>
-      </div>
+    <div className={`attachment-panel ${embedded ? 'attachment-panel--embedded' : ''}`}>
+      {!embedded && (
+        <div className="attachment-panel__header">
+          <span className="attachment-panel__title">
+            <Paperclip size={14} />
+            Attachments
+          </span>
+          <button className="attachment-panel__close" onClick={onClose} aria-label="Close">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <div
         className={`attachment-panel__drop-zone ${dragOver ? 'attachment-panel__drop-zone--active' : ''}`}
@@ -146,6 +151,23 @@ export function AttachmentPanel({ transactionId, onClose }: Props) {
           style={{ display: 'none' }}
         />
       </div>
+
+      <button
+        type="button"
+        className="attachment-panel__camera-btn"
+        onClick={() => cameraInputRef.current?.click()}
+      >
+        <Camera size={15} />
+        Take photo
+      </button>
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={(e) => handleFiles(e.target.files)}
+        style={{ display: 'none' }}
+      />
 
       {isLoading ? (
         <div className="attachment-panel__loading">

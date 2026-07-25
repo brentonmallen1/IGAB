@@ -1,7 +1,7 @@
 .sidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
-  height: 100vh;
+  height: 100dvh;
   background-color: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -169,7 +169,7 @@
   border-radius: 8px;
   background-color: var(--color-warning);
   color: var(--text-inverse);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   flex-shrink: 0;
   line-height: 1;
@@ -208,7 +208,7 @@
   padding: 2px 4px;
   border-radius: 4px;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   opacity: 0.7;
   transition: opacity 0.15s, background 0.15s;
 }
@@ -232,7 +232,7 @@
 }
 
 .sidebar__sync-badge {
-  font-size: 9px;
+  font-size: var(--font-size-2xs);
   font-weight: 600;
   color: var(--color-accent);
   min-width: 12px;
@@ -246,22 +246,6 @@
   padding: var(--spacing-xl) var(--spacing-md);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
-}
-
-.sidebar__close-btn {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.sidebar__close-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
 }
 
 .sidebar__collapse-btn {
@@ -320,7 +304,7 @@
 }
 
 .sidebar__account-mini-letter {
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   line-height: 1;
 }
@@ -359,39 +343,9 @@
   height: 36px;
 }
 
+/* Phones use the BottomNav + MoreSheet instead of the sidebar drawer */
 @media (max-width: 768px) {
   .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 300;
-    height: 100dvh;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-    box-shadow: var(--shadow-lg);
-  }
-
-  .sidebar--mobile-open {
-    transform: translateX(0);
-  }
-
-  .sidebar__logo {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .sidebar__close-btn {
-    display: flex;
-  }
-
-  /* Larger touch targets for nav items and account mini buttons */
-  .sidebar__nav-item {
-    min-height: 44px;
-  }
-
-  .sidebar__account-mini {
-    width: 44px;
-    height: 44px;
+    display: none;
   }
 }

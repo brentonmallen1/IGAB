@@ -61,6 +61,35 @@ export const TAB_GROUPS: { id: TabGroup; label: string }[] = [
 
 export type GroupBy = 'group' | 'category' | 'payee'
 
+export interface TabFilterSupport {
+  dates: boolean
+  categories: boolean
+  payees: boolean
+  accounts: boolean
+  groupBy: boolean
+}
+
+/** Which shared filters each report actually consumes — the filter bar dims
+ * the rest so filters never silently appear to apply. Months-based reports
+ * (their own 6/12/24mo selector) ignore the date range too. */
+export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
+  'overview': { dates: true, categories: false, payees: false, accounts: false, groupBy: false },
+  'net-worth': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'account-composition': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'income-expense': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'burn-rate': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'cash-flow': { dates: true, categories: false, payees: false, accounts: true, groupBy: false },
+  'budget-actual': { dates: true, categories: true, payees: false, accounts: false, groupBy: false },
+  'variance': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'volatility': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'pareto': { dates: true, categories: true, payees: true, accounts: true, groupBy: true },
+  'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true },
+  'seasonality': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'payees': { dates: true, categories: false, payees: true, accounts: true, groupBy: false },
+  'day-patterns': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
+  'timeline': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
+}
+
 export interface ReportFilters {
   startDate: string
   endDate: string
@@ -70,10 +99,19 @@ export interface ReportFilters {
   groupBy: GroupBy
 }
 
+/** Fully-resolved drill-down request; charts resolve ids and the date window
+ * at click time so the panel needs no chart-specific knowledge. */
 export interface DrillDownContext {
-  type: 'category' | 'category_group' | 'payee' | 'account'
-  id: string
-  name: string
+  kind: 'category' | 'category-group' | 'payee' | 'month' | 'day-of-week'
+  label: string
+  /** leaf = category-keyed charts (split children as rows); parent = payee/month charts */
+  scope: 'leaf' | 'parent'
+  direction?: 'outflow' | 'inflow'
+  categoryIds?: string[]
+  payeeIds?: string[]
+  dayOfWeek?: number
+  startDate: string
+  endDate: string
 }
 
 interface ReportState {
@@ -108,9 +146,12 @@ export const useReportStore = create<ReportState>()(
       drillDown: null,
 
       setActiveTab: (tab) => set({ activeTab: tab, drillDown: null }),
-      setFilters: (partial) => set((s) => ({ filters: { ...s.filters, ...partial } })),
+      // Filter changes invalidate the drill context (its window/ids were
+      // resolved against the previous filters)
+      setFilters: (partial) =>
+        set((s) => ({ filters: { ...s.filters, ...partial }, drillDown: null })),
       setDrillDown: (ctx) => set({ drillDown: ctx }),
-      resetFilters: () => set({ filters: defaultFilters() }),
+      resetFilters: () => set({ filters: defaultFilters(), drillDown: null }),
     }),
     {
       name: 'igab-reports',

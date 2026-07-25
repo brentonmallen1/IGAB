@@ -16,7 +16,7 @@
   box-shadow: var(--shadow-lg);
   width: 560px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 120px);
+  max-height: calc(100dvh - 120px);
   display: flex;
   flex-direction: column;
 }

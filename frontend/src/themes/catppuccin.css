@@ -37,6 +37,16 @@
   --card-bg: #181825;
   --card-border: #313244;
 
+  /* Tag color slots — Catppuccin Mocha */
+  --tag-red: #f38ba8;
+  --tag-orange: #fab387;
+  --tag-yellow: #f9e2af;
+  --tag-green: #a6e3a1;
+  --tag-teal: #94e2d5;
+  --tag-blue: #89b4fa;
+  --tag-purple: #cba6f7;
+  --tag-pink: #f5c2e7;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);
@@ -87,6 +97,16 @@
   --header-bg: #ffffff;
   --card-bg: #ffffff;
   --card-border: #ccd0da;
+
+  /* Tag color slots — Catppuccin Latte */
+  --tag-red: #d20f39;
+  --tag-orange: #fe640b;
+  --tag-yellow: #df8e1d;
+  --tag-green: #40a02b;
+  --tag-teal: #179299;
+  --tag-blue: #1e66f5;
+  --tag-purple: #8839ef;
+  --tag-pink: #ea76cb;
 
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);

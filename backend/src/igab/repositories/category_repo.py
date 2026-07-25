@@ -2,6 +2,7 @@ import uuid
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup
 from igab.repositories.base import BaseRepository
@@ -28,9 +29,13 @@ class CategoryRepository(BaseRepository[Category]):
     model = Category
 
     async def get_all(self, budget_id: uuid.UUID, include_hidden: bool = False) -> list[Category]:
-        q = select(Category).where(
-            Category.budget_id == budget_id,
-            Category.is_deleted == False,  # noqa: E712
+        q = (
+            select(Category)
+            .options(selectinload(Category.tags))
+            .where(
+                Category.budget_id == budget_id,
+                Category.is_deleted == False,  # noqa: E712
+            )
         )
         if not include_hidden:
             q = q.where(Category.is_hidden == False)  # noqa: E712

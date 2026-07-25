@@ -21,6 +21,7 @@ from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
 from igab.repositories.settings_repo import SettingsRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
+from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -114,6 +115,10 @@ def get_assignment_repo(session: SessionDep) -> BudgetAssignmentRepository:
 
 def get_payee_repo(session: SessionDep) -> PayeeRepository:
     return PayeeRepository(session)
+
+
+def get_tag_repo(session: SessionDep) -> TagRepository:
+    return TagRepository(session)
 
 
 def get_simplefin_repo(session: SessionDep) -> SimpleFINRepository:
@@ -417,6 +422,14 @@ async def require_match_access(
     return match_id
 
 
+async def require_tag_access(
+    tag_id: uuid.UUID, current_user: CurrentUser, session: SessionDep
+) -> uuid.UUID:
+    from igab.db.models import Tag
+
+    return await _require_budget_child(session, Tag, tag_id, current_user.id, "Tag")
+
+
 BudgetAccess = Annotated[uuid.UUID, Depends(require_budget_access)]
 AccountAccess = Annotated[uuid.UUID, Depends(require_account_access)]
 TransactionAccess = Annotated[uuid.UUID, Depends(require_transaction_access)]
@@ -428,3 +441,4 @@ CategoryGroupAccess = Annotated[uuid.UUID, Depends(require_category_group_access
 ViewAccess = Annotated[uuid.UUID, Depends(require_view_access)]
 ScheduledAccess = Annotated[uuid.UUID, Depends(require_scheduled_access)]
 MatchAccess = Annotated[uuid.UUID, Depends(require_match_access)]
+TagAccess = Annotated[uuid.UUID, Depends(require_tag_access)]

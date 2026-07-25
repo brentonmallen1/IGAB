@@ -1,18 +1,32 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Bar, BarChart, CartesianGrid, ErrorBar,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
+import { useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
 import { formatMoney } from '../../../utils/money'
+import { monthsAgoStartISO } from '../../../utils/dateWindow'
+import { today } from '../../../utils/dates'
 import { DrillDownTable } from '../DrillDownTable'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
 
 export function VolatilityReport({ budgetId }: Props) {
+  const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useVolatilityReport(budgetId, months)
+  const captureRef = useRef<HTMLDivElement>(null)
+
+  // Same window the backend aggregates over: first-of-month (months-1) ago → today
+  function drillTo(categoryId: string, name: string) {
+    setDrillDown({
+      kind: 'category', label: name, scope: 'leaf', direction: 'outflow',
+      categoryIds: [categoryId], startDate: monthsAgoStartISO(months - 1), endDate: today(),
+    })
+  }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -59,13 +73,28 @@ export function VolatilityReport({ budgetId }: Props) {
               {m}mo
             </button>
           ))}
+          <ReportExportButton
+            reportId="volatility"
+            getRows={() =>
+              categories.map((c) => ({
+                category: c.category_name,
+                group: c.category_group_name,
+                mean: Number(c.mean),
+                std_dev: Number(c.std_dev),
+                min: Number(c.min_val),
+                max: Number(c.max_val),
+                months: c.months_included,
+              }))
+            }
+            captureRef={captureRef}
+          />
         </div>
       </div>
 
       {chartData.length === 0 ? (
         <div className="reports-empty">Not enough data to show volatility (need at least 2 months).</div>
       ) : (
-        <>
+        <div ref={captureRef} className="report-capture">
           <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 34)}>
             <BarChart
               data={chartData}
@@ -85,8 +114,12 @@ export function VolatilityReport({ budgetId }: Props) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <DrillDownTable rows={tableRows} amountLabel="Mean/Month" />
-        </>
+          <DrillDownTable
+            rows={tableRows}
+            amountLabel="Mean/Month"
+            onRowClick={(row) => drillTo(row.id, row.name)}
+          />
+        </div>
       )}
     </div>
   )

@@ -4,9 +4,13 @@ import { useSetAssignment } from '../../../api/budgets'
 import { useTarget } from '../../../api/targets'
 import { useDeleteCategory, useUpdateCategory } from '../../../api/categories'
 import { useUIStore } from '../../../stores/uiStore'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
+import { useLongPress } from '../../../hooks/useLongPress'
 import { TargetBadge, getTargetTooltip } from '../TargetBadge'
 import { TargetEditor } from '../TargetEditor'
 import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
+import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
+import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { formatMoney, parseMoney } from '../../../utils/money'
 import { today } from '../../../utils/dates'
 import type { Category, CategoryBalance } from '../../../types'
@@ -28,6 +32,8 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const [renameValue, setRenameValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [movePopoverPos, setMovePopoverPos] = useState<{ x: number; y: number } | null>(null)
+  const [moveSheetOpen, setMoveSheetOpen] = useState(false)
+  const isMobile = useIsMobile()
 
   const inputRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
@@ -42,6 +48,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const selectOnlyCategory = useUIStore((s) => s.selectOnlyCategory)
   const setCategoryInspectorOpen = useUIStore((s) => s.setCategoryInspectorOpen)
   const inspectorUserClosed = useUIStore((s) => s.inspectorUserClosed)
+  const openMobileInspector = useUIStore((s) => s.openMobileInspector)
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const isSelected = selectedCategoryIds.has(category.id)
   const anySelected = selectedCategoryIds.size > 0
@@ -107,9 +114,23 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   function handleRowClick(e: React.MouseEvent) {
     const target = e.target as Element
     if (target.closest('input, button')) return
+    if (isMobile) {
+      // In selection mode taps toggle; otherwise a tap opens the inspector sheet
+      if (anySelected) {
+        toggleCategorySelection(category.id)
+      } else {
+        selectOnlyCategory(category.id)
+        openMobileInspector()
+      }
+      return
+    }
     selectOnlyCategory(category.id)
     if (!inspectorUserClosed) setCategoryInspectorOpen(true)
   }
+
+  const longPress = useLongPress(() => {
+    if (!anySelected) toggleCategorySelection(category.id)
+  }, handleRowClick)
 
   const availableClass = available < 0 ? 'negative' : available > 0 ? 'positive' : 'zero'
 
@@ -154,9 +175,9 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
         />
       )}
       <div
-        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''}`}
+        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''}`}
         role="row"
-        onClick={handleRowClick}
+        {...(isMobile ? longPress : { onClick: handleRowClick })}
         style={{ cursor: 'default' }}
       >
         <div className={`category-row__checkbox ${anySelected ? 'category-row__checkbox--visible' : ''}`}>
@@ -302,6 +323,10 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
           className={`category-row__available tabular ${availableClass} category-row__available--clickable`}
           onClick={(e) => {
             e.stopPropagation()
+            if (isMobile) {
+              setMoveSheetOpen(true)
+              return
+            }
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
             setMovePopoverPos({ x: Math.max(8, rect.right - 280), y: rect.bottom + 4 })
           }}
@@ -314,7 +339,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
           {formatMoney(available)}
         </div>
 
-        {movePopoverPos && (
+        {movePopoverPos && !isMobile && (
           <MoveMoneyPopover
             budgetId={budgetId}
             month={month}
@@ -326,6 +351,24 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
         )}
 
       </div>
+
+      {isMobile && (
+        <BottomSheet
+          open={moveSheetOpen}
+          onClose={() => setMoveSheetOpen(false)}
+          historyKey={`move-money-${category.id}`}
+        >
+          <div className="category-row__move-sheet">
+            <MoveMoneyForm
+              budgetId={budgetId}
+              month={month}
+              category={category}
+              available={available}
+              onClose={() => setMoveSheetOpen(false)}
+            />
+          </div>
+        </BottomSheet>
+      )}
 
       {targetProgress !== null && targetStatus !== null && budgetRowMode === 'expanded' && (() => {
         const pct = Math.round(targetProgress * 100)

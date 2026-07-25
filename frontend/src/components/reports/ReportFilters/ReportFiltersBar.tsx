@@ -3,7 +3,7 @@ import { RotateCcw } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { usePayees } from '../../../api/payees'
 import { useAccounts } from '../../../api/accounts'
-import { useReportStore, type GroupBy } from '../../../stores/reportStore'
+import { useReportStore, TAB_FILTER_SUPPORT, type GroupBy } from '../../../stores/reportStore'
 import { DateRangePicker } from './DateRangePicker'
 import { MultiSelectCombobox } from './MultiSelectCombobox'
 import type { MultiSelectOption } from './MultiSelectCombobox'
@@ -19,8 +19,11 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'payee', label: 'Payee' },
 ]
 
+const NOT_USED = 'Not used by this report'
+
 export function ReportFiltersBar({ budgetId }: Props) {
-  const { filters, setFilters, resetFilters } = useReportStore()
+  const { filters, setFilters, resetFilters, activeTab } = useReportStore()
+  const support = TAB_FILTER_SUPPORT[activeTab]
   const categories = useCategories(budgetId)
   const groups = useCategoryGroups(budgetId)
   const payees = usePayees(budgetId)
@@ -58,12 +61,20 @@ export function ReportFiltersBar({ budgetId }: Props) {
   return (
     <div className="rfb">
       <div className="rfb__row">
-        <DateRangePicker
-          startDate={filters.startDate}
-          endDate={filters.endDate}
-          onChange={(startDate, endDate) => setFilters({ startDate, endDate })}
-        />
-        <div className="rfb__groupby">
+        <div
+          className={support.dates ? undefined : 'rfb__inert'}
+          title={support.dates ? undefined : NOT_USED}
+        >
+          <DateRangePicker
+            startDate={filters.startDate}
+            endDate={filters.endDate}
+            onChange={(startDate, endDate) => setFilters({ startDate, endDate })}
+          />
+        </div>
+        <div
+          className={`rfb__groupby ${support.groupBy ? '' : 'rfb__inert'}`}
+          title={support.groupBy ? undefined : NOT_USED}
+        >
           <span className="rfb__groupby-label">Group by</span>
           {GROUP_BY_OPTIONS.map((opt) => (
             <button
@@ -84,6 +95,8 @@ export function ReportFiltersBar({ budgetId }: Props) {
           options={categoryOptions}
           onChange={(ids) => setFilters({ categoryIds: ids })}
           placeholder="All categories"
+          disabled={!support.categories}
+          title={NOT_USED}
         />
         <MultiSelectCombobox
           label="Payees"
@@ -91,6 +104,8 @@ export function ReportFiltersBar({ budgetId }: Props) {
           options={payeeOptions}
           onChange={(ids) => setFilters({ payeeIds: ids })}
           placeholder="All payees"
+          disabled={!support.payees}
+          title={NOT_USED}
         />
         <MultiSelectCombobox
           label="Accounts"
@@ -98,6 +113,8 @@ export function ReportFiltersBar({ budgetId }: Props) {
           options={accountOptions}
           onChange={(ids) => setFilters({ accountIds: ids })}
           placeholder="All accounts"
+          disabled={!support.accounts}
+          title={NOT_USED}
         />
         {hasFilters && (
           <button className="rfb__reset" onClick={resetFilters} type="button" title="Reset filters">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Bar, ComposedChart, CartesianGrid, Legend, Line,
   ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -8,12 +8,14 @@ import { formatMoney } from '../../../utils/money'
 import { ChartTooltip } from './ChartTooltip'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
 
 export function VarianceReport({ budgetId }: Props) {
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useVarianceReport(budgetId, months)
+  const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -48,9 +50,23 @@ export function VarianceReport({ budgetId }: Props) {
               {m}mo
             </button>
           ))}
+          <ReportExportButton
+            reportId="variance"
+            getRows={() =>
+              points.map((p) => ({
+                month: p.month.slice(0, 7),
+                assigned: Number(p.budget_assigned),
+                spent: Number(p.actual_spent),
+                monthly_variance: Number(p.monthly_variance),
+                cumulative_variance: Number(p.cumulative_variance),
+              }))
+            }
+            captureRef={captureRef}
+          />
         </div>
       </div>
 
+      <div ref={captureRef} className="report-capture">
       {latest && (
         <div className="report-metrics">
           <MetricCard
@@ -80,6 +96,7 @@ export function VarianceReport({ budgetId }: Props) {
           </ComposedChart>
         </ResponsiveContainer>
       )}
+      </div>
     </div>
   )
 }

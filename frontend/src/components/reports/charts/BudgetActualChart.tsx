@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Bar, BarChart, CartesianGrid, Cell,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -9,17 +9,46 @@ import { formatMoney } from '../../../utils/money'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
 
 type SortMode = 'default' | 'overspent'
 
+function BudgetActualTooltip({
+  active,
+  payload,
+  label,
+  chartData,
+}: {
+  active?: boolean
+  payload?: { name: string; value: number }[]
+  label?: string
+  chartData: { name: string; group: string }[]
+}) {
+  if (!active || !payload?.length) return null
+  const entry = chartData.find((d) => d.name === label)
+  return (
+    <div className="chart-tooltip">
+      <div className="chart-tooltip__label">{label}</div>
+      {entry?.group && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{entry.group}</div>}
+      {payload.map((p) => (
+        <div key={p.name} className="chart-tooltip__row">
+          <span className="chart-tooltip__name">{p.name}</span>
+          <span className="chart-tooltip__value">{formatMoney(p.value)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function BudgetActualReport({ budgetId }: Props) {
-  const { filters } = useReportStore()
+  const { filters, setDrillDown } = useReportStore()
   const [showOverspent, setShowOverspent] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>('default')
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const { data, isLoading } = useBudgetActualReport(budgetId, filters.startDate, filters.endDate, catIds)
+  const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -33,11 +62,27 @@ export function BudgetActualReport({ budgetId }: Props) {
 
   const chartData = categories.slice(0, 20).map((c) => ({
     name: c.category_name.length > 16 ? c.category_name.slice(0, 14) + '…' : c.category_name,
+    fullName: c.category_name,
+    categoryId: c.category_id,
     group: c.category_group_name,
     Assigned: Number(c.assigned),
     Spent: Number(c.spent),
     overspent: Number(c.spent) > Number(c.assigned),
   }))
+
+  function drillTo(categoryId: string, name: string) {
+    setDrillDown({
+      kind: 'category', label: name, scope: 'leaf', direction: 'outflow',
+      categoryIds: [categoryId], startDate: filters.startDate, endDate: filters.endDate,
+    })
+  }
+
+  const barClick = (data: unknown) => {
+    const d = data as { categoryId?: string; fullName?: string; payload?: { categoryId?: string; fullName?: string } }
+    const id = d.categoryId ?? d.payload?.categoryId
+    const name = d.fullName ?? d.payload?.fullName
+    if (id && name) drillTo(id, name)
+  }
 
   const tableRows = categories.map((c) => ({
     id: c.category_id,
@@ -47,23 +92,6 @@ export function BudgetActualReport({ budgetId }: Props) {
     pct: Number(c.variance_pct),
     extra: `Assigned: ${formatMoney(Number(c.assigned))}`,
   }))
-
-  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number }[]; label?: string }) => {
-    if (!active || !payload?.length) return null
-    const entry = chartData.find((d) => d.name === label)
-    return (
-      <div className="chart-tooltip">
-        <div className="chart-tooltip__label">{label}</div>
-        {entry?.group && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{entry.group}</div>}
-        {payload.map((p) => (
-          <div key={p.name} className="chart-tooltip__row">
-            <span className="chart-tooltip__name">{p.name}</span>
-            <span className="chart-tooltip__value">{formatMoney(p.value)}</span>
-          </div>
-        ))}
-      </div>
-    )
-  }
 
   return (
     <div className="report-section">
@@ -90,9 +118,25 @@ export function BudgetActualReport({ budgetId }: Props) {
           >
             Sort by overspent
           </button>
+          <ReportExportButton
+            reportId="budget-actual"
+            getRows={() =>
+              categories.map((c) => ({
+                category: c.category_name,
+                group: c.category_group_name,
+                assigned: Number(c.assigned),
+                spent: Number(c.spent),
+                variance: Number(c.assigned) - Number(c.spent),
+                variance_pct: Number(c.variance_pct),
+              }))
+            }
+            captureRef={captureRef}
+            window={{ start: filters.startDate, end: filters.endDate }}
+          />
         </div>
       </div>
 
+      <div ref={captureRef} className="report-capture">
       {data && (
         <div className="report-metrics">
           <MetricCard label="Total Assigned" value={formatMoney(Number(data.total_assigned))} />
@@ -117,18 +161,24 @@ export function BudgetActualReport({ budgetId }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
               <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={80} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={130} />
-              <Tooltip content={<CustomTooltip />} offset={16} isAnimationActive={false} />
-              <Bar dataKey="Assigned" fill="#4e79a7" radius={[0, 2, 2, 0]} barSize={10} />
-              <Bar dataKey="Spent" barSize={10} radius={[0, 2, 2, 0]}>
+              <Tooltip content={<BudgetActualTooltip chartData={chartData} />} offset={16} isAnimationActive={false} />
+              <Bar dataKey="Assigned" fill="#4e79a7" radius={[0, 2, 2, 0]} barSize={10} cursor="pointer" onClick={barClick} />
+              <Bar dataKey="Spent" barSize={10} radius={[0, 2, 2, 0]} cursor="pointer" onClick={barClick}>
                 {chartData.map((entry, i) => (
                   <Cell key={i} fill={entry.overspent ? '#e15759' : '#59a14f'} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <DrillDownTable rows={tableRows} total={Number(data?.total_spent ?? 0)} amountLabel="Spent" />
+          <DrillDownTable
+            rows={tableRows}
+            total={Number(data?.total_spent ?? 0)}
+            amountLabel="Spent"
+            onRowClick={(row) => drillTo(row.id, row.name)}
+          />
         </>
       )}
+      </div>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Bar, BarChart, CartesianGrid,
   ResponsiveContainer, Tooltip, XAxis, YAxis, Cell,
@@ -10,15 +10,17 @@ import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, chartColor } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
 
 export function PayeeReport({ budgetId }: Props) {
-  const { filters } = useReportStore()
+  const { filters, setDrillDown } = useReportStore()
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading } = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
   const [view, setView] = useState<'top' | 'recurring'>('top')
+  const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -28,10 +30,19 @@ export function PayeeReport({ budgetId }: Props) {
 
   const chartData = displayed.map((p) => ({
     name: p.payee_name.length > 18 ? p.payee_name.slice(0, 16) + '…' : p.payee_name,
+    fullName: p.payee_name,
+    payeeId: p.payee_id,
     Amount: Number(p.total),
     Visits: p.count,
     isRecurring: p.is_recurring,
   }))
+
+  function drillTo(payeeId: string, name: string) {
+    setDrillDown({
+      kind: 'payee', label: name, scope: 'parent', direction: 'outflow',
+      payeeIds: [payeeId], startDate: filters.startDate, endDate: filters.endDate,
+    })
+  }
 
   const tableRows = displayed.map((p) => ({
     id: p.payee_id,
@@ -69,9 +80,24 @@ export function PayeeReport({ budgetId }: Props) {
           >
             Recurring ({recurring.length})
           </button>
+          <ReportExportButton
+            reportId="payees"
+            getRows={() =>
+              payees.map((p) => ({
+                payee: p.payee_name,
+                total: Number(p.total),
+                count: p.count,
+                pct: p.pct,
+                recurring: p.is_recurring,
+              }))
+            }
+            captureRef={captureRef}
+            window={{ start: filters.startDate, end: filters.endDate }}
+          />
         </div>
       </div>
 
+      <div ref={captureRef} className="report-capture">
       {payees.length > 0 && (
         <div className="report-metrics">
           <MetricCard label="Total Payees" value={String(payees.length)} />
@@ -96,7 +122,18 @@ export function PayeeReport({ budgetId }: Props) {
                 offset={16}
                 isAnimationActive={false}
               />
-              <Bar dataKey="Amount" barSize={14} radius={[0, 2, 2, 0]}>
+              <Bar
+                dataKey="Amount"
+                barSize={14}
+                radius={[0, 2, 2, 0]}
+                cursor="pointer"
+                onClick={(data) => {
+                  const d = data as { payeeId?: string; fullName?: string; payload?: { payeeId?: string; fullName?: string } }
+                  const id = d.payeeId ?? d.payload?.payeeId
+                  const name = d.fullName ?? d.payload?.fullName
+                  if (id && name) drillTo(id, name)
+                }}
+              >
                 {chartData.map((entry, i) => (
                   <Cell
                     key={i}
@@ -107,9 +144,10 @@ export function PayeeReport({ budgetId }: Props) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <DrillDownTable rows={tableRows} total={grandTotal} />
+          <DrillDownTable rows={tableRows} total={grandTotal} onRowClick={(row) => drillTo(row.id, row.name)} />
         </>
       )}
+      </div>
     </div>
   )
 }

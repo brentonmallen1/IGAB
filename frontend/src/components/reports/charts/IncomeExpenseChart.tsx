@@ -1,21 +1,42 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Bar, ComposedChart, CartesianGrid, Legend, Line,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
+import { useReportStore } from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
 import { formatMoney } from '../../../utils/money'
+import { monthWindow } from '../../../utils/dateWindow'
 import { DrillDownTable } from '../DrillDownTable'
 import { ChartTooltip } from './ChartTooltip'
-import { buildExportUrl } from '../../../api/reports'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './IncomeExpenseChart.css'
 
 interface Props { budgetId: string }
 
 export function IncomeExpenseReport({ budgetId }: Props) {
+  const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useIncomeExpenseReport(budgetId, months)
+  const captureRef = useRef<HTMLDivElement>(null)
+
+  function drillTo(month: string, direction: 'inflow' | 'outflow') {
+    const ym = month.slice(0, 7)
+    const window = monthWindow(ym)
+    setDrillDown({
+      kind: 'month',
+      label: `${direction === 'inflow' ? 'Income' : 'Expenses'} · ${ym}`,
+      scope: 'parent', direction,
+      startDate: window.start, endDate: window.end,
+    })
+  }
+
+  const monthBarClick = (direction: 'inflow' | 'outflow') => (data: unknown) => {
+    const d = data as { month?: string; payload?: { month?: string } }
+    const month = d.month ?? d.payload?.month
+    if (month) drillTo(month, direction)
+  }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
@@ -52,13 +73,24 @@ export function IncomeExpenseReport({ budgetId }: Props) {
               {m}mo
             </button>
           ))}
-          <a className="report-btn" href={buildExportUrl(budgetId, 'csv')} download>Export CSV</a>
+          <ReportExportButton
+            reportId="income-expense"
+            getRows={() =>
+              (data?.months ?? []).map((m) => ({
+                month: m.month.slice(0, 7),
+                income: Number(m.income),
+                expenses: Number(m.expenses),
+                net: Number(m.net),
+              }))
+            }
+            captureRef={captureRef}
+          />
         </div>
       </div>
       {chartData.length === 0 ? (
         <div className="reports-empty">No data for this period.</div>
       ) : (
-        <>
+        <div ref={captureRef} className="report-capture">
           <ResponsiveContainer width="100%" height={340}>
             <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
@@ -66,13 +98,17 @@ export function IncomeExpenseReport({ budgetId }: Props) {
               <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
               <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
               <Legend />
-              <Bar dataKey="Income" fill="#59a14f" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="Expenses" fill="#e15759" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="Income" fill="#59a14f" radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('inflow')} />
+              <Bar dataKey="Expenses" fill="#e15759" radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('outflow')} />
               <Line dataKey="Net" stroke="#4e79a7" strokeWidth={2} dot={{ r: 3 }} type="monotone" />
             </ComposedChart>
           </ResponsiveContainer>
-          <DrillDownTable rows={tableRows} amountLabel="Expenses" />
-        </>
+          <DrillDownTable
+            rows={tableRows}
+            amountLabel="Expenses"
+            onRowClick={(row) => drillTo(row.id, 'outflow')}
+          />
+        </div>
       )}
     </div>
   )

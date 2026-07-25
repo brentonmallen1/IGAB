@@ -7,6 +7,7 @@ import {
   type TabGroup,
 } from '../../stores/reportStore'
 import { ReportFiltersBar } from '../../components/reports/ReportFilters/ReportFiltersBar'
+import { DrillDownPanel } from '../../components/reports/DrillDownPanel/DrillDownPanel'
 import { OverviewReport } from '../../components/reports/OverviewReport'
 import { NetWorthReport } from '../../components/reports/charts/NetWorthChart'
 import { AccountCompositionReport } from '../../components/reports/charts/AccountCompositionChart'
@@ -105,6 +106,7 @@ export function ReportsPage() {
 
       <main className="reports-content">
         {renderReport()}
+        <DrillDownPanel budgetId={budgetId} />
       </main>
     </div>
   )

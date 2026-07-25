@@ -14,6 +14,7 @@ from igab.api.v1 import (
     scheduled_transactions,
     settings,
     simplefin,
+    tags,
     transactions,
 )
 
@@ -33,3 +34,4 @@ api_router.include_router(scheduled_transactions.router, tags=["scheduled-transa
 api_router.include_router(reconciliation.router, tags=["reconciliation"])
 api_router.include_router(budget_views.router, tags=["budget-views"])
 api_router.include_router(attachments.router, tags=["attachments"])
+api_router.include_router(tags.router, tags=["tags"])

@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+// Relative default so the same production build works from any origin
+// (Tailscale hostname, LAN reverse proxy, localhost). Dev overrides via
+// VITE_API_URL in .env to hit the uvicorn port directly.
+const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1'
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -16,10 +19,19 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
-// Auto-refresh on 401
+// Auto-refresh on 401; broadcast network reachability for OfflineBanner
 apiClient.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    window.dispatchEvent(new Event('igab:network-ok'))
+    return res
+  },
   async (error) => {
+    if (error.code === 'ERR_NETWORK') {
+      window.dispatchEvent(new Event('igab:network-error'))
+    } else if (error.response) {
+      // Server responded (even with an error status) — it's reachable
+      window.dispatchEvent(new Event('igab:network-ok'))
+    }
     const original = error.config
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true

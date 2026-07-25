@@ -5,58 +5,6 @@
   overflow: hidden;
 }
 
-.budget-page__tba {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-lg);
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  font-size: var(--font-size-sm);
-  flex-shrink: 0;
-}
-
-.budget-page__tba-label {
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.budget-page__tba-amount {
-  font-size: var(--font-size-base);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.budget-page__tba-amount.positive {
-  color: var(--color-positive);
-}
-
-.budget-page__tba-amount.negative {
-  color: var(--color-negative);
-}
-
-.budget-page__tba-amount.zero {
-  color: var(--text-muted);
-}
-
-.budget-page__auto-assign-btn {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  padding: 3px 8px;
-  border-radius: var(--border-radius-sm);
-  border: 1px solid var(--border-color);
-  transition: color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.budget-page__auto-assign-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--text-muted);
-}
-
 .budget-page__body {
   flex: 1;
   display: flex;

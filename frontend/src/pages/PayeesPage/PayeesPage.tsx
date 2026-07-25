@@ -1,12 +1,15 @@
 import { useRef, useState } from 'react'
-import { GitMerge } from 'lucide-react'
+import { GitMerge, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, type PayeeWithCount } from '../../api/payees'
+import { useTags, useBulkAddPayeeTags, useCreateTag } from '../../api/tags'
 import { usePayeeCleanupSuggestions, type PayeeCleanupGroup } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
+import { TagChip } from '../../components/common/TagChip'
+import { TagPicker, type TagOption } from '../../components/common/TagPicker'
 import './PayeesPage.css'
 
 export function PayeesPage() {
@@ -16,6 +19,9 @@ export function PayeesPage() {
   const deletePayee = useDeletePayee(budgetId)
   const mergePayee = useMergePayee(budgetId)
   const cleanup = usePayeeCleanupSuggestions(budgetId)
+  const { data: allTags = [] } = useTags(budgetId)
+  const bulkAddTags = useBulkAddPayeeTags(budgetId)
+  const createTag = useCreateTag(budgetId)
 
   const {
     selectedPayeeIds,
@@ -32,6 +38,7 @@ export function PayeesPage() {
   const [showWizard, setShowWizard] = useState(false)
   const [wizardGroups, setWizardGroups] = useState<PayeeCleanupGroup[]>([])
   const [wizardIdx, setWizardIdx] = useState(0)
+  const [showBulkTagPicker, setShowBulkTagPicker] = useState(false)
 
   const headerCheckboxRef = useRef<HTMLInputElement>(null)
 
@@ -161,6 +168,26 @@ export function PayeesPage() {
   const selectedCount = selectedPayeeIds.size
   const hiddenSelected = selectedCount - selectedInFiltered.length
 
+  const tagOptions: TagOption[] = allTags.map((t) => ({
+    id: t.id,
+    name: t.name,
+    color_slot: t.color_slot,
+  }))
+
+  async function handleBulkAddTags(tagIds: string[]) {
+    if (tagIds.length === 0) return
+    await bulkAddTags.mutateAsync({
+      payeeIds: [...selectedPayeeIds],
+      tagIds,
+    })
+    setShowBulkTagPicker(false)
+  }
+
+  async function handleCreateTagForBulk(name: string): Promise<TagOption> {
+    const tag = await createTag.mutateAsync({ name })
+    return { id: tag.id, name: tag.name, color_slot: tag.color_slot }
+  }
+
   return (
     <div className="payees-page">
       <div className="payees-header">
@@ -242,6 +269,7 @@ export function PayeesPage() {
               />
             </div>
             <span>Name</span>
+            <span>Tags</span>
             <span>Transactions</span>
             <span></span>
           </div>
@@ -314,6 +342,22 @@ export function PayeesPage() {
                     </div>
                   )}
                 </span>
+                <span className="payees-table__tags">
+                  {p.tags && p.tags.length > 0 ? (
+                    <div className="payees-table__tags-list">
+                      {p.tags.slice(0, 2).map((tag) => (
+                        <TagChip key={tag.id} name={tag.name} colorSlot={tag.color_slot} size="sm" />
+                      ))}
+                      {p.tags.length > 2 && (
+                        <span className="payees-table__tags-overflow" title={p.tags.slice(2).map(t => t.name).join(', ')}>
+                          +{p.tags.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="payees-table__no-tags">—</span>
+                  )}
+                </span>
                 <span className="payees-table__count">{p.transaction_count}</span>
                 <span className="payees-table__actions">
                   {editingId === p.id ? null : (
@@ -346,6 +390,26 @@ export function PayeesPage() {
           sublabel={hiddenSelected > 0 ? `(${hiddenSelected} hidden by search)` : undefined}
           onClose={clearPayeeSelection}
         >
+          <div className="payees-bulk-tag-wrapper">
+            <FloatingSelectionBar.Button
+              onClick={() => setShowBulkTagPicker(!showBulkTagPicker)}
+            >
+              <Tag size={14} />
+              Tag
+            </FloatingSelectionBar.Button>
+            {showBulkTagPicker && (
+              <div className="payees-bulk-tag-picker">
+                <TagPicker
+                  selectedTagIds={[]}
+                  tags={tagOptions}
+                  onChange={handleBulkAddTags}
+                  onCreateTag={handleCreateTagForBulk}
+                  allowCreate
+                  triggerLabel="Select tags to add"
+                />
+              </div>
+            )}
+          </div>
           <FloatingSelectionBar.Button
             onClick={() => setShowMergeModal(true)}
             disabled={selectedCount < 2}

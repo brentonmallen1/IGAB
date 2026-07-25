@@ -7,7 +7,7 @@ from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, upd
 
 from igab.db.models import Payee, Transaction
 from igab.repositories.base import BaseRepository
-from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
+from igab.repositories.txn_filters import CASH_FLOW_ROW, LEAF, NOT_DELETED, PARENT_ROW, POSTED
 
 if TYPE_CHECKING:
     import polars as pl
@@ -93,6 +93,77 @@ class TransactionRepository(BaseRepository[Transaction]):
         q = q.order_by(priority_rank, Transaction.date.desc(), Transaction.created_at.desc())
         result = await self.session.execute(q.limit(limit).offset(offset))
         return list(result.scalars().all())
+
+    async def list_for_budget(
+        self,
+        budget_id: uuid.UUID,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        search: str | None = None,
+        category_ids: list[uuid.UUID] | None = None,
+        payee_ids: list[uuid.UUID] | None = None,
+        account_ids: list[uuid.UUID] | None = None,
+        scope: str = "parent",
+        posted_only: bool = False,
+        cash_flow_only: bool = False,
+        direction: str | None = None,
+        day_of_week: int | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> tuple[list[Transaction], int, Decimal]:
+        """Budget-wide listing for report drill-downs.
+
+        scope="leaf" selects category-carrying rows (split children included,
+        parents excluded); scope="parent" selects account-balance rows. The
+        count/sum aggregate runs over the same predicate as the page query so
+        callers can reconcile a paginated list against report totals.
+        """
+        where = [Transaction.budget_id == budget_id, NOT_DELETED]
+        where.append(LEAF if scope == "leaf" else PARENT_ROW)
+        if posted_only:
+            where.append(POSTED)
+        if cash_flow_only:
+            where.append(CASH_FLOW_ROW)
+        if direction == "outflow":
+            where.append(Transaction.amount < 0)
+        elif direction == "inflow":
+            where.append(Transaction.amount > 0)
+        if start_date:
+            where.append(Transaction.date >= start_date)
+        if end_date:
+            where.append(Transaction.date <= end_date)
+        if category_ids:
+            where.append(Transaction.category_id.in_(category_ids))
+        if payee_ids:
+            where.append(Transaction.payee_id.in_(payee_ids))
+        if account_ids:
+            where.append(Transaction.account_id.in_(account_ids))
+        if day_of_week is not None:
+            # isodow is Monday=1..Sunday=7; the API uses Monday=0..Sunday=6
+            where.append(func.extract("isodow", Transaction.date) == day_of_week + 1)
+        if search:
+            pattern = f"%{search}%"
+            where.append(or_(Payee.name.ilike(pattern), Transaction.memo.ilike(pattern)))
+
+        rows_q = select(Transaction)
+        totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
+            Transaction
+        )
+        if search:
+            rows_q = rows_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
+            totals_q = totals_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
+        rows_q = (
+            rows_q.where(*where)
+            .order_by(Transaction.date.desc(), Transaction.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        totals_q = totals_q.where(*where)
+
+        rows = list((await self.session.execute(rows_q)).scalars().all())
+        total_count, total_amount = (await self.session.execute(totals_q)).one()
+        return rows, int(total_count), Decimal(total_amount)
 
     async def count_pending_review_for_account(self, account_id: uuid.UUID) -> dict:
         """Count transactions needing attention for a single account, with breakdown."""

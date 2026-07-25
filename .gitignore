@@ -60,3 +60,4 @@ logs/
 .claude/
 .chunkhound.json
 backups/
+.chunkhound/

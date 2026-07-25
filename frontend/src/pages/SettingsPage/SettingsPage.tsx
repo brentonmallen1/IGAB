@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAppStore, type Theme } from '../../stores/appStore'
 import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '../../api/accounts'
 import { useBudgets } from '../../api/budgets'
@@ -12,6 +13,7 @@ import {
 import { SimpleFINSetup } from '../../components/simplefin/SimpleFINSetup'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
+import { TagsPanel } from '../../components/settings/TagsPanel'
 import { formatMoney } from '../../utils/money'
 import { useUIStore } from '../../stores/uiStore'
 import type { AccountType } from '../../types'
@@ -44,6 +46,8 @@ export function SettingsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const autoOpenLastBudget = useAppStore((s) => s.autoOpenLastBudget)
   const setAutoOpenLastBudget = useAppStore((s) => s.setAutoOpenLastBudget)
+  const locationEnabled = useAppStore((s) => s.locationEnabled)
+  const setLocationEnabled = useAppStore((s) => s.setLocationEnabled)
 
   const { data: budgets } = useBudgets()
   const { data: accounts } = useAccounts(budgetId)
@@ -111,10 +115,21 @@ export function SettingsPage() {
 
   const currentBudget = budgets?.find((b) => b.id === budgetId)
 
+  // Deep links (e.g. /settings#integrity from the command palette) scroll to
+  // their section once the page renders
+  const location = useLocation()
+  useEffect(() => {
+    if (!location.hash) return
+    document.getElementById(location.hash.slice(1))?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }, [location.hash])
+
   return (
     <div className="settings-page">
       {/* Appearance */}
-      <div className="settings-section">
+      <div className="settings-section" id="appearance">
         <div className="settings-section__header">
           <div className="settings-section__title">Appearance</div>
         </div>
@@ -140,7 +155,7 @@ export function SettingsPage() {
       </div>
 
       {/* Budget */}
-      <div className="settings-section">
+      <div className="settings-section" id="budget">
         <div className="settings-section__header">
           <div className="settings-section__title">Budget</div>
         </div>
@@ -168,9 +183,44 @@ export function SettingsPage() {
         </div>
       </div>
 
+      {/* Tags */}
+      {budgetId && (
+        <div className="settings-section" id="tags">
+          <div className="settings-section__header">
+            <div className="settings-section__title">Tags</div>
+          </div>
+          <div className="settings-section__body">
+            <TagsPanel budgetId={budgetId} />
+          </div>
+        </div>
+      )}
+
+      {/* Mobile — per-device settings (not synced to the server) */}
+      <div className="settings-section" id="mobile">
+        <div className="settings-section__header">
+          <div className="settings-section__title">Mobile</div>
+        </div>
+        <div className="settings-section__body">
+          <div className="settings-row">
+            <div>
+              <div className="settings-row__label">Suggest payees near me</div>
+              <div className="settings-row__desc">
+                Uses your location only while adding a transaction; coordinates are stored with the
+                transaction on your server. Applies to this device and requires HTTPS.
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={locationEnabled}
+              onChange={(e) => setLocationEnabled(e.target.checked)}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Accounts */}
       {budgetId && (
-        <div className="settings-section">
+        <div className="settings-section" id="accounts">
           <div className="settings-section__header">
             <div className="settings-section__title">Accounts</div>
           </div>
@@ -242,8 +292,40 @@ export function SettingsPage() {
         </div>
       )}
 
+      {/* Data integrity — the health check belongs next to your data, not below
+          the integrations */}
+      {budgetId && (
+        <div className="settings-section" id="integrity">
+          <div className="settings-section__header">
+            <div className="settings-section__title">Data Integrity</div>
+          </div>
+          <div className="settings-section__body">
+            <IntegrityPanel budgetId={budgetId} />
+          </div>
+        </div>
+      )}
+
+      {/* Backups */}
+      <div className="settings-section" id="data">
+        <div className="settings-section__header">
+          <div className="settings-section__title">Backups</div>
+        </div>
+        <div className="settings-section__body">
+          <div className="settings-row">
+            <div>
+              <div className="settings-row__label">Automatic backups</div>
+              <div className="settings-row__desc">
+                The production stack runs a daily pg_dump container writing to ./backups
+                (retention set via env vars). Manual backup/restore: <code>just backup</code> and{' '}
+                <code>just restore &lt;file&gt;</code> from the project root.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* SimpleFIN */}
-      <div className="settings-section">
+      <div className="settings-section" id="simplefin">
         <div className="settings-section__header">
           <div className="settings-section__title">SimpleFIN Bank Connection</div>
         </div>
@@ -347,7 +429,7 @@ export function SettingsPage() {
 
 
       {/* AI Settings */}
-      <div className="settings-section">
+      <div className="settings-section" id="ai">
         <div className="settings-section__header">
           <div className="settings-section__title">AI (Ollama)</div>
         </div>
@@ -401,20 +483,8 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* Data integrity */}
-      {budgetId && (
-        <div className="settings-section">
-          <div className="settings-section__header">
-            <div className="settings-section__title">Data Integrity</div>
-          </div>
-          <div className="settings-section__body">
-            <IntegrityPanel budgetId={budgetId} />
-          </div>
-        </div>
-      )}
-
       {/* Session */}
-      <div className="settings-section">
+      <div className="settings-section" id="session">
         <div className="settings-section__header">
           <div className="settings-section__title">Session</div>
         </div>

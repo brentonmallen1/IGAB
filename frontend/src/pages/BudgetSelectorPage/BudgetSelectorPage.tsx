@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut } from 'lucide-react'
+import { LogOut, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import {
   useBudgets,
   useCreateBudget,
@@ -13,7 +13,13 @@ import {
 } from '../../api/budgets'
 import { useLogout } from '../../api/auth'
 import { useAppStore } from '../../stores/appStore'
+import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
 import './BudgetSelectorPage.css'
+
+const CARD_MENU_ITEMS: ContextMenuItem[] = [
+  { id: 'rename', label: 'Rename', icon: Pencil },
+  { id: 'delete', label: 'Delete', icon: Trash2, danger: true },
+]
 
 const ACCOUNT_TYPE_OPTIONS = [
   { value: 'checking', label: 'Checking' },
@@ -39,6 +45,8 @@ export function BudgetSelectorPage() {
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [menuBudget, setMenuBudget] = useState<{ id: string; name: string } | null>(null)
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
 
   // Create form
   const [createName, setCreateName] = useState('')
@@ -151,13 +159,13 @@ export function BudgetSelectorPage() {
 
       <div className="budget-selector__body">
 
-        {/* Existing budgets */}
-        <div>
-          <div className="budget-selector__section-title">Your Budgets</div>
+        {/* Existing budgets — the focal point */}
+        <div className="budget-selector__main">
+          <div className="section-label budget-selector__section-title">Your Budgets</div>
           {isLoading ? (
             <div className="budget-selector__empty">Loading…</div>
           ) : budgets.length === 0 ? (
-            <div className="budget-selector__empty">No budgets yet — create one below.</div>
+            <div className="budget-selector__empty">No budgets yet — create one to get started.</div>
           ) : (
             <div className="budget-list">
               {budgets.map((b) =>
@@ -170,37 +178,69 @@ export function BudgetSelectorPage() {
                       autoFocus
                     />
                     <div className="budget-card__actions">
-                      <button type="submit" className="budget-card__open-btn" disabled={renameBudget.isPending}>
+                      <button type="submit" className="budget-card__save-btn" disabled={renameBudget.isPending}>
                         Save
                       </button>
-                      <button type="button" className="budget-card__action-btn" onClick={() => setRenamingId(null)}>
+                      <button type="button" className="budget-card__menu-btn" onClick={() => setRenamingId(null)}>
                         Cancel
                       </button>
                     </div>
                   </form>
                 ) : (
-                  <div key={b.id} className="budget-card">
-                    <div>
+                  <div
+                    key={b.id}
+                    className="budget-card budget-card--clickable"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openBudget(b.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        openBudget(b.id)
+                      }
+                    }}
+                  >
+                    <div className="budget-card__info">
                       <div className="budget-card__name">{b.name}</div>
                       <div className="budget-card__meta">{b.currency_code}</div>
                     </div>
-                    <div className="budget-card__actions">
-                      <button className="budget-card__open-btn" onClick={() => openBudget(b.id)}>
-                        Open
-                      </button>
-                      <button className="budget-card__action-btn" onClick={() => startRename(b.id, b.name)}>
-                        Rename
-                      </button>
-                      <button className="budget-card__action-btn budget-card__action-btn--danger" onClick={() => handleDelete(b.id, b.name)}>
-                        Delete
-                      </button>
-                    </div>
+                    {b.id === currentBudgetId && (
+                      <span className="budget-card__current">Current</span>
+                    )}
+                    <button
+                      className="budget-card__menu-btn"
+                      aria-label={`More actions for ${b.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        setMenuPos({ x: rect.right - 140, y: rect.bottom + 4 })
+                        setMenuBudget({ id: b.id, name: b.name })
+                      }}
+                    >
+                      <MoreHorizontal size={16} />
+                    </button>
                   </div>
                 )
               )}
             </div>
           )}
+          {menuBudget && (
+            <ContextMenu
+              items={CARD_MENU_ITEMS}
+              position={menuPos}
+              onClose={() => setMenuBudget(null)}
+              onSelect={(id) => {
+                const b = menuBudget
+                setMenuBudget(null)
+                if (!b) return
+                if (id === 'rename') startRename(b.id, b.name)
+                if (id === 'delete') handleDelete(b.id, b.name)
+              }}
+            />
+          )}
         </div>
+
+        <div className="budget-selector__aside">
 
         {/* Create new budget */}
         <div className="selector-card">
@@ -329,6 +369,8 @@ export function BudgetSelectorPage() {
               )}
             </div>
           </form>
+        </div>
+
         </div>
 
       </div>

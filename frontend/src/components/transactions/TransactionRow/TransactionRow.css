@@ -162,7 +162,7 @@
   align-items: center;
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 0.7rem;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
   background-color: color-mix(in srgb, var(--color-warning) 20%, transparent);
@@ -210,50 +210,84 @@
   background-color: var(--row-hover-bg);
 }
 
+/* Three-line card: payee + amount / category / date · memo · status.
+   Tap opens the editor; long-press selects. Inline editing is desktop-only. */
 @media (max-width: 768px) {
   .transaction-row {
     display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    gap: 2px 8px;
-    padding: 8px var(--spacing-md);
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    gap: 2px var(--spacing-sm);
+    padding: 10px var(--spacing-md);
     min-height: unset;
   }
 
-  .txn-col--date {
+  .txn-col--checkbox {
     grid-column: 1;
+    grid-row: 1 / span 3;
+    display: none;
+    align-items: center;
+    padding-right: var(--spacing-xs);
+  }
+
+  .transaction-row--any-selected .txn-col--checkbox,
+  .transaction-row--selected .txn-col--checkbox {
+    display: flex;
+  }
+
+  .txn-checkbox {
+    width: 18px;
+    height: 18px;
+  }
+
+  .txn-col--payee {
+    grid-column: 2 / span 2;
     grid-row: 1;
+    font-weight: 500;
+    font-size: var(--font-size-base);
+  }
+
+  .txn-col--outflow,
+  .txn-col--inflow {
+    grid-column: 4;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    font-weight: 600;
+  }
+
+  .txn-col--category {
+    display: block;
+    grid-column: 2 / span 3;
+    grid-row: 2;
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+  }
+
+  .txn-col--date {
+    grid-column: 2;
+    grid-row: 3;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .txn-col--memo {
+    display: block;
+    grid-column: 3;
+    grid-row: 3;
     font-size: var(--font-size-xs);
     color: var(--text-muted);
   }
 
-  .txn-col--payee {
-    grid-column: 1;
-    grid-row: 2;
-    font-weight: 500;
-  }
-
-  .txn-col--category,
-  .txn-col--memo {
-    display: none;
-  }
-
-  .txn-col--outflow {
-    grid-column: 2;
-    grid-row: 1 / 3;
+  .txn-col--status {
+    grid-column: 4;
+    grid-row: 3;
+    justify-self: end;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    font-weight: 500;
-  }
-
-  .txn-col--inflow {
-    grid-column: 2;
-    grid-row: 1 / 3;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    font-weight: 500;
+    gap: var(--spacing-xs);
   }
 
   .txn-col--cleared {

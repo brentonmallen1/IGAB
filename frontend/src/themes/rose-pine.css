@@ -37,6 +37,16 @@
   --card-bg: #1f1d2e;
   --card-border: #26233a;
 
+  /* Tag color slots — Rosé Pine */
+  --tag-red: #eb6f92;
+  --tag-orange: #ebbcba;
+  --tag-yellow: #f6c177;
+  --tag-green: #31748f;
+  --tag-teal: #9ccfd8;
+  --tag-blue: #31748f;
+  --tag-purple: #c4a7e7;
+  --tag-pink: #eb6f92;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);
@@ -87,6 +97,16 @@
   --header-bg: #2a273f;
   --card-bg: #2a273f;
   --card-border: #393552;
+
+  /* Tag color slots — Rosé Pine Moon */
+  --tag-red: #eb6f92;
+  --tag-orange: #ea9a97;
+  --tag-yellow: #f6c177;
+  --tag-green: #3e8fb0;
+  --tag-teal: #9ccfd8;
+  --tag-blue: #3e8fb0;
+  --tag-purple: #c4a7e7;
+  --tag-pink: #eb6f92;
 
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);

@@ -101,7 +101,7 @@
   height: 20px;
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
@@ -116,7 +116,7 @@
 
 .category-group-row__action-btn--confirm {
   color: var(--color-positive);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .category-group-row__action-btn--confirm:hover {
@@ -128,6 +128,7 @@
 .category-group-row__available {
   text-align: right;
   padding: 0 var(--spacing-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .category-group-row__available.positive {
@@ -196,13 +197,21 @@
 }
 
 @media (max-width: 768px) {
+  /* Group header shows name + available; assigned/activity totals and group
+     management actions are desktop-only */
   .category-group-row__header {
+    grid-template-columns: 20px auto minmax(0, 1fr) auto;
     min-height: 44px;
   }
 
-  .category-group-row__action-btn {
-    width: 36px;
-    height: 36px;
+  .category-group-row__assigned,
+  .category-group-row__activity,
+  .category-group-row__actions {
+    display: none;
+  }
+
+  .category-group-row__add-cat-row {
+    grid-template-columns: 20px 1fr;
   }
 }
 
