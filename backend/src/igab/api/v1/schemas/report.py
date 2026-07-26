@@ -314,3 +314,28 @@ class LiabilitiesReportResponse(BaseModel):
     total_balance: Decimal
     total_interest_remaining: Decimal
     balance_over_time: list[LiabilitiesBalancePoint]
+
+
+# ─── Subscriptions Report ────────────────────────────────────────────────────
+
+
+class SubscriptionPayee(BaseModel):
+    payee_id: uuid.UUID
+    payee_name: str
+    monthly_amounts: list[Decimal]  # amounts per month in the period
+    total: Decimal
+    avg_monthly: Decimal
+    last_charge_date: date | None
+    transaction_count: int
+
+
+class SubscriptionsSummary(BaseModel):
+    total_monthly: Decimal  # average monthly total across all subscriptions
+    total_annual: Decimal  # projected annual cost
+    active_count: int  # number of subscription payees
+
+
+class SubscriptionsReportResponse(BaseModel):
+    subscriptions: list[SubscriptionPayee]
+    summary: SubscriptionsSummary
+    months: list[date]  # month labels for the period

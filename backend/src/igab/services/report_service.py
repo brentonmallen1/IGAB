@@ -1687,6 +1687,151 @@ class ReportService:
             for r in rows
         ]
 
+    # ─── Subscriptions Report ─────────────────────────────────────────────────
+
+    async def subscriptions_report(self, budget_id: uuid.UUID, months: int = 12) -> dict:
+        """Aggregate transactions from payees tagged with 'subscription' system tag."""
+        from igab.repositories.tag_repo import TagRepository
+
+        tag_repo = TagRepository(self.session)
+
+        # Get the subscription system tag
+        subscription_tag = await tag_repo.get_system_tag(budget_id, "subscription")
+        if subscription_tag is None:
+            return {
+                "subscriptions": [],
+                "summary": {
+                    "total_monthly": Decimal("0"),
+                    "total_annual": Decimal("0"),
+                    "active_count": 0,
+                },
+                "months": [],
+            }
+
+        # Get payee IDs tagged with subscription
+        subscription_payee_ids = await tag_repo.get_payee_ids_by_tags(
+            budget_id, [subscription_tag.id]
+        )
+        if not subscription_payee_ids:
+            return {
+                "subscriptions": [],
+                "summary": {
+                    "total_monthly": Decimal("0"),
+                    "total_annual": Decimal("0"),
+                    "active_count": 0,
+                },
+                "months": [],
+            }
+
+        # Date range
+        today = date.today()
+        end_date = today
+        start_date = _subtract_months(today, months).replace(day=1)
+        month_list = _months_in_range(start_date, end_date)
+
+        # Query transactions for subscription-tagged payees
+        q = (
+            select(
+                Transaction.payee_id,
+                Payee.name.label("payee_name"),
+                Transaction.date,
+                Transaction.amount,
+            )
+            .join(Payee, Payee.id == Transaction.payee_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.payee_id.in_(subscription_payee_ids),
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.cleared != "pending",
+                Transaction.amount < 0,  # outflows only
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.is_split == False,  # noqa: E712 - leaf rows
+            )
+        )
+        rows = (await self.session.execute(q)).all()
+
+        if not rows:
+            return {
+                "subscriptions": [],
+                "summary": {
+                    "total_monthly": Decimal("0"),
+                    "total_annual": Decimal("0"),
+                    "active_count": 0,
+                },
+                "months": [m for m in month_list],
+            }
+
+        # Build DataFrame for aggregation
+        df = pl.DataFrame(
+            {
+                "payee_id": [str(r.payee_id) for r in rows],
+                "payee_name": [r.payee_name for r in rows],
+                "month": [r.date.replace(day=1) for r in rows],
+                "date": [r.date for r in rows],
+                "amount": [abs(float(r.amount)) for r in rows],
+            }
+        )
+
+        # Per-payee monthly aggregation
+        payee_monthly = (
+            df.group_by(["payee_id", "payee_name", "month"])
+            .agg(pl.col("amount").sum().alias("monthly_total"))
+        )
+
+        # Build subscription items
+        subscriptions = []
+        for payee_id in df["payee_id"].unique().to_list():
+            payee_rows = payee_monthly.filter(pl.col("payee_id") == payee_id)
+            payee_name = payee_rows["payee_name"][0]
+
+            # Monthly amounts for each month in the range
+            monthly_amounts = []
+            for m in month_list:
+                row = payee_rows.filter(pl.col("month") == m)
+                if len(row) > 0:
+                    monthly_amounts.append(Decimal(str(row["monthly_total"][0])))
+                else:
+                    monthly_amounts.append(Decimal("0"))
+
+            total = sum(monthly_amounts)
+            months_with_charges = sum(1 for a in monthly_amounts if a > 0)
+            avg_monthly = total / months_with_charges if months_with_charges > 0 else Decimal("0")
+
+            # Last charge date and count
+            payee_txns = df.filter(pl.col("payee_id") == payee_id)
+            last_charge = max(payee_txns["date"].to_list()) if len(payee_txns) > 0 else None
+            txn_count = len(payee_txns)
+
+            subscriptions.append(
+                {
+                    "payee_id": payee_id,
+                    "payee_name": payee_name,
+                    "monthly_amounts": monthly_amounts,
+                    "total": total,
+                    "avg_monthly": avg_monthly.quantize(Decimal("0.01")),
+                    "last_charge_date": last_charge,
+                    "transaction_count": txn_count,
+                }
+            )
+
+        # Sort by total descending
+        subscriptions.sort(key=lambda x: x["total"], reverse=True)
+
+        # Summary
+        total_monthly = sum(s["avg_monthly"] for s in subscriptions)
+        total_annual = total_monthly * 12
+
+        return {
+            "subscriptions": subscriptions,
+            "summary": {
+                "total_monthly": total_monthly.quantize(Decimal("0.01")),
+                "total_annual": total_annual.quantize(Decimal("0.01")),
+                "active_count": len(subscriptions),
+            },
+            "months": month_list,
+        }
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 

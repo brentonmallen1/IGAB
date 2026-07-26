@@ -35,6 +35,9 @@ from igab.api.v1.schemas.report import (
     SpendingGroupedResponse,
     SpendingGroupItem,
     SpendingReportResponse,
+    SubscriptionPayee,
+    SubscriptionsReportResponse,
+    SubscriptionsSummary,
     TimelineResponse,
     TimelineTransaction,
     TopCategory,
@@ -367,6 +370,22 @@ async def liabilities_report(
         balance_over_time=[
             LiabilitiesBalancePoint.model_validate(p) for p in data["balance_over_time"]
         ],
+    )
+
+
+@router.get("/{budget_id}/reports/subscriptions", response_model=SubscriptionsReportResponse)
+async def subscriptions_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: int = 12,
+) -> SubscriptionsReportResponse:
+    """Subscriptions report — aggregates transactions from payees tagged 'subscription'."""
+    data = await report_svc.subscriptions_report(budget_id, months)
+    return SubscriptionsReportResponse(
+        subscriptions=[SubscriptionPayee.model_validate(s) for s in data["subscriptions"]],
+        summary=SubscriptionsSummary.model_validate(data["summary"]),
+        months=data["months"],
     )
 
 

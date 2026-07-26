@@ -467,6 +467,28 @@ export interface TimelineReport {
   transactions: TimelineTransaction[]
 }
 
+export interface SubscriptionPayee {
+  payee_id: string
+  payee_name: string
+  monthly_amounts: number[]
+  total: number
+  avg_monthly: number
+  last_charge_date: string | null
+  transaction_count: number
+}
+
+export interface SubscriptionsSummary {
+  total_monthly: number
+  total_annual: number
+  active_count: number
+}
+
+export interface SubscriptionsReport {
+  subscriptions: SubscriptionPayee[]
+  summary: SubscriptionsSummary
+  months: string[]
+}
+
 export interface SimilarTransaction {
   id: string
   date: string
