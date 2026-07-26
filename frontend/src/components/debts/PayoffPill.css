@@ -1,0 +1,54 @@
+.payoff-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-xl);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.payoff-pill__main {
+  font-size: var(--font-size-lg);
+  color: var(--text-primary);
+}
+
+.payoff-pill__main strong {
+  font-weight: 700;
+}
+
+.payoff-pill__sub {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.payoff-pill--warning {
+  border-color: var(--color-warning, var(--color-negative));
+  color: var(--color-warning, var(--color-negative));
+}
+
+.payoff-pill--warning .payoff-pill__main {
+  color: var(--color-warning, var(--color-negative));
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+.payoff-pill--paid {
+  border-color: var(--color-positive);
+  color: var(--color-positive);
+}
+
+.payoff-pill--paid .payoff-pill__main {
+  color: var(--color-positive);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .payoff-pill {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -15,6 +15,8 @@ import { ReportsPage } from './pages/ReportsPage/ReportsPage'
 import { ScheduledTransactionsPage } from './pages/ScheduledTransactionsPage/ScheduledTransactionsPage'
 import { PayeesPage } from './pages/PayeesPage/PayeesPage'
 import { AccountsOverviewPage } from './pages/AccountsOverviewPage/AccountsOverviewPage'
+import { DebtsOverviewPage } from './pages/DebtsOverviewPage/DebtsOverviewPage'
+import { DebtPage } from './pages/DebtPage/DebtPage'
 import { useAppStore } from './stores/appStore'
 
 const queryClient = new QueryClient({
@@ -70,6 +72,8 @@ function App() {
               <Route path="/budget" element={<BudgetPage />} />
               <Route path="/accounts" element={<AccountsOverviewPage />} />
               <Route path="/accounts/:accountId" element={<AccountPage />} />
+              <Route path="/debts" element={<DebtsOverviewPage />} />
+              <Route path="/debts/:debtId" element={<DebtPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/import" element={<ImportPage />} />
               <Route path="/reports" element={<ReportsPage />} />

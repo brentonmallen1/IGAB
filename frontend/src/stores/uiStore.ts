@@ -14,6 +14,8 @@ interface UIState {
   editingTransactionId: string | null
   isAccountEditorOpen: boolean
   editingAccountId: string | null
+  isDebtEditorOpen: boolean
+  editingDebtId: string | null
   sidebarCollapsed: boolean
 
   // Mobile shell (bottom nav)
@@ -47,6 +49,8 @@ interface UIState {
   closeTransactionEditor: () => void
   openAccountEditor: (accountId: string) => void
   closeAccountEditor: () => void
+  openDebtEditor: (debtId: string | null) => void
+  closeDebtEditor: () => void
   toggleSidebarCollapsed: () => void
   toggleBudgetRowMode: () => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
@@ -122,6 +126,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   editingTransactionId: null,
   isAccountEditorOpen: false,
   editingAccountId: null,
+  isDebtEditorOpen: false,
+  editingDebtId: null,
   sidebarCollapsed: false,
   budgetRowMode: 'expanded',
   selectedCategoryIds: new Set(),
@@ -159,6 +165,8 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   openAccountEditor: (accountId) => set({ isAccountEditorOpen: true, editingAccountId: accountId }),
   closeAccountEditor: () => set({ isAccountEditorOpen: false, editingAccountId: null }),
+  openDebtEditor: (debtId) => set({ isDebtEditorOpen: true, editingDebtId: debtId }),
+  closeDebtEditor: () => set({ isDebtEditorOpen: false, editingDebtId: null }),
 
   toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
