@@ -162,6 +162,58 @@ class TagRepository(BaseRepository[Tag]):
         await self.session.execute(delete(payee_tags).where(payee_tags.c.tag_id == tag_id))
         await self.soft_delete(tag_id)
 
+    async def get_category_ids_by_tags(
+        self, budget_id: uuid.UUID, tag_ids: Sequence[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Get all category IDs that have any of the specified tags."""
+        if not tag_ids:
+            return set()
+        result = await self.session.execute(
+            select(category_tags.c.category_id)
+            .join(Category, Category.id == category_tags.c.category_id)
+            .where(
+                category_tags.c.tag_id.in_(tag_ids),
+                Category.budget_id == budget_id,
+            )
+        )
+        return {row[0] for row in result.all()}
+
+    async def get_payee_ids_by_tags(
+        self, budget_id: uuid.UUID, tag_ids: Sequence[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Get all payee IDs that have any of the specified tags."""
+        if not tag_ids:
+            return set()
+        from igab.db.models import Payee
+
+        result = await self.session.execute(
+            select(payee_tags.c.payee_id)
+            .join(Payee, Payee.id == payee_tags.c.payee_id)
+            .where(
+                payee_tags.c.tag_id.in_(tag_ids),
+                Payee.budget_id == budget_id,
+            )
+        )
+        return {row[0] for row in result.all()}
+
+    async def get_category_ids_by_system_keys(
+        self, budget_id: uuid.UUID, system_keys: Sequence[str]
+    ) -> set[uuid.UUID]:
+        """Get all category IDs that have tags with any of the specified system keys."""
+        if not system_keys:
+            return set()
+        result = await self.session.execute(
+            select(category_tags.c.category_id)
+            .join(Tag, Tag.id == category_tags.c.tag_id)
+            .join(Category, Category.id == category_tags.c.category_id)
+            .where(
+                Tag.system_key.in_(system_keys),
+                Category.budget_id == budget_id,
+                Tag.is_deleted == False,  # noqa: E712
+            )
+        )
+        return {row[0] for row in result.all()}
+
 
 async def seed_system_tags(session: AsyncSession, budget_id: uuid.UUID) -> None:
     repo = TagRepository(session)
