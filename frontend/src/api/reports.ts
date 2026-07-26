@@ -7,6 +7,7 @@ import type {
   CashFlowReport,
   DashboardMetrics,
   DayPatternsReport,
+  DebtsReport,
   IncomeExpenseReport,
   NetWorthReport,
   PayeeAnalysisReport,
@@ -345,6 +346,25 @@ export function useTimelineReport(
       const { data } = await apiClient.get<TimelineReport>(
         `/${budgetId}/reports/large-transactions`,
         { params: params({ start_date: startDate, end_date: endDate, limit, category_ids: catParam, account_ids: acctParam }) },
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+export function useDebtsReport(
+  budgetId: string | null,
+  debtType?: string,
+  mode?: string,
+) {
+  return useQuery({
+    queryKey: ['reports', 'debts', budgetId, debtType ?? null, mode ?? null],
+    queryFn: async () => {
+      const { data } = await apiClient.get<DebtsReport>(
+        `/${budgetId}/reports/debts`,
+        { params: params({ debt_type: debtType, mode }) },
       )
       return data
     },
