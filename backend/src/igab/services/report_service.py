@@ -1276,7 +1276,18 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
+        exclude_savings: bool = False,
     ) -> tuple[list[dict], Decimal]:
+        # Get categories to exclude if exclude_savings is True
+        exclude_cat_ids: set[uuid.UUID] = set()
+        if exclude_savings:
+            from igab.repositories.tag_repo import TagRepository
+
+            tag_repo = TagRepository(self.session)
+            exclude_cat_ids = await tag_repo.get_category_ids_by_system_keys(
+                budget_id, ["savings", "long_term_expense"]
+            )
+
         q = (
             select(
                 Category.id,
@@ -1303,6 +1314,8 @@ class ReportService:
             q = q.where(Transaction.category_id.in_(category_ids))
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
+        if exclude_cat_ids:
+            q = q.where(Transaction.category_id.notin_(exclude_cat_ids))
         rows = (await self.session.execute(q)).all()
 
         if not rows:

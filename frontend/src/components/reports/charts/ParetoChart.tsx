@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   Bar, Cell, ComposedChart, CartesianGrid, Line,
   ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine,
@@ -53,13 +53,16 @@ export function ParetoReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
   const captureRef = useRef<HTMLDivElement>(null)
+  const [hideSavings, setHideSavings] = useState(false)
 
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
 
   // Both queries always fetched — hooks must be unconditional
-  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
+  // hideSavings only applies to category/group views, not payee view
+  const excludeSavings = hideSavings && groupBy !== 'payee'
+  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, excludeSavings)
   const payeeQ = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
 
   const spendingItems = useMemo(() => spendingQ.data?.groups ?? [], [spendingQ.data])
@@ -187,6 +190,16 @@ export function ParetoReport({ budgetId }: Props) {
           <p>Switch the <strong>Group by</strong> filter in the toolbar to see the pattern at the category group, category, or payee level.</p>
           <p>Click a bar or a table row to see the transactions behind it.</p>
         </ReportInfoButton>
+        {groupBy !== 'payee' && (
+          <label className="report-toggle">
+            <input
+              type="checkbox"
+              checked={hideSavings}
+              onChange={(e) => setHideSavings(e.target.checked)}
+            />
+            Hide savings
+          </label>
+        )}
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
             reportId="pareto"

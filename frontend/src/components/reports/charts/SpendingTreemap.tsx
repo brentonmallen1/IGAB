@@ -28,7 +28,8 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const groupBy = filters.groupBy
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
+  const [hideSavings, setHideSavings] = useState(false)
+  const { data, isLoading } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -128,6 +129,14 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             )}
           </div>
         )}
+        <label className="report-toggle">
+          <input
+            type="checkbox"
+            checked={hideSavings}
+            onChange={(e) => setHideSavings(e.target.checked)}
+          />
+          Hide savings
+        </label>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
             reportId="treemap"
