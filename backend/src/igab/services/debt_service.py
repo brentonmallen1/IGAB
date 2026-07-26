@@ -177,3 +177,79 @@ class DebtService:
             if debt.linked_account_id is None:
                 total += await self.get_balance(debt)
         return total
+
+    async def debts_report(
+        self,
+        budget_id: uuid.UUID,
+        *,
+        debt_type: str | None = None,
+        mode: str | None = None,
+        as_of: date | None = None,
+    ) -> dict:
+        """Cross-debt rollup: per-debt status rows, totals, and a monthly
+        balance-over-time series (forward-filled between sparse points) for
+        the consolidated Debts report. No new math — pure aggregation."""
+        as_of = as_of or today_utc()
+        debts = await self.debt_repo.get_all(budget_id)
+        if debt_type is not None:
+            debts = [d for d in debts if d.debt_type == debt_type]
+        if mode is not None:
+            debts = [d for d in debts if self.mode(d) == mode]
+
+        items: list[dict] = []
+        per_debt_monthly: dict[str, dict[date, Decimal]] = {}
+        current_month = _month_start(as_of)
+
+        for debt in debts:
+            status = await self.get_status(debt, as_of=as_of)
+            never = status.live.never_pays_off if status.live else status.baseline.never_pays_off
+            items.append(
+                {
+                    "debt_id": debt.id,
+                    "name": debt.name,
+                    "debt_type": debt.debt_type,
+                    "mode": status.mode,
+                    "current_balance": status.current_balance,
+                    "interest_rate": debt.interest_rate,
+                    "baseline_payoff_date": status.baseline.payoff_date,
+                    "live_payoff_date": status.live.payoff_date if status.live else None,
+                    "total_interest_remaining": status.baseline.total_interest,
+                    "never_pays_off": never,
+                }
+            )
+            monthly: dict[date, Decimal] = {}
+            for point_date, balance in await self.get_balance_history(debt, as_of=as_of):
+                monthly[_month_start(point_date)] = balance  # last point in a month wins
+            monthly[current_month] = status.current_balance
+            per_debt_monthly[str(debt.id)] = monthly
+
+        total_balance = sum((i["current_balance"] for i in items), ZERO)
+        total_interest = sum((i["total_interest_remaining"] for i in items), ZERO)
+
+        points: list[dict] = []
+        if per_debt_monthly:
+            first_month = min(m for monthly in per_debt_monthly.values() for m in monthly)
+            last_known: dict[str, Decimal] = {}
+            month = first_month
+            while month <= current_month:
+                per_debt: dict[str, Decimal] = {}
+                for key, monthly in per_debt_monthly.items():
+                    if month in monthly:
+                        last_known[key] = monthly[month]
+                    if key in last_known:
+                        per_debt[key] = last_known[key]
+                points.append(
+                    {
+                        "date": month,
+                        "per_debt": per_debt,
+                        "total": sum(per_debt.values(), ZERO),
+                    }
+                )
+                month = add_months(month, 1)
+
+        return {
+            "items": items,
+            "total_balance": total_balance,
+            "total_interest_remaining": total_interest,
+            "balance_over_time": points,
+        }
