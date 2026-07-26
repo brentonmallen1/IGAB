@@ -19,6 +19,7 @@ export type ReportTab =
   | 'timeline'
   | 'liabilities'
   | 'subscriptions'
+  | 'savings'
 
 export type TabGroup =
   | 'overview'
@@ -39,6 +40,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'net-worth', label: 'Net Worth', group: 'financial' },
   { id: 'account-composition', label: 'Accounts', group: 'financial' },
   { id: 'liabilities', label: 'Liabilities', group: 'financial' },
+  { id: 'savings', label: 'Savings', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'burn-rate', label: 'Burn Rate', group: 'cashflow' },
   { id: 'cash-flow', label: 'Cash Flow', group: 'cashflow' },
@@ -102,6 +104,7 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true },
   'seasonality': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'subscriptions': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'savings': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'payees': { dates: true, categories: false, payees: true, accounts: true, groupBy: false },
   'day-patterns': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
   'timeline': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },

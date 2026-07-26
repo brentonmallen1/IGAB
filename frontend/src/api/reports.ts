@@ -11,6 +11,7 @@ import type {
   IncomeExpenseReport,
   NetWorthReport,
   PayeeAnalysisReport,
+  SavingsReport,
   SeasonalityReport,
   SpendingGroupedReport,
   SpendingReport,
@@ -391,6 +392,23 @@ export function useSubscriptionsReport(budgetId: string | null, months = 12) {
     queryFn: async () => {
       const { data } = await apiClient.get<SubscriptionsReport>(
         `/${budgetId}/reports/subscriptions`,
+        { params: { months } }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+// ─── Savings ───────────────────────────────────────────────────────────────
+
+export function useSavingsReport(budgetId: string | null, months = 12) {
+  return useQuery({
+    queryKey: ['reports', 'savings', budgetId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SavingsReport>(
+        `/${budgetId}/reports/savings`,
         { params: { months } }
       )
       return data

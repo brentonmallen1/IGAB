@@ -1832,6 +1832,193 @@ class ReportService:
             "months": month_list,
         }
 
+    # ─── Savings Report ───────────────────────────────────────────────────────
+
+    async def savings_report(self, budget_id: uuid.UUID, months: int = 12) -> dict:
+        """Aggregate categories tagged with 'savings' or 'long_term_expense'."""
+        from igab.repositories.tag_repo import TagRepository
+
+        tag_repo = TagRepository(self.session)
+
+        # Get category IDs tagged with savings or long_term_expense
+        savings_cat_ids = await tag_repo.get_category_ids_by_system_keys(
+            budget_id, ["savings", "long_term_expense"]
+        )
+
+        if not savings_cat_ids:
+            return {
+                "categories": [],
+                "summary": {
+                    "total_balance": Decimal("0"),
+                    "total_inflow": Decimal("0"),
+                    "avg_monthly_inflow": Decimal("0"),
+                    "category_count": 0,
+                },
+                "months": [],
+            }
+
+        # Date range
+        today = date.today()
+        end_date = today
+        start_date = _subtract_months(today, months).replace(day=1)
+        month_list = _months_in_range(start_date, end_date)
+
+        # Get category info and current balances
+        cat_info_q = (
+            select(
+                Category.id,
+                Category.name,
+                CategoryGroup.name.label("group_name"),
+            )
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(Category.id.in_(savings_cat_ids))
+        )
+        cat_info_rows = (await self.session.execute(cat_info_q)).all()
+        cat_info = {str(r.id): {"name": r.name, "group_name": r.group_name} for r in cat_info_rows}
+
+        # Get assignments (inflows) per category per month
+        assign_q = (
+            select(
+                BudgetAssignment.category_id,
+                BudgetAssignment.month,
+                BudgetAssignment.assigned,
+            )
+            .where(
+                BudgetAssignment.category_id.in_(savings_cat_ids),
+                BudgetAssignment.month >= start_date,
+                BudgetAssignment.month <= end_date,
+            )
+        )
+        assign_rows = (await self.session.execute(assign_q)).all()
+
+        # Build assignment map: category_id -> month -> assigned
+        assign_map: dict[str, dict[date, Decimal]] = {}
+        for r in assign_rows:
+            cid = str(r.category_id)
+            if cid not in assign_map:
+                assign_map[cid] = {}
+            assign_map[cid][r.month] = r.assigned
+
+        # Get category activity (transactions) per month for running balance
+        txn_q = (
+            select(
+                Transaction.category_id,
+                func.date_trunc("month", Transaction.date).label("month"),
+                func.sum(Transaction.amount).label("activity"),
+            )
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.category_id.in_(savings_cat_ids),
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.cleared != "pending",
+                Transaction.is_split == False,  # noqa: E712
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+            )
+            .group_by(Transaction.category_id, func.date_trunc("month", Transaction.date))
+        )
+        txn_rows = (await self.session.execute(txn_q)).all()
+
+        # Build activity map: category_id -> month -> activity
+        activity_map: dict[str, dict[date, Decimal]] = {}
+        for r in txn_rows:
+            cid = str(r.category_id)
+            if cid not in activity_map:
+                activity_map[cid] = {}
+            # date_trunc returns timestamp, convert to date
+            month_date = r.month.date() if hasattr(r.month, "date") else r.month
+            activity_map[cid][month_date.replace(day=1)] = r.activity
+
+        # Get current balances for each category (use the budget months endpoint logic)
+        # For simplicity, compute cumulative: prior + assigned + activity
+        # We need prior balance before start_date
+        prior_assign_q = (
+            select(
+                BudgetAssignment.category_id,
+                func.sum(BudgetAssignment.assigned).label("total"),
+            )
+            .where(
+                BudgetAssignment.category_id.in_(savings_cat_ids),
+                BudgetAssignment.month < start_date,
+            )
+            .group_by(BudgetAssignment.category_id)
+        )
+        prior_assign_rows = (await self.session.execute(prior_assign_q)).all()
+        prior_assigned = {str(r.category_id): r.total or Decimal("0") for r in prior_assign_rows}
+
+        prior_activity_q = (
+            select(
+                Transaction.category_id,
+                func.sum(Transaction.amount).label("total"),
+            )
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.category_id.in_(savings_cat_ids),
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.cleared != "pending",
+                Transaction.is_split == False,  # noqa: E712
+                Transaction.date < start_date,
+            )
+            .group_by(Transaction.category_id)
+        )
+        prior_activity_rows = (await self.session.execute(prior_activity_q)).all()
+        prior_activity = {str(r.category_id): r.total or Decimal("0") for r in prior_activity_rows}
+
+        # Build category results
+        categories = []
+        for cid in savings_cat_ids:
+            cid_str = str(cid)
+            if cid_str not in cat_info:
+                continue
+
+            info = cat_info[cid_str]
+            prior_bal = (prior_assigned.get(cid_str, Decimal("0")) +
+                         prior_activity.get(cid_str, Decimal("0")))
+
+            # Compute monthly balances
+            monthly_balances = []
+            running_bal = prior_bal
+            total_inflow = Decimal("0")
+
+            for m in month_list:
+                assigned = assign_map.get(cid_str, {}).get(m, Decimal("0"))
+                activity = activity_map.get(cid_str, {}).get(m, Decimal("0"))
+                running_bal = running_bal + assigned + activity
+                monthly_balances.append(running_bal)
+                if assigned > 0:
+                    total_inflow += assigned
+
+            current_balance = monthly_balances[-1] if monthly_balances else Decimal("0")
+
+            categories.append({
+                "category_id": cid_str,
+                "category_name": info["name"],
+                "group_name": info["group_name"],
+                "monthly_balances": monthly_balances,
+                "current_balance": current_balance,
+                "target_balance": None,  # Could fetch from category targets
+                "total_inflow": total_inflow,
+            })
+
+        # Sort by current balance descending
+        categories.sort(key=lambda x: x["current_balance"], reverse=True)
+
+        # Summary
+        total_balance = sum(c["current_balance"] for c in categories)
+        total_inflow = sum(c["total_inflow"] for c in categories)
+        avg_monthly = total_inflow / len(month_list) if month_list else Decimal("0")
+
+        return {
+            "categories": categories,
+            "summary": {
+                "total_balance": total_balance,
+                "total_inflow": total_inflow,
+                "avg_monthly_inflow": avg_monthly.quantize(Decimal("0.01")),
+                "category_count": len(categories),
+            },
+            "months": month_list,
+        }
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
