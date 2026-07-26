@@ -43,6 +43,15 @@ class CategoryRepository(BaseRepository[Category]):
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
+    async def get_by_linked_debt(self, debt_id: uuid.UUID) -> Category | None:
+        result = await self.session.execute(
+            select(Category).where(
+                Category.linked_debt_id == debt_id,
+                Category.is_deleted == False,  # noqa: E712
+            )
+        )
+        return result.scalars().first()
+
     async def get_by_group(self, group_id: uuid.UUID) -> list[Category]:
         result = await self.session.execute(
             select(Category)

@@ -1,0 +1,152 @@
+"""Debt balance resolution, payment-history derivation, and payoff status.
+
+A debt's current balance and payment history come from one of three places,
+in priority order:
+
+- managed (linked account): balance from the account ledger; monthly
+  payments are the account's net balance movement per month.
+- unmanaged + linked category: balance from manual_balance; payments are
+  the category's monthly outflows.
+- unmanaged + snapshots only: balance from manual_balance; payments are
+  interpolated from balance drops between consecutive snapshots.
+
+Every payment path floors months at zero — a balance increase is not a
+negative payment. Balances are always "amount owed", positive.
+"""
+
+import uuid
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+
+from igab.db.models import Debt
+from igab.repositories.account_repo import AccountRepository
+from igab.repositories.category_repo import CategoryRepository
+from igab.repositories.debt_repo import DebtRepository
+from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.debt_math import (
+    AmortizationResult,
+    LiveProjection,
+    add_months,
+    amortization_schedule,
+    project_payoff,
+    quantize_cents,
+)
+from igab.utils.clock import today_utc
+
+ZERO = Decimal("0")
+
+PAYMENT_LOOKBACK_MONTHS = 6
+
+
+def _month_start(d: date) -> date:
+    return d.replace(day=1)
+
+
+def _month_index(d: date) -> int:
+    return d.year * 12 + (d.month - 1)
+
+
+@dataclass
+class DebtStatus:
+    debt: Debt
+    mode: str  # 'managed' | 'unmanaged'
+    current_balance: Decimal  # owed, positive
+    baseline: AmortizationResult  # contractual schedule at minimum_payment
+    live: LiveProjection | None  # None: not enough payment history
+    recent_payments: list[Decimal]
+
+
+class DebtService:
+    def __init__(
+        self,
+        debt_repo: DebtRepository,
+        account_repo: AccountRepository,
+        category_repo: CategoryRepository,
+        transaction_repo: TransactionRepository,
+    ) -> None:
+        self.debt_repo = debt_repo
+        self.account_repo = account_repo
+        self.category_repo = category_repo
+        self.transaction_repo = transaction_repo
+
+    @staticmethod
+    def mode(debt: Debt) -> str:
+        return "managed" if debt.linked_account_id is not None else "unmanaged"
+
+    async def get_balance(self, debt: Debt) -> Decimal:
+        """Amount currently owed, positive; zero when fully paid."""
+        if debt.linked_account_id is not None:
+            account_balance = await self.account_repo.get_balance(debt.linked_account_id)
+            return max(ZERO, quantize_cents(-account_balance))
+        return max(ZERO, quantize_cents(debt.manual_balance or ZERO))
+
+    async def get_recent_monthly_payments(
+        self,
+        debt: Debt,
+        months: int = PAYMENT_LOOKBACK_MONTHS,
+        as_of: date | None = None,
+    ) -> list[Decimal]:
+        """Per-month payments for the trailing `months` COMPLETE months,
+        oldest first. Months without evidence contribute 0."""
+        as_of = as_of or today_utc()
+        current = _month_start(as_of)
+        window = [add_months(current, -i) for i in range(months, 0, -1)]
+        last_complete_end = current  # exclusive upper bound: 1st of current month
+
+        if debt.linked_account_id is not None:
+            by_month = await self.transaction_repo.sum_by_account_by_month(
+                debt.linked_account_id, end_date=last_complete_end
+            )
+            # A loan account's balance rises toward zero as it's paid: the
+            # month's net movement IS the paydown.
+            return [max(ZERO, by_month.get(m, ZERO)) for m in window]
+
+        category = await self.category_repo.get_by_linked_debt(debt.id)
+        if category is not None:
+            by_month = await self.transaction_repo.sum_category_outflows_by_month(
+                category.id, end_date=last_complete_end
+            )
+            return [max(ZERO, -by_month.get(m, ZERO)) for m in window]
+
+        return self._payments_from_snapshots(await self.debt_repo.get_snapshots(debt.id), window)
+
+    @staticmethod
+    def _payments_from_snapshots(snapshots, window: list[date]) -> list[Decimal]:
+        """Spread each consecutive balance drop evenly across the months the
+        pair spans; balance increases contribute nothing."""
+        by_month: dict[date, Decimal] = {}
+        for prev, nxt in zip(snapshots, snapshots[1:], strict=False):
+            drop = prev.balance - nxt.balance
+            if drop <= ZERO:
+                continue
+            span = max(1, _month_index(nxt.date) - _month_index(prev.date))
+            per_month = quantize_cents(drop / span)
+            for i in range(span):
+                m = add_months(_month_start(prev.date), i + 1)
+                by_month[m] = by_month.get(m, ZERO) + per_month
+        return [max(ZERO, by_month.get(m, ZERO)) for m in window]
+
+    async def get_status(self, debt: Debt, as_of: date | None = None) -> DebtStatus:
+        as_of = as_of or today_utc()
+        balance = await self.get_balance(debt)
+        baseline = amortization_schedule(balance, debt.interest_rate, debt.minimum_payment, as_of)
+        payments = await self.get_recent_monthly_payments(debt, as_of=as_of)
+        live = project_payoff(balance, debt.interest_rate, payments, as_of)
+        return DebtStatus(
+            debt=debt,
+            mode=self.mode(debt),
+            current_balance=balance,
+            baseline=baseline,
+            live=live,
+            recent_payments=payments,
+        )
+
+    async def unmanaged_total(self, budget_id: uuid.UUID) -> Decimal:
+        """Total owed across unmanaged debts — the net-worth bucket for
+        liabilities that have no Account and would otherwise vanish."""
+        total = ZERO
+        for debt in await self.debt_repo.get_all(budget_id):
+            if debt.linked_account_id is None:
+                total += await self.get_balance(debt)
+        return total

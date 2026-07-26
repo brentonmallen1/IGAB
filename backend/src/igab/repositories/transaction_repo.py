@@ -258,6 +258,68 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
 
+    async def sum_by_account_by_month(
+        self,
+        account_id: uuid.UUID,
+        end_date: date,
+    ) -> dict[date, Decimal]:
+        """Return {month_start: net balance change} for all months up to end_date.
+
+        Account-balance semantics: PARENT_ROW rows only (a split parent's
+        amount equals its children's sum) and POSTED amounts. A month's total
+        is exactly how much the account balance moved during that month.
+        """
+        yr = cast(func.extract("year", Transaction.date), Integer)
+        mo = cast(func.extract("month", Transaction.date), Integer)
+        result = await self.session.execute(
+            select(
+                yr.label("yr"),
+                mo.label("mo"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            )
+            .where(
+                Transaction.account_id == account_id,
+                NOT_DELETED,
+                PARENT_ROW,
+                POSTED,
+                Transaction.date <= end_date,
+            )
+            .group_by(yr, mo)
+        )
+        return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+
+    async def sum_category_outflows_by_month(
+        self,
+        category_id: uuid.UUID,
+        end_date: date,
+    ) -> dict[date, Decimal]:
+        """Return {month_start: outflow total (negative)} through end_date.
+
+        Only spending rows (amount < 0): used to read a debt-linked
+        category's outflows as debt payments — an unrelated refund landing
+        in the category must not be mistaken for a reversed payment.
+        """
+        yr = cast(func.extract("year", Transaction.date), Integer)
+        mo = cast(func.extract("month", Transaction.date), Integer)
+        result = await self.session.execute(
+            select(
+                yr.label("yr"),
+                mo.label("mo"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            )
+            .where(
+                Transaction.category_id == category_id,
+                NOT_DELETED,
+                LEAF,
+                POSTED,
+                CASH_FLOW_ROW,
+                Transaction.amount < 0,
+                Transaction.date <= end_date,
+            )
+            .group_by(yr, mo)
+        )
+        return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+
     async def sum_all_categories_by_month(
         self,
         category_ids: list[uuid.UUID],
