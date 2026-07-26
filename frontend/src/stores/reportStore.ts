@@ -61,6 +61,17 @@ export const TAB_GROUPS: { id: TabGroup; label: string }[] = [
   { id: 'insights', label: 'Insights' },
 ]
 
+/** Get the group a tab belongs to */
+export function getTabGroup(tabId: ReportTab): TabGroup {
+  const tab = REPORT_TABS.find((t) => t.id === tabId)
+  return tab?.group ?? 'overview'
+}
+
+/** Get all tabs in a group */
+export function getGroupTabs(groupId: TabGroup): TabDef[] {
+  return REPORT_TABS.filter((t) => t.group === groupId)
+}
+
 export type GroupBy = 'group' | 'category' | 'payee'
 
 export interface TabFilterSupport {
