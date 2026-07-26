@@ -25,6 +25,7 @@ import { PayeeReport } from '../../components/reports/charts/PayeeChart'
 import { DayPatternsReport } from '../../components/reports/charts/DayOfWeekChart'
 import { TimelineReport } from '../../components/reports/charts/EventTimeline'
 import { LiabilitiesReport } from '../../components/reports/charts/LiabilitiesReport'
+import { SubscriptionsReport } from '../../components/reports/charts/SubscriptionsReport'
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import './ReportsPage.css'
@@ -101,6 +102,7 @@ export function ReportsPage() {
       case 'pareto': return <ParetoReport budgetId={budgetId!} />
       case 'treemap': return <SpendingTreemapReport budgetId={budgetId!} />
       case 'seasonality': return <SeasonalityReport budgetId={budgetId!} />
+      case 'subscriptions': return <SubscriptionsReport budgetId={budgetId!} />
       case 'payees': return <PayeeReport budgetId={budgetId!} />
       case 'day-patterns': return <DayPatternsReport budgetId={budgetId!} />
       case 'timeline': return <TimelineReport budgetId={budgetId!} />

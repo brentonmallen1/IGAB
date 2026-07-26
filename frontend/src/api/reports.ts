@@ -14,6 +14,7 @@ import type {
   SeasonalityReport,
   SpendingGroupedReport,
   SpendingReport,
+  SubscriptionsReport,
   TimelineReport,
   VarianceReport,
   VolatilityReport,
@@ -374,6 +375,23 @@ export function useLiabilitiesReport(
       const { data } = await apiClient.get<LiabilitiesReport>(
         `/${budgetId}/reports/liabilities`,
         { params: params({ liability_type: liabilityType, mode }) }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+// ─── Subscriptions ─────────────────────────────────────────────────────────
+
+export function useSubscriptionsReport(budgetId: string | null, months = 12) {
+  return useQuery({
+    queryKey: ['reports', 'subscriptions', budgetId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SubscriptionsReport>(
+        `/${budgetId}/reports/subscriptions`,
+        { params: { months } }
       )
       return data
     },
