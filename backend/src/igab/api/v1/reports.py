@@ -17,11 +17,11 @@ from igab.api.v1.schemas.report import (
     DashboardMetrics,
     DayPatternItem,
     DayPatternsResponse,
-    DebtsBalancePoint,
-    DebtsReportItem,
-    DebtsReportResponse,
     IncomeExpenseMonth,
     IncomeExpenseResponse,
+    LiabilitiesBalancePoint,
+    LiabilitiesReportItem,
+    LiabilitiesReportResponse,
     NetWorthPoint,
     NetWorthResponse,
     PayeeAnalysisResponse,
@@ -43,8 +43,8 @@ from igab.api.v1.schemas.report import (
     VolatilityItem,
     VolatilityResponse,
 )
-from igab.dependencies import BudgetAccess, CurrentUser, get_debt_service, get_report_service
-from igab.services.debt_service import DebtService
+from igab.dependencies import BudgetAccess, CurrentUser, get_liability_service, get_report_service
+from igab.services.liability_service import LiabilityService
 from igab.services.report_service import ReportService
 
 router = APIRouter()
@@ -132,7 +132,7 @@ async def net_worth_report(
     data = await report_svc.net_worth_history(budget_id, months)
     return NetWorthResponse(
         points=[NetWorthPoint.model_validate(p) for p in data],
-        unmanaged_debt_total=data[-1]["unmanaged_debt_total"] if data else Decimal("0"),
+        unmanaged_liability_total=data[-1]["unmanaged_liability_total"] if data else Decimal("0"),
     )
 
 
@@ -345,21 +345,25 @@ async def timeline_report(
     return TimelineResponse(transactions=[TimelineTransaction.model_validate(t) for t in data])
 
 
-@router.get("/{budget_id}/reports/debts", response_model=DebtsReportResponse)
-async def debts_report(
+@router.get("/{budget_id}/reports/liabilities", response_model=LiabilitiesReportResponse)
+async def liabilities_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
-    debt_svc: Annotated[DebtService, Depends(get_debt_service)],
-    debt_type: str | None = Query(default=None),
+    liability_svc: Annotated[LiabilityService, Depends(get_liability_service)],
+    liability_type: str | None = Query(default=None),
     mode: str | None = Query(default=None),
-) -> DebtsReportResponse:
-    """Consolidated cross-debt rollup — per-debt deep-dives live on /debts/:id."""
-    data = await debt_svc.debts_report(budget_id, debt_type=debt_type, mode=mode)
-    return DebtsReportResponse(
-        items=[DebtsReportItem.model_validate(i) for i in data["items"]],
+) -> LiabilitiesReportResponse:
+    """Consolidated liability rollup — per-liability deep-dives live on /liabilities/:id."""
+    data = await liability_svc.liabilities_report(
+        budget_id, liability_type=liability_type, mode=mode
+    )
+    return LiabilitiesReportResponse(
+        items=[LiabilitiesReportItem.model_validate(i) for i in data["items"]],
         total_balance=data["total_balance"],
         total_interest_remaining=data["total_interest_remaining"],
-        balance_over_time=[DebtsBalancePoint.model_validate(p) for p in data["balance_over_time"]],
+        balance_over_time=[
+            LiabilitiesBalancePoint.model_validate(p) for p in data["balance_over_time"]
+        ],
     )
 
 

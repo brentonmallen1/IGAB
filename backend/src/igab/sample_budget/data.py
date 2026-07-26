@@ -12,6 +12,8 @@ from igab.sample_budget.spec import (
     AccountSpec,
     CategorySpec,
     GroupSpec,
+    LiabilitySnapshotSpec,
+    LiabilitySpec,
     MonthlyTxn,
     OneOffTxn,
     PayeeSpec,
@@ -330,6 +332,33 @@ SAMPLE_BUDGET = SampleBudgetSpec(
             category="Household",
             memo="Auto insurance",
             last_occurrence_months_ago=6,
+        ),
+    ),
+    liabilities=(
+        # Managed: tracked from the Car Loan account (6.25% APR, 3-year term)
+        # The 13 months of $275 transfers already in place give it real payment
+        # history and a live payoff projection
+        LiabilitySpec(
+            name="Car Loan",
+            liability_type="auto",
+            interest_rate=_d("6.25"),
+            minimum_payment=_d("275.00"),
+            linked_account=CAR_LOAN,
+        ),
+        # Unmanaged: Dental Payment Plan (no linked account, manual snapshots)
+        # 0% interest payment plan, $95/mo — snapshots spaced 2 months apart
+        # to show the balance declining from 1235 → 1045 → 855
+        LiabilitySpec(
+            name="Dental Payment Plan",
+            liability_type="medical",
+            interest_rate=_d("0"),
+            minimum_payment=_d("95.00"),
+            balance=_d("855.00"),
+            snapshots=(
+                LiabilitySnapshotSpec(RelDate(4, 10), _d("1235.00")),
+                LiabilitySnapshotSpec(RelDate(2, 10), _d("1045.00")),
+                LiabilitySnapshotSpec(RelDate(0, 1), _d("855.00")),
+            ),
         ),
     ),
     custom_tags=(("Travel", "blue"),),

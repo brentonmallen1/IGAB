@@ -1,9 +1,9 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus } from 'lucide-react'
+import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useBudgets } from '../../../api/budgets'
-import { useDebts, type Debt } from '../../../api/debts'
+import { useLiabilities, type Liability } from '../../../api/liabilities'
 import { useSimpleFINConnections, useSyncSimpleFIN, useSimpleFINRateLimitStatus } from '../../../api/simplefin'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
 import { useLogout } from '../../../api/auth'
@@ -34,26 +34,6 @@ function groupAccounts(accounts: Account[]): Map<string, Account[]> {
   return groups
 }
 
-function debtTypeLabel(type: string): string {
-  switch (type) {
-    case 'mortgage': return 'Mortgages'
-    case 'auto': return 'Auto Loans'
-    case 'student': return 'Student Loans'
-    case 'personal': return 'Personal'
-    case 'credit_card': return 'Credit Cards'
-    case 'medical': return 'Medical'
-    default: return 'Other'
-  }
-}
-
-function groupDebts(debts: Debt[]): Map<string, Debt[]> {
-  const groups = new Map<string, Debt[]>()
-  for (const debt of debts) {
-    if (!groups.has(debt.debt_type)) groups.set(debt.debt_type, [])
-    groups.get(debt.debt_type)!.push(debt)
-  }
-  return groups
-}
 
 export function Sidebar() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -62,10 +42,10 @@ export function Sidebar() {
   const navigate = useNavigate()
   const { data: accounts } = useAccounts(budgetId)
   const { data: budgets = [] } = useBudgets()
-  const { data: debts = [] } = useDebts(budgetId)
+  const { data: liabilities = [] } = useLiabilities(budgetId)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
-  const openDebtEditor = useUIStore((s) => s.openDebtEditor)
+  const openLiabilityEditor = useUIStore((s) => s.openLiabilityEditor)
 
   const logout = useLogout()
 
@@ -109,6 +89,13 @@ export function Sidebar() {
   const onBudgetTotal = accounts
     ?.filter((a) => a.on_budget)
     .reduce((sum, a) => sum + Number(a.balance), 0) ?? 0
+
+  // Tracking accounts grouped by classification
+  const trackingAccounts = accounts?.filter((a) => !a.on_budget) ?? []
+  const assetAccounts = trackingAccounts.filter((a) => a.classification === 'asset')
+  const liabilityAccounts = trackingAccounts.filter((a) => a.classification === 'liability')
+  const assetsTotal = assetAccounts.reduce((sum, a) => sum + Number(a.balance), 0)
+  const liabilityAccountsTotal = liabilityAccounts.reduce((sum, a) => sum + Number(a.balance), 0)
 
   function handleAccountClick(account: Account) {
     setSelectedAccount(account.id)
@@ -219,12 +206,13 @@ export function Sidebar() {
         )
       })}
 
-      {!collapsed && ((grouped.get('tracking') ?? []) as Account[]).length > 0 && (
+      {!collapsed && assetAccounts.length > 0 && (
         <>
           <div className="sidebar__section-header">
-            <span>Tracking Accounts</span>
+            <span>Assets</span>
+            <span className="sidebar__total tabular">{formatMoney(assetsTotal)}</span>
           </div>
-          {((grouped.get('tracking') ?? []) as Account[]).map((acc) => (
+          {assetAccounts.map((acc) => (
             <button
               key={acc.id}
               className="sidebar__account"
@@ -239,69 +227,86 @@ export function Sidebar() {
         </>
       )}
 
-      {!collapsed && debts.length > 0 && (
+      {!collapsed && (liabilityAccounts.length > 0 || liabilities.length > 0) && (
         <>
           <div className="sidebar__section-header">
             <button
               className="sidebar__section-header-link"
-              onClick={() => navigate('/debts')}
-              title="All debts"
+              onClick={() => navigate('/liabilities')}
+              title="All liabilities"
             >
-              Debts
+              Liabilities
             </button>
             <span className="sidebar__section-header-actions">
               <span className="sidebar__total tabular negative">
-                {formatMoney(-debts.reduce((sum, d) => sum + Number(d.current_balance), 0))}
+                {formatMoney(liabilityAccountsTotal - liabilities.filter(l => !l.linked_account_id).reduce((sum, l) => sum + Number(l.current_balance), 0))}
               </span>
               <button
-                className="sidebar__add-debt"
-                onClick={() => { openDebtEditor(null); navigate('/debts') }}
-                aria-label="Add debt"
-                title="Add debt"
+                className="sidebar__add-liability"
+                onClick={() => { openLiabilityEditor(null); navigate('/liabilities') }}
+                aria-label="Add liability"
+                title="Add liability"
               >
                 <Plus size={12} />
               </button>
             </span>
           </div>
-          {[...groupDebts(debts).entries()].map(([type, typeDebts]) => (
-            <div key={type} className="sidebar__account-group">
-              <div className="sidebar__account-type">{debtTypeLabel(type)}</div>
-              {typeDebts.map((debt) => (
-                <button
-                  key={debt.id}
-                  className="sidebar__account"
-                  onClick={() => navigate(`/debts/${debt.id}`)}
-                >
-                  <span className="sidebar__account-name">
-                    <span
-                      className={`sidebar__debt-dot ${debt.mode === 'managed' ? 'sidebar__debt-dot--managed' : ''}`}
-                      title={debt.mode === 'managed' ? 'Tracked from account' : 'Manually tracked'}
-                    />
-                    {debt.name}
-                  </span>
-                  <span className="sidebar__account-balance tabular negative">
-                    {formatMoney(-Number(debt.current_balance))}
-                  </span>
-                </button>
-              ))}
-            </div>
+          {liabilityAccounts.map((acc) => {
+            const tracker = liabilities.find(l => l.linked_account_id === acc.id)
+            return (
+              <button
+                key={acc.id}
+                className="sidebar__account"
+                onClick={() => tracker ? navigate(`/liabilities/${tracker.id}`) : handleAccountClick(acc)}
+              >
+                <span className="sidebar__account-name">
+                  {tracker && (
+                    <span className="sidebar__liability-icon sidebar__liability-icon--managed" title="Payoff tracking enabled">
+                      <Link2 size={12} />
+                    </span>
+                  )}
+                  {acc.name}
+                </span>
+                <span className="sidebar__account-balance tabular negative">
+                  {formatMoney(Number(acc.balance))}
+                </span>
+              </button>
+            )
+          })}
+          {/* Unmanaged liabilities (no linked account) */}
+          {liabilities.filter(l => !l.linked_account_id).map((liability) => (
+            <button
+              key={liability.id}
+              className="sidebar__account"
+              onClick={() => navigate(`/liabilities/${liability.id}`)}
+            >
+              <span className="sidebar__account-name">
+                <span className="sidebar__liability-icon" title="Manually tracked">
+                  <PenLine size={12} />
+                </span>
+                {liability.name}
+              </span>
+              <span className="sidebar__account-balance tabular negative">
+                {formatMoney(-Number(liability.current_balance))}
+              </span>
+            </button>
           ))}
         </>
       )}
-      {!collapsed && debts.length === 0 && budgetId && (
+      {!collapsed && liabilityAccounts.length === 0 && liabilities.length === 0 && budgetId && (
         <div className="sidebar__section-header">
           <button
             className="sidebar__section-header-link"
-            onClick={() => navigate('/debts')}
-            title="Track a debt"
+            onClick={() => navigate('/liabilities')}
+            title="Track a liability"
           >
-            Debts
+            Liabilities
           </button>
           <button
-            className="sidebar__add-debt"
-            onClick={() => { openDebtEditor(null); navigate('/debts') }}
-            aria-label="Add debt"
-            title="Add debt"
+            className="sidebar__add-liability"
+            onClick={() => { openLiabilityEditor(null); navigate('/liabilities') }}
+            aria-label="Add liability"
+            title="Add liability"
           >
             <Plus size={12} />
           </button>

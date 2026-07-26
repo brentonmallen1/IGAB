@@ -11,15 +11,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useDebtsReport } from '../../../api/reports'
-import { formatMonthYear } from '../../debts/PayoffPill'
+import { useLiabilitiesReport } from '../../../api/reports'
+import { formatMonthYear } from '../../liabilities/PayoffPill'
 import { formatMoney } from '../../../utils/money'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import './DebtsReport.css'
+import './LiabilitiesReport.css'
 
 interface Props {
   budgetId: string
@@ -37,7 +37,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 type SortKey = 'balance' | 'rate' | 'baseline' | 'live' | 'interest'
 
-export function DebtsReport({ budgetId }: Props) {
+export function LiabilitiesReport({ budgetId }: Props) {
   const navigate = useNavigate()
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [modeFilter, setModeFilter] = useState<string | null>(null)
@@ -45,23 +45,28 @@ export function DebtsReport({ budgetId }: Props) {
   const [sortDesc, setSortDesc] = useState(true)
   const captureRef = useRef<HTMLDivElement>(null)
 
-  const { data, isLoading } = useDebtsReport(
+  const { data, isLoading } = useLiabilitiesReport(
     budgetId,
     typeFilter ?? undefined,
     modeFilter ?? undefined
   )
   // Unfiltered call drives the filter pills so options don't vanish
-  const { data: allData } = useDebtsReport(budgetId)
+  const { data: allData } = useLiabilitiesReport(budgetId)
 
   const items = useMemo(() => {
     const rows = [...(data?.items ?? [])]
     const value = (row: (typeof rows)[number]) => {
       switch (sortKey) {
-        case 'balance': return Number(row.current_balance)
-        case 'rate': return Number(row.interest_rate)
-        case 'baseline': return row.baseline_payoff_date ?? '9999'
-        case 'live': return row.live_payoff_date ?? '9999'
-        case 'interest': return Number(row.total_interest_remaining)
+        case 'balance':
+          return Number(row.current_balance)
+        case 'rate':
+          return Number(row.interest_rate)
+        case 'baseline':
+          return row.baseline_payoff_date ?? '9999'
+        case 'live':
+          return row.live_payoff_date ?? '9999'
+        case 'interest':
+          return Number(row.total_interest_remaining)
       }
     }
     rows.sort((a, b) => {
@@ -75,11 +80,11 @@ export function DebtsReport({ budgetId }: Props) {
 
   if (isLoading) return <div className="report-loading">Loading…</div>
 
-  const presentTypes = [...new Set((allData?.items ?? []).map((i) => i.debt_type))]
+  const presentTypes = [...new Set((allData?.items ?? []).map((i) => i.liability_type))]
   const chartPoints = (data?.balance_over_time ?? []).map((p) => {
     const point: Record<string, number | string> = { date: p.date.slice(0, 7) }
     for (const item of data?.items ?? []) {
-      point[item.name] = Number(p.per_debt[item.debt_id] ?? 0)
+      point[item.name] = Number(p.per_liability[item.liability_id] ?? 0)
     }
     return point
   })
@@ -95,10 +100,16 @@ export function DebtsReport({ budgetId }: Props) {
   return (
     <div className="report-section">
       <div className="report-section__controls">
-        <h2 className="report-section__title">Debts</h2>
-        <ReportInfoButton title="Debts">
-          <p>A consolidated rollup of every tracked debt — <strong>how's all my debt doing</strong> in one place.</p>
-          <p>Click a row for the full deep-dive: amortization schedule, paydown chart, payoff pill, and what-if extra payments.</p>
+        <h2 className="report-section__title">Liabilities</h2>
+        <ReportInfoButton title="Liabilities">
+          <p>
+            A consolidated rollup of every tracked liability —{' '}
+            <strong>how's all my debt doing</strong> in one place.
+          </p>
+          <p>
+            Click a row for the full deep-dive: amortization schedule, paydown chart, payoff pill,
+            and what-if extra payments.
+          </p>
         </ReportInfoButton>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {presentTypes.length > 1 &&
@@ -123,11 +134,11 @@ export function DebtsReport({ budgetId }: Props) {
             </button>
           ))}
           <ReportExportButton
-            reportId="debts"
+            reportId="liabilities"
             getRows={() =>
               (data?.items ?? []).map((i) => ({
                 name: i.name,
-                type: i.debt_type,
+                type: i.liability_type,
                 mode: i.mode,
                 balance: Number(i.current_balance),
                 interest_rate: Number(i.interest_rate),
@@ -144,13 +155,13 @@ export function DebtsReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {(data?.items.length ?? 0) === 0 ? (
           <div className="reports-empty">
-            No debts tracked yet — add one from the Debts section in the sidebar.
+            No liabilities tracked yet — add one from the Liabilities section in the sidebar.
           </div>
         ) : (
           <>
             <div className="report-metrics">
               <MetricCard
-                label="Total Debt"
+                label="Total Liabilities"
                 value={formatMoney(Number(data!.total_balance))}
                 accent
               />
@@ -159,7 +170,7 @@ export function DebtsReport({ budgetId }: Props) {
                 value={formatMoney(Number(data!.total_interest_remaining))}
                 sub="At minimum payments"
               />
-              <MetricCard label="Debts" value={String(data!.items.length)} />
+              <MetricCard label="Liabilities" value={String(data!.items.length)} />
             </div>
 
             {chartPoints.length > 1 && (
@@ -168,14 +179,18 @@ export function DebtsReport({ budgetId }: Props) {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={40} />
                   <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={85} />
-                  <Tooltip content={<ChartTooltip showTotal />} offset={16} isAnimationActive={false} />
+                  <Tooltip
+                    content={<ChartTooltip showTotal />}
+                    offset={16}
+                    isAnimationActive={false}
+                  />
                   <Legend />
                   {data!.items.map((item, idx) => (
                     <Area
-                      key={item.debt_id}
+                      key={item.liability_id}
                       type="monotone"
                       dataKey={item.name}
-                      stackId="debt"
+                      stackId="liability"
                       stroke={chartColor(idx)}
                       fill={chartColor(idx)}
                       fillOpacity={0.35}
@@ -185,11 +200,11 @@ export function DebtsReport({ budgetId }: Props) {
               </ResponsiveContainer>
             )}
 
-            <div className="debts-report__table-wrap">
-              <table className="debts-report__table">
+            <div className="liabilities-report__table-wrap">
+              <table className="liabilities-report__table">
                 <thead>
                   <tr>
-                    <th>Debt</th>
+                    <th>Liability</th>
                     <th className="num sortable" onClick={() => toggleSort('balance')}>
                       Balance{sortKey === 'balance' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
@@ -210,14 +225,14 @@ export function DebtsReport({ budgetId }: Props) {
                 <tbody>
                   {items.map((item) => (
                     <tr
-                      key={item.debt_id}
-                      onClick={() => navigate(`/debts/${item.debt_id}`)}
-                      title="Open debt details"
+                      key={item.liability_id}
+                      onClick={() => navigate(`/liabilities/${item.liability_id}`)}
+                      title="Open liability details"
                     >
                       <td>
-                        <span className="debts-report__name">{item.name}</span>
-                        <span className="debts-report__type">
-                          {TYPE_LABELS[item.debt_type] ?? item.debt_type} ·{' '}
+                        <span className="liabilities-report__name">{item.name}</span>
+                        <span className="liabilities-report__type">
+                          {TYPE_LABELS[item.liability_type] ?? item.liability_type} ·{' '}
                           {item.mode === 'managed' ? 'from account' : 'manual'}
                         </span>
                       </td>
@@ -230,7 +245,7 @@ export function DebtsReport({ budgetId }: Props) {
                       </td>
                       <td>
                         {item.never_pays_off ? (
-                          <span className="debts-report__warning">
+                          <span className="liabilities-report__warning">
                             <AlertTriangle size={12} /> Won't pay off
                           </span>
                         ) : item.live_payoff_date ? (
@@ -239,9 +254,7 @@ export function DebtsReport({ budgetId }: Props) {
                           '—'
                         )}
                       </td>
-                      <td className="num">
-                        {formatMoney(Number(item.total_interest_remaining))}
-                      </td>
+                      <td className="num">{formatMoney(Number(item.total_interest_remaining))}</td>
                     </tr>
                   ))}
                 </tbody>

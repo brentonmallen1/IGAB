@@ -54,12 +54,21 @@ async def create_account(
     if body.account_type == "tracking":
         on_budget = False
 
+    # Auto-set classification for tracking accounts if not provided
+    classification = body.classification
+    if not on_budget and classification is None:
+        if body.account_type in ("loan", "credit_card"):
+            classification = "liability"
+        else:
+            classification = "asset"
+
     try:
         acc = await account_repo.create(
             budget_id=budget_id,
             name=body.name,
             account_type=body.account_type,
             on_budget=on_budget,
+            classification=classification if not on_budget else None,
             note=body.note,
             sort_order=body.sort_order,
         )

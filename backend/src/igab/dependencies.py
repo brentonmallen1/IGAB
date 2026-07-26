@@ -16,7 +16,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
-from igab.repositories.debt_repo import DebtRepository
+from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
@@ -32,7 +32,7 @@ from igab.services.assign_service import AssignService
 from igab.services.attachment_service import AttachmentService
 from igab.services.auth_service import AuthService
 from igab.services.budget_service import BudgetService
-from igab.services.debt_service import DebtService
+from igab.services.liability_service import LiabilityService
 from igab.services.reconciliation_service import ReconciliationService
 from igab.services.report_service import ReportService
 from igab.services.scheduled_transaction_service import ScheduledTransactionService
@@ -166,17 +166,17 @@ def get_budget_service(
     )
 
 
-def get_debt_repo(session: SessionDep) -> DebtRepository:
-    return DebtRepository(session)
+def get_liability_repo(session: SessionDep) -> LiabilityRepository:
+    return LiabilityRepository(session)
 
 
-def get_debt_service(
-    debt_repo: Annotated[DebtRepository, Depends(get_debt_repo)],
+def get_liability_service(
+    liability_repo: Annotated[LiabilityRepository, Depends(get_liability_repo)],
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
-) -> DebtService:
-    return DebtService(debt_repo, account_repo, category_repo, transaction_repo)
+) -> LiabilityService:
+    return LiabilityService(liability_repo, account_repo, category_repo, transaction_repo)
 
 
 def get_assign_service(

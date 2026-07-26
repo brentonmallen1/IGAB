@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 
-export type DebtType =
+export type LiabilityType =
   | 'mortgage'
   | 'auto'
   | 'student'
@@ -10,11 +10,11 @@ export type DebtType =
   | 'medical'
   | 'other'
 
-export interface Debt {
+export interface Liability {
   id: string
   budget_id: string
   name: string
-  debt_type: DebtType
+  liability_type: LiabilityType
   mode: 'managed' | 'unmanaged'
   linked_account_id: string | null
   linked_category_id: string | null
@@ -33,9 +33,9 @@ export interface Debt {
   updated_at: string
 }
 
-export interface DebtCreate {
+export interface LiabilityCreate {
   name: string
-  debt_type: DebtType
+  liability_type: LiabilityType
   interest_rate: number
   minimum_payment: number
   compounding?: string
@@ -76,89 +76,111 @@ export interface AmortizationResponse {
   history: BalancePoint[]
 }
 
-export function useDebts(budgetId: string | null) {
+export function useLiabilities(budgetId: string | null) {
   return useQuery({
-    queryKey: ['debts', budgetId],
-    queryFn: () => apiClient.get<Debt[]>(`/${budgetId}/debts`).then((r) => r.data),
+    queryKey: ['liabilities', budgetId],
+    queryFn: () => apiClient.get<Liability[]>(`/${budgetId}/liabilities`).then((r) => r.data),
     enabled: !!budgetId,
     staleTime: 30_000,
   })
 }
 
-export function useCreateDebt(budgetId: string | null) {
+export function useCreateLiability(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: DebtCreate) =>
-      apiClient.post<Debt>(`/${budgetId}/debts`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['debts', budgetId] }),
+    mutationFn: (body: LiabilityCreate) =>
+      apiClient.post<Liability>(`/${budgetId}/liabilities`, body).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['liabilities', budgetId] }),
   })
 }
 
-export function useUpdateDebt(budgetId: string | null) {
+export function useUpdateLiability(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ debtId, ...body }: Partial<DebtCreate> & { debtId: string }) =>
-      apiClient.patch<Debt>(`/${budgetId}/debts/${debtId}`, body).then((r) => r.data),
-    onSuccess: (_, { debtId }) => {
-      qc.invalidateQueries({ queryKey: ['debts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['debtAmortization', budgetId, debtId] })
+    mutationFn: ({ liabilityId, ...body }: Partial<LiabilityCreate> & { liabilityId: string }) =>
+      apiClient
+        .patch<Liability>(`/${budgetId}/liabilities/${liabilityId}`, body)
+        .then((r) => r.data),
+    onSuccess: (_, { liabilityId }) => {
+      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
+      qc.invalidateQueries({ queryKey: ['liabilityAmortization', budgetId, liabilityId] })
     },
   })
 }
 
-export function useDeleteDebt(budgetId: string | null) {
+export function useDeleteLiability(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (debtId: string) => apiClient.delete(`/${budgetId}/debts/${debtId}`),
+    mutationFn: (liabilityId: string) =>
+      apiClient.delete(`/${budgetId}/liabilities/${liabilityId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['debts', budgetId] })
+      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
       qc.invalidateQueries({ queryKey: ['categories', budgetId] })
     },
   })
 }
 
-export function useCreateDebtSnapshot(budgetId: string | null) {
+export function useCreateLiabilitySnapshot(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ debtId, balance, date }: { debtId: string; balance: number; date?: string }) =>
-      apiClient.post(`/${budgetId}/debts/${debtId}/balance-snapshots`, { balance, date }),
-    onSuccess: (_, { debtId }) => {
-      qc.invalidateQueries({ queryKey: ['debts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['debtAmortization', budgetId, debtId] })
+    mutationFn: ({
+      liabilityId,
+      balance,
+      date,
+    }: {
+      liabilityId: string
+      balance: number
+      date?: string
+    }) =>
+      apiClient.post(`/${budgetId}/liabilities/${liabilityId}/balance-snapshots`, {
+        balance,
+        date,
+      }),
+    onSuccess: (_, { liabilityId }) => {
+      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
+      qc.invalidateQueries({ queryKey: ['liabilityAmortization', budgetId, liabilityId] })
       qc.invalidateQueries({ queryKey: ['netWorth', budgetId] })
     },
   })
 }
 
-export function useDebtAmortization(
+export function useLiabilityAmortization(
   budgetId: string | null,
-  debtId: string | null,
+  liabilityId: string | null,
   options: { extraPayment?: number; fromOrigination?: boolean } = {}
 ) {
   const { extraPayment = 0, fromOrigination = false } = options
   return useQuery({
-    queryKey: ['debtAmortization', budgetId, debtId, extraPayment, fromOrigination],
+    queryKey: ['liabilityAmortization', budgetId, liabilityId, extraPayment, fromOrigination],
     queryFn: () =>
       apiClient
-        .get<AmortizationResponse>(`/${budgetId}/debts/${debtId}/amortization`, {
+        .get<AmortizationResponse>(`/${budgetId}/liabilities/${liabilityId}/amortization`, {
           params: {
             ...(extraPayment > 0 ? { extra_payment: extraPayment } : {}),
             ...(fromOrigination ? { from: 'origination' } : {}),
           },
         })
         .then((r) => r.data),
-    enabled: !!budgetId && !!debtId,
+    enabled: !!budgetId && !!liabilityId,
     staleTime: 30_000,
   })
 }
 
-export function useLinkCategoryDebt(budgetId: string | null) {
+export function useLinkCategoryLiability(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ categoryId, debtId }: { categoryId: string; debtId: string | null }) =>
-      apiClient.put(`/${budgetId}/categories/${categoryId}/link-debt`, { debt_id: debtId }),
+    mutationFn: ({
+      categoryId,
+      liabilityId,
+    }: {
+      categoryId: string
+      liabilityId: string | null
+    }) =>
+      apiClient.put(`/${budgetId}/categories/${categoryId}/link-liability`, {
+        liability_id: liabilityId,
+      }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['debts', budgetId] })
+      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
       qc.invalidateQueries({ queryKey: ['categories', budgetId] })
     },
   })

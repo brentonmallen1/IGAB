@@ -54,10 +54,10 @@ class CategoryRepository(BaseRepository[Category]):
         )
         return result.scalar_one_or_none()
 
-    async def get_by_linked_debt(self, debt_id: uuid.UUID) -> Category | None:
+    async def get_by_linked_liability(self, liability_id: uuid.UUID) -> Category | None:
         result = await self.session.execute(
             select(Category).where(
-                Category.linked_debt_id == debt_id,
+                Category.linked_liability_id == liability_id,
                 Category.is_deleted == False,  # noqa: E712
             )
         )

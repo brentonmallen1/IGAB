@@ -7,7 +7,7 @@ import type {
   CashFlowReport,
   DashboardMetrics,
   DayPatternsReport,
-  DebtsReport,
+  LiabilitiesReport,
   IncomeExpenseReport,
   NetWorthReport,
   PayeeAnalysisReport,
@@ -354,17 +354,17 @@ export function useTimelineReport(
   })
 }
 
-export function useDebtsReport(
+export function useLiabilitiesReport(
   budgetId: string | null,
-  debtType?: string,
-  mode?: string,
+  liabilityType?: string,
+  mode?: string
 ) {
   return useQuery({
-    queryKey: ['reports', 'debts', budgetId, debtType ?? null, mode ?? null],
+    queryKey: ['reports', 'liabilities', budgetId, liabilityType ?? null, mode ?? null],
     queryFn: async () => {
-      const { data } = await apiClient.get<DebtsReport>(
-        `/${budgetId}/reports/debts`,
-        { params: params({ debt_type: debtType, mode }) },
+      const { data } = await apiClient.get<LiabilitiesReport>(
+        `/${budgetId}/reports/liabilities`,
+        { params: params({ liability_type: liabilityType, mode }) }
       )
       return data
     },

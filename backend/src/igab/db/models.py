@@ -100,6 +100,8 @@ class Account(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     account_type: Mapped[str] = mapped_column(String(20), nullable=False)
     on_budget: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # For tracking (off-budget) accounts: 'asset' or 'liability'. Null for on-budget.
+    classification: Mapped[str | None] = mapped_column(String(20))
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
@@ -212,11 +214,11 @@ class Category(Base):
     linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
     )
-    # For debt payment categories — this category's outflows feed the debt's
-    # payment history. Mutually exclusive with linked_account_id (service-
-    # layer enforced, not a DB constraint).
-    linked_debt_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("debts.id", ondelete="SET NULL")
+    # For liability payment categories — this category's outflows feed the
+    # liability's payment history. Mutually exclusive with linked_account_id
+    # (service-layer enforced, not a DB constraint).
+    linked_liability_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("liabilities.id", ondelete="SET NULL")
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -231,8 +233,8 @@ class Category(Base):
     linked_account: Mapped["Account | None"] = relationship(
         back_populates="linked_category", foreign_keys=[linked_account_id]
     )
-    linked_debt: Mapped["Debt | None"] = relationship(
-        back_populates="linked_category", foreign_keys=[linked_debt_id]
+    linked_liability: Mapped["Liability | None"] = relationship(
+        back_populates="linked_category", foreign_keys=[linked_liability_id]
     )
     assignments: Mapped[list["BudgetAssignment"]] = relationship(back_populates="category")
     target: Mapped["CategoryTarget | None"] = relationship(back_populates="category", uselist=False)
@@ -719,20 +721,20 @@ class Tag(Base):
     payees: Mapped[list["Payee"]] = relationship(secondary=payee_tags, back_populates="tags")
 
 
-# ─── Debts ────────────────────────────────────────────────────────────────────
+# ─── Liabilities ─────────────────────────────────────────────────────────────
 
 
-class Debt(Base):
-    """A first-class debt, independent of whether a full Account exists.
+class Liability(Base):
+    """A first-class liability, independent of whether a full Account exists.
 
     linked_account_id set  ⇒ "managed": balance and payment history derive
     from that account's ledger.
     linked_account_id null ⇒ "unmanaged": balance is manual_balance; payments
-    come from a linked budget category (Category.linked_debt_id) or manual
+    come from a linked budget category (Category.linked_liability_id) or manual
     balance snapshots.
     """
 
-    __tablename__ = "debts"
+    __tablename__ = "liabilities"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -740,7 +742,7 @@ class Debt(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     # 'mortgage'|'auto'|'student'|'personal'|'credit_card'|'medical'|'other'
-    debt_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    liability_type: Mapped[str] = mapped_column(String(30), nullable=False)
     linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), unique=True
     )
@@ -764,22 +766,25 @@ class Debt(Base):
     budget: Mapped["Budget"] = relationship()
     linked_account: Mapped["Account | None"] = relationship(foreign_keys=[linked_account_id])
     linked_category: Mapped["Category | None"] = relationship(
-        back_populates="linked_debt", foreign_keys="Category.linked_debt_id"
+        back_populates="linked_liability", foreign_keys="Category.linked_liability_id"
     )
-    snapshots: Mapped[list["DebtBalanceSnapshot"]] = relationship(
-        back_populates="debt", passive_deletes=True, order_by="DebtBalanceSnapshot.date"
+    snapshots: Mapped[list["LiabilityBalanceSnapshot"]] = relationship(
+        back_populates="liability", passive_deletes=True, order_by="LiabilityBalanceSnapshot.date"
     )
 
 
-class DebtBalanceSnapshot(Base):
-    """Manual balance point for an unmanaged debt — one per day at most."""
+class LiabilityBalanceSnapshot(Base):
+    """Manual balance point for an unmanaged liability — one per day at most."""
 
-    __tablename__ = "debt_balance_snapshots"
-    __table_args__ = (UniqueConstraint("debt_id", "date", name="uq_debt_snapshot_date"),)
+    __tablename__ = "liability_balance_snapshots"
+    __table_args__ = (UniqueConstraint("liability_id", "date", name="uq_liability_snapshot_date"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    debt_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("debts.id", ondelete="CASCADE"), nullable=False, index=True
+    liability_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("liabilities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     date: Mapped[date] = mapped_column(Date, nullable=False)  # type: ignore[reportGeneralTypeIssues]
     balance: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
@@ -788,4 +793,4 @@ class DebtBalanceSnapshot(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    debt: Mapped["Debt"] = relationship(back_populates="snapshots")
+    liability: Mapped["Liability"] = relationship(back_populates="snapshots")

@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { AmortizationResponse } from '../../api/debts'
+import type { AmortizationResponse, AmortizationMonth } from '../../api/liabilities'
 import { formatMoney } from '../../utils/money'
 import { ChartTooltip } from '../reports/charts/ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_POSITIVE, CHART_COLORS } from '../reports/charts/chartColors'
@@ -58,7 +58,10 @@ export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
   let cumPrincipal = 0
   let cumInterest = 0
   const extraByMonth = new Map(
-    (amortization.extra_schedule ?? []).map((m) => [m.date.slice(0, 7), Number(m.balance)])
+    (amortization.extra_schedule ?? []).map((m: AmortizationMonth) => [
+      m.date.slice(0, 7),
+      Number(m.balance),
+    ])
   )
   for (const m of amortization.baseline_schedule) {
     cumPrincipal += Number(m.principal_paid)

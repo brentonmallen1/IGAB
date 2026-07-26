@@ -7,12 +7,14 @@ from pydantic import BaseModel
 
 from igab.domain.money import Money
 
-DebtType = Literal["mortgage", "auto", "student", "personal", "credit_card", "medical", "other"]
+LiabilityType = Literal[
+    "mortgage", "auto", "student", "personal", "credit_card", "medical", "other"
+]
 
 
-class DebtCreate(BaseModel):
+class LiabilityCreate(BaseModel):
     name: str
-    debt_type: DebtType
+    liability_type: LiabilityType
     interest_rate: Decimal  # annual percent, e.g. 6.25
     minimum_payment: Money
     compounding: str = "monthly"
@@ -23,9 +25,9 @@ class DebtCreate(BaseModel):
     original_principal: Money | None = None
 
 
-class DebtUpdate(BaseModel):
+class LiabilityUpdate(BaseModel):
     name: str | None = None
-    debt_type: DebtType | None = None
+    liability_type: LiabilityType | None = None
     interest_rate: Decimal | None = None
     minimum_payment: Money | None = None
     compounding: str | None = None
@@ -35,11 +37,11 @@ class DebtUpdate(BaseModel):
     original_principal: Money | None = None
 
 
-class DebtOut(BaseModel):
+class LiabilityOut(BaseModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str
-    debt_type: str
+    liability_type: str
     mode: Literal["managed", "unmanaged"]
     linked_account_id: uuid.UUID | None
     linked_category_id: uuid.UUID | None
@@ -58,14 +60,14 @@ class DebtOut(BaseModel):
     updated_at: datetime.datetime
 
 
-class DebtBalanceSnapshotCreate(BaseModel):
+class LiabilityBalanceSnapshotCreate(BaseModel):
     balance: Money
     date: datetime.date | None = None  # default: today
 
 
-class DebtBalanceSnapshotOut(BaseModel):
+class LiabilityBalanceSnapshotOut(BaseModel):
     id: uuid.UUID
-    debt_id: uuid.UUID
+    liability_id: uuid.UUID
     date: datetime.date
     balance: Decimal
     source: str
@@ -73,8 +75,8 @@ class DebtBalanceSnapshotOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class LinkDebtRequest(BaseModel):
-    debt_id: uuid.UUID | None  # null unlinks
+class LinkLiabilityRequest(BaseModel):
+    liability_id: uuid.UUID | None  # null unlinks
 
 
 class AmortizationMonthOut(BaseModel):
