@@ -14,6 +14,7 @@ interface UIState {
   editingTransactionId: string | null
   isAccountEditorOpen: boolean
   editingAccountId: string | null
+  isAddAccountModalOpen: boolean
   isLiabilityEditorOpen: boolean
   editingLiabilityId: string | null
   sidebarCollapsed: boolean
@@ -49,6 +50,8 @@ interface UIState {
   closeTransactionEditor: () => void
   openAccountEditor: (accountId: string) => void
   closeAccountEditor: () => void
+  openAddAccountModal: () => void
+  closeAddAccountModal: () => void
   openLiabilityEditor: (liabilityId: string | null) => void
   closeLiabilityEditor: () => void
   toggleSidebarCollapsed: () => void
@@ -126,6 +129,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   editingTransactionId: null,
   isAccountEditorOpen: false,
   editingAccountId: null,
+  isAddAccountModalOpen: false,
   isLiabilityEditorOpen: false,
   editingLiabilityId: null,
   sidebarCollapsed: false,
@@ -165,6 +169,8 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   openAccountEditor: (accountId) => set({ isAccountEditorOpen: true, editingAccountId: accountId }),
   closeAccountEditor: () => set({ isAccountEditorOpen: false, editingAccountId: null }),
+  openAddAccountModal: () => set({ isAddAccountModalOpen: true }),
+  closeAddAccountModal: () => set({ isAddAccountModalOpen: false }),
   openLiabilityEditor: (liabilityId) =>
     set({ isLiabilityEditorOpen: true, editingLiabilityId: liabilityId }),
   closeLiabilityEditor: () => set({ isLiabilityEditorOpen: false, editingLiabilityId: null }),

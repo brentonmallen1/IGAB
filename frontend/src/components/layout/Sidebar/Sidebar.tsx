@@ -6,6 +6,7 @@ import { useBudgets } from '../../../api/budgets'
 import { useLiabilities, type Liability } from '../../../api/liabilities'
 import { useSimpleFINConnections, useSyncSimpleFIN, useSimpleFINRateLimitStatus } from '../../../api/simplefin'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
+import { AddAccountModal } from '../../accounts/AddAccountModal'
 import { useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -45,6 +46,9 @@ export function Sidebar() {
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
+  const isAddAccountModalOpen = useUIStore((s) => s.isAddAccountModalOpen)
+  const openAddAccountModal = useUIStore((s) => s.openAddAccountModal)
+  const closeAddAccountModal = useUIStore((s) => s.closeAddAccountModal)
   const openLiabilityEditor = useUIStore((s) => s.openLiabilityEditor)
 
   const logout = useLogout()
@@ -164,7 +168,17 @@ export function Sidebar() {
         >
           Budget Accounts
         </button>
-        <span className="sidebar__total tabular">{formatMoney(onBudgetTotal)}</span>
+        <span className="sidebar__section-header-actions">
+          <span className="sidebar__total tabular">{formatMoney(onBudgetTotal)}</span>
+          <button
+            className="sidebar__add-account"
+            onClick={openAddAccountModal}
+            aria-label="Add account"
+            title="Add account"
+          >
+            <Plus size={12} />
+          </button>
+        </span>
       </div>}
 
       {!collapsed && onBudgetTypes.map((type) => {
@@ -206,11 +220,21 @@ export function Sidebar() {
         )
       })}
 
-      {!collapsed && assetAccounts.length > 0 && (
+      {!collapsed && (assetAccounts.length > 0 || budgetId) && (
         <>
           <div className="sidebar__section-header">
             <span>Assets</span>
-            <span className="sidebar__total tabular">{formatMoney(assetsTotal)}</span>
+            <span className="sidebar__section-header-actions">
+              <span className="sidebar__total tabular">{formatMoney(assetsTotal)}</span>
+              <button
+                className="sidebar__add-account"
+                onClick={openAddAccountModal}
+                aria-label="Add asset"
+                title="Add asset"
+              >
+                <Plus size={12} />
+              </button>
+            </span>
           </div>
           {assetAccounts.map((acc) => (
             <button
@@ -342,6 +366,8 @@ export function Sidebar() {
           {!collapsed && <span>No budget selected</span>}
         </div>
       )}
+
+      {isAddAccountModalOpen && <AddAccountModal onClose={closeAddAccountModal} />}
     </aside>
   )
 }

@@ -123,8 +123,9 @@
   color: var(--color-negative);
 }
 
-/* Liabilities section */
+/* Add buttons for section headers */
 
+.sidebar__add-account,
 .sidebar__add-liability {
   display: inline-flex;
   align-items: center;
@@ -136,6 +137,7 @@
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 
+.sidebar__add-account:hover,
 .sidebar__add-liability:hover {
   color: var(--text-primary);
   background: var(--bg-hover);
