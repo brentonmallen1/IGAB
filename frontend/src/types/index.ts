@@ -489,6 +489,29 @@ export interface SubscriptionsReport {
   months: string[]
 }
 
+export interface SavingsCategory {
+  category_id: string
+  category_name: string
+  group_name: string
+  monthly_balances: number[]
+  current_balance: number
+  target_balance: number | null
+  total_inflow: number
+}
+
+export interface SavingsSummary {
+  total_balance: number
+  total_inflow: number
+  avg_monthly_inflow: number
+  category_count: number
+}
+
+export interface SavingsReport {
+  categories: SavingsCategory[]
+  summary: SavingsSummary
+  months: string[]
+}
+
 export interface SimilarTransaction {
   id: string
   date: string

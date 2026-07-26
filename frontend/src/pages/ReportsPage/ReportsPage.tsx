@@ -26,6 +26,7 @@ import { DayPatternsReport } from '../../components/reports/charts/DayOfWeekChar
 import { TimelineReport } from '../../components/reports/charts/EventTimeline'
 import { LiabilitiesReport } from '../../components/reports/charts/LiabilitiesReport'
 import { SubscriptionsReport } from '../../components/reports/charts/SubscriptionsReport'
+import { SavingsReport } from '../../components/reports/charts/SavingsReport'
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import './ReportsPage.css'
@@ -93,6 +94,7 @@ export function ReportsPage() {
       case 'net-worth': return <NetWorthReport budgetId={budgetId!} />
       case 'account-composition': return <AccountCompositionReport budgetId={budgetId!} />
       case 'liabilities': return <LiabilitiesReport budgetId={budgetId!} />
+      case 'savings': return <SavingsReport budgetId={budgetId!} />
       case 'income-expense': return <IncomeExpenseReport budgetId={budgetId!} />
       case 'burn-rate': return <BurnRateReport budgetId={budgetId!} />
       case 'cash-flow': return <CashFlowSankeyReport budgetId={budgetId!} />

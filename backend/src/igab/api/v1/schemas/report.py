@@ -339,3 +339,29 @@ class SubscriptionsReportResponse(BaseModel):
     subscriptions: list[SubscriptionPayee]
     summary: SubscriptionsSummary
     months: list[date]  # month labels for the period
+
+
+# ─── Savings Report ──────────────────────────────────────────────────────────
+
+
+class SavingsCategory(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    group_name: str
+    monthly_balances: list[Decimal]  # balance at end of each month
+    current_balance: Decimal
+    target_balance: Decimal | None
+    total_inflow: Decimal  # total assigned/deposited in the period
+
+
+class SavingsSummary(BaseModel):
+    total_balance: Decimal  # sum of current balances
+    total_inflow: Decimal  # sum of inflows in the period
+    avg_monthly_inflow: Decimal
+    category_count: int
+
+
+class SavingsReportResponse(BaseModel):
+    categories: list[SavingsCategory]
+    summary: SavingsSummary
+    months: list[date]
