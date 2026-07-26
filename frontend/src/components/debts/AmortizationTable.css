@@ -1,0 +1,95 @@
+.amort-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.amort-table th {
+  text-align: left;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.amort-table td {
+  padding: 6px 8px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.amort-table__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.amort-table__interest {
+  color: var(--color-negative);
+}
+
+.amort-table__more {
+  display: block;
+  width: 100%;
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.amort-table__more:hover {
+  background: var(--bg-hover);
+}
+
+.amort-table__empty {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Mobile: stacked cards */
+@media (max-width: 640px) {
+  .amort-table thead {
+    display: none;
+  }
+
+  .amort-table table,
+  .amort-table tbody,
+  .amort-table tr,
+  .amort-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .amort-table tr {
+    margin-bottom: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--border-radius-sm);
+    background: var(--bg-secondary);
+  }
+
+  .amort-table td {
+    display: flex;
+    justify-content: space-between;
+    border: none;
+    padding: 2px 4px;
+    text-align: right;
+  }
+
+  .amort-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+}

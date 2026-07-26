@@ -119,6 +119,43 @@
   color: var(--text-secondary);
 }
 
+.sidebar__total.negative {
+  color: var(--color-negative);
+}
+
+/* Debts section */
+
+.sidebar__add-debt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.sidebar__add-debt:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* 6px mode dot: accent = managed (tracked from an account), muted = manual */
+.sidebar__debt-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.sidebar__debt-dot--managed {
+  background: var(--color-accent);
+}
+
 .sidebar__account-group {
   margin-bottom: var(--spacing-xs);
 }

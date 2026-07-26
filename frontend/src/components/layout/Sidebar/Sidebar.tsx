@@ -1,8 +1,9 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react'
+import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useBudgets } from '../../../api/budgets'
+import { useDebts, type Debt } from '../../../api/debts'
 import { useSimpleFINConnections, useSyncSimpleFIN, useSimpleFINRateLimitStatus } from '../../../api/simplefin'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
 import { useLogout } from '../../../api/auth'
@@ -33,6 +34,27 @@ function groupAccounts(accounts: Account[]): Map<string, Account[]> {
   return groups
 }
 
+function debtTypeLabel(type: string): string {
+  switch (type) {
+    case 'mortgage': return 'Mortgages'
+    case 'auto': return 'Auto Loans'
+    case 'student': return 'Student Loans'
+    case 'personal': return 'Personal'
+    case 'credit_card': return 'Credit Cards'
+    case 'medical': return 'Medical'
+    default: return 'Other'
+  }
+}
+
+function groupDebts(debts: Debt[]): Map<string, Debt[]> {
+  const groups = new Map<string, Debt[]>()
+  for (const debt of debts) {
+    if (!groups.has(debt.debt_type)) groups.set(debt.debt_type, [])
+    groups.get(debt.debt_type)!.push(debt)
+  }
+  return groups
+}
+
 export function Sidebar() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
@@ -40,8 +62,10 @@ export function Sidebar() {
   const navigate = useNavigate()
   const { data: accounts } = useAccounts(budgetId)
   const { data: budgets = [] } = useBudgets()
+  const { data: debts = [] } = useDebts(budgetId)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
+  const openDebtEditor = useUIStore((s) => s.openDebtEditor)
 
   const logout = useLogout()
 
@@ -213,6 +237,75 @@ export function Sidebar() {
             </button>
           ))}
         </>
+      )}
+
+      {!collapsed && debts.length > 0 && (
+        <>
+          <div className="sidebar__section-header">
+            <button
+              className="sidebar__section-header-link"
+              onClick={() => navigate('/debts')}
+              title="All debts"
+            >
+              Debts
+            </button>
+            <span className="sidebar__section-header-actions">
+              <span className="sidebar__total tabular negative">
+                {formatMoney(-debts.reduce((sum, d) => sum + Number(d.current_balance), 0))}
+              </span>
+              <button
+                className="sidebar__add-debt"
+                onClick={() => { openDebtEditor(null); navigate('/debts') }}
+                aria-label="Add debt"
+                title="Add debt"
+              >
+                <Plus size={12} />
+              </button>
+            </span>
+          </div>
+          {[...groupDebts(debts).entries()].map(([type, typeDebts]) => (
+            <div key={type} className="sidebar__account-group">
+              <div className="sidebar__account-type">{debtTypeLabel(type)}</div>
+              {typeDebts.map((debt) => (
+                <button
+                  key={debt.id}
+                  className="sidebar__account"
+                  onClick={() => navigate(`/debts/${debt.id}`)}
+                >
+                  <span className="sidebar__account-name">
+                    <span
+                      className={`sidebar__debt-dot ${debt.mode === 'managed' ? 'sidebar__debt-dot--managed' : ''}`}
+                      title={debt.mode === 'managed' ? 'Tracked from account' : 'Manually tracked'}
+                    />
+                    {debt.name}
+                  </span>
+                  <span className="sidebar__account-balance tabular negative">
+                    {formatMoney(-Number(debt.current_balance))}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </>
+      )}
+      {!collapsed && debts.length === 0 && budgetId && (
+        <div className="sidebar__section-header">
+          <button
+            className="sidebar__section-header-link"
+            onClick={() => navigate('/debts')}
+            title="Track a debt"
+          >
+            Debts
+          </button>
+          <button
+            className="sidebar__add-debt"
+            onClick={() => { openDebtEditor(null); navigate('/debts') }}
+            aria-label="Add debt"
+            title="Add debt"
+          >
+            <Plus size={12} />
+          </button>
+        </div>
       )}
 
       {collapsed && accounts && accounts.length > 0 && (

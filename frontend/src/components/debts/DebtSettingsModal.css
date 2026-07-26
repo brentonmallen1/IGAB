@@ -1,0 +1,215 @@
+.debt-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+  z-index: 100;
+}
+
+.debt-modal {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-lg);
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 100px);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.debt-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.debt-modal__title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.debt-modal__close {
+  color: var(--text-muted);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.debt-modal__close:hover {
+  color: var(--text-primary);
+}
+
+.debt-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+}
+
+.debt-modal__row {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.debt-modal__row .debt-modal__field {
+  flex: 1;
+  min-width: 0;
+}
+
+.debt-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.debt-modal__field input,
+.debt-modal__field select {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.debt-modal__field input:focus,
+.debt-modal__field select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--input-focus-shadow);
+}
+
+.debt-modal__mode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-md);
+}
+
+.debt-modal__mode legend {
+  padding: 0 var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.debt-modal__mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.debt-modal__mode-option--active {
+  border-color: var(--color-accent);
+  background: var(--bg-secondary);
+}
+
+.debt-modal__mode-option input {
+  margin-top: 3px;
+  accent-color: var(--color-accent);
+}
+
+.debt-modal__mode-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.debt-modal__mode-option strong {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.debt-modal__mode-option small {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.debt-modal__mode-detail {
+  margin-top: var(--spacing-xs);
+}
+
+.debt-modal__optional summary {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.debt-modal__optional[open] summary {
+  margin-bottom: var(--spacing-sm);
+}
+
+.debt-modal__error {
+  font-size: var(--font-size-xs);
+  color: var(--color-negative);
+}
+
+.debt-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--spacing-sm);
+}
+
+.debt-modal__actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.debt-modal__btn {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.debt-modal__btn--primary {
+  background-color: var(--color-accent);
+  color: var(--text-inverse);
+}
+
+.debt-modal__btn--secondary {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.debt-modal__btn--danger {
+  background-color: transparent;
+  color: var(--color-negative);
+  border: 1px solid var(--color-negative);
+}
+
+.debt-modal__btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.debt-modal__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .debt-modal__row {
+    flex-direction: column;
+  }
+}
