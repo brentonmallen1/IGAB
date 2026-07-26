@@ -1,8 +1,34 @@
-# IGAB — I've Got A Budget
+<p align="center">
+  <img src="docs/images/envelope-logo.png" alt="IGAB Logo" width="120" height="120" />
+</p>
 
-**Self-hosted envelope budgeting for your household. Your money, your rules, your hardware.**
+<h1 align="center">IGAB — I've Got A Budget</h1>
 
-IGAB is a YNAB-style zero-based budgeting app you run yourself. Give every
+<p align="center">
+  <strong>Self-hosted envelope budgeting for your household.<br/>Your money, your rules, your hardware.</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#screenshots">Screenshots</a> •
+  <a href="#getting-started">Getting Started</a> •
+  <a href="#operations">Operations</a> •
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.13-blue" alt="Python 3.13" />
+  <img src="https://img.shields.io/badge/FastAPI-async-009688" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/React-19-61dafb" alt="React 19" />
+  <img src="https://img.shields.io/badge/PostgreSQL-16-336791" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/deploy-Docker%20Compose-2496ED" alt="Docker Compose" />
+</p>
+
+---
+
+## Why IGAB?
+
+IGAB is a **zero-based envelope budgeting app** you run yourself. Give every
 dollar a job, sync transactions straight from your bank, reconcile against
 statements, and understand where your money actually goes — without a
 subscription, and without your financial history living on someone else's
@@ -12,30 +38,40 @@ Built for a small household (1–2 people) that budgets daily or weekly and
 wants a tool that is **steady, clear, and trustworthy** — not a fintech
 product trying to impress you.
 
-![Python 3.13](https://img.shields.io/badge/python-3.13-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-async-009688)
-![React 19](https://img.shields.io/badge/React-19-61dafb)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
-![Docker Compose](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED)
+### Privacy First
+
+Your financial data is deeply personal. IGAB keeps it that way:
+
+- **Runs entirely on your hardware** — your server, your database, your backups
+- **No analytics, no tracking, no telemetry** — zero data leaves your network
+- **No subscription fees** — no incentive to monetize your spending patterns
+- **Bank sync through SimpleFIN** — you control the connection, encrypted tokens stored locally
+- **Optional AI features use local Ollama** — even the AI runs on your machine
+
+### Reports That Actually Help
+
+Fourteen reports across six groups give you the visibility you need to plan and understand your finances:
+
+| Group | Reports |
+| --- | --- |
+| Overview | Spending, income, net change, ready-to-assign dashboard |
+| Financial State | Net worth, account composition, burn rate |
+| Cash Flow | Sankey money-flow diagram, income vs. expense, cash-flow variance |
+| Budget | Budget vs. actual, variance, volatility |
+| Spending | Pareto breakdown, treemap, seasonality heatmap, payee analysis |
+| Insights | Day-of-week patterns, event timeline |
+
+All reports support date-range and category/payee/account filtering.
 
 ---
 
-## Why IGAB?
+## Screenshots
 
-- **Zero-based envelope budgeting** — the proven YNAB method: assign every
-  dollar to a category, spend from envelopes, roll with the punches when you
-  overspend.
-- **Truly yours** — single-household, self-hosted, PostgreSQL-backed. No
-  subscription fees, no data mining, no sunset announcements.
-- **Bank sync without the middleman drama** — connects to your accounts via
-  [SimpleFIN](https://www.simplefin.org/), with smart transaction
-  deduplication and a review queue for anything ambiguous.
-- **A real escape hatch from YNAB** — import your full YNAB export (accounts,
-  categories, transactions, budget history) and run both in parallel until
-  you trust the numbers.
-- **Financial correctness taken seriously** — a built-in data integrity
-  suite verifies money conservation and transfer/split invariants against
-  your live budget, and the money-math core is covered by 500+ backend tests.
+<!-- Screenshots coming soon — budget grid, reports, mobile views -->
+
+*Screenshots of the budget grid, reports, and mobile interface coming soon.*
+
+---
 
 ## Features
 
@@ -57,23 +93,11 @@ product trying to impress you.
 - **SimpleFIN sync** — link multiple banks; encrypted token storage,
   similarity-scored deduplication (payee, date, amount), and a review queue
   for uncertain matches
-- **YNAB import** — full-budget import from a YNAB export ZIP with a preview
-  and account-type mapping step
+- **YNAB import** — switching from YNAB? Import your full export (accounts,
+  categories, transactions, budget history) and run both in parallel until
+  you trust the numbers
 - **CSV import** — per-account bank CSV import with configurable parsing
   (including EU decimal formats) and hash-based dedup
-
-### Reports
-Fourteen reports across six groups, all with date-range and
-category/payee/account filtering:
-
-| Group | Reports |
-| --- | --- |
-| Overview | Spending, income, net change, ready-to-assign dashboard |
-| Financial State | Net worth, account composition, burn rate |
-| Cash Flow | Sankey money-flow diagram, income vs. expense, cash-flow variance |
-| Budget | Budget vs. actual, variance, volatility |
-| Spending | Pareto breakdown, treemap, seasonality heatmap, payee analysis |
-| Insights | Day-of-week patterns, event timeline |
 
 ### Mobile & PWA
 - **Installable app** — add IGAB to your phone's home screen (manifest +
@@ -109,9 +133,16 @@ category/payee/account filtering:
   budget's invariants and points at the offending transactions
 - Single-command Docker Compose deployment with an nginx production profile
 
-## Quick Start
+---
 
-Requirements: Docker with Compose, and [`just`](https://github.com/casey/just).
+## Getting Started
+
+### Requirements
+
+- Docker with Compose
+- [`just`](https://github.com/casey/just) — command runner
+
+### Quick Start
 
 ```sh
 git clone <this-repo> igab && cd igab
@@ -121,15 +152,45 @@ just dev           # start the full stack (db, api, frontend) with live reload
 just migrate       # run database migrations
 ```
 
-Then open the frontend (the port you set in `.env`) and log in with the
+Open the frontend (the port you set in `.env`) and log in with the
 `ADMIN_EMAIL` / `ADMIN_PASSWORD` you configured — the admin user is created
 automatically on first run.
 
-For a production-style deployment, use the compose production profile
-(`just prod`): nginx serves the built frontend with proper caching, proxies
+### Explore with a Sample Budget
+
+Want to see how IGAB works before entering your own data? Generate a realistic
+sample budget with a year of transactions, categories, and scheduled items:
+
+```sh
+# Make sure the database is running
+just dev-db
+
+# Generate a sample budget for your admin user
+just sample-budget your@email.com "Demo Budget"
+```
+
+This creates a complete budget with:
+- Realistic category groups and categories with targets
+- Multiple accounts (checking, savings, credit cards)
+- A year of transaction history with varied payees
+- Scheduled recurring transactions
+- Sample reconciliations
+
+Perfect for exploring reports, testing the mobile interface, or just getting
+a feel for the workflow before importing your real data.
+
+### Production Deployment
+
+For a production-style deployment, use the compose production profile:
+
+```sh
+just prod
+```
+
+This runs nginx serving the built frontend with proper caching, proxies
 `/api` to the backend, and the daily `db-backup` service runs alongside.
 
-### Install on your phone (PWA)
+### Install on Your Phone (PWA)
 
 IGAB is an installable web app: add it to your home screen and it opens
 full-screen with its own icon, no browser chrome. Install requires the app to
@@ -169,19 +230,7 @@ All configuration lives in `.env` (see `.env.example` for the full list):
 | AI (optional) | `OLLAMA_HOST`, `OLLAMA_MODEL` |
 | Email (optional) | `SMTP_*` |
 
-## Migrating from YNAB
-
-The recommended cutover procedure — deliberate on purpose, because it's your
-money:
-
-1. Fresh database → import your YNAB export → link SimpleFIN and sync twice
-   (the second sync must report `imported: 0`).
-2. Run the integrity check — must be all green.
-3. Parallel-run one full statement cycle per account (~2–4 weeks): budget in
-   YNAB as usual, let IGAB sync daily, reconcile each statement in **both**.
-4. Switch when every account has reconciled cleanly against the bank twice in
-   a row in IGAB and a backup restore has been exercised once. Archive the
-   final YNAB export.
+---
 
 ## Operations
 
@@ -199,7 +248,7 @@ Financial data needs a backup story before it needs anything else.
   `${BACKUP_KEEP_DAYS:-30}`. Point `BACKUP_DIR` at a disk that is not the
   database's disk.
 
-### Data integrity
+### Data Integrity
 
 Settings → Data Integrity runs the live invariant suite against your budget
 (also `GET /api/v1/budgets/{id}/integrity`): money conservation between
@@ -208,13 +257,15 @@ orphaned review matches, stale bank authorizations. Run it after imports and
 before reconciling if anything ever looks off — drift shows up here first,
 with the offending transaction ids.
 
-### Fresh install / reset
+### Fresh Install / Reset
 
 ```sh
 docker compose down -v      # or: drop the database
 docker compose up -d db
 just migrate                # single squashed migration (0001)
 ```
+
+---
 
 ## Architecture
 
@@ -224,6 +275,8 @@ just migrate                # single squashed migration (0001)
 | Frontend | React 19, TypeScript, Vite, Zustand, React Query, recharts |
 | Database | PostgreSQL 16 |
 | Deployment | Docker Compose (nginx + daily backups in the production profile) |
+
+---
 
 ## Roadmap
 
@@ -235,8 +288,18 @@ just migrate                # single squashed migration (0001)
 - YNAB-compatible export — an exit strategy from IGAB itself, because a tool
   you can leave is a tool you can trust
 
-## Contributing & Development
+---
+
+## Contributing
 
 Development setup, conventions, quality gates, and testing requirements are
 documented in [CONTRIBUTING.md](CONTRIBUTING.md). Run `just` to see every
 available command.
+
+---
+
+## License
+
+<!-- TODO: Add license -->
+
+*License TBD*
