@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/envelope-logo.png" alt="IGAB Logo" width="120" height="120" />
+  <img src="docs/images/envelope-logo.svg" alt="IGAB Logo" width="120" height="120" />
 </p>
 
 <h1 align="center">IGAB — I've Got A Budget</h1>
