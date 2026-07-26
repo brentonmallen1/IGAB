@@ -18,6 +18,8 @@ from igab.db.models import (
     Budget,
     Category,
     CategoryGroup,
+    Debt,
+    DebtBalanceSnapshot,
     Payee,
     SimpleFINConnection,
     Tag,
@@ -204,6 +206,51 @@ async def create_tag(
     session.add(tag)
     await session.flush()
     return tag
+
+
+async def create_debt(
+    session: AsyncSession,
+    budget: Budget,
+    name: str | None = None,
+    *,
+    debt_type: str = "personal",
+    linked_account_id: uuid.UUID | None = None,
+    manual_balance: Decimal | None = None,
+    interest_rate: Decimal = Decimal("6.0000"),
+    minimum_payment: Decimal = Decimal("250.00"),
+    origination_date: date | None = None,
+    original_principal: Decimal | None = None,
+) -> Debt:
+    debt = Debt(
+        budget_id=budget.id,
+        name=name or _name("Debt"),
+        debt_type=debt_type,
+        linked_account_id=linked_account_id,
+        manual_balance=manual_balance,
+        interest_rate=interest_rate,
+        minimum_payment=minimum_payment,
+        origination_date=origination_date,
+        original_principal=original_principal,
+    )
+    session.add(debt)
+    await session.flush()
+    return debt
+
+
+async def create_debt_snapshot(
+    session: AsyncSession,
+    debt: Debt,
+    snapshot_date: date,
+    balance: Decimal,
+    *,
+    source: str = "manual",
+) -> DebtBalanceSnapshot:
+    snapshot = DebtBalanceSnapshot(
+        debt_id=debt.id, date=snapshot_date, balance=balance, source=source
+    )
+    session.add(snapshot)
+    await session.flush()
+    return snapshot
 
 
 @dataclass
