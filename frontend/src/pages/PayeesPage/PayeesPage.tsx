@@ -3,7 +3,7 @@ import { GitMerge, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, type PayeeWithCount } from '../../api/payees'
-import { useTags, useBulkAddPayeeTags, useCreateTag } from '../../api/tags'
+import { useTags, useBulkAddPayeeTags, useCreateTag, useSetPayeeTags } from '../../api/tags'
 import { usePayeeCleanupSuggestions, type PayeeCleanupGroup } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
@@ -21,6 +21,7 @@ export function PayeesPage() {
   const cleanup = usePayeeCleanupSuggestions(budgetId)
   const { data: allTags = [] } = useTags(budgetId)
   const bulkAddTags = useBulkAddPayeeTags(budgetId)
+  const setPayeeTags = useSetPayeeTags(budgetId)
   const createTag = useCreateTag(budgetId)
 
   const {
@@ -183,13 +184,13 @@ export function PayeesPage() {
     setShowBulkTagPicker(false)
   }
 
-  async function handleCreateTagForBulk(name: string): Promise<TagOption> {
+  async function handleCreateTagOption(name: string): Promise<TagOption> {
     const tag = await createTag.mutateAsync({ name })
     return { id: tag.id, name: tag.name, color_slot: tag.color_slot }
   }
 
   return (
-    <div className="payees-page">
+    <div className={`payees-page ${selectedCount > 0 ? 'payees-page--with-bar' : ''}`}>
       <div className="payees-header">
         <h1 className="payees-title">Payees</h1>
         <div className="payees-actions">
@@ -343,7 +344,33 @@ export function PayeesPage() {
                   )}
                 </span>
                 <span className="payees-table__tags">
-                  {p.tags && p.tags.length > 0 ? (
+                  {editingId === p.id ? (
+                    <div className="payees-table__tags-list">
+                      {(p.tags ?? []).map((tag) => (
+                        <TagChip
+                          key={tag.id}
+                          name={tag.name}
+                          colorSlot={tag.color_slot}
+                          size="sm"
+                          onRemove={() =>
+                            setPayeeTags.mutate({
+                              payeeId: p.id,
+                              tagIds: (p.tags ?? []).filter((t) => t.id !== tag.id).map((t) => t.id),
+                            })
+                          }
+                        />
+                      ))}
+                      <TagPicker
+                        selectedTagIds={(p.tags ?? []).map((t) => t.id)}
+                        tags={tagOptions}
+                        onChange={(tagIds) => setPayeeTags.mutate({ payeeId: p.id, tagIds })}
+                        onCreateTag={handleCreateTagOption}
+                        allowCreate
+                        triggerLabel="+ Tag"
+                        ghost
+                      />
+                    </div>
+                  ) : p.tags && p.tags.length > 0 ? (
                     <div className="payees-table__tags-list">
                       {p.tags.slice(0, 2).map((tag) => (
                         <TagChip key={tag.id} name={tag.name} colorSlot={tag.color_slot} size="sm" />
@@ -403,7 +430,7 @@ export function PayeesPage() {
                   selectedTagIds={[]}
                   tags={tagOptions}
                   onChange={handleBulkAddTags}
-                  onCreateTag={handleCreateTagForBulk}
+                  onCreateTag={handleCreateTagOption}
                   allowCreate
                   triggerLabel="Select tags to add"
                 />

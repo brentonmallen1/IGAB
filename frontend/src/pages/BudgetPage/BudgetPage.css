@@ -17,6 +17,11 @@
   min-width: 0;
 }
 
+/* Let the last rows scroll clear of the floating selection bar */
+.budget-page__table-container--with-bar {
+  padding-bottom: calc(var(--spacing-lg) * 2 + 72px);
+}
+
 .budget-page__no-budget {
   display: flex;
   flex-direction: column;

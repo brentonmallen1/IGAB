@@ -21,9 +21,40 @@ interface TagPickerProps {
 }
 
 interface DropdownPos {
-  top: number;
+  top?: number;
+  bottom?: number;
   left: number;
   width: number;
+  maxHeight: number;
+}
+
+// Keep the fixed-position dropdown fully on screen: clamp horizontally and
+// flip upward when the trigger sits near the bottom edge (selection bars).
+const VIEWPORT_MARGIN = 8;
+const DROPDOWN_MAX_HEIGHT = 300;
+
+function measureDropdown(rect: DOMRect): DropdownPos {
+  const width = Math.min(Math.max(rect.width, 200), 280);
+  const left = Math.max(
+    VIEWPORT_MARGIN,
+    Math.min(rect.left, window.innerWidth - width - VIEWPORT_MARGIN)
+  );
+  const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
+  const spaceAbove = rect.top - VIEWPORT_MARGIN;
+  if (spaceBelow < 160 && spaceAbove > spaceBelow) {
+    return {
+      bottom: window.innerHeight - rect.top + 2,
+      left,
+      width,
+      maxHeight: Math.min(DROPDOWN_MAX_HEIGHT, spaceAbove),
+    };
+  }
+  return {
+    top: rect.bottom + 2,
+    left,
+    width,
+    maxHeight: Math.min(DROPDOWN_MAX_HEIGHT, spaceBelow),
+  };
 }
 
 export function TagPicker({
@@ -58,11 +89,7 @@ export function TagPicker({
   function measureAndOpen() {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) {
-      setDropdownPos({
-        top: rect.bottom + 2,
-        left: rect.left,
-        width: Math.max(rect.width, 200),
-      });
+      setDropdownPos(measureDropdown(rect));
     }
     setOpen(true);
     setHighlightedIndex(0);
@@ -146,8 +173,10 @@ export function TagPicker({
       style={{
         position: 'fixed',
         top: dropdownPos.top,
+        bottom: dropdownPos.bottom,
         left: dropdownPos.left,
         minWidth: dropdownPos.width,
+        maxHeight: dropdownPos.maxHeight,
       }}
     >
       <div className="tag-picker__search">

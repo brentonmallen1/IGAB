@@ -107,7 +107,9 @@ export function BudgetPage() {
     <div className="budget-page">
       <TbaHero budgetId={budgetId} month={month} />
       <div className="budget-page__body">
-        <div className="budget-page__table-container">
+        <div
+          className={`budget-page__table-container ${selectedCount > 0 ? 'budget-page__table-container--with-bar' : ''}`}
+        >
           <BudgetTable />
         </div>
         {selectedCategoryIds.size > 0 && !isMobile && (

@@ -122,6 +122,23 @@ export function useCreateBudget() {
   })
 }
 
+export interface SampleBudgetResult {
+  budget: Budget
+  counts: Record<string, number>
+}
+
+/** One-click demo budget with 12 months of curated sample data */
+export function useCreateSampleBudget() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient.post<SampleBudgetResult>('/budgets/create-sample', {}).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['budgets'] })
+    },
+  })
+}
+
 export function useRenameBudget() {
   const qc = useQueryClient()
   return useMutation({

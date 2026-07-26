@@ -4,6 +4,7 @@ import { LogOut, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import {
   useBudgets,
   useCreateBudget,
+  useCreateSampleBudget,
   useImportYnabAsBudget,
   usePreviewYnabImport,
   useRenameBudget,
@@ -39,9 +40,11 @@ export function BudgetSelectorPage() {
 
   const { data: budgets = [], isLoading } = useBudgets()
   const createBudget = useCreateBudget()
+  const createSample = useCreateSampleBudget()
   const importYnab = useImportYnabAsBudget()
   const renameBudget = useRenameBudget()
   const deleteBudget = useDeleteBudget()
+  const [sampleError, setSampleError] = useState<string | null>(null)
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -96,6 +99,18 @@ export function BudgetSelectorPage() {
       navigate('/budget')
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create budget')
+    }
+  }
+
+  async function handleCreateSample() {
+    setSampleError(null)
+    try {
+      const result = await createSample.mutateAsync()
+      setCurrentBudgetId(result.budget.id)
+      navigate('/budget')
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSampleError(detail ?? (err instanceof Error ? err.message : 'Failed to create sample budget'))
     }
   }
 
@@ -369,6 +384,31 @@ export function BudgetSelectorPage() {
               )}
             </div>
           </form>
+        </div>
+
+        {/* Sample budget — always visible, secondary styling */}
+        <div className="selector-card selector-card--secondary">
+          <div className="selector-card__header">
+            <div className="selector-card__title">Try a Sample Budget</div>
+            <div className="selector-card__subtitle">
+              Explore IGAB with 12 months of realistic demo data
+            </div>
+          </div>
+          <div className="selector-card__body">
+            <div className="selector-card__footer">
+              <button
+                type="button"
+                className="selector-btn selector-btn--secondary"
+                onClick={handleCreateSample}
+                disabled={createSample.isPending}
+              >
+                {createSample.isPending ? 'Generating…' : 'Generate Sample Budget'}
+              </button>
+              {sampleError && (
+                <div className="selector-result selector-result--error">{sampleError}</div>
+              )}
+            </div>
+          </div>
         </div>
 
         </div>
