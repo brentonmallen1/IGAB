@@ -35,6 +35,9 @@ from igab.api.v1.schemas.report import (
     SpendingGroupedResponse,
     SpendingGroupItem,
     SpendingReportResponse,
+    SavingsCategory,
+    SavingsReportResponse,
+    SavingsSummary,
     SubscriptionPayee,
     SubscriptionsReportResponse,
     SubscriptionsSummary,
@@ -385,6 +388,22 @@ async def subscriptions_report(
     return SubscriptionsReportResponse(
         subscriptions=[SubscriptionPayee.model_validate(s) for s in data["subscriptions"]],
         summary=SubscriptionsSummary.model_validate(data["summary"]),
+        months=data["months"],
+    )
+
+
+@router.get("/{budget_id}/reports/savings", response_model=SavingsReportResponse)
+async def savings_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: int = 12,
+) -> SavingsReportResponse:
+    """Savings report — aggregates categories tagged 'savings' or 'long_term_expense'."""
+    data = await report_svc.savings_report(budget_id, months)
+    return SavingsReportResponse(
+        categories=[SavingsCategory.model_validate(c) for c in data["categories"]],
+        summary=SavingsSummary.model_validate(data["summary"]),
         months=data["months"],
     )
 
