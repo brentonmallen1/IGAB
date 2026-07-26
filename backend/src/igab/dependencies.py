@@ -27,6 +27,7 @@ from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.user_repo import UserRepository
 from igab.services.ai_service import AIService
+from igab.services.assign_service import AssignService
 from igab.services.attachment_service import AttachmentService
 from igab.services.auth_service import AuthService
 from igab.services.budget_service import BudgetService
@@ -160,6 +161,22 @@ def get_budget_service(
         assignment_repo,
         transaction_repo,
         move_repo=move_repo,
+    )
+
+
+def get_assign_service(
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    target_repo: Annotated[TargetRepository, Depends(get_target_repo)],
+    target_service: Annotated[TargetService, Depends(get_target_service)],
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    category_group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
+) -> AssignService:
+    return AssignService(
+        budget_service,
+        target_repo,
+        target_service,
+        category_repo,
+        category_group_repo,
     )
 
 

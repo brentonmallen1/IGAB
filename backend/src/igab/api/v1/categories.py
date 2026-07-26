@@ -6,7 +6,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from igab.api.v1.schemas.category import (
+    AssignApplyRequest,
+    AssignApplyResponse,
     AssignmentUpdate,
+    AssignPreviewItemOut,
+    AssignPreviewResponse,
+    AssignStrategyTotal,
+    AssignStrategyTotalsResponse,
     AutoAssignRequest,
     BudgetMonthResponse,
     BudgetMoveResponse,
@@ -34,6 +40,7 @@ from igab.dependencies import (
     CategoryAccess,
     CategoryGroupAccess,
     CurrentUser,
+    get_assign_service,
     get_budget_service,
     get_category_group_repo,
     get_category_repo,
@@ -43,6 +50,7 @@ from igab.dependencies import (
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
+from igab.services.assign_service import AssignPreview, AssignService
 from igab.services.budget_service import BudgetService
 from igab.services.target_service import TargetService
 
@@ -457,6 +465,95 @@ async def fill_targets_apply(
             await budget_service.set_assignment(
                 budget_id, item.category_id, body.month, item.new_assigned
             )
+
+
+# ─── Assign Strategies (TBA hero dropdown) ────────────────────────────────────
+
+
+def _assign_preview_out(preview: AssignPreview) -> AssignPreviewResponse:
+    return AssignPreviewResponse(
+        strategy=preview.strategy,
+        items=[
+            AssignPreviewItemOut(
+                category_id=i.category_id,
+                category_name=i.category_name,
+                current_assigned=i.current_assigned,
+                delta=i.delta,
+                new_assigned=i.new_assigned,
+            )
+            for i in preview.items
+        ],
+        total_needed=preview.total_needed,
+        to_assign=preview.to_assign,
+        to_return=preview.to_return,
+        tba_before=preview.tba_before,
+        tba_after=preview.tba_after,
+    )
+
+
+@router.get("/{budget_id}/assign/strategies", response_model=AssignStrategyTotalsResponse)
+async def assign_strategy_totals(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    assign_service: Annotated[AssignService, Depends(get_assign_service)],
+    month: date = Query(...),
+) -> AssignStrategyTotalsResponse:
+    """Per-strategy totals for the Assign dropdown menu — one call, all rows."""
+    totals = await assign_service.strategy_totals(budget_id, month)
+    return AssignStrategyTotalsResponse(
+        month=totals.month,
+        tba=totals.tba,
+        total_overspent=totals.total_overspent,
+        strategies=[
+            AssignStrategyTotal(
+                strategy=p.strategy,
+                total_amount=p.total_amount,
+                total_needed=p.total_needed,
+                to_assign=p.to_assign,
+                to_return=p.to_return,
+                affected_count=p.affected_count,
+            )
+            for p in totals.strategies
+        ],
+    )
+
+
+@router.get("/{budget_id}/assign/preview", response_model=AssignPreviewResponse)
+async def assign_strategy_preview(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    assign_service: Annotated[AssignService, Depends(get_assign_service)],
+    month: date = Query(...),
+    strategy: str = Query(...),
+) -> AssignPreviewResponse:
+    try:
+        preview = await assign_service.preview(budget_id, month, strategy)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+    return _assign_preview_out(preview)
+
+
+@router.post("/{budget_id}/assign/apply", response_model=AssignApplyResponse)
+async def assign_strategy_apply(
+    budget_id: BudgetAccess,
+    body: AssignApplyRequest,
+    current_user: CurrentUser,
+    assign_service: Annotated[AssignService, Depends(get_assign_service)],
+) -> AssignApplyResponse:
+    """Recompute the strategy server-side and apply it through move_money.
+
+    The body carries no amounts on purpose: applied deltas are derived from
+    live balances, so a stale preview can never over- or mis-assign."""
+    try:
+        applied = await assign_service.apply(budget_id, body.month, body.strategy)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+    return AssignApplyResponse(
+        to_assign=applied.to_assign,
+        to_return=applied.to_return,
+        categories_changed=applied.affected_count,
+        tba_after=applied.tba_after,
+    )
 
 
 @router.get(

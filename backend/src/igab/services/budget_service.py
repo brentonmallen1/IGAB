@@ -275,8 +275,10 @@ class BudgetService:
         assignments = await self.assignment_repo.get_for_category(category_id)
         assigned_by_month = {a.month: a.assigned for a in assignments}
 
+        # Activity through the most RECENT past month (past_months[0]); the
+        # current month's spending must not leak into history.
         activity_by_month = await self.transaction_repo.sum_by_category_by_month(
-            category_id, end_date=last_of_month(past_months[-1] if past_months else month_start)
+            category_id, end_date=last_of_month(past_months[0] if past_months else month_start)
         )
         # activity is negative for spending; flip sign for "spent" values
         spent_by_month = {m: -v for m, v in activity_by_month.items() if v < 0}
