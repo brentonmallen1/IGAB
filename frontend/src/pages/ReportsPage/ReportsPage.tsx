@@ -23,6 +23,7 @@ import { SeasonalityReport } from '../../components/reports/charts/SeasonalityHe
 import { PayeeReport } from '../../components/reports/charts/PayeeChart'
 import { DayPatternsReport } from '../../components/reports/charts/DayOfWeekChart'
 import { TimelineReport } from '../../components/reports/charts/EventTimeline'
+import { DebtsReport } from '../../components/reports/charts/DebtsReport'
 import './ReportsPage.css'
 
 const GROUP_LABELS: Record<TabGroup, string> = {
@@ -51,6 +52,7 @@ export function ReportsPage() {
       case 'overview': return <OverviewReport budgetId={budgetId!} />
       case 'net-worth': return <NetWorthReport budgetId={budgetId!} />
       case 'account-composition': return <AccountCompositionReport budgetId={budgetId!} />
+      case 'debts': return <DebtsReport budgetId={budgetId!} />
       case 'income-expense': return <IncomeExpenseReport budgetId={budgetId!} />
       case 'burn-rate': return <BurnRateReport budgetId={budgetId!} />
       case 'cash-flow': return <CashFlowSankeyReport budgetId={budgetId!} />
