@@ -76,23 +76,11 @@
   color: var(--text-inverse);
   font-size: var(--font-size-sm);
   font-weight: 600;
-  border-radius: var(--border-radius-sm) 0 0 var(--border-radius-sm);
+  border-radius: var(--border-radius-sm);
   transition: background-color var(--transition-fast);
 }
 
-.tba-hero__assign-caret {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 5px;
-  background-color: var(--color-accent);
-  color: var(--text-inverse);
-  border-left: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
-  transition: background-color var(--transition-fast);
-}
-
-.tba-hero__assign-main:hover,
-.tba-hero__assign-caret:hover {
+.tba-hero__assign-main:hover {
   background-color: var(--color-accent-hover);
 }
 

@@ -1,15 +1,16 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import { ChevronDown, Wand2 } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useUIStore } from '../../../stores/uiStore'
 import { formatMoney } from '../../../utils/money'
-import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
-import { AutoAssignModal } from '../AutoAssignModal/AutoAssignModal'
+import { AssignDropdown, AssignDropdownContent } from '../AssignDropdown/AssignDropdown'
+import { AssignPreviewModal } from '../AssignPreviewModal/AssignPreviewModal'
 import { CoverOverspentModal } from './CoverOverspentModal'
 import { TbaDrawer } from './TbaDrawer'
+import type { AssignStrategy } from '../../../types'
 import './TbaHero.css'
 
 interface Props {
@@ -19,8 +20,9 @@ interface Props {
 
 /**
  * The centerpiece of the budget page: To Be Assigned, up and center, with the
- * money-movement actions attached — assign to targets, cover overspending,
- * and a drawer holding the overspending summary and the month's move log.
+ * money-movement actions attached — the Assign dropdown (auto strategies +
+ * manual assign), cover overspending, and a drawer holding the overspending
+ * summary and the month's move log.
  */
 export function TbaHero({ budgetId, month }: Props) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
@@ -30,12 +32,12 @@ export function TbaHero({ budgetId, month }: Props) {
 
   const drawerOpen = useUIStore((s) => s.tbaDrawerOpen)
   const setDrawerOpen = useUIStore((s) => s.setTbaDrawerOpen)
-  const showAutoAssign = useUIStore((s) => s.isAutoAssignOpen)
-  const setShowAutoAssign = useUIStore((s) => s.setAutoAssignOpen)
+  const assignOpen = useUIStore((s) => s.assignDropdownOpen)
+  const setAssignOpen = useUIStore((s) => s.setAssignDropdownOpen)
+  const previewStrategy = useUIStore((s) => s.assignPreviewStrategy)
+  const setPreviewStrategy = useUIStore((s) => s.setAssignPreviewStrategy)
   const showCover = useUIStore((s) => s.isCoverOverspentOpen)
   const setShowCover = useUIStore((s) => s.setCoverOverspentOpen)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
   const assignRef = useRef<HTMLDivElement>(null)
 
   const tba = budgetMonth?.to_be_assigned ?? 0
@@ -52,23 +54,14 @@ export function TbaHero({ budgetId, month }: Props) {
     ).length
   }, [budgetMonth, categories, groups])
 
-  const menuItems: ContextMenuItem[] = [
-    { id: 'targets', label: 'Auto-assign to targets' },
-    ...(overspent > 0
-      ? [{ id: 'cover', label: `Cover overspending (${formatMoney(-overspent)})` }]
-      : []),
-  ]
-
-  function openMenu() {
-    const rect = assignRef.current?.getBoundingClientRect()
-    if (rect) setMenuPos({ x: rect.left, y: rect.bottom + 4 })
-    setMenuOpen(true)
+  function handlePickStrategy(strategy: AssignStrategy) {
+    setAssignOpen(false)
+    setPreviewStrategy(strategy)
   }
 
-  function handleMenuSelect(id: string) {
-    setMenuOpen(false)
-    if (id === 'targets') setShowAutoAssign(true)
-    if (id === 'cover') setShowCover(true)
+  function handleCoverFromDropdown() {
+    setAssignOpen(false)
+    setShowCover(true)
   }
 
   function openCoverFromDrawer() {
@@ -99,19 +92,14 @@ export function TbaHero({ budgetId, month }: Props) {
           <div className="tba-hero__assign" ref={assignRef}>
             <button
               className="tba-hero__assign-main"
-              onClick={() => setShowAutoAssign(true)}
-              title="Auto-assign to targets"
+              onClick={() => setAssignOpen(!assignOpen)}
+              aria-expanded={assignOpen}
+              aria-haspopup="menu"
+              title="Assign money"
             >
               <Wand2 size={13} />
               Assign
-            </button>
-            <button
-              className="tba-hero__assign-caret"
-              onClick={openMenu}
-              aria-label="More assign actions"
-              aria-haspopup="menu"
-            >
-              <ChevronDown size={14} />
+              <ChevronDown size={13} />
             </button>
           </div>
 
@@ -151,17 +139,43 @@ export function TbaHero({ budgetId, month }: Props) {
         </BottomSheet>
       )}
 
-      {menuOpen && (
-        <ContextMenu
-          items={menuItems}
-          onSelect={handleMenuSelect}
-          onClose={() => setMenuOpen(false)}
-          position={menuPos}
+      {assignOpen && !isMobile && (
+        <AssignDropdown
+          anchorRef={assignRef}
+          budgetId={budgetId}
+          month={month}
+          tba={Number(tba)}
+          onPickStrategy={handlePickStrategy}
+          onCoverOverspent={handleCoverFromDropdown}
+          onClose={() => setAssignOpen(false)}
         />
       )}
+      {isMobile && (
+        <BottomSheet
+          open={assignOpen}
+          onClose={() => setAssignOpen(false)}
+          height="auto"
+          title="Assign"
+          historyKey="assign-menu"
+        >
+          <AssignDropdownContent
+            budgetId={budgetId}
+            month={month}
+            tba={Number(tba)}
+            onPickStrategy={handlePickStrategy}
+            onCoverOverspent={handleCoverFromDropdown}
+            onClose={() => setAssignOpen(false)}
+          />
+        </BottomSheet>
+      )}
 
-      {showAutoAssign && (
-        <AutoAssignModal budgetId={budgetId} month={month} onClose={() => setShowAutoAssign(false)} />
+      {previewStrategy !== null && (
+        <AssignPreviewModal
+          budgetId={budgetId}
+          month={month}
+          strategy={previewStrategy}
+          onClose={() => setPreviewStrategy(null)}
+        />
       )}
       {showCover && (
         <CoverOverspentModal budgetId={budgetId} month={month} onClose={() => setShowCover(false)} />

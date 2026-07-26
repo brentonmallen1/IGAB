@@ -31,7 +31,7 @@ export function CommandPalette() {
   const closePalette = useUIStore((s) => s.closePalette)
   const togglePalette = useUIStore((s) => s.togglePalette)
   const openQuickAdd = useUIStore((s) => s.openQuickAdd)
-  const setAutoAssignOpen = useUIStore((s) => s.setAutoAssignOpen)
+  const setAssignPreviewStrategy = useUIStore((s) => s.setAssignPreviewStrategy)
   const setCoverOverspentOpen = useUIStore((s) => s.setCoverOverspentOpen)
   const setTbaDrawerOpen = useUIStore((s) => s.setTbaDrawerOpen)
   const setActiveBudgetView = useUIStore((s) => s.setActiveBudgetView)
@@ -91,7 +91,7 @@ export function CommandPalette() {
   const ctx: CommandCtx = {
     navigate: (to) => navigate(to),
     openQuickAdd,
-    openAutoAssign: () => setAutoAssignOpen(true),
+    openAutoAssign: () => setAssignPreviewStrategy('underfunded'),
     openCoverOverspent: () => setCoverOverspentOpen(true),
     openTbaDrawer: () => setTbaDrawerOpen(true),
     goMonth: (delta) =>

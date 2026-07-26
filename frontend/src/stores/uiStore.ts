@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { AssignStrategy } from '../types'
 
 type TransactionSortColumn = 'date' | 'payee' | 'category' | 'memo' | 'amount'
 type SortDirection = 'asc' | 'desc'
@@ -95,8 +96,10 @@ interface UIState {
   togglePalette: () => void
 
   // TBA hero (store-driven so the palette can trigger them from anywhere)
-  isAutoAssignOpen: boolean
-  setAutoAssignOpen: (open: boolean) => void
+  assignDropdownOpen: boolean
+  setAssignDropdownOpen: (open: boolean) => void
+  assignPreviewStrategy: AssignStrategy | null
+  setAssignPreviewStrategy: (strategy: AssignStrategy | null) => void
   isCoverOverspentOpen: boolean
   setCoverOverspentOpen: (open: boolean) => void
   tbaDrawerOpen: boolean
@@ -311,8 +314,10 @@ export const useUIStore = create<UIState>((set, get) => ({
   closePalette: () => set({ isPaletteOpen: false }),
   togglePalette: () => set((s) => ({ isPaletteOpen: !s.isPaletteOpen })),
 
-  isAutoAssignOpen: false,
-  setAutoAssignOpen: (open) => set({ isAutoAssignOpen: open }),
+  assignDropdownOpen: false,
+  setAssignDropdownOpen: (open) => set({ assignDropdownOpen: open }),
+  assignPreviewStrategy: null,
+  setAssignPreviewStrategy: (strategy) => set({ assignPreviewStrategy: strategy }),
   isCoverOverspentOpen: false,
   setCoverOverspentOpen: (open) => set({ isCoverOverspentOpen: open }),
   tbaDrawerOpen: false,
