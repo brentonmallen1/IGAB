@@ -212,6 +212,12 @@ class Category(Base):
     linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
     )
+    # For debt payment categories — this category's outflows feed the debt's
+    # payment history. Mutually exclusive with linked_account_id (service-
+    # layer enforced, not a DB constraint).
+    linked_debt_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("debts.id", ondelete="SET NULL")
+    )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -224,6 +230,9 @@ class Category(Base):
     budget: Mapped["Budget"] = relationship(back_populates="categories")
     linked_account: Mapped["Account | None"] = relationship(
         back_populates="linked_category", foreign_keys=[linked_account_id]
+    )
+    linked_debt: Mapped["Debt | None"] = relationship(
+        back_populates="linked_category", foreign_keys=[linked_debt_id]
     )
     assignments: Mapped[list["BudgetAssignment"]] = relationship(back_populates="category")
     target: Mapped["CategoryTarget | None"] = relationship(back_populates="category", uselist=False)
@@ -708,3 +717,75 @@ class Tag(Base):
         secondary=category_tags, back_populates="tags"
     )
     payees: Mapped[list["Payee"]] = relationship(secondary=payee_tags, back_populates="tags")
+
+
+# ─── Debts ────────────────────────────────────────────────────────────────────
+
+
+class Debt(Base):
+    """A first-class debt, independent of whether a full Account exists.
+
+    linked_account_id set  ⇒ "managed": balance and payment history derive
+    from that account's ledger.
+    linked_account_id null ⇒ "unmanaged": balance is manual_balance; payments
+    come from a linked budget category (Category.linked_debt_id) or manual
+    balance snapshots.
+    """
+
+    __tablename__ = "debts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # 'mortgage'|'auto'|'student'|'personal'|'credit_card'|'medical'|'other'
+    debt_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), unique=True
+    )
+    # Authoritative only when linked_account_id IS NULL
+    manual_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    # Annual percent, e.g. 6.2500
+    interest_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False)
+    # Contractual payment — drives the baseline schedule
+    minimum_payment: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    compounding: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
+    origination_date: Mapped[_PyDate | None] = mapped_column(Date)
+    original_principal: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    budget: Mapped["Budget"] = relationship()
+    linked_account: Mapped["Account | None"] = relationship(foreign_keys=[linked_account_id])
+    linked_category: Mapped["Category | None"] = relationship(
+        back_populates="linked_debt", foreign_keys="Category.linked_debt_id"
+    )
+    snapshots: Mapped[list["DebtBalanceSnapshot"]] = relationship(
+        back_populates="debt", passive_deletes=True, order_by="DebtBalanceSnapshot.date"
+    )
+
+
+class DebtBalanceSnapshot(Base):
+    """Manual balance point for an unmanaged debt — one per day at most."""
+
+    __tablename__ = "debt_balance_snapshots"
+    __table_args__ = (UniqueConstraint("debt_id", "date", name="uq_debt_snapshot_date"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    debt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("debts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False)  # type: ignore[reportGeneralTypeIssues]
+    balance: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), default="manual", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    debt: Mapped["Debt"] = relationship(back_populates="snapshots")
