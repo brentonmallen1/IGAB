@@ -16,6 +16,10 @@ from igab.dependencies import (
     get_category_group_repo,
     get_category_repo,
     get_payee_repo,
+    get_reconciliation_repo,
+    get_scheduled_transaction_repo,
+    get_tag_repo,
+    get_target_repo,
     get_transaction_repo,
     get_transaction_service,
 )
@@ -27,6 +31,10 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.payee_repo import PayeeRepository
+from igab.repositories.reconciliation_repo import ReconciliationRepository
+from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
+from igab.repositories.tag_repo import TagRepository
+from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.transaction_service import TransactionService
 
@@ -146,6 +154,93 @@ async def import_ynab_as_budget(
             assignments=result.assignments_imported,
             errors=result.errors,
         ),
+    )
+
+
+class SampleBudgetRequest(BaseModel):
+    name: str | None = None
+
+
+class SampleBudgetCounts(BaseModel):
+    accounts: int
+    category_groups: int
+    categories: int
+    payees: int
+    tags_linked: int
+    targets: int
+    transactions: int
+    assignments: int
+    scheduled: int
+    reconciliations: int
+
+
+class SampleBudgetResponse(BaseModel):
+    budget: BudgetResponse
+    counts: SampleBudgetCounts
+
+
+@router.post(
+    "/budgets/create-sample",
+    response_model=SampleBudgetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_sample_budget(
+    current_user: CurrentUser,
+    body: SampleBudgetRequest | None = None,
+    session: AsyncSession = Depends(get_session),
+    account_repo: AccountRepository = Depends(get_account_repo),
+    category_group_repo: CategoryGroupRepository = Depends(get_category_group_repo),
+    category_repo: CategoryRepository = Depends(get_category_repo),
+    payee_repo: PayeeRepository = Depends(get_payee_repo),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repo),
+    assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
+    tag_repo: TagRepository = Depends(get_tag_repo),
+    target_repo: TargetRepository = Depends(get_target_repo),
+    scheduled_repo: ScheduledTransactionRepository = Depends(get_scheduled_transaction_repo),
+    reconciliation_repo: ReconciliationRepository = Depends(get_reconciliation_repo),
+) -> SampleBudgetResponse:
+    """Create a budget pre-filled with 12 months of curated demo data.
+
+    A one-click throwaway: on a name collision the name is auto-suffixed
+    ("Sample Budget 2", …) instead of erroring.
+    """
+    from igab.repositories.tag_repo import seed_system_tags
+    from igab.sample_budget.generator import SampleBudgetGenerator
+
+    base_name = (body.name.strip() if body and body.name else "") or "Sample Budget"
+    existing = await session.execute(select(Budget.name).where(Budget.user_id == current_user.id))
+    taken = {name.lower() for (name,) in existing}
+    name = base_name
+    suffix = 2
+    while name.lower() in taken:
+        name = f"{base_name} {suffix}"
+        suffix += 1
+
+    budget = Budget(user_id=current_user.id, name=name, currency_code="USD")
+    session.add(budget)
+    await session.flush()
+    await session.refresh(budget)
+    await seed_system_tags(session, budget.id)
+
+    generator = SampleBudgetGenerator(
+        session,
+        budget.id,
+        account_repo=account_repo,
+        category_group_repo=category_group_repo,
+        category_repo=category_repo,
+        payee_repo=payee_repo,
+        transaction_repo=transaction_repo,
+        assignment_repo=assignment_repo,
+        tag_repo=tag_repo,
+        target_repo=target_repo,
+        scheduled_repo=scheduled_repo,
+        reconciliation_repo=reconciliation_repo,
+    )
+    counts = await generator.generate()
+
+    return SampleBudgetResponse(
+        budget=BudgetResponse.model_validate(budget),
+        counts=SampleBudgetCounts(**vars(counts)),
     )
 
 

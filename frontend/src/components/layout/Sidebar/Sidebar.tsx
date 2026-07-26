@@ -107,10 +107,10 @@ export function Sidebar() {
         </button>
       </div>
 
-      {currentBudgetName && !collapsed && (
+      {!collapsed && (
         <button className="sidebar__budget-back" onClick={handleAllBudgets} title="Switch budget">
           <ChevronLeft size={14} />
-          <span className="sidebar__budget-name">{currentBudgetName}</span>
+          <span className="sidebar__budget-name">{currentBudgetName ?? 'All budgets'}</span>
         </button>
       )}
 

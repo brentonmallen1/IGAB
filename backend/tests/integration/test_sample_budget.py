@@ -1,0 +1,254 @@
+"""Sample budget generation: entity coverage, financial shape, and integrity.
+
+The generator promises a demo-ready budget for ANY anchor date: TBA exactly
+on target, exactly one intentionally overspent category, and every invariant
+green. These tests pin those promises with a fixed anchor plus the endpoint
+flow with today's date.
+"""
+
+import uuid
+from datetime import date, timedelta
+from decimal import Decimal
+
+from igab.db.models import Budget, ScheduledTransaction, Transaction
+from igab.repositories.account_repo import AccountRepository
+from igab.repositories.category_repo import (
+    BudgetAssignmentRepository,
+    CategoryGroupRepository,
+    CategoryRepository,
+)
+from igab.repositories.payee_repo import PayeeRepository
+from igab.repositories.reconciliation_repo import ReconciliationRepository
+from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.repositories.target_repo import TargetRepository
+from igab.repositories.transaction_repo import TransactionRepository
+from igab.sample_budget.generator import SampleBudgetGenerator
+from igab.services.budget_service import BudgetService
+from igab.services.integrity_service import IntegrityService
+from sqlalchemy import select
+
+from .factories import create_budget, create_user
+
+ANCHOR = date(2026, 7, 25)
+
+
+async def generate_sample(session, budget) -> "SampleBudgetGenerator":
+    await seed_system_tags(session, budget.id)
+    generator = SampleBudgetGenerator(
+        session,
+        budget.id,
+        account_repo=AccountRepository(session),
+        category_group_repo=CategoryGroupRepository(session),
+        category_repo=CategoryRepository(session),
+        payee_repo=PayeeRepository(session),
+        transaction_repo=TransactionRepository(session),
+        assignment_repo=BudgetAssignmentRepository(session),
+        tag_repo=TagRepository(session),
+        target_repo=TargetRepository(session),
+        scheduled_repo=ScheduledTransactionRepository(session),
+        reconciliation_repo=ReconciliationRepository(session),
+    )
+    generator.result = await generator.generate(anchor=ANCHOR)  # type: ignore[attr-defined]
+    return generator
+
+
+async def _transactions(session, budget_id) -> list[Transaction]:
+    result = await session.execute(
+        select(Transaction).where(Transaction.budget_id == budget_id)
+    )
+    return list(result.scalars().all())
+
+
+async def test_generation_covers_every_entity_kind(db_session):
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    gen = await generate_sample(db_session, budget)
+    counts = gen.result
+
+    accounts = await AccountRepository(db_session).get_all(budget.id)
+    types = {a.account_type for a in accounts}
+    assert counts.accounts == 5
+    assert {"checking", "savings", "credit_card", "loan", "tracking"} <= types
+
+    txns = await _transactions(db_session, budget.id)
+    assert counts.transactions == len(txns)
+    assert counts.transactions < 1000
+
+    # Split parent with children that sum to it
+    parents = [t for t in txns if t.is_split]
+    assert parents
+    parent = parents[0]
+    children = [t for t in txns if t.parent_transaction_id == parent.id]
+    assert len(children) >= 2
+    assert sum((c.amount for c in children), Decimal("0")) == parent.amount
+
+    # At least one zero-sum mutually linked transfer pair
+    by_id = {t.id: t for t in txns}
+    linked = [t for t in txns if t.transfer_id is not None]
+    assert linked
+    leg = linked[0]
+    partner = by_id[leg.transfer_id]
+    assert partner.transfer_id == leg.id
+    assert leg.amount == -partner.amount
+
+    # Targets: three distinct types
+    categories = await CategoryRepository(db_session).get_all(budget.id, include_hidden=True)
+    targets = await TargetRepository(db_session).get_by_category_ids([c.id for c in categories])
+    assert {t.target_type for t in targets} >= {
+        "needed_for_spending",
+        "savings_balance",
+        "monthly_funding",
+    }
+
+    # Scheduled transactions, incl. a transfer and a twice-monthly paycheck
+    scheduled = await ScheduledTransactionRepository(db_session).get_all(budget.id)
+    assert len(scheduled) == 5
+    assert any(s.transfer_account_id is not None for s in scheduled)
+    assert any(s.frequency == "twice_monthly" and s.second_day_of_month == 15 for s in scheduled)
+
+    # Reconciliation snapshot matches the sum of reconciled checking rows
+    checking = next(a for a in accounts if a.account_type == "checking")
+    snaps = await ReconciliationRepository(db_session).get_history(checking.id)
+    assert len(snaps) == 1
+    reconciled_sum = sum(
+        (
+            t.amount
+            for t in txns
+            if t.account_id == checking.id
+            and t.cleared == "reconciled"
+            and t.parent_transaction_id is None
+        ),
+        Decimal("0"),
+    )
+    assert snaps[0].statement_balance == reconciled_sum
+    assert checking.last_reconciled_balance == reconciled_sum
+
+    # Tag links on categories and payees; Visa Payment linked to the card
+    tag_repo = TagRepository(db_session)
+    cat_tags = await tag_repo.get_tags_for_categories([c.id for c in categories])
+    assert any(tags for tags in cat_tags.values())
+    payees = await PayeeRepository(db_session).get_all(budget.id)
+    payee_tags = await tag_repo.get_tags_for_payees([p.id for p in payees])
+    assert any(tags for tags in payee_tags.values())
+    visa_payment = next(c for c in categories if c.name == "Visa Payment")
+    visa_account = next(a for a in accounts if a.account_type == "credit_card")
+    assert visa_payment.linked_account_id == visa_account.id
+
+
+async def test_dates_span_the_window_and_scheduled_are_future(db_session):
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await generate_sample(db_session, budget)
+
+    txns = await _transactions(db_session, budget.id)
+    window_start = ANCHOR - timedelta(days=398)  # 13 months, with slack
+    assert all(window_start <= t.date <= ANCHOR for t in txns)
+
+    # At least one transaction in each of the trailing 12 months
+    month_keys = {(t.date.year, t.date.month) for t in txns}
+    y, m = ANCHOR.year, ANCHOR.month
+    for _ in range(12):
+        assert (y, m) in month_keys
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+
+    result = await db_session.execute(
+        select(ScheduledTransaction).where(ScheduledTransaction.budget_id == budget.id)
+    )
+    for sched in result.scalars():
+        assert sched.next_occurrence_date > ANCHOR
+
+
+async def test_budget_summary_hits_target_with_one_overspend(db_session):
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await generate_sample(db_session, budget)
+
+    service = BudgetService(
+        AccountRepository(db_session),
+        CategoryRepository(db_session),
+        CategoryGroupRepository(db_session),
+        BudgetAssignmentRepository(db_session),
+        TransactionRepository(db_session),
+    )
+    summary = await service.get_budget_summary(budget.id, ANCHOR.replace(day=1))
+    assert summary.to_be_assigned == Decimal("150.00")
+    assert summary.total_overspent == Decimal("45.00")
+
+    categories = await CategoryRepository(db_session).get_all(budget.id, include_hidden=True)
+    names = {c.id: c.name for c in categories}
+    overspent = [names[b.category_id] for b in summary.category_balances if b.available < 0]
+    assert overspent == ["Dining Out"]
+
+
+async def test_integrity_all_green(db_session):
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await generate_sample(db_session, budget)
+
+    report = await IntegrityService(db_session).run(budget.id)
+    assert report.all_passed, [
+        (c.name, c.details) for c in report.checks if not c.passed
+    ]
+
+
+async def test_same_anchor_runs_are_identical(db_session):
+    user = await create_user(db_session)
+    budget_a = await create_budget(db_session, user)
+    budget_b = await create_budget(db_session, user)
+    await generate_sample(db_session, budget_a)
+    await generate_sample(db_session, budget_b)
+
+    async def signature(budget_id) -> list[tuple]:
+        txns = await _transactions(db_session, budget_id)
+        payees = await PayeeRepository(db_session).get_all(budget_id)
+        payee_names = {p.id: p.name for p in payees}
+        return sorted(
+            (t.date, t.amount, payee_names.get(t.payee_id), t.cleared, t.is_split)
+            for t in txns
+        )
+
+    assert await signature(budget_a.id) == await signature(budget_b.id)
+
+
+async def test_endpoint_creates_and_auto_suffixes(api_client):
+    first = await api_client.post("/api/v1/budgets/create-sample", json={})
+    assert first.status_code == 201, first.text
+    body = first.json()
+    assert body["budget"]["name"] == "Sample Budget"
+    assert body["counts"]["transactions"] > 0
+    assert body["counts"]["scheduled"] == 5
+
+    second = await api_client.post("/api/v1/budgets/create-sample", json={})
+    assert second.status_code == 201
+    assert second.json()["budget"]["name"] == "Sample Budget 2"
+
+
+async def test_endpoint_result_is_demo_ready_today(api_client, db_session):
+    """The endpoint path (anchor = today) also lands on the exact targets."""
+    response = await api_client.post(
+        "/api/v1/budgets/create-sample", json={"name": "Tour"}
+    )
+    assert response.status_code == 201
+    budget_id = uuid.UUID(response.json()["budget"]["id"])
+
+    from igab.utils.clock import today_utc
+
+    service = BudgetService(
+        AccountRepository(db_session),
+        CategoryRepository(db_session),
+        CategoryGroupRepository(db_session),
+        BudgetAssignmentRepository(db_session),
+        TransactionRepository(db_session),
+    )
+    summary = await service.get_budget_summary(budget_id, today_utc().replace(day=1))
+    assert summary.to_be_assigned == Decimal("150.00")
+    assert summary.total_overspent == Decimal("45.00")
+
+    report = await IntegrityService(db_session).run(budget_id)
+    assert report.all_passed
+
+    result = await db_session.execute(select(Budget).where(Budget.id == budget_id))
+    assert result.scalar_one().name == "Tour"
