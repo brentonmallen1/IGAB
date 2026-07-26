@@ -243,15 +243,24 @@ export function useSpendingGroupedReport(
   endDate?: string,
   categoryIds?: string[],
   accountIds?: string[],
+  excludeSavings?: boolean,
 ) {
   const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'spending-grouped', budgetId, startDate, endDate, catParam, acctParam],
+    queryKey: ['reports', 'spending-grouped', budgetId, startDate, endDate, catParam, acctParam, excludeSavings],
     queryFn: async () => {
       const { data } = await apiClient.get<SpendingGroupedReport>(
         `/${budgetId}/reports/spending-grouped`,
-        { params: params({ start_date: startDate, end_date: endDate, category_ids: catParam, account_ids: acctParam }) },
+        {
+          params: params({
+            start_date: startDate,
+            end_date: endDate,
+            category_ids: catParam,
+            account_ids: acctParam,
+            exclude_savings: excludeSavings ? 'true' : undefined,
+          }),
+        },
       )
       return data
     },

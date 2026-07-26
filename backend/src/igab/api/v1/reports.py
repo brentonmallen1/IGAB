@@ -243,13 +243,16 @@ async def spending_grouped_report(
     end_date: date | None = None,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
+    exclude_savings: bool = False,
 ) -> SpendingGroupedResponse:
     today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
-    items, total = await report_svc.spending_grouped(budget_id, start, end, cat_ids, acct_ids)
+    items, total = await report_svc.spending_grouped(
+        budget_id, start, end, cat_ids, acct_ids, exclude_savings=exclude_savings
+    )
     return SpendingGroupedResponse(
         groups=[SpendingGroupItem.model_validate(i) for i in items],
         total=total,
