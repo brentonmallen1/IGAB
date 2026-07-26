@@ -403,8 +403,12 @@ async def test_underfunded_with_no_tba_proposes_nothing(db_session):
     assert moves == []
 
 
-async def test_underfunded_matches_legacy_fill_targets_preview(api_client, db_session):
-    """Numeric parity with the legacy endpoint it replaces (pre-deletion)."""
+async def test_underfunded_preview_via_api_pins_values(api_client, db_session):
+    """API-level underfunded preview pins the fill-targets math exactly.
+
+    (Numeric parity with the legacy /auto-assign/preview endpoint was
+    verified before that endpoint was removed; these are the same numbers.)
+    """
     services = make_services(db_session)
     budget = await create_budget(db_session, api_client.test_user)
     checking = await create_account(db_session, budget, "Checking")
@@ -425,25 +429,21 @@ async def test_underfunded_matches_legacy_fill_targets_preview(api_client, db_se
         category_id=dining.id, target_type="monthly_funding", target_amount=Decimal("100.00")
     )
 
-    legacy = await api_client.get(
-        f"/api/v1/{budget.id}/auto-assign/preview", params={"month": "2026-07-01"}
-    )
-    new = await api_client.get(
+    resp = await api_client.get(
         f"/api/v1/{budget.id}/assign/preview",
         params={"month": "2026-07-01", "strategy": "underfunded"},
     )
-    assert legacy.status_code == 200 and new.status_code == 200
-    legacy_body, new_body = legacy.json(), new.json()
+    assert resp.status_code == 200
+    body = resp.json()
 
-    legacy_items = {i["category_id"]: i for i in legacy_body["items"]}
-    new_items = {i["category_id"]: i for i in new_body["items"]}
-    assert legacy_items.keys() == new_items.keys()
-    for cat_id, li in legacy_items.items():
-        ni = new_items[cat_id]
-        assert Decimal(str(li["proposed_addition"])) == Decimal(str(ni["delta"]))
-        assert Decimal(str(li["new_assigned"])) == Decimal(str(ni["new_assigned"]))
-    assert Decimal(str(legacy_body["total_addition"])) == Decimal(str(new_body["to_assign"]))
-    assert Decimal(str(legacy_body["tba_after"])) == Decimal(str(new_body["tba_after"]))
+    items = {i["category_name"]: i for i in body["items"]}
+    # TBA 200 vs 500 needed → proportional: 160 / 40
+    assert Decimal(str(items["Groceries"]["delta"])) == Decimal("160.00")
+    assert Decimal(str(items["Groceries"]["new_assigned"])) == Decimal("260.00")
+    assert Decimal(str(items["Dining"]["delta"])) == Decimal("40.00")
+    assert Decimal(str(body["to_assign"])) == Decimal("200.00")
+    assert Decimal(str(body["total_needed"])) == Decimal("500.00")
+    assert Decimal(str(body["tba_after"])) == Decimal("0.00")
 
 
 async def test_apply_into_prior_month(db_session):
