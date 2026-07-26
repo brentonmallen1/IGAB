@@ -1,0 +1,70 @@
+.debts-report__table-wrap {
+  overflow-x: auto;
+  margin-top: var(--spacing-md);
+}
+
+.debts-report__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.debts-report__table th {
+  text-align: left;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.debts-report__table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.debts-report__table th.sortable:hover {
+  color: var(--text-primary);
+}
+
+.debts-report__table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.debts-report__table tbody tr {
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.debts-report__table tbody tr:hover {
+  background: var(--row-hover-bg, var(--bg-hover));
+}
+
+.debts-report__table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.debts-report__name {
+  display: block;
+  font-weight: 500;
+}
+
+.debts-report__type {
+  display: block;
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+}
+
+.debts-report__warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-warning, var(--color-negative));
+  font-size: var(--font-size-xs);
+}

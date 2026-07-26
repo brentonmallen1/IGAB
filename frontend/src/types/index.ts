@@ -265,11 +265,39 @@ export interface NetWorthPoint {
   total_assets: number
   total_liabilities: number
   net_worth: number
+  unmanaged_debt_total: number
   accounts: { account_id: string; account_name: string; account_type: string; balance: number }[]
 }
 
 export interface NetWorthReport {
   points: NetWorthPoint[]
+  unmanaged_debt_total: number
+}
+
+export interface DebtsReportItem {
+  debt_id: string
+  name: string
+  debt_type: string
+  mode: 'managed' | 'unmanaged'
+  current_balance: number
+  interest_rate: number
+  baseline_payoff_date: string | null
+  live_payoff_date: string | null
+  total_interest_remaining: number
+  never_pays_off: boolean
+}
+
+export interface DebtsBalancePoint {
+  date: string
+  per_debt: Record<string, number>
+  total: number
+}
+
+export interface DebtsReport {
+  items: DebtsReportItem[]
+  total_balance: number
+  total_interest_remaining: number
+  balance_over_time: DebtsBalancePoint[]
 }
 
 export interface AccountCompositionPoint {
