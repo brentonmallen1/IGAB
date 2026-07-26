@@ -142,26 +142,6 @@ class AutoAssignRequest(BaseModel):
     month: datetime.date
 
 
-class FillTargetsPreviewItem(BaseModel):
-    category_id: uuid.UUID
-    category_name: str
-    current_assigned: Decimal
-    proposed_addition: Decimal
-    new_assigned: Decimal
-
-
-class FillTargetsPreviewResponse(BaseModel):
-    items: list[FillTargetsPreviewItem]
-    total_addition: Decimal
-    tba_before: Decimal
-    tba_after: Decimal
-
-
-class FillTargetsApplyRequest(BaseModel):
-    month: datetime.date
-    items: list[FillTargetsPreviewItem]
-
-
 class CoverOverspentPreviewItem(BaseModel):
     category_id: uuid.UUID
     category_name: str
