@@ -70,11 +70,15 @@ class NetWorthPoint(BaseModel):
     total_assets: Decimal
     total_liabilities: Decimal
     net_worth: Decimal
+    # Liabilities with no Account (unmanaged debts) — included in
+    # total_liabilities, broken out so the bucket stays visible
+    unmanaged_debt_total: Decimal = Decimal("0")
     accounts: list[AccountSnapshot]
 
 
 class NetWorthResponse(BaseModel):
     points: list[NetWorthPoint]
+    unmanaged_debt_total: Decimal = Decimal("0")
 
 
 # ─── Account Composition ──────────────────────────────────────────────────────

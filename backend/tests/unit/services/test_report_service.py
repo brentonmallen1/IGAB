@@ -233,7 +233,10 @@ class TestDashboardMetrics:
         ]
         cats = []
 
-        session = make_session(mock_result(txns), mock_result(accounts), mock_result(cats))
+        session = make_session(
+            mock_result(txns), mock_result(accounts), mock_result(cats),
+            mock_result([]),  # unmanaged debts
+        )
         svc = ReportService(session)
         result = await svc.dashboard_metrics(BUDGET, start, end)
         assert result["net_worth"] == D("2000.0")
@@ -249,7 +252,10 @@ class TestDashboardMetrics:
         accounts = [self._make_account(ACCT_1)]
         cats = [self._make_cat(CAT_A)]
 
-        session = make_session(mock_result(txns), mock_result(accounts), mock_result(cats))
+        session = make_session(
+            mock_result(txns), mock_result(accounts), mock_result(cats),
+            mock_result([]),  # unmanaged debts
+        )
         svc = ReportService(session)
         result = await svc.dashboard_metrics(BUDGET, start, today)
         # savings = (5000-3000)/5000 = 40%
@@ -263,7 +269,10 @@ class TestDashboardMetrics:
         accounts = [self._make_account(ACCT_1)]
         cats = [self._make_cat(CAT_A)]
 
-        session = make_session(mock_result(txns), mock_result(accounts), mock_result(cats))
+        session = make_session(
+            mock_result(txns), mock_result(accounts), mock_result(cats),
+            mock_result([]),  # unmanaged debts
+        )
         svc = ReportService(session)
         result = await svc.dashboard_metrics(BUDGET, start, today)
         assert result["savings_rate"] == 0.0
@@ -280,7 +289,10 @@ class TestDashboardMetrics:
         accounts = [self._make_account(ACCT_1)]
         cats = []
 
-        session = make_session(mock_result(txns), mock_result(accounts), mock_result(cats))
+        session = make_session(
+            mock_result(txns), mock_result(accounts), mock_result(cats),
+            mock_result([]),  # unmanaged debts
+        )
         svc = ReportService(session)
         result = await svc.dashboard_metrics(BUDGET, start, today)
         assert result["income_this_month"] == D("1000.0")
@@ -302,7 +314,10 @@ class TestDashboardMetrics:
             self._make_cat(CAT_C, "Transport"),
         ]
 
-        session = make_session(mock_result(txns), mock_result(accounts), mock_result(cats))
+        session = make_session(
+            mock_result(txns), mock_result(accounts), mock_result(cats),
+            mock_result([]),  # unmanaged debts
+        )
         svc = ReportService(session)
         result = await svc.dashboard_metrics(BUDGET, start, today)
         top = result["top_categories"]
@@ -326,7 +341,10 @@ class TestDashboardMetrics:
         accounts = [self._make_account(ACCT_1)]
         cats = [self._make_cat(CAT_A)]
 
-        session = make_session(mock_result(txns), mock_result(accounts), mock_result(cats))
+        session = make_session(
+            mock_result(txns), mock_result(accounts), mock_result(cats),
+            mock_result([]),  # unmanaged debts
+        )
         svc = ReportService(session)
         result = await svc.dashboard_metrics(BUDGET, start, today)
         assert result["days_until_zero"] == pytest.approx(270.0, rel=0.05)
@@ -339,7 +357,10 @@ class TestDashboardMetrics:
         accounts = [self._make_account(ACCT_1)]
         cats = []
 
-        session = make_session(mock_result(txns), mock_result(accounts), mock_result(cats))
+        session = make_session(
+            mock_result(txns), mock_result(accounts), mock_result(cats),
+            mock_result([]),  # unmanaged debts
+        )
         svc = ReportService(session)
         result = await svc.dashboard_metrics(BUDGET, start, today)
         assert result["days_until_zero"] is None
@@ -676,7 +697,9 @@ class TestNetWorthHistory:
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(make_session(mock_result(accounts), mock_result(txns)))
+            svc = ReportService(
+                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+            )
             result = await svc.net_worth_history(BUDGET, months=1)
 
         assert result[0]["total_assets"] == D("5000.00")
@@ -691,7 +714,9 @@ class TestNetWorthHistory:
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(make_session(mock_result(accounts), mock_result(txns)))
+            svc = ReportService(
+                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+            )
             result = await svc.net_worth_history(BUDGET, months=1)
 
         assert result[0]["total_liabilities"] == D("1500.00")
@@ -711,7 +736,9 @@ class TestNetWorthHistory:
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(make_session(mock_result(accounts), mock_result(txns)))
+            svc = ReportService(
+                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+            )
             result = await svc.net_worth_history(BUDGET, months=1)
 
         assert result[0]["total_assets"] == D("10000.00")
@@ -734,7 +761,9 @@ class TestNetWorthHistory:
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 28)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(make_session(mock_result(accounts), mock_result(txns)))
+            svc = ReportService(
+                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+            )
             result = await svc.net_worth_history(BUDGET, months=2)
 
         jan_r = next(r for r in result if r["date"].month == 1)
