@@ -234,6 +234,16 @@ export type AutoAssignAction =
   | 'average_spent'
   | 'reset'
 
+/** Bulk strategies offered by the TBA hero's Assign dropdown */
+export type AssignStrategy =
+  | 'underfunded'
+  | 'last_month_assigned'
+  | 'last_month_spent'
+  | 'average_assigned'
+  | 'average_spent'
+  | 'reset_available'
+  | 'reset_assigned'
+
 // ─── Report Types ───────────────────────────────────────────────────────────
 
 export interface DashboardMetrics {
