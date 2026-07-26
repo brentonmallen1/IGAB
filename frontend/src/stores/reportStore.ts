@@ -48,7 +48,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'pareto', label: 'Pareto', group: 'spending' },
   { id: 'treemap', label: 'Treemap', group: 'spending' },
   { id: 'seasonality', label: 'Seasonality', group: 'spending' },
-  { id: 'subscriptions', label: 'Subscriptions', group: 'insights' },
+  { id: 'subscriptions', label: 'Subscriptions', group: 'spending' },
   { id: 'payees', label: 'Payees', group: 'insights' },
   { id: 'day-patterns', label: 'Day Patterns', group: 'insights' },
   { id: 'timeline', label: 'Timeline', group: 'insights' },
