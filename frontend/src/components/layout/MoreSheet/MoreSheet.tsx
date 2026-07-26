@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette } from 'lucide-react'
+import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { THEMES } from '../Header/Header'
 import { useLogout } from '../../../api/auth'
@@ -32,6 +32,10 @@ export function MoreSheet() {
         <button className="more-sheet__item" onClick={() => go('/scheduled')}>
           <CalendarClock size={18} />
           <span>Scheduled</span>
+        </button>
+        <button className="more-sheet__item" onClick={() => go('/debts')}>
+          <Landmark size={18} />
+          <span>Debts</span>
         </button>
         <button className="more-sheet__item" onClick={() => go('/import')}>
           <Upload size={18} />
