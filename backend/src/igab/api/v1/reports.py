@@ -17,6 +17,9 @@ from igab.api.v1.schemas.report import (
     DashboardMetrics,
     DayPatternItem,
     DayPatternsResponse,
+    DebtsBalancePoint,
+    DebtsReportItem,
+    DebtsReportResponse,
     IncomeExpenseMonth,
     IncomeExpenseResponse,
     NetWorthPoint,
@@ -40,7 +43,8 @@ from igab.api.v1.schemas.report import (
     VolatilityItem,
     VolatilityResponse,
 )
-from igab.dependencies import BudgetAccess, CurrentUser, get_report_service
+from igab.dependencies import BudgetAccess, CurrentUser, get_debt_service, get_report_service
+from igab.services.debt_service import DebtService
 from igab.services.report_service import ReportService
 
 router = APIRouter()
@@ -339,6 +343,24 @@ async def timeline_report(
     acct_ids = _parse_uuids(account_ids)
     data = await report_svc.large_transactions(budget_id, start, end, limit, cat_ids, acct_ids)
     return TimelineResponse(transactions=[TimelineTransaction.model_validate(t) for t in data])
+
+
+@router.get("/{budget_id}/reports/debts", response_model=DebtsReportResponse)
+async def debts_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    debt_svc: Annotated[DebtService, Depends(get_debt_service)],
+    debt_type: str | None = Query(default=None),
+    mode: str | None = Query(default=None),
+) -> DebtsReportResponse:
+    """Consolidated cross-debt rollup — per-debt deep-dives live on /debts/:id."""
+    data = await debt_svc.debts_report(budget_id, debt_type=debt_type, mode=mode)
+    return DebtsReportResponse(
+        items=[DebtsReportItem.model_validate(i) for i in data["items"]],
+        total_balance=data["total_balance"],
+        total_interest_remaining=data["total_interest_remaining"],
+        balance_over_time=[DebtsBalancePoint.model_validate(p) for p in data["balance_over_time"]],
+    )
 
 
 def _parse_uuids(value: str | None) -> list[uuid.UUID] | None:

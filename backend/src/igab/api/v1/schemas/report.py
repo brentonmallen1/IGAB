@@ -285,3 +285,32 @@ class TimelineTransaction(BaseModel):
 
 class TimelineResponse(BaseModel):
     transactions: list[TimelineTransaction]
+
+
+# ─── Debts Report ─────────────────────────────────────────────────────────────
+
+
+class DebtsReportItem(BaseModel):
+    debt_id: uuid.UUID
+    name: str
+    debt_type: str
+    mode: str  # 'managed' | 'unmanaged'
+    current_balance: Decimal
+    interest_rate: Decimal
+    baseline_payoff_date: date | None
+    live_payoff_date: date | None
+    total_interest_remaining: Decimal
+    never_pays_off: bool
+
+
+class DebtsBalancePoint(BaseModel):
+    date: date
+    per_debt: dict[str, Decimal]  # keyed by debt id
+    total: Decimal
+
+
+class DebtsReportResponse(BaseModel):
+    items: list[DebtsReportItem]
+    total_balance: Decimal
+    total_interest_remaining: Decimal
+    balance_over_time: list[DebtsBalancePoint]
