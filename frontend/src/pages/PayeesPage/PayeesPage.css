@@ -6,6 +6,11 @@
   gap: var(--spacing-xl);
 }
 
+/* Let the last rows scroll clear of the floating selection bar */
+.payees-page--with-bar {
+  padding-bottom: calc(var(--spacing-lg) * 2 + 72px);
+}
+
 .payees-header {
   display: flex;
   align-items: center;

@@ -78,6 +78,7 @@ _Add items here as they come up during development._
 - [ ] Split transaction "add remaining to category" button
 
 ### Data
+- [x] Generate sample budget (2026-07-25: one-click card on the budget selector + `just sample-budget <email>` CLI; 12 months of curated data — 5 account types, splits, transfers, targets, tags, scheduled, reconciliation; generator derives assignments from the data and sweeps surplus into Emergency Fund so TBA lands exactly at $150 with only Dining Out overspent, for any anchor date; integrity green, 7 integration tests)
 - [ ] Auto backups configurable in UI (daily backup container + retention exist via env vars; frequency/count/age settings do not)
 - [ ] YNAB-compatible export (exit strategy — a system of record needs a way out too)
 - [ ] Attachment file GC (files of long-deleted transactions are never removed from disk)
