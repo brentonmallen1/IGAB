@@ -186,3 +186,49 @@ class CoverOverspentApplyItem(BaseModel):
 class CoverOverspentApplyRequest(BaseModel):
     month: datetime.date
     items: list[CoverOverspentApplyItem]
+
+
+class AssignStrategyTotal(BaseModel):
+    strategy: str
+    total_amount: Decimal
+    total_needed: Decimal | None = None
+    to_assign: Decimal
+    to_return: Decimal
+    affected_count: int
+
+
+class AssignStrategyTotalsResponse(BaseModel):
+    month: datetime.date
+    tba: Decimal
+    total_overspent: Decimal
+    strategies: list[AssignStrategyTotal]
+
+
+class AssignPreviewItemOut(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    current_assigned: Decimal
+    delta: Decimal
+    new_assigned: Decimal
+
+
+class AssignPreviewResponse(BaseModel):
+    strategy: str
+    items: list[AssignPreviewItemOut]
+    total_needed: Decimal | None = None
+    to_assign: Decimal
+    to_return: Decimal
+    tba_before: Decimal
+    tba_after: Decimal
+
+
+class AssignApplyRequest(BaseModel):
+    month: datetime.date
+    strategy: str
+
+
+class AssignApplyResponse(BaseModel):
+    to_assign: Decimal
+    to_return: Decimal
+    categories_changed: int
+    tba_after: Decimal
