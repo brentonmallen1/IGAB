@@ -17,9 +17,9 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 ## Phase 3: Polish & PWA
 
 ### Advanced Accounts
-- [ ] Loan accounts with amortization schedule
-- [ ] Interest calculation
-- [ ] Extra payment simulation
+- [x] Loan accounts with amortization schedule (2026-07-25: delivered via R7-R9 debts — a Debt links an account or is manually tracked)
+- [x] Interest calculation (2026-07-25: cent-exact amortization engine in `debt_math.py`)
+- [x] Extra payment simulation (2026-07-25: what-if `?extra_payment=` overlay on the debt page with months/interest saved)
 
 ### PWA
 _Scope decision 2026-07-22: the app is network-required — no offline data. PWA = installable + app-shell precache + update prompt + explicit offline state. IndexedDB cache / sync queue / conflict resolution intentionally dropped._
@@ -59,6 +59,7 @@ _Add items here as they come up during development._
 - [x] Total overspent display (`total_overspent` on the months endpoint + hero chip)
 - [x] TBA money up and center (YNAB-style hero pill with split Assign button, overspent chip, drawer with cover action; BottomSheet drawer on mobile)
 - [x] Move-history view beyond the popover (full month log in the hero drawer)
+- [x] YNAB-style Assign dropdown on the TBA hero (2026-07-25: Auto tab with per-strategy preview amounts — underfunded, assigned/spent last month, averages, reset available/assigned — each opening a signed-delta preview modal before apply; Manually tab assigning from TBA to one category; apply recomputes server-side and routes through move_money for the audit trail; replaced legacy fill-targets modal/endpoints; fixed pre-existing get_category_history end_date bug that zeroed last-month/average spent)
 
 ### UI / UX
 - [x] Polish pass round 1 (2026-07-22) — TBA hero, budget selector card layout (whole-card open, Current badge, overflow menu, two-column with create/import demoted), Settings reorganized (anchor deep links, integrity + backups surfaced above integrations), typography (font-size tokens incl. 2xs/display, weight tokens, tabular-nums on budget money cells, shared `.section-label` + `.kbd` utilities)
@@ -105,9 +106,9 @@ _Add items here as they come up during development._
 - [ ] R4 Anomaly detection z-scores, plain-language cards + sparklines (S)
 - [ ] R5 Payday-effect panel in Day Patterns (S, cuttable — reframed lag correlation)
 - [ ] R6 Forward cash projection fan chart, bootstrap bands (M)
-- [ ] R7 Debt data model + amortization engine — standalone Debt entity (managed via linked account, or unmanaged/passive with linked budget category), what-if (M) — supersedes "amortization in CategoryTarget"; pairs with Phase 3 Advanced Accounts
-- [ ] R8 Debts sidebar section + per-debt detail page — schedule table, paydown chart, live payoff-date pill (M-L, depends on R7)
-- [ ] R9 Consolidated Debts report tab — cross-debt rollup + filtering (S, depends on R7)
+- [x] R7 Debt data model + amortization engine (2026-07-25: migration 0004 — Debt + DebtBalanceSnapshot + Category.linked_debt_id; cent-exact `debt_math.py`; DebtService with three payment-derivation paths + live payoff projection; full CRUD/snapshot/amortization/link-debt API; unmanaged debts join net worth exactly once in BOTH computations)
+- [x] R8 Debts sidebar section + per-debt detail page (2026-07-25: sidebar group with mode dots, DebtsOverviewPage cards, DebtPage with 4-state payoff pill, Now/Beginning paydown chart with what-if overlay, show-more amortization table, update-balance + link-category flows)
+- [x] R9 Consolidated Debts report tab (2026-07-25: Debts tab in Financial State — rollup metrics, stacked per-debt balance area, type/mode filters, sortable table with row-click to detail page)
 - Deferred: inflation-adjusted trends, "if invested instead" — need external_series infra (sketched in roadmap)
 
 ### Other
