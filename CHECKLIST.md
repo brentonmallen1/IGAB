@@ -17,9 +17,9 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 ## Phase 3: Polish & PWA
 
 ### Advanced Accounts
-- [x] Loan accounts with amortization schedule (2026-07-25: delivered via R7-R9 debts — a Debt links an account or is manually tracked)
-- [x] Interest calculation (2026-07-25: cent-exact amortization engine in `debt_math.py`)
-- [x] Extra payment simulation (2026-07-25: what-if `?extra_payment=` overlay on the debt page with months/interest saved)
+- [x] Loan accounts with amortization schedule (2026-07-25: delivered via R7-R9 liabilities — a Liability links an account or is manually tracked; 2026-07-26: renamed debt→liability throughout)
+- [x] Interest calculation (2026-07-25: cent-exact amortization engine in `amortization.py`)
+- [x] Extra payment simulation (2026-07-25: what-if `?extra_payment=` overlay on the liability page with months/interest saved)
 
 ### PWA
 _Scope decision 2026-07-22: the app is network-required — no offline data. PWA = installable + app-shell precache + update prompt + explicit offline state. IndexedDB cache / sync queue / conflict resolution intentionally dropped._
@@ -106,9 +106,9 @@ _Add items here as they come up during development._
 - [ ] R4 Anomaly detection z-scores, plain-language cards + sparklines (S)
 - [ ] R5 Payday-effect panel in Day Patterns (S, cuttable — reframed lag correlation)
 - [ ] R6 Forward cash projection fan chart, bootstrap bands (M)
-- [x] R7 Debt data model + amortization engine (2026-07-25: migration 0004 — Debt + DebtBalanceSnapshot + Category.linked_debt_id; cent-exact `debt_math.py`; DebtService with three payment-derivation paths + live payoff projection; full CRUD/snapshot/amortization/link-debt API; unmanaged debts join net worth exactly once in BOTH computations)
-- [x] R8 Debts sidebar section + per-debt detail page (2026-07-25: sidebar group with mode dots, DebtsOverviewPage cards, DebtPage with 4-state payoff pill, Now/Beginning paydown chart with what-if overlay, show-more amortization table, update-balance + link-category flows)
-- [x] R9 Consolidated Debts report tab (2026-07-25: Debts tab in Financial State — rollup metrics, stacked per-debt balance area, type/mode filters, sortable table with row-click to detail page)
+- [x] R7 Liability data model + amortization engine (2026-07-25: migration 0004 — Liability + LiabilityBalanceSnapshot + Category.linked_liability_id; cent-exact `amortization.py`; LiabilityService with three payment-derivation paths + live payoff projection; full CRUD/snapshot/amortization/link-liability API; unmanaged liabilities join net worth exactly once in BOTH computations; 2026-07-26: migration 0005 renamed debt→liability; sample budget generates Car Loan + Dental Payment Plan)
+- [x] R8 Liabilities sidebar section + per-liability detail page (2026-07-25: sidebar group with Link2/PenLine mode icons, LiabilitiesOverviewPage cards + account suggestions, LiabilityPage with 4-state payoff pill, Now/Beginning paydown chart with what-if overlay, show-more amortization table, update-balance + link-category flows)
+- [x] R9 Consolidated Liabilities report tab (2026-07-25: Liabilities tab in Financial State — rollup metrics, stacked per-liability balance area, type/mode filters, sortable table with row-click to detail page)
 - Deferred: inflation-adjusted trends, "if invested instead" — need external_series infra (sketched in roadmap)
 
 ### Other

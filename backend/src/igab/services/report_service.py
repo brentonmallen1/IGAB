@@ -13,8 +13,8 @@ from igab.db.models import (
     BudgetAssignment,
     Category,
     CategoryGroup,
-    Debt,
-    DebtBalanceSnapshot,
+    Liability,
+    LiabilityBalanceSnapshot,
     Payee,
     Transaction,
 )
@@ -346,10 +346,10 @@ class ReportService:
             )
         )
 
-        # Unmanaged debts reduce net worth here exactly as they do in
+        # Unmanaged liabilities reduce net worth here exactly as they do in
         # net_worth_history — the dashboard card and the report headline
         # must never disagree.
-        unmanaged_now, unmanaged_series = await self._unmanaged_debts(budget_id)
+        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
         net_worth -= unmanaged_now
         net_worth_prev -= self._unmanaged_total_at(unmanaged_series, prev_end)
 
@@ -457,53 +457,54 @@ class ReportService:
 
     # ─── Net Worth History ────────────────────────────────────────────────────
 
-    async def _unmanaged_debts(
+    async def _unmanaged_liabilities(
         self, budget_id: uuid.UUID
     ) -> tuple[Decimal, dict[uuid.UUID, list[tuple[date, Decimal]]]]:
-        """Current total owed on unmanaged debts, plus each debt's snapshot
-        series for historical step-function lookups.
+        """Current total owed on unmanaged liabilities, plus each liability's
+        snapshot series for historical step-function lookups.
 
-        Unmanaged debts are real liabilities with no Account — without this
-        bucket they'd silently vanish from net worth. Managed debts are
-        already counted through their linked account and must NOT be added
-        here (that would double-count them)."""
-        debts = (
+        Unmanaged liabilities have no Account — without this bucket they'd
+        silently vanish from net worth. Managed liabilities are already
+        counted through their linked account and must NOT be added here
+        (that would double-count them)."""
+        liabilities = (
             await self.session.execute(
-                select(Debt.id, Debt.manual_balance).where(
-                    Debt.budget_id == budget_id,
-                    Debt.is_deleted == False,  # noqa: E712
-                    Debt.linked_account_id.is_(None),
+                select(Liability.id, Liability.manual_balance).where(
+                    Liability.budget_id == budget_id,
+                    Liability.is_deleted == False,  # noqa: E712
+                    Liability.linked_account_id.is_(None),
                 )
             )
         ).all()
-        if not debts:
+        if not liabilities:
             return Decimal("0"), {}
         current_total = sum(
-            (max(Decimal("0"), d.manual_balance or Decimal("0")) for d in debts),
+            (max(Decimal("0"), item.manual_balance or Decimal("0")) for item in liabilities),
             Decimal("0"),
         )
+        liability_ids = [item.id for item in liabilities]
         snaps = (
             await self.session.execute(
                 select(
-                    DebtBalanceSnapshot.debt_id,
-                    DebtBalanceSnapshot.date,
-                    DebtBalanceSnapshot.balance,
+                    LiabilityBalanceSnapshot.liability_id,
+                    LiabilityBalanceSnapshot.date,
+                    LiabilityBalanceSnapshot.balance,
                 )
-                .where(DebtBalanceSnapshot.debt_id.in_([d.id for d in debts]))
-                .order_by(DebtBalanceSnapshot.date)
+                .where(LiabilityBalanceSnapshot.liability_id.in_(liability_ids))
+                .order_by(LiabilityBalanceSnapshot.date)
             )
         ).all()
-        series: dict[uuid.UUID, list[tuple[date, Decimal]]] = {d.id: [] for d in debts}
+        series: dict[uuid.UUID, list[tuple[date, Decimal]]] = {item.id: [] for item in liabilities}
         for s in snaps:
-            series[s.debt_id].append((s.date, s.balance))
+            series[s.liability_id].append((s.date, s.balance))
         return current_total, series
 
     @staticmethod
     def _unmanaged_total_at(
         series: dict[uuid.UUID, list[tuple[date, Decimal]]], as_of: date
     ) -> Decimal:
-        """Step function: each debt's latest snapshot on or before as_of.
-        A debt with no snapshot yet contributes nothing — before tracking
+        """Step function: each liability's latest snapshot on or before as_of.
+        A liability with no snapshot yet contributes nothing — before tracking
         began there is no honest number to show."""
         total = Decimal("0")
         for points in series.values():
@@ -531,7 +532,7 @@ class ReportService:
         if not accounts:
             return []
 
-        unmanaged_now, unmanaged_series = await self._unmanaged_debts(budget_id)
+        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
         account_map = {str(a.id): a for a in accounts}
 
         q = select(Transaction.date, Transaction.amount, Transaction.account_id).where(
@@ -561,7 +562,7 @@ class ReportService:
                         "total_assets": Decimal("0"),
                         "total_liabilities": unmanaged,
                         "net_worth": -unmanaged,
-                        "unmanaged_debt_total": unmanaged,
+                        "unmanaged_liability_total": unmanaged,
                         "accounts": [],
                     }
                 )
@@ -624,7 +625,7 @@ class ReportService:
                     "total_assets": total_assets,
                     "total_liabilities": total_liabilities,
                     "net_worth": total_assets - total_liabilities,
-                    "unmanaged_debt_total": unmanaged,
+                    "unmanaged_liability_total": unmanaged,
                     "accounts": snapshots,
                 }
             )

@@ -4,13 +4,14 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from igab.domain.enums import AccountType
+from igab.domain.enums import AccountClassification, AccountType
 
 
 class AccountCreate(BaseModel):
     name: str
     account_type: AccountType
     on_budget: bool = True
+    classification: AccountClassification | None = None
     note: str | None = None
     sort_order: int = 0
 
@@ -19,6 +20,7 @@ class AccountUpdate(BaseModel):
     name: str | None = None
     account_type: str | None = None
     on_budget: bool | None = None
+    classification: AccountClassification | None = None
     is_closed: bool | None = None
     note: str | None = None
     sort_order: int | None = None
@@ -30,6 +32,7 @@ class AccountResponse(BaseModel):
     name: str
     account_type: str
     on_budget: bool
+    classification: str | None
     is_closed: bool
     sort_order: int
     note: str | None

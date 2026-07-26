@@ -23,7 +23,8 @@ import { SeasonalityReport } from '../../components/reports/charts/SeasonalityHe
 import { PayeeReport } from '../../components/reports/charts/PayeeChart'
 import { DayPatternsReport } from '../../components/reports/charts/DayOfWeekChart'
 import { TimelineReport } from '../../components/reports/charts/EventTimeline'
-import { DebtsReport } from '../../components/reports/charts/DebtsReport'
+import { LiabilitiesReport } from '../../components/reports/charts/LiabilitiesReport'
+import { useEffect } from 'react'
 import './ReportsPage.css'
 
 const GROUP_LABELS: Record<TabGroup, string> = {
@@ -39,6 +40,14 @@ export function ReportsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { activeTab, setActiveTab } = useReportStore()
 
+  // Guard against stale persisted tab ids (e.g. 'debts' was renamed to 'liabilities')
+  useEffect(() => {
+    const validIds = new Set(REPORT_TABS.map((t) => t.id))
+    if (!validIds.has(activeTab)) {
+      setActiveTab('overview')
+    }
+  }, [activeTab, setActiveTab])
+
   if (!budgetId) {
     return (
       <div className="reports-page">
@@ -52,7 +61,7 @@ export function ReportsPage() {
       case 'overview': return <OverviewReport budgetId={budgetId!} />
       case 'net-worth': return <NetWorthReport budgetId={budgetId!} />
       case 'account-composition': return <AccountCompositionReport budgetId={budgetId!} />
-      case 'debts': return <DebtsReport budgetId={budgetId!} />
+      case 'liabilities': return <LiabilitiesReport budgetId={budgetId!} />
       case 'income-expense': return <IncomeExpenseReport budgetId={budgetId!} />
       case 'burn-rate': return <BurnRateReport budgetId={budgetId!} />
       case 'cash-flow': return <CashFlowSankeyReport budgetId={budgetId!} />

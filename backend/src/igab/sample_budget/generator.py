@@ -30,6 +30,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
@@ -67,6 +68,7 @@ class SampleResult:
     assignments: int = 0
     scheduled: int = 0
     reconciliations: int = 0
+    liabilities: int = 0
 
 
 class SampleBudgetGenerator:
@@ -85,6 +87,7 @@ class SampleBudgetGenerator:
         target_repo: TargetRepository,
         scheduled_repo: ScheduledTransactionRepository,
         reconciliation_repo: ReconciliationRepository,
+        liability_repo: LiabilityRepository,
         spec: SampleBudgetSpec = SAMPLE_BUDGET,
     ) -> None:
         self.session = session
@@ -99,6 +102,7 @@ class SampleBudgetGenerator:
         self.target_repo = target_repo
         self.scheduled_repo = scheduled_repo
         self.reconciliation_repo = reconciliation_repo
+        self.liability_repo = liability_repo
         self.spec = spec
 
         self._accounts: dict[str, Account] = {}
@@ -114,6 +118,7 @@ class SampleBudgetGenerator:
         await self._create_accounts(result)
         await self._create_categories(anchor, result)
         await self._create_tags_and_payees(result)
+        await self._create_liabilities(anchor, result)
 
         inserted, projected = self._build_transaction_rows(anchor)
         if len(inserted) > MAX_TRANSACTION_ROWS:
@@ -135,11 +140,19 @@ class SampleBudgetGenerator:
 
     async def _create_accounts(self, result: SampleResult) -> None:
         for acct in self.spec.accounts:
+            # Auto-classify tracking accounts if not explicitly set
+            classification = acct.classification
+            if not acct.on_budget and classification is None:
+                if acct.account_type in ("loan", "credit_card"):
+                    classification = "liability"
+                else:
+                    classification = "asset"
             self._accounts[acct.name] = await self.account_repo.create(
                 budget_id=self.budget_id,
                 name=acct.name,
                 account_type=acct.account_type,
                 on_budget=acct.on_budget,
+                classification=classification if not acct.on_budget else None,
                 sort_order=acct.sort_order,
             )
             result.accounts += 1
@@ -225,6 +238,30 @@ class SampleBudgetGenerator:
             )
             self._payees[payee.name] = payee
             result.payees += 1
+
+    async def _create_liabilities(self, anchor: date, result: SampleResult) -> None:
+        for spec in self.spec.liabilities:
+            linked_account_id = (
+                self._accounts[spec.linked_account].id if spec.linked_account else None
+            )
+            liability = await self.liability_repo.create(
+                budget_id=self.budget_id,
+                name=spec.name,
+                liability_type=spec.liability_type,
+                interest_rate=spec.interest_rate,
+                minimum_payment=spec.minimum_payment,
+                linked_account_id=linked_account_id,
+                manual_balance=spec.balance,
+            )
+            result.liabilities += 1
+
+            for snap in spec.snapshots:
+                await self.liability_repo.upsert_snapshot(
+                    liability_id=liability.id,
+                    snapshot_date=snap.when.resolve(anchor),
+                    balance=snap.balance,
+                    source="initial",
+                )
 
     # ─── Transactions ─────────────────────────────────────────────────────────
 

@@ -19,6 +19,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
@@ -48,6 +49,7 @@ async def create_sample_budget_for_user(user: User, name: str, session) -> Sampl
         target_repo=TargetRepository(session),
         scheduled_repo=ScheduledTransactionRepository(session),
         reconciliation_repo=ReconciliationRepository(session),
+        liability_repo=LiabilityRepository(session),
     )
     return await generator.generate()
 

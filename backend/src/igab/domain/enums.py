@@ -51,3 +51,8 @@ class ImportSource(StrEnum):
 class OverspendingHandling(StrEnum):
     ALLOW = "allow"
     WARN = "warn"
+
+
+class AccountClassification(StrEnum):
+    ASSET = "asset"
+    LIABILITY = "liability"

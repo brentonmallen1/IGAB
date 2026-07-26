@@ -70,15 +70,15 @@ class NetWorthPoint(BaseModel):
     total_assets: Decimal
     total_liabilities: Decimal
     net_worth: Decimal
-    # Liabilities with no Account (unmanaged debts) — included in
+    # Liabilities with no Account (unmanaged liabilities) — included in
     # total_liabilities, broken out so the bucket stays visible
-    unmanaged_debt_total: Decimal = Decimal("0")
+    unmanaged_liability_total: Decimal = Decimal("0")
     accounts: list[AccountSnapshot]
 
 
 class NetWorthResponse(BaseModel):
     points: list[NetWorthPoint]
-    unmanaged_debt_total: Decimal = Decimal("0")
+    unmanaged_liability_total: Decimal = Decimal("0")
 
 
 # ─── Account Composition ──────────────────────────────────────────────────────
@@ -287,13 +287,13 @@ class TimelineResponse(BaseModel):
     transactions: list[TimelineTransaction]
 
 
-# ─── Debts Report ─────────────────────────────────────────────────────────────
+# ─── Liabilities Report ──────────────────────────────────────────────────────
 
 
-class DebtsReportItem(BaseModel):
-    debt_id: uuid.UUID
+class LiabilitiesReportItem(BaseModel):
+    liability_id: uuid.UUID
     name: str
-    debt_type: str
+    liability_type: str
     mode: str  # 'managed' | 'unmanaged'
     current_balance: Decimal
     interest_rate: Decimal
@@ -303,14 +303,14 @@ class DebtsReportItem(BaseModel):
     never_pays_off: bool
 
 
-class DebtsBalancePoint(BaseModel):
+class LiabilitiesBalancePoint(BaseModel):
     date: date
-    per_debt: dict[str, Decimal]  # keyed by debt id
+    per_liability: dict[str, Decimal]  # keyed by liability id
     total: Decimal
 
 
-class DebtsReportResponse(BaseModel):
-    items: list[DebtsReportItem]
+class LiabilitiesReportResponse(BaseModel):
+    items: list[LiabilitiesReportItem]
     total_balance: Decimal
     total_interest_remaining: Decimal
-    balance_over_time: list[DebtsBalancePoint]
+    balance_over_time: list[LiabilitiesBalancePoint]

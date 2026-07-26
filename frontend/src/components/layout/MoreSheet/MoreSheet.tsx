@@ -33,9 +33,9 @@ export function MoreSheet() {
           <CalendarClock size={18} />
           <span>Scheduled</span>
         </button>
-        <button className="more-sheet__item" onClick={() => go('/debts')}>
+        <button className="more-sheet__item" onClick={() => go('/liabilities')}>
           <Landmark size={18} />
-          <span>Debts</span>
+          <span>Liabilities</span>
         </button>
         <button className="more-sheet__item" onClick={() => go('/import')}>
           <Upload size={18} />
