@@ -3,7 +3,7 @@ import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Us
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useBudgets } from '../../../api/budgets'
-import { useLiabilities, type Liability } from '../../../api/liabilities'
+import { useLiabilities } from '../../../api/liabilities'
 import { useSimpleFINConnections, useSyncSimpleFIN, useSimpleFINRateLimitStatus } from '../../../api/simplefin'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
 import { AddAccountModal } from '../../accounts/AddAccountModal'

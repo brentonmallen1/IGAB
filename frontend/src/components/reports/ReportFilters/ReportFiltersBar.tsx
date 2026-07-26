@@ -19,8 +19,6 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'payee', label: 'Payee' },
 ]
 
-const NOT_USED = 'Not used by this report'
-
 export function ReportFiltersBar({ budgetId }: Props) {
   const { filters, setFilters, resetFilters, activeTab } = useReportStore()
   const support = TAB_FILTER_SUPPORT[activeTab]
@@ -58,71 +56,77 @@ export function ReportFiltersBar({ budgetId }: Props) {
     filters.payeeIds.length > 0 ||
     filters.accountIds.length > 0
 
+  // Check if any filters are supported for this tab
+  const hasAnySupport = support.dates || support.categories || support.payees || support.accounts || support.groupBy
+
+  // If no filters apply, don't render the bar
+  if (!hasAnySupport) {
+    return null
+  }
+
   return (
     <div className="rfb">
       <div className="rfb__row">
-        <div
-          className={support.dates ? undefined : 'rfb__inert'}
-          title={support.dates ? undefined : NOT_USED}
-        >
+        {support.dates && (
           <DateRangePicker
             startDate={filters.startDate}
             endDate={filters.endDate}
             onChange={(startDate, endDate) => setFilters({ startDate, endDate })}
           />
-        </div>
-        <div
-          className={`rfb__groupby ${support.groupBy ? '' : 'rfb__inert'}`}
-          title={support.groupBy ? undefined : NOT_USED}
-        >
-          <span className="rfb__groupby-label">Group by</span>
-          {GROUP_BY_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              className={`rfb__groupby-btn ${filters.groupBy === opt.value ? 'rfb__groupby-btn--active' : ''}`}
-              onClick={() => setFilters({ groupBy: opt.value })}
-              type="button"
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="rfb__selects">
-        <MultiSelectCombobox
-          label="Categories"
-          selectedIds={filters.categoryIds}
-          options={categoryOptions}
-          onChange={(ids) => setFilters({ categoryIds: ids })}
-          placeholder="All categories"
-          disabled={!support.categories}
-          title={NOT_USED}
-        />
-        <MultiSelectCombobox
-          label="Payees"
-          selectedIds={filters.payeeIds}
-          options={payeeOptions}
-          onChange={(ids) => setFilters({ payeeIds: ids })}
-          placeholder="All payees"
-          disabled={!support.payees}
-          title={NOT_USED}
-        />
-        <MultiSelectCombobox
-          label="Accounts"
-          selectedIds={filters.accountIds}
-          options={accountOptions}
-          onChange={(ids) => setFilters({ accountIds: ids })}
-          placeholder="All accounts"
-          disabled={!support.accounts}
-          title={NOT_USED}
-        />
-        {hasFilters && (
-          <button className="rfb__reset" onClick={resetFilters} type="button" title="Reset filters">
-            <RotateCcw size={13} />
-            Reset
-          </button>
+        )}
+        {support.groupBy && (
+          <div className="rfb__groupby">
+            <span className="rfb__groupby-label">Group by</span>
+            {GROUP_BY_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                className={`rfb__groupby-btn ${filters.groupBy === opt.value ? 'rfb__groupby-btn--active' : ''}`}
+                onClick={() => setFilters({ groupBy: opt.value })}
+                type="button"
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         )}
       </div>
+      {(support.categories || support.payees || support.accounts) && (
+        <div className="rfb__selects">
+          {support.categories && (
+            <MultiSelectCombobox
+              label="Categories"
+              selectedIds={filters.categoryIds}
+              options={categoryOptions}
+              onChange={(ids) => setFilters({ categoryIds: ids })}
+              placeholder="All categories"
+            />
+          )}
+          {support.payees && (
+            <MultiSelectCombobox
+              label="Payees"
+              selectedIds={filters.payeeIds}
+              options={payeeOptions}
+              onChange={(ids) => setFilters({ payeeIds: ids })}
+              placeholder="All payees"
+            />
+          )}
+          {support.accounts && (
+            <MultiSelectCombobox
+              label="Accounts"
+              selectedIds={filters.accountIds}
+              options={accountOptions}
+              onChange={(ids) => setFilters({ accountIds: ids })}
+              placeholder="All accounts"
+            />
+          )}
+          {hasFilters && (
+            <button className="rfb__reset" onClick={resetFilters} type="button" title="Reset filters">
+              <RotateCcw size={13} />
+              Reset
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

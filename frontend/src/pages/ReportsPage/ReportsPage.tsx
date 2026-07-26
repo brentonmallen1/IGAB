@@ -3,7 +3,8 @@ import {
   useReportStore,
   REPORT_TABS,
   TAB_GROUPS,
-  type ReportTab,
+  getTabGroup,
+  getGroupTabs,
   type TabGroup,
 } from '../../stores/reportStore'
 import { ReportFiltersBar } from '../../components/reports/ReportFilters/ReportFiltersBar'
@@ -24,21 +25,20 @@ import { PayeeReport } from '../../components/reports/charts/PayeeChart'
 import { DayPatternsReport } from '../../components/reports/charts/DayOfWeekChart'
 import { TimelineReport } from '../../components/reports/charts/EventTimeline'
 import { LiabilitiesReport } from '../../components/reports/charts/LiabilitiesReport'
-import { useEffect } from 'react'
+import { ChevronDown } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
 import './ReportsPage.css'
-
-const GROUP_LABELS: Record<TabGroup, string> = {
-  overview: 'Overview',
-  financial: 'Financial State',
-  cashflow: 'Cash Flow',
-  budget: 'Budget',
-  spending: 'Spending',
-  insights: 'Insights',
-}
 
 export function ReportsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { activeTab, setActiveTab } = useReportStore()
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Derive active group from active tab
+  const activeGroup = getTabGroup(activeTab)
+  const groupTabs = getGroupTabs(activeGroup)
+  const activeGroupLabel = TAB_GROUPS.find((g) => g.id === activeGroup)?.label ?? 'Reports'
 
   // Guard against stale persisted tab ids (e.g. 'debts' was renamed to 'liabilities')
   useEffect(() => {
@@ -47,6 +47,36 @@ export function ReportsPage() {
       setActiveTab('overview')
     }
   }, [activeTab, setActiveTab])
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [dropdownOpen])
+
+  // Close dropdown on escape
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDropdownOpen(false)
+    }
+    if (dropdownOpen) {
+      document.addEventListener('keydown', handleEscape)
+      return () => document.removeEventListener('keydown', handleEscape)
+    }
+  }, [dropdownOpen])
+
+  function handleGroupSelect(groupId: TabGroup) {
+    const firstTab = getGroupTabs(groupId)[0]
+    if (firstTab) setActiveTab(firstTab.id)
+    setDropdownOpen(false)
+  }
 
   if (!budgetId) {
     return (
@@ -77,39 +107,54 @@ export function ReportsPage() {
     }
   }
 
-  const tabsByGroup = REPORT_TABS.reduce<Partial<Record<TabGroup, typeof REPORT_TABS>>>((acc, tab) => {
-    if (!acc[tab.group]) acc[tab.group] = []
-    acc[tab.group]!.push(tab)
-    return acc
-  }, {})
-
   return (
     <div className="reports-page">
       <nav className="reports-nav" aria-label="Report navigation">
-        <div className="reports-nav__groups">
-          {TAB_GROUPS.map((group) => {
-            const tabs = tabsByGroup[group.id] ?? []
-            const isGroupActive = tabs.some((t) => t.id === activeTab)
-            return (
-              <div key={group.id} className={`reports-nav__group ${isGroupActive ? 'reports-nav__group--active' : ''}`}>
-                <div className="reports-nav__group-label" onClick={() => setActiveTab(tabs[0].id as ReportTab)}>
-                  {GROUP_LABELS[group.id]}
-                </div>
-                <div className="reports-nav__group-tabs">
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      className={`reports-nav__tab ${tab.id === activeTab ? 'reports-nav__tab--active' : ''}`}
-                      onClick={() => setActiveTab(tab.id)}
-                      type="button"
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
+        <div className="reports-nav__row">
+          {/* Group dropdown */}
+          <div className="reports-nav__dropdown" ref={dropdownRef}>
+            <button
+              className="reports-nav__dropdown-trigger"
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              aria-expanded={dropdownOpen}
+              aria-haspopup="listbox"
+              type="button"
+            >
+              <span>{activeGroupLabel}</span>
+              <ChevronDown size={16} className={`reports-nav__dropdown-icon ${dropdownOpen ? 'reports-nav__dropdown-icon--open' : ''}`} />
+            </button>
+            {dropdownOpen && (
+              <ul className="reports-nav__dropdown-menu" role="listbox">
+                {TAB_GROUPS.map((group) => (
+                  <li
+                    key={group.id}
+                    role="option"
+                    aria-selected={group.id === activeGroup}
+                    className={`reports-nav__dropdown-item ${group.id === activeGroup ? 'reports-nav__dropdown-item--active' : ''}`}
+                    onClick={() => handleGroupSelect(group.id)}
+                  >
+                    {group.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="reports-nav__separator" />
+
+          {/* Horizontal tabs for the current group */}
+          <div className="reports-nav__tabs">
+            {groupTabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={`reports-nav__tab ${tab.id === activeTab ? 'reports-nav__tab--active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       </nav>
 
