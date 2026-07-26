@@ -78,9 +78,3 @@
   border-color: var(--accent-color);
 }
 
-/* Controls not consumed by the active report are dimmed, not cleared */
-
-.rfb__inert {
-  opacity: 0.45;
-  pointer-events: none;
-}
