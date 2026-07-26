@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from igab.services.debt_math import (
+from igab.services.amortization import (
     add_months,
     amortization_schedule,
     project_payoff,

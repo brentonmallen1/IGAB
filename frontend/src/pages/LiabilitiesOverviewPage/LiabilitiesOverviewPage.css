@@ -1,30 +1,30 @@
-.debts-page {
+.liabilities-page {
   padding: var(--spacing-xl);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xl);
 }
 
-.debts-page__header {
+.liabilities-page__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-md);
 }
 
-.debts-page__title {
+.liabilities-page__title {
   font-size: var(--font-size-xl);
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.debts-page__total {
+.liabilities-page__total {
   margin-top: 2px;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
 }
 
-.debts-page__add {
+.liabilities-page__add {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-xs);
@@ -38,11 +38,11 @@
   transition: opacity var(--transition-fast);
 }
 
-.debts-page__add:hover {
+.liabilities-page__add:hover {
   opacity: 0.9;
 }
 
-.debts-page__empty {
+.liabilities-page__empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -52,20 +52,20 @@
   text-align: center;
 }
 
-.debts-page__empty-sub {
+.liabilities-page__empty-sub {
   max-width: 440px;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   line-height: 1.5;
 }
 
-.debts-page__grid {
+.liabilities-page__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--spacing-md);
 }
 
-.debt-card {
+.liability-card {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
@@ -78,48 +78,51 @@
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
-.debt-card:hover {
+.liability-card:hover {
   border-color: var(--color-accent);
 }
 
-.debt-card__top {
+.liability-card__top {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--spacing-sm);
 }
 
-.debt-card__name {
+.liability-card__name {
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.debt-card__type {
+.liability-card__type {
   font-size: var(--font-size-2xs);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.debt-card__balance {
+.liability-card__balance {
   font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--color-negative);
 }
 
-.debt-card__meta {
+.liability-card__meta {
   display: flex;
   justify-content: space-between;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
 }
 
-.debt-card__mode {
+.liability-card__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-muted);
 }
 
-.debt-card__payoff {
+.liability-card__payoff {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -129,6 +132,76 @@
   padding-top: var(--spacing-xs);
 }
 
-.debt-card__payoff--warning {
+.liability-card__payoff--warning {
   color: var(--color-warning, var(--color-negative));
+}
+
+/* Suggestions: untracked loan/credit-card accounts */
+.liabilities-page__suggestions {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.liabilities-page__suggestions-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 4px;
+}
+
+.liabilities-page__suggestions-sub {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0 0 var(--spacing-md);
+}
+
+.liabilities-page__suggestions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.liability-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+}
+
+.liability-suggestion__info {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+}
+
+.liability-suggestion__name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.liability-suggestion__balance {
+  font-size: var(--font-size-sm);
+  color: var(--color-negative);
+}
+
+.liability-suggestion__track {
+  padding: 4px var(--spacing-sm);
+  background: transparent;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.liability-suggestion__track:hover {
+  background: var(--color-accent);
+  color: var(--text-inverse);
 }

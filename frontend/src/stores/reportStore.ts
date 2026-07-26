@@ -17,7 +17,7 @@ export type ReportTab =
   | 'payees'
   | 'day-patterns'
   | 'timeline'
-  | 'debts'
+  | 'liabilities'
 
 export type TabGroup =
   | 'overview'
@@ -37,7 +37,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'overview', label: 'Overview', group: 'overview' },
   { id: 'net-worth', label: 'Net Worth', group: 'financial' },
   { id: 'account-composition', label: 'Accounts', group: 'financial' },
-  { id: 'debts', label: 'Debts', group: 'financial' },
+  { id: 'liabilities', label: 'Liabilities', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'burn-rate', label: 'Burn Rate', group: 'cashflow' },
   { id: 'cash-flow', label: 'Cash Flow', group: 'cashflow' },
@@ -78,7 +78,7 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'overview': { dates: true, categories: false, payees: false, accounts: false, groupBy: false },
   'net-worth': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'account-composition': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'debts': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'liabilities': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'income-expense': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'burn-rate': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'cash-flow': { dates: true, categories: false, payees: false, accounts: true, groupBy: false },

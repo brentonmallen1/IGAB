@@ -17,6 +17,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
@@ -48,6 +49,7 @@ async def generate_sample(session, budget) -> "SampleBudgetGenerator":
         target_repo=TargetRepository(session),
         scheduled_repo=ScheduledTransactionRepository(session),
         reconciliation_repo=ReconciliationRepository(session),
+        liability_repo=LiabilityRepository(session),
     )
     generator.result = await generator.generate(anchor=ANCHOR)  # type: ignore[attr-defined]
     return generator
@@ -135,6 +137,25 @@ async def test_generation_covers_every_entity_kind(db_session):
     visa_account = next(a for a in accounts if a.account_type == "credit_card")
     assert visa_payment.linked_account_id == visa_account.id
 
+    # Liabilities: one managed (linked to Car Loan account), one unmanaged (with snapshots)
+    liability_repo = LiabilityRepository(db_session)
+    liabilities = await liability_repo.get_all(budget.id)
+    assert counts.liabilities == 2
+    assert len(liabilities) == 2
+
+    car_loan_acct = next(a for a in accounts if a.name == "Car Loan")
+    managed = next(l for l in liabilities if l.linked_account_id is not None)
+    assert managed.name == "Car Loan"
+    assert managed.linked_account_id == car_loan_acct.id
+    assert managed.liability_type == "auto"
+
+    unmanaged = next(l for l in liabilities if l.linked_account_id is None)
+    assert unmanaged.name == "Dental Payment Plan"
+    assert unmanaged.liability_type == "medical"
+    assert unmanaged.manual_balance == Decimal("855.00")
+    snapshots = await liability_repo.get_snapshots(unmanaged.id)
+    assert len(snapshots) == 3
+
 
 async def test_dates_span_the_window_and_scheduled_are_future(db_session):
     user = await create_user(db_session)
@@ -220,6 +241,7 @@ async def test_endpoint_creates_and_auto_suffixes(api_client):
     assert body["budget"]["name"] == "Sample Budget"
     assert body["counts"]["transactions"] > 0
     assert body["counts"]["scheduled"] == 5
+    assert body["counts"]["liabilities"] == 2
 
     second = await api_client.post("/api/v1/budgets/create-sample", json={})
     assert second.status_code == 201

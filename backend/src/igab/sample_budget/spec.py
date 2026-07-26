@@ -40,6 +40,7 @@ class AccountSpec:
     name: str
     account_type: str
     on_budget: bool = True
+    classification: str | None = None  # 'asset' or 'liability' for tracking accounts
     opening_balance: Decimal = Decimal("0")
     sort_order: int = 0
 
@@ -166,6 +167,31 @@ class ScheduledSpec:
 
 
 @dataclass(frozen=True)
+class LiabilitySnapshotSpec:
+    """A manual balance snapshot for an unmanaged liability."""
+
+    when: RelDate
+    balance: Decimal
+
+
+@dataclass(frozen=True)
+class LiabilitySpec:
+    """A managed or unmanaged liability.
+
+    Managed: linked_account is set, balance comes from account ledger.
+    Unmanaged: balance and snapshots are set, no linked account.
+    """
+
+    name: str
+    liability_type: str
+    interest_rate: Decimal
+    minimum_payment: Decimal
+    linked_account: str | None = None
+    balance: Decimal | None = None
+    snapshots: tuple[LiabilitySnapshotSpec, ...] = ()
+
+
+@dataclass(frozen=True)
 class SampleBudgetSpec:
     accounts: tuple[AccountSpec, ...]
     groups: tuple[GroupSpec, ...]
@@ -175,6 +201,7 @@ class SampleBudgetSpec:
     one_offs: tuple[OneOffTxn, ...]
     transfers: tuple[TransferSpec, ...]
     scheduled: tuple[ScheduledSpec, ...]
+    liabilities: tuple[LiabilitySpec, ...] = ()
     # (name, color_slot) tags created beyond the seeded system tags
     custom_tags: tuple[tuple[str, str], ...] = ()
     months_of_history: int = 12

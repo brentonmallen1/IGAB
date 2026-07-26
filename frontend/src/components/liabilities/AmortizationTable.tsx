@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { AmortizationMonth } from '../../api/debts'
+import type { AmortizationMonth } from '../../api/liabilities'
 import { formatMoney } from '../../utils/money'
 import { formatMonthYear } from './PayoffPill'
 import './AmortizationTable.css'
@@ -15,7 +15,7 @@ export function AmortizationTable({ schedule }: Props) {
   const rows = schedule.slice(0, visible)
 
   if (schedule.length === 0) {
-    return <div className="amort-table__empty">No schedule — this debt is paid off.</div>
+    return <div className="amort-table__empty">No schedule — this liability is paid off.</div>
   }
 
   return (

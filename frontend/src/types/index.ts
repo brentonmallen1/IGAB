@@ -16,6 +16,7 @@ export interface Account {
   name: string
   account_type: AccountType
   on_budget: boolean
+  classification: AccountClassification | null
   is_closed: boolean
   sort_order: number
   note: string | null
@@ -33,6 +34,7 @@ export interface Account {
 }
 
 export type AccountType = 'checking' | 'savings' | 'credit_card' | 'loan' | 'tracking'
+export type AccountClassification = 'asset' | 'liability'
 
 export interface CategoryGroup {
   id: string
@@ -265,19 +267,19 @@ export interface NetWorthPoint {
   total_assets: number
   total_liabilities: number
   net_worth: number
-  unmanaged_debt_total: number
+  unmanaged_liability_total: number
   accounts: { account_id: string; account_name: string; account_type: string; balance: number }[]
 }
 
 export interface NetWorthReport {
   points: NetWorthPoint[]
-  unmanaged_debt_total: number
+  unmanaged_liability_total: number
 }
 
-export interface DebtsReportItem {
-  debt_id: string
+export interface LiabilitiesReportItem {
+  liability_id: string
   name: string
-  debt_type: string
+  liability_type: string
   mode: 'managed' | 'unmanaged'
   current_balance: number
   interest_rate: number
@@ -287,17 +289,17 @@ export interface DebtsReportItem {
   never_pays_off: boolean
 }
 
-export interface DebtsBalancePoint {
+export interface LiabilitiesBalancePoint {
   date: string
-  per_debt: Record<string, number>
+  per_liability: Record<string, number>
   total: number
 }
 
-export interface DebtsReport {
-  items: DebtsReportItem[]
+export interface LiabilitiesReport {
+  items: LiabilitiesReportItem[]
   total_balance: number
   total_interest_remaining: number
-  balance_over_time: DebtsBalancePoint[]
+  balance_over_time: LiabilitiesBalancePoint[]
 }
 
 export interface AccountCompositionPoint {

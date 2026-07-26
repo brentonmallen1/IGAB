@@ -15,6 +15,7 @@ from igab.dependencies import (
     get_assignment_repo,
     get_category_group_repo,
     get_category_repo,
+    get_liability_repo,
     get_payee_repo,
     get_reconciliation_repo,
     get_scheduled_transaction_repo,
@@ -30,6 +31,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
@@ -172,6 +174,7 @@ class SampleBudgetCounts(BaseModel):
     assignments: int
     scheduled: int
     reconciliations: int
+    liabilities: int
 
 
 class SampleBudgetResponse(BaseModel):
@@ -198,6 +201,7 @@ async def create_sample_budget(
     target_repo: TargetRepository = Depends(get_target_repo),
     scheduled_repo: ScheduledTransactionRepository = Depends(get_scheduled_transaction_repo),
     reconciliation_repo: ReconciliationRepository = Depends(get_reconciliation_repo),
+    liability_repo: LiabilityRepository = Depends(get_liability_repo),
 ) -> SampleBudgetResponse:
     """Create a budget pre-filled with 12 months of curated demo data.
 
@@ -235,6 +239,7 @@ async def create_sample_budget(
         target_repo=target_repo,
         scheduled_repo=scheduled_repo,
         reconciliation_repo=reconciliation_repo,
+        liability_repo=liability_repo,
     )
     counts = await generator.generate()
 

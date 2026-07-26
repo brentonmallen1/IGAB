@@ -4,22 +4,22 @@ import { Settings } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCategories, useCategoryGroups } from '../../api/categories'
 import {
-  useCreateDebtSnapshot,
-  useDebtAmortization,
-  useDebts,
-  useLinkCategoryDebt,
-} from '../../api/debts'
-import { AmortizationTable } from '../../components/debts/AmortizationTable'
-import { DebtSettingsModal } from '../../components/debts/DebtSettingsModal'
-import { PaydownChart } from '../../components/debts/PaydownChart'
-import { PayoffPill } from '../../components/debts/PayoffPill'
+  useCreateLiabilitySnapshot,
+  useLiabilityAmortization,
+  useLiabilities,
+  useLinkCategoryLiability,
+} from '../../api/liabilities'
+import { AmortizationTable } from '../../components/liabilities/AmortizationTable'
+import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
+import { PaydownChart } from '../../components/liabilities/PaydownChart'
+import { PayoffPill } from '../../components/liabilities/PayoffPill'
 import { Combobox } from '../../components/common/Combobox/Combobox'
 import { MetricCard } from '../../components/reports/MetricCard'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { formatMoney } from '../../utils/money'
-import './DebtPage.css'
+import './LiabilityPage.css'
 
 const TYPE_LABELS: Record<string, string> = {
   mortgage: 'Mortgage',
@@ -31,16 +31,16 @@ const TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 }
 
-export function DebtPage() {
-  const { debtId } = useParams<{ debtId: string }>()
+export function LiabilityPage() {
+  const { liabilityId } = useParams<{ liabilityId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const navigate = useNavigate()
   const isMobile = useIsMobile()
 
-  const { data: debts = [], isLoading } = useDebts(budgetId)
-  const debt = debts.find((d) => d.id === debtId) ?? null
+  const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
+  const liability = liabilities.find((d) => d.id === liabilityId) ?? null
 
-  const { isDebtEditorOpen, editingDebtId, openDebtEditor, closeDebtEditor } = useUIStore()
+  const { isLiabilityEditorOpen, editingLiabilityId, openLiabilityEditor, closeLiabilityEditor } = useUIStore()
 
   const [chartMode, setChartMode] = useState<'now' | 'beginning'>('now')
   const [extraInput, setExtraInput] = useState('')
@@ -52,8 +52,8 @@ export function DebtPage() {
 
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
-  const createSnapshot = useCreateDebtSnapshot(budgetId)
-  const linkCategory = useLinkCategoryDebt(budgetId)
+  const createSnapshot = useCreateLiabilitySnapshot(budgetId)
+  const linkCategory = useLinkCategoryLiability(budgetId)
 
   // Debounce the what-if input so typing doesn't spam the API
   useEffect(() => {
@@ -64,26 +64,26 @@ export function DebtPage() {
     return () => clearTimeout(handle)
   }, [extraInput])
 
-  const { data: amortization } = useDebtAmortization(budgetId, debtId ?? null, {
+  const { data: amortization } = useLiabilityAmortization(budgetId, liabilityId ?? null, {
     extraPayment,
     fromOrigination: chartMode === 'beginning',
   })
 
-  if (!budgetId || !debtId) return null
+  if (!budgetId || !liabilityId) return null
   if (isLoading) {
-    return <div className="debt-page"><div className="debt-page__empty">Loading…</div></div>
+    return <div className="liability-page"><div className="liability-page__empty">Loading…</div></div>
   }
-  if (!debt) {
+  if (!liability) {
     return (
-      <div className="debt-page">
-        <div className="debt-page__empty">
-          This debt doesn't exist anymore. <Link to="/debts">Back to debts</Link>
+      <div className="liability-page">
+        <div className="liability-page__empty">
+          This liability doesn't exist anymore. <Link to="/liabilities">Back to liabilities</Link>
         </div>
       </div>
     )
   }
 
-  const linkedCategory = categories.find((c) => c.id === debt.linked_category_id) ?? null
+  const linkedCategory = categories.find((c) => c.id === liability.linked_category_id) ?? null
   const systemGroupIds = new Set(groups.filter((g) => g.is_system).map((g) => g.id))
   const linkableCategories = categories.filter(
     (c) =>
@@ -101,7 +101,7 @@ export function DebtPage() {
     const parsed = parseFloat(newBalance)
     if (isNaN(parsed) || parsed < 0) return
     await createSnapshot.mutateAsync({
-      debtId: debt!.id,
+      liabilityId: liability!.id,
       balance: parsed,
       ...(balanceDate ? { date: balanceDate } : {}),
     })
@@ -113,7 +113,7 @@ export function DebtPage() {
 
   async function handleLinkCategory(categoryId: string | null) {
     if (!categoryId) return
-    await linkCategory.mutateAsync({ categoryId, debtId: debt!.id })
+    await linkCategory.mutateAsync({ categoryId, liabilityId: liability!.id })
     const name = categories.find((c) => c.id === categoryId)?.name
     toast.success(`Payments now tracked from ${name ?? 'category'}`)
     setShowLinkPicker(false)
@@ -121,7 +121,7 @@ export function DebtPage() {
 
   async function handleUnlinkCategory() {
     if (!linkedCategory) return
-    await linkCategory.mutateAsync({ categoryId: linkedCategory.id, debtId: null })
+    await linkCategory.mutateAsync({ categoryId: linkedCategory.id, liabilityId: null })
     toast.success('Category unlinked')
   }
 
@@ -136,48 +136,48 @@ export function DebtPage() {
       : null
 
   return (
-    <div className="debt-page">
-      <div className="debt-page__header">
-        <div className="debt-page__header-left">
-          <h1 className="debt-page__name">{debt.name}</h1>
-          <span className="debt-page__badge">{TYPE_LABELS[debt.debt_type] ?? 'Other'}</span>
-          <span className="debt-page__badge debt-page__badge--muted">
-            {debt.mode === 'managed' ? 'Managed' : 'Unmanaged'}
+    <div className="liability-page">
+      <div className="liability-page__header">
+        <div className="liability-page__header-left">
+          <h1 className="liability-page__name">{liability.name}</h1>
+          <span className="liability-page__badge">{TYPE_LABELS[liability.liability_type] ?? 'Other'}</span>
+          <span className="liability-page__badge liability-page__badge--muted">
+            {liability.mode === 'managed' ? 'Managed' : 'Unmanaged'}
           </span>
           <button
-            className="debt-page__settings"
-            onClick={() => openDebtEditor(debt.id)}
-            aria-label="Debt settings"
-            title="Debt settings"
+            className="liability-page__settings"
+            onClick={() => openLiabilityEditor(liability.id)}
+            aria-label="Liability settings"
+            title="Liability settings"
           >
             <Settings size={14} />
           </button>
         </div>
-        <div className="debt-page__header-actions">
-          {debt.mode === 'managed' && debt.linked_account_id && (
-            <Link className="debt-page__link" to={`/accounts/${debt.linked_account_id}`}>
+        <div className="liability-page__header-actions">
+          {liability.mode === 'managed' && liability.linked_account_id && (
+            <Link className="liability-page__link" to={`/accounts/${liability.linked_account_id}`}>
               View account register
             </Link>
           )}
-          {debt.mode === 'unmanaged' && (
-            <button className="debt-page__action" onClick={() => setShowBalanceForm(true)}>
+          {liability.mode === 'unmanaged' && (
+            <button className="liability-page__action" onClick={() => setShowBalanceForm(true)}>
               Update balance
             </button>
           )}
         </div>
       </div>
 
-      <div className="debt-page__pill-row">
-        <PayoffPill debt={debt} />
+      <div className="liability-page__pill-row">
+        <PayoffPill liability={liability} />
       </div>
 
-      <div className="debt-page__metrics">
+      <div className="liability-page__metrics">
         <MetricCard
           label="Current Balance"
-          value={formatMoney(Number(debt.current_balance))}
+          value={formatMoney(Number(liability.current_balance))}
           accent
         />
-        <MetricCard label="Interest Rate" value={`${Number(debt.interest_rate)}%`} />
+        <MetricCard label="Interest Rate" value={`${Number(liability.interest_rate)}%`} />
         <MetricCard
           label="Interest Remaining"
           value={
@@ -196,10 +196,10 @@ export function DebtPage() {
         />
       </div>
 
-      {debt.mode === 'unmanaged' && !linkedCategory && (
-        <div className="debt-page__hint">
+      {liability.mode === 'unmanaged' && !linkedCategory && (
+        <div className="liability-page__hint">
           {showLinkPicker ? (
-            <div className="debt-page__link-picker">
+            <div className="liability-page__link-picker">
               <span>Track payments from:</span>
               <Combobox
                 value={null}
@@ -209,7 +209,7 @@ export function DebtPage() {
                 autoFocus
                 aria-label="Category to track payments from"
               />
-              <button className="debt-page__hint-dismiss" onClick={() => setShowLinkPicker(false)}>
+              <button className="liability-page__hint-dismiss" onClick={() => setShowLinkPicker(false)}>
                 Cancel
               </button>
             </div>
@@ -217,9 +217,9 @@ export function DebtPage() {
             <>
               <span>
                 Link a budget category to track real payments — its spending becomes this
-                debt's payment history.
+                liability's payment history.
               </span>
-              <button className="debt-page__action" onClick={() => setShowLinkPicker(true)}>
+              <button className="liability-page__action" onClick={() => setShowLinkPicker(true)}>
                 Link a category
               </button>
             </>
@@ -227,21 +227,21 @@ export function DebtPage() {
         </div>
       )}
       {linkedCategory && (
-        <div className="debt-page__hint debt-page__hint--linked">
+        <div className="liability-page__hint liability-page__hint--linked">
           <span>
             Payments tracked from <strong>{linkedCategory.name}</strong>
           </span>
-          <button className="debt-page__hint-dismiss" onClick={handleUnlinkCategory}>
+          <button className="liability-page__hint-dismiss" onClick={handleUnlinkCategory}>
             Unlink
           </button>
         </div>
       )}
 
-      <div className="debt-page__section">
-        <div className="debt-page__section-header">
+      <div className="liability-page__section">
+        <div className="liability-page__section-header">
           <h2>Paydown</h2>
-          <div className="debt-page__chart-controls">
-            <div className="debt-page__toggle">
+          <div className="liability-page__chart-controls">
+            <div className="liability-page__toggle">
               <button
                 className={chartMode === 'now' ? 'active' : ''}
                 onClick={() => setChartMode('now')}
@@ -255,7 +255,7 @@ export function DebtPage() {
                 Beginning
               </button>
             </div>
-            <label className="debt-page__whatif">
+            <label className="liability-page__whatif">
               <span>Extra monthly:</span>
               <input
                 type="number"
@@ -270,7 +270,7 @@ export function DebtPage() {
           </div>
         </div>
         {whatIfSavings && (
-          <div className="debt-page__whatif-result">
+          <div className="liability-page__whatif-result">
             +{formatMoney(extraPayment)}/mo →{' '}
             {whatIfSavings.monthsSooner !== null
               ? `paid off ${whatIfSavings.monthsSooner} month${whatIfSavings.monthsSooner === 1 ? '' : 's'} sooner`
@@ -280,42 +280,42 @@ export function DebtPage() {
           </div>
         )}
         {amortization ? (
-          Number(debt.current_balance) === 0 ? (
-            <div className="debt-page__empty">Nothing left to pay down.</div>
+          Number(liability.current_balance) === 0 ? (
+            <div className="liability-page__empty">Nothing left to pay down.</div>
           ) : (
             <PaydownChart amortization={amortization} mode={chartMode} isMobile={isMobile} />
           )
         ) : (
-          <div className="debt-page__empty">Loading chart…</div>
+          <div className="liability-page__empty">Loading chart…</div>
         )}
       </div>
 
-      <div className="debt-page__section">
-        <div className="debt-page__section-header">
+      <div className="liability-page__section">
+        <div className="liability-page__section-header">
           <h2>Amortization schedule</h2>
-          <span className="debt-page__section-sub">At the minimum payment</span>
+          <span className="liability-page__section-sub">At the minimum payment</span>
         </div>
         {amortization ? (
           amortization.baseline_never_pays_off && amortization.baseline_schedule.length === 0 ? (
-            <div className="debt-page__empty">
+            <div className="liability-page__empty">
               The minimum payment doesn't cover interest — there is no schedule to show.
             </div>
           ) : (
             <AmortizationTable schedule={amortization.baseline_schedule} />
           )
         ) : (
-          <div className="debt-page__empty">Loading schedule…</div>
+          <div className="liability-page__empty">Loading schedule…</div>
         )}
       </div>
 
       {showBalanceForm && (
         <div
-          className="debt-page__balance-overlay"
+          className="liability-page__balance-overlay"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowBalanceForm(false)
           }}
         >
-          <form className="debt-page__balance-form" onSubmit={handleSaveBalance}>
+          <form className="liability-page__balance-form" onSubmit={handleSaveBalance}>
             <h3>Update balance</h3>
             <label>
               <span>Balance owed</span>
@@ -327,14 +327,14 @@ export function DebtPage() {
                 value={newBalance}
                 onChange={(e) => setNewBalance(e.target.value)}
                 autoFocus
-                placeholder={String(debt.current_balance)}
+                placeholder={String(liability.current_balance)}
               />
             </label>
             <label>
               <span>As of (optional — defaults to today)</span>
               <input type="date" value={balanceDate} onChange={(e) => setBalanceDate(e.target.value)} />
             </label>
-            <div className="debt-page__balance-actions">
+            <div className="liability-page__balance-actions">
               <button type="button" onClick={() => setShowBalanceForm(false)}>
                 Cancel
               </button>
@@ -346,12 +346,12 @@ export function DebtPage() {
         </div>
       )}
 
-      {isDebtEditorOpen && editingDebtId === debt.id && (
-        <DebtSettingsModal
+      {isLiabilityEditorOpen && editingLiabilityId === liability.id && (
+        <LiabilitySettingsModal
           budgetId={budgetId}
-          debt={debt}
-          onClose={closeDebtEditor}
-          onDeleted={() => navigate('/debts')}
+          liability={liability}
+          onClose={closeLiabilityEditor}
+          onDeleted={() => navigate('/liabilities')}
         />
       )}
     </div>
