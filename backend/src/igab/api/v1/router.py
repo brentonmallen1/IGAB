@@ -8,6 +8,7 @@ from igab.api.v1 import (
     budget_views,
     budgets,
     categories,
+    debts,
     imports,
     reconciliation,
     reports,
@@ -35,3 +36,4 @@ api_router.include_router(reconciliation.router, tags=["reconciliation"])
 api_router.include_router(budget_views.router, tags=["budget-views"])
 api_router.include_router(attachments.router, tags=["attachments"])
 api_router.include_router(tags.router, tags=["tags"])
+api_router.include_router(debts.router, tags=["debts"])
