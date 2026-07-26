@@ -1,5 +1,6 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -125,7 +126,10 @@ async def net_worth_report(
     months: int = 12,
 ) -> NetWorthResponse:
     data = await report_svc.net_worth_history(budget_id, months)
-    return NetWorthResponse(points=[NetWorthPoint.model_validate(p) for p in data])
+    return NetWorthResponse(
+        points=[NetWorthPoint.model_validate(p) for p in data],
+        unmanaged_debt_total=data[-1]["unmanaged_debt_total"] if data else Decimal("0"),
+    )
 
 
 @router.get("/{budget_id}/reports/account-composition", response_model=AccountCompositionResponse)
