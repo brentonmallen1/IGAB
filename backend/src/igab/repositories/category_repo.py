@@ -43,6 +43,17 @@ class CategoryRepository(BaseRepository[Category]):
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
+    async def get_with_tags(self, category_id: uuid.UUID) -> Category | None:
+        result = await self.session.execute(
+            select(Category)
+            .options(selectinload(Category.tags))
+            .where(
+                Category.id == category_id,
+                Category.is_deleted == False,  # noqa: E712
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_linked_debt(self, debt_id: uuid.UUID) -> Category | None:
         result = await self.session.execute(
             select(Category).where(

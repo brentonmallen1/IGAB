@@ -142,6 +142,33 @@ class DebtService:
             recent_payments=payments,
         )
 
+    async def get_balance_history(
+        self, debt: Debt, as_of: date | None = None
+    ) -> list[tuple[date, Decimal]]:
+        """Actual owed-balance points over time (the chart's solid segment).
+
+        Managed: monthly cumulated account movement from the first ledger
+        month through today. Unmanaged: the raw balance snapshots.
+        """
+        as_of = as_of or today_utc()
+        if debt.linked_account_id is not None:
+            by_month = await self.transaction_repo.sum_by_account_by_month(
+                debt.linked_account_id, end_date=as_of
+            )
+            if not by_month:
+                return []
+            points: list[tuple[date, Decimal]] = []
+            running = ZERO
+            month = min(by_month)
+            current = _month_start(as_of)
+            while month <= current:
+                running += by_month.get(month, ZERO)
+                points.append((month, max(ZERO, quantize_cents(-running))))
+                month = add_months(month, 1)
+            return points
+        snapshots = await self.debt_repo.get_snapshots(debt.id)
+        return [(s.date, max(ZERO, quantize_cents(s.balance))) for s in snapshots]
+
     async def unmanaged_total(self, budget_id: uuid.UUID) -> Decimal:
         """Total owed across unmanaged debts — the net-worth bucket for
         liabilities that have no Account and would otherwise vanish."""
