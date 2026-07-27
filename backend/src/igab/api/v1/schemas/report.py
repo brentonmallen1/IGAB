@@ -365,3 +365,63 @@ class SavingsReportResponse(BaseModel):
     categories: list[SavingsCategory]
     summary: SavingsSummary
     months: list[date]
+
+
+# ─── Anomaly Detection Report ────────────────────────────────────────────────
+
+
+class AnomalyItem(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    group_name: str
+    month: date
+    actual: Decimal
+    baseline_mean: Decimal
+    z_score: float
+    direction: str  # 'high' or 'low'
+    history: list[Decimal]  # trailing 12 months for sparkline
+
+
+class AnomalyReportResponse(BaseModel):
+    anomalies: list[AnomalyItem]
+
+
+# ─── Payday Effect Report ────────────────────────────────────────────────────
+
+
+class PaydayEffectDay(BaseModel):
+    offset: int  # 0 = payday, 1 = day after, etc.
+    avg_spend: Decimal
+
+
+class PaydayEffectResponse(BaseModel):
+    days: list[PaydayEffectDay]
+    baseline_daily: Decimal  # average daily spend outside the window
+    event_count: int  # number of income events used
+
+
+# ─── Cash Projection Report ──────────────────────────────────────────────────
+
+
+class CashProjectionPoint(BaseModel):
+    date: date
+    p10: Decimal
+    p25: Decimal
+    p50: Decimal
+    p75: Decimal
+    p90: Decimal
+    deterministic: Decimal  # projection with only scheduled/subscription events
+
+
+class CashProjectionEvent(BaseModel):
+    date: date
+    payee: str
+    amount: Decimal
+    source: str  # 'scheduled' or 'subscription'
+
+
+class CashProjectionResponse(BaseModel):
+    start_balance: Decimal
+    points: list[CashProjectionPoint]
+    events: list[CashProjectionEvent]
+    goes_negative_date: date | None  # first date P50 goes negative, if any

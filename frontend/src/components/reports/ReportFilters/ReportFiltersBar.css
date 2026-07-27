@@ -1,6 +1,6 @@
 .rfb {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
   background: var(--bg-primary);
@@ -46,7 +46,6 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  margin-left: auto;
 }
 
 .rfb__groupby-label {
@@ -77,4 +76,3 @@
   color: var(--bg-primary);
   border-color: var(--accent-color);
 }
-

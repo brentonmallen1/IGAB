@@ -197,7 +197,7 @@ export function ParetoReport({ budgetId }: Props) {
               checked={hideSavings}
               onChange={(e) => setHideSavings(e.target.checked)}
             />
-            Hide savings
+            Hide tagged as savings
           </label>
         )}
         <div style={{ marginLeft: 'auto' }}>
