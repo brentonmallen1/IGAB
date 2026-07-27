@@ -50,18 +50,18 @@ Your financial data is deeply personal. IGAB keeps it that way:
 
 ### Reports That Actually Help
 
-Fourteen reports across six groups give you the visibility you need to plan and understand your finances:
+Twenty reports across six groups give you the visibility you need to plan and understand your finances:
 
 | Group | Reports |
 | --- | --- |
 | Overview | Spending, income, net change, ready-to-assign dashboard |
-| Financial State | Net worth, account composition, burn rate |
-| Cash Flow | Sankey money-flow diagram, income vs. expense, cash-flow variance |
-| Budget | Budget vs. actual, variance, volatility |
-| Spending | Pareto breakdown, treemap, seasonality heatmap, payee analysis |
-| Insights | Day-of-week patterns, event timeline |
+| Financial State | Net worth, account composition, liabilities, savings tracker |
+| Cash Flow | Income vs. expense, burn rate, Sankey money-flow diagram, cash projection |
+| Budget | Budget vs. actual, cumulative variance, volatility |
+| Spending | Pareto breakdown, treemap, seasonality heatmap, subscriptions |
+| Insights | Anomaly detection, payee analysis, day-of-week patterns (with payday effect), event timeline |
 
-All reports support date-range and category/payee/account filtering.
+Reports use date-range and category/payee/account filtering where applicable. Monthly reports (net worth, burn rate, etc.) have their own time horizon selectors.
 
 ---
 
@@ -280,11 +280,9 @@ just migrate                # single squashed migration (0001)
 
 ## Roadmap
 
-- Report drill-downs (chart element → filtered transaction list) and
-  per-report export
 - Deeper mobile polish (chart touch interactions, per-page refinements)
 - Advanced loan accounts (amortization, interest, extra-payment simulation)
-- Command palette, bill reminders, subscription tracking
+- Command palette, bill reminders
 - YNAB-compatible export — an exit strategy from IGAB itself, because a tool
   you can leave is a tool you can trust
 

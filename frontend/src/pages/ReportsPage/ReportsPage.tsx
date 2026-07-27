@@ -27,6 +27,8 @@ import { TimelineReport } from '../../components/reports/charts/EventTimeline'
 import { LiabilitiesReport } from '../../components/reports/charts/LiabilitiesReport'
 import { SubscriptionsReport } from '../../components/reports/charts/SubscriptionsReport'
 import { SavingsReport } from '../../components/reports/charts/SavingsReport'
+import { AnomaliesReport } from '../../components/reports/charts/AnomaliesReport'
+import { CashProjectionReport } from '../../components/reports/charts/CashProjectionReport'
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import './ReportsPage.css'
@@ -98,6 +100,7 @@ export function ReportsPage() {
       case 'income-expense': return <IncomeExpenseReport budgetId={budgetId!} />
       case 'burn-rate': return <BurnRateReport budgetId={budgetId!} />
       case 'cash-flow': return <CashFlowSankeyReport budgetId={budgetId!} />
+      case 'projection': return <CashProjectionReport budgetId={budgetId!} />
       case 'budget-actual': return <BudgetActualReport budgetId={budgetId!} />
       case 'variance': return <VarianceReport budgetId={budgetId!} />
       case 'volatility': return <VolatilityReport budgetId={budgetId!} />
@@ -105,6 +108,7 @@ export function ReportsPage() {
       case 'treemap': return <SpendingTreemapReport budgetId={budgetId!} />
       case 'seasonality': return <SeasonalityReport budgetId={budgetId!} />
       case 'subscriptions': return <SubscriptionsReport budgetId={budgetId!} />
+      case 'anomalies': return <AnomaliesReport budgetId={budgetId!} />
       case 'payees': return <PayeeReport budgetId={budgetId!} />
       case 'day-patterns': return <DayPatternsReport budgetId={budgetId!} />
       case 'timeline': return <TimelineReport budgetId={budgetId!} />

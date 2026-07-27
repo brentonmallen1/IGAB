@@ -214,6 +214,26 @@ class TagRepository(BaseRepository[Tag]):
         )
         return {row[0] for row in result.all()}
 
+    async def get_payee_ids_by_system_keys(
+        self, budget_id: uuid.UUID, system_keys: Sequence[str]
+    ) -> set[uuid.UUID]:
+        """Get all payee IDs that have tags with any of the specified system keys."""
+        if not system_keys:
+            return set()
+        from igab.db.models import Payee
+
+        result = await self.session.execute(
+            select(payee_tags.c.payee_id)
+            .join(Tag, Tag.id == payee_tags.c.tag_id)
+            .join(Payee, Payee.id == payee_tags.c.payee_id)
+            .where(
+                Tag.system_key.in_(system_keys),
+                Payee.budget_id == budget_id,
+                Tag.is_deleted == False,  # noqa: E712
+            )
+        )
+        return {row[0] for row in result.all()}
+
 
 async def seed_system_tags(session: AsyncSession, budget_id: uuid.UUID) -> None:
     repo = TagRepository(session)

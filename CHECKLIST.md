@@ -101,16 +101,18 @@ _Add items here as they come up during development._
 
 ### Future Reports — full designs (backend + UX + test plans) in docs/future-reports-roadmap.md
 - [x] R1 Tags foundation: tags/joins schema, system tags, TagChip + theme color slots, Settings management, inspector + payee pickers, bulk tagging (M)
-- [ ] R2 Tag-aware report semantics — savings node in Sankey, exclude toggle in Pareto/Treemap, tag filter bar (S)
-- [ ] R3 Subscription tracker: interval detection + review-strip curation + report tab (L)
-- [ ] R4 Anomaly detection z-scores, plain-language cards + sparklines (S)
-- [ ] R5 Payday-effect panel in Day Patterns (S, cuttable — reframed lag correlation)
-- [ ] R6 Forward cash projection fan chart, bootstrap bands (M)
+- [x] R2 Tag-aware report semantics (2026-07-26: Hide Savings toggle in Pareto/Treemap excludes savings/long_term_expense-tagged categories; Savings report in Financial State group)
+- [x] R3 Subscriptions report (2026-07-26: payee-tagged subscriptions aggregated in Spending group — stacked bar chart, metrics, table; auto-detection deferred to backlog)
+- [x] R4 Anomaly detection (2026-07-26: z-score outliers with leave-one-out baseline, guard rails; Anomalies tab in Insights with sensitivity toggle, % change display, sparklines, drill-down)
+- [x] R5 Payday-effect panel (2026-07-26: second panel in Day Patterns — bar chart of avg daily spend for N days after income events vs baseline; excludes subscriptions)
+- [x] R6 Cash projection fan chart (2026-07-26: Projection tab in Cash Flow — bootstrap 500 paths from weekday-bucketed historical flows + scheduled transactions + subscription patterns; P10/25/50/75/90 bands, deterministic line, upcoming events list, goes-negative warning)
 - [x] R7 Liability data model + amortization engine (2026-07-25: migration 0004 — Liability + LiabilityBalanceSnapshot + Category.linked_liability_id; cent-exact `amortization.py`; LiabilityService with three payment-derivation paths + live payoff projection; full CRUD/snapshot/amortization/link-liability API; unmanaged liabilities join net worth exactly once in BOTH computations; 2026-07-26: renamed debt→liability; squashed migrations to single 0001_initial.py)
 - [x] R8 Liabilities sidebar section + per-liability detail page (2026-07-25: sidebar group with Link2/PenLine mode icons, LiabilitiesOverviewPage cards + account suggestions, LiabilityPage with 4-state payoff pill, Now/Beginning paydown chart with what-if overlay, show-more amortization table, update-balance + link-category flows; 2026-07-26: account classification (asset/liability) for tracking accounts — sidebar now groups by Assets/Liabilities instead of generic Tracking; liability tracker becomes optional enhancement on liability-classified accounts)
 - [x] R9 Consolidated Liabilities report tab (2026-07-25: Liabilities tab in Financial State — rollup metrics, stacked per-liability balance area, type/mode filters, sortable table with row-click to detail page)
 - [x] Sample budget generates liabilities (2026-07-26: Car Loan managed + Dental Payment Plan unmanaged with snapshots)
+- [x] Reports navigation UX (2026-07-26: group dropdown + horizontal tabs replaces scrolling tab bar; unsupported filters hidden instead of dimmed)
 - Deferred: inflation-adjusted trends, "if invested instead" — need external_series infra (sketched in roadmap)
+- Deferred: R3 auto-detection — cadence detection algorithm, confidence scoring, "suggest tags" UI
 
 ### Other
 - [ ] 2FA (TOTP) support
@@ -271,3 +273,17 @@ ideas:
 
 - receipt extraction into categories and then do a split transaction. need to figure out a way to decode some things, maybe need a upc database interactoin or something to try to decode things and figure out what the item was. maybe have a table per receipt that has a column for the original item string and then the upc actual object name
 
+- receipts should be stored as a scan? or allow the phone to use the scan feature. this is to help with image sizes as well as potentially with ocr
+- 
+
+fixes:
+- cappuchin light color palette, the text color in the sidebar is too dark / no contrast and hard to read
+- pareto should indicate when the user's finances aren't adhearing to the idea. like yellow border around the % of cateogires with some commentary about what the user might want to do about it
+- report chart hover/tooltips have bad color palettes and are hard to read. need to check each color palette option
+-  
+
+todo:
+- fable review/audit of all of the reports to make sure they calculate things correctly, have appropriate tests to make sure they do, and are displaying things correctly/effectively. also, making sure we're using recharts effectively and not making custom components, etc where they arent'y needed
+- fable security audit - sql injection, etc.
+- fable impeccable? style consistency throughout the application
+- 

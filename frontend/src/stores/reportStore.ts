@@ -8,6 +8,7 @@ export type ReportTab =
   | 'income-expense'
   | 'burn-rate'
   | 'cash-flow'
+  | 'projection'
   | 'budget-actual'
   | 'variance'
   | 'volatility'
@@ -20,6 +21,7 @@ export type ReportTab =
   | 'liabilities'
   | 'subscriptions'
   | 'savings'
+  | 'anomalies'
 
 export type TabGroup =
   | 'overview'
@@ -44,6 +46,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'burn-rate', label: 'Burn Rate', group: 'cashflow' },
   { id: 'cash-flow', label: 'Cash Flow', group: 'cashflow' },
+  { id: 'projection', label: 'Projection', group: 'cashflow' },
   { id: 'budget-actual', label: 'Budget vs Actual', group: 'budget' },
   { id: 'variance', label: 'Cumulative Variance', group: 'budget' },
   { id: 'volatility', label: 'Volatility', group: 'budget' },
@@ -51,6 +54,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'treemap', label: 'Treemap', group: 'spending' },
   { id: 'seasonality', label: 'Seasonality', group: 'spending' },
   { id: 'subscriptions', label: 'Subscriptions', group: 'spending' },
+  { id: 'anomalies', label: 'Anomalies', group: 'insights' },
   { id: 'payees', label: 'Payees', group: 'insights' },
   { id: 'day-patterns', label: 'Day Patterns', group: 'insights' },
   { id: 'timeline', label: 'Timeline', group: 'insights' },
@@ -97,6 +101,7 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'income-expense': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'burn-rate': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'cash-flow': { dates: true, categories: false, payees: false, accounts: true, groupBy: false },
+  'projection': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'budget-actual': { dates: true, categories: true, payees: false, accounts: false, groupBy: false },
   'variance': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'volatility': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
@@ -105,6 +110,7 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'seasonality': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'subscriptions': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'savings': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'anomalies': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'payees': { dates: true, categories: false, payees: true, accounts: true, groupBy: false },
   'day-patterns': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
   'timeline': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },

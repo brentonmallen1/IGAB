@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import polars as pl
-from sqlalchemy import func, select
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
@@ -1774,9 +1774,8 @@ class ReportService:
         )
 
         # Per-payee monthly aggregation
-        payee_monthly = (
-            df.group_by(["payee_id", "payee_name", "month"])
-            .agg(pl.col("amount").sum().alias("monthly_total"))
+        payee_monthly = df.group_by(["payee_id", "payee_name", "month"]).agg(
+            pl.col("amount").sum().alias("monthly_total")
         )
 
         # Build subscription items
@@ -1877,17 +1876,14 @@ class ReportService:
         cat_info = {str(r.id): {"name": r.name, "group_name": r.group_name} for r in cat_info_rows}
 
         # Get assignments (inflows) per category per month
-        assign_q = (
-            select(
-                BudgetAssignment.category_id,
-                BudgetAssignment.month,
-                BudgetAssignment.assigned,
-            )
-            .where(
-                BudgetAssignment.category_id.in_(savings_cat_ids),
-                BudgetAssignment.month >= start_date,
-                BudgetAssignment.month <= end_date,
-            )
+        assign_q = select(
+            BudgetAssignment.category_id,
+            BudgetAssignment.month,
+            BudgetAssignment.assigned,
+        ).where(
+            BudgetAssignment.category_id.in_(savings_cat_ids),
+            BudgetAssignment.month >= start_date,
+            BudgetAssignment.month <= end_date,
         )
         assign_rows = (await self.session.execute(assign_q)).all()
 
@@ -1972,8 +1968,9 @@ class ReportService:
                 continue
 
             info = cat_info[cid_str]
-            prior_bal = (prior_assigned.get(cid_str, Decimal("0")) +
-                         prior_activity.get(cid_str, Decimal("0")))
+            prior_bal = prior_assigned.get(cid_str, Decimal("0")) + prior_activity.get(
+                cid_str, Decimal("0")
+            )
 
             # Compute monthly balances
             monthly_balances = []
@@ -1990,15 +1987,17 @@ class ReportService:
 
             current_balance = monthly_balances[-1] if monthly_balances else Decimal("0")
 
-            categories.append({
-                "category_id": cid_str,
-                "category_name": info["name"],
-                "group_name": info["group_name"],
-                "monthly_balances": monthly_balances,
-                "current_balance": current_balance,
-                "target_balance": None,  # Could fetch from category targets
-                "total_inflow": total_inflow,
-            })
+            categories.append(
+                {
+                    "category_id": cid_str,
+                    "category_name": info["name"],
+                    "group_name": info["group_name"],
+                    "monthly_balances": monthly_balances,
+                    "current_balance": current_balance,
+                    "target_balance": None,  # Could fetch from category targets
+                    "total_inflow": total_inflow,
+                }
+            )
 
         # Sort by current balance descending
         categories.sort(key=lambda x: x["current_balance"], reverse=True)
@@ -2019,8 +2018,510 @@ class ReportService:
             "months": month_list,
         }
 
+    # ─── Anomaly Detection ────────────────────────────────────────────────────
+
+    async def anomalies_report(
+        self, budget_id: uuid.UUID, months: int = 12, threshold: float = 2.0
+    ) -> dict:
+        """Detect category-months with spending outside baseline z-score."""
+        today = date.today()
+        end_date = today
+        start_date = _subtract_months(today, months).replace(day=1)
+
+        # Get spending per category per month
+        month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        q = (
+            select(
+                Category.id.label("category_id"),
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+                month_col,
+                func.sum(Transaction.amount).label("total"),
+            )
+            .join(Transaction, Transaction.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.cleared != "pending",
+                Transaction.amount < 0,  # outflows only
+                Transaction.is_split == False,  # noqa: E712
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+            .group_by(
+                Category.id,
+                Category.name,
+                CategoryGroup.name,
+                month_col,
+            )
+        )
+        rows = (await self.session.execute(q)).all()
+
+        if not rows:
+            return {"anomalies": []}
+
+        # Build DataFrame
+        df = pl.DataFrame(
+            {
+                "category_id": [str(r.category_id) for r in rows],
+                "category_name": [r.category_name for r in rows],
+                "group_name": [r.group_name for r in rows],
+                "month": [r.month.date() if hasattr(r.month, "date") else r.month for r in rows],
+                "total": [abs(float(r.total)) for r in rows],
+            }
+        )
+
+        anomalies = []
+
+        # Group by category and compute z-scores
+        for cat_id in df["category_id"].unique().to_list():
+            cat_df = df.filter(pl.col("category_id") == cat_id).sort("month")
+
+            if len(cat_df) < 6:
+                continue
+
+            cat_name = cat_df["category_name"][0]
+            group_name = cat_df["group_name"][0]
+            months_data = cat_df["month"].to_list()
+            totals = cat_df["total"].to_list()
+
+            # For each month, compute leave-one-out z-score
+            for i, (month, actual) in enumerate(zip(months_data, totals)):
+                # Leave-one-out: exclude current month
+                others = [t for j, t in enumerate(totals) if j != i]
+                if len(others) < 5:
+                    continue
+
+                mean = sum(others) / len(others)
+                variance = sum((x - mean) ** 2 for x in others) / len(others)
+                std = variance**0.5
+
+                # Guard rails
+                if std < 5.0:
+                    continue
+                if abs(actual - mean) < 25.0:
+                    continue
+
+                z_score = (actual - mean) / std if std > 0 else 0
+
+                if abs(z_score) >= threshold:
+                    # Get trailing 12 months for sparkline
+                    history = totals[max(0, i - 11) : i + 1]
+                    # Pad to 12 if needed
+                    while len(history) < 12:
+                        history.insert(0, 0)
+
+                    anomalies.append(
+                        {
+                            "category_id": cat_id,
+                            "category_name": cat_name,
+                            "group_name": group_name,
+                            "month": month,
+                            "actual": Decimal(str(actual)).quantize(Decimal("0.01")),
+                            "baseline_mean": Decimal(str(mean)).quantize(Decimal("0.01")),
+                            "z_score": round(z_score, 2),
+                            "direction": "high" if z_score > 0 else "low",
+                            "history": [Decimal(str(h)).quantize(Decimal("0.01")) for h in history],
+                        }
+                    )
+
+        # Sort by z-score magnitude descending
+        anomalies.sort(key=lambda x: abs(x["z_score"]), reverse=True)
+
+        return {"anomalies": anomalies}
+
+    # ─── Payday Effect ─────────────────────────────────────────────────────────
+
+    async def payday_effect(
+        self,
+        budget_id: uuid.UUID,
+        window: int = 14,
+        months: int = 12,
+    ) -> dict:
+        """Compute average daily spending for N days after income events."""
+        end_date = date.today()
+        start_date = _subtract_months(end_date, months)
+
+        # Get subscription-tagged payee ids to exclude
+        from igab.repositories.tag_repo import TagRepository
+
+        tag_repo = TagRepository(self.session)
+        subscription_payee_ids = await tag_repo.get_payee_ids_by_system_keys(
+            budget_id, system_keys=["subscription"]
+        )
+
+        # Get all transactions in the period
+        q = (
+            select(
+                Transaction.date,
+                Transaction.amount,
+                Transaction.payee_id,
+            )
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.cleared != "pending",
+                Transaction.is_split == False,  # noqa: E712
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+            )
+            .order_by(Transaction.date)
+        )
+        rows = (await self.session.execute(q)).all()
+
+        if not rows:
+            return {
+                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
+                "baseline_daily": Decimal("0"),
+                "event_count": 0,
+            }
+
+        # Build DataFrame
+        df = pl.DataFrame(
+            {
+                "date": [r.date for r in rows],
+                "amount": [float(r.amount) for r in rows],
+                "payee_id": [str(r.payee_id) if r.payee_id else None for r in rows],
+            }
+        )
+
+        # Identify income events: inflows >= P75 of all inflows (floor $200)
+        inflows = df.filter(pl.col("amount") > 0)
+        if inflows.is_empty():
+            return {
+                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
+                "baseline_daily": Decimal("0"),
+                "event_count": 0,
+            }
+
+        p75 = inflows["amount"].quantile(0.75)
+        threshold = max(float(p75) if p75 is not None else 0.0, 200.0)
+        income_events = inflows.filter(pl.col("amount") >= threshold)["date"].unique().to_list()
+        income_dates = set(income_events)
+
+        if not income_dates:
+            return {
+                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
+                "baseline_daily": Decimal("0"),
+                "event_count": 0,
+            }
+
+        # Exclude subscription-tagged payees from spending
+        sub_ids = {str(pid) for pid in subscription_payee_ids}
+        outflows = df.filter(
+            (pl.col("amount") < 0)
+            & (~pl.col("payee_id").is_in(sub_ids) | pl.col("payee_id").is_null())
+        )
+
+        # Group by date
+        daily_spend = (
+            outflows.group_by("date")
+            .agg(pl.col("amount").sum().alias("total"))
+            .with_columns(pl.col("total").abs())
+        )
+        daily_map = {r["date"]: r["total"] for r in daily_spend.to_dicts()}
+
+        # Compute spending for each offset day after income events
+        offset_totals: dict[int, list[float]] = {i: [] for i in range(window)}
+        baseline_days: list[float] = []
+
+        all_dates = sorted(daily_map.keys())
+        income_windows: set[date] = set()
+
+        for inc_date in income_dates:
+            for offset in range(window):
+                target_date = inc_date + timedelta(days=offset)
+                income_windows.add(target_date)
+                if target_date in daily_map:
+                    offset_totals[offset].append(daily_map[target_date])
+
+        # Baseline: days NOT in any income window
+        for d in all_dates:
+            if d not in income_windows and d in daily_map:
+                baseline_days.append(daily_map[d])
+
+        # Compute averages
+        days_result = []
+        for offset in range(window):
+            vals = offset_totals[offset]
+            avg_spend = sum(vals) / len(vals) if vals else 0
+            days_result.append(
+                {"offset": offset, "avg_spend": Decimal(str(avg_spend)).quantize(Decimal("0.01"))}
+            )
+
+        baseline_daily = (
+            Decimal(str(sum(baseline_days) / len(baseline_days))).quantize(Decimal("0.01"))
+            if baseline_days
+            else Decimal("0")
+        )
+
+        return {
+            "days": days_result,
+            "baseline_daily": baseline_daily,
+            "event_count": len(income_dates),
+        }
+
+    # ─── Cash Projection ─────────────────────────────────────────────────────────
+
+    async def cash_projection(
+        self,
+        budget_id: uuid.UUID,
+        horizon_days: int = 90,
+    ) -> dict:
+        """Project future cash balances with uncertainty bands."""
+        import random
+
+        from igab.db.models import ScheduledTransaction
+        from igab.repositories.tag_repo import TagRepository
+
+        today = date.today()
+        end_date = today + timedelta(days=horizon_days)
+
+        # 1. Get current on-budget account balances (sum of cleared transactions)
+        q = (
+            select(func.coalesce(func.sum(Transaction.amount), 0))
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.cleared != "pending",
+                Account.is_closed == False,  # noqa: E712
+                Account.on_budget == True,  # noqa: E712
+            )
+        )
+        result = await self.session.execute(q)
+        start_balance = Decimal(str(result.scalar() or 0))
+
+        # 2. Get scheduled transactions in the projection window
+        sched_q = (
+            select(
+                ScheduledTransaction.id,
+                ScheduledTransaction.amount,
+                ScheduledTransaction.next_occurrence_date,
+                ScheduledTransaction.frequency,
+                ScheduledTransaction.end_date,
+                Payee.name.label("payee_name"),
+            )
+            .outerjoin(Payee, Payee.id == ScheduledTransaction.payee_id)
+            .where(
+                ScheduledTransaction.budget_id == budget_id,
+                ScheduledTransaction.is_deleted == False,  # noqa: E712
+                ScheduledTransaction.next_occurrence_date <= end_date,
+            )
+        )
+        sched_rows = (await self.session.execute(sched_q)).all()
+
+        # Expand scheduled transactions into individual events
+        scheduled_events: list[tuple[date, str, Decimal]] = []
+        for row in sched_rows:
+            occ_date = row.next_occurrence_date
+            amount = Decimal(str(row.amount))
+            payee_name = row.payee_name or "Scheduled"
+            freq = row.frequency
+            row_end_date = row.end_date
+
+            while occ_date <= end_date:
+                if row_end_date and occ_date > row_end_date:
+                    break
+                scheduled_events.append((occ_date, payee_name, amount))
+                occ_date = _next_occurrence(occ_date, freq)
+                if occ_date is None:
+                    break
+
+        # 3. Get subscription-tagged payees for expected subscription charges
+        tag_repo = TagRepository(self.session)
+        subscription_payee_ids = await tag_repo.get_payee_ids_by_system_keys(
+            budget_id, system_keys=["subscription"]
+        )
+
+        subscription_events: list[tuple[date, str, Decimal]] = []
+        if subscription_payee_ids:
+            # Get last charge date and typical amount for each subscription payee
+            sub_q = (
+                select(
+                    Transaction.payee_id,
+                    Payee.name.label("payee_name"),
+                    func.max(Transaction.date).label("last_date"),
+                    func.avg(Transaction.amount).label("avg_amount"),
+                )
+                .join(Payee, Payee.id == Transaction.payee_id)
+                .where(
+                    Transaction.budget_id == budget_id,
+                    Transaction.is_deleted == False,  # noqa: E712
+                    Transaction.payee_id.in_(subscription_payee_ids),
+                    Transaction.amount < 0,
+                )
+                .group_by(Transaction.payee_id, Payee.name)
+            )
+            sub_rows = (await self.session.execute(sub_q)).all()
+
+            for row in sub_rows:
+                last_date = row.last_date
+                avg_amount = Decimal(str(row.avg_amount))
+                payee_name = row.payee_name or "Subscription"
+
+                # Assume monthly cadence, project forward
+                next_date = last_date + timedelta(days=30)
+                while next_date <= end_date:
+                    if next_date >= today:
+                        subscription_events.append((next_date, payee_name, avg_amount))
+                    next_date = next_date + timedelta(days=30)
+
+        # 4. Get historical daily net flows for stochastic layer
+        hist_start = today - timedelta(days=180)
+        hist_q = select(Transaction.date, Transaction.amount).where(
+            Transaction.budget_id == budget_id,
+            Transaction.is_deleted == False,  # noqa: E712
+            Transaction.cleared != "pending",
+            Transaction.is_split == False,  # noqa: E712
+            Transaction.date >= hist_start,
+            Transaction.date < today,
+        )
+        hist_rows = (await self.session.execute(hist_q)).all()
+
+        # Group by date and weekday
+        daily_flows: dict[int, list[float]] = {i: [] for i in range(7)}  # weekday buckets
+        if hist_rows:
+            df = pl.DataFrame(
+                {
+                    "date": [r.date for r in hist_rows],
+                    "amount": [float(r.amount) for r in hist_rows],
+                }
+            )
+            daily = df.group_by("date").agg(pl.col("amount").sum().alias("net"))
+            for row in daily.iter_rows(named=True):
+                d = row["date"]
+                weekday = d.weekday()
+                daily_flows[weekday].append(row["net"])
+
+        # Ensure at least some history for each weekday
+        all_flows = [f for flows in daily_flows.values() for f in flows]
+        for wd in range(7):
+            if not daily_flows[wd]:
+                daily_flows[wd] = all_flows if all_flows else [0.0]
+
+        # 5. Bootstrap simulation
+        n_simulations = 500
+        seed = int(today.toordinal())
+        rng = random.Random(seed)
+
+        # Pre-compute deterministic events by date
+        det_by_date: dict[date, Decimal] = {}
+        for d, _, amt in scheduled_events + subscription_events:
+            det_by_date[d] = det_by_date.get(d, Decimal("0")) + amt
+
+        # Run simulations
+        sim_paths: list[list[float]] = []
+        for _ in range(n_simulations):
+            balance = float(start_balance)
+            path = []
+            for offset in range(horizon_days + 1):
+                d = today + timedelta(days=offset)
+                # Add deterministic events
+                det = float(det_by_date.get(d, Decimal("0")))
+                # Sample random daily flow from same weekday
+                weekday = d.weekday()
+                rand_flow = rng.choice(daily_flows[weekday])
+                balance += det + rand_flow
+                path.append(balance)
+            sim_paths.append(path)
+
+        # 6. Compute deterministic-only path
+        det_path: list[Decimal] = []
+        balance = start_balance
+        for offset in range(horizon_days + 1):
+            d = today + timedelta(days=offset)
+            balance += det_by_date.get(d, Decimal("0"))
+            det_path.append(balance)
+
+        # 7. Compute percentiles
+        points = []
+        goes_negative_date: date | None = None
+        for offset in range(horizon_days + 1):
+            d = today + timedelta(days=offset)
+            values = sorted([path[offset] for path in sim_paths])
+            p10 = values[int(n_simulations * 0.10)]
+            p25 = values[int(n_simulations * 0.25)]
+            p50 = values[int(n_simulations * 0.50)]
+            p75 = values[int(n_simulations * 0.75)]
+            p90 = values[int(n_simulations * 0.90)]
+
+            points.append(
+                {
+                    "date": d,
+                    "p10": Decimal(str(p10)).quantize(Decimal("0.01")),
+                    "p25": Decimal(str(p25)).quantize(Decimal("0.01")),
+                    "p50": Decimal(str(p50)).quantize(Decimal("0.01")),
+                    "p75": Decimal(str(p75)).quantize(Decimal("0.01")),
+                    "p90": Decimal(str(p90)).quantize(Decimal("0.01")),
+                    "deterministic": det_path[offset].quantize(Decimal("0.01")),
+                }
+            )
+
+            if goes_negative_date is None and p50 < 0:
+                goes_negative_date = d
+
+        # 8. Build events list (first 30 days only, for display)
+        events = []
+        cutoff = today + timedelta(days=30)
+        for d, payee, amt in sorted(scheduled_events):
+            if d > cutoff:
+                break
+            events.append(
+                {
+                    "date": d,
+                    "payee": payee,
+                    "amount": amt,
+                    "source": "scheduled",
+                }
+            )
+        for d, payee, amt in sorted(subscription_events):
+            if d > cutoff:
+                break
+            events.append(
+                {
+                    "date": d,
+                    "payee": payee,
+                    "amount": amt,
+                    "source": "subscription",
+                }
+            )
+        events.sort(key=lambda e: e["date"])
+
+        return {
+            "start_balance": start_balance,
+            "points": points,
+            "events": events[:20],  # Limit to first 20 events
+            "goes_negative_date": goes_negative_date,
+        }
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _next_occurrence(d: date, frequency: str) -> date | None:
+    """Calculate next occurrence date based on frequency."""
+    if frequency == "daily":
+        return d + timedelta(days=1)
+    elif frequency == "weekly":
+        return d + timedelta(weeks=1)
+    elif frequency == "biweekly":
+        return d + timedelta(weeks=2)
+    elif frequency == "monthly":
+        month = d.month + 1
+        year = d.year
+        if month > 12:
+            month = 1
+            year += 1
+        day = min(d.day, _last_day(date(year, month, 1)).day)
+        return date(year, month, day)
+    elif frequency == "yearly":
+        return date(d.year + 1, d.month, d.day)
+    return None
+
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 

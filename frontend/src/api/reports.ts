@@ -2,14 +2,17 @@ import { useQuery } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type {
   AccountCompositionReport,
+  AnomalyReport,
   BudgetActualReport,
   BurnRateReport,
   CashFlowReport,
+  CashProjectionReport,
   DashboardMetrics,
   DayPatternsReport,
   LiabilitiesReport,
   IncomeExpenseReport,
   NetWorthReport,
+  PaydayEffectReport,
   PayeeAnalysisReport,
   SavingsReport,
   SeasonalityReport,
@@ -410,6 +413,65 @@ export function useSavingsReport(budgetId: string | null, months = 12) {
       const { data } = await apiClient.get<SavingsReport>(
         `/${budgetId}/reports/savings`,
         { params: { months } }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+// ─── Anomalies ─────────────────────────────────────────────────────────────
+
+export function useAnomaliesReport(
+  budgetId: string | null,
+  months = 12,
+  threshold = 2.0
+) {
+  return useQuery({
+    queryKey: ['reports', 'anomalies', budgetId, months, threshold],
+    queryFn: async () => {
+      const { data } = await apiClient.get<AnomalyReport>(
+        `/${budgetId}/reports/anomalies`,
+        { params: { months, threshold } }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+// ─── Payday Effect ────────────────────────────────────────────────────────────
+
+export function usePaydayEffectReport(
+  budgetId: string | null,
+  window = 14,
+  months = 12
+) {
+  return useQuery({
+    queryKey: ['reports', 'payday-effect', budgetId, window, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<PaydayEffectReport>(
+        `/${budgetId}/reports/payday-effect`,
+        { params: { window, months } }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+// ─── Cash Projection ──────────────────────────────────────────────────────────
+
+export function useCashProjectionReport(budgetId: string | null, days = 90) {
+  return useQuery({
+    queryKey: ['reports', 'cash-projection', budgetId, days],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CashProjectionReport>(
+        `/${budgetId}/reports/cash-projection`,
+        { params: { days } }
       )
       return data
     },
