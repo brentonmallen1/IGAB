@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { usePayeeAnalysisReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, chartColor } from './chartColors'
@@ -15,6 +15,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 interface Props { budgetId: string }
 
 export function PayeeReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined

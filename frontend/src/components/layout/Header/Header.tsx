@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Palette, Search } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { IS_MAC } from '../../../keyboard/shortcuts'
-import { formatMonth, addMonths, currentMonthStart } from '../../../utils/dates'
+import { addMonths, currentMonthStart } from '../../../utils/dates'
 import type { Theme } from '../../../stores/appStore'
 import './Header.css'
 
@@ -25,6 +26,7 @@ export function Header() {
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const openPalette = useUIStore((s) => s.openPalette)
+  const { formatMonth } = useFormatters()
   const [themeOpen, setThemeOpen] = useState(false)
   const themeRef = useRef<HTMLDivElement>(null)
 

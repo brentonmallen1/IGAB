@@ -11,8 +11,9 @@ import { TargetEditor } from '../TargetEditor'
 import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
 import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
-import { formatMoney, parseMoney } from '../../../utils/money'
+import { parseMoney } from '../../../utils/money'
 import { today } from '../../../utils/dates'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { Category, CategoryBalance } from '../../../types'
 import './CategoryRow.css'
 
@@ -34,6 +35,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const [movePopoverPos, setMovePopoverPos] = useState<{ x: number; y: number } | null>(null)
   const [moveSheetOpen, setMoveSheetOpen] = useState(false)
   const isMobile = useIsMobile()
+  const { formatMoney } = useFormatters()
 
   const inputRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
@@ -222,8 +224,8 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                 budgetRowMode === 'compressed' ? (
                   <button
                     className={`category-row__target-led category-row__target-led--${targetStatus}`}
-                    title={getTargetTooltip(targetStatus, monthlyNeeded ?? undefined)}
-                    aria-label={`${category.name}: ${getTargetTooltip(targetStatus, monthlyNeeded ?? undefined)}`}
+                    title={getTargetTooltip(targetStatus, monthlyNeeded ?? undefined, formatMoney)}
+                    aria-label={`${category.name}: ${getTargetTooltip(targetStatus, monthlyNeeded ?? undefined, formatMoney)}`}
                     onClick={(e) => { e.stopPropagation(); setShowTargetEditor(true) }}
                   />
                 ) : (

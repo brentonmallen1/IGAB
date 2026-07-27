@@ -67,6 +67,9 @@ class Budget(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     currency_code: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    number_format: Mapped[str] = mapped_column(String(20), default="comma_dot", nullable=False)
+    date_format: Mapped[str] = mapped_column(String(10), default="mdy", nullable=False)
+    time_format: Mapped[str] = mapped_column(String(5), default="12h", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

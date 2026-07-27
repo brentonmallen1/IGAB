@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { useAccountCompositionReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -21,6 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
 interface Props { budgetId: string }
 
 export function AccountCompositionReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useAccountCompositionReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)

@@ -8,7 +8,7 @@ import {
 import { useAccounts } from '../../api/accounts'
 import { usePayees } from '../../api/transactions'
 import { ScheduledTransactionEditor } from '../../components/scheduled/ScheduledTransactionEditor'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import type { ScheduledTransaction } from '../../types'
 import './ScheduledTransactionsPage.css'
 
@@ -21,6 +21,7 @@ const FREQ_LABELS: Record<string, string> = {
 }
 
 export function ScheduledTransactionsPage() {
+  const { formatMoney } = useFormatters()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: scheduled = [] } = useScheduledTransactions(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)

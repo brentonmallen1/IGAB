@@ -12,8 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useLiabilitiesReport } from '../../../api/reports'
-import { formatMonthYear } from '../../liabilities/PayoffPill'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { MetricCard } from '../MetricCard'
@@ -39,6 +38,7 @@ type SortKey = 'balance' | 'rate' | 'baseline' | 'live' | 'interest'
 
 export function LiabilitiesReport({ budgetId }: Props) {
   const navigate = useNavigate()
+  const { formatMoney, formatMonth } = useFormatters()
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [modeFilter, setModeFilter] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('balance')
@@ -240,7 +240,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                       <td className="num">{Number(item.interest_rate)}%</td>
                       <td>
                         {item.baseline_payoff_date
-                          ? formatMonthYear(item.baseline_payoff_date)
+                          ? formatMonth(item.baseline_payoff_date)
                           : '—'}
                       </td>
                       <td>
@@ -249,7 +249,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                             <AlertTriangle size={12} /> Won't pay off
                           </span>
                         ) : item.live_payoff_date ? (
-                          formatMonthYear(item.live_payoff_date)
+                          formatMonth(item.live_payoff_date)
                         ) : (
                           '—'
                         )}

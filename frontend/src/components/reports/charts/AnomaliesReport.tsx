@@ -3,7 +3,7 @@ import { CheckCircle2 } from 'lucide-react'
 import { LineChart, Line, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { useAnomaliesReport } from '../../../api/reports'
 import { useReportStore } from '../../../stores/reportStore'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 
@@ -23,21 +23,19 @@ export function AnomaliesReport({ budgetId }: Props) {
   const [threshold, setThreshold] = useState(2.5)
   const { data, isLoading } = useAnomaliesReport(budgetId, months, threshold)
   const { setDrillDown } = useReportStore()
+  const { formatMoney, formatMonth } = useFormatters()
 
   const anomalies = useMemo(() => data?.anomalies ?? [], [data])
 
   const groupedByMonth = useMemo(() => {
     const groups = new Map<string, typeof anomalies>()
     for (const a of anomalies) {
-      const monthKey = new Date(a.month + 'T00:00:00').toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      })
+      const monthKey = formatMonth(a.month)
       if (!groups.has(monthKey)) groups.set(monthKey, [])
       groups.get(monthKey)!.push(a)
     }
     return groups
-  }, [anomalies])
+  }, [anomalies, formatMonth])
 
   function handleClick(a: (typeof anomalies)[0]) {
     // Parse month as YYYY-MM-DD and get start/end of that month

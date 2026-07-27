@@ -7,7 +7,7 @@ import {
   useUpdateCategoryGroup,
 } from '../../../api/categories'
 import { CategoryRow } from '../CategoryRow/CategoryRow'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { Category, CategoryBalance, CategoryGroup } from '../../../types'
 import './CategoryGroupRow.css'
 
@@ -22,6 +22,7 @@ interface Props {
 }
 
 export function CategoryGroupRow({ group, categories, balanceMap, budgetId, month }: Props) {
+  const { formatMoney } = useFormatters()
   const collapsedGroups = useUIStore((s) => s.collapsedGroups)
   const toggleGroup = useUIStore((s) => s.toggleGroupExpanded)
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)

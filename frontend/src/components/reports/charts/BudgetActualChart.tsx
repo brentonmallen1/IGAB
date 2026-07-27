@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useBudgetActualReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -20,11 +20,13 @@ function BudgetActualTooltip({
   payload,
   label,
   chartData,
+  formatMoney,
 }: {
   active?: boolean
   payload?: { name: string; value: number }[]
   label?: string
   chartData: { name: string; group: string }[]
+  formatMoney: (amount: number) => string
 }) {
   if (!active || !payload?.length) return null
   const entry = chartData.find((d) => d.name === label)
@@ -43,6 +45,7 @@ function BudgetActualTooltip({
 }
 
 export function BudgetActualReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const [showOverspent, setShowOverspent] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>('default')
@@ -161,7 +164,7 @@ export function BudgetActualReport({ budgetId }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
               <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={80} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={130} />
-              <Tooltip content={<BudgetActualTooltip chartData={chartData} />} offset={16} isAnimationActive={false} />
+              <Tooltip content={<BudgetActualTooltip chartData={chartData} formatMoney={formatMoney} />} offset={16} isAnimationActive={false} />
               <Bar dataKey="Assigned" fill="#4e79a7" radius={[0, 2, 2, 0]} barSize={10} cursor="pointer" onClick={barClick} />
               <Bar dataKey="Spent" barSize={10} radius={[0, 2, 2, 0]} cursor="pointer" onClick={barClick}>
                 {chartData.map((entry, i) => (

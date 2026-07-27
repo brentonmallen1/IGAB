@@ -1,4 +1,4 @@
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import './DrillDownTable.css'
 
 export interface DrillDownRow {
@@ -18,6 +18,7 @@ interface Props {
 }
 
 export function DrillDownTable({ rows, total, onRowClick, amountLabel = 'Amount' }: Props) {
+  const { formatMoney } = useFormatters()
   if (rows.length === 0) return null
 
   return (

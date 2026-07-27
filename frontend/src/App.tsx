@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { FormatProvider } from './contexts/FormatContext'
 import { MainLayout } from './components/layout/MainLayout/MainLayout'
 import { OfflineBanner } from './components/pwa/OfflineBanner'
 import { UpdateToast } from './components/pwa/UpdateToast'
@@ -60,30 +61,32 @@ function AppToaster() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppToaster />
-      <UpdateToast />
-      <OfflineBanner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route element={<ProtectedRoute />}>
-            <Route path="/budgets" element={<BudgetSelectorPage />} />
-            <Route element={<MainLayout />}>
-              <Route path="/budget" element={<BudgetPage />} />
-              <Route path="/accounts" element={<AccountsOverviewPage />} />
-              <Route path="/accounts/:accountId" element={<AccountPage />} />
-              <Route path="/liabilities" element={<LiabilitiesOverviewPage />} />
-              <Route path="/liabilities/:liabilityId" element={<LiabilityPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/import" element={<ImportPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/scheduled" element={<ScheduledTransactionsPage />} />
-              <Route path="/payees" element={<PayeesPage />} />
+      <FormatProvider>
+        <AppToaster />
+        <UpdateToast />
+        <OfflineBanner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/budgets" element={<BudgetSelectorPage />} />
+              <Route element={<MainLayout />}>
+                <Route path="/budget" element={<BudgetPage />} />
+                <Route path="/accounts" element={<AccountsOverviewPage />} />
+                <Route path="/accounts/:accountId" element={<AccountPage />} />
+                <Route path="/liabilities" element={<LiabilitiesOverviewPage />} />
+                <Route path="/liabilities/:liabilityId" element={<LiabilityPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/import" element={<ImportPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
+                <Route path="/scheduled" element={<ScheduledTransactionsPage />} />
+                <Route path="/payees" element={<PayeesPage />} />
+              </Route>
+              <Route index element={<BudgetRedirect />} />
             </Route>
-            <Route index element={<BudgetRedirect />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
+      </FormatProvider>
     </QueryClientProvider>
   )
 }

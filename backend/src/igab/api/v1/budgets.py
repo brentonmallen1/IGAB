@@ -46,17 +46,26 @@ router = APIRouter()
 class BudgetCreate(BaseModel):
     name: str
     currency_code: str = "USD"
+    number_format: str = "comma_dot"
+    date_format: str = "mdy"
+    time_format: str = "12h"
 
 
 class BudgetUpdate(BaseModel):
     name: str | None = None
     currency_code: str | None = None
+    number_format: str | None = None
+    date_format: str | None = None
+    time_format: str | None = None
 
 
 class BudgetResponse(BaseModel):
     id: uuid.UUID
     name: str
     currency_code: str
+    number_format: str
+    date_format: str
+    time_format: str
 
     model_config = {"from_attributes": True}
 
@@ -328,6 +337,12 @@ async def update_budget(
         budget.name = body.name
     if body.currency_code:
         budget.currency_code = body.currency_code
+    if body.number_format:
+        budget.number_format = body.number_format
+    if body.date_format:
+        budget.date_format = body.date_format
+    if body.time_format:
+        budget.time_format = body.time_format
     await session.flush()
     return BudgetResponse.model_validate(budget)
 

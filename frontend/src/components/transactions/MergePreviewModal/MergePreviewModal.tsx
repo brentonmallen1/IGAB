@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { X, GitMerge } from 'lucide-react'
-import { formatMoney } from '../../../utils/money'
-import { formatDate } from '../../../utils/dates'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction } from '../../../types'
 import './MergePreviewModal.css'
 
@@ -20,12 +19,16 @@ function TxnCard({
   categoryMap,
   isSelected,
   onClick,
+  formatMoney,
+  formatDate,
 }: {
   txn: Transaction
   payeeMap: Map<string, string>
   categoryMap: Map<string, string>
   isSelected: boolean
   onClick?: () => void
+  formatMoney: (amount: number) => string
+  formatDate: (dateStr: string) => string
 }) {
   const payeeName = txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—'
   const categoryName = txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : '—'
@@ -85,6 +88,7 @@ export function MergePreviewModal({
   onCancel,
   isPending,
 }: Props) {
+  const { formatMoney, formatDate } = useFormatters()
   const [txn1, txn2] = transactions
   const reconciledTxn = txn1.cleared === 'reconciled' ? txn1 : txn2.cleared === 'reconciled' ? txn2 : null
   const defaultSurvivor = reconciledTxn?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
@@ -123,6 +127,8 @@ export function MergePreviewModal({
             categoryMap={categoryMap}
             isSelected={survivorId === txn1.id}
             onClick={reconciledTxn ? undefined : () => setSurvivorId(txn1.id)}
+            formatMoney={formatMoney}
+            formatDate={formatDate}
           />
           <TxnCard
             txn={txn2}
@@ -130,6 +136,8 @@ export function MergePreviewModal({
             categoryMap={categoryMap}
             isSelected={survivorId === txn2.id}
             onClick={reconciledTxn ? undefined : () => setSurvivorId(txn2.id)}
+            formatMoney={formatMoney}
+            formatDate={formatDate}
           />
         </div>
 

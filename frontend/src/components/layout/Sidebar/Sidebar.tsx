@@ -10,7 +10,7 @@ import { AddAccountModal } from '../../accounts/AddAccountModal'
 import { useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { Account } from '../../../types'
 import './Sidebar.css'
 
@@ -41,6 +41,7 @@ export function Sidebar() {
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccountId)
   const navigate = useNavigate()
+  const { formatMoney } = useFormatters()
   const { data: accounts } = useAccounts(budgetId)
   const { data: budgets = [] } = useBudgets()
   const { data: liabilities = [] } = useLiabilities(budgetId)

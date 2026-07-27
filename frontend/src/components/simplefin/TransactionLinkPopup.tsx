@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Link2, X, RefreshCw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '../../api/client'
-import { formatMoney } from '../../utils/money'
-import { formatDate } from '../../utils/dates'
+import { useFormatters } from '../../hooks/useFormatters'
 import type { Transaction } from '../../types'
 import './TransactionLinkPopup.css'
 
@@ -97,6 +96,7 @@ export function TransactionLinkPopup({
   budgetId: _budgetId,
   onClose,
 }: Props) {
+  const { formatMoney, formatDate } = useFormatters()
   const { data: linked, isLoading } = useLinkedTransaction(transaction.linked_transaction_id)
 
   const isSynced = !!transaction.sync_id
@@ -124,7 +124,7 @@ export function TransactionLinkPopup({
           <div className="link-popup__col">
             <div className="link-popup__col-label">From Bank (synced)</div>
             {syncedTxn ? (
-              <TransactionDetail txn={syncedTxn} />
+              <TransactionDetail txn={syncedTxn} formatMoney={formatMoney} formatDate={formatDate} />
             ) : (
               <span className="link-popup__loading">
                 {isLoading ? <RefreshCw size={12} className="spin" /> : '—'}
@@ -135,7 +135,7 @@ export function TransactionLinkPopup({
           <div className="link-popup__col">
             <div className="link-popup__col-label">Manually entered</div>
             {manualTxn ? (
-              <TransactionDetail txn={manualTxn} />
+              <TransactionDetail txn={manualTxn} formatMoney={formatMoney} formatDate={formatDate} />
             ) : (
               <span className="link-popup__loading">
                 {isLoading ? <RefreshCw size={12} className="spin" /> : '—'}
@@ -153,7 +153,15 @@ export function TransactionLinkPopup({
   )
 }
 
-function TransactionDetail({ txn }: { txn: Transaction }) {
+function TransactionDetail({
+  txn,
+  formatMoney,
+  formatDate,
+}: {
+  txn: Transaction
+  formatMoney: (amount: number) => string
+  formatDate: (dateStr: string) => string
+}) {
   const outflow = txn.amount < 0 ? Math.abs(txn.amount) : 0
   const inflow = txn.amount > 0 ? txn.amount : 0
   return (

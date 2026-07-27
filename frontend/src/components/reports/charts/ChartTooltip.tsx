@@ -1,4 +1,3 @@
-import { formatMoney } from '../../../utils/money'
 import './ChartTooltip.css'
 
 interface TooltipEntry {
@@ -16,11 +15,13 @@ interface Props {
   showTotal?: boolean
 }
 
+const defaultFormatter = (value: number) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
 export function ChartTooltip({
   active,
   payload,
   label,
-  formatter = formatMoney,
+  formatter = defaultFormatter,
   labelFormatter,
   showTotal = false,
 }: Props) {

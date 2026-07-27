@@ -12,8 +12,7 @@ import { SyncStatusIcon, getSyncState } from '../../components/simplefin/SyncSta
 import { AddAccountModal } from '../../components/accounts/AddAccountModal'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { useAppStore } from '../../stores/appStore'
-import { formatMoney } from '../../utils/money'
-import { formatDate } from '../../utils/dates'
+import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
 
@@ -47,7 +46,7 @@ function formatSyncAge(lastSyncAt: string | null): string {
   return `${Math.floor(ageH / 24)}d ago`
 }
 
-function formatReconciled(lastReconciledAt: string | null): string {
+function formatReconciled(lastReconciledAt: string | null, formatDate: (date: string) => string): string {
   if (!lastReconciledAt) return 'Never reconciled'
   return `Reconciled ${formatDate(lastReconciledAt.split('T')[0])}`
 }
@@ -61,6 +60,7 @@ interface AccountRowProps {
 }
 
 function AccountRow({ account, isSyncing, onSyncClick, onEdit, onDelete }: AccountRowProps) {
+  const { formatMoney, formatDate } = useFormatters()
   const navigate = useNavigate()
   const state = getSyncState(account, isSyncing)
   const balance = Number(account.balance)
@@ -102,7 +102,7 @@ function AccountRow({ account, isSyncing, onSyncClick, onEdit, onDelete }: Accou
             </span>
           )}
           <span className="accounts-overview__separator">·</span>
-          <span className="accounts-overview__reconciled">{formatReconciled(account.last_reconciled_at)}</span>
+          <span className="accounts-overview__reconciled">{formatReconciled(account.last_reconciled_at, formatDate)}</span>
         </div>
       </div>
 
