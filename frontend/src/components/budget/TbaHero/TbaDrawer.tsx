@@ -1,6 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import { useMoveHistory } from '../../../api/budgets'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { MoveHistoryList } from './MoveHistoryList'
 import './TbaHero.css'
 
@@ -22,6 +22,7 @@ export function TbaDrawer({
   overspentCount,
   onCoverOverspent,
 }: Props) {
+  const { formatMoney } = useFormatters()
   const { data: moves = [] } = useMoveHistory(budgetId, month, open)
   const hasOverspending = Number(totalOverspent) > 0
 

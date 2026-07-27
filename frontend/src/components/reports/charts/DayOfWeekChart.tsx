@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useDayPatternsReport, usePaydayEffectReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -16,6 +16,7 @@ interface Props { budgetId: string }
 const WINDOW_OPTIONS = [7, 14, 21] as const
 
 export function DayPatternsReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined

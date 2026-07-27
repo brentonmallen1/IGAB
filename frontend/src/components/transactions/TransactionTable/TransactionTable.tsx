@@ -24,7 +24,7 @@ import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simple
 import { useShortcut } from '../../../hooks/useShortcut'
 import { SHORTCUTS } from '../../../keyboard/shortcuts'
 import { today } from '../../../utils/dates'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import './TransactionTable.css'
@@ -66,6 +66,7 @@ const SortableHeader = memo(function SortableHeader({ col, label, currentCol, cu
 })
 
 export function TransactionTable({ accountId, budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)

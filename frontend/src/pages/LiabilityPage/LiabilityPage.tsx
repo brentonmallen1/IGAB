@@ -18,7 +18,7 @@ import { MetricCard } from '../../components/reports/MetricCard'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import './LiabilityPage.css'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -32,6 +32,7 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 export function LiabilityPage() {
+  const { formatMoney } = useFormatters()
   const { liabilityId } = useParams<{ liabilityId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const navigate = useNavigate()

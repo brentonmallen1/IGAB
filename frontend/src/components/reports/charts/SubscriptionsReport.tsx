@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useSubscriptionsReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -23,6 +23,7 @@ interface Props {
 const MONTH_OPTIONS = [6, 12, 24] as const
 
 export function SubscriptionsReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
   const { data, isLoading } = useSubscriptionsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)

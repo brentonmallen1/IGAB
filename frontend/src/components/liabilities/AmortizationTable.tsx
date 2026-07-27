@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { AmortizationMonth } from '../../api/liabilities'
-import { formatMoney } from '../../utils/money'
-import { formatMonthYear } from './PayoffPill'
+import { useFormatters } from '../../hooks/useFormatters'
 import './AmortizationTable.css'
 
 const PAGE = 24
@@ -12,6 +11,7 @@ interface Props {
 
 export function AmortizationTable({ schedule }: Props) {
   const [visible, setVisible] = useState(PAGE)
+  const { formatMoney, formatMonth } = useFormatters()
   const rows = schedule.slice(0, visible)
 
   if (schedule.length === 0) {
@@ -35,7 +35,7 @@ export function AmortizationTable({ schedule }: Props) {
           {rows.map((m) => (
             <tr key={m.month_index}>
               <td data-label="#">{m.month_index}</td>
-              <td data-label="Month">{formatMonthYear(m.date)}</td>
+              <td data-label="Month">{formatMonth(m.date)}</td>
               <td data-label="Payment" className="amort-table__num">
                 {formatMoney(Number(m.payment))}
               </td>

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useSeasonalityReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { monthWindow } from '../../../utils/dateWindow'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -20,6 +20,7 @@ function intensityColor(value: number, max: number): string {
 }
 
 export function SeasonalityReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useSeasonalityReport(budgetId, months)

@@ -1,7 +1,7 @@
 import { Zap } from 'lucide-react'
 import { useCategoryHistoryBatch, useAutoAssign } from '../../../api/categoryHistory'
 import { useAppStore } from '../../../stores/appStore'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { AutoAssignAction, CategoryHistory } from '../../../types'
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
 }
 
 export function AutoAssignSection({ categoryIds, budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const month = useAppStore((s) => s.selectedMonth)
   const { data: histories } = useCategoryHistoryBatch(budgetId, categoryIds)
   const autoAssign = useAutoAssign(budgetId, month)

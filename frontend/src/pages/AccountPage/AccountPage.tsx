@@ -16,10 +16,11 @@ import {
 } from '../../api/simplefin'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import './AccountPage.css'
 
 export function AccountPage() {
+  const { formatMoney } = useFormatters()
   const { accountId } = useParams<{ accountId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccountId)

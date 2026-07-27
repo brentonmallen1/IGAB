@@ -5,7 +5,7 @@ import { useBudgetTransactions, type BudgetTransactionParams } from '../../../ap
 import { useAccounts } from '../../../api/accounts'
 import { useCategories } from '../../../api/categories'
 import { usePayees } from '../../../api/payees'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import './DrillDownPanel.css'
 
 const PAGE_SIZE = 200
@@ -36,6 +36,7 @@ function DrillDownPanelInner({
   budgetId,
   drillDown,
 }: Props & { drillDown: DrillDownContext }) {
+  const { formatMoney } = useFormatters()
   const { setDrillDown, filters } = useReportStore()
   const [limit, setLimit] = useState(PAGE_SIZE)
   const panelRef = useRef<HTMLDivElement>(null)

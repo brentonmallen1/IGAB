@@ -4,10 +4,17 @@ export interface User {
   display_name: string | null
 }
 
+export type NumberFormat = 'comma_dot' | 'dot_comma' | 'space_comma'
+export type DateFormat = 'mdy' | 'dmy' | 'ymd'
+export type TimeFormat = '12h' | '24h'
+
 export interface Budget {
   id: string
   name: string
   currency_code: string
+  number_format: NumberFormat
+  date_format: DateFormat
+  time_format: TimeFormat
 }
 
 export interface Account {

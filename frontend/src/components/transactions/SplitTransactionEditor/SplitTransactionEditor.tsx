@@ -2,7 +2,8 @@ import { Plus, Trash2, X } from 'lucide-react'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useCreateTransaction, useDeleteTransaction } from '../../../api/transactions'
 import { useAppStore } from '../../../stores/appStore'
-import { formatMoney, fromCents, sumToCents, toCents } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { fromCents, sumToCents, toCents } from '../../../utils/money'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import type { Category, CategoryGroup, Transaction } from '../../../types'
 import './SplitTransactionEditor.css'
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function SplitTransactionEditor({ transaction: txn, categories, categoryGroups }: Props) {
+  const { formatMoney } = useFormatters()
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const { splitEditing, updateSplit, addSplit, removeSplit, stopSplitEditing } = useTransactionEditStore()
   const createTxn = useCreateTransaction(budgetId)

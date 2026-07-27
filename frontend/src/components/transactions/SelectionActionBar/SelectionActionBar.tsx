@@ -3,7 +3,7 @@ import { Tag, CheckCircle, Trash2, MoreHorizontal, ThumbsUp, GitMerge, Paperclip
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { FloatingSelectionBar } from '../../common/FloatingSelectionBar/FloatingSelectionBar'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { ClearedStatus } from '../../../types'
 import './SelectionActionBar.css'
 
@@ -44,6 +44,7 @@ export function SelectionActionBar({
   canMerge,
   onAttachments,
 }: Props) {
+  const { formatMoney } = useFormatters()
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [morePos, setMorePos] = useState({ x: 0, y: 0 })

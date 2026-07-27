@@ -1,4 +1,4 @@
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import './TargetBadge.css'
 
 const LABELS = {
@@ -6,7 +6,11 @@ const LABELS = {
   underfunded: 'Underfunded',
 }
 
-export function getTargetTooltip(status: 'funded' | 'underfunded', monthlyNeeded?: number): string {
+export function getTargetTooltip(
+  status: 'funded' | 'underfunded',
+  monthlyNeeded: number | undefined,
+  formatMoney: (amount: number) => string
+): string {
   const showMonthly = monthlyNeeded !== undefined && monthlyNeeded > 0 && status !== 'funded'
   return showMonthly ? `Need ${formatMoney(monthlyNeeded!)}/mo to reach goal` : LABELS[status]
 }
@@ -18,8 +22,9 @@ interface Props {
 }
 
 export function TargetBadge({ status, monthlyNeeded, onClick }: Props) {
+  const { formatMoney } = useFormatters()
   const showMonthly = monthlyNeeded !== undefined && monthlyNeeded > 0 && status !== 'funded'
-  const tooltip = getTargetTooltip(status, monthlyNeeded)
+  const tooltip = getTargetTooltip(status, monthlyNeeded, formatMoney)
   return (
     <span
       className={`target-badge target-badge--${status}`}

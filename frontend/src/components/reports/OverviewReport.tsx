@@ -6,7 +6,7 @@ import { useBudgetMonth } from '../../api/budgets'
 import { MetricCard } from './MetricCard'
 import { ReportInfoButton } from './ReportInfoButton'
 import { ReportExportButton } from './ReportExportButton/ReportExportButton'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import './OverviewReport.css'
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
 }
 
 export function OverviewReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const selectedMonth = useAppStore((s) => s.selectedMonth)
   const { filters } = useReportStore()
   const { data, isLoading } = useDashboardMetrics(budgetId, filters.startDate, filters.endDate)

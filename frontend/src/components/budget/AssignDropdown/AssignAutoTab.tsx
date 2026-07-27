@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { AssignStrategy } from '../../../types'
 import type { AssignStrategyTotalsResponse } from '../../../api/assign'
 import { AUTO_STRATEGY_ORDER, RESET_STRATEGY_ORDER, STRATEGY_META } from './strategyMeta'
@@ -17,6 +17,8 @@ interface Props {
  * opens the preview modal; nothing applies from here.
  */
 export function AssignAutoTab({ totals, isLoading, onPickStrategy, onCoverOverspent }: Props) {
+  const { formatMoney } = useFormatters()
+
   if (isLoading || !totals) {
     return <div className="assign-dropdown__loading">Calculating…</div>
   }

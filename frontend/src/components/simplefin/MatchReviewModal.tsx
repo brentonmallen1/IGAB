@@ -5,8 +5,7 @@ import { apiClient } from '../../api/client'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
 import { usePayees } from '../../api/payees'
 import { useCategories } from '../../api/categories'
-import { formatMoney } from '../../utils/money'
-import { formatDate } from '../../utils/dates'
+import { useFormatters } from '../../hooks/useFormatters'
 import type { Transaction, TransactionMatch } from '../../types'
 import './MatchReviewModal.css'
 
@@ -41,11 +40,15 @@ function TxnDetail({
   label,
   payeeMap,
   categoryMap,
+  formatMoney,
+  formatDate,
 }: {
   txn: Transaction
   label: string
   payeeMap: Map<string, string>
   categoryMap: Map<string, string>
+  formatMoney: (amount: number) => string
+  formatDate: (dateStr: string) => string
 }) {
   const outflow = txn.amount < 0 ? Math.abs(txn.amount) : 0
   const inflow = txn.amount >= 0 ? txn.amount : 0
@@ -102,11 +105,15 @@ function MergedPreview({
   manualTxn,
   payeeMap,
   categoryMap,
+  formatMoney,
+  formatDate,
 }: {
   syncedTxn: Transaction
   manualTxn: Transaction
   payeeMap: Map<string, string>
   categoryMap: Map<string, string>
+  formatMoney: (amount: number) => string
+  formatDate: (dateStr: string) => string
 }) {
   const CLEARED_RANK: Record<string, number> = { reconciled: 3, cleared: 2, uncleared: 1, pending: 0 }
   const mergedCleared =
@@ -183,6 +190,7 @@ function MatchCard({
   onAccepted: () => void
   onRejected: () => void
 }) {
+  const { formatMoney, formatDate } = useFormatters()
   const { data: syncedTxn, isLoading: loadingS } = useTransaction(match.synced_transaction_id)
   const { data: manualTxn, isLoading: loadingM } = useTransaction(match.manual_transaction_id)
   const { data: payees = [] } = usePayees(budgetId)
@@ -222,6 +230,8 @@ function MatchCard({
                 label="From bank (synced)"
                 payeeMap={payeeMap}
                 categoryMap={categoryMap}
+                formatMoney={formatMoney}
+                formatDate={formatDate}
               />
             )}
             <div className="match-modal__divider" />
@@ -231,6 +241,8 @@ function MatchCard({
                 label="Manually entered"
                 payeeMap={payeeMap}
                 categoryMap={categoryMap}
+                formatMoney={formatMoney}
+                formatDate={formatDate}
               />
             )}
           </div>
@@ -241,6 +253,8 @@ function MatchCard({
               manualTxn={manualTxn}
               payeeMap={payeeMap}
               categoryMap={categoryMap}
+              formatMoney={formatMoney}
+              formatDate={formatDate}
             />
           )}
         </>

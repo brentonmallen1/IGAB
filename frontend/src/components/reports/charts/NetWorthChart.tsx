@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { useNetWorthReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { ChartTooltip } from './ChartTooltip'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS } from './chartColors'
@@ -14,6 +14,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 interface Props { budgetId: string }
 
 export function NetWorthReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useNetWorthReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)

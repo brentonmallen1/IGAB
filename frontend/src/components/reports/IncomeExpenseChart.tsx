@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import type { IncomeExpenseMonth } from '../../types'
 
 interface Props {
@@ -16,6 +16,7 @@ interface Props {
 }
 
 export function IncomeExpenseChart({ months }: Props) {
+  const { formatMoney } = useFormatters()
   if (months.length === 0) {
     return <div className="reports-empty">No data available.</div>
   }

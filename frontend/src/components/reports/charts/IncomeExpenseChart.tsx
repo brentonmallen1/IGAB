@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { monthWindow } from '../../../utils/dateWindow'
 import { DrillDownTable } from '../DrillDownTable'
 import { ChartTooltip } from './ChartTooltip'
@@ -16,6 +16,7 @@ import './IncomeExpenseChart.css'
 interface Props { budgetId: string }
 
 export function IncomeExpenseReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useIncomeExpenseReport(budgetId, months)

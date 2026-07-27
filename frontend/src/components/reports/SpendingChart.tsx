@@ -1,5 +1,5 @@
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import type { SpendingCategory } from '../../types'
 
 const COLORS = [
@@ -13,6 +13,7 @@ interface Props {
 }
 
 export function SpendingChart({ categories, total }: Props) {
+  const { formatMoney } = useFormatters()
   if (categories.length === 0) {
     return <div className="reports-empty">No spending data for this period.</div>
   }
