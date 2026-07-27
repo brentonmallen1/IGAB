@@ -512,6 +512,57 @@ export interface SavingsReport {
   months: string[]
 }
 
+export interface AnomalyItem {
+  category_id: string
+  category_name: string
+  group_name: string
+  month: string
+  actual: number
+  baseline_mean: number
+  z_score: number
+  direction: 'high' | 'low'
+  history: number[]
+}
+
+export interface AnomalyReport {
+  anomalies: AnomalyItem[]
+}
+
+export interface PaydayEffectDay {
+  offset: number
+  avg_spend: number
+}
+
+export interface PaydayEffectReport {
+  days: PaydayEffectDay[]
+  baseline_daily: number
+  event_count: number
+}
+
+export interface CashProjectionPoint {
+  date: string
+  p10: number
+  p25: number
+  p50: number
+  p75: number
+  p90: number
+  deterministic: number
+}
+
+export interface CashProjectionEvent {
+  date: string
+  payee: string
+  amount: number
+  source: 'scheduled' | 'subscription'
+}
+
+export interface CashProjectionReport {
+  start_balance: number
+  points: CashProjectionPoint[]
+  events: CashProjectionEvent[]
+  goes_negative_date: string | null
+}
+
 export interface SimilarTransaction {
   id: string
   date: string

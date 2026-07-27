@@ -8,11 +8,16 @@ from fastapi import APIRouter, Depends, Query, Response
 from igab.api.v1.schemas.report import (
     AccountCompositionPoint,
     AccountCompositionResponse,
+    AnomalyItem,
+    AnomalyReportResponse,
     BudgetActualItem,
     BudgetActualResponse,
     BurnRatePoint,
     BurnRateResponse,
     CashFlowResponse,
+    CashProjectionEvent,
+    CashProjectionPoint,
+    CashProjectionResponse,
     CategoryPayee,
     DashboardMetrics,
     DayPatternItem,
@@ -24,20 +29,22 @@ from igab.api.v1.schemas.report import (
     LiabilitiesReportResponse,
     NetWorthPoint,
     NetWorthResponse,
+    PaydayEffectDay,
+    PaydayEffectResponse,
     PayeeAnalysisResponse,
     PayeeSpending,
     PayeeTopCategory,
     PayeeTrend,
     SankeyLink,
     SankeyNode,
+    SavingsCategory,
+    SavingsReportResponse,
+    SavingsSummary,
     SeasonalityResponse,
     SpendingCategory,
     SpendingGroupedResponse,
     SpendingGroupItem,
     SpendingReportResponse,
-    SavingsCategory,
-    SavingsReportResponse,
-    SavingsSummary,
     SubscriptionPayee,
     SubscriptionsReportResponse,
     SubscriptionsSummary,
@@ -405,6 +412,55 @@ async def savings_report(
         categories=[SavingsCategory.model_validate(c) for c in data["categories"]],
         summary=SavingsSummary.model_validate(data["summary"]),
         months=data["months"],
+    )
+
+
+@router.get("/{budget_id}/reports/anomalies", response_model=AnomalyReportResponse)
+async def anomalies_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: int = 12,
+    threshold: float = 2.0,
+) -> AnomalyReportResponse:
+    """Anomaly detection — category-months with spending outside baseline z-score."""
+    data = await report_svc.anomalies_report(budget_id, months, threshold)
+    return AnomalyReportResponse(
+        anomalies=[AnomalyItem.model_validate(a) for a in data["anomalies"]]
+    )
+
+
+@router.get("/{budget_id}/reports/payday-effect", response_model=PaydayEffectResponse)
+async def payday_effect_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    window: int = 14,
+    months: int = 12,
+) -> PaydayEffectResponse:
+    """Payday effect — average daily spending for N days after income events."""
+    data = await report_svc.payday_effect(budget_id, window, months)
+    return PaydayEffectResponse(
+        days=[PaydayEffectDay.model_validate(d) for d in data["days"]],
+        baseline_daily=data["baseline_daily"],
+        event_count=data["event_count"],
+    )
+
+
+@router.get("/{budget_id}/reports/cash-projection", response_model=CashProjectionResponse)
+async def cash_projection_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    days: int = 90,
+) -> CashProjectionResponse:
+    """Cash projection — fan chart with deterministic and stochastic layers."""
+    data = await report_svc.cash_projection(budget_id, days)
+    return CashProjectionResponse(
+        start_balance=data["start_balance"],
+        points=[CashProjectionPoint.model_validate(p) for p in data["points"]],
+        events=[CashProjectionEvent.model_validate(e) for e in data["events"]],
+        goes_negative_date=data.get("goes_negative_date"),
     )
 
 
