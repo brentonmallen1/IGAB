@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { monthsAgoStartISO } from '../../../utils/dateWindow'
 import { today } from '../../../utils/dates'
 import { DrillDownTable } from '../DrillDownTable'
@@ -15,6 +15,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 interface Props { budgetId: string }
 
 export function VolatilityReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useVolatilityReport(budgetId, months)

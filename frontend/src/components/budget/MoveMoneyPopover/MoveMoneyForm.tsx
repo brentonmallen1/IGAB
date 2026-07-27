@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { ArrowRightLeft } from 'lucide-react'
 import { useMoveHistory, useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
-import { formatMoney, toCents } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { toCents } from '../../../utils/money'
 import type { Category } from '../../../types'
 import './MoveMoneyPopover.css'
 
@@ -24,6 +25,7 @@ interface Props {
  * desktop popover and the mobile bottom sheet.
  */
 export function MoveMoneyForm({ budgetId, month, category, available, onClose }: Props) {
+  const { formatMoney } = useFormatters()
   const isCover = available < 0
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)

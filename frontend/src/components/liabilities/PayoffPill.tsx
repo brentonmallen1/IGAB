@@ -1,13 +1,7 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { Liability } from '../../api/liabilities'
+import { useFormatters } from '../../hooks/useFormatters'
 import './PayoffPill.css'
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-export function formatMonthYear(isoDate: string): string {
-  const [year, month] = isoDate.split('-')
-  return `${MONTHS[Number(month) - 1]} ${year}`
-}
 
 interface Props {
   liability: Liability
@@ -22,6 +16,8 @@ interface Props {
  * never retire the liability. A live number is never fabricated.
  */
 export function PayoffPill({ liability }: Props) {
+  const { formatMonth } = useFormatters()
+
   if (Number(liability.current_balance) === 0) {
     return (
       <div className="payoff-pill payoff-pill--paid">
@@ -41,7 +37,7 @@ export function PayoffPill({ liability }: Props) {
           <div className="payoff-pill__main">Current payments won't pay this off</div>
           <div className="payoff-pill__sub">
             {liveNever && !baselineNever && liability.baseline_payoff_date
-              ? `At the contractual payment: ${formatMonthYear(liability.baseline_payoff_date)}`
+              ? `At the contractual payment: ${formatMonth(liability.baseline_payoff_date)}`
               : 'Interest outpaces the payment — increase your payment'}
           </div>
         </div>
@@ -57,11 +53,11 @@ export function PayoffPill({ liability }: Props) {
       <div className="payoff-pill">
         <div>
           <div className="payoff-pill__main">
-            Paid off around <strong>{formatMonthYear(liability.live_payoff_date)}</strong>
+            Paid off around <strong>{formatMonth(liability.live_payoff_date)}</strong>
           </div>
           <div className="payoff-pill__sub">
             {differs && liability.baseline_payoff_date
-              ? `Contractual: ${formatMonthYear(liability.baseline_payoff_date)}`
+              ? `Contractual: ${formatMonth(liability.baseline_payoff_date)}`
               : 'Based on your recent payments'}
           </div>
         </div>
@@ -75,7 +71,7 @@ export function PayoffPill({ liability }: Props) {
         <div className="payoff-pill__main">
           {liability.baseline_payoff_date ? (
             <>
-              Paid off by <strong>{formatMonthYear(liability.baseline_payoff_date)}</strong>
+              Paid off by <strong>{formatMonth(liability.baseline_payoff_date)}</strong>
             </>
           ) : (
             'Payoff date unknown'

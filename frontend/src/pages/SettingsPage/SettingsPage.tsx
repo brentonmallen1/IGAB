@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useAppStore, type Theme } from '../../stores/appStore'
 import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '../../api/accounts'
-import { useBudgets } from '../../api/budgets'
+import { useBudgets, useUpdateBudget } from '../../api/budgets'
 import { useSettings, useUpdateSetting } from '../../api/settings'
 import {
   useSimpleFINConnections,
@@ -14,10 +14,49 @@ import { SimpleFINSetup } from '../../components/simplefin/SimpleFINSetup'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
-import { formatMoney } from '../../utils/money'
+import { formatMoneyWithOptions } from '../../utils/money'
+import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
+import { useFormatters } from '../../hooks/useFormatters'
 import { useUIStore } from '../../stores/uiStore'
-import type { AccountType } from '../../types'
+import type { AccountType, NumberFormat, DateFormat, TimeFormat } from '../../types'
 import './SettingsPage.css'
+
+const NUMBER_FORMATS: { value: NumberFormat; label: string; example: string }[] = [
+  { value: 'comma_dot', label: 'US/UK', example: '1,234.56' },
+  { value: 'dot_comma', label: 'European', example: '1.234,56' },
+  { value: 'space_comma', label: 'French', example: '1 234,56' },
+]
+
+const DATE_FORMATS: { value: DateFormat; label: string; example: string }[] = [
+  { value: 'mdy', label: 'US (M/D/Y)', example: 'Jan 15, 2024' },
+  { value: 'dmy', label: 'European (D/M/Y)', example: '15 Jan 2024' },
+  { value: 'ymd', label: 'ISO (Y-M-D)', example: '2024-01-15' },
+]
+
+const TIME_FORMATS: { value: TimeFormat; label: string; example: string }[] = [
+  { value: '12h', label: '12-hour', example: '3:45 PM' },
+  { value: '24h', label: '24-hour', example: '15:45' },
+]
+
+const CURRENCIES: { value: string; label: string; symbol: string }[] = [
+  { value: 'USD', label: 'US Dollar', symbol: '$' },
+  { value: 'EUR', label: 'Euro', symbol: '€' },
+  { value: 'GBP', label: 'British Pound', symbol: '£' },
+  { value: 'CAD', label: 'Canadian Dollar', symbol: 'CA$' },
+  { value: 'AUD', label: 'Australian Dollar', symbol: 'A$' },
+  { value: 'JPY', label: 'Japanese Yen', symbol: '¥' },
+  { value: 'CHF', label: 'Swiss Franc', symbol: 'CHF' },
+  { value: 'SEK', label: 'Swedish Krona', symbol: 'kr' },
+  { value: 'NOK', label: 'Norwegian Krone', symbol: 'kr' },
+  { value: 'DKK', label: 'Danish Krone', symbol: 'kr' },
+  { value: 'PLN', label: 'Polish Zloty', symbol: 'zł' },
+  { value: 'CZK', label: 'Czech Koruna', symbol: 'Kč' },
+  { value: 'INR', label: 'Indian Rupee', symbol: '₹' },
+  { value: 'CNY', label: 'Chinese Yuan', symbol: '¥' },
+  { value: 'KRW', label: 'South Korean Won', symbol: '₩' },
+  { value: 'BRL', label: 'Brazilian Real', symbol: 'R$' },
+  { value: 'MXN', label: 'Mexican Peso', symbol: 'MX$' },
+]
 
 
 const THEMES: { value: Theme; label: string }[] = [
@@ -41,6 +80,7 @@ const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
 ]
 
 export function SettingsPage() {
+  const { formatMoney } = useFormatters()
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -54,6 +94,7 @@ export function SettingsPage() {
   const createAccount = useCreateAccount(budgetId ?? '')
   const updateAccount = useUpdateAccount(budgetId ?? '')
   const deleteAccount = useDeleteAccount(budgetId ?? '')
+  const updateBudget = useUpdateBudget()
 
   const { isAccountEditorOpen, editingAccountId, openAccountEditor, closeAccountEditor } = useUIStore()
 
@@ -161,12 +202,107 @@ export function SettingsPage() {
         </div>
         <div className="settings-section__body">
           {currentBudget ? (
-            <div className="settings-row">
-              <div>
-                <div className="settings-budget-name">{currentBudget.name}</div>
-                <div className="settings-budget-name__id">{currentBudget.id}</div>
+            <>
+              <div className="settings-row">
+                <div>
+                  <div className="settings-budget-name">{currentBudget.name}</div>
+                  <div className="settings-budget-name__id">{currentBudget.id}</div>
+                </div>
               </div>
-            </div>
+
+              <div className="settings-subsection">
+                <div className="settings-subsection__title">Display Formats</div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Currency</div>
+                    <div className="settings-row__desc">Symbol shown with amounts</div>
+                  </div>
+                  <select
+                    className="settings-select"
+                    value={currentBudget.currency_code}
+                    onChange={(e) =>
+                      updateBudget.mutate({ id: currentBudget.id, currency_code: e.target.value })
+                    }
+                  >
+                    {CURRENCIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.symbol} — {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Numbers</div>
+                    <div className="settings-row__desc">Thousands and decimal separators</div>
+                  </div>
+                  <select
+                    className="settings-select"
+                    value={currentBudget.number_format}
+                    onChange={(e) =>
+                      updateBudget.mutate({ id: currentBudget.id, number_format: e.target.value })
+                    }
+                  >
+                    {NUMBER_FORMATS.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.example} ({f.label})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Dates</div>
+                    <div className="settings-row__desc">Order of day, month, year</div>
+                  </div>
+                  <select
+                    className="settings-select"
+                    value={currentBudget.date_format}
+                    onChange={(e) =>
+                      updateBudget.mutate({ id: currentBudget.id, date_format: e.target.value })
+                    }
+                  >
+                    {DATE_FORMATS.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.example} ({f.label})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Times</div>
+                    <div className="settings-row__desc">12-hour or 24-hour clock</div>
+                  </div>
+                  <select
+                    className="settings-select"
+                    value={currentBudget.time_format}
+                    onChange={(e) =>
+                      updateBudget.mutate({ id: currentBudget.id, time_format: e.target.value })
+                    }
+                  >
+                    {TIME_FORMATS.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.example} ({f.label})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="settings-format-preview">
+                  Preview:{' '}
+                  {formatMoneyWithOptions(-1234.56, currentBudget.currency_code, currentBudget.number_format)}
+                  {' • '}
+                  {formatDateWithOptions('2024-01-15', currentBudget.date_format)}
+                  {' • '}
+                  {formatTimeWithOptions(15, 45, currentBudget.time_format)}
+                </div>
+              </div>
+            </>
           ) : null}
 
           <div className="settings-row">

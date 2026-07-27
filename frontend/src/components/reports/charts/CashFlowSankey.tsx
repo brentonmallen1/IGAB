@@ -3,7 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useCashFlowReport } from '../../../api/reports'
 import { usePayees } from '../../../api/payees'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { previousWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
@@ -30,7 +30,7 @@ interface NodeData {
 }
 
 /** Signed delta as "+$123 (+12%)"; pct omitted when prev is 0. */
-function formatDelta(current: number, prev: number): string {
+function formatDelta(current: number, prev: number, formatMoney: (n: number) => string): string {
   const delta = current - prev
   const sign = delta >= 0 ? '+' : '−'
   const amount = `${sign}${formatMoney(Math.abs(delta))}`
@@ -49,6 +49,7 @@ function SankeyNodeRect(props: {
   x?: number; y?: number; width?: number; height?: number
   payload?: NodeData & { value?: number }
 }) {
+  const { formatMoney } = useFormatters()
   const { x = 0, y = 0, width = 0, height = 0, payload } = props
   if (!payload) return null
   const isLeft = payload.type === 'income'
@@ -78,7 +79,7 @@ function SankeyNodeRect(props: {
           fontSize={10}
           fill={payload.prev == null ? 'var(--text-muted)' : deltaColor(value, payload.prev, payload.type)}
         >
-          {payload.prev == null ? 'new' : formatDelta(value, payload.prev)}
+          {payload.prev == null ? 'new' : formatDelta(value, payload.prev, formatMoney)}
         </text>
       )}
     </g>
@@ -106,6 +107,7 @@ function SankeyTooltip({
   categoryPayees: Record<string, CategoryPayee[]>
   isDrilled: boolean
 }) {
+  const { formatMoney } = useFormatters()
   if (!active || !payload?.length) return null
   const p = payload[0]?.payload
   const name = p?.name ?? ''
@@ -146,7 +148,7 @@ function SankeyTooltip({
                 className="chart-tooltip__value"
                 style={{ color: deltaColor(value, p.prev, nodeType ?? '') }}
               >
-                {formatDelta(value, p.prev)}
+                {formatDelta(value, p.prev, formatMoney)}
               </span>
             </div>
           )}
@@ -168,6 +170,7 @@ function SankeyTooltip({
 }
 
 export function CashFlowSankeyReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const [viewMode, setViewMode] = useState<'spent' | 'budgeted'>('spent')
   const [compare, setCompare] = useState(false)
@@ -465,12 +468,12 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
           <MetricCard
             label="Total Income"
             value={formatMoney(Number(data.total_income))}
-            sub={compare && prevData ? formatDelta(Number(data.total_income), Number(prevData.total_income)) : undefined}
+            sub={compare && prevData ? formatDelta(Number(data.total_income), Number(prevData.total_income), formatMoney) : undefined}
           />
           <MetricCard
             label="Total Expenses"
             value={formatMoney(Number(data.total_expense))}
-            sub={compare && prevData ? formatDelta(Number(data.total_expense), Number(prevData.total_expense)) : undefined}
+            sub={compare && prevData ? formatDelta(Number(data.total_expense), Number(prevData.total_expense), formatMoney) : undefined}
           />
           <MetricCard
             label="Net"
@@ -480,6 +483,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
                 ? formatDelta(
                     Number(data.total_income) - Number(data.total_expense),
                     Number(prevData.total_income) - Number(prevData.total_expense),
+                    formatMoney,
                   )
                 : undefined
             }

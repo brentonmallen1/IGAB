@@ -9,8 +9,7 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useLongPress } from '../../../hooks/useLongPress'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useHistoryStore } from '../../../stores/historyStore'
-import { formatDate } from '../../../utils/dates'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
@@ -112,6 +111,7 @@ export const TransactionRow = memo(function TransactionRow({
   hasAttachment,
 }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId!)
+  const { formatMoney, formatDate } = useFormatters()
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
   const unreconcileTxn = useUnreconcileTransaction(budgetId)

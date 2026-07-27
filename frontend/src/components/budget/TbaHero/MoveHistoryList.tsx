@@ -1,5 +1,5 @@
 import { useCategories } from '../../../api/categories'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { BudgetMove } from '../../../api/budgets'
 import './TbaHero.css'
 
@@ -10,11 +10,15 @@ interface Props {
 
 /** Full move log for a month; a null side renders as "Ready to Assign". */
 export function MoveHistoryList({ budgetId, moves }: Props) {
+  const { formatMoney, formatDate } = useFormatters()
   const { data: categories = [] } = useCategories(budgetId)
   const nameOf = (id: string | null) =>
     id === null ? 'Ready to Assign' : (categories.find((c) => c.id === id)?.name ?? '—')
-  const dayOf = (iso: string) =>
-    new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const dayOf = (iso: string) => {
+    const d = formatDate(iso.slice(0, 10))
+    const parts = d.split(/[\s/\-]/)
+    return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : d
+  }
 
   return (
     <ul className="move-history">

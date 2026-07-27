@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useCoverOverspentPreview, useCoverOverspentApply } from '../../../api/budgets'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import './CoverOverspentModal.css'
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
 }
 
 export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
+  const { formatMoney } = useFormatters()
   const { data: preview, isLoading, refetch } = useCoverOverspentPreview(budgetId, month, true)
   const apply = useCoverOverspentApply(budgetId)
   const [error, setError] = useState<string | null>(null)

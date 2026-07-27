@@ -1,4 +1,68 @@
-/** Format a number as currency string (e.g. 1234.56 → "$1,234.56") */
+import type { NumberFormat } from '../types'
+
+const SEPARATORS: Record<NumberFormat, [string, string]> = {
+  comma_dot: [',', '.'],
+  dot_comma: ['.', ','],
+  space_comma: [' ', ','],
+}
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  JPY: '¥',
+  CAD: 'CA$',
+  AUD: 'A$',
+  CHF: 'CHF ',
+  SEK: 'kr ',
+  NOK: 'kr ',
+  DKK: 'kr ',
+  PLN: 'zł',
+  CZK: 'Kč',
+  INR: '₹',
+  CNY: '¥',
+  KRW: '₩',
+  BRL: 'R$',
+  MXN: 'MX$',
+}
+
+function getCurrencySymbol(code: string): string {
+  return CURRENCY_SYMBOLS[code] ?? `${code} `
+}
+
+function formatNumberWithSeparators(
+  absAmount: number,
+  numberFormat: NumberFormat
+): string {
+  const [thousands, decimal] = SEPARATORS[numberFormat]
+  const [intPart, decPart] = absAmount.toFixed(2).split('.')
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousands)
+  return `${formattedInt}${decimal}${decPart}`
+}
+
+/** Format a number as currency string with configurable format */
+export function formatMoneyWithOptions(
+  amount: number,
+  currencyCode: string,
+  numberFormat: NumberFormat
+): string {
+  const sign = amount < 0 ? '-' : ''
+  const symbol = getCurrencySymbol(currencyCode)
+  const formatted = formatNumberWithSeparators(Math.abs(amount), numberFormat)
+  return `${sign}${symbol}${formatted}`
+}
+
+/** Format amount without currency symbol, with configurable format */
+export function formatAmountWithOptions(
+  amount: number,
+  numberFormat: NumberFormat
+): string {
+  const sign = amount < 0 ? '-' : ''
+  const formatted = formatNumberWithSeparators(Math.abs(amount), numberFormat)
+  return `${sign}${formatted}`
+}
+
+/** Format a number as currency string (e.g. 1234.56 → "$1,234.56") - legacy API */
 export function formatMoney(
   amount: number,
   currencyCode = 'USD',
@@ -12,7 +76,7 @@ export function formatMoney(
   }).format(amount)
 }
 
-/** Format amount without currency symbol */
+/** Format amount without currency symbol - legacy API */
 export function formatAmount(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
-import { formatMoney, toCents } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { toCents } from '../../../utils/money'
 
 interface Props {
   budgetId: string
@@ -13,6 +14,7 @@ interface Props {
 
 /** Assign a dollar amount from Ready to Assign into one chosen category. */
 export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
+  const { formatMoney } = useFormatters()
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const moveMoney = useMoveMoney(budgetId)

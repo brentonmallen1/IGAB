@@ -7,10 +7,9 @@ import {
   LiabilitySettingsModal,
   type LiabilityPrefill,
 } from '../../components/liabilities/LiabilitySettingsModal'
-import { formatMonthYear } from '../../components/liabilities/PayoffPill'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import './LiabilitiesOverviewPage.css'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -26,6 +25,7 @@ const TYPE_LABELS: Record<string, string> = {
 export function LiabilitiesOverviewPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const navigate = useNavigate()
+  const { formatMoney, formatMonth } = useFormatters()
   const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)
   const { isLiabilityEditorOpen, editingLiabilityId, openLiabilityEditor, closeLiabilityEditor } =
@@ -138,7 +138,7 @@ export function LiabilitiesOverviewPage() {
                       <AlertTriangle size={12} /> Won't pay off at current rate
                     </>
                   ) : payoffDate ? (
-                    `Paid off ${formatMonthYear(payoffDate)}`
+                    `Paid off ${formatMonth(payoffDate)}`
                   ) : (
                     'Payoff date unknown'
                   )}

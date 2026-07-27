@@ -1,4 +1,4 @@
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { CategoryBalance } from '../../../types'
 
 interface Props {
@@ -6,6 +6,7 @@ interface Props {
 }
 
 export function AvailableBreakdown({ balances }: Props) {
+  const { formatMoney } = useFormatters()
   const totalAvailable = balances.reduce((s, b) => s + Number(b.available), 0)
   const totalAssigned = balances.reduce((s, b) => s + Number(b.assigned), 0)
   const totalActivity = balances.reduce((s, b) => s + Number(b.activity), 0)

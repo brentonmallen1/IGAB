@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAssignApply, useAssignPreview } from '../../../api/assign'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import type { AssignStrategy } from '../../../types'
 import { STRATEGY_META } from '../AssignDropdown/strategyMeta'
 import './AssignPreviewModal.css'
@@ -20,6 +20,7 @@ interface Props {
  * reports what actually happened.
  */
 export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props) {
+  const { formatMoney } = useFormatters()
   const { data: preview, isLoading } = useAssignPreview(budgetId, month, strategy)
   const apply = useAssignApply(budgetId)
   const meta = STRATEGY_META[strategy]

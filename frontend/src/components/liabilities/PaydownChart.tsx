@@ -11,7 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { AmortizationResponse, AmortizationMonth } from '../../api/liabilities'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import { ChartTooltip } from '../reports/charts/ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_POSITIVE, CHART_COLORS } from '../reports/charts/chartColors'
 
@@ -37,6 +37,7 @@ interface ChartPoint {
  * at a "Today" reference line so fact and forecast are never ambiguous.
  */
 export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
+  const { formatMoney } = useFormatters()
   const points: ChartPoint[] = []
   const todayMonth = new Date().toISOString().slice(0, 7)
 

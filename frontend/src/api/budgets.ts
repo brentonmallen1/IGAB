@@ -133,6 +133,23 @@ export function useRenameBudget() {
   })
 }
 
+export interface BudgetUpdate {
+  name?: string
+  currency_code?: string
+  number_format?: string
+  date_format?: string
+  time_format?: string
+}
+
+export function useUpdateBudget() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string } & BudgetUpdate) =>
+      apiClient.patch<Budget>(`/budgets/${id}`, data).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
+  })
+}
+
 export function useDeleteBudget() {
   const qc = useQueryClient()
   return useMutation({

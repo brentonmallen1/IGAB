@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useTimelineReport } from '../../../api/reports'
 import { usePayees } from '../../../api/payees'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -13,6 +13,7 @@ interface Props { budgetId: string }
 const LIMITS = [25, 50, 100] as const
 
 export function TimelineReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const [limit, setLimit] = useState<25 | 50 | 100>(25)
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined

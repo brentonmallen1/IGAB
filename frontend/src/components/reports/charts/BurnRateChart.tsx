@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { useBurnRateReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { ChartTooltip } from './ChartTooltip'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -13,6 +13,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 interface Props { budgetId: string }
 
 export function BurnRateReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
   const { data, isLoading } = useBurnRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)

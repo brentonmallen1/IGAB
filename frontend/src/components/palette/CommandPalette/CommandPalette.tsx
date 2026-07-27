@@ -11,8 +11,8 @@ import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useShortcut } from '../../../hooks/useShortcut'
-import { addMonths, currentMonthStart, formatDate } from '../../../utils/dates'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { addMonths, currentMonthStart } from '../../../utils/dates'
 import { THEMES } from '../../layout/Header/Header'
 import { STATIC_COMMANDS, type CommandCtx } from '../commands'
 import type { BudgetTransactionsResponse } from '../../../types'
@@ -24,6 +24,7 @@ import './CommandPalette.css'
  * quick-add sheet.
  */
 export function CommandPalette() {
+  const { formatMoney, formatDate } = useFormatters()
   const isMobile = useIsMobile()
   const navigate = useNavigate()
 

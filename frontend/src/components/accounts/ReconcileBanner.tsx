@@ -6,7 +6,7 @@ import {
   useFinishReconciliation,
 } from '../../api/reconciliation'
 import { useUIStore } from '../../stores/uiStore'
-import { formatMoney } from '../../utils/money'
+import { useFormatters } from '../../hooks/useFormatters'
 import './ReconcileBanner.css'
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
 }
 
 export function ReconcileBanner({ accountId, accountName }: Props) {
+  const { formatMoney } = useFormatters()
   const {
     reconcileStatementBalance,
     reconcileAdjustmentTxnId,

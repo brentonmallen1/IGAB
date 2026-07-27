@@ -3,7 +3,7 @@ import { Treemap, ResponsiveContainer, Tooltip } from 'recharts'
 import { ChevronRight } from 'lucide-react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useSpendingGroupedReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { CHART_COLORS, chartColor } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -24,6 +24,7 @@ interface TreeNode {
 }
 
 export function SpendingTreemapReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
@@ -226,6 +227,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
 }
 
 function TreemapContent(props: { x?: number; y?: number; width?: number; height?: number; name?: string; size?: number; fill?: string }) {
+  const { formatMoney } = useFormatters()
   const { x = 0, y = 0, width = 0, height = 0, name = '', size = 0, fill = '#4e79a7' } = props
   if (width < 30 || height < 20) return <g><rect x={x} y={y} width={width} height={height} fill={fill} /></g>
   return (

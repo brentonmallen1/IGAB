@@ -11,7 +11,8 @@ import { useAccounts } from '../../../api/accounts'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useCurrentPosition } from '../../../hooks/useCurrentPosition'
-import { formatMoney, toCents } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { toCents } from '../../../utils/money'
 import { today } from '../../../utils/dates'
 import './QuickAddSheet.css'
 
@@ -23,6 +24,7 @@ type Direction = 'outflow' | 'inflow'
  * across entries.
  */
 export function QuickAddSheet() {
+  const { formatMoney } = useFormatters()
   const open = useUIStore((s) => s.quickAddOpen)
   const closeQuickAdd = useUIStore((s) => s.closeQuickAdd)
   const budgetId = useAppStore((s) => s.currentBudgetId)

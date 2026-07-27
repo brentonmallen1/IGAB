@@ -4,7 +4,7 @@ import { useBudgetMonth } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useUIStore } from '../../../stores/uiStore'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { AssignDropdown, AssignDropdownContent } from '../AssignDropdown/AssignDropdown'
 import { AssignPreviewModal } from '../AssignPreviewModal/AssignPreviewModal'
@@ -29,6 +29,7 @@ export function TbaHero({ budgetId, month }: Props) {
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const isMobile = useIsMobile()
+  const { formatMoney } = useFormatters()
 
   const drawerOpen = useUIStore((s) => s.tbaDrawerOpen)
   const setDrawerOpen = useUIStore((s) => s.setTbaDrawerOpen)

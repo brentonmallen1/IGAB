@@ -5,8 +5,8 @@ import { useCategoryHistoryBatch, useAutoAssign } from '../../../api/categoryHis
 import { useTargetsByBudget } from '../../../api/targets'
 import { useDeleteTarget } from '../../../api/targets'
 import { useAppStore } from '../../../stores/appStore'
-import { formatMoney } from '../../../utils/money'
-import { today, formatDate } from '../../../utils/dates'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { today } from '../../../utils/dates'
 import { TargetEditor } from '../TargetEditor'
 import type { AutoAssignAction, Category, CategoryHistory, CategoryTarget } from '../../../types'
 
@@ -16,16 +16,12 @@ interface Props {
   categories: Category[]
 }
 
-function formatMonthLabel(month: string) {
-  const date = new Date(month + 'T00:00:00')
-  return date.toLocaleDateString('en-US', { month: 'long' })
-}
-
-function PastTargetRow({ target, categoryName, onEdit }: {
+function PastTargetRow({ target, categoryName, onEdit, formatMoney, formatDate }: {
   target: CategoryTarget
   categoryName: string
   onEdit: () => void
-  budgetId: string
+  formatMoney: (amount: number) => string
+  formatDate: (dateStr: string) => string
 }) {
   const deleteTarget = useDeleteTarget(target.category_id)
   return (
@@ -53,6 +49,7 @@ function PastTargetRow({ target, categoryName, onEdit }: {
 }
 
 export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
+  const { formatMoney, formatDate, formatMonth, settings } = useFormatters()
   const month = useAppStore((s) => s.selectedMonth)
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const { data: histories } = useCategoryHistoryBatch(budgetId, allCategoryIds)
@@ -72,7 +69,8 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
     (t) => t.target_date && t.target_date < todayStr
   )
 
-  const monthLabel = formatMonthLabel(month)
+  // Get just the month name from the full month string
+  const monthLabel = formatMonth(month).split(' ')[settings.dateFormat === 'ymd' ? 1 : 0]
 
   const totalAssigned = Number(budgetMonth?.total_assigned ?? 0)
   const totalActivity = Number(budgetMonth?.total_activity ?? 0)
@@ -229,7 +227,8 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
                     target={t}
                     categoryName={cat.name}
                     onEdit={() => setEditingTarget({ categoryId: cat.id, categoryName: cat.name, target: t })}
-                    budgetId={budgetId}
+                    formatMoney={formatMoney}
+                    formatDate={formatDate}
                   />
                 )
               })}

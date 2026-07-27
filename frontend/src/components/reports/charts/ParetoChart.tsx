@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore, type GroupBy } from '../../../stores/reportStore'
 import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/reports'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS } from './chartColors'
@@ -25,11 +25,13 @@ function ParetoTooltip({
   payload,
   label,
   chartData,
+  formatMoney,
 }: {
   active?: boolean
   payload?: { name: string; value: number }[]
   label?: string
   chartData: { name: string; fullName: string; group: string | null }[]
+  formatMoney: (amount: number) => string
 }) {
   if (!active || !payload?.length) return null
   const entry = chartData.find((d) => d.name === label)
@@ -50,6 +52,7 @@ function ParetoTooltip({
 }
 
 export function ParetoReport({ budgetId }: Props) {
+  const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
   const captureRef = useRef<HTMLDivElement>(null)
@@ -244,7 +247,7 @@ export function ParetoReport({ budgetId }: Props) {
               <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-40} textAnchor="end" interval={0} height={70} />
               <YAxis yAxisId="left" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
               <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={50} />
-              <Tooltip content={<ParetoTooltip chartData={chartData} />} offset={16} isAnimationActive={false} />
+              <Tooltip content={<ParetoTooltip chartData={chartData} formatMoney={formatMoney} />} offset={16} isAnimationActive={false} />
               <ReferenceLine yAxisId="right" y={80} stroke="#e15759" strokeDasharray="6 3" label={{ value: '80%', position: 'right', fontSize: 11 }} />
               <Bar
                 yAxisId="left"

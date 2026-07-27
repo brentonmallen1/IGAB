@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useTarget, useUpsertTarget, useDeleteTarget } from '../../../api/targets'
-import { formatMoney } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 
 const TARGET_TYPES = [
   { value: 'monthly_funding', label: 'Monthly Funding' },
@@ -15,6 +15,7 @@ interface Props {
 }
 
 export function TargetSection({ categoryId }: Props) {
+  const { formatMoney, formatDate } = useFormatters()
   const [isEditing, setIsEditing] = useState(false)
   const [targetType, setTargetType] = useState('monthly_funding')
   const [amount, setAmount] = useState('')
@@ -132,7 +133,7 @@ export function TargetSection({ categoryId }: Props) {
           </div>
           <div className="inspector-target-display__amount">{formatMoney(Number(target.target_amount))}</div>
           {target.target_date && (
-            <div className="inspector-target-display__date">By {target.target_date}</div>
+            <div className="inspector-target-display__date">By {formatDate(target.target_date)}</div>
           )}
         </div>
       ) : (
