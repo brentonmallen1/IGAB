@@ -23,6 +23,22 @@
   background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
+.transaction-row--highlighted {
+  animation: highlight-fade 2s ease-out;
+}
+
+@keyframes highlight-fade {
+  0% { background-color: color-mix(in srgb, var(--color-accent) 25%, transparent); }
+  100% { background-color: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transaction-row--highlighted {
+    animation: none;
+    background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+}
+
 .transaction-row.unapproved {
   opacity: 0.65;
   font-style: italic;

@@ -40,13 +40,13 @@ export function AccountCompositionReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Account Composition</h2>
         <ReportInfoButton title="Account Composition">
           <p>Shows how your balance is distributed across <strong>account types</strong> (checking, savings, credit cards, loans) over time.</p>
           <p>Credit card and loan balances are shown as negative to reflect that they're liabilities. A growing savings area relative to credit card debt is a healthy trend.</p>
         </ReportInfoButton>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="flex-row ms-auto">
           {([6, 12, 24] as const).map((m) => (
             <button
               key={m}

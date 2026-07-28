@@ -34,6 +34,7 @@ interface Props {
   onDuplicate: (txn: Transaction) => void
   onMakeRepeating: (txn: Transaction) => void
   hasAttachment?: boolean
+  highlighted?: boolean
 }
 
 const APPROVE_MENU_ITEMS: ContextMenuItem[] = [
@@ -64,6 +65,7 @@ const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
 
 function txnPropsEqual(prev: Props, next: Props): boolean {
   if (prev.isSelected !== next.isSelected) return false
+  if (prev.highlighted !== next.highlighted) return false
   const a = prev.transaction
   const b = next.transaction
   if (
@@ -109,6 +111,7 @@ export const TransactionRow = memo(function TransactionRow({
   onDuplicate,
   onMakeRepeating,
   hasAttachment,
+  highlighted,
 }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const { formatMoney, formatDate } = useFormatters()
@@ -309,7 +312,8 @@ export const TransactionRow = memo(function TransactionRow({
 
   return (
     <div
-      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''}`}
+      data-txn-id={txn.id}
+      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''} ${highlighted ? 'transaction-row--highlighted' : ''}`}
       role="row"
       onDoubleClick={() => !isMobile && !isReconciled && onEdit(txn)}
       onContextMenu={handleContextMenu}

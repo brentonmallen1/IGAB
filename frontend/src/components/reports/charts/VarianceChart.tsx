@@ -33,14 +33,14 @@ export function VarianceReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Cumulative Budget Variance</h2>
         <ReportInfoButton title="Cumulative Budget Variance">
           <p>Tracks the <strong>running total of assigned minus spent</strong> across all months. Positive = you've been consistently under budget; negative = you've been consistently over.</p>
           <p>The <strong>bars</strong> show the monthly assigned vs spent gap. The <strong>line</strong> is the cumulative drift — if it slopes down, your budget is eroding month by month.</p>
         </ReportInfoButton>
-        <p className="report-section__subtitle" style={{ margin: 0 }}>Running budget drift over time</p>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <p className="report-section__subtitle">Running budget drift over time</p>
+        <div className="flex-row ms-auto">
           {([6, 12, 24] as const).map((m) => (
             <button
               key={m}

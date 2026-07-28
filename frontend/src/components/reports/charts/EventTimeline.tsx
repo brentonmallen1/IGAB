@@ -50,16 +50,16 @@ export function TimelineReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Event Timeline</h2>
         <ReportInfoButton title="Event Timeline">
           <p>Your largest transactions displayed chronologically. The <strong>dot size</strong> reflects the transaction's magnitude relative to the largest in the set — bigger dot = larger amount.</p>
           <p><strong>Red dots</strong> are expenses; <strong>green dots</strong> are income. Transactions alternate left/right for readability. Hover any dot for full details.</p>
         </ReportInfoButton>
-        <p className="report-section__subtitle" style={{ margin: 0 }}>
+        <p className="report-section__subtitle">
           Largest transactions — size indicates relative magnitude.
         </p>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="flex-row ms-auto">
           {LIMITS.map((l) => (
             <button
               key={l}

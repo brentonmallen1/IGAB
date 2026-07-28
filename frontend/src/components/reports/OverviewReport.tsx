@@ -38,13 +38,13 @@ export function OverviewReport({ budgetId }: Props) {
   return (
     <div className="overview-report">
       <div className="overview-report__metrics-section">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 'var(--spacing-md)' }}>
-          <h2 className="report-section__title" style={{ margin: 0 }}>Overview</h2>
+        <div className="report-section__header">
+          <h2 className="report-section__title">Overview</h2>
           <ReportInfoButton title="Overview Dashboard">
             <p>A snapshot of your financial health at a glance. All metrics use the selected date range except burn rates, which use rolling windows from today.</p>
             <p><strong>Burn Rate</strong>: average monthly spending over the last 30 or 90 days. <strong>Savings Rate</strong>: (Income − Expenses) ÷ Income. <strong>Days Until Zero</strong>: current net worth ÷ daily burn rate — how long your money would last at this pace.</p>
           </ReportInfoButton>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="flex-row ms-auto">
             <a
               className="report-btn"
               href={buildExportUrl(budgetId, 'csv', filters.startDate, filters.endDate)}

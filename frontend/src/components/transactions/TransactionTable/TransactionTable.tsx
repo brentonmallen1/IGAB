@@ -32,6 +32,8 @@ import './TransactionTable.css'
 interface Props {
   accountId: string
   budgetId: string
+  highlightId?: string | null
+  onInteraction?: () => void
 }
 
 type SortColumn = 'date' | 'payee' | 'category' | 'memo' | 'amount'
@@ -65,7 +67,7 @@ const SortableHeader = memo(function SortableHeader({ col, label, currentCol, cu
   )
 })
 
-export function TransactionTable({ accountId, budgetId }: Props) {
+export function TransactionTable({ accountId, budgetId, highlightId, onInteraction }: Props) {
   const { formatMoney } = useFormatters()
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
@@ -235,6 +237,15 @@ export function TransactionTable({ accountId, budgetId }: Props) {
     return map
   }, [pendingMatches])
 
+  // Scroll to highlighted transaction when it loads
+  useEffect(() => {
+    if (!highlightId) return
+    const el = document.querySelector(`[data-txn-id="${highlightId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [highlightId, transactions])
+
   const allOrderedIds = useMemo(() => sorted.map((t) => t.id), [sorted])
   const allSelected = sorted.length > 0 && sorted.every((t) => selectedTransactionIds.has(t.id))
   const someSelected = sorted.some((t) => selectedTransactionIds.has(t.id))
@@ -268,7 +279,8 @@ export function TransactionTable({ accountId, budgetId }: Props) {
 
   const handleSelect = useCallback((id: string, shiftKey: boolean) => {
     toggleTransactionSelection(id, shiftKey, allOrderedIds)
-  }, [toggleTransactionSelection, allOrderedIds])
+    onInteraction?.()
+  }, [toggleTransactionSelection, allOrderedIds, onInteraction])
 
   const handleSort = useCallback((col: SortColumn) => {
     if (transactionSortColumn === col) {
@@ -461,6 +473,7 @@ export function TransactionTable({ accountId, budgetId }: Props) {
           onDuplicate={duplicateTransaction}
           onMakeRepeating={setMakeRepeatingTxn}
           hasAttachment={attachmentMap[txn.id]}
+          highlighted={txn.id === highlightId}
         />
         {splitEditing?.transactionId === txn.id && (
           <SplitTransactionEditor

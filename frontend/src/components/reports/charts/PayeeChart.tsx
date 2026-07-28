@@ -57,16 +57,16 @@ export function PayeeReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Payee Analysis</h2>
         <ReportInfoButton title="Payee Analysis">
           <p>Ranks your top payees by total spending in the selected period. <strong>Highlighted bars</strong> indicate recurring payees (appeared in 3+ different months).</p>
           <p>Use <em>Recurring</em> mode to focus only on fixed or habitual expenses — subscriptions, utilities, regular vendors. These are the easiest targets for cutting predictable spending.</p>
         </ReportInfoButton>
-        <p className="report-section__subtitle" style={{ margin: 0 }}>
+        <p className="report-section__subtitle">
           Top payees by spending. Recurring = appeared in 3+ months.
         </p>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="flex-row ms-auto">
           <button
             className={`report-btn ${view === 'top' ? 'report-btn--active' : ''}`}
             onClick={() => setView('top')}

@@ -33,13 +33,13 @@ export function NetWorthReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Net Worth Over Time</h2>
         <ReportInfoButton title="Net Worth Over Time">
           <p><strong>Net worth</strong> = total assets minus total liabilities across all on-budget accounts.</p>
           <p>The stacked area shows how <strong>assets</strong> and <strong>liabilities</strong> compose your net worth each month. A growing gap between them means you're building wealth.</p>
         </ReportInfoButton>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="flex-row ms-auto">
           {([6, 12, 24] as const).map((m) => (
             <button
               key={m}

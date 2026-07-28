@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { GitMerge, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -31,10 +32,11 @@ export function PayeesPage() {
     clearPayeeSelection,
   } = useUIStore()
 
+  const [searchParams] = useSearchParams()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editMappings, setEditMappings] = useState('')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchParams.get('q') ?? '')
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [wizardGroups, setWizardGroups] = useState<PayeeCleanupGroup[]>([])

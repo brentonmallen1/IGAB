@@ -98,14 +98,14 @@ export function BudgetActualReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Budget vs Actual</h2>
         <ReportInfoButton title="Budget vs Actual">
           <p>Compares how much you <strong>assigned</strong> to each category versus how much you actually <strong>spent</strong> in the selected date range.</p>
           <p><strong>Green bars</strong> = under budget. <strong>Red bars</strong> = over budget (spent more than assigned).</p>
           <p>Use the <em>Overspent only</em> filter to focus on problem categories, and <em>Sort by overspent</em> to rank the biggest overruns first.</p>
         </ReportInfoButton>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
           <label className="report-toggle">
             <input
               type="checkbox"

@@ -69,14 +69,14 @@ export function DayPatternsReport({ budgetId }: Props) {
   return (
     <>
       <div className="report-section">
-        <div className="report-section__controls">
+        <div className="report-section__header">
           <h2 className="report-section__title">Day-of-Week Spending Patterns</h2>
           <ReportInfoButton title="Day-of-Week Patterns">
             <p>Total spending aggregated by day of week across all transactions in the selected period. The <strong>peak day is highlighted</strong> in a different color.</p>
             <p>High weekday spending often signals structured habits (groceries, work lunches). High weekend spending can indicate impulse or leisure spending. Use this to identify which days need more discipline.</p>
             <p>Click a bar to see that weekday's transactions.</p>
           </ReportInfoButton>
-          <div style={{ marginLeft: 'auto' }}>
+          <div className="ms-auto">
             <ReportExportButton
               reportId="day-patterns"
               getRows={() =>
