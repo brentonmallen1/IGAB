@@ -65,7 +65,7 @@
 .heatmap__cell-value {
   font-size: var(--font-size-2xs);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--heatmap-cell-text);
   line-height: 32px;
   display: block;
   pointer-events: none;
@@ -89,11 +89,7 @@
   width: 120px;
   height: 10px;
   border-radius: 4px;
-  background: linear-gradient(
-    to right,
-    rgba(78, 121, 167, 0.2),
-    rgba(225, 50, 50, 0.9)
-  );
+  background: linear-gradient(to right, var(--heatmap-low), var(--heatmap-high));
 }
 
 .heatmap__cell--clickable {

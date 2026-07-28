@@ -57,6 +57,14 @@
   --z-bottom-nav: 250;
   --z-sheet-backdrop: 400;
   --z-sheet: 401;
+
+  /* Heatmap scale — semantic colors for intensity visualization */
+  --heatmap-low: color-mix(in srgb, var(--color-info) 25%, transparent);
+  --heatmap-high: var(--color-negative);
+  --heatmap-cell-text: var(--text-inverse);
+
+  /* Focus ring — consistent keyboard focus indicator */
+  --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--color-accent);
 }
 
 * {
@@ -93,11 +101,26 @@ button {
   color: inherit;
 }
 
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible:not([tabindex="-1"]) {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 input,
 select,
 textarea {
   font-family: inherit;
   font-size: inherit;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 a {
