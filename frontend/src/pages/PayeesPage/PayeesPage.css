@@ -102,6 +102,32 @@
   align-items: center;
 }
 
+.payees-table__head-sortable {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--transition-fast);
+}
+
+.payees-table__head-sortable:hover {
+  color: var(--text-primary);
+}
+
+.payees-table__head-sortable--active {
+  color: var(--text-primary);
+}
+
+.payees-table__sort-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.payees-table__head-sortable--active .payees-table__sort-icon {
+  opacity: 1;
+}
+
 .payees-table__row {
   display: grid;
   grid-template-columns: 28px 1fr 140px 90px auto;
@@ -212,6 +238,7 @@
 .payees-table__count {
   color: var(--text-muted);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .payees-table__actions {
@@ -307,9 +334,20 @@
   border-color: var(--color-accent);
 }
 
+.payees-wizard__option--selected {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--bg-secondary));
+  border-color: var(--color-accent);
+}
+
 .payees-wizard__option:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.payees-wizard__option-count {
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: var(--spacing-xs);
 }
 
 .payees-wizard__footer {
@@ -317,6 +355,7 @@
   border-top: 1px solid var(--border-color);
   display: flex;
   justify-content: flex-end;
+  gap: var(--spacing-sm);
 }
 
 /* Tags column */

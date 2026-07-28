@@ -1,6 +1,23 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from './client'
 
+export interface AIStatus {
+  available: boolean
+  host: string | null
+}
+
+export function useAIStatus() {
+  return useQuery({
+    queryKey: ['ai-status'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<AIStatus>('/ai/status')
+      return data
+    },
+    staleTime: 300_000, // cache for 5 minutes
+    retry: false,
+  })
+}
+
 export interface SuggestCategoryResult {
   category_id: string | null
   category_name: string | null

@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { GitMerge, Tag } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitMerge, Search, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
-import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, type PayeeWithCount } from '../../api/payees'
+import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, useFetchPayeeDuplicates, type PayeeWithCount } from '../../api/payees'
 import { useTags, useBulkAddPayeeTags, useCreateTag, useSetPayeeTags } from '../../api/tags'
-import { usePayeeCleanupSuggestions, type PayeeCleanupGroup } from '../../api/ai'
+import { usePayeeCleanupSuggestions, useAIStatus } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
@@ -20,6 +20,8 @@ export function PayeesPage() {
   const deletePayee = useDeletePayee(budgetId)
   const mergePayee = useMergePayee(budgetId)
   const cleanup = usePayeeCleanupSuggestions(budgetId)
+  const fetchDuplicates = useFetchPayeeDuplicates(budgetId)
+  const aiStatus = useAIStatus()
   const { data: allTags = [] } = useTags(budgetId)
   const bulkAddTags = useBulkAddPayeeTags(budgetId)
   const setPayeeTags = useSetPayeeTags(budgetId)
@@ -39,9 +41,13 @@ export function PayeesPage() {
   const [search, setSearch] = useState(searchParams.get('q') ?? '')
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
-  const [wizardGroups, setWizardGroups] = useState<PayeeCleanupGroup[]>([])
+  const [wizardGroups, setWizardGroups] = useState<Array<{ label: string; payees: Array<{ id: string; name: string; transaction_count?: number }> }>>([])
   const [wizardIdx, setWizardIdx] = useState(0)
+  const [showSensitivityPicker, setShowSensitivityPicker] = useState(false)
+  const [sensitivity, setSensitivity] = useState<'strict' | 'balanced' | 'loose'>('balanced')
   const [showBulkTagPicker, setShowBulkTagPicker] = useState(false)
+  const [sortColumn, setSortColumn] = useState<'name' | 'transactions'>('name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const headerCheckboxRef = useRef<HTMLInputElement>(null)
 
@@ -49,9 +55,24 @@ export function PayeesPage() {
     return <div className="payees-page"><div className="payees-empty">Select a budget to manage payees.</div></div>
   }
 
-  const filtered = payees.filter(
-    (p) => !p.transfer_account_id && p.name.toLowerCase().includes(search.toLowerCase()),
-  )
+  const filtered = useMemo(() => {
+    const term = search.toLowerCase()
+    return payees
+      .filter((p) => {
+        if (p.transfer_account_id) return false
+        const searchTarget = `${p.name} ${p.mapping_samples || ''}`.toLowerCase()
+        return searchTarget.includes(term)
+      })
+      .sort((a, b) => {
+        let cmp: number
+        if (sortColumn === 'name') {
+          cmp = a.name.localeCompare(b.name)
+        } else {
+          cmp = a.transaction_count - b.transaction_count
+        }
+        return sortDirection === 'asc' ? cmp : -cmp
+      })
+  }, [payees, search, sortColumn, sortDirection])
 
   const filteredIds = filtered.map((p) => p.id)
   const allOrderedIds = filtered.map((p) => p.id)
@@ -72,6 +93,17 @@ export function PayeesPage() {
       selectAllPayees([...union])
     }
   }
+
+  function handleSort(column: 'name' | 'transactions') {
+    if (sortColumn === column) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  const SortIcon = sortDirection === 'asc' ? ChevronUp : ChevronDown
 
   function startEdit(id: string, name: string, mappings: string | null) {
     setEditingId(id)
@@ -139,10 +171,17 @@ export function PayeesPage() {
     clearPayeeSelection()
   }
 
-  async function runCleanup() {
-    const result = await cleanup.refetch()
-    if (result.data && result.data.length > 0) {
-      setWizardGroups(result.data)
+  const sensitivityThresholds = { loose: 70, balanced: 75, strict: 80 }
+
+  async function runFuzzyDuplicates() {
+    const threshold = sensitivityThresholds[sensitivity]
+    const result = await fetchDuplicates.mutateAsync(threshold)
+    setShowSensitivityPicker(false)
+    if (result && result.length > 0) {
+      setWizardGroups(result.map((g) => ({
+        label: `${g.similarity}% similar`,
+        payees: g.payees,
+      })))
       setWizardIdx(0)
       setShowWizard(true)
     } else {
@@ -150,7 +189,21 @@ export function PayeesPage() {
     }
   }
 
-  async function acceptWizardGroup(group: PayeeCleanupGroup, keepId: string) {
+  async function runAICleanup() {
+    const result = await cleanup.refetch()
+    if (result.data && result.data.length > 0) {
+      setWizardGroups(result.data.map((g) => ({
+        label: g.canonical,
+        payees: g.payees,
+      })))
+      setWizardIdx(0)
+      setShowWizard(true)
+    } else {
+      alert('No duplicate payees found.')
+    }
+  }
+
+  async function acceptWizardGroup(group: typeof wizardGroups[0], keepId: string) {
     const toMerge = group.payees.filter((p) => p.id !== keepId)
     for (const p of toMerge) {
       await mergePayee.mutateAsync({ sourceId: p.id, targetId: keepId })
@@ -204,14 +257,68 @@ export function PayeesPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
           <button
+            className="payees-btn"
+            onClick={() => setShowSensitivityPicker(true)}
+            disabled={fetchDuplicates.isPending}
+          >
+            <Search size={14} />
+            {fetchDuplicates.isPending ? 'Scanning…' : 'Find Duplicates'}
+          </button>
+          <button
             className="payees-btn payees-btn--primary"
-            onClick={runCleanup}
-            disabled={cleanup.isFetching}
+            onClick={runAICleanup}
+            disabled={cleanup.isFetching || !aiStatus.data?.available}
+            title={!aiStatus.data?.available ? 'Requires Ollama connection (Settings → Integrations)' : 'Use AI to find duplicate payees'}
           >
             {cleanup.isFetching ? 'Scanning…' : 'AI Cleanup'}
           </button>
         </div>
       </div>
+
+      {showSensitivityPicker && (
+        <div className="payees-wizard-overlay" onClick={(e) => e.target === e.currentTarget && setShowSensitivityPicker(false)}>
+          <div className="payees-wizard">
+            <div className="payees-wizard__header">
+              <span>Find Duplicate Payees</span>
+              <button className="payees-wizard__close" onClick={() => setShowSensitivityPicker(false)}>×</button>
+            </div>
+            <div className="payees-wizard__body">
+              <p className="payees-wizard__label">How sensitive should the matching be?</p>
+              <p className="payees-wizard__sub">Looser matching finds more potential duplicates but may include false positives.</p>
+              <div className="payees-wizard__options">
+                <button
+                  className={`payees-wizard__option ${sensitivity === 'strict' ? 'payees-wizard__option--selected' : ''}`}
+                  onClick={() => setSensitivity('strict')}
+                >
+                  <strong>Strict</strong> — Only very similar names
+                </button>
+                <button
+                  className={`payees-wizard__option ${sensitivity === 'balanced' ? 'payees-wizard__option--selected' : ''}`}
+                  onClick={() => setSensitivity('balanced')}
+                >
+                  <strong>Balanced</strong> — Recommended
+                </button>
+                <button
+                  className={`payees-wizard__option ${sensitivity === 'loose' ? 'payees-wizard__option--selected' : ''}`}
+                  onClick={() => setSensitivity('loose')}
+                >
+                  <strong>Loose</strong> — More suggestions, some may be wrong
+                </button>
+              </div>
+            </div>
+            <div className="payees-wizard__footer">
+              <button className="payees-btn" onClick={() => setShowSensitivityPicker(false)}>Cancel</button>
+              <button
+                className="payees-btn payees-btn--primary"
+                onClick={runFuzzyDuplicates}
+                disabled={fetchDuplicates.isPending}
+              >
+                {fetchDuplicates.isPending ? 'Scanning…' : 'Find Duplicates'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showWizard && currentGroup && (
         <div className="payees-wizard-overlay" onClick={(e) => e.target === e.currentTarget && setShowWizard(false)}>
@@ -222,7 +329,7 @@ export function PayeesPage() {
             </div>
             <div className="payees-wizard__body">
               <p className="payees-wizard__label">
-                These payees look like the same vendor: <strong>{currentGroup.canonical}</strong>
+                These payees look similar: <strong>{currentGroup.label}</strong>
               </p>
               <p className="payees-wizard__sub">Select which name to keep — the others will be merged into it.</p>
               <div className="payees-wizard__options">
@@ -234,6 +341,9 @@ export function PayeesPage() {
                     disabled={mergePayee.isPending}
                   >
                     Keep <strong>"{p.name}"</strong>
+                    {p.transaction_count !== undefined && (
+                      <span className="payees-wizard__option-count">({p.transaction_count} txns)</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -271,9 +381,22 @@ export function PayeesPage() {
                 aria-label="Select all visible payees"
               />
             </div>
-            <span>Name</span>
+            <span
+              className={`payees-table__head-sortable ${sortColumn === 'name' ? 'payees-table__head-sortable--active' : ''}`}
+              onClick={() => handleSort('name')}
+            >
+              Name
+              {sortColumn === 'name' && <SortIcon size={12} className="payees-table__sort-icon" />}
+            </span>
             <span>Tags</span>
-            <span>Transactions</span>
+            <span
+              className={`payees-table__head-sortable ${sortColumn === 'transactions' ? 'payees-table__head-sortable--active' : ''}`}
+              onClick={() => handleSort('transactions')}
+              style={{ justifyContent: 'flex-end' }}
+            >
+              Transactions
+              {sortColumn === 'transactions' && <SortIcon size={12} className="payees-table__sort-icon" />}
+            </span>
             <span></span>
           </div>
           {filtered.map((p) => {

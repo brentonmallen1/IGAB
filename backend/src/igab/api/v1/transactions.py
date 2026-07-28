@@ -13,6 +13,8 @@ from igab.api.v1.schemas.transaction import (
     BulkClearedUpdate,
     BulkDelete,
     BulkItemFailure,
+    DuplicatePayeeEntry,
+    DuplicatePayeeGroup,
     MergeTransactionsRequest,
     NearbyPayeeResponse,
     PayeeCreate,
@@ -415,6 +417,34 @@ async def list_payees(
     return [
         PayeeWithCount(**PayeeResponse.model_validate(p).model_dump(), transaction_count=count)
         for p, count in rows
+    ]
+
+
+@router.get("/{budget_id}/payees/duplicates", response_model=list[DuplicatePayeeGroup])
+async def find_duplicate_payees(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    threshold: int = Query(75, ge=60, le=90),
+) -> list[DuplicatePayeeGroup]:
+    """Find groups of similar payees that may be duplicates.
+
+    Uses fuzzy string matching to identify payees with similar names.
+    Groups are sorted by total transaction count descending.
+    Threshold: 60-90 (higher = stricter matching, fewer but more confident results)
+    """
+    groups = await payee_repo.find_duplicate_groups(budget_id, threshold=threshold)
+    return [
+        DuplicatePayeeGroup(
+            payees=[
+                DuplicatePayeeEntry(
+                    id=p["id"], name=p["name"], transaction_count=p["transaction_count"]
+                )
+                for p in g["payees"]
+            ],
+            similarity=g["similarity"],
+        )
+        for g in groups
     ]
 
 

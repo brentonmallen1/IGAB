@@ -8,6 +8,7 @@ from igab.db.models import Payee, Transaction
 from igab.repositories.base import BaseRepository
 
 PAYEE_FUZZY_THRESHOLD = 80
+DUPLICATE_SUGGESTION_THRESHOLD = 75
 
 
 class PayeeRepository(BaseRepository[Payee]):
@@ -144,3 +145,95 @@ class PayeeRepository(BaseRepository[Payee]):
 
     async def delete(self, payee_id: uuid.UUID) -> None:
         await self.soft_delete(payee_id)
+
+    async def find_duplicate_groups(
+        self, budget_id: uuid.UUID, threshold: int = DUPLICATE_SUGGESTION_THRESHOLD
+    ) -> list[dict]:
+        """Find groups of similar payees using fuzzy matching.
+
+        Returns groups of payees with similarity >= threshold.
+        Each group contains payees that are similar to each other.
+        Groups are sorted by total transaction count descending.
+        """
+        payees_with_counts = await self.get_all_with_counts(budget_id)
+        # Exclude transfer payees
+        payees_with_counts = [
+            (p, c) for p, c in payees_with_counts if p.transfer_account_id is None
+        ]
+
+        if len(payees_with_counts) < 2:
+            return []
+
+        # Build adjacency using Union-Find for grouping
+        parent: dict[str, str] = {}
+        rank: dict[str, int] = {}
+
+        def find(x: str) -> str:
+            if parent.get(x, x) != x:
+                parent[x] = find(parent[x])
+            return parent.get(x, x)
+
+        def union(x: str, y: str) -> None:
+            px, py = find(x), find(y)
+            if px == py:
+                return
+            if rank.get(px, 0) < rank.get(py, 0):
+                px, py = py, px
+            parent[py] = px
+            if rank.get(px, 0) == rank.get(py, 0):
+                rank[px] = rank.get(px, 0) + 1
+
+        # Compare all pairs
+        for i, (p1, _) in enumerate(payees_with_counts):
+            for p2, _ in payees_with_counts[i + 1 :]:
+                score = fuzz.token_set_ratio(p1.name.lower(), p2.name.lower())
+                if score >= threshold:
+                    union(str(p1.id), str(p2.id))
+
+        # Build groups from Union-Find
+        groups_map: dict[str, list[tuple[Payee, int]]] = {}
+        for payee, count in payees_with_counts:
+            root = find(str(payee.id))
+            if root not in groups_map:
+                groups_map[root] = []
+            groups_map[root].append((payee, count))
+
+        # Filter to groups with 2+ payees, compute total count, sort
+        result = []
+        for members in groups_map.values():
+            if len(members) < 2:
+                continue
+            total_count = sum(c for _, c in members)
+            # Compute average similarity within group
+            if len(members) == 2:
+                similarity = fuzz.token_set_ratio(
+                    members[0][0].name.lower(), members[1][0].name.lower()
+                )
+            else:
+                # Average of all pairwise similarities
+                sims = []
+                for i, (p1, _) in enumerate(members):
+                    for p2, _ in members[i + 1 :]:
+                        sims.append(
+                            fuzz.token_set_ratio(p1.name.lower(), p2.name.lower())
+                        )
+                similarity = sum(sims) // len(sims) if sims else 0
+
+            result.append(
+                {
+                    "payees": [
+                        {
+                            "id": str(p.id),
+                            "name": p.name,
+                            "transaction_count": c,
+                        }
+                        for p, c in sorted(members, key=lambda x: -x[1])
+                    ],
+                    "similarity": similarity,
+                    "total_count": total_count,
+                }
+            )
+
+        # Sort by total transaction count descending
+        result.sort(key=lambda g: -g["total_count"])
+        return result
