@@ -15,6 +15,12 @@
   flex-shrink: 0;
 }
 
+.account-page__header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
 .account-page__name {
   font-size: var(--font-size-base);
   font-weight: 600;

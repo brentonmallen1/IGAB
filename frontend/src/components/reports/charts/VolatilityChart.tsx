@@ -53,17 +53,17 @@ export function VolatilityReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Category Volatility</h2>
         <ReportInfoButton title="Category Volatility">
           <p>The <strong>bar</strong> shows the mean monthly spend. The <strong>error bars</strong> extend from the historical minimum to maximum, showing the full range of variation.</p>
           <p>Categories with large error bars (wide range) are <strong>unpredictable</strong> — they spike and drop month to month. These are candidates for a bigger buffer or a closer look at what drives the spikes.</p>
           <p>Only categories with at least 2 months of data are shown.</p>
         </ReportInfoButton>
-        <p className="report-section__subtitle" style={{ margin: 0 }}>
+        <p className="report-section__subtitle">
           Mean monthly spending with min/max range. High variation = unstable spending.
         </p>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="flex-row ms-auto">
           {([6, 12, 24] as const).map((m) => (
             <button
               key={m}

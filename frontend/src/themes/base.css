@@ -146,6 +146,10 @@ a {
   white-space: nowrap;
 }
 
+/* Flex utilities */
+.ms-auto { margin-left: auto; }
+.flex-row { display: flex; align-items: center; gap: var(--spacing-sm); }
+
 /* Skip to main content link */
 .skip-link {
   position: absolute;

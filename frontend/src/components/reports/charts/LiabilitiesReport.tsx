@@ -99,7 +99,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Liabilities</h2>
         <ReportInfoButton title="Liabilities">
           <p>
@@ -111,7 +111,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
             and what-if extra payments.
           </p>
         </ReportInfoButton>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
           {presentTypes.length > 1 &&
             presentTypes.map((t) => (
               <button

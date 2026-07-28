@@ -56,7 +56,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Subscriptions</h2>
         <ReportInfoButton title="Subscriptions">
           <p>
@@ -72,7 +72,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
             payees. <strong>Annual</strong> projects the yearly cost.
           </p>
         </ReportInfoButton>
-        <div className="report-section__controls" style={{ gap: 4, marginLeft: 0 }}>
+        <div className="flex-row">
           {MONTH_OPTIONS.map((m) => (
             <button
               key={m}
