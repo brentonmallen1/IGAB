@@ -215,7 +215,7 @@
   height: 20px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .quick-add__receipt-actions {
