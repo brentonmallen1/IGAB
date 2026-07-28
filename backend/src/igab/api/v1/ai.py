@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from igab.api.v1.schemas.ai import (
+    AIStatusResponse,
     InsightsResponse,
     NormalizePayeeRequest,
     NormalizePayeeResponse,
@@ -16,6 +17,16 @@ from igab.dependencies import CurrentUser, get_ai_service
 from igab.services.ai_service import AIService
 
 router = APIRouter()
+
+
+@router.get("/ai/status", response_model=AIStatusResponse)
+async def ai_status(
+    current_user: CurrentUser,
+    ai_svc: Annotated[AIService, Depends(get_ai_service)],
+) -> AIStatusResponse:
+    """Check if Ollama AI is configured and reachable."""
+    result = await ai_svc.check_availability()
+    return AIStatusResponse(**result)
 
 
 @router.post("/{budget_id}/ai/suggest-category", response_model=SuggestCategoryResponse)

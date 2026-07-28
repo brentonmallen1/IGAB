@@ -193,3 +193,16 @@ class NearbyPayeeResponse(BaseModel):
     distance_m: float
     visit_count: int
     last_date: datetime.date
+
+
+class DuplicatePayeeEntry(BaseModel):
+    id: uuid.UUID
+    name: str
+    transaction_count: int
+
+
+class DuplicatePayeeGroup(BaseModel):
+    """A group of payees that appear to be duplicates based on fuzzy matching."""
+
+    payees: list[DuplicatePayeeEntry]
+    similarity: int

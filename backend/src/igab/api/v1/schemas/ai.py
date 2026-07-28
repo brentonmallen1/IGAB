@@ -33,3 +33,8 @@ class PayeeCleanupEntry(BaseModel):
 class PayeeCleanupGroup(BaseModel):
     canonical: str
     payees: list[PayeeCleanupEntry]
+
+
+class AIStatusResponse(BaseModel):
+    available: bool
+    host: str | None

@@ -20,6 +20,15 @@ class AIService:
         model = await self.settings.get("ollama_model") or "llama3.2"
         return OllamaClient(host, model)
 
+    async def check_availability(self) -> dict:
+        """Check if Ollama is configured and reachable."""
+        host = await self.settings.get("ollama_host")
+        if not host:
+            return {"available": False, "host": None}
+        client = await self._client()
+        available = await client.health()
+        return {"available": available, "host": host}
+
     async def suggest_category(
         self,
         budget_id: uuid.UUID,
