@@ -43,7 +43,8 @@ export function PayeesPage() {
   const [showWizard, setShowWizard] = useState(false)
   const [wizardGroups, setWizardGroups] = useState<Array<{ label: string; payees: Array<{ id: string; name: string; transaction_count?: number }> }>>([])
   const [wizardIdx, setWizardIdx] = useState(0)
-  const [showSensitivityPicker, setShowSensitivityPicker] = useState(false)
+  const [showCleanupModal, setShowCleanupModal] = useState(false)
+  const [cleanupMethod, setCleanupMethod] = useState<'fuzzy' | 'ai'>('fuzzy')
   const [sensitivity, setSensitivity] = useState<'strict' | 'balanced' | 'loose'>('balanced')
   const [showBulkTagPicker, setShowBulkTagPicker] = useState(false)
   const [sortColumn, setSortColumn] = useState<'name' | 'transactions'>('name')
@@ -173,33 +174,33 @@ export function PayeesPage() {
 
   const sensitivityThresholds = { loose: 70, balanced: 75, strict: 80 }
 
-  async function runFuzzyDuplicates() {
-    const threshold = sensitivityThresholds[sensitivity]
-    const result = await fetchDuplicates.mutateAsync(threshold)
-    setShowSensitivityPicker(false)
-    if (result && result.length > 0) {
-      setWizardGroups(result.map((g) => ({
-        label: `${g.similarity}% similar`,
-        payees: g.payees,
-      })))
-      setWizardIdx(0)
-      setShowWizard(true)
+  async function runCleanup() {
+    setShowCleanupModal(false)
+    if (cleanupMethod === 'fuzzy') {
+      const threshold = sensitivityThresholds[sensitivity]
+      const result = await fetchDuplicates.mutateAsync(threshold)
+      if (result && result.length > 0) {
+        setWizardGroups(result.map((g) => ({
+          label: `${g.similarity}% similar`,
+          payees: g.payees,
+        })))
+        setWizardIdx(0)
+        setShowWizard(true)
+      } else {
+        alert('No duplicate payees found.')
+      }
     } else {
-      alert('No duplicate payees found.')
-    }
-  }
-
-  async function runAICleanup() {
-    const result = await cleanup.refetch()
-    if (result.data && result.data.length > 0) {
-      setWizardGroups(result.data.map((g) => ({
-        label: g.canonical,
-        payees: g.payees,
-      })))
-      setWizardIdx(0)
-      setShowWizard(true)
-    } else {
-      alert('No duplicate payees found.')
+      const result = await cleanup.refetch()
+      if (result.data && result.data.length > 0) {
+        setWizardGroups(result.data.map((g) => ({
+          label: g.canonical,
+          payees: g.payees,
+        })))
+        setWizardIdx(0)
+        setShowWizard(true)
+      } else {
+        alert('No duplicate payees found.')
+      }
     }
   }
 
@@ -257,63 +258,86 @@ export function PayeesPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
           <button
-            className="payees-btn"
-            onClick={() => setShowSensitivityPicker(true)}
-            disabled={fetchDuplicates.isPending}
+            className="payees-btn payees-btn--primary"
+            onClick={() => setShowCleanupModal(true)}
+            disabled={fetchDuplicates.isPending || cleanup.isFetching}
+            title="Find similar payees that may be duplicates"
           >
             <Search size={14} />
-            {fetchDuplicates.isPending ? 'Scanning…' : 'Find Duplicates'}
-          </button>
-          <button
-            className="payees-btn payees-btn--primary"
-            onClick={runAICleanup}
-            disabled={cleanup.isFetching || !aiStatus.data?.available}
-            title={!aiStatus.data?.available ? 'Requires Ollama connection (Settings → Integrations)' : 'Use AI to find duplicate payees'}
-          >
-            {cleanup.isFetching ? 'Scanning…' : 'AI Cleanup'}
+            {fetchDuplicates.isPending || cleanup.isFetching ? 'Scanning…' : 'Cleanup'}
           </button>
         </div>
       </div>
 
-      {showSensitivityPicker && (
-        <div className="payees-wizard-overlay" onClick={(e) => e.target === e.currentTarget && setShowSensitivityPicker(false)}>
+      {showCleanupModal && (
+        <div className="payees-wizard-overlay" onClick={(e) => e.target === e.currentTarget && setShowCleanupModal(false)}>
           <div className="payees-wizard">
             <div className="payees-wizard__header">
-              <span>Find Duplicate Payees</span>
-              <button className="payees-wizard__close" onClick={() => setShowSensitivityPicker(false)}>×</button>
+              <span>Payee Cleanup</span>
+              <button className="payees-wizard__close" onClick={() => setShowCleanupModal(false)}>×</button>
             </div>
             <div className="payees-wizard__body">
-              <p className="payees-wizard__label">How sensitive should the matching be?</p>
-              <p className="payees-wizard__sub">Looser matching finds more potential duplicates but may include false positives.</p>
-              <div className="payees-wizard__options">
+              <p className="payees-wizard__label">Find similar payees to merge</p>
+              <p className="payees-wizard__sub">Choose a detection method:</p>
+              <div className="payees-cleanup__toggle">
                 <button
-                  className={`payees-wizard__option ${sensitivity === 'strict' ? 'payees-wizard__option--selected' : ''}`}
-                  onClick={() => setSensitivity('strict')}
+                  className={`payees-cleanup__toggle-btn ${cleanupMethod === 'fuzzy' ? 'payees-cleanup__toggle-btn--active' : ''}`}
+                  onClick={() => setCleanupMethod('fuzzy')}
                 >
-                  <strong>Strict</strong> — Only very similar names
+                  Fuzzy Match
                 </button>
                 <button
-                  className={`payees-wizard__option ${sensitivity === 'balanced' ? 'payees-wizard__option--selected' : ''}`}
-                  onClick={() => setSensitivity('balanced')}
+                  className={`payees-cleanup__toggle-btn ${cleanupMethod === 'ai' ? 'payees-cleanup__toggle-btn--active' : ''}`}
+                  onClick={() => setCleanupMethod('ai')}
+                  disabled={!aiStatus.data?.available}
+                  title={!aiStatus.data?.available ? 'Requires Ollama (Settings → Integrations)' : undefined}
                 >
-                  <strong>Balanced</strong> — Recommended
-                </button>
-                <button
-                  className={`payees-wizard__option ${sensitivity === 'loose' ? 'payees-wizard__option--selected' : ''}`}
-                  onClick={() => setSensitivity('loose')}
-                >
-                  <strong>Loose</strong> — More suggestions, some may be wrong
+                  AI
                 </button>
               </div>
+
+              {cleanupMethod === 'fuzzy' && (
+                <>
+                  <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
+                    Sensitivity:
+                  </p>
+                  <div className="payees-wizard__options">
+                    <button
+                      className={`payees-wizard__option ${sensitivity === 'strict' ? 'payees-wizard__option--selected' : ''}`}
+                      onClick={() => setSensitivity('strict')}
+                    >
+                      <strong>Strict</strong> — Only very similar names
+                    </button>
+                    <button
+                      className={`payees-wizard__option ${sensitivity === 'balanced' ? 'payees-wizard__option--selected' : ''}`}
+                      onClick={() => setSensitivity('balanced')}
+                    >
+                      <strong>Balanced</strong> — Recommended
+                    </button>
+                    <button
+                      className={`payees-wizard__option ${sensitivity === 'loose' ? 'payees-wizard__option--selected' : ''}`}
+                      onClick={() => setSensitivity('loose')}
+                    >
+                      <strong>Loose</strong> — More suggestions, some may be wrong
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {cleanupMethod === 'ai' && (
+                <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
+                  Uses Ollama to intelligently identify payees that represent the same vendor.
+                </p>
+              )}
             </div>
             <div className="payees-wizard__footer">
-              <button className="payees-btn" onClick={() => setShowSensitivityPicker(false)}>Cancel</button>
+              <button className="payees-btn" onClick={() => setShowCleanupModal(false)}>Cancel</button>
               <button
                 className="payees-btn payees-btn--primary"
-                onClick={runFuzzyDuplicates}
-                disabled={fetchDuplicates.isPending}
+                onClick={runCleanup}
+                disabled={fetchDuplicates.isPending || cleanup.isFetching}
               >
-                {fetchDuplicates.isPending ? 'Scanning…' : 'Find Duplicates'}
+                {fetchDuplicates.isPending || cleanup.isFetching ? 'Scanning…' : 'Find Duplicates'}
               </button>
             </div>
           </div>

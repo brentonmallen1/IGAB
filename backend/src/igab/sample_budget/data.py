@@ -144,6 +144,12 @@ SAMPLE_BUDGET = SampleBudgetSpec(
         PayeeSpec("Delta Air Lines", tags=("Travel",)),
         PayeeSpec("Beachside Resort", tags=("Travel",)),
         PayeeSpec("Market Adjustment"),
+        # Duplicate payees for testing cleanup feature
+        PayeeSpec("AMAZON.COM", default_category="Shopping"),
+        PayeeSpec("Amazon.com AMZN", default_category="Shopping"),
+        PayeeSpec("WHOLEFDS MKT", default_category="Groceries"),
+        PayeeSpec("Whole Foods Market", default_category="Groceries"),
+        PayeeSpec("NETFLIX.COM", default_category="Streaming", tags=("Subscription",)),
     ),
     monthly=(
         # Paychecks: 1st and 15th, ~$4,900/mo total
@@ -267,6 +273,13 @@ SAMPLE_BUDGET = SampleBudgetSpec(
         OneOffTxn(
             RelDate(2, 15), VISA, "Thai Garden", _d("-86.40"), "Vacation", memo="Vacation dinners"
         ),
+        # Duplicate payee transactions for testing cleanup feature
+        OneOffTxn(RelDate(3, 8), VISA, "AMAZON.COM", _d("-42.99"), "Shopping"),
+        OneOffTxn(RelDate(4, 12), VISA, "Amazon.com AMZN", _d("-28.50"), "Shopping"),
+        OneOffTxn(RelDate(5, 3), VISA, "AMAZON.COM", _d("-19.99"), "Shopping"),
+        OneOffTxn(RelDate(3, 14), CHECKING, "WHOLEFDS MKT", _d("-67.82"), "Groceries"),
+        OneOffTxn(RelDate(4, 20), CHECKING, "Whole Foods Market", _d("-54.30"), "Groceries"),
+        OneOffTxn(RelDate(6, 6), VISA, "NETFLIX.COM", _d("-15.49"), "Streaming"),
     ),
     transfers=(
         TransferSpec(CHECKING, SAVINGS, day=2, amount=_d("400.00"), memo="Monthly savings"),
