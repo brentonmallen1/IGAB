@@ -388,7 +388,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Cash Flow</h2>
         <ReportInfoButton title="Cash Flow Sankey">
           <p>Shows how <strong>income flows into category groups</strong>. Band width = dollar amount.</p>

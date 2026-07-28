@@ -110,7 +110,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Spending Treemap</h2>
         <ReportInfoButton title="Spending Treemap">
           <p>Each rectangle represents a spending bucket — <strong>size is proportional to amount spent</strong>.</p>
@@ -138,7 +138,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
           />
           Hide tagged as savings
         </label>
-        <div style={{ marginLeft: 'auto' }}>
+        <div className="ms-auto">
           <ReportExportButton
             reportId="treemap"
             getRows={() =>

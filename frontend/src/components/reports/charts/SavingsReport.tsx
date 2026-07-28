@@ -56,7 +56,7 @@ export function SavingsReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Savings</h2>
         <ReportInfoButton title="Savings">
           <p>
@@ -72,7 +72,7 @@ export function SavingsReport({ budgetId }: Props) {
             To track a category, go to Settings → Categories and add the Savings tag.
           </p>
         </ReportInfoButton>
-        <div className="report-section__controls" style={{ gap: 4, marginLeft: 0 }}>
+        <div className="flex-row">
           {MONTH_OPTIONS.map((m) => (
             <button
               key={m}

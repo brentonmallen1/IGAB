@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
@@ -22,7 +22,18 @@ import './AccountPage.css'
 export function AccountPage() {
   const { formatMoney } = useFormatters()
   const { accountId } = useParams<{ accountId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const highlightId = searchParams.get('highlight')
   const budgetId = useAppStore((s) => s.currentBudgetId)
+
+  const clearHighlight = useCallback(() => {
+    if (highlightId) {
+      setSearchParams((prev) => {
+        prev.delete('highlight')
+        return prev
+      }, { replace: true })
+    }
+  }, [highlightId, setSearchParams])
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccountId)
   const { data: accounts } = useAccounts(budgetId)
 
@@ -84,7 +95,7 @@ export function AccountPage() {
   return (
     <div className="account-page">
       <div className="account-page__header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="account-page__header-left">
           <div className="account-page__name">{account.name}</div>
           <button
             className="account-page__sync-btn"
@@ -167,7 +178,12 @@ export function AccountPage() {
       )}
 
       <div className="account-page__body">
-        <TransactionTable accountId={accountId} budgetId={budgetId} />
+        <TransactionTable
+          accountId={accountId}
+          budgetId={budgetId}
+          highlightId={highlightId}
+          onInteraction={clearHighlight}
+        />
       </div>
 
       {isAccountEditorOpen && editingAccountId && (

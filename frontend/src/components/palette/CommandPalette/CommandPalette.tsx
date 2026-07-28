@@ -196,7 +196,7 @@ export function CommandPalette() {
                   key={p.id}
                   value={`payee-${p.id}`}
                   keywords={[p.name]}
-                  onSelect={() => run(() => navigate('/payees'))}
+                  onSelect={() => run(() => navigate(`/payees?q=${encodeURIComponent(p.name)}`))}
                 >
                   <User size={14} className="palette__item-icon" />
                   {p.name}
@@ -215,7 +215,7 @@ export function CommandPalette() {
                     t.payee_id ? (payeeNameById.get(t.payee_id) ?? '') : '',
                     t.memo ?? '',
                   ]}
-                  onSelect={() => run(() => navigate(`/accounts/${t.account_id}`))}
+                  onSelect={() => run(() => navigate(`/accounts/${t.account_id}?highlight=${t.id}`))}
                 >
                   <Receipt size={14} className="palette__item-icon" />
                   <span className="palette__txn-payee">

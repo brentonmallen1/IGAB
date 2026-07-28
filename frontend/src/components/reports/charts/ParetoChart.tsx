@@ -185,7 +185,7 @@ export function ParetoReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Pareto Analysis (80/20 Rule)</h2>
         <ReportInfoButton title="Pareto Analysis">
           <p>The <strong>80/20 rule</strong>: roughly 80% of your spending comes from 20% of your categories. This chart shows where spending concentrates.</p>
@@ -203,7 +203,7 @@ export function ParetoReport({ budgetId }: Props) {
             Hide tagged as savings
           </label>
         )}
-        <div style={{ marginLeft: 'auto' }}>
+        <div className="ms-auto">
           <ReportExportButton
             reportId="pareto"
             getRows={() =>

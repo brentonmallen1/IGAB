@@ -77,7 +77,7 @@ export function AnomaliesReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Spending Anomalies</h2>
         <ReportInfoButton title="Spending Anomalies">
           <p>
@@ -93,7 +93,7 @@ export function AnomaliesReport({ budgetId }: Props) {
             outliers, Sensitive shows more subtle changes.
           </p>
         </ReportInfoButton>
-        <div className="report-section__controls" style={{ gap: 4, marginLeft: 0 }}>
+        <div className="flex-row">
           {MONTH_OPTIONS.map((m) => (
             <button
               key={m}
@@ -105,7 +105,7 @@ export function AnomaliesReport({ budgetId }: Props) {
             </button>
           ))}
         </div>
-        <div className="report-section__controls" style={{ gap: 4, marginLeft: 'var(--spacing-md)' }}>
+        <div className="flex-row">
           {SENSITIVITY_OPTIONS.map((opt) => (
             <button
               key={opt.value}

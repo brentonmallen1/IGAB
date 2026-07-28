@@ -53,14 +53,14 @@ export function SeasonalityReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Seasonality Heatmap</h2>
         <ReportInfoButton title="Seasonality Heatmap">
           <p>Each cell shows spending for a <strong>category × month</strong> combination. Color intensity goes from <strong>cool blue</strong> (low spend) to <strong>red</strong> (peak spend).</p>
           <p>Look for recurring red columns — these are months where that category consistently spikes (holidays, annual subscriptions, seasonal utilities). Hover any cell for the exact amount.</p>
         </ReportInfoButton>
-        <p className="report-section__subtitle" style={{ margin: 0 }}>Monthly spending intensity per category</p>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <p className="report-section__subtitle">Monthly spending intensity per category</p>
+        <div className="flex-row ms-auto">
           {([6, 12, 24] as const).map((m) => (
             <button
               key={m}

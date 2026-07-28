@@ -65,8 +65,8 @@ _Add items here as they come up during development._
 - [x] Polish pass round 1 (2026-07-22) — TBA hero, budget selector card layout (whole-card open, Current badge, overflow menu, two-column with create/import demoted), Settings reorganized (anchor deep links, integrity + backups surfaced above integrations), typography (font-size tokens incl. 2xs/display, weight tokens, tabular-nums on budget money cells, shared `.section-label` + `.kbd` utilities)
 - [x] Command palette (cmdk, ⌘K + header palette bar; navigation incl. accounts/views, add transaction, auto-assign, cover overspending, move money, month jump, theme switch, integrity/backups deep links, live payee + transaction search via new `search` param on budget-wide transactions endpoint; desktop-only)
 - [x] Real keyboard shortcuts (`?` help overlay from a single source of truth in `keyboard/shortcuts.ts`; `[`/`]`/`T` month nav, Shift+D duplicate, Shift+T repeat, Delete on selection sharing the context-menu handlers; Cmd+Z migrated into the registry)
-- [ ] Polish pass round 2 — remaining layout modernization sweeps (reports, account register aesthetics)
-- [ ] Palette follow-ups: scroll-to/highlight transaction on account page from search result; payee result should filter the payees page
+- [x] Polish pass round 2 — remaining layout modernization sweeps (reports, account register aesthetics): `.ms-auto`/`.flex-row` utilities in base.css, `.report-section__header` wrapper, inline style cleanup across 20 report components, AccountPage header class
+- [x] Palette follow-ups: scroll-to/highlight transaction on account page from search result (`?highlight=` param + 2s fade animation); payee result filters the payees page (`?q=` param)
 - [ ] Custom reminder notifications (pay bills, etc.)
 - [ ] Explicit "set as default category" affordance on payees (memory now learns once and never overwrites; changing the default is only possible via the payee edit form)
 
@@ -75,8 +75,8 @@ _Add items here as they come up during development._
 - [ ] Payee list: sort, filter/search, column alignment
 
 ### Transactions
-- [ ] Split transaction button always accessible (outside scroll area), opens modal
-- [ ] Split transaction "add remaining to category" button
+- [x] Split transaction button always accessible (outside scroll area), opens modal
+- [x] Split transaction "add remaining to category" button
 
 ### Data
 - [x] Generate sample budget (2026-07-25: one-click card on the budget selector + `just sample-budget <email>` CLI; 12 months of curated data — 5 account types, splits, transfers, targets, tags, scheduled, reconciliation; generator derives assignments from the data and sweeps surplus into Emergency Fund so TBA lands exactly at $150 with only Dining Out overspent, for any anchor date; integrity green, 7 integration tests)
@@ -115,10 +115,11 @@ _Add items here as they come up during development._
 - Deferred: R3 auto-detection — cadence detection algorithm, confidence scoring, "suggest tags" UI
 
 ### Other
+- [x] Locale/format settings — per-budget number format (1,234.56 vs 1.234,56 vs 1 234,56), date format (M/D/Y vs D/M/Y vs Y-M-D), time format (12h vs 24h) — Settings page UI + app-wide FormatContext
 - [ ] 2FA (TOTP) support
 - [ ] Budget notes / annotations
 - [ ] Transaction flags / colors
-- [ ] Multi-currency support
+- [ ] Multi-currency support (transactions in foreign currencies)
 - [ ] Plugin framework + plugin management page
 - [ ] Mock SimpleFIN API for dev (a FakeClient exists in the integration tests; a dev-mode mock server with generated timestamps does not)
 - [ ] Budgeted-mode sankey ignores account filters (pre-existing backend inconsistency; spent mode honors them — compare mode inherits it)
@@ -274,16 +275,19 @@ ideas:
 - receipt extraction into categories and then do a split transaction. need to figure out a way to decode some things, maybe need a upc database interactoin or something to try to decode things and figure out what the item was. maybe have a table per receipt that has a column for the original item string and then the upc actual object name
 
 - receipts should be stored as a scan? or allow the phone to use the scan feature. this is to help with image sizes as well as potentially with ocr
-- 
+- more account types like investment accounts, etc?
+
+- need to have a means to have/handle credit cards / other budget accounts in the budget view. like a section for credit cards, savings, etc. kinda like how ynab handles them a bit. need to find an explanation of how it works and try to remember/articulate why it was confusing for me.
 
 fixes:
 - cappuchin light color palette, the text color in the sidebar is too dark / no contrast and hard to read
 - pareto should indicate when the user's finances aren't adhearing to the idea. like yellow border around the % of cateogires with some commentary about what the user might want to do about it
 - report chart hover/tooltips have bad color palettes and are hard to read. need to check each color palette option
--  
+-  budget item notes don't save or have a save button. 
 
 todo:
 - fable review/audit of all of the reports to make sure they calculate things correctly, have appropriate tests to make sure they do, and are displaying things correctly/effectively. also, making sure we're using recharts effectively and not making custom components, etc where they arent'y needed
 - fable security audit - sql injection, etc.
 - fable impeccable? style consistency throughout the application
-- 
+- fable review the mobile interface. make sure the number pad shows up when clicking to add an amount, UI/UX for everything else when adding a transaction, as well as the ability to take a photo of the receipt
+- fable audit/ review for common component usage and remove arbitrarily unique components

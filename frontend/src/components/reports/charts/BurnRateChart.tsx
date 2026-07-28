@@ -31,14 +31,14 @@ export function BurnRateReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Rolling Burn Rate</h2>
         <ReportInfoButton title="Rolling Burn Rate">
           <p>Shows your average monthly spending smoothed over <strong>30-day</strong> and <strong>90-day</strong> rolling windows.</p>
           <p>Rolling averages reduce calendar-month noise (e.g. quarterly bills). The 90-day line is more stable and better reflects your true spending rate. A widening gap between them signals recent spending changes.</p>
         </ReportInfoButton>
-        <p className="report-section__subtitle" style={{ margin: 0 }}>Monthly spending rolling averages</p>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <p className="report-section__subtitle">Monthly spending rolling averages</p>
+        <div className="flex-row ms-auto">
           {([6, 12, 24] as const).map((m) => (
             <button
               key={m}

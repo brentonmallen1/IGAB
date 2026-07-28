@@ -54,7 +54,7 @@ export function CashProjectionReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Cash Projection</h2>
         <ReportInfoButton title="Cash Projection">
           <p>
@@ -71,7 +71,7 @@ export function CashProjectionReport({ budgetId }: Props) {
             subscription charges — no random daily spending.
           </p>
         </ReportInfoButton>
-        <div className="report-section__controls" style={{ gap: 4, marginLeft: 'var(--spacing-md)' }}>
+        <div className="flex-row">
           {HORIZON_OPTIONS.map((h) => (
             <button
               key={h}

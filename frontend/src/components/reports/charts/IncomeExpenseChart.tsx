@@ -57,13 +57,13 @@ export function IncomeExpenseReport({ budgetId }: Props) {
 
   return (
     <div className="report-section">
-      <div className="report-section__controls">
+      <div className="report-section__header">
         <h2 className="report-section__title">Income vs Expenses</h2>
         <ReportInfoButton title="Income vs Expenses">
           <p>Monthly <strong>income</strong> (green) vs <strong>expenses</strong> (red) as bars, with the <strong>net cash flow</strong> (blue line) overlaid.</p>
           <p>Months where the blue line is above zero mean you spent less than you earned — a positive sign. Dipping below zero means you ran a deficit that month.</p>
         </ReportInfoButton>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="flex-row ms-auto">
           {([3, 6, 12, 24] as const).map((m) => (
             <button
               key={m}
