@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, GitMerge, Search, Tag } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitMerge, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, useFetchPayeeDuplicates, type PayeeWithCount } from '../../api/payees'
@@ -263,7 +263,6 @@ export function PayeesPage() {
             disabled={fetchDuplicates.isPending || cleanup.isFetching}
             title="Find similar payees that may be duplicates"
           >
-            <Search size={14} />
             {fetchDuplicates.isPending || cleanup.isFetching ? 'Scanning…' : 'Cleanup'}
           </button>
         </div>
