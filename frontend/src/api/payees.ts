@@ -99,6 +99,7 @@ export interface DuplicatePayeeGroup {
 export function useFetchPayeeDuplicates(budgetId: string | null) {
   return useMutation({
     mutationFn: async (threshold: number) => {
+      if (!budgetId) throw new Error('No budget selected')
       const { data } = await apiClient.get<DuplicatePayeeGroup[]>(`/${budgetId}/payees/duplicates`, {
         params: { threshold },
       })
