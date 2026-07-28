@@ -38,7 +38,7 @@ _Scope decision 2026-07-22: the app is network-required — no offline data. PWA
 - [x] Quick-add sheet (center ＋: amount-first entry, payee-memory category prefill, save-and-add-another)
 - [x] Receipt camera capture (attach in quick-add + Take Photo in attachment panel; pillow-heif fixes real HEIC uploads)
 - [x] Payee proximity suggestions — opt-in per-device setting, foreground-only; lat/lng on transactions (migration 0002), `GET /{budget}/payees/nearby` (bounding box + haversine), "Nearby" section in quick-add payee picker
-- [ ] Deeper mobile polish backlog: chart touch interactions on Reports, pinch-zoom in lightbox, month-swipe on budget
+- [x] Deeper mobile polish backlog: chart touch interactions (already have tap-to-drill on 11 charts), pinch-zoom in lightbox (usePinchZoom hook, double-tap reset), month-swipe on budget (useSwipeNavigation hook)
 
 ---
 

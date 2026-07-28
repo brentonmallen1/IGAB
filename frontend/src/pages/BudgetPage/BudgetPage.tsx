@@ -12,6 +12,8 @@ import { ContextMenu, type ContextMenuItem } from '../../components/common/Conte
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useIsMobile } from '../../hooks/useMediaQuery'
+import { useSwipeNavigation } from '../../hooks/useSwipeNavigation'
+import { addMonths } from '../../utils/dates'
 import { useBudgets, useCreateBudget } from '../../api/budgets'
 import { useCategories, useCategoryGroups, useUpdateCategory, useDeleteCategory } from '../../api/categories'
 import './BudgetPage.css'
@@ -20,6 +22,7 @@ export function BudgetPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const setBudgetId = useAppStore((s) => s.setCurrentBudgetId)
   const month = useAppStore((s) => s.selectedMonth)
+  const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
 
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const clearCategorySelection = useUIStore((s) => s.clearCategorySelection)
@@ -31,6 +34,10 @@ export function BudgetPage() {
   const mobileInspectorOpen = useUIStore((s) => s.mobileInspectorOpen)
   const closeMobileInspector = useUIStore((s) => s.closeMobileInspector)
   const isMobile = useIsMobile()
+  const swipeHandlers = useSwipeNavigation(
+    () => setSelectedMonth(addMonths(month, -1)),
+    () => setSelectedMonth(addMonths(month, 1))
+  )
 
   const { data: budgets } = useBudgets()
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
@@ -104,7 +111,7 @@ export function BudgetPage() {
   }
 
   return (
-    <div className="budget-page">
+    <div className="budget-page" {...(isMobile ? swipeHandlers : {})}>
       <TbaHero budgetId={budgetId} month={month} />
       <div className="budget-page__body">
         <div
