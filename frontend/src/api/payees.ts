@@ -84,3 +84,25 @@ export function useMergePayee(budgetId: string | null) {
     },
   })
 }
+
+export interface DuplicatePayeeEntry {
+  id: string
+  name: string
+  transaction_count: number
+}
+
+export interface DuplicatePayeeGroup {
+  payees: DuplicatePayeeEntry[]
+  similarity: number
+}
+
+export function useFetchPayeeDuplicates(budgetId: string | null) {
+  return useMutation({
+    mutationFn: async (threshold: number) => {
+      const { data } = await apiClient.get<DuplicatePayeeGroup[]>(`/${budgetId}/payees/duplicates`, {
+        params: { threshold },
+      })
+      return data
+    },
+  })
+}

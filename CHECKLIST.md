@@ -71,8 +71,8 @@ _Add items here as they come up during development._
 - [ ] Explicit "set as default category" affordance on payees (memory now learns once and never overwrites; changing the default is only possible via the payee edit form)
 
 ### Payees
-- [ ] Auto-suggest merges via rapidfuzz — merge wizard with final review before commit
-- [ ] Payee list: sort, filter/search, column alignment
+- [x] Auto-suggest merges via rapidfuzz — "Find Duplicates" button with sensitivity picker (loose/balanced/strict), merge wizard with final review before commit; AI Cleanup disabled when Ollama unavailable
+- [x] Payee list: sortable Name/Transactions columns, search includes mapping_samples, tabular-nums alignment
 
 ### Transactions
 - [x] Split transaction button always accessible (outside scroll area), opens modal
