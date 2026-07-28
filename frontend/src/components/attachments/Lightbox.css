@@ -33,6 +33,18 @@
   object-fit: contain;
   cursor: default;
   border-radius: var(--border-radius-sm);
+  transform-origin: center;
+  transition: transform 0.15s ease-out;
+}
+
+.lightbox-image--zoomed {
+  touch-action: none;
+  cursor: grab;
+  transition: none;
+}
+
+.lightbox-image--zoomed:active {
+  cursor: grabbing;
 }
 
 .lightbox-nav {

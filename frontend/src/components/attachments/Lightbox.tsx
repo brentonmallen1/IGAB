@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { usePinchZoom } from '../../hooks/usePinchZoom'
 import './Lightbox.css'
 
 const SWIPE_THRESHOLD_PX = 60
@@ -16,6 +17,7 @@ interface Props {
 
 export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext }: Props) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const { scale, translateX, translateY, isZoomed, reset, handlers: zoomHandlers } = usePinchZoom()
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
@@ -33,10 +35,12 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext }
   }, [handleKeyDown])
 
   function handleTouchStart(e: React.TouchEvent) {
+    if (isZoomed) return
     touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
   }
 
   function handleTouchEnd(e: React.TouchEvent) {
+    if (isZoomed) return
     const start = touchStartRef.current
     touchStartRef.current = null
     if (!start) return
@@ -47,6 +51,11 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext }
     if (dx < 0 && hasNext && onNext) onNext()
     if (dx > 0 && hasPrev && onPrev) onPrev()
   }
+
+  // Reset zoom when navigating to a different image
+  useEffect(() => {
+    reset()
+  }, [src, reset])
 
   return (
     <div
@@ -70,10 +79,14 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext }
       )}
 
       <img
-        className="lightbox-image"
+        className={`lightbox-image ${isZoomed ? 'lightbox-image--zoomed' : ''}`}
         src={src}
         alt={alt}
         onClick={(e) => e.stopPropagation()}
+        style={isZoomed ? {
+          transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
+        } : undefined}
+        {...zoomHandlers}
       />
 
       {hasNext && onNext && (
