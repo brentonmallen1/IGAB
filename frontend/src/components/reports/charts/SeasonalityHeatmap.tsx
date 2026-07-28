@@ -9,14 +9,12 @@ import './SeasonalityHeatmap.css'
 
 interface Props { budgetId: string }
 
-function intensityColor(value: number, max: number): string {
-  if (max === 0 || value === 0) return 'var(--bg-secondary)'
-  const t = Math.min(1, value / max)
-  // Interpolate from a muted blue to a vibrant red
-  const r = Math.round(78 + (225 - 78) * t)
-  const g = Math.round(121 + (50 - 121) * t)
-  const b = Math.round(167 + (50 - 167) * t)
-  return `rgba(${r},${g},${b},${0.2 + 0.7 * t})`
+function intensityStyle(value: number, max: number): React.CSSProperties {
+  if (max === 0 || value === 0) return { background: 'var(--bg-secondary)' }
+  const pct = Math.round(Math.min(1, value / max) * 100)
+  return {
+    background: `color-mix(in srgb, var(--heatmap-high) ${pct}%, var(--heatmap-low))`,
+  }
 }
 
 export function SeasonalityReport({ budgetId }: Props) {
@@ -116,7 +114,7 @@ export function SeasonalityReport({ budgetId }: Props) {
                         <td
                           key={String(m)}
                           className={`heatmap__cell ${val > 0 ? 'heatmap__cell--clickable' : ''}`}
-                          style={{ background: intensityColor(val, maxVal) }}
+                          style={intensityStyle(val, maxVal)}
                           title={`${cat.name} · ${String(m).slice(0, 7)}: ${formatMoney(val)}`}
                           onClick={val > 0 ? () => drillTo(cat.id, cat.name, String(m)) : undefined}
                         >

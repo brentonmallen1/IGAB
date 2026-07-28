@@ -106,6 +106,7 @@
 }
 
 .tags-panel__color-btn {
+  position: relative;
   width: 20px;
   height: 20px;
   border: none;
@@ -114,8 +115,18 @@
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+.tags-panel__color-btn::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+}
+
 .tags-panel__color-btn:hover {
   transform: scale(1.1);
+}
+
+.tags-panel__color-btn:focus-visible {
+  box-shadow: var(--focus-ring);
 }
 
 .tags-panel__color-btn--selected {
