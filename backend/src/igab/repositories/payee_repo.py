@@ -206,9 +206,9 @@ class PayeeRepository(BaseRepository[Payee]):
             total_count = sum(c for _, c in members)
             # Compute average similarity within group
             if len(members) == 2:
-                similarity = fuzz.token_set_ratio(
+                similarity = int(fuzz.token_set_ratio(
                     members[0][0].name.lower(), members[1][0].name.lower()
-                )
+                ))
             else:
                 # Average of all pairwise similarities
                 sims = []
@@ -217,7 +217,7 @@ class PayeeRepository(BaseRepository[Payee]):
                         sims.append(
                             fuzz.token_set_ratio(p1.name.lower(), p2.name.lower())
                         )
-                similarity = sum(sims) // len(sims) if sims else 0
+                similarity = int(sum(sims) / len(sims)) if sims else 0
 
             result.append(
                 {
