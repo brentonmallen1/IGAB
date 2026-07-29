@@ -67,8 +67,8 @@ _Add items here as they come up during development._
 - [x] Real keyboard shortcuts (`?` help overlay from a single source of truth in `keyboard/shortcuts.ts`; `[`/`]`/`T` month nav, Shift+D duplicate, Shift+T repeat, Delete on selection sharing the context-menu handlers; Cmd+Z migrated into the registry)
 - [x] Polish pass round 2 — remaining layout modernization sweeps (reports, account register aesthetics): `.ms-auto`/`.flex-row` utilities in base.css, `.report-section__header` wrapper, inline style cleanup across 20 report components, AccountPage header class
 - [x] Palette follow-ups: scroll-to/highlight transaction on account page from search result (`?highlight=` param + 2s fade animation); payee result filters the payees page (`?q=` param)
-- [ ] Custom reminder notifications (pay bills, etc.)
-- [ ] Explicit "set as default category" affordance on payees (memory now learns once and never overwrites; changing the default is only possible via the payee edit form)
+- [ ] Custom reminder notifications (pay bills, etc.) — deferred
+- [x] Auto-categorization: uses most recent category for payee (2026-07-28) — replaces static `default_category_id` learning; adapts automatically as categorization patterns change; `default_category_id` preserved as fallback for new payees with no history
 
 ### Payees
 - [x] Auto-suggest merges via rapidfuzz — "Find Duplicates" button with sensitivity picker (loose/balanced/strict), merge wizard with final review before commit; AI Cleanup disabled when Ollama unavailable
@@ -96,7 +96,7 @@ _Add items here as they come up during development._
 - [ ] Frontend tests for money-critical components (transaction editor, split editor cents math, bulk flows) — backend has 559 tests incl. real-DB integration; frontend has only searchParser tests
 
 ### Localization
-- [ ] Settings for currency, decimal vs comma separator, date format (CSV import now handles EU separators exactly; UI display settings remain)
+- [x] Settings for currency, decimal vs comma separator, date format (CSV import now handles EU separators exactly; UI display settings remain)
 - [ ] All numbers rounded to 2 decimal places throughout app
 
 ### Future Reports — full designs (backend + UX + test plans) in docs/future-reports-roadmap.md
@@ -111,8 +111,8 @@ _Add items here as they come up during development._
 - [x] R9 Consolidated Liabilities report tab (2026-07-25: Liabilities tab in Financial State — rollup metrics, stacked per-liability balance area, type/mode filters, sortable table with row-click to detail page)
 - [x] Sample budget generates liabilities (2026-07-26: Car Loan managed + Dental Payment Plan unmanaged with snapshots)
 - [x] Reports navigation UX (2026-07-26: group dropdown + horizontal tabs replaces scrolling tab bar; unsupported filters hidden instead of dimmed)
-- Deferred: inflation-adjusted trends, "if invested instead" — need external_series infra (sketched in roadmap)
-- Deferred: R3 auto-detection — cadence detection algorithm, confidence scoring, "suggest tags" UI
+- [ ] inflation-adjusted trends, "if invested instead" — need external_series infra (sketched in roadmap)
+- [ ] R3 auto-detection — cadence detection algorithm, confidence scoring, "suggest tags" UI
 
 ### Other
 - [x] Locale/format settings — per-budget number format (1,234.56 vs 1.234,56 vs 1 234,56), date format (M/D/Y vs D/M/Y vs Y-M-D), time format (12h vs 24h) — Settings page UI + app-wide FormatContext
@@ -267,6 +267,8 @@ _Add items here as they come up during development._
 - [x] Transaction export (CSV / JSON) from reports page
 
 
+- backend and frontend test coverage reports
+
 
 ideas:
 - create a mock api for dev instead of calling the simplefin api, it calls this and returns a static set of data. though it would have to be generated for a relevant time stamp or something?
@@ -286,7 +288,6 @@ fixes:
 -  budget item notes don't save or have a save button. 
 
 todo:
-- fable review/audit of all of the reports to make sure they calculate things correctly, have appropriate tests to make sure they do, and are displaying things correctly/effectively. also, making sure we're using recharts effectively and not making custom components, etc where they arent'y needed
 - fable security audit - sql injection, etc.
 - fable impeccable? style consistency throughout the application
 - fable review the mobile interface. make sure the number pad shows up when clicking to add an amount, UI/UX for everything else when adding a transaction, as well as the ability to take a photo of the receipt

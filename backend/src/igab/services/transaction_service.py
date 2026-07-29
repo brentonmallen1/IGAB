@@ -96,20 +96,15 @@ class TransactionService:
         payee = await self._resolve_payee(budget_id, data)
         payee_id = payee.id if payee else None
 
-        # Apply payee default category when none provided (auto-categorization memory)
+        # Auto-categorization: use the most recent category for this payee.
+        # Falls back to default_category_id for new payees with no transaction history.
         category_id = data.category_id
         if payee and not category_id:
-            if payee.default_category_id:
+            category_id = await self.transaction_repo.get_most_recent_category_for_payee(
+                budget_id, payee.id
+            )
+            if not category_id and payee.default_category_id:
                 category_id = payee.default_category_id
-            else:
-                category_id = await self.transaction_repo.get_most_common_category_for_payee(
-                    budget_id, payee.id
-                )
-
-        # Learn the payee's default category on FIRST categorization only —
-        # recategorizing one transaction must not poison the memory.
-        if payee and data.category_id and payee.default_category_id is None:
-            await self.payee_repo.update(payee.id, default_category_id=data.category_id)
 
         txn = await self.transaction_repo.create(
             budget_id=budget_id,
@@ -227,14 +222,6 @@ class TransactionService:
                         "Changing a transfer's direction isn't supported; "
                         "delete it and create a new transfer"
                     )
-
-        # Learn the payee default only when the payee has none yet.
-        if changes.get("category_id") and txn.payee_id is not None:
-            payee = await self.payee_repo.get(txn.payee_id)
-            if payee is not None and payee.default_category_id is None:
-                await self.payee_repo.update(
-                    txn.payee_id, default_category_id=changes["category_id"]
-                )
 
         # Keep the transfer pair zero-sum and date-aligned.
         if partner is not None:
