@@ -3,10 +3,9 @@ Exhaustive tests for transaction deduplication and auto-categorization.
 
 These are critical trust-surface tests covering:
 1. Fuzzy deduplication by amount+date (find_existing_match)
-2. Historical category inference (get_most_common_category_for_payee)
+2. Historical category inference (get_most_recent_category_for_payee)
 3. Import ID generation and deduplication (get_existing_import_ids, _generate_import_id)
-4. Payee default category learning via update()
-5. SimpleFIN sync deduplication flow
+4. SimpleFIN sync deduplication flow
 """
 
 import hashlib
@@ -227,126 +226,11 @@ class TestDateWindow:
         assert abs((test_date - base_date).days) <= window
 
 
-# ─── Payee Default Category Learning Tests ───────────────────────────────────
-
-
-class TestPayeeDefaultCategoryLearning:
-    """Test that update() correctly updates payee default_category_id."""
-
-    @pytest.fixture
-    def mock_service(self):
-        """Create a TransactionService with mocked dependencies."""
-        from igab.services.transaction_service import TransactionService
-
-        session = AsyncMock()
-        txn_repo = MagicMock()
-        account_repo = MagicMock()
-        category_repo = MagicMock()
-        payee_repo = MagicMock()
-
-        return TransactionService(
-            session=session,
-            transaction_repo=txn_repo,
-            account_repo=account_repo,
-            category_repo=category_repo,
-            payee_repo=payee_repo,
-        )
-
-    async def test_update_with_category_learns_default_when_unset(self, mock_service):
-        """First categorization teaches the payee its default; an existing
-        default is never silently overwritten."""
-        from igab.services.transaction_service import TransactionUpdate
-
-        budget_id = uuid.uuid4()
-        txn_id = uuid.uuid4()
-        payee_id = uuid.uuid4()
-        category_id = uuid.uuid4()
-
-        mock_txn = MagicMock()
-        mock_txn.budget_id = budget_id
-        mock_txn.payee_id = payee_id
-        mock_txn.cleared = "cleared"
-        mock_txn.transfer_id = None
-        mock_txn.parent_transaction_id = None
-        mock_txn.is_split = False
-
-        mock_payee = MagicMock()
-        mock_payee.default_category_id = None
-
-        mock_service.transaction_repo.get_or_raise = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.update = AsyncMock(return_value=mock_txn)
-        mock_service.payee_repo.get = AsyncMock(return_value=mock_payee)
-        mock_service.payee_repo.update = AsyncMock()
-
-        data = TransactionUpdate(category_id=category_id)
-        await mock_service.update(budget_id, txn_id, data)
-
-        mock_service.payee_repo.update.assert_called_once_with(
-            payee_id, default_category_id=category_id
-        )
-
-        # Second categorization with a default already learned: no overwrite
-        mock_payee.default_category_id = category_id
-        mock_service.payee_repo.update.reset_mock()
-        await mock_service.update(budget_id, txn_id, TransactionUpdate(category_id=uuid.uuid4()))
-        mock_service.payee_repo.update.assert_not_called()
-
-    async def test_update_without_category_does_not_update_payee(self, mock_service):
-        """When updating without a category, payee default should not change."""
-        from igab.services.transaction_service import TransactionUpdate
-
-        budget_id = uuid.uuid4()
-        txn_id = uuid.uuid4()
-        payee_id = uuid.uuid4()
-
-        mock_txn = MagicMock()
-        mock_txn.budget_id = budget_id
-        mock_txn.payee_id = payee_id
-        mock_txn.cleared = "cleared"
-        mock_txn.transfer_id = None
-        mock_txn.parent_transaction_id = None
-        mock_txn.is_split = False
-
-        mock_service.transaction_repo.get_or_raise = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.update = AsyncMock(return_value=mock_txn)
-        mock_service.payee_repo.update = AsyncMock()
-
-        data = TransactionUpdate(memo="Updated memo")
-        await mock_service.update(budget_id, txn_id, data)
-
-        mock_service.payee_repo.update.assert_not_called()
-
-    async def test_update_with_category_but_no_payee_does_not_crash(self, mock_service):
-        """Transaction without payee should not crash when updating category."""
-        from igab.services.transaction_service import TransactionUpdate
-
-        budget_id = uuid.uuid4()
-        txn_id = uuid.uuid4()
-        category_id = uuid.uuid4()
-
-        mock_txn = MagicMock()
-        mock_txn.budget_id = budget_id
-        mock_txn.payee_id = None  # No payee
-        mock_txn.cleared = "cleared"
-        mock_txn.transfer_id = None
-        mock_txn.parent_transaction_id = None
-        mock_txn.is_split = False
-
-        mock_service.transaction_repo.get_or_raise = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.update = AsyncMock(return_value=mock_txn)
-        mock_service.payee_repo.update = AsyncMock()
-
-        data = TransactionUpdate(category_id=category_id)
-        await mock_service.update(budget_id, txn_id, data)
-
-        mock_service.payee_repo.update.assert_not_called()
-
-
 # ─── Historical Category Inference Tests ─────────────────────────────────────
 
 
 class TestHistoricalCategoryInference:
-    """Test that create() falls back to historical category when no default exists."""
+    """Test that create() uses the most recent category for auto-categorization."""
 
     @pytest.fixture
     def mock_service(self):
@@ -367,8 +251,51 @@ class TestHistoricalCategoryInference:
             payee_repo=payee_repo,
         )
 
-    async def test_uses_payee_default_when_available(self, mock_service):
-        """Should use payee.default_category_id when it exists."""
+    async def test_uses_most_recent_category_when_available(self, mock_service):
+        """Should use most recent category even if payee has default_category_id."""
+        from igab.services.transaction_service import TransactionCreate
+
+        budget_id = uuid.uuid4()
+        account_id = uuid.uuid4()
+        payee_id = uuid.uuid4()
+        recent_cat_id = uuid.uuid4()
+        default_cat_id = uuid.uuid4()
+
+        mock_account = MagicMock()
+        mock_account.budget_id = budget_id
+
+        mock_payee = MagicMock()
+        mock_payee.id = payee_id
+        mock_payee.default_category_id = default_cat_id
+
+        mock_txn = MagicMock()
+
+        mock_service.account_repo.get_or_raise = AsyncMock(return_value=mock_account)
+        mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
+        mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
+        mock_service.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
+            return_value=recent_cat_id
+        )
+
+        data = TransactionCreate(
+            account_id=account_id,
+            date=date(2026, 4, 15),
+            amount=Decimal("-25.00"),
+            payee_name="Test Payee",
+        )
+        await mock_service.create(budget_id, data)
+
+        # Should call most recent lookup
+        mock_service.transaction_repo.get_most_recent_category_for_payee.assert_called_once_with(
+            budget_id, payee_id
+        )
+
+        # Should use the most recent category, not the default
+        create_call = mock_service.transaction_repo.create.call_args
+        assert create_call.kwargs["category_id"] == recent_cat_id
+
+    async def test_falls_back_to_default_when_no_recent(self, mock_service):
+        """Should fallback to default_category_id when no transaction history."""
         from igab.services.transaction_service import TransactionCreate
 
         budget_id = uuid.uuid4()
@@ -388,7 +315,9 @@ class TestHistoricalCategoryInference:
         mock_service.account_repo.get_or_raise = AsyncMock(return_value=mock_account)
         mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
         mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.get_most_common_category_for_payee = AsyncMock()
+        mock_service.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
+            return_value=None  # No history
+        )
 
         data = TransactionCreate(
             account_id=account_id,
@@ -398,57 +327,12 @@ class TestHistoricalCategoryInference:
         )
         await mock_service.create(budget_id, data)
 
-        # Should NOT call historical lookup since default exists
-        mock_service.transaction_repo.get_most_common_category_for_payee.assert_not_called()
-
-        # Should use the default category
+        # Should use the default category as fallback
         create_call = mock_service.transaction_repo.create.call_args
         assert create_call.kwargs["category_id"] == default_cat_id
 
-    async def test_falls_back_to_historical_when_no_default(self, mock_service):
-        """Should query historical category when payee has no default."""
-        from igab.services.transaction_service import TransactionCreate
-
-        budget_id = uuid.uuid4()
-        account_id = uuid.uuid4()
-        payee_id = uuid.uuid4()
-        historical_cat_id = uuid.uuid4()
-
-        mock_account = MagicMock()
-        mock_account.budget_id = budget_id
-
-        mock_payee = MagicMock()
-        mock_payee.id = payee_id
-        mock_payee.default_category_id = None  # No default
-
-        mock_txn = MagicMock()
-
-        mock_service.account_repo.get_or_raise = AsyncMock(return_value=mock_account)
-        mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
-        mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.get_most_common_category_for_payee = AsyncMock(
-            return_value=historical_cat_id
-        )
-
-        data = TransactionCreate(
-            account_id=account_id,
-            date=date(2026, 4, 15),
-            amount=Decimal("-25.00"),
-            payee_name="Test Payee",
-        )
-        await mock_service.create(budget_id, data)
-
-        # Should call historical lookup
-        mock_service.transaction_repo.get_most_common_category_for_payee.assert_called_once_with(
-            budget_id, payee_id
-        )
-
-        # Should use the historical category
-        create_call = mock_service.transaction_repo.create.call_args
-        assert create_call.kwargs["category_id"] == historical_cat_id
-
-    async def test_no_category_when_no_default_and_no_history(self, mock_service):
-        """Should have no category when payee has no default and no history."""
+    async def test_no_category_when_no_recent_and_no_default(self, mock_service):
+        """Should have no category when payee has no history and no default."""
         from igab.services.transaction_service import TransactionCreate
 
         budget_id = uuid.uuid4()
@@ -467,7 +351,7 @@ class TestHistoricalCategoryInference:
         mock_service.account_repo.get_or_raise = AsyncMock(return_value=mock_account)
         mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
         mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
-        mock_service.transaction_repo.get_most_common_category_for_payee = AsyncMock(
+        mock_service.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
             return_value=None
         )
 
@@ -483,7 +367,7 @@ class TestHistoricalCategoryInference:
         assert create_call.kwargs["category_id"] is None
 
     async def test_explicit_category_overrides_all(self, mock_service):
-        """Explicit category should override both default and historical."""
+        """Explicit category should override both recent and default."""
         from igab.services.transaction_service import TransactionCreate
 
         budget_id = uuid.uuid4()
@@ -504,7 +388,6 @@ class TestHistoricalCategoryInference:
         mock_service.account_repo.get_or_raise = AsyncMock(return_value=mock_account)
         mock_service.payee_repo.find_by_name = AsyncMock(return_value=mock_payee)
         mock_service.transaction_repo.create = AsyncMock(return_value=mock_txn)
-        mock_service.payee_repo.update = AsyncMock()
 
         data = TransactionCreate(
             account_id=account_id,

@@ -587,26 +587,24 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return [(row[0], row[1], row[2], row[3]) for row in result.all()]
 
-    async def get_most_common_category_for_payee(
+    async def get_most_recent_category_for_payee(
         self,
         budget_id: uuid.UUID,
         payee_id: uuid.UUID,
     ) -> uuid.UUID | None:
-        """Find the most frequently used category for a payee across existing transactions."""
+        """Find the category from the most recent transaction for this payee."""
         result = await self.session.execute(
-            select(Transaction.category_id, func.count(Transaction.id).label("cnt"))
+            select(Transaction.category_id)
             .where(
                 Transaction.budget_id == budget_id,
                 Transaction.payee_id == payee_id,
                 Transaction.category_id.isnot(None),
                 Transaction.is_deleted == False,  # noqa: E712
             )
-            .group_by(Transaction.category_id)
-            .order_by(func.count(Transaction.id).desc())
+            .order_by(Transaction.date.desc(), Transaction.created_at.desc())
             .limit(1)
         )
-        row = result.first()
-        return row.category_id if row else None
+        return result.scalar_one_or_none()
 
     async def get_for_budget(
         self,

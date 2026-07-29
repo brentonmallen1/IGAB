@@ -2,17 +2,14 @@
 Tests for payee auto-categorization memory in TransactionService.create().
 
 Rules:
-  1. When a transaction is created with a payee but NO category, and the payee has a
-     default_category_id, that default is applied to the transaction automatically.
-  2. When a transaction is created with both a payee AND a category, the provided
-     category is used and the payee's default_category_id is updated to that category.
-  3. When a payee has no default_category_id and no category is provided, the
-     system falls back to the most common historical category for that payee.
-     If there is no historical category either, the transaction has no category.
+  1. When a transaction is created with a payee but NO category, the system uses
+     the most recent category from that payee's transaction history.
+  2. If there is no transaction history, it falls back to payee.default_category_id.
+  3. When a transaction is created with an explicit category, that category is used.
   4. When there is no payee at all, no category is inferred.
 
-These rules allow the system to "remember" categorizations from past transactions
-so users are not forced to re-categorize recurring payees.
+These rules allow the system to adapt to changing categorization patterns
+without requiring manual management of payee defaults.
 """
 
 import uuid
@@ -77,7 +74,7 @@ def make_service(payee: MockPayee | None) -> TransactionService:
 
     txn_repo = MagicMock()
     txn_repo.create = AsyncMock(return_value=txn)
-    txn_repo.get_most_common_category_for_payee = AsyncMock(return_value=None)
+    txn_repo.get_most_recent_category_for_payee = AsyncMock(return_value=None)
 
     session = AsyncMock()
     session.get = AsyncMock(return_value=payee)
@@ -103,13 +100,31 @@ def base_txn_data(**kwargs) -> TransactionCreate:
     return TransactionCreate(**defaults)
 
 
-class TestPayeeDefaultCategoryApplied:
-    """When no category is given but payee has a default, the default is used."""
+RECENT_CAT_ID = uuid.UUID("00000000-0000-0000-0000-000000000006")
 
-    async def test_payee_name_with_default_category_applied(self):
-        """Creating via payee_name: default_category_id flows to transaction."""
+
+class TestMostRecentCategoryApplied:
+    """Auto-categorization uses the most recent category for the payee."""
+
+    async def test_uses_most_recent_category_over_default(self):
+        """Most recent category takes precedence over default_category_id."""
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
+        svc.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
+            return_value=RECENT_CAT_ID
+        )
+
+        data = base_txn_data(payee_name="Grocery Store")
+        await svc.create(BUDGET_ID, data)
+
+        create_call = svc.transaction_repo.create.call_args
+        assert create_call.kwargs["category_id"] == RECENT_CAT_ID
+
+    async def test_falls_back_to_default_when_no_history(self):
+        """Falls back to default_category_id when no transaction history exists."""
+        payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
+        svc = make_service(payee)
+        svc.transaction_repo.get_most_recent_category_for_payee = AsyncMock(return_value=None)
 
         data = base_txn_data(payee_name="Grocery Store")
         await svc.create(BUDGET_ID, data)
@@ -117,19 +132,8 @@ class TestPayeeDefaultCategoryApplied:
         create_call = svc.transaction_repo.create.call_args
         assert create_call.kwargs["category_id"] == DEFAULT_CAT_ID
 
-    async def test_payee_id_with_default_category_applied(self):
-        """Creating via payee_id: default_category_id flows to transaction."""
-        payee = MockPayee(id=PAYEE_ID, default_category_id=DEFAULT_CAT_ID)
-        svc = make_service(payee)
-
-        data = base_txn_data(payee_id=PAYEE_ID)
-        await svc.create(BUDGET_ID, data)
-
-        create_call = svc.transaction_repo.create.call_args
-        assert create_call.kwargs["category_id"] == DEFAULT_CAT_ID
-
-    async def test_payee_with_no_default_uses_no_category(self):
-        """If payee has no default category, transaction has no category."""
+    async def test_no_category_when_no_history_and_no_default(self):
+        """No category when payee has neither history nor default."""
         payee = MockPayee(default_category_id=None)
         svc = make_service(payee)
 
@@ -150,13 +154,16 @@ class TestPayeeDefaultCategoryApplied:
         assert create_call.kwargs["category_id"] is None
 
 
-class TestExplicitCategoryOverridesDefault:
-    """When user explicitly provides a category, it overrides the payee default."""
+class TestExplicitCategoryOverridesAll:
+    """When user explicitly provides a category, it overrides auto-categorization."""
 
-    async def test_explicit_category_beats_payee_default(self):
-        """Explicit category_id takes precedence over payee.default_category_id."""
+    async def test_explicit_category_beats_most_recent(self):
+        """Explicit category_id takes precedence over most recent."""
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
+        svc.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
+            return_value=RECENT_CAT_ID
+        )
 
         data = base_txn_data(payee_name="Grocery Store", category_id=EXPLICIT_CAT_ID)
         await svc.create(BUDGET_ID, data)
@@ -164,36 +171,12 @@ class TestExplicitCategoryOverridesDefault:
         create_call = svc.transaction_repo.create.call_args
         assert create_call.kwargs["category_id"] == EXPLICIT_CAT_ID
 
-    async def test_explicit_category_does_not_overwrite_existing_default(self):
-        """The payee memory is learned once; a differently-categorized
-        transaction must not silently rewrite it."""
+    async def test_explicit_category_does_not_update_payee(self):
+        """Explicit category does not update payee default_category_id."""
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
 
         data = base_txn_data(payee_name="Grocery Store", category_id=EXPLICIT_CAT_ID)
-        txn_call = await svc.create(BUDGET_ID, data)
-        assert txn_call is not None
-
-        svc.payee_repo.update.assert_not_called()
-
-    async def test_explicit_category_learned_when_payee_has_no_default(self):
-        """First categorization teaches the payee its default."""
-        payee = MockPayee(default_category_id=None)
-        svc = make_service(payee)
-
-        data = base_txn_data(payee_name="Grocery Store", category_id=EXPLICIT_CAT_ID)
-        await svc.create(BUDGET_ID, data)
-
-        svc.payee_repo.update.assert_called_once_with(
-            payee.id, default_category_id=EXPLICIT_CAT_ID
-        )
-
-    async def test_no_explicit_category_does_not_update_payee_default(self):
-        """When no category is provided (using default), payee memory is NOT re-updated."""
-        payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
-        svc = make_service(payee)
-
-        data = base_txn_data(payee_name="Grocery Store")  # no explicit category
         await svc.create(BUDGET_ID, data)
 
         svc.payee_repo.update.assert_not_called()
@@ -208,10 +191,10 @@ class TestExplicitCategoryOverridesDefault:
         svc.payee_repo.update.assert_not_called()
 
 
-class TestPayeeDefaultCategoryAmounts:
+class TestAutoCategoryAmounts:
     """Auto-categorization does not affect transaction amounts."""
 
-    async def test_amount_is_preserved_regardless_of_default_category(self):
+    async def test_amount_is_preserved(self):
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
 
@@ -220,9 +203,8 @@ class TestPayeeDefaultCategoryAmounts:
 
         create_call = svc.transaction_repo.create.call_args
         assert create_call.kwargs["amount"] == D("-87.43")
-        assert create_call.kwargs["category_id"] == DEFAULT_CAT_ID
 
-    async def test_inflow_with_default_category_preserved(self):
+    async def test_inflow_with_auto_category_preserved(self):
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
 
@@ -232,7 +214,7 @@ class TestPayeeDefaultCategoryAmounts:
         create_call = svc.transaction_repo.create.call_args
         assert create_call.kwargs["amount"] == D("3000.00")
 
-    async def test_zero_amount_with_default_category(self):
+    async def test_zero_amount_with_auto_category(self):
         payee = MockPayee(default_category_id=DEFAULT_CAT_ID)
         svc = make_service(payee)
 
@@ -241,22 +223,3 @@ class TestPayeeDefaultCategoryAmounts:
 
         create_call = svc.transaction_repo.create.call_args
         assert create_call.kwargs["category_id"] == DEFAULT_CAT_ID
-
-    async def test_different_default_categories_for_different_payees(self):
-        """Each payee has its own default — test isolation by running both."""
-        cat_a = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000000")
-        cat_b = uuid.UUID("bbbbbbbb-0000-0000-0000-000000000000")
-
-        payee_a = MockPayee(id=uuid.uuid4(), default_category_id=cat_a)
-        svc_a = make_service(payee_a)
-        data_a = base_txn_data(payee_name="Payee A")
-        await svc_a.create(BUDGET_ID, data_a)
-        call_a = svc_a.transaction_repo.create.call_args
-        assert call_a.kwargs["category_id"] == cat_a
-
-        payee_b = MockPayee(id=uuid.uuid4(), default_category_id=cat_b)
-        svc_b = make_service(payee_b)
-        data_b = base_txn_data(payee_name="Payee B")
-        await svc_b.create(BUDGET_ID, data_b)
-        call_b = svc_b.transaction_repo.create.call_args
-        assert call_b.kwargs["category_id"] == cat_b
