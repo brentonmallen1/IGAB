@@ -177,7 +177,7 @@
 
 .view-modal__btn--primary {
   background-color: var(--color-accent);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .view-modal__btn--primary:hover:not(:disabled) {

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, GitMerge } from 'lucide-react'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction } from '../../../types'
+import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './MergePreviewModal.css'
 
 interface Props {
@@ -93,6 +94,7 @@ export function MergePreviewModal({
   const reconciledTxn = txn1.cleared === 'reconciled' ? txn1 : txn2.cleared === 'reconciled' ? txn2 : null
   const defaultSurvivor = reconciledTxn?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
   const [survivorId, setSurvivorId] = useState<string>(defaultSurvivor)
+  const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
 
   const survivor = survivorId === txn1.id ? txn1 : txn2
   const deleted = survivorId === txn1.id ? txn2 : txn1
@@ -103,7 +105,7 @@ export function MergePreviewModal({
 
   return (
     <div className="merge-modal-overlay" onClick={onCancel}>
-      <div className="merge-modal" role="dialog" aria-modal aria-labelledby="merge-modal-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={trapRef} tabIndex={-1} className="merge-modal" role="dialog" aria-modal aria-labelledby="merge-modal-title" onClick={(e) => e.stopPropagation()}>
         <div className="merge-modal__header">
           <span id="merge-modal-title" className="merge-modal__title">
             <GitMerge size={14} />

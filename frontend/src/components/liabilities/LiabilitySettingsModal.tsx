@@ -10,6 +10,7 @@ import {
   type Liability,
   type LiabilityType,
 } from '../../api/liabilities'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import './LiabilitySettingsModal.css'
 
 const LIABILITY_TYPES: { value: LiabilityType; label: string }[] = [
@@ -68,6 +69,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
     liability?.original_principal != null ? String(liability.original_principal) : ''
   )
   const [error, setError] = useState<string | null>(null)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   // Accounts already backing another liability can't back this one too
   const linkedElsewhere = new Set(
@@ -151,6 +153,8 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       }}
     >
       <div
+        ref={trapRef}
+        tabIndex={-1}
         className="liability-modal"
         role="dialog"
         aria-modal

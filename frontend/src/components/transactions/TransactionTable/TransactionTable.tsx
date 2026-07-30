@@ -1,4 +1,5 @@
-import { useMemo, useRef, useEffect, useState, useCallback, memo } from 'react'
+import { useMemo, useRef, useEffect, useLayoutEffect, useState, useCallback, memo } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Plus, ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
@@ -48,6 +49,10 @@ const HEADER_COLS: { key: SortColumn; label: string }[] = [
 const FREQ_LABELS: Record<string, string> = {
   daily: 'Daily', weekly: 'Weekly', biweekly: 'Every 2 weeks', monthly: 'Monthly', yearly: 'Yearly',
 }
+
+type RowItem =
+  | { kind: 'single'; key: string; txn: Transaction }
+  | { kind: 'duplicate'; key: string; txn: Transaction; partner: Transaction; match: TransactionMatch }
 
 interface SortableHeaderProps {
   col: SortColumn
@@ -237,14 +242,6 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     return map
   }, [pendingMatches])
 
-  // Scroll to highlighted transaction when it loads
-  useEffect(() => {
-    if (!highlightId) return
-    const el = document.querySelector(`[data-txn-id="${highlightId}"]`)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }, [highlightId, transactions])
 
   const allOrderedIds = useMemo(() => sorted.map((t) => t.id), [sorted])
   const allSelected = sorted.length > 0 && sorted.every((t) => selectedTransactionIds.has(t.id))
@@ -414,7 +411,19 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     const catName = s.category_id ? categoryMap.get(s.category_id) ?? '—' : '—'
 
     return (
-      <div key={s.id} className="upcoming-row" onClick={() => setEditingScheduledTxn(s)}>
+      <div
+        key={s.id}
+        className="upcoming-row"
+        role="button"
+        tabIndex={0}
+        onClick={() => setEditingScheduledTxn(s)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setEditingScheduledTxn(s)
+          }
+        }}
+      >
         <div className="txn-col txn-col--checkbox" />
         <div className="txn-col txn-col--date upcoming-row__date">
           {s.next_occurrence_date}
@@ -486,9 +495,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     )
   }
 
-  function renderRows(txns: Transaction[]) {
+  // Group transactions into renderable units (single rows, or duplicate pairs
+  // sharing one match bar) so both the small sections and the virtualized
+  // main list render from the same structure.
+  const buildRowItems = useCallback((txns: Transaction[]): RowItem[] => {
     const rendered = new Set<string>()
-    const items: React.ReactNode[] = []
+    const items: RowItem[] = []
 
     for (const txn of txns) {
       if (rendered.has(txn.id)) continue
@@ -504,45 +516,136 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         if (partnerTxn && !rendered.has(partnerId)) {
           rendered.add(txn.id)
           rendered.add(partnerId)
-          items.push(
-            <div key={match.id} className="txn-duplicate-group">
-              {renderTxnRow(txn)}
-              {renderTxnRow(partnerTxn)}
-              <div className="txn-duplicate-group__bar">
-                <span className="txn-duplicate-group__label">
-                  <Link2 size={11} />
-                  Potential duplicate
-                </span>
-                <div className="txn-duplicate-group__actions">
-                  <button
-                    className="txn-duplicate-group__btn txn-duplicate-group__btn--merge"
-                    onClick={() => setMatchModalInitialId(match.id)}
-                  >
-                    <GitMerge size={11} />
-                    Merge
-                  </button>
-                  <button
-                    className="txn-duplicate-group__btn txn-duplicate-group__btn--dismiss"
-                    onClick={() => rejectMatch.mutate(match.id)}
-                    disabled={rejectMatch.isPending}
-                  >
-                    <X size={11} />
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
+          items.push({ kind: 'duplicate', key: match.id, txn, partner: partnerTxn, match })
           continue
         }
       }
 
       rendered.add(txn.id)
-      items.push(<div key={txn.id}>{renderTxnRow(txn)}</div>)
+      items.push({ kind: 'single', key: txn.id, txn })
     }
 
     return items
+  }, [pendingMatchMap])
+
+  function renderItem(item: RowItem) {
+    if (item.kind === 'duplicate') {
+      const { txn, partner, match } = item
+      return (
+        <div className="txn-duplicate-group">
+          {renderTxnRow(txn)}
+          {renderTxnRow(partner)}
+          <div className="txn-duplicate-group__bar">
+            <span className="txn-duplicate-group__label">
+              <Link2 size={11} />
+              Potential duplicate
+            </span>
+            <div className="txn-duplicate-group__actions">
+              <button
+                className="txn-duplicate-group__btn txn-duplicate-group__btn--merge"
+                onClick={() => setMatchModalInitialId(match.id)}
+              >
+                <GitMerge size={11} />
+                Merge
+              </button>
+              <button
+                className="txn-duplicate-group__btn txn-duplicate-group__btn--dismiss"
+                onClick={() => rejectMatch.mutate(match.id)}
+                disabled={rejectMatch.isPending}
+              >
+                <X size={11} />
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return renderTxnRow(item.txn)
   }
+
+  function renderRows(txns: Transaction[]) {
+    return buildRowItems(txns).map((item) => <div key={item.key}>{renderItem(item)}</div>)
+  }
+
+  // The main list is virtualized: only rows near the viewport hit the DOM, so
+  // accounts with thousands of transactions stay smooth. Row heights vary
+  // (duplicate groups, inline split editor, mobile cards) so items are
+  // measured dynamically.
+  const regularItems = useMemo(
+    () => buildRowItems(regularTxns),
+    [buildRowItems, regularTxns]
+  )
+
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    let el: HTMLElement | null = bodyRef.current?.parentElement ?? null
+    while (el && el !== document.body) {
+      const { overflowY } = getComputedStyle(el)
+      if (overflowY === 'auto' || overflowY === 'scroll') break
+      el = el.parentElement
+    }
+    setScrollEl(el)
+  }, [])
+
+  // Distance from the scroll container's content top to the list start —
+  // content above the list (toolbar, upcoming/pending sections) shifts it.
+  const [listScrollMargin, setListScrollMargin] = useState(0)
+  // Runs after every commit on purpose: anything above the list (banners,
+  // selection bar, collapsible sections) can change its offset, and the
+  // setState is guarded so this cannot loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const bodyEl = bodyRef.current
+    if (!bodyEl || !scrollEl) return
+    const margin = Math.round(
+      bodyEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop
+    )
+    if (margin !== listScrollMargin) setListScrollMargin(margin)
+  })
+
+  // React Compiler skips memoizing this component because of react-virtual;
+  // that's expected — rows are memoized themselves and receive plain data.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: regularItems.length,
+    getScrollElement: () => scrollEl,
+    estimateSize: () => 34,
+    overscan: 12,
+    scrollMargin: listScrollMargin,
+    getItemKey: (index) => regularItems[index]?.key ?? index,
+  })
+  const virtualItems = virtualizer.getVirtualItems()
+
+  // Scroll to the highlighted transaction when it loads. Rows in the
+  // virtualized main list may not be in the DOM yet, so those scroll by
+  // index; rows in the small sections scroll via the DOM node.
+  useEffect(() => {
+    if (!highlightId) return
+    const idx = regularItems.findIndex((it) =>
+      it.kind === 'duplicate'
+        ? it.txn.id === highlightId || it.partner.id === highlightId
+        : it.txn.id === highlightId
+    )
+    if (idx >= 0) {
+      virtualizer.scrollToIndex(idx, { align: 'center' })
+      return
+    }
+    const el = document.querySelector(`[data-txn-id="${highlightId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [highlightId, regularItems, virtualizer])
+
+  // Load the next page as the user approaches the bottom of the loaded list
+  useEffect(() => {
+    const last = virtualItems[virtualItems.length - 1]
+    if (!last) return
+    if (last.index >= regularItems.length - 5 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage()
+    }
+  }, [virtualItems, regularItems.length, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return (
     <div className="transaction-table">
@@ -627,22 +730,23 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           <input
             ref={headerCheckboxRef}
             type="checkbox"
-            className="txn-checkbox"
+            className="txn-checkbox txn-checkbox--header"
             checked={allSelected}
             onChange={handleSelectAll}
-            style={{ opacity: 1 }}
+            aria-label="Select all transactions"
           />
           {hasLinkedTransactions && (
             <button
               className="txn-select-linked-btn"
               onClick={handleSelectLinked}
+              aria-label="Select linked transactions"
               title="Select linked transactions"
             >
               <Link2 size={10} />
             </button>
           )}
         </div>
-        <div className="txn-col txn-col--status" title="Transaction status" style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="txn-col txn-col--status txn-col--status-header" title="Transaction status">
           <Info size={11} />
         </div>
         {HEADER_COLS.map(({ key, label }) => (
@@ -656,15 +760,14 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           />
         ))}
         <button
-          className={`txn-col txn-col--amount txn-sort-header ${transactionSortColumn === 'amount' ? 'txn-sort-header--active' : ''}`}
+          className={`txn-col txn-col--amount txn-col--header-center txn-sort-header ${transactionSortColumn === 'amount' ? 'txn-sort-header--active' : ''}`}
           onClick={() => handleSort('amount')}
-          style={{ textAlign: 'center' }}
         >
           Outflow
           {transactionSortColumn === 'amount' && (transactionSortDirection === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
         </button>
-        <div className="txn-col txn-col--inflow" style={{ textAlign: 'center' }}>Inflow</div>
-        <div className="txn-col txn-col--cleared" style={{ textAlign: 'center' }}>Cleared</div>
+        <div className="txn-col txn-col--inflow txn-col--header-center">Inflow</div>
+        <div className="txn-col txn-col--cleared txn-col--header-center">Cleared</div>
       </div>
 
       {isLoading ? (
@@ -708,8 +811,26 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             </Collapsible>
           )}
 
-          <div className="transaction-table__body">
-            {renderRows(regularTxns)}
+          <div
+            ref={bodyRef}
+            className="transaction-table__body"
+            style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
+          >
+            {virtualItems.map((vi) => {
+              const item = regularItems[vi.index]
+              if (!item) return null
+              return (
+                <div
+                  key={item.key}
+                  data-index={vi.index}
+                  ref={virtualizer.measureElement}
+                  className="transaction-table__virtual-row"
+                  style={{ transform: `translateY(${vi.start - listScrollMargin}px)` }}
+                >
+                  {renderItem(item)}
+                </div>
+              )
+            })}
           </div>
           <div ref={sentinelRef} className="transaction-table__sentinel" />
           {isFetchingNextPage && (

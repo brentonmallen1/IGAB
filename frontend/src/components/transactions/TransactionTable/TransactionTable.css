@@ -107,6 +107,30 @@
   color: var(--color-accent);
 }
 
+.txn-col--header-center {
+  text-align: center;
+  justify-content: center;
+}
+
+.txn-col--status-header {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.txn-checkbox--header {
+  opacity: 1;
+}
+
+/* Virtualized main list: rows are absolutely positioned inside the sized body */
+.transaction-table__virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
 .transaction-table__sentinel {
   height: 1px;
 }

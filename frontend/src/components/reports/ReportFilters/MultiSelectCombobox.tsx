@@ -180,6 +180,9 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
         role="button"
         tabIndex={disabled ? -1 : 0}
         aria-disabled={disabled}
+        aria-label={label ?? placeholder}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') measureAndOpen() }}
       >
         <span className="msc__value">{displayLabel}</span>

@@ -6,6 +6,7 @@ import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
 import { usePayees } from '../../api/payees'
 import { useCategories } from '../../api/categories'
 import { useFormatters } from '../../hooks/useFormatters'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { Transaction, TransactionMatch } from '../../types'
 import './MatchReviewModal.css'
 
@@ -294,6 +295,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
     return i >= 0 ? i : 0
   })
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   const pending = matches.filter((m) => !dismissed.has(m.id))
   const current = pending[idx] ?? pending[0]
@@ -313,7 +315,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
 
   return (
     <div className="match-modal-overlay" onClick={onClose}>
-      <div className="match-modal" role="dialog" aria-modal aria-labelledby="match-modal-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={trapRef} tabIndex={-1} className="match-modal" role="dialog" aria-modal aria-labelledby="match-modal-title" onClick={(e) => e.stopPropagation()}>
         <div className="match-modal__header">
           <span id="match-modal-title" className="match-modal__title">
             <Link2 size={14} />

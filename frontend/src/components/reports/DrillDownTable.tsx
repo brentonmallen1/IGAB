@@ -24,13 +24,14 @@ export function DrillDownTable({ rows, total, onRowClick, amountLabel = 'Amount'
   return (
     <div className="ddt">
       <table className="ddt__table">
+        <caption className="sr-only">Breakdown by name</caption>
         <thead>
           <tr>
-            <th>Name</th>
-            {rows.some((r) => r.subName) && <th>Group</th>}
-            <th className="ddt__num">{amountLabel}</th>
-            {rows.some((r) => r.pct !== undefined) && <th className="ddt__num">%</th>}
-            {rows.some((r) => r.extra) && <th className="ddt__num">Extra</th>}
+            <th scope="col">Name</th>
+            {rows.some((r) => r.subName) && <th scope="col">Group</th>}
+            <th scope="col" className="ddt__num">{amountLabel}</th>
+            {rows.some((r) => r.pct !== undefined) && <th scope="col" className="ddt__num">%</th>}
+            {rows.some((r) => r.extra) && <th scope="col" className="ddt__num">Extra</th>}
           </tr>
         </thead>
         <tbody>

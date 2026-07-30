@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useCreateAccount } from '../../api/accounts'
 import { useAppStore } from '../../stores/appStore'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { AccountType } from '../../types'
 import './AccountSettingsModal.css'
 
@@ -26,18 +27,11 @@ export function AddAccountModal({ onClose }: Props) {
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   useEffect(() => {
     nameRef.current?.focus()
   }, [])
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -58,7 +52,7 @@ export function AddAccountModal({ onClose }: Props) {
 
   return (
     <div className="acct-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="add-acct-title">
+      <div ref={trapRef} tabIndex={-1} className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="add-acct-title">
         <div className="acct-modal__header">
           <span id="add-acct-title" className="acct-modal__title">New Account</span>
           <button className="acct-modal__close" onClick={onClose} aria-label="Close">

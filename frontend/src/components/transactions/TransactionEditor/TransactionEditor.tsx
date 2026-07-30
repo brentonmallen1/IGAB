@@ -424,6 +424,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
                       className="txn-editor__split-remove"
                       onClick={() => removeSplit(s.tempId)}
                       disabled={splits.length <= 2}
+                      aria-label="Remove split"
                       title="Remove"
                     >
                       <Trash2 size={12} />

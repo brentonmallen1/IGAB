@@ -99,6 +99,24 @@ export function LiabilitiesReport({ budgetId }: Props) {
     }
   }
 
+  function sortableProps(key: SortKey) {
+    return {
+      tabIndex: 0,
+      'aria-sort': (sortKey === key
+        ? sortDesc
+          ? 'descending'
+          : 'ascending'
+        : undefined) as 'ascending' | 'descending' | undefined,
+      onClick: () => toggleSort(key),
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          toggleSort(key)
+        }
+      },
+    }
+  }
+
   return (
     <div className="report-section">
       <div className="report-section__header">
@@ -204,22 +222,23 @@ export function LiabilitiesReport({ budgetId }: Props) {
 
             <div className="liabilities-report__table-wrap">
               <table className="liabilities-report__table">
+                <caption className="sr-only">Liabilities summary</caption>
                 <thead>
                   <tr>
-                    <th>Liability</th>
-                    <th className="num sortable" onClick={() => toggleSort('balance')}>
+                    <th scope="col">Liability</th>
+                    <th scope="col" className="num sortable" {...sortableProps('balance')}>
                       Balance{sortKey === 'balance' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
-                    <th className="num sortable" onClick={() => toggleSort('rate')}>
+                    <th scope="col" className="num sortable" {...sortableProps('rate')}>
                       Rate{sortKey === 'rate' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
-                    <th className="sortable" onClick={() => toggleSort('baseline')}>
+                    <th scope="col" className="sortable" {...sortableProps('baseline')}>
                       Contractual{sortKey === 'baseline' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
-                    <th className="sortable" onClick={() => toggleSort('live')}>
+                    <th scope="col" className="sortable" {...sortableProps('live')}>
                       Live payoff{sortKey === 'live' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
-                    <th className="num sortable" onClick={() => toggleSort('interest')}>
+                    <th scope="col" className="num sortable" {...sortableProps('interest')}>
                       Interest left{sortKey === 'interest' ? (sortDesc ? ' ↓' : ' ↑') : ''}
                     </th>
                   </tr>
@@ -228,7 +247,11 @@ export function LiabilitiesReport({ budgetId }: Props) {
                   {items.map((item) => (
                     <tr
                       key={item.liability_id}
+                      tabIndex={0}
                       onClick={() => navigate(`/liabilities/${item.liability_id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') navigate(`/liabilities/${item.liability_id}`)
+                      }}
                       title="Open liability details"
                     >
                       <td>

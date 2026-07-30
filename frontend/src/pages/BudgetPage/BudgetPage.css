@@ -14,6 +14,9 @@
 .budget-page__table-container {
   flex: 1;
   overflow-y: auto;
+  /* Narrow desktop windows (sidebar + table min-width > viewport) scroll
+     sideways instead of clipping the money columns */
+  overflow-x: auto;
   min-width: 0;
 }
 

@@ -117,14 +117,15 @@ function DrillDownPanelInner({
       {rows.length > 0 && (
         <div className="ddp__scroll">
           <table className="ddp__table">
+            <caption className="sr-only">Matching transactions</caption>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Account</th>
-                <th>Payee</th>
-                <th>Category</th>
-                <th>Memo</th>
-                <th className="ddp__num">Amount</th>
+                <th scope="col">Date</th>
+                <th scope="col">Account</th>
+                <th scope="col">Payee</th>
+                <th scope="col">Category</th>
+                <th scope="col">Memo</th>
+                <th scope="col" className="ddp__num">Amount</th>
               </tr>
             </thead>
             <tbody>
