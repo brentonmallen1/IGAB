@@ -19,7 +19,7 @@ function AttachmentThumb({
   return (
     <div className="attachment-thumb">
       {thumbUrl ? (
-        <img src={thumbUrl} alt={attachment.original_filename} onClick={onClick} />
+        <img src={thumbUrl} alt={attachment.original_filename} loading="lazy" onClick={onClick} />
       ) : (
         <div className="attachment-thumb__loading" />
       )}

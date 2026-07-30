@@ -41,6 +41,8 @@ export function LoginPage() {
               placeholder="admin@example.com"
               required
               autoComplete="email"
+              aria-invalid={loginMutation.isError || undefined}
+              aria-describedby={loginMutation.isError ? 'login-error' : undefined}
             />
           </div>
 
@@ -56,11 +58,15 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
+              aria-invalid={loginMutation.isError || undefined}
+              aria-describedby={loginMutation.isError ? 'login-error' : undefined}
             />
           </div>
 
           {loginMutation.isError && (
-            <div className="login-card__error">Invalid email or password.</div>
+            <div id="login-error" role="alert" className="login-card__error">
+              Invalid email or password.
+            </div>
           )}
 
           <button

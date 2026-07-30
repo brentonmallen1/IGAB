@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { X, GripVertical, Pencil, Trash2, Plus, Lock } from 'lucide-react'
+import { X, GripVertical, Pencil, Trash2, Plus, Lock, ChevronUp, ChevronDown } from 'lucide-react'
 import { useBudgetViews, useDeleteBudgetView } from '../../../api/budgetViews'
 import { useUIStore, ALL_QUICK_FILTERS } from '../../../stores/uiStore'
 import type { QuickFilter } from '../../../stores/uiStore'
+import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './ManageViewsModal.css'
 
 interface Props {
@@ -35,6 +36,16 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
 
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
+
+  function moveFilter(index: number, delta: -1 | 1) {
+    const target = index + delta
+    if (target < 0 || target >= quickFilterOrder.length) return
+    const next = [...quickFilterOrder]
+    const [moved] = next.splice(index, 1)
+    next.splice(target, 0, moved)
+    reorderQuickFilters(next)
+  }
 
   function handleDragStart(index: number) {
     setDragIndex(index)
@@ -85,10 +96,10 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
       className="manage-views-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="manage-views-modal" role="dialog" aria-modal aria-label="Manage views">
+      <div ref={trapRef} tabIndex={-1} className="manage-views-modal" role="dialog" aria-modal aria-label="Manage views">
         <div className="manage-views-modal__header">
           <span className="manage-views-modal__title">Manage Views</span>
-          <button type="button" className="manage-views-modal__close" onClick={onClose}>
+          <button type="button" className="manage-views-modal__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
@@ -97,7 +108,7 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
           <section className="manage-views-modal__section">
             <div className="manage-views-modal__section-header">
               <span>Quick Filters</span>
-              <span className="manage-views-modal__section-hint">Drag to reorder</span>
+              <span className="manage-views-modal__section-hint">Drag or use arrows to reorder</span>
             </div>
             <div className="manage-views-modal__list">
               {quickFilterOrder.map((filter, index) => (
@@ -121,6 +132,28 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
                   >
                     <Lock size={12} />
                   </span>
+                  <div className="manage-views-modal__row-actions">
+                    <button
+                      type="button"
+                      className="manage-views-modal__icon-btn"
+                      onClick={() => moveFilter(index, -1)}
+                      disabled={index === 0}
+                      aria-label={`Move ${QUICK_FILTER_LABELS[filter]} up`}
+                      title="Move up"
+                    >
+                      <ChevronUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className="manage-views-modal__icon-btn"
+                      onClick={() => moveFilter(index, 1)}
+                      disabled={index === quickFilterOrder.length - 1}
+                      aria-label={`Move ${QUICK_FILTER_LABELS[filter]} down`}
+                      title="Move down"
+                    >
+                      <ChevronDown size={13} />
+                    </button>
+                  </div>
                 </div>
               ))}
               {ALL_QUICK_FILTERS.filter((f) => !quickFilterOrder.includes(f)).length > 0 && (
@@ -157,6 +190,7 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
                         type="button"
                         className="manage-views-modal__icon-btn"
                         onClick={() => handleEditView(view.id)}
+                        aria-label={`Edit view ${view.name}`}
                         title="Edit view"
                       >
                         <Pencil size={13} />
@@ -166,6 +200,7 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
                         className="manage-views-modal__icon-btn manage-views-modal__icon-btn--danger"
                         onClick={() => handleDeleteView(view.id)}
                         disabled={deleteView.isPending}
+                        aria-label={`Delete view ${view.name}`}
                         title="Delete view"
                       >
                         <Trash2 size={13} />

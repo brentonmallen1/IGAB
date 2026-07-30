@@ -113,10 +113,10 @@ export function Combobox({
     }
     if (open) {
       document.addEventListener('mousedown', handleClick)
-      window.addEventListener('scroll', handleScroll, true)
+      window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
       return () => {
         document.removeEventListener('mousedown', handleClick)
-        window.removeEventListener('scroll', handleScroll, true)
+        window.removeEventListener('scroll', handleScroll, { capture: true })
       }
     }
   }, [open, onBlurClose])

@@ -68,7 +68,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
         <span className="split-editor__title">
           Split <strong>{formatMoney(Math.abs(totalAmount))}</strong>
         </span>
-        <button className="split-editor__close" onClick={stopSplitEditing} title="Cancel">
+        <button className="split-editor__close" onClick={stopSplitEditing} aria-label="Cancel split" title="Cancel">
           <X size={14} />
         </button>
       </div>

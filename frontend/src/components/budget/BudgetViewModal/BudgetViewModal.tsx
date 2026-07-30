@@ -8,6 +8,7 @@ import {
   useUpdateBudgetView,
 } from '../../../api/budgetViews'
 import { useUIStore } from '../../../stores/uiStore'
+import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './BudgetViewModal.css'
 
 interface Props {
@@ -34,6 +35,7 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
     new Set(existingView?.category_ids ?? [])
   )
   const nameRef = useRef<HTMLInputElement>(null)
+  const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
   useEffect(() => {
     nameRef.current?.focus()
@@ -96,10 +98,10 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
       className="view-modal-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <form className="view-modal" onSubmit={handleSubmit} role="dialog" aria-modal aria-labelledby="view-modal-title">
+      <form ref={trapRef} tabIndex={-1} className="view-modal" onSubmit={handleSubmit} role="dialog" aria-modal aria-labelledby="view-modal-title">
         <div className="view-modal__header">
           <span id="view-modal-title" className="view-modal__title">{isEdit ? 'Edit View' : 'New Custom View'}</span>
-          <button type="button" className="view-modal__close" onClick={onClose}>
+          <button type="button" className="view-modal__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>

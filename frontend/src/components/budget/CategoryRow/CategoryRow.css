@@ -148,7 +148,7 @@
 }
 
 .target-pill-pct {
-  font-size: 8px;
+  font-size: var(--font-size-2xs);
   font-weight: 700;
   white-space: nowrap;
   line-height: 1;

@@ -15,7 +15,7 @@
   right: var(--spacing-md);
   background: none;
   border: none;
-  color: white;
+  color: var(--overlay-text);
   cursor: pointer;
   padding: var(--spacing-xs);
   border-radius: var(--border-radius-sm);
@@ -53,7 +53,7 @@
   transform: translateY(-50%);
   background: rgba(0, 0, 0, 0.5);
   border: none;
-  color: white;
+  color: var(--overlay-text);
   cursor: pointer;
   padding: var(--spacing-sm);
   border-radius: var(--border-radius-sm);

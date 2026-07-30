@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useCoverOverspentPreview, useCoverOverspentApply } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './CoverOverspentModal.css'
 
 interface Props {
@@ -15,6 +16,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
   const { data: preview, isLoading, refetch } = useCoverOverspentPreview(budgetId, month, true)
   const apply = useCoverOverspentApply(budgetId)
   const [error, setError] = useState<string | null>(null)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   const canApply = preview != null && preview.items.length > 0 && Number(preview.total_addition) > 0
 
@@ -42,7 +44,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
       className="cover-modal-overlay"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="cover-modal" role="dialog" aria-modal aria-labelledby="cover-modal-title">
+      <div ref={trapRef} tabIndex={-1} className="cover-modal" role="dialog" aria-modal aria-labelledby="cover-modal-title">
         <div className="cover-modal__header">
           <span id="cover-modal-title" className="cover-modal__title">Cover overspending</span>
           <button className="cover-modal__close" onClick={onClose} aria-label="Close">
@@ -62,12 +64,13 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                 categories — in full when it stretches, proportionally when it doesn't.
               </p>
               <table className="cover-modal__table">
+                <caption className="sr-only">Overspent categories and proposed coverage</caption>
                 <thead>
                   <tr>
-                    <th>Category</th>
-                    <th className="cover-modal__col-num">Overspent</th>
-                    <th className="cover-modal__col-num">Covering</th>
-                    <th className="cover-modal__col-num">Remaining</th>
+                    <th scope="col">Category</th>
+                    <th scope="col" className="cover-modal__col-num">Overspent</th>
+                    <th scope="col" className="cover-modal__col-num">Covering</th>
+                    <th scope="col" className="cover-modal__col-num">Remaining</th>
                   </tr>
                 </thead>
                 <tbody>

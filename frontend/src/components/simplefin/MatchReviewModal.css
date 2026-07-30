@@ -239,7 +239,7 @@
 
 .match-modal__btn--accept {
   background: var(--color-accent);
-  color: white;
+  color: var(--text-inverse);
   border-color: var(--color-accent);
 }
 

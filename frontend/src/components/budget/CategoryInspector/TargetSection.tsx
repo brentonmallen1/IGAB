@@ -117,10 +117,10 @@ export function TargetSection({ categoryId }: Props) {
         <span className="inspector-section__title">Target</span>
         {target && (
           <div className="inspector-section__actions">
-            <button className="inspector-icon-btn" onClick={startEdit} title="Edit target">
+            <button className="inspector-icon-btn" onClick={startEdit} aria-label="Edit target" title="Edit target">
               <Pencil size={12} />
             </button>
-            <button className="inspector-icon-btn inspector-icon-btn--danger" onClick={handleDelete} title="Remove target">
+            <button className="inspector-icon-btn inspector-icon-btn--danger" onClick={handleDelete} aria-label="Remove target" title="Remove target">
               <Trash2 size={12} />
             </button>
           </div>

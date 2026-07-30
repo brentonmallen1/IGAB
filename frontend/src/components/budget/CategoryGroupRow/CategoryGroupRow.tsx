@@ -138,12 +138,12 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
         {!isRenaming && (
           <div className="category-group-row__actions">
             {!group.is_system && (
-              <button className="category-group-row__action-btn" onClick={startRename} title="Rename">
+              <button className="category-group-row__action-btn" onClick={startRename} aria-label={`Rename group ${group.name}`} title="Rename">
                 <Pencil size={12} />
               </button>
             )}
             {!group.is_system && (
-              <button className="category-group-row__action-btn" onClick={handleHide} title="Hide group">
+              <button className="category-group-row__action-btn" onClick={handleHide} aria-label={`Hide group ${group.name}`} title="Hide group">
                 <EyeOff size={12} />
               </button>
             )}
@@ -153,6 +153,7 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
                   <button
                     className="category-group-row__action-btn category-group-row__action-btn--confirm"
                     onClick={handleDelete}
+                    aria-label="Confirm delete"
                     title="Confirm delete"
                   >
                     ✓
@@ -160,6 +161,7 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
                   <button
                     className="category-group-row__action-btn"
                     onClick={() => setConfirmDelete(false)}
+                    aria-label="Cancel delete"
                     title="Cancel"
                   >
                     ✗
@@ -169,13 +171,14 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
                 <button
                   className="category-group-row__action-btn category-group-row__action-btn--danger"
                   onClick={() => setConfirmDelete(true)}
+                  aria-label={`Delete group ${group.name}`}
                   title="Delete group"
                 >
                   <Trash2 size={12} />
                 </button>
               )
             )}
-            <button className="category-group-row__action-btn" onClick={startAddCategory} title="Add category">
+            <button className="category-group-row__action-btn" onClick={startAddCategory} aria-label={`Add category to ${group.name}`} title="Add category">
               <Plus size={12} />
             </button>
           </div>

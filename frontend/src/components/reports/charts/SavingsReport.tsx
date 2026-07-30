@@ -183,12 +183,13 @@ export function SavingsReport({ budgetId }: Props) {
           </div>
 
           <table className="report-table">
+            <caption className="sr-only">Savings category balances</caption>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left' }}>Category</th>
-                <th style={{ textAlign: 'left' }}>Group</th>
-                <th style={{ textAlign: 'right' }}>Balance</th>
-                <th style={{ textAlign: 'right' }}>Inflow</th>
+                <th scope="col" style={{ textAlign: 'left' }}>Category</th>
+                <th scope="col" style={{ textAlign: 'left' }}>Group</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Balance</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Inflow</th>
               </tr>
             </thead>
             <tbody>

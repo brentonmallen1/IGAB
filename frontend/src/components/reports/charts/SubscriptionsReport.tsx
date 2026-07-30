@@ -181,14 +181,15 @@ export function SubscriptionsReport({ budgetId }: Props) {
           </div>
 
           <table className="report-table">
+            <caption className="sr-only">Recurring charges by payee</caption>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left' }}>Payee</th>
-                <th style={{ textAlign: 'right' }}>Per Charge</th>
-                <th style={{ textAlign: 'right' }}>Monthly (effective)</th>
-                <th style={{ textAlign: 'right' }}>Total</th>
-                <th style={{ textAlign: 'right' }}>Charges</th>
-                <th style={{ textAlign: 'right' }}>Last Charge</th>
+                <th scope="col" style={{ textAlign: 'left' }}>Payee</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Per Charge</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Monthly (effective)</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Total</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Charges</th>
+                <th scope="col" style={{ textAlign: 'right' }}>Last Charge</th>
               </tr>
             </thead>
             <tbody>

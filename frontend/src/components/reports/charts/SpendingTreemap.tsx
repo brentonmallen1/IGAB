@@ -241,7 +241,7 @@ function TreemapContent(props: { x?: number; y?: number; width?: number; height?
         </text>
       )}
       {height > 48 && (
-        <text x={x + width / 2} y={y + height / 2 + 10} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,0.75)">
+        <text x={x + width / 2} y={y + height / 2 + 10} textAnchor="middle" fontSize={10} fill="var(--heatmap-cell-text)" fillOpacity={0.75}>
           {formatMoney(size)}
         </text>
       )}
