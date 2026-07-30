@@ -1,6 +1,6 @@
-"""Phase 3 spec: scheduled transfers create both legs, payee category memory
-is learned once (never silently overwritten), and bulk endpoints report
-per-item failures instead of swallowing them."""
+"""Phase 3 spec: scheduled transfers create both legs, payees auto-categorize
+from their most recent transaction (falling back to default_category_id), and
+bulk endpoints report per-item failures instead of swallowing them."""
 
 from datetime import date
 from decimal import Decimal
@@ -9,7 +9,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.services.scheduled_transaction_service import (
     ScheduledTransactionService,
 )
-from igab.services.transaction_service import TransactionCreate, TransactionUpdate
+from igab.services.transaction_service import TransactionCreate
 
 from .factories import (
     create_account,
@@ -54,7 +54,7 @@ async def test_scheduled_transfer_creates_both_legs(db_session):
     await assert_financial_invariants(db_session, budget.id)
 
 
-async def test_payee_default_learned_once_not_overwritten(db_session):
+async def test_payee_auto_categorizes_from_most_recent_transaction(db_session):
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
@@ -62,42 +62,53 @@ async def test_payee_default_learned_once_not_overwritten(db_session):
     group = await create_category_group(db_session, budget, "Everyday")
     groceries = await create_category(db_session, budget, group, "Groceries")
     dining = await create_category(db_session, budget, group, "Dining")
-    payee = await create_payee(db_session, budget, "Corner Market")
+    # Explicit fallback default, but no transaction history yet. Distinct dates
+    # keep "most recent" unambiguous (created_at is constant within one txn).
+    day1, day2, day3 = date(2026, 7, 10), date(2026, 7, 15), date(2026, 7, 20)
+    payee = await create_payee(
+        db_session, budget, "Corner Market", default_category_id=dining.id
+    )
 
-    # First categorization teaches the default
-    txn = await services.transactions.create(
+    # No history: an uncategorized transaction falls back to default_category_id.
+    first = await services.transactions.create(
         budget.id,
         TransactionCreate(
             account_id=checking.id,
-            date=TODAY,
+            date=day1,
+            amount=Decimal("-25.00"),
+            payee_id=payee.id,
+        ),
+    )
+    assert first.category_id == dining.id
+
+    # A later, explicitly categorized transaction becomes the most recent category.
+    await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=checking.id,
+            date=day2,
             amount=Decimal("-20.00"),
             payee_id=payee.id,
             category_id=groceries.id,
         ),
     )
-    await db_session.refresh(payee)
-    assert payee.default_category_id == groceries.id
 
-    # Recategorizing one transaction must NOT poison the memory
-    await services.transactions.update(
-        budget.id, txn.id, TransactionUpdate(category_id=dining.id)
-    )
-    await db_session.refresh(payee)
-    assert payee.default_category_id == groceries.id, (
-        "one-off recategorization overwrote the payee default"
-    )
-
-    # New uncategorized transactions still auto-fill from the learned default
+    # The next uncategorized transaction auto-fills from the most recent category,
+    # not from the default.
     auto = await services.transactions.create(
         budget.id,
         TransactionCreate(
             account_id=checking.id,
-            date=TODAY,
-            amount=Decimal("-25.00"),
+            date=day3,
+            amount=Decimal("-30.00"),
             payee_id=payee.id,
         ),
     )
     assert auto.category_id == groceries.id
+
+    # Creating transactions never writes back the payee default (learning removed).
+    await db_session.refresh(payee)
+    assert payee.default_category_id == dining.id
 
 
 async def test_bulk_cleared_reports_per_item_failures(api_client, db_session):

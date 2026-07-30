@@ -10,9 +10,39 @@ from igab.db.session import engine, init_db
 from igab.domain.exceptions import IGABError, NotFoundError
 from igab.tasks.scheduler import start_scheduler, stop_scheduler
 
+# Known-insecure sentinel values shipped in config.py defaults and .env.example.
+# Booting with any of these means the operator never configured security, so an
+# attacker who reads the public source could forge tokens or log in as admin.
+_INSECURE_SECRET_KEYS = frozenset(
+    {"dev-secret-change-in-production", "changeme-generate-with-openssl-rand-hex-32"}
+)
+_INSECURE_ADMIN_PASSWORDS = frozenset({"changeme"})
+
+
+def _validate_security_config() -> None:
+    """Refuse to boot with default/insecure security settings.
+
+    HS256 JWTs are signed with SECRET_KEY, so a public default key lets anyone
+    forge a valid token for any user. A default admin password is a published
+    credential. Fail fast rather than serve with either.
+    """
+    key = settings.SECRET_KEY
+    if not key or key in _INSECURE_SECRET_KEYS or len(key) < 32:
+        raise RuntimeError(
+            "SECRET_KEY is unset, still a shipped example value, or shorter than "
+            "32 characters. Set a strong random SECRET_KEY "
+            "(e.g. `openssl rand -hex 32`) before starting IGAB."
+        )
+    if not settings.ADMIN_PASSWORD or settings.ADMIN_PASSWORD in _INSECURE_ADMIN_PASSWORDS:
+        raise RuntimeError(
+            "ADMIN_PASSWORD is unset or still a shipped example value. Set a "
+            "strong ADMIN_PASSWORD before starting IGAB."
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _validate_security_config()
     await init_db()
     await _bootstrap_admin()
     await _seed_settings()

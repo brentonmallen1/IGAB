@@ -31,6 +31,7 @@ from igab.api.v1.schemas.category import (
     CoverOverspentPreviewResponse,
     MoveMoneyRequest,
 )
+from igab.db.models import CategoryGroup
 from igab.dependencies import (
     BudgetAccess,
     CategoryAccess,
@@ -48,6 +49,7 @@ from igab.repositories.category_repo import CategoryGroupRepository, CategoryRep
 from igab.repositories.target_repo import TargetRepository
 from igab.services.assign_service import AssignPreview, AssignService
 from igab.services.budget_service import BudgetService
+from igab.services.ownership import require_in_budget
 from igab.services.target_service import TargetService
 
 router = APIRouter()
@@ -141,6 +143,11 @@ async def create_category(
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
 ) -> CategoryResponse:
+    # category_group_id comes from the body, bypassing BudgetAccess; reject a
+    # group belonging to another budget before creating the category.
+    await require_in_budget(
+        category_repo.session, CategoryGroup, body.category_group_id, budget_id, "Category group"
+    )
     cat = await category_repo.create(
         budget_id=budget_id,
         category_group_id=body.category_group_id,
@@ -148,7 +155,11 @@ async def create_category(
         sort_order=body.sort_order,
         note=body.note,
     )
-    return CategoryResponse.model_validate(cat)
+    # Reload with tags eagerly loaded; serializing the freshly created row would
+    # otherwise lazy-load the `tags` relationship in a sync context and raise
+    # MissingGreenlet.
+    created = await category_repo.get_with_tags(cat.id)
+    return CategoryResponse.model_validate(created)
 
 
 @router.patch("/categories/{category_id}", response_model=CategoryResponse)
@@ -323,7 +334,7 @@ async def get_category_history(
     from datetime import date as date_cls
 
     current = month or date_cls.today()
-    history = await budget_service.get_category_history(category_id, current)
+    history = await budget_service.get_category_history(budget_id, category_id, current)
     return CategoryHistoryResponse(
         category_id=history.category_id,
         last_month_assigned=history.last_month_assigned,
@@ -350,7 +361,7 @@ async def get_category_history_batch(
     current = month or date_cls.today()
     results = []
     for cat_id in body.category_ids:
-        h = await budget_service.get_category_history(cat_id, current)
+        h = await budget_service.get_category_history(budget_id, cat_id, current)
         results.append(
             CategoryHistoryResponse(
                 category_id=h.category_id,

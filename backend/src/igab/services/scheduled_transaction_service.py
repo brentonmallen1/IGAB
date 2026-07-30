@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from igab.db.models import ScheduledTransaction
+from igab.db.models import Account, Category, Payee, ScheduledTransaction
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
+from igab.services.ownership import require_in_budget
 from igab.services.transaction_service import TransactionCreate, TransactionService
 from igab.utils.clock import today_utc
 
@@ -38,6 +39,9 @@ class ScheduledTransactionService:
     async def create(
         self, budget_id: uuid.UUID, data: ScheduledTransactionCreate
     ) -> ScheduledTransaction:
+        await self._validate_budget_refs(
+            budget_id, data.account_id, data.category_id, data.payee_id
+        )
         return await self.repo.create(
             budget_id=budget_id,
             account_id=data.account_id,
@@ -54,7 +58,33 @@ class ScheduledTransactionService:
         )
 
     async def update(self, id: uuid.UUID, **kwargs) -> ScheduledTransaction:
+        if any(k in kwargs for k in ("account_id", "category_id", "payee_id")):
+            existing = await self.repo.get(id)
+            if existing is not None:
+                await self._validate_budget_refs(
+                    existing.budget_id,
+                    kwargs.get("account_id"),
+                    kwargs.get("category_id"),
+                    kwargs.get("payee_id"),
+                )
         return await self.repo.update(id, **kwargs)
+
+    async def _validate_budget_refs(
+        self,
+        budget_id: uuid.UUID,
+        account_id: uuid.UUID | None,
+        category_id: uuid.UUID | None,
+        payee_id: uuid.UUID | None,
+    ) -> None:
+        """Reject account/category/payee ids that belong to another budget.
+
+        These arrive from the request body, so the route's ownership guard does
+        not cover them.
+        """
+        session = self.txn_service.session
+        await require_in_budget(session, Account, account_id, budget_id, "Account")
+        await require_in_budget(session, Category, category_id, budget_id, "Category")
+        await require_in_budget(session, Payee, payee_id, budget_id, "Payee")
 
     async def delete(self, id: uuid.UUID) -> None:
         await self.repo.soft_delete(id)
