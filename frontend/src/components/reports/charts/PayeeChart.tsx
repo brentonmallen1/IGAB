@@ -6,9 +6,10 @@ import {
 import { useReportStore } from '../../../stores/reportStore'
 import { usePayeeAnalysisReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
-import { CHART_COLORS, chartColor } from './chartColors'
+import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -19,11 +20,12 @@ export function PayeeReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading } = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
+  const { data, isLoading, isError, refetch } = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
   const [view, setView] = useState<'top' | 'recurring'>('top')
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const payees = data?.payees ?? []
   const recurring = payees.filter((p) => p.is_recurring)
@@ -114,8 +116,8 @@ export function PayeeReport({ budgetId }: Props) {
           <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 34)}>
             <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 80, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
-              <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={140} />
+              <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={140} />
               <Tooltip
                 formatter={(v: unknown, name: unknown) =>
                   name === 'Amount' ? [formatMoney(Number(v)), name] : [Number(v), String(name)]
@@ -138,13 +140,23 @@ export function PayeeReport({ budgetId }: Props) {
                 {chartData.map((entry, i) => (
                   <Cell
                     key={i}
-                    fill={entry.isRecurring ? CHART_COLORS[2] : chartColor(i)}
+                    fill={entry.isRecurring ? CHART_COLORS[1] : CHART_COLORS[0]}
                     fillOpacity={0.85}
                   />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          <div className="chart-key">
+            <span className="chart-key__item">
+              <span className="chart-key__swatch" style={{ background: CHART_COLORS[0] }} />
+              One-off
+            </span>
+            <span className="chart-key__item">
+              <span className="chart-key__swatch" style={{ background: CHART_COLORS[1] }} />
+              Recurring (3+ months)
+            </span>
+          </div>
           <DrillDownTable rows={tableRows} total={grandTotal} onRowClick={(row) => drillTo(row.id, row.name)} />
         </>
       )}

@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -10,8 +11,10 @@ import {
 } from 'recharts'
 import { useSavingsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { getCurrencySymbol } from '../../../utils/money'
+import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
-import { CHART_COLORS } from './chartColors'
+import { chartColor } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
@@ -23,9 +26,10 @@ interface Props {
 const MONTH_OPTIONS = [6, 12, 24] as const
 
 export function SavingsReport({ budgetId }: Props) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, settings } = useFormatters()
+  const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
-  const { data, isLoading } = useSavingsReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useSavingsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const categories = useMemo(() => data?.categories ?? [], [data])
@@ -51,6 +55,7 @@ export function SavingsReport({ budgetId }: Props) {
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const hasData = categories.length > 0
 
@@ -138,7 +143,11 @@ export function SavingsReport({ budgetId }: Props) {
                 />
                 <YAxis
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  tickFormatter={(v) => `$${Math.round(v / 1000)}k`}
+                  tickFormatter={(v) =>
+                    Math.abs(v) >= 1000
+                      ? `${currencySymbol}${Math.round(v / 1000)}k`
+                      : `${currencySymbol}${Math.round(v)}`
+                  }
                   axisLine={false}
                   tickLine={false}
                 />
@@ -157,14 +166,15 @@ export function SavingsReport({ budgetId }: Props) {
                     />
                   )}
                 />
+                <Legend />
                 {categories.slice(0, 10).map((cat, idx) => (
                   <Area
                     key={cat.category_id}
                     type="monotone"
                     dataKey={cat.category_name}
                     stackId="stack"
-                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
-                    stroke={CHART_COLORS[idx % CHART_COLORS.length]}
+                    fill={chartColor(idx)}
+                    stroke={chartColor(idx)}
                     fillOpacity={0.6}
                   />
                 ))}

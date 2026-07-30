@@ -479,7 +479,10 @@ export interface SubscriptionPayee {
   payee_name: string
   monthly_amounts: number[]
   total: number
+  /** True monthly burden: total / months since first charge */
   avg_monthly: number
+  /** Typical charge: total / charge count */
+  avg_per_charge: number
   last_charge_date: string | null
   transaction_count: number
 }

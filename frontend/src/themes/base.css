@@ -52,6 +52,28 @@
   --tag-purple: #ba68c8;
   --tag-pink: #f06292;
 
+  /* Chart palette — categorical series slots in a fixed order (blue, orange,
+     teal, yellow, pink, green, purple, red). Slots are assigned in order and
+     never cycled; series beyond eight fold into --chart-other. These
+     fallbacks alias the tag hues so any future theme gets themed charts for
+     free; every shipped theme overrides all eight with values validated for
+     chart use (lightness band, chroma floor, colorblind + normal-vision
+     separation) against that theme's chart surface. */
+  --chart-1: var(--tag-blue);
+  --chart-2: var(--tag-orange);
+  --chart-3: var(--tag-teal);
+  --chart-4: var(--tag-yellow);
+  --chart-5: var(--tag-pink);
+  --chart-6: var(--tag-green);
+  --chart-7: var(--tag-purple);
+  --chart-8: var(--tag-red);
+  /* Semantic chart roles — meaningful state, never series identity */
+  --chart-positive: var(--color-positive);
+  --chart-negative: var(--color-negative);
+  --chart-neutral: var(--color-info);
+  --chart-net: var(--color-accent);
+  --chart-other: var(--text-muted);
+
   /* Mobile layering: nav above page chrome (≤200), below the sidebar/backdrop
      pair (299/300); sheets above everything except Combobox/Tooltip portals (9999) */
   --z-bottom-nav: 250;

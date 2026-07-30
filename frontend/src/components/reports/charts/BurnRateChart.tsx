@@ -5,7 +5,9 @@ import {
 } from 'recharts'
 import { useBurnRateReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
+import { COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -15,10 +17,11 @@ interface Props { budgetId: string }
 export function BurnRateReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
-  const { data, isLoading } = useBurnRateReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useBurnRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   const latest = points[points.length - 1]
@@ -77,12 +80,12 @@ export function BurnRateReport({ budgetId }: Props) {
         <ResponsiveContainer width="100%" height={320}>
           <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
             <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
             <Legend />
-            <Line type="monotone" dataKey="30-Day" stroke="#e15759" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="90-Day Avg" stroke="#4e79a7" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="30-Day" stroke={COLOR_NEGATIVE} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="90-Day Avg" stroke={COLOR_NEUTRAL} strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3 }} />
           </LineChart>
         </ResponsiveContainer>
       )}

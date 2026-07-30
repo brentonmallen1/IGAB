@@ -6,6 +6,9 @@ import {
 import { useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
+import { COLOR_NEUTRAL } from './chartColors'
+import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from './volatilityData'
 import { monthsAgoStartISO } from '../../../utils/dateWindow'
 import { today } from '../../../utils/dates'
 import { DrillDownTable } from '../DrillDownTable'
@@ -18,7 +21,7 @@ export function VolatilityReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
-  const { data, isLoading } = useVolatilityReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useVolatilityReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   // Same window the backend aggregates over: first-of-month (months-1) ago → today
@@ -30,24 +33,18 @@ export function VolatilityReport({ budgetId }: Props) {
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
-  const categories = (data?.categories ?? []).filter((c) => c.months_included >= 2)
+  const categories = filterVolatile(data?.categories ?? [])
 
-  const chartData = categories.slice(0, 20).map((c) => ({
-    name: c.category_name.length > 16 ? c.category_name.slice(0, 14) + '…' : c.category_name,
-    Mean: Number(c.mean),
-    errorY: [Number(c.mean) - Number(c.min_val), Number(c.max_val) - Number(c.mean)],
-    StdDev: Number(c.std_dev),
-    Min: Number(c.min_val),
-    Max: Number(c.max_val),
-  }))
+  const chartData = buildVolatilityChartRows(categories)
 
   const tableRows = categories.map((c) => ({
     id: c.category_id,
     name: c.category_name,
     subName: c.category_group_name,
     amount: -Number(c.mean),
-    pct: Number(c.mean) > 0 ? (Number(c.std_dev) / Number(c.mean)) * 100 : 0,
+    pct: coefficientOfVariation(Number(c.mean), Number(c.std_dev)),
     extra: `σ ${formatMoney(Number(c.std_dev))}`,
   }))
 
@@ -103,15 +100,15 @@ export function VolatilityReport({ budgetId }: Props) {
               margin={{ top: 4, right: 80, left: 4, bottom: 4 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
-              <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={130} />
+              <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={130} />
               <Tooltip
                 formatter={(v: unknown, name: unknown) => [formatMoney(Number(v)), String(name)]}
                 offset={16}
                 isAnimationActive={false}
               />
-              <Bar dataKey="Mean" fill="#4e79a7" barSize={12} radius={[0, 2, 2, 0]}>
-                <ErrorBar dataKey="errorY" width={4} strokeWidth={2} stroke="#1e3a6e" direction="x" />
+              <Bar dataKey="Mean" fill={COLOR_NEUTRAL} barSize={12} radius={[0, 2, 2, 0]}>
+                <ErrorBar dataKey="errorY" width={4} strokeWidth={2} stroke="var(--text-secondary)" direction="x" />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

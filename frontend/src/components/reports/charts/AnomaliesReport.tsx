@@ -4,6 +4,7 @@ import { LineChart, Line, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { useAnomaliesReport } from '../../../api/reports'
 import { useReportStore } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 
@@ -21,7 +22,7 @@ const SENSITIVITY_OPTIONS = [
 export function AnomaliesReport({ budgetId }: Props) {
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
   const [threshold, setThreshold] = useState(2.5)
-  const { data, isLoading } = useAnomaliesReport(budgetId, months, threshold)
+  const { data, isLoading, isError, refetch } = useAnomaliesReport(budgetId, months, threshold)
   const { setDrillDown } = useReportStore()
   const { formatMoney, formatMonth } = useFormatters()
 
@@ -74,6 +75,7 @@ export function AnomaliesReport({ budgetId }: Props) {
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   return (
     <div className="report-section">

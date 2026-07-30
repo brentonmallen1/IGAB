@@ -4,7 +4,8 @@ import { ChevronRight } from 'lucide-react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useSpendingGroupedReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { CHART_COLORS, chartColor } from './chartColors'
+import { ReportErrorState } from '../ReportErrorState'
+import { chartColor } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
@@ -30,7 +31,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const [hideSavings, setHideSavings] = useState(false)
-  const { data, isLoading } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings)
+  const { data, isLoading, isError, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -84,7 +85,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
           parent_name: item.parent_name,
           size: Number(item.total),
           pct: item.pct,
-          fill: CHART_COLORS[colorIdx % CHART_COLORS.length],
+          fill: chartColor(colorIdx),
         }
       })
     }
@@ -100,11 +101,12 @@ export function SpendingTreemapReport({ budgetId }: Props) {
       parent_name: null,
       size: g.total,
       pct: grandTotal > 0 ? (g.total / grandTotal) * 100 : 0,
-      fill: CHART_COLORS[i % CHART_COLORS.length],
+      fill: chartColor(i),
     }))
   }, [groupBy, selectedGroup, groups, items, grandTotal])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const selectedGroupName = selectedGroup ? groups.get(selectedGroup)?.name : null
 
@@ -228,13 +230,13 @@ export function SpendingTreemapReport({ budgetId }: Props) {
 
 function TreemapContent(props: { x?: number; y?: number; width?: number; height?: number; name?: string; size?: number; fill?: string }) {
   const { formatMoney } = useFormatters()
-  const { x = 0, y = 0, width = 0, height = 0, name = '', size = 0, fill = '#4e79a7' } = props
+  const { x = 0, y = 0, width = 0, height = 0, name = '', size = 0, fill = 'var(--chart-1)' } = props
   if (width < 30 || height < 20) return <g><rect x={x} y={y} width={width} height={height} fill={fill} /></g>
   return (
     <g>
       <rect x={x} y={y} width={width} height={height} fill={fill} fillOpacity={0.85} rx={3} />
       {height > 30 && (
-        <text x={x + width / 2} y={y + height / 2 - 6} textAnchor="middle" fontSize={Math.min(12, width / 7)} fill="#fff" fontWeight={600}>
+        <text x={x + width / 2} y={y + height / 2 - 6} textAnchor="middle" fontSize={Math.min(12, width / 7)} fill="var(--heatmap-cell-text)" fontWeight={600}>
           {name.length > Math.floor(width / 7) ? name.slice(0, Math.floor(width / 7) - 1) + '…' : name}
         </text>
       )}

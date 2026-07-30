@@ -6,9 +6,11 @@ import {
 import { useReportStore } from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { monthWindow } from '../../../utils/dateWindow'
 import { DrillDownTable } from '../DrillDownTable'
 import { ChartTooltip } from './ChartTooltip'
+import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './IncomeExpenseChart.css'
@@ -19,7 +21,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
-  const { data, isLoading } = useIncomeExpenseReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useIncomeExpenseReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   function drillTo(month: string, direction: 'inflow' | 'outflow') {
@@ -40,6 +42,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const chartData = (data?.months ?? []).map((m) => ({
     month: m.month.slice(0, 7),
@@ -95,13 +98,13 @@ export function IncomeExpenseReport({ budgetId }: Props) {
           <ResponsiveContainer width="100%" height={340}>
             <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
               <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
               <Legend />
-              <Bar dataKey="Income" fill="#59a14f" radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('inflow')} />
-              <Bar dataKey="Expenses" fill="#e15759" radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('outflow')} />
-              <Line dataKey="Net" stroke="#4e79a7" strokeWidth={2} dot={{ r: 3 }} type="monotone" />
+              <Bar dataKey="Income" fill={COLOR_POSITIVE} radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('inflow')} />
+              <Bar dataKey="Expenses" fill={COLOR_NEGATIVE} radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('outflow')} />
+              <Line dataKey="Net" stroke={COLOR_NET} strokeWidth={2} dot={{ r: 3 }} type="monotone" />
             </ComposedChart>
           </ResponsiveContainer>
           <DrillDownTable

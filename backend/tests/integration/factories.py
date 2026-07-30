@@ -16,11 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import (
     Account,
     Budget,
+    BudgetAssignment,
     Category,
     CategoryGroup,
     Liability,
     LiabilityBalanceSnapshot,
     Payee,
+    ScheduledTransaction,
     SimpleFINConnection,
     Tag,
     Transaction,
@@ -180,6 +182,55 @@ async def create_transaction(
     session.add(txn)
     await session.flush()
     return txn
+
+
+async def create_budget_assignment(
+    session: AsyncSession,
+    budget: Budget,
+    category: Category,
+    month: date,
+    assigned: str | Decimal,
+) -> BudgetAssignment:
+    assignment = BudgetAssignment(
+        budget_id=budget.id,
+        category_id=category.id,
+        month=month,
+        assigned=Decimal(str(assigned)),
+    )
+    session.add(assignment)
+    await session.flush()
+    return assignment
+
+
+async def create_scheduled_transaction(
+    session: AsyncSession,
+    budget: Budget,
+    account: Account,
+    amount: str | Decimal,
+    frequency: str,
+    next_occurrence_date: date,
+    *,
+    payee: Payee | None = None,
+    category: Category | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    is_deleted: bool = False,
+) -> ScheduledTransaction:
+    sched = ScheduledTransaction(
+        budget_id=budget.id,
+        account_id=account.id,
+        amount=Decimal(str(amount)),
+        payee_id=payee.id if payee else None,
+        category_id=category.id if category else None,
+        frequency=frequency,
+        start_date=start_date or next_occurrence_date,
+        end_date=end_date,
+        next_occurrence_date=next_occurrence_date,
+        is_deleted=is_deleted,
+    )
+    session.add(sched)
+    await session.flush()
+    return sched
 
 
 async def create_simplefin_connection(session: AsyncSession, user: User) -> SimpleFINConnection:
