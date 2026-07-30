@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { useAccountCompositionReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -23,10 +24,11 @@ interface Props { budgetId: string }
 export function AccountCompositionReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
-  const { data, isLoading } = useAccountCompositionReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useAccountCompositionReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   const chartData = points.map((p) => ({
@@ -82,8 +84,8 @@ export function AccountCompositionReport({ budgetId }: Props) {
         <ResponsiveContainer width="100%" height={340}>
           <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
             <Tooltip content={<ChartTooltip showTotal />} offset={16} isAnimationActive={false} />
             <Legend />
             {Object.keys(TYPE_LABELS).map((k, i) => (

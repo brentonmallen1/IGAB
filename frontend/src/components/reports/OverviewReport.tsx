@@ -7,6 +7,13 @@ import { MetricCard } from './MetricCard'
 import { ReportInfoButton } from './ReportInfoButton'
 import { ReportExportButton } from './ReportExportButton/ReportExportButton'
 import { useFormatters } from '../../hooks/useFormatters'
+import { ReportErrorState } from './ReportErrorState'
+import {
+  clampedSavingsRate,
+  netWorthDelta,
+  roundedDaysUntilZero,
+  spendingDelta,
+} from './overviewMetrics'
 import './OverviewReport.css'
 
 interface Props {
@@ -17,23 +24,21 @@ export function OverviewReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const selectedMonth = useAppStore((s) => s.selectedMonth)
   const { filters } = useReportStore()
-  const { data, isLoading } = useDashboardMetrics(budgetId, filters.startDate, filters.endDate)
+  const { data, isLoading, isError, refetch } = useDashboardMetrics(budgetId, filters.startDate, filters.endDate)
   const { data: budgetMonth } = useBudgetMonth(budgetId, selectedMonth)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
   if (!data) return <div className="reports-empty">No data available.</div>
 
-  const netWorthDelta = Number(data.net_worth_prev) !== 0
-    ? ((Number(data.net_worth) - Number(data.net_worth_prev)) / Math.abs(Number(data.net_worth_prev))) * 100
-    : 0
-
-  const spendingDelta = Number(data.expenses_prev_month) > 0
-    ? ((Number(data.expenses_this_month) - Number(data.expenses_prev_month)) / Number(data.expenses_prev_month)) * 100
-    : 0
-
-  const savingsRate = Math.max(0, Number(data.savings_rate) * 100)
-  const daysUntilZero = data.days_until_zero != null ? Math.round(Number(data.days_until_zero)) : null
+  const netWorthDeltaPct = netWorthDelta(Number(data.net_worth), Number(data.net_worth_prev))
+  const spendingDeltaPct = spendingDelta(
+    Number(data.expenses_this_month),
+    Number(data.expenses_prev_month),
+  )
+  const savingsRate = clampedSavingsRate(Number(data.savings_rate))
+  const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
 
   return (
     <div className="overview-report">
@@ -80,7 +85,7 @@ export function OverviewReport({ budgetId }: Props) {
           <MetricCard
             label="Net Worth"
             value={formatMoney(Number(data.net_worth))}
-            delta={Number(data.net_worth_prev) !== 0 ? { value: netWorthDelta, label: 'vs prior period' } : undefined}
+            delta={Number(data.net_worth_prev) !== 0 ? { value: netWorthDeltaPct, label: 'vs prior period' } : undefined}
           />
           <MetricCard
             label="30-Day Burn Rate"
@@ -106,7 +111,7 @@ export function OverviewReport({ budgetId }: Props) {
           <MetricCard
             label="Spent This Period"
             value={formatMoney(Number(data.expenses_this_month))}
-            delta={Number(data.expenses_prev_month) > 0 ? { value: spendingDelta, label: 'vs prior period' } : undefined}
+            delta={Number(data.expenses_prev_month) > 0 ? { value: spendingDeltaPct, label: 'vs prior period' } : undefined}
           />
         </div>
       </div>

@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useSeasonalityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
+import { abbreviateValue, buildCellMap, intensityPct, maxCellValue } from './seasonalityScale'
 import { monthWindow } from '../../../utils/dateWindow'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -10,8 +12,8 @@ import './SeasonalityHeatmap.css'
 interface Props { budgetId: string }
 
 function intensityStyle(value: number, max: number): React.CSSProperties {
-  if (max === 0 || value === 0) return { background: 'var(--bg-secondary)' }
-  const pct = Math.round(Math.min(1, value / max) * 100)
+  const pct = intensityPct(value, max)
+  if (pct === null) return { background: 'var(--bg-secondary)' }
   return {
     background: `color-mix(in srgb, var(--heatmap-high) ${pct}%, var(--heatmap-low))`,
   }
@@ -21,7 +23,7 @@ export function SeasonalityReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
-  const { data, isLoading } = useSeasonalityReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useSeasonalityReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   function drillTo(categoryId: string, categoryName: string, month: string) {
@@ -35,19 +37,14 @@ export function SeasonalityReport({ budgetId }: Props) {
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const allMonths = data?.months ?? []
   const categories = data?.categories ?? []
   const cells = data?.cells ?? []
 
-  // Build lookup: category_id + month -> total
-  const cellMap = new Map<string, number>()
-  for (const cell of cells) {
-    cellMap.set(`${cell.category_id}|${cell.month}`, Number(cell.total))
-  }
-
-  // Find max for color scale
-  const maxVal = Math.max(...cells.map((c) => Number(c.total)), 1)
+  const cellMap = buildCellMap(cells)
+  const maxVal = maxCellValue(cells)
 
   return (
     <div className="report-section">
@@ -119,9 +116,7 @@ export function SeasonalityReport({ budgetId }: Props) {
                           onClick={val > 0 ? () => drillTo(cat.id, cat.name, String(m)) : undefined}
                         >
                           {val > 0 && (
-                            <span className="heatmap__cell-value">
-                              {val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toFixed(0)}
-                            </span>
+                            <span className="heatmap__cell-value">{abbreviateValue(val)}</span>
                           )}
                         </td>
                       )

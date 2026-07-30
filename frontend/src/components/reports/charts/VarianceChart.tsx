@@ -5,7 +5,9 @@ import {
 } from 'recharts'
 import { useVarianceReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
+import { CHART_COLORS, COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -15,10 +17,11 @@ interface Props { budgetId: string }
 export function VarianceReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
-  const { data, isLoading } = useVarianceReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useVarianceReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   const latest = points[points.length - 1]
@@ -86,14 +89,14 @@ export function VarianceReport({ budgetId }: Props) {
         <ResponsiveContainer width="100%" height={340}>
           <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-            <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
             <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
             <Legend />
             <ReferenceLine y={0} stroke="var(--border-color)" strokeWidth={2} />
-            <Bar dataKey="Assigned" fill="#4e79a7" opacity={0.6} radius={[2, 2, 0, 0]} />
-            <Bar dataKey="Spent" fill="#e15759" opacity={0.6} radius={[2, 2, 0, 0]} />
-            <Line type="monotone" dataKey="Cumulative" stroke="#f28e2b" strokeWidth={2.5} dot={{ r: 3 }} />
+            <Bar dataKey="Assigned" fill={COLOR_NEUTRAL} opacity={0.6} radius={[2, 2, 0, 0]} />
+            <Bar dataKey="Spent" fill={COLOR_NEGATIVE} opacity={0.6} radius={[2, 2, 0, 0]} />
+            <Line type="monotone" dataKey="Cumulative" stroke={CHART_COLORS[1]} strokeWidth={2.5} dot={{ r: 3 }} />
           </ComposedChart>
         </ResponsiveContainer>
       )}

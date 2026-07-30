@@ -47,6 +47,18 @@
   --tag-purple: #c4a7e7;
   --tag-pink: #eb6f92;
 
+  /* Chart palette — validated against this theme's chart surface (base.css).
+     Rosé Pine has six accents, so pine fills slots 1/6 and love slots 5/8 at
+     separated lightness steps. */
+  --chart-1: #0b7a9e;
+  --chart-2: #b96463;
+  --chart-3: #14a2b5;
+  --chart-4: #a87520;
+  --chart-5: #a43459;
+  --chart-6: #209eca;
+  --chart-7: #885cb5;
+  --chart-8: #d26583;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);
@@ -107,6 +119,17 @@
   --tag-blue: #3e8fb0;
   --tag-purple: #c4a7e7;
   --tag-pink: #eb6f92;
+
+  /* Chart palette — validated against this theme's chart surface (base.css).
+     Moon variant of the rose-pine chart slots: pine fills 1/6, love 5/8. */
+  --chart-1: #007397;
+  --chart-2: #bc6765;
+  --chart-3: #18a4b7;
+  --chart-4: #a87520;
+  --chart-5: #a43459;
+  --chart-6: #24a0cc;
+  --chart-7: #885cb5;
+  --chart-8: #d26583;
 
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
