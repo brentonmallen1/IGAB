@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Payee, Transaction
+from igab.db.models import Category, Payee, Transaction
 from igab.domain.exceptions import InvariantViolation
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.ownership import require_in_budget
 
 if TYPE_CHECKING:
     from igab.repositories.attachment_repo import AttachmentRepository
@@ -88,6 +89,11 @@ class TransactionService:
         account = await self.account_repo.get_or_raise(data.account_id)
         if str(account.budget_id) != str(budget_id):
             raise InvariantViolation("Account does not belong to this budget")
+
+        # Body-supplied ids bypass the route's BudgetAccess guard; reject any
+        # that point at another budget's category/payee before persisting.
+        await require_in_budget(self.session, Category, data.category_id, budget_id, "Category")
+        await require_in_budget(self.session, Payee, data.payee_id, budget_id, "Payee")
 
         if data.transfer_account_id:
             return await self._create_transfer(budget_id, data)
@@ -171,6 +177,13 @@ class TransactionService:
         for field in _REQUIRED_FIELDS:
             if field in changes and changes[field] is None:
                 raise InvariantViolation(f"{field} cannot be empty")
+
+        # Body-supplied category/payee ids bypass BudgetAccess; a re-point to
+        # another budget's object must be rejected (also covers bulk-categorize).
+        await require_in_budget(
+            self.session, Category, changes.get("category_id"), budget_id, "Category"
+        )
+        await require_in_budget(self.session, Payee, changes.get("payee_id"), budget_id, "Payee")
         if changes.get("cleared") in _SYSTEM_CLEARED_VALUES:
             raise InvariantViolation(
                 "Reconciled and pending statuses are set by reconciliation and bank sync"
@@ -297,6 +310,8 @@ class TransactionService:
         if data.transfer_account_id is None:
             raise ValueError("transfer_account_id is required for transfer transactions")
         to_account = await self.account_repo.get_or_raise(data.transfer_account_id)
+        if str(to_account.budget_id) != str(budget_id):
+            raise InvariantViolation("Transfer account does not belong to this budget")
         from_account = await self.account_repo.get_or_raise(data.account_id)
 
         # YNAB "spending transfer": a transfer between an on-budget and an

@@ -4,6 +4,7 @@ from datetime import date
 from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
+from igab.db.models import Category
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -11,6 +12,7 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.ownership import require_in_budget
 
 if TYPE_CHECKING:
     from igab.repositories.budget_move_repo import BudgetMoveRepository
@@ -265,10 +267,17 @@ class BudgetService:
 
     async def get_category_history(
         self,
+        budget_id: uuid.UUID,
         category_id: uuid.UUID,
         current_month: date,
         lookback: int = 6,
     ) -> "CategoryHistory":
+        # Guard: category_id may arrive from a request body (batch history),
+        # bypassing the route's BudgetAccess check. Reject foreign categories
+        # so history cannot be read across budgets.
+        await require_in_budget(
+            self.category_repo.session, Category, category_id, budget_id, "Category"
+        )
         month_start = first_of_month(current_month)
         past_months = _months_back(month_start, lookback)
 
@@ -311,7 +320,7 @@ class BudgetService:
         month: date,
         action: str,
     ) -> None:
-        history = await self.get_category_history(category_id, month)
+        history = await self.get_category_history(budget_id, category_id, month)
         amount_map = {
             "last_month_assigned": history.last_month_assigned,
             "last_month_spent": history.last_month_spent,

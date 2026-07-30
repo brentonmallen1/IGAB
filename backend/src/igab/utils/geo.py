@@ -4,8 +4,11 @@ a bounding-box prefilter in SQL plus exact haversine here is plenty."""
 import math
 
 EARTH_RADIUS_M = 6_371_000.0
-# Meters per degree of latitude (and of longitude at the equator)
-METERS_PER_DEG_LAT = 111_320.0
+# Meters per degree of latitude (and of longitude at the equator), derived from
+# the same sphere haversine_m uses (2πR/360 ≈ 111,194.93 m). Sharing the sphere
+# guarantees bounding_box over-approximates the haversine radius rather than
+# clipping points that are genuinely within it.
+METERS_PER_DEG_LAT = 2 * math.pi * EARTH_RADIUS_M / 360
 
 
 def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
