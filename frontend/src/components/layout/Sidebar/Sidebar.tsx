@@ -131,31 +131,31 @@ export function Sidebar() {
       )}
 
       <nav className="sidebar__nav">
-        <NavLink to="/budget" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Budget">
+        <NavLink to="/budget" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Budget" aria-label="Budget">
           <LayoutDashboard size={16} />
           {!collapsed && <span>Budget</span>}
         </NavLink>
-        <NavLink to="/reports" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Reports">
+        <NavLink to="/reports" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Reports" aria-label="Reports">
           <BarChart2 size={16} />
           {!collapsed && <span>Reports</span>}
         </NavLink>
-        <NavLink to="/scheduled" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Scheduled">
+        <NavLink to="/scheduled" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Scheduled" aria-label="Scheduled">
           <CalendarClock size={16} />
           {!collapsed && <span>Scheduled</span>}
         </NavLink>
-        <NavLink to="/payees" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Payees">
+        <NavLink to="/payees" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Payees" aria-label="Payees">
           <Users size={16} />
           {!collapsed && <span>Payees</span>}
         </NavLink>
-        <NavLink to="/import" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Import">
+        <NavLink to="/import" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Import" aria-label="Import">
           <Upload size={16} />
           {!collapsed && <span>Import</span>}
         </NavLink>
-        <NavLink to="/settings" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Settings">
+        <NavLink to="/settings" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Settings" aria-label="Settings">
           <Settings size={16} />
           {!collapsed && <span>Settings</span>}
         </NavLink>
-        <button className="sidebar__nav-item sidebar__nav-item--logout" onClick={logout} title="Sign out">
+        <button className="sidebar__nav-item sidebar__nav-item--logout" onClick={logout} title="Sign out" aria-label="Sign out">
           <LogOut size={16} />
           {!collapsed && <span>Sign out</span>}
         </button>

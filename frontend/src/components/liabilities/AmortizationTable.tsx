@@ -21,14 +21,15 @@ export function AmortizationTable({ schedule }: Props) {
   return (
     <div className="amort-table">
       <table>
+        <caption className="sr-only">Amortization schedule</caption>
         <thead>
           <tr>
-            <th>#</th>
-            <th>Month</th>
-            <th className="amort-table__num">Payment</th>
-            <th className="amort-table__num">Principal</th>
-            <th className="amort-table__num">Interest</th>
-            <th className="amort-table__num">Balance</th>
+            <th scope="col">#</th>
+            <th scope="col">Month</th>
+            <th scope="col" className="amort-table__num">Payment</th>
+            <th scope="col" className="amort-table__num">Principal</th>
+            <th scope="col" className="amort-table__num">Interest</th>
+            <th scope="col" className="amort-table__num">Balance</th>
           </tr>
         </thead>
         <tbody>

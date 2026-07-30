@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { GitMerge, X } from 'lucide-react'
 import type { PayeeWithCount } from '../../../api/payees'
+import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './PayeeMergeModal.css'
 
 export interface MergeConfig {
@@ -38,6 +39,7 @@ export function PayeeMergeModal({ payees, onConfirm, onCancel, isPending }: Prop
   const [useCustomName, setUseCustomName] = useState(false)
   const [customName, setCustomName] = useState('')
   const [addToMappingSamples, setAddToMappingSamples] = useState(true)
+  const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
   const customInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export function PayeeMergeModal({ payees, onConfirm, onCancel, isPending }: Prop
 
   return (
     <div className="pmerge-overlay" onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="pmerge-modal" role="dialog" aria-modal aria-labelledby="pmerge-title">
+      <div ref={trapRef} tabIndex={-1} className="pmerge-modal" role="dialog" aria-modal aria-labelledby="pmerge-title">
         <div className="pmerge-modal__header">
           <span id="pmerge-title" className="pmerge-modal__title">
             <GitMerge size={14} />

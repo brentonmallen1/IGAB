@@ -5,6 +5,11 @@
   --color-negative-bg: color-mix(in srgb, var(--color-negative) 10%, transparent);
   --color-danger: var(--color-negative);
 
+  /* Text on fixed dark scrims (lightbox, thumbnail overlays) — those
+     backgrounds are black in every theme, so this stays light and must NOT
+     follow --text-inverse (which is dark in dark themes) */
+  --overlay-text: #ffffff;
+
   --border-radius-sm: 4px;
   --border-radius-md: 8px;
   --border-radius-lg: 12px;
@@ -18,14 +23,16 @@
   --spacing-lg: 24px;
   --spacing-xl: 32px;
 
-  --font-size-2xs: 10px;
-  --font-size-xs: 11px;
-  --font-size-sm: 13px;
-  --font-size-base: 14px;
-  --font-size-md: 15px;
-  --font-size-lg: 18px;
-  --font-size-xl: 22px;
-  --font-size-display: 28px;
+  /* rem-based (1rem = 16px default) so the scale follows the user's browser
+     font-size preference; pixel equivalents noted for reference */
+  --font-size-2xs: 0.625rem; /* 10px */
+  --font-size-xs: 0.6875rem; /* 11px */
+  --font-size-sm: 0.8125rem; /* 13px */
+  --font-size-base: 0.875rem; /* 14px */
+  --font-size-md: 0.9375rem; /* 15px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.375rem; /* 22px */
+  --font-size-display: 1.75rem; /* 28px */
 
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -194,6 +201,19 @@ a {
 /* Flex utilities */
 .ms-auto { margin-left: auto; }
 .flex-row { display: flex; align-items: center; gap: var(--spacing-sm); }
+
+/* Screen-reader-only content (e.g. table captions, hidden labels) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* Skip to main content link */
 .skip-link {

@@ -332,7 +332,7 @@ export function QuickAddSheet() {
               <div className="quick-add__receipt-thumbs">
                 {previews.map((url, i) => (
                   <div key={url} className="quick-add__receipt-thumb">
-                    <img src={url} alt={`Receipt ${i + 1}`} />
+                    <img src={url} alt={`Receipt ${i + 1}`} loading="lazy" />
                     <button
                       onClick={() => setPendingFiles((prev) => prev.filter((_, idx) => idx !== i))}
                       aria-label={`Remove receipt ${i + 1}`}

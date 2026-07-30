@@ -6,7 +6,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width 0.2s ease;
+  /* No width transition: animating layout properties forces the budget table
+     to reflow on every frame — the collapse toggles instantly instead */
 }
 
 .category-inspector--collapsed {

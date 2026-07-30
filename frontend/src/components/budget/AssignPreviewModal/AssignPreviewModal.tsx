@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { useAssignApply, useAssignPreview } from '../../../api/assign'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { AssignStrategy } from '../../../types'
+import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { STRATEGY_META } from '../AssignDropdown/strategyMeta'
 import './AssignPreviewModal.css'
 
@@ -24,6 +25,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
   const { data: preview, isLoading } = useAssignPreview(budgetId, month, strategy)
   const apply = useAssignApply(budgetId)
   const meta = STRATEGY_META[strategy]
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   const tbaAfter = Number(preview?.tba_after ?? 0)
   const toAssign = Number(preview?.to_assign ?? 0)
@@ -55,6 +57,8 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
       }}
     >
       <div
+        ref={trapRef}
+        tabIndex={-1}
         className="assign-preview-modal"
         role="dialog"
         aria-modal
@@ -78,12 +82,13 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
             <>
               <p className="assign-preview-modal__description">{meta.description}</p>
               <table className="assign-preview-modal__table">
+                <caption className="sr-only">Per-category changes for {meta.label}</caption>
                 <thead>
                   <tr>
-                    <th>Category</th>
-                    <th className="assign-preview-modal__col-num">Current</th>
-                    <th className="assign-preview-modal__col-num">Change</th>
-                    <th className="assign-preview-modal__col-num">New Total</th>
+                    <th scope="col">Category</th>
+                    <th scope="col" className="assign-preview-modal__col-num">Current</th>
+                    <th scope="col" className="assign-preview-modal__col-num">Change</th>
+                    <th scope="col" className="assign-preview-modal__col-num">New Total</th>
                   </tr>
                 </thead>
                 <tbody>

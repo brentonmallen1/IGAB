@@ -4,6 +4,7 @@ import { useAccounts } from '../../api/accounts'
 import { useCreateScheduledTransaction, useUpdateScheduledTransaction, useDeleteScheduledTransaction } from '../../api/scheduledTransactions'
 import { today } from '../../utils/dates'
 import type { ScheduledTransaction } from '../../types'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import './ScheduledTransactionEditor.css'
 
 const FREQUENCIES = [
@@ -53,6 +54,7 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   const [categoryId, setCategoryId] = useState(existing?.category_id ?? initial?.category_id ?? '')
   const [memo, setMemo] = useState(existing?.memo ?? initial?.memo ?? '')
   const [autoCreate, setAutoCreate] = useState(existing?.auto_create ?? false)
+  const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
   const groupedCategories = categoryGroups
     .filter((g) => !g.is_hidden)
@@ -92,10 +94,18 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
 
   return (
     <div className="sched-editor-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="sched-editor" onSubmit={handleSubmit}>
+      <form
+        ref={trapRef}
+        tabIndex={-1}
+        className="sched-editor"
+        onSubmit={handleSubmit}
+        role="dialog"
+        aria-modal
+        aria-labelledby="sched-editor-title"
+      >
         <div className="sched-editor__header">
-          <span>{existing ? 'Edit Scheduled Transaction' : 'New Scheduled Transaction'}</span>
-          <button type="button" onClick={onClose} className="sched-editor__close">×</button>
+          <span id="sched-editor-title">{existing ? 'Edit Scheduled Transaction' : 'New Scheduled Transaction'}</span>
+          <button type="button" onClick={onClose} className="sched-editor__close" aria-label="Close">×</button>
         </div>
 
         <div className="sched-editor__body">

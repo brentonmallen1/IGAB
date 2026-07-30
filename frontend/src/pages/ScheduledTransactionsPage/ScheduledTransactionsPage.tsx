@@ -75,16 +75,28 @@ export function ScheduledTransactionsPage() {
             <span></span>
           </div>
           {scheduled.map((s) => (
-            <div key={s.id} className="sched-table__row" onClick={() => setEditing(s)}>
-              <span>{accountName(s.account_id)}</span>
-              <span>{payeeName(s)}</span>
-              <span className={Number(s.amount) < 0 ? 'negative' : 'positive'}>
+            <div
+              key={s.id}
+              className="sched-table__row"
+              role="button"
+              tabIndex={0}
+              onClick={() => setEditing(s)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setEditing(s)
+                }
+              }}
+            >
+              <span className="sched-cell--account">{accountName(s.account_id)}</span>
+              <span className="sched-cell--payee">{payeeName(s)}</span>
+              <span className={`sched-cell--amount ${Number(s.amount) < 0 ? 'negative' : 'positive'}`}>
                 {formatMoney(Math.abs(Number(s.amount)))}
                 {Number(s.amount) < 0 ? ' out' : ' in'}
               </span>
-              <span>{FREQ_LABELS[s.frequency] ?? s.frequency}</span>
-              <span>{s.next_occurrence_date}</span>
-              <span>{s.auto_create ? 'Yes' : '—'}</span>
+              <span className="sched-cell--freq">{FREQ_LABELS[s.frequency] ?? s.frequency}</span>
+              <span className="sched-cell--date">{s.next_occurrence_date}</span>
+              <span className="sched-cell--auto">{s.auto_create ? 'Yes' : '—'}</span>
               <span className="sched-table__actions" onClick={(e) => e.stopPropagation()}>
                 <button
                   className="sched-btn sched-btn--sm"

@@ -9,6 +9,7 @@ import {
   useSimpleFINRemoteAccounts,
 } from '../../api/simplefin'
 import { formatSyncAge } from '../simplefin/SyncStatusIcon'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useAppStore } from '../../stores/appStore'
 import type { AccountType } from '../../types'
 import './AccountSettingsModal.css'
@@ -56,6 +57,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const [closeError, setCloseError] = useState<string | null>(null)
 
   const nameRef = useRef<HTMLInputElement>(null)
+  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   useEffect(() => {
     if (account) {
@@ -69,14 +71,6 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   useEffect(() => {
     nameRef.current?.focus()
   }, [])
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -131,7 +125,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
 
   return (
     <div className="acct-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="acct-modal-title">
+      <div ref={trapRef} tabIndex={-1} className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="acct-modal-title">
         <div className="acct-modal__header">
           <span id="acct-modal-title" className="acct-modal__title">Account Settings</span>
           <button className="acct-modal__close" onClick={onClose} aria-label="Close">

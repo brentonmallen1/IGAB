@@ -89,11 +89,12 @@ export function SeasonalityReport({ budgetId }: Props) {
         <div className="heatmap" ref={captureRef}>
           <div className="heatmap__scroll">
             <table className="heatmap__table">
+              <caption className="sr-only">Spending by category and month</caption>
               <thead>
                 <tr>
-                  <th className="heatmap__cat-header">Category</th>
+                  <th scope="col" className="heatmap__cat-header">Category</th>
                   {allMonths.map((m) => (
-                    <th key={String(m)} className="heatmap__month-header">
+                    <th scope="col" key={String(m)} className="heatmap__month-header">
                       {String(m).slice(0, 7)}
                     </th>
                   ))}

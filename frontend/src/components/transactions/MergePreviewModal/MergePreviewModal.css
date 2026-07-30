@@ -94,7 +94,7 @@
   bottom: -1px;
   right: -1px;
   background: var(--color-accent);
-  color: white;
+  color: var(--text-inverse);
   font-size: var(--font-size-2xs);
   font-weight: 600;
   padding: 2px 8px;
@@ -182,7 +182,7 @@
 
 .merge-modal__btn--confirm {
   background: var(--color-accent);
-  color: white;
+  color: var(--text-inverse);
   border-color: var(--color-accent);
 }
 
