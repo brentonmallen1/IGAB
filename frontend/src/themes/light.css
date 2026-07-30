@@ -47,6 +47,18 @@
   --tag-purple: #7c3aed;
   --tag-pink: #db2777;
 
+  /* Chart palette — validated against this theme's chart surface (base.css).
+     Only slot 5 departs from the tag hue: the tag pink sat in the CVD floor
+     band next to green, so it deepens to wine. */
+  --chart-1: #2563eb;
+  --chart-2: #ea580c;
+  --chart-3: #0d9488;
+  --chart-4: #ca8a04;
+  --chart-5: #9a044f;
+  --chart-6: #16a34a;
+  --chart-7: #7c3aed;
+  --chart-8: #dc2626;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);

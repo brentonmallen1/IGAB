@@ -6,6 +6,7 @@ import {
 import { useReportStore } from '../../../stores/reportStore'
 import { useDayPatternsReport, usePaydayEffectReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -20,13 +21,14 @@ export function DayPatternsReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading } = useDayPatternsReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
+  const { data, isLoading, isError, refetch } = useDayPatternsReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const [paydayWindow, setPaydayWindow] = useState<(typeof WINDOW_OPTIONS)[number]>(14)
   const { data: paydayData, isLoading: paydayLoading } = usePaydayEffectReport(budgetId, paydayWindow, 12)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const days = data?.days ?? []
 
@@ -110,8 +112,8 @@ export function DayPatternsReport({ budgetId }: Props) {
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-              <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={80} />
+              <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-muted)' }} />
+              <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={80} />
               <Tooltip
                 formatter={(v: unknown, name: unknown) =>
                   name === 'Amount' ? [formatMoney(Number(v)), name] : [Number(v), String(name)]
@@ -207,8 +209,8 @@ export function DayPatternsReport({ budgetId }: Props) {
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={paydayChartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={80} />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={80} />
                 <ReferenceLine
                   y={paydayBaseline}
                   stroke="var(--text-muted)"

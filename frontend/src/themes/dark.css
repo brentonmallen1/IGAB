@@ -48,6 +48,16 @@
   --tag-purple: #a78bfa;
   --tag-pink: #f472b6;
 
+  /* Chart palette — validated against this theme's chart surface (base.css) */
+  --chart-1: #4e92e6;
+  --chart-2: #d77205;
+  --chart-3: #01a896;
+  --chart-4: #b78801;
+  --chart-5: #db5ca0;
+  --chart-6: #17ac59;
+  --chart-7: #977ae7;
+  --chart-8: #e45f61;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);

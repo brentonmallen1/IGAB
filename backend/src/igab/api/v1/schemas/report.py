@@ -324,7 +324,8 @@ class SubscriptionPayee(BaseModel):
     payee_name: str
     monthly_amounts: list[Decimal]  # amounts per month in the period
     total: Decimal
-    avg_monthly: Decimal
+    avg_monthly: Decimal  # true monthly burden: total / months since first charge
+    avg_per_charge: Decimal  # typical charge: total / charge count
     last_charge_date: date | None
     transaction_count: int
 

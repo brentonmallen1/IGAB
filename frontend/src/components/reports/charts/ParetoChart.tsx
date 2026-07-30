@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import {
-  Bar, Cell, ComposedChart, CartesianGrid, Line,
+  Bar, Cell, ComposedChart, CartesianGrid, Legend, Line,
   ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine,
 } from 'recharts'
 import { useReportStore, type GroupBy } from '../../../stores/reportStore'
@@ -8,7 +8,9 @@ import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/r
 import { useFormatters } from '../../../hooks/useFormatters'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
-import { CHART_COLORS } from './chartColors'
+import { ReportErrorState } from '../ReportErrorState'
+import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
+import { buildParetoItems, cumulativePercents, paretoInsight, shareOfTotal } from './paretoData'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -18,6 +20,12 @@ const GROUP_LABELS: Record<GroupBy, string> = {
   category: 'Category',
   group: 'Category Group',
   payee: 'Payee',
+}
+
+const GROUP_PLURALS: Record<GroupBy, string> = {
+  category: 'categories',
+  group: 'category groups',
+  payee: 'payees',
 }
 
 function ParetoTooltip({
@@ -76,48 +84,15 @@ export function ParetoReport({ budgetId }: Props) {
     let idx = 0
     for (const item of spendingItems) {
       const key = item.parent_id ?? '__none__'
-      if (!map.has(key)) map.set(key, CHART_COLORS[idx++ % CHART_COLORS.length])
+      if (!map.has(key)) map.set(key, chartColor(idx++))
     }
     return map
   }, [spendingItems])
 
-  const { sorted, grandTotal } = useMemo(() => {
-    if (groupBy === 'payee') {
-      const items = [...payeeItems].sort((a, b) => Number(b.total) - Number(a.total))
-      const total = items.reduce((s, p) => s + Number(p.total), 0)
-      return {
-        sorted: items.map((p) => ({
-          id: p.payee_id, name: p.payee_name, total: Number(p.total),
-          groupKey: null as string | null, groupName: null as string | null,
-        })),
-        grandTotal: total,
-      }
-    }
-    if (groupBy === 'group') {
-      const map = new Map<string, { id: string; name: string; total: number }>()
-      for (const item of spendingItems) {
-        const gid = item.parent_id ?? '__none__'
-        const ex = map.get(gid)
-        if (ex) { ex.total += Number(item.total) }
-        else map.set(gid, { id: gid, name: item.parent_name ?? 'Uncategorized', total: Number(item.total) })
-      }
-      const items = [...map.values()].sort((a, b) => b.total - a.total)
-      const total = items.reduce((s, i) => s + i.total, 0)
-      return {
-        sorted: items.map((i) => ({ ...i, groupKey: i.id, groupName: null as string | null })),
-        grandTotal: total,
-      }
-    }
-    const items = [...spendingItems].sort((a, b) => Number(b.total) - Number(a.total))
-    const total = Number(spendingQ.data?.total ?? 0)
-    return {
-      sorted: items.map((i) => ({
-        id: i.id, name: i.name, total: Number(i.total),
-        groupKey: i.parent_id, groupName: i.parent_name,
-      })),
-      grandTotal: total,
-    }
-  }, [groupBy, spendingItems, payeeItems, spendingQ.data])
+  const { sorted, grandTotal } = useMemo(
+    () => buildParetoItems(groupBy, spendingItems, payeeItems, spendingQ.data?.total),
+    [groupBy, spendingItems, payeeItems, spendingQ.data],
+  )
 
   // Group id → member category ids, for expanding a group drill client-side
   const groupMembers = useMemo(() => {
@@ -130,8 +105,9 @@ export function ParetoReport({ budgetId }: Props) {
   }, [spendingItems])
 
   // All hooks above — safe to conditionally return now
-  const isLoading = groupBy === 'payee' ? payeeQ.isLoading : spendingQ.isLoading
-  if (isLoading) return <div className="report-loading">Loading…</div>
+  const activeQ = groupBy === 'payee' ? payeeQ : spendingQ
+  if (activeQ.isLoading) return <div className="report-loading">Loading…</div>
+  if (activeQ.isError) return <ReportErrorState onRetry={() => activeQ.refetch()} />
 
   function drillTo(id: string, name: string) {
     const window = { startDate: filters.startDate, endDate: filters.endDate }
@@ -156,31 +132,26 @@ export function ParetoReport({ budgetId }: Props) {
   }
 
   const top20 = sorted.slice(0, 20)
-  // Prefix sums without reassignment (react-hooks/immutability)
-  const cumulative = top20.reduce<number[]>(
-    (acc, item) => [...acc, (acc[acc.length - 1] ?? 0) + item.total],
-    [],
-  )
+  const cumulativePcts = cumulativePercents(top20, grandTotal)
   const chartData = top20.map((item, i) => ({
     name: item.name.length > 14 ? item.name.slice(0, 12) + '…' : item.name,
     fullName: item.name,
     group: item.groupName,
     Amount: item.total,
-    'Cumulative %': grandTotal > 0 ? (cumulative[i] / grandTotal) * 100 : 0,
+    'Cumulative %': cumulativePcts[i],
     color: groupBy === 'group'
-      ? CHART_COLORS[i % CHART_COLORS.length]
+      ? chartColor(i)
       : (groupColorMap.get(item.groupKey ?? '__none__') ?? CHART_COLORS[0]),
   }))
 
-  const idx80 = chartData.findIndex((d) => d['Cumulative %'] >= 80)
-  const pct80coverage = idx80 >= 0 ? ((idx80 + 1) / sorted.length * 100).toFixed(0) : null
+  const { idx80, pct80coverage } = paretoInsight(cumulativePcts, sorted.length)
 
   const tableRows = sorted.map((item) => ({
     id: item.id,
     name: item.name,
     subName: item.groupName ?? '',
     amount: -item.total,
-    pct: grandTotal > 0 ? (item.total / grandTotal) * 100 : 0,
+    pct: shareOfTotal(item.total, grandTotal),
   }))
 
   return (
@@ -220,7 +191,7 @@ export function ParetoReport({ budgetId }: Props) {
         </div>
       </div>
       <p className="report-section__subtitle">
-        Which {GROUP_LABELS[groupBy].toLowerCase()}s account for 80% of your spending?
+        Which {GROUP_PLURALS[groupBy]} account for 80% of your spending?
       </p>
 
       <div ref={captureRef} className="report-capture">
@@ -230,8 +201,8 @@ export function ParetoReport({ budgetId }: Props) {
           {idx80 >= 0 && (
             <MetricCard
               label="80% of Spend"
-              value={`${idx80 + 1} ${GROUP_LABELS[groupBy].toLowerCase()}s`}
-              sub={pct80coverage ? `${pct80coverage}% of all ${GROUP_LABELS[groupBy].toLowerCase()}s` : undefined}
+              value={`${idx80 + 1} ${idx80 === 0 ? GROUP_LABELS[groupBy].toLowerCase() : GROUP_PLURALS[groupBy]}`}
+              sub={pct80coverage ? `${pct80coverage}% of all ${GROUP_PLURALS[groupBy]}` : undefined}
             />
           )}
         </div>
@@ -244,11 +215,12 @@ export function ParetoReport({ budgetId }: Props) {
           <ResponsiveContainer width="100%" height={340}>
             <ComposedChart data={chartData} margin={{ top: 8, right: 50, left: 0, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-40} textAnchor="end" interval={0} height={70} />
-              <YAxis yAxisId="left" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
-              <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} width={50} />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} angle={-40} textAnchor="end" interval={0} height={70} />
+              <YAxis yAxisId="left" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
+              <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={50} />
               <Tooltip content={<ParetoTooltip chartData={chartData} formatMoney={formatMoney} />} offset={16} isAnimationActive={false} />
-              <ReferenceLine yAxisId="right" y={80} stroke="#e15759" strokeDasharray="6 3" label={{ value: '80%', position: 'right', fontSize: 11 }} />
+              <Legend verticalAlign="top" />
+              <ReferenceLine yAxisId="right" y={80} stroke={COLOR_NEGATIVE} strokeDasharray="6 3" label={{ value: '80%', position: 'right', fontSize: 11 }} />
               <Bar
                 yAxisId="left"
                 dataKey="Amount"
@@ -265,7 +237,7 @@ export function ParetoReport({ budgetId }: Props) {
                   <Cell key={i} fill={entry.color} fillOpacity={0.85} />
                 ))}
               </Bar>
-              <Line yAxisId="right" type="monotone" dataKey="Cumulative %" stroke="#f28e2b" strokeWidth={2} dot={{ r: 3 }} />
+              <Line yAxisId="right" type="monotone" dataKey="Cumulative %" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
             </ComposedChart>
           </ResponsiveContainer>
           <DrillDownTable

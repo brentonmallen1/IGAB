@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
 import {
-  Bar, BarChart, CartesianGrid, Cell,
+  Bar, BarChart, CartesianGrid, Cell, Legend,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useBudgetActualReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
+import { COLOR_NEGATIVE, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -50,10 +52,11 @@ export function BudgetActualReport({ budgetId }: Props) {
   const [showOverspent, setShowOverspent] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>('default')
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
-  const { data, isLoading } = useBudgetActualReport(budgetId, filters.startDate, filters.endDate, catIds)
+  const { data, isLoading, isError, refetch } = useBudgetActualReport(budgetId, filters.startDate, filters.endDate, catIds)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   let categories = data?.categories ?? []
   if (showOverspent) categories = categories.filter((c) => Number(c.spent) > Number(c.assigned))
@@ -162,13 +165,14 @@ export function BudgetActualReport({ budgetId }: Props) {
               margin={{ top: 4, right: 80, left: 4, bottom: 4 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
-              <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={80} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={130} />
+              <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={80} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={130} />
               <Tooltip content={<BudgetActualTooltip chartData={chartData} formatMoney={formatMoney} />} offset={16} isAnimationActive={false} />
-              <Bar dataKey="Assigned" fill="#4e79a7" radius={[0, 2, 2, 0]} barSize={10} cursor="pointer" onClick={barClick} />
-              <Bar dataKey="Spent" barSize={10} radius={[0, 2, 2, 0]} cursor="pointer" onClick={barClick}>
+              <Legend />
+              <Bar dataKey="Assigned" fill={COLOR_NEUTRAL} radius={[0, 2, 2, 0]} barSize={10} cursor="pointer" onClick={barClick} />
+              <Bar dataKey="Spent" fill={COLOR_POSITIVE} barSize={10} radius={[0, 2, 2, 0]} cursor="pointer" onClick={barClick}>
                 {chartData.map((entry, i) => (
-                  <Cell key={i} fill={entry.overspent ? '#e15759' : '#59a14f'} />
+                  <Cell key={i} fill={entry.overspent ? COLOR_NEGATIVE : COLOR_POSITIVE} />
                 ))}
               </Bar>
             </BarChart>

@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -10,8 +11,10 @@ import {
 } from 'recharts'
 import { useSubscriptionsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { getCurrencySymbol } from '../../../utils/money'
+import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
-import { CHART_COLORS } from './chartColors'
+import { chartColor } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
@@ -23,9 +26,10 @@ interface Props {
 const MONTH_OPTIONS = [6, 12, 24] as const
 
 export function SubscriptionsReport({ budgetId }: Props) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, settings } = useFormatters()
+  const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
-  const { data, isLoading } = useSubscriptionsReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useSubscriptionsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const subscriptions = useMemo(() => data?.subscriptions ?? [], [data])
@@ -51,6 +55,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const hasData = subscriptions.length > 0
 
@@ -68,8 +73,10 @@ export function SubscriptionsReport({ budgetId }: Props) {
             payee. The tag is a reserved system tag and cannot be deleted.
           </p>
           <p>
-            <strong>Monthly</strong> shows the average monthly cost across your subscription
-            payees. <strong>Annual</strong> projects the yearly cost.
+            <strong>Monthly (effective)</strong> spreads each subscription's cost over the
+            months since its first charge — a quarterly $30 subscription reads as $10/mo.{' '}
+            <strong>Per Charge</strong> is the typical amount of a single charge.{' '}
+            <strong>Annual</strong> projects the yearly cost from the effective monthly total.
           </p>
         </ReportInfoButton>
         <div className="flex-row">
@@ -91,6 +98,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
               subscriptions.map((s) => ({
                 payee: s.payee_name,
                 avg_monthly: s.avg_monthly,
+                avg_per_charge: s.avg_per_charge,
                 total: s.total,
                 transaction_count: s.transaction_count,
                 last_charge: s.last_charge_date ?? '',
@@ -115,7 +123,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
             <MetricCard
               label="Monthly"
               value={formatMoney(summary?.total_monthly ?? 0)}
-              sub="average"
+              sub="effective"
             />
             <MetricCard
               label="Annual"
@@ -141,7 +149,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
                 />
                 <YAxis
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  tickFormatter={(v) => `$${v}`}
+                  tickFormatter={(v) => `${currencySymbol}${v}`}
                   axisLine={false}
                   tickLine={false}
                 />
@@ -159,12 +167,13 @@ export function SubscriptionsReport({ budgetId }: Props) {
                     />
                   )}
                 />
+                <Legend />
                 {subscriptions.slice(0, 10).map((sub, idx) => (
                   <Bar
                     key={sub.payee_id}
                     dataKey={sub.payee_name}
                     stackId="stack"
-                    fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                    fill={chartColor(idx)}
                   />
                 ))}
               </BarChart>
@@ -175,7 +184,8 @@ export function SubscriptionsReport({ budgetId }: Props) {
             <thead>
               <tr>
                 <th style={{ textAlign: 'left' }}>Payee</th>
-                <th style={{ textAlign: 'right' }}>Avg Monthly</th>
+                <th style={{ textAlign: 'right' }}>Per Charge</th>
+                <th style={{ textAlign: 'right' }}>Monthly (effective)</th>
                 <th style={{ textAlign: 'right' }}>Total</th>
                 <th style={{ textAlign: 'right' }}>Charges</th>
                 <th style={{ textAlign: 'right' }}>Last Charge</th>
@@ -185,6 +195,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
               {subscriptions.map((sub) => (
                 <tr key={sub.payee_id}>
                   <td>{sub.payee_name}</td>
+                  <td style={{ textAlign: 'right' }}>{formatMoney(sub.avg_per_charge)}</td>
                   <td style={{ textAlign: 'right' }}>{formatMoney(sub.avg_monthly)}</td>
                   <td style={{ textAlign: 'right' }}>{formatMoney(sub.total)}</td>
                   <td style={{ textAlign: 'right' }}>{sub.transaction_count}</td>

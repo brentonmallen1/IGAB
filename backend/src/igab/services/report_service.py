@@ -92,12 +92,12 @@ class ReportService:
                 "id": row["id"],
                 "name": row["name"],
                 "group_name": row["group_name"],
-                "total": Decimal(str(row["total"])),
+                "total": Decimal(str(round(row["total"], 4))),
                 "pct": float(row["total"] / grand_total * 100) if grand_total else 0.0,
             }
             for row in agg.iter_rows(named=True)
         ]
-        return categories, Decimal(str(grand_total))
+        return categories, Decimal(str(round(grand_total, 4)))
 
     async def income_vs_expense(self, budget_id: uuid.UUID, months: int = 12) -> list[dict]:
         today = date.today()
@@ -155,9 +155,9 @@ class ReportService:
                 results.append(
                     {
                         "month": month_start,
-                        "income": Decimal(str(r["income"] or 0)),
-                        "expenses": Decimal(str(r["expenses"] or 0)),
-                        "net": Decimal(str(r["net"] or 0)),
+                        "income": Decimal(str(round(r["income"] or 0, 4))),
+                        "expenses": Decimal(str(round(r["expenses"] or 0, 4))),
+                        "net": Decimal(str(round(r["net"] or 0, 4))),
                     }
                 )
             else:
@@ -189,8 +189,8 @@ class ReportService:
             )
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
+                NOT_DELETED,
+                PARENT_ROW,
             )
             .order_by(Transaction.date.desc())
         )
@@ -438,7 +438,7 @@ class ReportService:
                             "id": row["category_id"],
                             "name": cat_info.name,
                             "group_name": cat_info.group_name,
-                            "total": Decimal(str(row["total"])),
+                            "total": Decimal(str(round(row["total"], 4))),
                         }
                     )
 
@@ -594,7 +594,7 @@ class ReportService:
             total_liabilities = Decimal("0")
 
             for row in acct_balances.iter_rows(named=True):
-                bal = Decimal(str(row["balance"]))
+                bal = Decimal(str(round(row["balance"], 4)))
                 snapshots.append(
                     {
                         "account_id": row["account_id"],
@@ -894,8 +894,8 @@ class ReportService:
         income_rows = [r for r in rows if r.amount > 0 and r.parent_transaction_id is None]
         expense_rows = [r for r in rows if r.amount < 0 and not r.is_split]
 
-        total_income = Decimal(str(sum(float(r.amount) for r in income_rows)))
-        total_expense = Decimal(str(abs(sum(float(r.amount) for r in expense_rows))))
+        total_income = sum((r.amount for r in income_rows), Decimal("0"))
+        total_expense = abs(sum((r.amount for r in expense_rows), Decimal("0")))
 
         nodes: list[dict] = []
         links: list[dict] = []
@@ -910,11 +910,11 @@ class ReportService:
         get_node("__budget__", "Budget", "budget")
 
         # Income: payees -> budget
-        income_by_payee: dict[str, float] = {}
+        income_by_payee: dict[str, Decimal] = {}
         for r in income_rows:
             pname = r.payee_name or "Unknown Income"
             pid = f"inc_{r.payee_id or pname}"
-            income_by_payee[pid] = income_by_payee.get(pid, 0) + float(r.amount)
+            income_by_payee[pid] = income_by_payee.get(pid, Decimal("0")) + r.amount
 
         for pid, total in sorted(income_by_payee.items(), key=lambda x: -x[1])[:15]:
             pname = next(
@@ -930,32 +930,41 @@ class ReportService:
                 {
                     "source": pid,
                     "target": "__budget__",
-                    "value": Decimal(str(round(total, 4))),
+                    "value": total,
                 }
             )
 
-        # Expenses: budget -> category group -> category -> top payees
-        group_totals: dict[str, float] = {}
-        cat_totals: dict[str, float] = {}
+        # Expenses: budget -> category group -> category -> top payees.
+        # Uncategorized spending flows through its own pseudo group/category so
+        # the links always sum to total_expense (flow conservation).
+        group_totals: dict[str, Decimal] = {}
+        cat_totals: dict[str, Decimal] = {}
         cat_to_group: dict[str, tuple[str, str]] = {}
-        payee_by_cat: dict[str, dict[str, float]] = {}
+        cat_names: dict[str, str] = {}
+        payee_by_cat: dict[str, dict[str, Decimal]] = {}
 
         for r in expense_rows:
-            if not r.category_id:
-                continue
-            cat_id = str(r.category_id)
-            gid = str(r.group_id) if r.group_id else "__uncategorized__"
-            gname = r.group_name or "Uncategorized"
+            if r.category_id:
+                cat_id = str(r.category_id)
+                gid = str(r.group_id) if r.group_id else "__uncategorized__"
+                gname = r.group_name or "Uncategorized"
+                cname = r.category_name or cat_id
+            else:
+                cat_id = "__uncategorized__"
+                gid = "__uncategorized__"
+                gname = "Uncategorized"
+                cname = "Uncategorized"
 
-            group_totals[gid] = group_totals.get(gid, 0) + abs(float(r.amount))
-            cat_totals[cat_id] = cat_totals.get(cat_id, 0) + abs(float(r.amount))
+            group_totals[gid] = group_totals.get(gid, Decimal("0")) + abs(r.amount)
+            cat_totals[cat_id] = cat_totals.get(cat_id, Decimal("0")) + abs(r.amount)
             cat_to_group[cat_id] = (gid, gname)
+            cat_names[cat_id] = cname
 
             pname = r.payee_name or "Unknown"
             pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
             if cat_id not in payee_by_cat:
                 payee_by_cat[cat_id] = {}
-            payee_by_cat[cat_id][pid] = payee_by_cat[cat_id].get(pid, 0) + abs(float(r.amount))
+            payee_by_cat[cat_id][pid] = payee_by_cat[cat_id].get(pid, Decimal("0")) + abs(r.amount)
 
         for gid, total in sorted(group_totals.items(), key=lambda x: -x[1]):
             gname = next((v[1] for k, v in cat_to_group.items() if v[0] == gid), gid)
@@ -964,7 +973,7 @@ class ReportService:
                 {
                     "source": "__budget__",
                     "target": f"g_{gid}",
-                    "value": Decimal(str(round(total, 4))),
+                    "value": total,
                 }
             )
 
@@ -975,37 +984,30 @@ class ReportService:
             payee_names[pid] = pname
 
         group_to_cats: dict[str, list[str]] = {}
-        cat_names: dict[str, str] = {}
 
         category_payees: dict[str, list[dict]] = {}
         for cat_id, cat_payees in payee_by_cat.items():
-            cat_info = cat_to_group.get(cat_id)
-            if not cat_info:
-                continue
-            gid, _ = cat_info
-            cat_rows = [r for r in expense_rows if r.category_id and str(r.category_id) == cat_id]
-            cat_name = next((r.category_name for r in cat_rows if r.category_name), cat_id)
-            cat_names[cat_id] = cat_name or cat_id
+            gid, _ = cat_to_group[cat_id]
+            cat_name = cat_names[cat_id]
             group_to_cats.setdefault(gid, []).append(cat_id)
-            get_node(f"c_{cat_id}", cat_name or cat_id, "category")
+            get_node(f"c_{cat_id}", cat_name, "category")
             links.append(
                 {
                     "source": f"g_{gid}",
                     "target": f"c_{cat_id}",
-                    "value": Decimal(str(round(cat_totals[cat_id], 4))),
+                    "value": cat_totals[cat_id],
                 }
             )
             top10 = sorted(cat_payees.items(), key=lambda x: -x[1])[:10]
             category_payees[f"c_{cat_id}"] = [
-                {"name": payee_names.get(pid, "Unknown"), "total": Decimal(str(round(ptotal, 4)))}
-                for pid, ptotal in top10
+                {"name": payee_names.get(pid, "Unknown"), "total": ptotal} for pid, ptotal in top10
             ]
 
         group_categories: dict[str, list[dict]] = {}
         for gid, cats in group_to_cats.items():
-            top10 = sorted(cats, key=lambda c: -cat_totals.get(c, 0))[:10]
+            top10 = sorted(cats, key=lambda c: -cat_totals.get(c, Decimal("0")))[:10]
             group_categories[f"g_{gid}"] = [
-                {"name": cat_names.get(c, c), "total": Decimal(str(round(cat_totals.get(c, 0), 4)))}
+                {"name": cat_names.get(c, c), "total": cat_totals.get(c, Decimal("0"))}
                 for c in top10
             ]
 
@@ -1348,14 +1350,14 @@ class ReportService:
                 "name": row["cat_name"],
                 "parent_id": row["group_id"],
                 "parent_name": row["group_name"],
-                "total": Decimal(str(row["total"])),
+                "total": Decimal(str(round(row["total"], 4))),
                 "count": int(row["count"]),
                 "pct": float(row["total"] / grand_total * 100) if grand_total else 0.0,
             }
             for row in cat_agg.iter_rows(named=True)
         ]
 
-        return items, Decimal(str(grand_total))
+        return items, Decimal(str(round(grand_total, 4)))
 
     # ─── Seasonality ─────────────────────────────────────────────────────────
 
@@ -1417,7 +1419,7 @@ class ReportService:
                 "category_id": row["category_id"],
                 "category_name": row["category_name"],
                 "month": row["month"],
-                "total": Decimal(str(row["total"])),
+                "total": Decimal(str(round(row["total"], 4))),
             }
             for row in agg.iter_rows(named=True)
         ]
@@ -1503,7 +1505,7 @@ class ReportService:
             .head(limit)
         )
 
-        grand_total = Decimal(str(payee_agg["total"].sum()))
+        grand_total = Decimal(str(round(payee_agg["total"].sum(), 4)))
 
         payees = []
         for row in payee_agg.iter_rows(named=True):
@@ -1518,7 +1520,7 @@ class ReportService:
                 .sort("month")
             )
             monthly_trend = [
-                {"month": r["month"], "total": Decimal(str(r["total"]))}
+                {"month": r["month"], "total": Decimal(str(round(r["total"], 4)))}
                 for r in trend.iter_rows(named=True)
             ]
 
@@ -1531,7 +1533,7 @@ class ReportService:
                 .head(3)
             )
             top_categories = [
-                {"category_name": r["category_name"], "total": Decimal(str(r["total"]))}
+                {"category_name": r["category_name"], "total": Decimal(str(round(r["total"], 4)))}
                 for r in top_cats.iter_rows(named=True)
             ]
 
@@ -1545,7 +1547,7 @@ class ReportService:
                 {
                     "payee_id": pid,
                     "payee_name": row["payee_name"],
-                    "total": Decimal(str(row["total"])),
+                    "total": Decimal(str(round(row["total"], 4))),
                     "count": int(row["count"]),
                     "pct": (
                         float(Decimal(str(row["total"])) / grand_total * 100)
@@ -1741,12 +1743,12 @@ class ReportService:
             .where(
                 Transaction.budget_id == budget_id,
                 Transaction.payee_id.in_(subscription_payee_ids),
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.cleared != "pending",
+                NOT_DELETED,
+                POSTED,
                 Transaction.amount < 0,  # outflows only
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                Transaction.is_split == False,  # noqa: E712 - leaf rows
+                LEAF,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -1789,18 +1791,26 @@ class ReportService:
             for m in month_list:
                 row = payee_rows.filter(pl.col("month") == m)
                 if len(row) > 0:
-                    monthly_amounts.append(Decimal(str(row["monthly_total"][0])))
+                    monthly_amounts.append(Decimal(str(round(row["monthly_total"][0], 4))))
                 else:
                     monthly_amounts.append(Decimal("0"))
 
             total = sum(monthly_amounts)
-            months_with_charges = sum(1 for a in monthly_amounts if a > 0)
-            avg_monthly = total / months_with_charges if months_with_charges > 0 else Decimal("0")
 
             # Last charge date and count
             payee_txns = df.filter(pl.col("payee_id") == payee_id)
             last_charge = max(payee_txns["date"].to_list()) if len(payee_txns) > 0 else None
             txn_count = len(payee_txns)
+
+            # avg_monthly is the TRUE monthly burden: total spread over the
+            # months since the first charge, not the average charged month —
+            # a quarterly $30 sub costs $10/mo, not $30/mo.
+            first_charged_idx = next((i for i, a in enumerate(monthly_amounts) if a > 0), None)
+            if first_charged_idx is None:
+                avg_monthly = Decimal("0")
+            else:
+                avg_monthly = total / (len(month_list) - first_charged_idx)
+            avg_per_charge = total / txn_count if txn_count else Decimal("0")
 
             subscriptions.append(
                 {
@@ -1809,6 +1819,7 @@ class ReportService:
                     "monthly_amounts": monthly_amounts,
                     "total": total,
                     "avg_monthly": avg_monthly.quantize(Decimal("0.01")),
+                    "avg_per_charge": avg_per_charge.quantize(Decimal("0.01")),
                     "last_charge_date": last_charge,
                     "transaction_count": txn_count,
                 }
@@ -1895,23 +1906,26 @@ class ReportService:
                 assign_map[cid] = {}
             assign_map[cid][r.month] = r.assigned
 
-        # Get category activity (transactions) per month for running balance
+        # Get category activity (transactions) per month for running balance.
+        # literal_column inlines 'month' so SELECT and GROUP BY render the
+        # same expression — as a bound parameter Postgres rejects the query.
+        month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
         txn_q = (
             select(
                 Transaction.category_id,
-                func.date_trunc("month", Transaction.date).label("month"),
+                month_col,
                 func.sum(Transaction.amount).label("activity"),
             )
             .where(
                 Transaction.budget_id == budget_id,
                 Transaction.category_id.in_(savings_cat_ids),
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.cleared != "pending",
-                Transaction.is_split == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
+                LEAF,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
             )
-            .group_by(Transaction.category_id, func.date_trunc("month", Transaction.date))
+            .group_by(Transaction.category_id, month_col)
         )
         txn_rows = (await self.session.execute(txn_q)).all()
 
@@ -1950,9 +1964,9 @@ class ReportService:
             .where(
                 Transaction.budget_id == budget_id,
                 Transaction.category_id.in_(savings_cat_ids),
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.cleared != "pending",
-                Transaction.is_split == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
+                LEAF,
                 Transaction.date < start_date,
             )
             .group_by(Transaction.category_id)
@@ -2042,10 +2056,10 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.cleared != "pending",
+                NOT_DELETED,
+                POSTED,
                 Transaction.amount < 0,  # outflows only
-                Transaction.is_split == False,  # noqa: E712
+                LEAF,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
                 CategoryGroup.is_system == False,  # noqa: E712
@@ -2152,7 +2166,9 @@ class ReportService:
             budget_id, system_keys=["subscription"]
         )
 
-        # Get all transactions in the period
+        # All cash-flow rows in the period. CASH_FLOW_ROW keeps transfers out:
+        # a transfer into checking is not a payday, and the outflow leg of a
+        # transfer is not spending.
         q = (
             select(
                 Transaction.date,
@@ -2161,9 +2177,10 @@ class ReportService:
             )
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.cleared != "pending",
-                Transaction.is_split == False,  # noqa: E712
+                NOT_DELETED,
+                POSTED,
+                LEAF,
+                CASH_FLOW_ROW,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
             )
@@ -2285,9 +2302,9 @@ class ReportService:
             .join(Account, Account.id == Transaction.account_id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.cleared != "pending",
+                NOT_DELETED,
+                PARENT_ROW,
+                POSTED,
                 Account.is_closed == False,  # noqa: E712
                 Account.on_budget == True,  # noqa: E712
             )
@@ -2295,7 +2312,9 @@ class ReportService:
         result = await self.session.execute(q)
         start_balance = Decimal(str(result.scalar() or 0))
 
-        # 2. Get scheduled transactions in the projection window
+        # 2. Get scheduled transactions in the projection window. The
+        # projection covers on-budget cash, so schedules pointed at
+        # off-budget or closed accounts don't belong in it.
         sched_q = (
             select(
                 ScheduledTransaction.id,
@@ -2305,11 +2324,14 @@ class ReportService:
                 ScheduledTransaction.end_date,
                 Payee.name.label("payee_name"),
             )
+            .join(Account, Account.id == ScheduledTransaction.account_id)
             .outerjoin(Payee, Payee.id == ScheduledTransaction.payee_id)
             .where(
                 ScheduledTransaction.budget_id == budget_id,
                 ScheduledTransaction.is_deleted == False,  # noqa: E712
                 ScheduledTransaction.next_occurrence_date <= end_date,
+                Account.is_closed == False,  # noqa: E712
+                Account.on_budget == True,  # noqa: E712
             )
         )
         sched_rows = (await self.session.execute(sched_q)).all()
@@ -2348,11 +2370,16 @@ class ReportService:
                     func.avg(Transaction.amount).label("avg_amount"),
                 )
                 .join(Payee, Payee.id == Transaction.payee_id)
+                .join(Account, Account.id == Transaction.account_id)
                 .where(
                     Transaction.budget_id == budget_id,
-                    Transaction.is_deleted == False,  # noqa: E712
+                    NOT_DELETED,
+                    POSTED,
+                    LEAF,
                     Transaction.payee_id.in_(subscription_payee_ids),
                     Transaction.amount < 0,
+                    Account.is_closed == False,  # noqa: E712
+                    Account.on_budget == True,  # noqa: E712
                 )
                 .group_by(Transaction.payee_id, Payee.name)
             )
@@ -2370,15 +2397,23 @@ class ReportService:
                         subscription_events.append((next_date, payee_name, avg_amount))
                     next_date = next_date + timedelta(days=30)
 
-        # 4. Get historical daily net flows for stochastic layer
+        # 4. Get historical daily net flows for stochastic layer — on-budget
+        # open accounts only, matching the balance being projected (a
+        # brokerage swing is not a cash flow).
         hist_start = today - timedelta(days=180)
-        hist_q = select(Transaction.date, Transaction.amount).where(
-            Transaction.budget_id == budget_id,
-            Transaction.is_deleted == False,  # noqa: E712
-            Transaction.cleared != "pending",
-            Transaction.is_split == False,  # noqa: E712
-            Transaction.date >= hist_start,
-            Transaction.date < today,
+        hist_q = (
+            select(Transaction.date, Transaction.amount)
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                LEAF,
+                Transaction.date >= hist_start,
+                Transaction.date < today,
+                Account.is_closed == False,  # noqa: E712
+                Account.on_budget == True,  # noqa: E712
+            )
         )
         hist_rows = (await self.session.execute(hist_q)).all()
 
@@ -2391,7 +2426,11 @@ class ReportService:
                     "amount": [float(r.amount) for r in hist_rows],
                 }
             )
-            daily = df.group_by("date").agg(pl.col("amount").sum().alias("net"))
+            # sort() makes the weekday buckets order-stable: group_by returns
+            # rows in arbitrary order, and the seeded rng.choice() below is
+            # only reproducible when each bucket lists its samples in a fixed
+            # order (same-day calls must return identical projections).
+            daily = df.group_by("date").agg(pl.col("amount").sum().alias("net")).sort("date")
             for row in daily.iter_rows(named=True):
                 d = row["date"]
                 weekday = d.weekday()
@@ -2519,7 +2558,9 @@ def _next_occurrence(d: date, frequency: str) -> date | None:
         day = min(d.day, _last_day(date(year, month, 1)).day)
         return date(year, month, day)
     elif frequency == "yearly":
-        return date(d.year + 1, d.month, d.day)
+        # Clamp like the monthly branch: Feb 29 -> Feb 28 in non-leap years
+        day = min(d.day, _last_day(date(d.year + 1, d.month, 1)).day)
+        return date(d.year + 1, d.month, day)
     return None
 
 

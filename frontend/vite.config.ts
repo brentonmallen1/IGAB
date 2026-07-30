@@ -45,6 +45,8 @@ export default defineConfig({
     port: 5173,
   },
   test: {
-    environment: 'node',
+    // jsdom for component tests; pure-function suites run there unchanged
+    environment: 'jsdom',
+    setupFiles: ['./src/test-utils/setup.ts'],
   },
 })

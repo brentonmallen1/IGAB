@@ -47,6 +47,17 @@
   --tag-purple: #cba6f7;
   --tag-pink: #f5c2e7;
 
+  /* Chart palette — mocha's pastels, deepened into the dark-surface band and
+     validated against this theme's chart surface (base.css) */
+  --chart-1: #6891d4;
+  --chart-2: #c37e51;
+  --chart-3: #2ea596;
+  --chart-4: #ad8c3d;
+  --chart-5: #864978;
+  --chart-6: #67a263;
+  --chart-7: #724e97;
+  --chart-8: #d06c89;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);
@@ -107,6 +118,16 @@
   --tag-blue: #1e66f5;
   --tag-purple: #8839ef;
   --tag-pink: #ea76cb;
+
+  /* Chart palette — validated against this theme's chart surface (base.css) */
+  --chart-1: #1e66f5;
+  --chart-2: #fe640b;
+  --chart-3: #0b929a;
+  --chart-4: #df8e1d;
+  --chart-5: #ea76cb;
+  --chart-6: #40a02b;
+  --chart-7: #8839ef;
+  --chart-8: #d20f39;
 
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);

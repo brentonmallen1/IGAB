@@ -4,46 +4,33 @@ import { useReportStore } from '../../../stores/reportStore'
 import { useCashFlowReport } from '../../../api/reports'
 import { usePayees } from '../../../api/payees'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { previousWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
+import { CHART_COLORS, COLOR_NEGATIVE, COLOR_POSITIVE } from './chartColors'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import type { CategoryPayee } from '../../../types'
+import {
+  buildSankeyView,
+  deltaColor,
+  extractPrevTotals,
+  formatDelta,
+  type SankeyViewNode,
+} from './sankeyView'
 import './CashFlowSankey.css'
 
 interface Props { budgetId: string }
 
 const NODE_COLORS: Record<string, string> = {
-  income: '#59a14f',
-  category_group: '#f28e2b',
-  category: '#edc948',
-  payee: '#e15759',
+  income: COLOR_POSITIVE,
+  category_group: CHART_COLORS[1],
+  category: CHART_COLORS[3],
+  payee: COLOR_NEGATIVE,
 }
 
-interface NodeData {
-  name: string
-  type: string
-  id: string
-  /** Previous-window value when compare is on; null = node is new this window */
-  prev?: number | null
-}
-
-/** Signed delta as "+$123 (+12%)"; pct omitted when prev is 0. */
-function formatDelta(current: number, prev: number, formatMoney: (n: number) => string): string {
-  const delta = current - prev
-  const sign = delta >= 0 ? '+' : '−'
-  const amount = `${sign}${formatMoney(Math.abs(delta))}`
-  if (prev === 0) return amount
-  return `${amount} (${sign}${Math.abs((delta / prev) * 100).toFixed(0)}%)`
-}
-
-/** For income more is good; for expense-side nodes more is bad. */
-function deltaColor(current: number, prev: number, type: string): string {
-  const increased = current >= prev
-  const good = type === 'income' ? increased : !increased
-  return good ? 'var(--color-positive)' : 'var(--color-negative)'
-}
+type NodeData = SankeyViewNode
 
 function SankeyNodeRect(props: {
   x?: number; y?: number; width?: number; height?: number
@@ -53,7 +40,7 @@ function SankeyNodeRect(props: {
   const { x = 0, y = 0, width = 0, height = 0, payload } = props
   if (!payload) return null
   const isLeft = payload.type === 'income'
-  const color = NODE_COLORS[payload.type] ?? '#999'
+  const color = NODE_COLORS[payload.type] ?? 'var(--text-muted)'
   const value = payload.value ?? 0
   const hasDelta = payload.prev !== undefined
   return (
@@ -65,7 +52,7 @@ function SankeyNodeRect(props: {
         textAnchor={isLeft ? 'start' : 'end'}
         dominantBaseline="middle"
         fontSize={12}
-        fill={color}
+        fill="var(--text-primary)"
         fontWeight={500}
       >
         {payload.name.length > 24 ? payload.name.slice(0, 22) + '…' : payload.name}
@@ -175,7 +162,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
   const [viewMode, setViewMode] = useState<'spent' | 'budgeted'>('spent')
   const [compare, setCompare] = useState(false)
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading } = useCashFlowReport(budgetId, filters.startDate, filters.endDate, viewMode, acctIds)
+  const { data, isLoading, isError, refetch } = useCashFlowReport(budgetId, filters.startDate, filters.endDate, viewMode, acctIds)
   const prevWindow = previousWindow(filters.startDate, filters.endDate)
   const { data: prevData } = useCashFlowReport(
     budgetId, prevWindow.start, prevWindow.end, viewMode, acctIds, { enabled: compare },
@@ -195,119 +182,16 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
 
   // Previous-window totals keyed by the backend's stable node ids (g_/c_...),
   // so deltas survive drilling. Payees have no ids at level 3 — match by name.
-  const prevTotals = useMemo(() => {
-    if (!compare || !prevData) return null
-    const groups = new Map<string, number>()
-    const cats = new Map<string, number>()
-    const nodeType = new Map(prevData.nodes.map((n) => [n.id, n.type]))
-    for (const link of prevData.links) {
-      if (link.source === '__budget__') {
-        groups.set(link.target, Number(link.value))
-      } else if (nodeType.get(link.source) === 'category_group') {
-        cats.set(link.target, Number(link.value))
-      }
-    }
-    return { groups, cats }
-  }, [compare, prevData])
+  const prevTotals = useMemo(
+    () => (compare && prevData ? extractPrevTotals(prevData) : null),
+    [compare, prevData],
+  )
 
   // Build simplified sankey: Income → Groups → Categories → Payees (each level on drill)
-  const { sankeyData, groupCategories, categoryPayees } = useMemo(() => {
-    if (!data || data.nodes.length === 0) {
-      return {
-        sankeyData: { nodes: [], links: [] },
-        groupCategories: {} as Record<string, CategoryPayee[]>,
-        categoryPayees: {} as Record<string, CategoryPayee[]>,
-      }
-    }
-
-    const groups = data.nodes.filter((n) => n.type === 'category_group')
-    const categories = data.nodes.filter((n) => n.type === 'category')
-
-    // Calculate total per group from budget→group links
-    const groupTotals = new Map<string, number>()
-    for (const link of data.links) {
-      if (link.source === '__budget__') {
-        groupTotals.set(link.target, Number(link.value))
-      }
-    }
-
-    // Calculate total per category
-    const catTotals = new Map<string, number>()
-    for (const link of data.links) {
-      const sourceNode = data.nodes.find((n) => n.id === link.source)
-      if (sourceNode?.type === 'category_group') {
-        catTotals.set(link.target, Number(link.value))
-      }
-    }
-
-    const nodes: NodeData[] = []
-    const links: { source: number; target: number; value: number }[] = []
-
-    // Single income node always first
-    nodes.push({ id: '__income__', name: 'Income', type: 'income' })
-
-    if (selectedCategoryId && selectedGroupId) {
-      // Level 3: Income → Group → Category → Payees
-      const group = groups.find((g) => g.id === selectedGroupId)
-      const category = categories.find((c) => c.id === selectedCategoryId)
-      const payees = data.category_payees[selectedCategoryId] ?? []
-
-      if (group && category) {
-        nodes.push({ id: group.id, name: group.name, type: 'category_group' })
-        nodes.push({ id: category.id, name: category.name, type: 'category' })
-        links.push({ source: 0, target: 1, value: groupTotals.get(group.id) ?? 0 })
-        links.push({ source: 1, target: 2, value: catTotals.get(category.id) ?? 0 })
-
-        payees.forEach((payee, i) => {
-          nodes.push({ id: `payee_${i}`, name: payee.name, type: 'payee' })
-          links.push({ source: 2, target: 3 + i, value: Number(payee.total) })
-        })
-      }
-    } else if (selectedGroupId) {
-      // Level 2: Income → Group → Categories
-      const group = groups.find((g) => g.id === selectedGroupId)
-      if (group) {
-        nodes.push({ id: group.id, name: group.name, type: 'category_group' })
-        links.push({ source: 0, target: 1, value: groupTotals.get(group.id) ?? 0 })
-
-        const groupCats = categories.filter((c) =>
-          data.links.some((l) => l.source === group.id && l.target === c.id)
-        )
-        groupCats.forEach((cat, i) => {
-          nodes.push({ id: cat.id, name: cat.name, type: 'category' })
-          links.push({ source: 1, target: 2 + i, value: catTotals.get(cat.id) ?? 0 })
-        })
-      }
-    } else {
-      // Level 1: Income → Groups
-      groups.forEach((group, i) => {
-        nodes.push({ id: group.id, name: group.name, type: 'category_group' })
-        links.push({ source: 0, target: 1 + i, value: groupTotals.get(group.id) ?? 0 })
-      })
-    }
-
-    // Attach previous-window values for the compare overlay. null = new node.
-    if (prevTotals) {
-      const prevPayees = selectedCategoryId
-        ? new Map(
-            (prevData?.category_payees[selectedCategoryId] ?? []).map((p) => [p.name, Number(p.total)]),
-          )
-        : null
-      // The synthetic Income node's value is the sum of visible outflows, not
-      // income — its delta lives on the metric cards instead
-      for (const node of nodes) {
-        if (node.type === 'category_group') node.prev = prevTotals.groups.get(node.id) ?? null
-        else if (node.type === 'category') node.prev = prevTotals.cats.get(node.id) ?? null
-        else if (node.type === 'payee') node.prev = prevPayees?.get(node.name) ?? null
-      }
-    }
-
-    return {
-      sankeyData: { nodes, links: links.filter((l) => l.value > 0) },
-      groupCategories: data.group_categories ?? {},
-      categoryPayees: data.category_payees ?? {},
-    }
-  }, [data, selectedGroupId, selectedCategoryId, prevTotals, prevData])
+  const { sankeyData, groupCategories, categoryPayees } = useMemo(
+    () => buildSankeyView(data, selectedGroupId, selectedCategoryId, prevTotals, prevData),
+    [data, selectedGroupId, selectedCategoryId, prevTotals, prevData],
+  )
 
   const selectedGroupName = selectedGroupId
     ? data?.nodes.find((n) => n.id === selectedGroupId)?.name ?? null
@@ -317,6 +201,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     : null
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   if (!sankeyData.nodes.length) {
     return (

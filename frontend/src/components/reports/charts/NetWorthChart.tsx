@@ -5,9 +5,10 @@ import {
 } from 'recharts'
 import { useNetWorthReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { MetricCard } from '../MetricCard'
-import { CHART_COLORS } from './chartColors'
+import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -16,10 +17,11 @@ interface Props { budgetId: string }
 export function NetWorthReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
-  const { data, isLoading } = useNetWorthReport(budgetId, months)
+  const { data, isLoading, isError, refetch } = useNetWorthReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   const latest = points[points.length - 1]
@@ -81,22 +83,22 @@ export function NetWorthReport({ budgetId }: Props) {
           <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="nw-assets" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={CHART_COLORS[4]} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={CHART_COLORS[4]} stopOpacity={0.05} />
+                <stop offset="5%" stopColor={COLOR_POSITIVE} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={COLOR_POSITIVE} stopOpacity={0.05} />
               </linearGradient>
               <linearGradient id="nw-net" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={CHART_COLORS[0]} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={CHART_COLORS[0]} stopOpacity={0.05} />
+                <stop offset="5%" stopColor={COLOR_NET} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={COLOR_NET} stopOpacity={0.05} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={90} />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
             <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
             <Legend />
-            <Area type="monotone" dataKey="Assets" stroke={CHART_COLORS[4]} fill="url(#nw-assets)" strokeWidth={2} />
-            <Area type="monotone" dataKey="Liabilities" stroke="#e15759" fill="none" strokeWidth={2} strokeDasharray="5 3" />
-            <Area type="monotone" dataKey="Net Worth" stroke={CHART_COLORS[0]} fill="url(#nw-net)" strokeWidth={2} />
+            <Area type="monotone" dataKey="Assets" stroke={COLOR_POSITIVE} fill="url(#nw-assets)" strokeWidth={2} />
+            <Area type="monotone" dataKey="Liabilities" stroke={COLOR_NEGATIVE} fill="none" strokeWidth={2} strokeDasharray="5 3" />
+            <Area type="monotone" dataKey="Net Worth" stroke={COLOR_NET} fill="url(#nw-net)" strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
       )}

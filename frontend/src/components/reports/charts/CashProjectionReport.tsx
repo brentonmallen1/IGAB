@@ -6,6 +6,7 @@ import {
 import { AlertTriangle, Calendar } from 'lucide-react'
 import { useCashProjectionReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
 
@@ -17,7 +18,7 @@ const HORIZON_OPTIONS = [30, 60, 90, 180] as const
 
 export function CashProjectionReport({ budgetId }: Props) {
   const [horizon, setHorizon] = useState<(typeof HORIZON_OPTIONS)[number]>(90)
-  const { data, isLoading } = useCashProjectionReport(budgetId, horizon)
+  const { data, isLoading, isError, refetch } = useCashProjectionReport(budgetId, horizon)
   const { formatMoney, formatDate, settings } = useFormatters()
 
   const formatShortDate = useCallback((dateStr: string) => {
@@ -30,6 +31,7 @@ export function CashProjectionReport({ budgetId }: Props) {
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   const events = data?.events ?? []
@@ -112,10 +114,10 @@ export function CashProjectionReport({ budgetId }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 11 }}
+              tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
               interval={Math.floor(chartData.length / 8)}
             />
-            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={80} />
+            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={80} />
             {goesNegativeDate && (
               <ReferenceLine y={0} stroke="var(--color-negative)" strokeWidth={1} />
             )}
@@ -186,6 +188,32 @@ export function CashProjectionReport({ budgetId }: Props) {
             />
           </ComposedChart>
         </ResponsiveContainer>
+      )}
+
+      {chartData.length > 0 && (
+        <div className="chart-key">
+          <span className="chart-key__item">
+            <span
+              className="chart-key__swatch"
+              style={{ background: 'var(--accent-color)', opacity: 0.25 }}
+            />
+            Likely range (10–90%)
+          </span>
+          <span className="chart-key__item">
+            <span
+              className="chart-key__swatch chart-key__swatch--line"
+              style={{ background: 'var(--accent-color)' }}
+            />
+            Median
+          </span>
+          <span className="chart-key__item">
+            <span
+              className="chart-key__swatch chart-key__swatch--line"
+              style={{ background: 'var(--text-muted)' }}
+            />
+            Scheduled only
+          </span>
+        </div>
       )}
 
       {events.length > 0 && (

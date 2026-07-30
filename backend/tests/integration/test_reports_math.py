@@ -181,6 +181,31 @@ async def test_dashboard_top_categories_include_children_net_worth_parent_based(
     assert top.get("Gas") == Decimal("40.0")
 
 
+async def test_float_boundary_amounts_stay_exact_decimals(db_session):
+    """0.10 + 0.20 must never surface as 0.30000000000000004 in any report."""
+    services, budget, checking, savings, groceries, gas = await _setup(db_session)
+    reports = ReportService(db_session)
+
+    # All dated today so the scenario never straddles a month boundary
+    await create_transaction(db_session, budget, checking, "-0.10", TODAY, category=groceries)
+    await create_transaction(db_session, budget, checking, "-0.20", TODAY, category=groceries)
+    await create_transaction(db_session, budget, checking, "0.10", TODAY)
+    await create_transaction(db_session, budget, checking, "0.20", TODAY)
+
+    categories, grand_total = await reports.spending_by_category(budget.id, START, TODAY)
+    assert grand_total == Decimal("0.30")
+    assert categories[0]["total"] == Decimal("0.30")
+
+    items, grouped_total = await reports.spending_grouped(budget.id, START, TODAY)
+    assert grouped_total == Decimal("0.30")
+    assert items[0]["total"] == Decimal("0.30")
+
+    this_month = (await reports.income_vs_expense(budget.id, months=1))[-1]
+    assert this_month["income"] == Decimal("0.30")
+    assert this_month["expenses"] == Decimal("0.30")
+    assert this_month["net"] == Decimal("0.00")
+
+
 async def test_cash_flow_sankey_includes_split_children(db_session):
     services, budget, checking, savings, groceries, gas = await _setup(db_session)
     reports = ReportService(db_session)

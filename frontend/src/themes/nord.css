@@ -47,6 +47,18 @@
   --tag-purple: #b48ead;
   --tag-pink: #b48ead;
 
+  /* Chart palette — validated against this theme's chart surface (base.css).
+     Nord has no pink: slot 5 wears the aurora purple and slot 7 the deep
+     frost blue, keeping eight distinct nord hues. */
+  --chart-1: #5b96ce;
+  --chart-2: #c77960;
+  --chart-3: #22a4a4;
+  --chart-4: #af8b3d;
+  --chart-5: #b778ad;
+  --chart-6: #7a9e58;
+  --chart-7: #5081bc;
+  --chart-8: #bf616a;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);

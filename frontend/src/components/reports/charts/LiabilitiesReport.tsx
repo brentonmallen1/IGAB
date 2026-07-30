@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { useLiabilitiesReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { MetricCard } from '../MetricCard'
@@ -45,7 +46,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
   const [sortDesc, setSortDesc] = useState(true)
   const captureRef = useRef<HTMLDivElement>(null)
 
-  const { data, isLoading } = useLiabilitiesReport(
+  const { data, isLoading, isError, refetch } = useLiabilitiesReport(
     budgetId,
     typeFilter ?? undefined,
     modeFilter ?? undefined
@@ -79,6 +80,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
   }, [data, sortKey, sortDesc])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
+  if (isError) return <ReportErrorState onRetry={() => refetch()} />
 
   const presentTypes = [...new Set((allData?.items ?? []).map((i) => i.liability_type))]
   const chartPoints = (data?.balance_over_time ?? []).map((p) => {
@@ -177,8 +179,8 @@ export function LiabilitiesReport({ budgetId }: Props) {
               <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={chartPoints} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={40} />
-                  <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={85} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} minTickGap={40} />
+                  <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={85} />
                   <Tooltip
                     content={<ChartTooltip showTotal />}
                     offset={16}

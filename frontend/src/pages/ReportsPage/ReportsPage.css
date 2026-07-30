@@ -231,6 +231,62 @@
   font-size: var(--font-size-sm);
 }
 
+.report-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.report-error__retry {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.report-error__retry:hover {
+  background: var(--bg-secondary);
+  border-color: var(--color-accent);
+}
+
+/* ─── Custom chart key (for charts recharts' Legend can't describe) ──────── */
+
+.chart-key {
+  display: flex;
+  gap: var(--spacing-lg);
+  justify-content: center;
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.chart-key__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.chart-key__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.chart-key__swatch--line {
+  height: 3px;
+  border-radius: 2px;
+}
+
 /* ─── Export row ─────────────────────────────────────────────────────────── */
 
 .report-export {

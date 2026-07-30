@@ -47,6 +47,18 @@
   --tag-purple: #d3869b;
   --tag-pink: #d3869b;
 
+  /* Chart palette — validated against this theme's chart surface (base.css).
+     The purple/pink tags share a hue, so the chart slots pull the bright and
+     neutral gruvbox purples apart. */
+  --chart-1: #067a5e;
+  --chart-2: #dd6c05;
+  --chart-3: #41702f;
+  --chart-4: #a97c07;
+  --chart-5: #91465d;
+  --chart-6: #959811;
+  --chart-7: #a4326e;
+  --chart-8: #f94732;
+
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
   --color-border: var(--border-color);
@@ -107,6 +119,16 @@
   --tag-blue: #076678;
   --tag-purple: #8f3f71;
   --tag-pink: #b16286;
+
+  /* Chart palette — validated against this theme's chart surface (base.css) */
+  --chart-1: #07879f;
+  --chart-2: #883804;
+  --chart-3: #049053;
+  --chart-4: #d79921;
+  --chart-5: #c34f88;
+  --chart-6: #645f01;
+  --chart-7: #d982b6;
+  --chart-8: #cc241d;
 
   /* Aliases used by older components */
   --color-surface: var(--bg-secondary);
