@@ -28,6 +28,7 @@ from igab.api.v1.schemas.transaction import (
     TransactionResponse,
     TransactionUpdate,
 )
+from igab.db.models import Category
 from igab.dependencies import (
     AccountAccess,
     BudgetAccess,
@@ -41,6 +42,7 @@ from igab.dependencies import (
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.ownership import require_in_budget
 from igab.services.transaction_service import (
     TransactionCreate as SvcTxnCreate,
 )
@@ -514,6 +516,15 @@ async def update_payee(
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
 ) -> PayeeResponse:
     changes = body.model_dump(exclude_none=True)
+    owner = await payee_repo.get(payee_id)
+    if owner is not None and changes.get("default_category_id") is not None:
+        await require_in_budget(
+            payee_repo.session,
+            Category,
+            changes["default_category_id"],
+            owner.budget_id,
+            "Category",
+        )
     payee = await payee_repo.update(payee_id, **changes)
     return PayeeResponse.model_validate(payee)
 

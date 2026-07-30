@@ -5,6 +5,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
 from igab.db.models import Payee, Transaction
+from igab.domain.exceptions import InvariantViolation
 from igab.repositories.base import BaseRepository
 
 PAYEE_FUZZY_THRESHOLD = 80
@@ -136,7 +137,22 @@ class PayeeRepository(BaseRepository[Payee]):
         return payee_map
 
     async def merge(self, source_id: uuid.UUID, target_id: uuid.UUID) -> None:
-        """Reassign all transactions from source to target, then soft-delete source."""
+        """Reassign all transactions from source to target, then soft-delete source.
+
+        The route guards `source_id` (PayeeAccess) but `target_id` comes from the
+        request body; require both live in the same budget so a merge cannot
+        re-point the caller's transactions onto another budget's payee.
+        """
+        source = await self.session.get(Payee, source_id)
+        target = await self.session.get(Payee, target_id)
+        if (
+            source is None
+            or target is None
+            or source.is_deleted
+            or target.is_deleted
+            or source.budget_id != target.budget_id
+        ):
+            raise InvariantViolation("Cannot merge payees from different budgets")
         await self.session.execute(
             update(Transaction).where(Transaction.payee_id == source_id).values(payee_id=target_id)
         )

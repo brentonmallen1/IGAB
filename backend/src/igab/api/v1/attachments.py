@@ -135,5 +135,5 @@ async def check_attachments(
     current_user: CurrentUser,
     attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
 ) -> dict[str, bool]:
-    has_attachments = await attachment_repo.has_attachments(transaction_ids)
+    has_attachments = await attachment_repo.has_attachments(transaction_ids, current_user.id)
     return {str(tid): tid in has_attachments for tid in transaction_ids}

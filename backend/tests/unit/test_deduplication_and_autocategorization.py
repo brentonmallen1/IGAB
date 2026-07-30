@@ -238,6 +238,11 @@ class TestHistoricalCategoryInference:
         from igab.services.transaction_service import TransactionService
 
         session = AsyncMock()
+        # require_in_budget runs session.execute(...).scalar_one_or_none(); return
+        # a truthy row so body-supplied ids validate as belonging to the budget.
+        ownership_result = MagicMock()
+        ownership_result.scalar_one_or_none = MagicMock(return_value=MagicMock())
+        session.execute = AsyncMock(return_value=ownership_result)
         txn_repo = MagicMock()
         account_repo = MagicMock()
         category_repo = MagicMock()

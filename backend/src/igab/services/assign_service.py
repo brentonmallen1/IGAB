@@ -162,7 +162,7 @@ class AssignService:
         eligible = [c for c in categories if c.category_group_id not in system_group_ids]
 
         histories = {
-            c.id: await self.budget_service.get_category_history(c.id, month_start)
+            c.id: await self.budget_service.get_category_history(budget_id, c.id, month_start)
             for c in eligible
         }
         targets = await self.target_repo.get_by_category_ids([c.id for c in eligible])
