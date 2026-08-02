@@ -3,9 +3,10 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Plus, ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
-import { useInfiniteTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction, useCreateTransaction, useBulkApprove, useMergeTransactions, usePendingReviewCountForAccount } from '../../../api/transactions'
+import { useInfiniteTransactions, useInfiniteBudgetTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction, useCreateTransaction, useBulkApprove, useMergeTransactions, usePendingReviewCountForAccount, usePendingReviewCount } from '../../../api/transactions'
 import { useCheckAttachments } from '../../../api/attachments'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
+import { useAccounts } from '../../../api/accounts'
 import { useUIStore } from '../../../stores/uiStore'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { TransactionRow } from '../TransactionRow/TransactionRow'
@@ -31,16 +32,25 @@ import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import './TransactionTable.css'
 
 interface Props {
-  accountId: string
+  /** null renders the all-accounts register for the whole budget */
+  accountId: string | null
   budgetId: string
   highlightId?: string | null
   onInteraction?: () => void
 }
 
-type SortColumn = 'date' | 'payee' | 'category' | 'memo' | 'amount'
+type SortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
 
 const HEADER_COLS: { key: SortColumn; label: string }[] = [
   { key: 'date', label: 'Date' },
+  { key: 'payee', label: 'Payee' },
+  { key: 'category', label: 'Category' },
+  { key: 'memo', label: 'Memo' },
+]
+
+const ALL_ACCOUNTS_HEADER_COLS: { key: SortColumn; label: string }[] = [
+  { key: 'date', label: 'Date' },
+  { key: 'account', label: 'Account' },
   { key: 'payee', label: 'Payee' },
   { key: 'category', label: 'Category' },
   { key: 'memo', label: 'Memo' },
@@ -73,10 +83,12 @@ const SortableHeader = memo(function SortableHeader({ col, label, currentCol, cu
 })
 
 export function TransactionTable({ accountId, budgetId, highlightId, onInteraction }: Props) {
+  const allAccounts = accountId === null
   const { formatMoney } = useFormatters()
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
+  const { data: accounts = [] } = useAccounts(budgetId)
   const bulkSetCleared = useBulkUpdateCleared(budgetId)
   const bulkCategorize = useBulkCategorize(budgetId)
   const bulkDelete = useBulkDeleteTransactions(budgetId)
@@ -136,7 +148,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   }, [selectedTransactionIds, showAttachmentPanel, attachmentTxnId])
   const undoTxn = useUpdateTransaction(budgetId)
   const { data: pendingMatches = [] } = usePendingMatchesForAccount(accountId)
-  const rejectMatch = useRejectMatch(accountId)
+  const rejectMatch = useRejectMatch(accountId ?? undefined)
   const createTxn = useCreateTransaction(budgetId)
   const [makeRepeatingTxn, setMakeRepeatingTxn] = useState<Transaction | null>(null)
   const [editingScheduledTxn, setEditingScheduledTxn] = useState<ScheduledTransaction | null>(null)
@@ -155,12 +167,28 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   const payeeMap = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
   const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
-
-  const filters = useMemo(
-    () => parseTransactionSearch(transactionSearchQuery, categoryMap, payeeMap),
-    [transactionSearchQuery, categoryMap, payeeMap]
+  const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts])
+  // Stable palette slot per account (position in the accounts list), so an
+  // account keeps its identity color across sections, pages, and themes
+  const accountColorMap = useMemo(
+    () => new Map(accounts.map((a, i) => [a.id, `var(--chart-${(i % 8) + 1})`])),
+    [accounts]
   )
 
+  const filters = useMemo(
+    // account: tokens resolve only in the all-accounts register — per-account
+    // pages have no account dimension to filter on
+    () => parseTransactionSearch(
+      transactionSearchQuery,
+      categoryMap,
+      payeeMap,
+      allAccounts ? accountMap : undefined
+    ),
+    [transactionSearchQuery, categoryMap, payeeMap, allAccounts, accountMap]
+  )
+
+  const accountScopedQuery = useInfiniteTransactions(allAccounts ? null : accountId, filters)
+  const budgetScopedQuery = useInfiniteBudgetTransactions(allAccounts ? budgetId : null, filters)
   const {
     data: txnPages,
     isLoading,
@@ -168,7 +196,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-  } = useInfiniteTransactions(accountId, filters)
+  } = allAccounts ? budgetScopedQuery : accountScopedQuery
 
   const transactions = useMemo(() => txnPages?.pages.flat() ?? [], [txnPages])
   const transactionMap = useMemo(
@@ -185,7 +213,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   // Load more pages only while important transactions aren't fully loaded yet.
   // Backend sorts pending → needs-category → uncleared → rest, so these always arrive first.
-  const { data: reviewCounts } = usePendingReviewCountForAccount(accountId)
+  const { data: accountReviewCounts } = usePendingReviewCountForAccount(accountId)
+  const { data: budgetReviewCounts } = usePendingReviewCount(allAccounts ? budgetId : null)
+  const reviewCounts = allAccounts ? budgetReviewCounts : accountReviewCounts
   const sentinelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!hasNextPage || isFetching) return
@@ -204,6 +234,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         case 'date':
           cmp = a.date.localeCompare(b.date)
           break
+        case 'account':
+          cmp = (accountMap.get(a.account_id) ?? '').localeCompare(accountMap.get(b.account_id) ?? '')
+          break
         case 'payee':
           cmp = (payeeMap.get(a.payee_id ?? '') ?? '').localeCompare(payeeMap.get(b.payee_id ?? '') ?? '')
           break
@@ -219,7 +252,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       }
       return transactionSortDirection === 'asc' ? cmp : -cmp
     })
-  }, [transactions, transactionSortColumn, transactionSortDirection, payeeMap, categoryMap])
+  }, [transactions, transactionSortColumn, transactionSortDirection, payeeMap, categoryMap, accountMap])
 
   // Partition into sections
   const pendingTxns = useMemo(() => sorted.filter((t) => t.cleared === 'pending'), [sorted])
@@ -483,6 +516,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           onMakeRepeating={setMakeRepeatingTxn}
           hasAttachment={attachmentMap[txn.id]}
           highlighted={txn.id === highlightId}
+          accountLabel={allAccounts ? (accountMap.get(txn.account_id) ?? '—') : undefined}
+          accountColor={allAccounts ? accountColorMap.get(txn.account_id) : undefined}
         />
         {splitEditing?.transactionId === txn.id && (
           <SplitTransactionEditor
@@ -648,7 +683,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   }, [virtualItems, regularItems.length, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return (
-    <div className="transaction-table">
+    <div className={`transaction-table ${allAccounts ? 'transaction-table--all-accounts' : ''}`}>
       {showMergeModal && mergeEligiblePair && (
         <MergePreviewModal
           transactions={mergeEligiblePair}
@@ -749,7 +784,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         <div className="txn-col txn-col--status txn-col--status-header" title="Transaction status">
           <Info size={11} />
         </div>
-        {HEADER_COLS.map(({ key, label }) => (
+        {(allAccounts ? ALL_ACCOUNTS_HEADER_COLS : HEADER_COLS).map(({ key, label }) => (
           <SortableHeader
             key={key}
             col={key}

@@ -39,19 +39,17 @@ async def test_income_vs_expense_excludes_transfers_and_pending(db_session):
     services, budget, checking, savings, groceries, gas = await _setup(db_session)
     reports = ReportService(db_session)
 
+    # All dated today: day offsets would drift into last month early in a
+    # calendar month, emptying the current-month bucket being asserted on
     payee = await create_payee(db_session, budget, "Employer")
-    await create_transaction(
-        db_session, budget, checking, "500.00", TODAY - timedelta(days=5), payee=payee
-    )
-    await create_transaction(
-        db_session, budget, checking, "-200.00", TODAY - timedelta(days=4), category=groceries
-    )
+    await create_transaction(db_session, budget, checking, "500.00", TODAY, payee=payee)
+    await create_transaction(db_session, budget, checking, "-200.00", TODAY, category=groceries)
     # On-budget transfer: must not count as income or expense
     await services.transactions.create(
         budget.id,
         TransactionCreate(
             account_id=checking.id,
-            date=TODAY - timedelta(days=3),
+            date=TODAY,
             amount=Decimal("150.00"),
             transfer_account_id=savings.id,
             cleared="cleared",
@@ -63,7 +61,7 @@ async def test_income_vs_expense_excludes_transfers_and_pending(db_session):
         budget,
         checking,
         "-75.00",
-        TODAY - timedelta(days=2),
+        TODAY,
         category=gas,
         cleared="pending",
     )
@@ -149,9 +147,7 @@ async def test_dashboard_top_categories_include_children_net_worth_parent_based(
     services, budget, checking, savings, groceries, gas = await _setup(db_session)
     reports = ReportService(db_session)
 
-    await create_transaction(
-        db_session, budget, checking, "1000.00", TODAY - timedelta(days=10)
-    )
+    await create_transaction(db_session, budget, checking, "1000.00", TODAY - timedelta(days=10))
     header = TransactionCreate(
         account_id=checking.id,
         date=TODAY - timedelta(days=5),
@@ -236,11 +232,9 @@ async def test_cash_flow_sankey_includes_split_children(db_session):
     await services.transactions.create_split(budget.id, header, splits)
 
     sankey = await reports.cash_flow_sankey(budget.id, START, TODAY, mode="spent")
-    link_values = {
-        (link["source"], link["target"]): link["value"] for link in sankey["links"]
-    }
-    assert link_values.get(
-        (f"g_{groceries.category_group_id}", f"c_{groceries.id}")
-    ) == Decimal("60.0")
+    link_values = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
+    assert link_values.get((f"g_{groceries.category_group_id}", f"c_{groceries.id}")) == Decimal(
+        "60.0"
+    )
     assert link_values.get((f"g_{gas.category_group_id}", f"c_{gas.id}")) == Decimal("40.0")
     assert sankey["total_expense"] == Decimal("100.0")

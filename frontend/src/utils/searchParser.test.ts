@@ -87,6 +87,35 @@ describe('category and payee filters', () => {
   })
 })
 
+describe('account filter', () => {
+  const acctMap = new Map([['a-1', 'Checking'], ['a-2', 'Savings']])
+
+  it('matches account by name when an account map is provided', () => {
+    const result = parseTransactionSearch('account: check', EMPTY_MAP, EMPTY_MAP, acctMap)
+    expect(result.accountIds).toEqual(['a-1'])
+    expect(result.text).toBeUndefined()
+  })
+
+  it('parses compact account:name form', () => {
+    const result = parseTransactionSearch('account:savings', EMPTY_MAP, EMPTY_MAP, acctMap)
+    expect(result.accountIds).toEqual(['a-2'])
+  })
+
+  it('falls through to text without an account map (per-account register)', () => {
+    const result = parseTransactionSearch('account:checking', EMPTY_MAP, EMPTY_MAP)
+    expect(result.accountIds).toBeUndefined()
+    expect(result.text).toBe('account:checking')
+  })
+
+  it('merges account ids across OR segments', () => {
+    const result = parseTransactionSearch(
+      'account: check OR account: sav', EMPTY_MAP, EMPTY_MAP, acctMap
+    )
+    expect(result.accountIds).toEqual(['a-1', 'a-2'])
+    expect(result.isOrMode).toBe(true)
+  })
+})
+
 // ─── OR keyword parsing ────────────────────────────────────────────────────────
 
 describe('OR keyword', () => {

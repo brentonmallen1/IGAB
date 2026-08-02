@@ -61,6 +61,11 @@
   z-index: 5;
 }
 
+/* All-accounts register: extra account column after the date */
+.transaction-table--all-accounts .transaction-table__header {
+  grid-template-columns: 32px 28px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
+}
+
 .txn-col {
   padding: 0 var(--spacing-xs);
 }

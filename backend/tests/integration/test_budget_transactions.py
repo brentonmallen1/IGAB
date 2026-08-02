@@ -102,9 +102,7 @@ async def test_split_leaf_scope_returns_children_not_parent(api_client, db_sessi
     services, budget, checking, _, groceries, gas = await _setup(api_client, db_session)
     await _create_split(services, budget, checking, groceries, gas)
 
-    body = await _fetch(
-        api_client, budget.id, scope="leaf", category_ids=str(groceries.id)
-    )
+    body = await _fetch(api_client, budget.id, scope="leaf", category_ids=str(groceries.id))
     assert body["total_count"] == 1
     assert Decimal(body["total_amount"]) == Decimal("-60.00")
     row = body["transactions"][0]
@@ -123,9 +121,7 @@ async def test_parent_scope_returns_split_as_one_row(api_client, db_session):
     payee = await create_payee(db_session, budget, "Superstore")
     await _create_split(services, budget, checking, groceries, gas, payee_id=payee.id)
 
-    body = await _fetch(
-        api_client, budget.id, scope="parent", payee_ids=str(payee.id)
-    )
+    body = await _fetch(api_client, budget.id, scope="parent", payee_ids=str(payee.id))
     assert body["total_count"] == 1
     row = body["transactions"][0]
     assert row["is_split"] is True
@@ -139,9 +135,7 @@ async def test_parent_scope_returns_split_as_one_row(api_client, db_session):
 
 
 async def test_leaf_reconciles_with_spending_report(api_client, db_session):
-    services, budget, checking, savings, groceries, gas = await _setup(
-        api_client, db_session
-    )
+    services, budget, checking, savings, groceries, gas = await _setup(api_client, db_session)
     reports = ReportService(db_session)
 
     await create_transaction(
@@ -193,9 +187,7 @@ async def test_leaf_reconciles_with_spending_report(api_client, db_session):
 
 
 async def test_month_reconciles_with_income_vs_expense(api_client, db_session):
-    services, budget, checking, savings, groceries, _ = await _setup(
-        api_client, db_session
-    )
+    services, budget, checking, savings, groceries, _ = await _setup(api_client, db_session)
     reports = ReportService(db_session)
     offbudget = await create_account(
         db_session, budget, "Brokerage", account_type="tracking", on_budget=False
@@ -204,9 +196,7 @@ async def test_month_reconciles_with_income_vs_expense(api_client, db_session):
 
     # All rows dated TODAY so the calendar-month window always contains them
     await create_transaction(db_session, budget, checking, "500.00", TODAY, payee=payee)
-    await create_transaction(
-        db_session, budget, checking, "-200.00", TODAY, category=groceries
-    )
+    await create_transaction(db_session, budget, checking, "-200.00", TODAY, category=groceries)
     # Uncategorized on-budget transfer: excluded from cash flow
     await services.transactions.create(
         budget.id,
@@ -276,9 +266,7 @@ async def test_month_reconciles_with_income_vs_expense(api_client, db_session):
 
 async def test_pending_excluded_iff_posted_only(api_client, db_session):
     _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
-    await create_transaction(
-        db_session, budget, checking, "-30.00", TODAY, category=groceries
-    )
+    await create_transaction(db_session, budget, checking, "-30.00", TODAY, category=groceries)
     pending = await create_transaction(
         db_session, budget, checking, "-75.00", TODAY, category=groceries, cleared="pending"
     )
@@ -299,9 +287,7 @@ async def test_account_filter_combinations(api_client, db_session):
     await create_transaction(
         db_session, budget, checking, "-10.00", TODAY, category=groceries, payee=payee
     )
-    await create_transaction(
-        db_session, budget, checking, "-20.00", TODAY, category=gas
-    )
+    await create_transaction(db_session, budget, checking, "-20.00", TODAY, category=gas)
     await create_transaction(
         db_session, budget, savings, "-40.00", TODAY, category=groceries, payee=payee
     )
@@ -325,9 +311,7 @@ async def test_account_filter_combinations(api_client, db_session):
     assert savings_cafe["total_count"] == 1
     assert Decimal(savings_cafe["total_amount"]) == Decimal("-40.00")
 
-    both_accounts = await _fetch(
-        api_client, budget.id, account_ids=f"{checking.id},{savings.id}"
-    )
+    both_accounts = await _fetch(api_client, budget.id, account_ids=f"{checking.id},{savings.id}")
     assert both_accounts["total_count"] == 3
 
 
@@ -335,12 +319,8 @@ async def test_day_of_week_boundaries(api_client, db_session):
     _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
     monday = TODAY - timedelta(days=TODAY.weekday())
     sunday = monday - timedelta(days=1)
-    await create_transaction(
-        db_session, budget, checking, "-11.00", monday, category=groceries
-    )
-    await create_transaction(
-        db_session, budget, checking, "-13.00", sunday, category=groceries
-    )
+    await create_transaction(db_session, budget, checking, "-11.00", monday, category=groceries)
+    await create_transaction(db_session, budget, checking, "-13.00", sunday, category=groceries)
 
     mondays = await _fetch(api_client, budget.id, day_of_week=0)
     assert mondays["total_count"] == 1
@@ -350,20 +330,14 @@ async def test_day_of_week_boundaries(api_client, db_session):
     assert sundays["total_count"] == 1
     assert sundays["transactions"][0]["date"] == sunday.isoformat()
 
-    resp = await api_client.get(
-        f"/api/v1/{budget.id}/transactions", params={"day_of_week": 7}
-    )
+    resp = await api_client.get(f"/api/v1/{budget.id}/transactions", params={"day_of_week": 7})
     assert resp.status_code == 422
 
 
 async def test_direction_filter(api_client, db_session):
     _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
-    await create_transaction(
-        db_session, budget, checking, "-30.00", TODAY, category=groceries
-    )
-    await create_transaction(
-        db_session, budget, checking, "25.00", TODAY, category=groceries
-    )
+    await create_transaction(db_session, budget, checking, "-30.00", TODAY, category=groceries)
+    await create_transaction(db_session, budget, checking, "25.00", TODAY, category=groceries)
 
     outflow = await _fetch(api_client, budget.id, direction="outflow")
     assert [Decimal(t["amount"]) for t in outflow["transactions"]] == [Decimal("-30.00")]
@@ -395,9 +369,7 @@ async def test_pagination_keeps_totals_stable(api_client, db_session):
 
 async def test_deleted_never_appears(api_client, db_session):
     _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
-    await create_transaction(
-        db_session, budget, checking, "-30.00", TODAY, category=groceries
-    )
+    await create_transaction(db_session, budget, checking, "-30.00", TODAY, category=groceries)
     await create_transaction(
         db_session, budget, checking, "-99.00", TODAY, category=groceries, is_deleted=True
     )
@@ -476,3 +448,111 @@ async def test_search_no_match_returns_empty(api_client, db_session):
     body = await _fetch(api_client, budget.id, search="zebra")
     assert body["total_count"] == 0
     assert body["transactions"] == []
+
+
+# ─── All-accounts register filters (parity with the per-account listing) ──────
+
+
+async def test_cleared_and_exclude_cleared_filters(api_client, db_session):
+    _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
+    await create_transaction(
+        db_session, budget, checking, "-10.00", TODAY, category=groceries, cleared="cleared"
+    )
+    await create_transaction(
+        db_session, budget, checking, "-20.00", TODAY, category=groceries, cleared="uncleared"
+    )
+    await create_transaction(
+        db_session, budget, checking, "-40.00", TODAY, category=groceries, cleared="reconciled"
+    )
+
+    only_uncleared = await _fetch(api_client, budget.id, cleared="uncleared")
+    assert only_uncleared["total_count"] == 1
+    assert Decimal(only_uncleared["total_amount"]) == Decimal("-20.00")
+
+    not_reconciled = await _fetch(api_client, budget.id, exclude_cleared="reconciled")
+    assert not_reconciled["total_count"] == 2
+    assert Decimal(not_reconciled["total_amount"]) == Decimal("-30.00")
+
+
+async def test_uncategorized_and_unapproved_filters(api_client, db_session):
+    services, budget, checking, _, groceries, gas = await _setup(api_client, db_session)
+    await create_transaction(db_session, budget, checking, "-10.00", TODAY, category=groceries)
+    await create_transaction(db_session, budget, checking, "-20.00", TODAY)  # uncategorized
+    await create_transaction(
+        db_session, budget, checking, "-40.00", TODAY, category=gas, approved=False
+    )
+    # Split parents carry no category but are never "uncategorized"
+    await _create_split(services, budget, checking, groceries, gas)
+
+    uncategorized = await _fetch(api_client, budget.id, uncategorized=True)
+    assert [Decimal(t["amount"]) for t in uncategorized["transactions"]] == [Decimal("-20.00")]
+
+    unapproved = await _fetch(api_client, budget.id, unapproved=True)
+    assert [Decimal(t["amount"]) for t in unapproved["transactions"]] == [Decimal("-40.00")]
+
+    either = await _fetch(
+        api_client, budget.id, uncategorized=True, unapproved=True, is_or_mode=True
+    )
+    assert either["total_count"] == 2
+    assert Decimal(either["total_amount"]) == Decimal("-60.00")
+
+    both = await _fetch(api_client, budget.id, uncategorized=True, unapproved=True)
+    assert both["total_count"] == 0
+
+
+async def test_amount_range_uses_absolute_value(api_client, db_session):
+    _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
+    await create_transaction(db_session, budget, checking, "-10.00", TODAY, category=groceries)
+    await create_transaction(db_session, budget, checking, "50.00", TODAY, category=groceries)
+    await create_transaction(db_session, budget, checking, "-100.00", TODAY, category=groceries)
+
+    mid = await _fetch(api_client, budget.id, amount_min=20, amount_max=60)
+    # Inflow +50 matches on absolute value, sign is irrelevant to the range
+    assert [Decimal(t["amount"]) for t in mid["transactions"]] == [Decimal("50.00")]
+
+    floor = await _fetch(api_client, budget.id, amount_min=50)
+    assert floor["total_count"] == 2
+    assert Decimal(floor["total_amount"]) == Decimal("-50.00")
+
+
+async def test_register_order_prioritizes_attention_rows(api_client, db_session):
+    _, budget, checking, savings, groceries, _ = await _setup(api_client, db_session)
+    # Oldest-first creation, spread across accounts; dates chosen so plain
+    # date-desc would interleave the priority classes.
+    posted = await create_transaction(
+        db_session, budget, checking, "-10.00", TODAY, category=groceries
+    )
+    uncleared = await create_transaction(
+        db_session,
+        budget,
+        savings,
+        "-20.00",
+        TODAY - timedelta(days=3),
+        category=groceries,
+        cleared="uncleared",
+    )
+    uncategorized = await create_transaction(
+        db_session, budget, checking, "-30.00", TODAY - timedelta(days=5)
+    )
+    pending = await create_transaction(
+        db_session,
+        budget,
+        savings,
+        "-40.00",
+        TODAY - timedelta(days=9),
+        category=groceries,
+        cleared="pending",
+    )
+
+    body = await _fetch(api_client, budget.id, order="register")
+    ids = [t["id"] for t in body["transactions"]]
+    assert ids == [str(pending.id), str(uncategorized.id), str(uncleared.id), str(posted.id)]
+
+    # Default date order is unchanged: newest first regardless of status
+    body = await _fetch(api_client, budget.id)
+    assert [t["id"] for t in body["transactions"]] == [
+        str(posted.id),
+        str(uncleared.id),
+        str(uncategorized.id),
+        str(pending.id),
+    ]

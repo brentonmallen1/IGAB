@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { AssignStrategy } from '../types'
 
-type TransactionSortColumn = 'date' | 'payee' | 'category' | 'memo' | 'amount'
+type TransactionSortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
 type SortDirection = 'asc' | 'desc'
 type CollapsibleSection = 'pending' | 'uncategorized' | 'upcoming'
 export type QuickFilter = 'overspent' | 'underfunded' | 'money-available' | 'overfunded'
