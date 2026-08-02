@@ -31,3 +31,26 @@ export const COLOR_OTHER = 'var(--chart-other)'
 export function chartColor(index: number): string {
   return index < CHART_COLORS.length ? CHART_COLORS[index] : COLOR_OTHER
 }
+
+/** Shared tooltip style config for recharts Tooltip component.
+ * Use when not using the custom ChartTooltip component. */
+export const TOOLTIP_STYLE = {
+  contentStyle: {
+    background: 'var(--bg-elevated, var(--bg-secondary))',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--border-radius)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+    fontSize: 'var(--font-size-sm)',
+    padding: 'var(--spacing-sm) var(--spacing-md)',
+  },
+  labelStyle: {
+    color: 'var(--text-primary)',
+    fontWeight: 600,
+    marginBottom: 4,
+  },
+  itemStyle: {
+    color: 'var(--text-secondary)',
+    padding: '2px 0',
+  },
+  cursor: { fill: 'var(--row-hover-bg)' },
+}

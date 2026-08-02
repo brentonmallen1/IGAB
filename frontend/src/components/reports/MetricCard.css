@@ -14,6 +14,11 @@
   background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-secondary));
 }
 
+.metric-card--warning {
+  border-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--bg-secondary));
+}
+
 .metric-card__label {
   font-size: var(--font-size-xs);
   font-weight: 500;

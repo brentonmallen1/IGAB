@@ -10,7 +10,7 @@ import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
-import { buildParetoItems, cumulativePercents, paretoInsight, shareOfTotal } from './paretoData'
+import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -145,6 +145,7 @@ export function ParetoReport({ budgetId }: Props) {
   }))
 
   const { idx80, pct80coverage } = paretoInsight(cumulativePcts, sorted.length)
+  const adherence = paretoAdherence(pct80coverage, sorted.length)
 
   const tableRows = sorted.map((item) => ({
     id: item.id,
@@ -202,7 +203,8 @@ export function ParetoReport({ budgetId }: Props) {
             <MetricCard
               label="80% of Spend"
               value={`${idx80 + 1} ${idx80 === 0 ? GROUP_LABELS[groupBy].toLowerCase() : GROUP_PLURALS[groupBy]}`}
-              sub={pct80coverage ? `${pct80coverage}% of all ${GROUP_PLURALS[groupBy]}` : undefined}
+              sub={adherence ? adherence.message : `${pct80coverage}% of all ${GROUP_PLURALS[groupBy]}`}
+              warning={adherence ? !adherence.adherent : false}
             />
           )}
         </div>

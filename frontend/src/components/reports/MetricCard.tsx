@@ -8,13 +8,18 @@ interface Props {
   sub?: ReactNode
   trend?: 'up' | 'down' | 'neutral'
   accent?: boolean
+  warning?: boolean
 }
 
-export function MetricCard({ label, value, delta, sub, accent }: Props) {
+export function MetricCard({ label, value, delta, sub, accent, warning }: Props) {
   const deltaSign = delta && delta.value > 0 ? 'pos' : delta && delta.value < 0 ? 'neg' : 'neutral'
 
+  const classes = ['metric-card']
+  if (accent) classes.push('metric-card--accent')
+  if (warning) classes.push('metric-card--warning')
+
   return (
-    <div className={`metric-card ${accent ? 'metric-card--accent' : ''}`}>
+    <div className={classes.join(' ')}>
       <div className="metric-card__label">{label}</div>
       <div className="metric-card__value">{value}</div>
       {delta !== undefined && (
