@@ -15,6 +15,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage/LoginPage').then((m) => (
 const BudgetPage = lazy(() => import('./pages/BudgetPage/BudgetPage').then((m) => ({ default: m.BudgetPage })))
 const BudgetSelectorPage = lazy(() => import('./pages/BudgetSelectorPage/BudgetSelectorPage').then((m) => ({ default: m.BudgetSelectorPage })))
 const AccountPage = lazy(() => import('./pages/AccountPage/AccountPage').then((m) => ({ default: m.AccountPage })))
+const AllTransactionsPage = lazy(() => import('./pages/AllTransactionsPage/AllTransactionsPage').then((m) => ({ default: m.AllTransactionsPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const ImportPage = lazy(() => import('./pages/ImportPage/ImportPage').then((m) => ({ default: m.ImportPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage/ReportsPage').then((m) => ({ default: m.ReportsPage })))
@@ -85,6 +86,7 @@ function App() {
                 <Route path="/budget" element={page(<BudgetPage />)} />
                 <Route path="/accounts" element={page(<AccountsOverviewPage />)} />
                 <Route path="/accounts/:accountId" element={page(<AccountPage />)} />
+                <Route path="/transactions" element={page(<AllTransactionsPage />)} />
                 <Route path="/liabilities" element={page(<LiabilitiesOverviewPage />)} />
                 <Route path="/liabilities/:liabilityId" element={page(<LiabilityPage />)} />
                 <Route path="/settings" element={page(<SettingsPage />)} />

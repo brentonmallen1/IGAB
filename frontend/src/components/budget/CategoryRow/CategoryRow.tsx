@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useRef, useState } from 'react'
-import { EyeOff, Pencil, Trash2 } from 'lucide-react'
+import { EyeOff, Pencil, Plus, ReceiptText, Trash2 } from 'lucide-react'
 import { useSetAssignment } from '../../../api/budgets'
 import { useTarget } from '../../../api/targets'
 import { useDeleteCategory, useUpdateCategory } from '../../../api/categories'
@@ -11,6 +11,8 @@ import { TargetEditor } from '../TargetEditor'
 import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
 import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
+import { TransactionEditor } from '../../transactions/TransactionEditor/TransactionEditor'
+import { CategoryTransactionsModal } from '../CategoryTransactionsModal/CategoryTransactionsModal'
 import { parseMoney } from '../../../utils/money'
 import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -34,6 +36,8 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [movePopoverPos, setMovePopoverPos] = useState<{ x: number; y: number } | null>(null)
   const [moveSheetOpen, setMoveSheetOpen] = useState(false)
+  const [showAddTxn, setShowAddTxn] = useState(false)
+  const [showTxnList, setShowTxnList] = useState(false)
   const isMobile = useIsMobile()
   const { formatMoney } = useFormatters()
 
@@ -176,6 +180,26 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
           onClose={() => setShowTargetEditor(false)}
         />
       )}
+      {showAddTxn && (
+        <TransactionEditor
+          budgetId={budgetId}
+          transaction={null}
+          initialCategoryId={category.id}
+          onClose={() => setShowAddTxn(false)}
+        />
+      )}
+      {showTxnList && (
+        <CategoryTransactionsModal
+          budgetId={budgetId}
+          categoryId={category.id}
+          categoryName={category.name}
+          onClose={() => setShowTxnList(false)}
+          onAddTransaction={() => {
+            setShowTxnList(false)
+            setShowAddTxn(true)
+          }}
+        />
+      )}
       <div
         className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''}`}
         role="row"
@@ -245,6 +269,22 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                 </button>
               )}
               <div className="category-row__actions" role="group" aria-label={`${category.name} actions`}>
+                <button
+                  className="category-row__action-btn"
+                  onClick={() => setShowAddTxn(true)}
+                  title="Add transaction"
+                  aria-label={`Add transaction to ${category.name}`}
+                >
+                  <Plus size={11} />
+                </button>
+                <button
+                  className="category-row__action-btn"
+                  onClick={() => setShowTxnList(true)}
+                  title="View transactions"
+                  aria-label={`View transactions for ${category.name}`}
+                >
+                  <ReceiptText size={11} />
+                </button>
                 <button className="category-row__action-btn" onClick={startRename} title="Rename" aria-label={`Rename ${category.name}`}>
                   <Pencil size={11} />
                 </button>

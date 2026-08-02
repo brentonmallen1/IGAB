@@ -35,6 +35,10 @@ interface Props {
   onMakeRepeating: (txn: Transaction) => void
   hasAttachment?: boolean
   highlighted?: boolean
+  /** All-accounts register: source account name; renders an extra column */
+  accountLabel?: string
+  /** CSS color value (e.g. `var(--chart-3)`) for the account's identity dot */
+  accountColor?: string
 }
 
 const APPROVE_MENU_ITEMS: ContextMenuItem[] = [
@@ -94,6 +98,8 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
   if (prev.onDuplicate !== next.onDuplicate) return false
   if (prev.onMakeRepeating !== next.onMakeRepeating) return false
   if (prev.hasAttachment !== next.hasAttachment) return false
+  if (prev.accountLabel !== next.accountLabel) return false
+  if (prev.accountColor !== next.accountColor) return false
   return true
 }
 
@@ -112,6 +118,8 @@ export const TransactionRow = memo(function TransactionRow({
   onMakeRepeating,
   hasAttachment,
   highlighted,
+  accountLabel,
+  accountColor,
 }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const { formatMoney, formatDate } = useFormatters()
@@ -393,6 +401,18 @@ export const TransactionRow = memo(function TransactionRow({
           formatDate(txn.date)
         )}
       </div>
+
+      {/* Account (all-accounts register only) */}
+      {accountLabel !== undefined && (
+        <div className="txn-col txn-col--account txn-text-clip" title={accountLabel}>
+          <span
+            className="txn-account-dot"
+            style={accountColor ? { backgroundColor: accountColor } : undefined}
+            aria-hidden
+          />
+          <span className="txn-cell-text">{accountLabel}</span>
+        </div>
+      )}
 
       {/* Payee */}
       <div
