@@ -8,7 +8,7 @@ import { useDayPatternsReport, usePaydayEffectReport } from '../../../api/report
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
-import { CHART_COLORS } from './chartColors'
+import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -120,6 +120,7 @@ export function DayPatternsReport({ budgetId }: Props) {
                 }
                 offset={16}
                 isAnimationActive={false}
+                {...TOOLTIP_STYLE}
               />
               <Bar
                 dataKey="Amount"
@@ -226,6 +227,7 @@ export function DayPatternsReport({ budgetId }: Props) {
                   formatter={(v: unknown) => [formatMoney(Number(v)), 'Avg Daily Spend']}
                   offset={16}
                   isAnimationActive={false}
+                  {...TOOLTIP_STYLE}
                 />
                 <Bar dataKey="spend" radius={[3, 3, 0, 0]} barSize={28}>
                   {paydayChartData.map((entry, i) => (

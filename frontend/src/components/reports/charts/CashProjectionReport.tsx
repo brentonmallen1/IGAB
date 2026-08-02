@@ -9,6 +9,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
+import { TOOLTIP_STYLE } from './chartColors'
 
 interface Props {
   budgetId: string
@@ -134,6 +135,7 @@ export function CashProjectionReport({ budgetId }: Props) {
               labelFormatter={(label) => `${label}`}
               offset={16}
               isAnimationActive={false}
+              {...TOOLTIP_STYLE}
             />
             {/* Outer band P10-P90 */}
             <Area

@@ -9,7 +9,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
-import { CHART_COLORS } from './chartColors'
+import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -124,6 +124,7 @@ export function PayeeReport({ budgetId }: Props) {
                 }
                 offset={16}
                 isAnimationActive={false}
+                {...TOOLTIP_STYLE}
               />
               <Bar
                 dataKey="Amount"
