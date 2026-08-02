@@ -163,6 +163,113 @@
   margin: 0;
 }
 
+.pmerge-checkbox-row__text {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.pmerge-pattern {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.pmerge-pattern__input-row {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.pmerge-pattern__input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+}
+
+.pmerge-pattern__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.pmerge-pattern__input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.pmerge-pattern__suggest {
+  padding: 0 var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--color-accent);
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pmerge-pattern__suggest:hover {
+  background: var(--bg-secondary);
+}
+
+.pmerge-pattern__error {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+  margin: 0;
+}
+
+.pmerge-pattern__tests {
+  list-style: none;
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.pmerge-pattern__test {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  min-width: 0;
+}
+
+.pmerge-pattern__test--match {
+  color: var(--color-success);
+}
+
+.pmerge-pattern__test--miss {
+  color: var(--text-muted);
+}
+
+.pmerge-pattern__test-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pmerge-pattern__test--miss .pmerge-pattern__test-name {
+  color: var(--text-muted);
+}
+
+.pmerge-pattern__test-label {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+}
+
 .pmerge-preview {
   display: flex;
   flex-direction: column;

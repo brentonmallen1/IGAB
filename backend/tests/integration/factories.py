@@ -126,11 +126,13 @@ async def create_payee(
     name: str | None = None,
     *,
     default_category_id: uuid.UUID | None = None,
+    match_pattern: str | None = None,
 ) -> Payee:
     payee = Payee(
         budget_id=budget.id,
         name=name or _name("Payee"),
         default_category_id=default_category_id,
+        match_pattern=match_pattern,
     )
     session.add(payee)
     await session.flush()

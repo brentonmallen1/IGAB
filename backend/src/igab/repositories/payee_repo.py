@@ -1,4 +1,5 @@
 import datetime
+import re
 import uuid
 
 from rapidfuzz import fuzz
@@ -84,6 +85,16 @@ class PayeeRepository(BaseRepository[Payee]):
         )
         return [(payee, count, last_used) for payee, count, last_used in result.all()]
 
+    async def get_with_tags(self, payee_id: uuid.UUID) -> Payee | None:
+        """Fetch one payee with tags eagerly loaded, for response serialization
+        (a lazy tags load would raise MissingGreenlet under the async driver)."""
+        result = await self.session.execute(
+            select(Payee)
+            .options(selectinload(Payee.tags))
+            .where(Payee.id == payee_id, Payee.is_deleted == False)  # noqa: E712
+        )
+        return result.scalar_one_or_none()
+
     async def find_by_name(self, budget_id: uuid.UUID, name: str) -> Payee | None:
         result = await self.session.execute(
             select(Payee).where(
@@ -93,6 +104,30 @@ class PayeeRepository(BaseRepository[Payee]):
             )
         )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    def _match_by_pattern(payees: list[Payee], raw_name: str) -> Payee | None:
+        """Match raw_name against payee match_pattern regexes (case-insensitive).
+
+        Patterns are user-authored and validated at write time, but a stored
+        pattern that no longer compiles is skipped rather than failing the
+        whole resolution. When several payees match, the longest pattern wins
+        (most specific), with name order as the tiebreaker via get_all's sort.
+        """
+        best: Payee | None = None
+        for payee in payees:
+            if not payee.match_pattern:
+                continue
+            try:
+                if re.search(payee.match_pattern, raw_name, re.IGNORECASE):
+                    if best is None or len(payee.match_pattern) > len(best.match_pattern or ""):
+                        best = payee
+            except re.error:
+                continue
+        return best
+
+    async def find_by_pattern(self, budget_id: uuid.UUID, raw_name: str) -> Payee | None:
+        return self._match_by_pattern(await self.get_all(budget_id), raw_name)
 
     async def find_best_match(self, budget_id: uuid.UUID, raw_name: str) -> Payee | None:
         """Fuzzy-match raw_name against payee names and mapping_samples.
@@ -141,13 +176,22 @@ class PayeeRepository(BaseRepository[Payee]):
         )
         existing = {p.name.lower(): p for p in result.scalars().all()}
 
+        # Load pattern payees once so imported names can hit user-defined
+        # regexes before falling through to creating brand-new payees.
+        all_payees = await self.get_all(budget_id)
+        pattern_payees = [p for p in all_payees if p.match_pattern]
+
         payee_map: dict[str, uuid.UUID] = {}
         for name in unique_names:
             if name.lower() in existing:
                 payee_map[name] = existing[name.lower()].id
-            else:
-                payee = await self.create(budget_id=budget_id, name=name)
-                payee_map[name] = payee.id
+                continue
+            matched = self._match_by_pattern(pattern_payees, name)
+            if matched is not None:
+                payee_map[name] = matched.id
+                continue
+            payee = await self.create(budget_id=budget_id, name=name)
+            payee_map[name] = payee.id
         return payee_map
 
     async def merge(self, source_id: uuid.UUID, target_id: uuid.UUID) -> None:

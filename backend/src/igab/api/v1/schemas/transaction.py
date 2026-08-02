@@ -1,8 +1,9 @@
 import datetime
+import re
 import uuid
 from decimal import Decimal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import UserClearedStatus
@@ -162,6 +163,21 @@ class PayeeUpdate(BaseModel):
     name: str | None = None
     default_category_id: uuid.UUID | None = None
     mapping_samples: str | None = None
+    match_pattern: str | None = Field(default=None, max_length=500)
+
+    @field_validator("match_pattern")
+    @classmethod
+    def validate_match_pattern(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        try:
+            re.compile(v)
+        except re.error as exc:
+            raise ValueError(f"Invalid regular expression: {exc}") from exc
+        return v
 
 
 class PayeeResponse(BaseModel):
@@ -171,6 +187,7 @@ class PayeeResponse(BaseModel):
     default_category_id: uuid.UUID | None
     transfer_account_id: uuid.UUID | None
     mapping_samples: str | None
+    match_pattern: str | None = None
     tags: list[TagOutSimple] = []
 
     model_config = {"from_attributes": True}
