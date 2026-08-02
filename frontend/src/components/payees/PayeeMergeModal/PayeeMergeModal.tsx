@@ -1,13 +1,15 @@
-import { useState, useRef, useEffect } from 'react'
-import { GitMerge, X } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { Check, GitMerge, Regex, X } from 'lucide-react'
 import type { PayeeWithCount } from '../../../api/payees'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
+import { suggestPayeeRegex, testPattern } from '../../../utils/payeeRegex'
 import './PayeeMergeModal.css'
 
 export interface MergeConfig {
   targetId: string
   addToMappingSamples: boolean
   customName?: string
+  matchPattern?: string
 }
 
 interface Props {
@@ -39,12 +41,39 @@ export function PayeeMergeModal({ payees, onConfirm, onCancel, isPending }: Prop
   const [useCustomName, setUseCustomName] = useState(false)
   const [customName, setCustomName] = useState('')
   const [addToMappingSamples, setAddToMappingSamples] = useState(true)
+  const [usePattern, setUsePattern] = useState(false)
+  const [pattern, setPattern] = useState('')
   const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
   const customInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (useCustomName) customInputRef.current?.focus()
   }, [useCustomName])
+
+  // Every raw name this merge represents: payee names plus their recorded
+  // bank-name samples. Both feed the suggestion and the live match preview.
+  const rawNames = useMemo(() => {
+    const names = payees.flatMap((p) => [
+      p.name,
+      ...(p.mapping_samples?.split(',').map((s) => s.trim()) ?? []),
+    ])
+    return [...new Set(names.filter(Boolean))]
+  }, [payees])
+
+  const suggestion = useMemo(() => suggestPayeeRegex(rawNames), [rawNames])
+
+  function togglePattern() {
+    setUsePattern((on) => {
+      if (!on && !pattern && suggestion) setPattern(suggestion)
+      return !on
+    })
+  }
+
+  const trimmedPattern = pattern.trim()
+  const patternResults = trimmedPattern
+    ? rawNames.map((name) => ({ name, matches: testPattern(trimmedPattern, name) }))
+    : []
+  const patternInvalid = patternResults.some((r) => r.matches === null)
 
   const target = payees.find((p) => p.id === targetId)
   const sources = useCustomName ? payees : payees.filter((p) => p.id !== targetId)
@@ -59,13 +88,21 @@ export function PayeeMergeModal({ payees, onConfirm, onCancel, isPending }: Prop
       ])
     : useCustomName ? null : (target?.mapping_samples ?? '')
 
-  const canConfirm = !isPending && (useCustomName ? customName.trim().length > 0 : !!targetId)
+  const patternOk = !usePattern || (trimmedPattern.length > 0 && !patternInvalid)
+  const canConfirm =
+    !isPending && patternOk && (useCustomName ? customName.trim().length > 0 : !!targetId)
 
   function handleConfirm() {
+    const matchPattern = usePattern && trimmedPattern ? trimmedPattern : undefined
     if (useCustomName) {
-      onConfirm({ targetId: sorted[0].id, addToMappingSamples, customName: customName.trim() })
+      onConfirm({
+        targetId: sorted[0].id,
+        addToMappingSamples,
+        customName: customName.trim(),
+        matchPattern,
+      })
     } else {
-      onConfirm({ targetId, addToMappingSamples })
+      onConfirm({ targetId, addToMappingSamples, matchPattern })
     }
   }
 
@@ -142,6 +179,68 @@ export function PayeeMergeModal({ payees, onConfirm, onCancel, isPending }: Prop
               <span className="pmerge-preview__value">
                 {previewMappings || <em>none</em>}
               </span>
+            </div>
+          )}
+
+          <label className="pmerge-checkbox-row">
+            <input type="checkbox" checked={usePattern} onChange={togglePattern} />
+            <span className="pmerge-checkbox-row__text">
+              <Regex size={13} aria-hidden />
+              Set a match pattern (regex)
+            </span>
+          </label>
+          <p className="pmerge-hint">
+            Incoming transactions whose payee matches this pattern map to the surviving payee —
+            useful when banks append random codes. Case-insensitive.
+          </p>
+
+          {usePattern && (
+            <div className="pmerge-pattern">
+              <div className="pmerge-pattern__input-row">
+                <input
+                  className="pmerge-pattern__input"
+                  type="text"
+                  value={pattern}
+                  onChange={(e) => setPattern(e.target.value)}
+                  placeholder={'e.g. ^ACH DEPOSIT PAYROLL'}
+                  spellCheck={false}
+                  aria-label="Match pattern"
+                  aria-invalid={patternInvalid}
+                />
+                {suggestion && pattern !== suggestion && (
+                  <button
+                    type="button"
+                    className="pmerge-pattern__suggest"
+                    onClick={() => setPattern(suggestion)}
+                    title="Use the pattern suggested from the selected payee names"
+                  >
+                    Suggest
+                  </button>
+                )}
+              </div>
+              {patternInvalid ? (
+                <p className="pmerge-pattern__error">Invalid regular expression</p>
+              ) : !suggestion && !trimmedPattern ? (
+                <p className="pmerge-hint">
+                  These names share no obvious structure — write a pattern by hand if you still
+                  want one.
+                </p>
+              ) : (
+                trimmedPattern && (
+                  <ul className="pmerge-pattern__tests">
+                    {patternResults.map(({ name, matches }) => (
+                      <li
+                        key={name}
+                        className={`pmerge-pattern__test ${matches ? 'pmerge-pattern__test--match' : 'pmerge-pattern__test--miss'}`}
+                      >
+                        {matches ? <Check size={12} aria-hidden /> : <X size={12} aria-hidden />}
+                        <span className="pmerge-pattern__test-name">{name}</span>
+                        {!matches && <span className="pmerge-pattern__test-label">no match</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )
+              )}
             </div>
           )}
 

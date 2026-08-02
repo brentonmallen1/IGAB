@@ -529,7 +529,7 @@ async def create_payee(
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
 ) -> PayeeResponse:
     payee = await payee_repo.find_or_create(budget_id, body.name)
-    return PayeeResponse.model_validate(payee)
+    return PayeeResponse.model_validate(await payee_repo.get_with_tags(payee.id))
 
 
 @router.patch("/payees/{payee_id}", response_model=PayeeResponse)
@@ -539,7 +539,11 @@ async def update_payee(
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
 ) -> PayeeResponse:
-    changes = body.model_dump(exclude_none=True)
+    # exclude_unset (not exclude_none) so an explicit null clears nullable
+    # fields like mapping_samples and match_pattern; name stays required.
+    changes = body.model_dump(exclude_unset=True)
+    if changes.get("name") is None:
+        changes.pop("name", None)
     owner = await payee_repo.get(payee_id)
     if owner is not None and changes.get("default_category_id") is not None:
         await require_in_budget(
@@ -549,8 +553,8 @@ async def update_payee(
             owner.budget_id,
             "Category",
         )
-    payee = await payee_repo.update(payee_id, **changes)
-    return PayeeResponse.model_validate(payee)
+    await payee_repo.update(payee_id, **changes)
+    return PayeeResponse.model_validate(await payee_repo.get_with_tags(payee_id))
 
 
 @router.delete("/payees/{payee_id}", status_code=status.HTTP_204_NO_CONTENT)

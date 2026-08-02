@@ -235,6 +235,26 @@
   white-space: nowrap;
 }
 
+.payees-table__pattern {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payees-table__pattern svg {
+  flex-shrink: 0;
+}
+
+.payees-edit-input--pattern {
+  font-family: var(--font-mono);
+}
+
 .payees-table__count {
   color: var(--text-muted);
   text-align: right;
