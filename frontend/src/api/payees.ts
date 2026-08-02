@@ -58,7 +58,7 @@ export function useCreatePayee(budgetId: string) {
 export function useUpdatePayee(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; default_category_id?: string; mapping_samples?: string | null }) =>
+    mutationFn: ({ id, ...body }: { id: string; name?: string; default_category_id?: string; mapping_samples?: string | null; match_pattern?: string | null }) =>
       apiClient.patch<Payee>(`/payees/${id}`, body).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payees', budgetId] }),
   })

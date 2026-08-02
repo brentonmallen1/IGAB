@@ -73,6 +73,7 @@ _Add items here as they come up during development._
 ### Payees
 - [x] Auto-suggest merges via rapidfuzz — "Find Duplicates" button with sensitivity picker (loose/balanced/strict), merge wizard with final review before commit; AI Cleanup disabled when Ollama unavailable
 - [x] Payee list: sortable Name/Transactions columns, search includes mapping_samples, tabular-nums alignment
+- [x] Regex match patterns (2026-08-02): `match_pattern` on payees (migration 7c2a9d41e5b3) applied to incoming raw names — exact > regex > fuzzy precedence in transaction create/sync and CSV import batch; merge modal suggests a pattern generalized from the selected names (common prefix/suffix, token-boundary safe) with live match preview; editable inline on the payees page
 
 ### Transactions
 - [x] Split transaction button always accessible (outside scroll area), opens modal

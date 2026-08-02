@@ -152,6 +152,9 @@ class Payee(Base):
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
     )
     mapping_samples: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Regex applied to incoming raw payee names; a match assigns the transaction
+    # to this payee before fuzzy matching runs.
+    match_pattern: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

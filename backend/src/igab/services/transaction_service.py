@@ -472,6 +472,10 @@ class TransactionService:
         existing = await self.payee_repo.find_by_name(budget_id, data.payee_name)
         if existing:
             return existing
+        # User-defined regex patterns beat fuzzy matching — they are explicit intent
+        by_pattern = await self.payee_repo.find_by_pattern(budget_id, data.payee_name)
+        if by_pattern:
+            return by_pattern
         # Fuzzy match against names and mapping_samples
         similar = await self.payee_repo.find_best_match(budget_id, data.payee_name)
         if similar:

@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, GitMerge, Tag } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitMerge, Regex, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, useFetchPayeeDuplicates, type PayeeWithCount } from '../../api/payees'
@@ -9,6 +9,7 @@ import { usePayeeCleanupSuggestions, useAIStatus } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
+import { testPattern } from '../../utils/payeeRegex'
 import { TagChip } from '../../components/common/TagChip'
 import { TagPicker, type TagOption } from '../../components/common/TagPicker'
 import './PayeesPage.css'
@@ -38,6 +39,7 @@ export function PayeesPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editMappings, setEditMappings] = useState('')
+  const [editPattern, setEditPattern] = useState('')
   const [search, setSearch] = useState(searchParams.get('q') ?? '')
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
@@ -61,7 +63,7 @@ export function PayeesPage() {
     return payees
       .filter((p) => {
         if (p.transfer_account_id) return false
-        const searchTarget = `${p.name} ${p.mapping_samples || ''}`.toLowerCase()
+        const searchTarget = `${p.name} ${p.mapping_samples || ''} ${p.match_pattern || ''}`.toLowerCase()
         return searchTarget.includes(term)
       })
       .sort((a, b) => {
@@ -106,18 +108,25 @@ export function PayeesPage() {
 
   const SortIcon = sortDirection === 'asc' ? ChevronUp : ChevronDown
 
-  function startEdit(id: string, name: string, mappings: string | null) {
+  function startEdit(id: string, name: string, mappings: string | null, pattern: string | null) {
     setEditingId(id)
     setEditName(name)
     setEditMappings(mappings ?? '')
+    setEditPattern(pattern ?? '')
   }
 
   async function saveEdit(id: string) {
+    const pattern = editPattern.trim()
+    if (pattern && testPattern(pattern, '') === null) {
+      alert('The match pattern is not a valid regular expression.')
+      return
+    }
     if (editName.trim()) {
       await updatePayee.mutateAsync({
         id,
         name: editName.trim(),
         mapping_samples: editMappings.trim() || null,
+        match_pattern: pattern || null,
       })
     }
     setEditingId(null)
@@ -130,12 +139,16 @@ export function PayeesPage() {
   }
 
   async function executeMerge(config: MergeConfig) {
-    const { targetId, addToMappingSamples, customName } = config
+    const { targetId, addToMappingSamples, customName, matchPattern } = config
     const target = payees.find((p) => p.id === targetId)
     const sources = selectedPayees.filter((p) => p.id !== targetId)
     if (!target) return
 
     const absorbedPayees = customName ? selectedPayees : sources
+
+    const update: { name?: string; mapping_samples?: string | null; match_pattern?: string } = {}
+    if (customName) update.name = customName
+    if (matchPattern) update.match_pattern = matchPattern
 
     if (addToMappingSamples && absorbedPayees.length > 0) {
       const parts = [
@@ -155,13 +168,11 @@ export function PayeesPage() {
           }
         }
       }
-      await updatePayee.mutateAsync({
-        id: targetId,
-        ...(customName ? { name: customName } : {}),
-        mapping_samples: deduped.join(', ') || null,
-      })
-    } else if (customName) {
-      await updatePayee.mutateAsync({ id: targetId, name: customName })
+      update.mapping_samples = deduped.join(', ') || null
+    }
+
+    if (Object.keys(update).length > 0) {
+      await updatePayee.mutateAsync({ id: targetId, ...update })
     }
 
     for (const source of sources) {
@@ -465,6 +476,20 @@ export function PayeesPage() {
                       <span className="payees-edit-hint">
                         Bank names that should match this payee, comma-separated
                       </span>
+                      <input
+                        className="payees-edit-input payees-edit-input--pattern"
+                        value={editPattern}
+                        onChange={(e) => setEditPattern(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit(p.id)
+                          if (e.key === 'Escape') setEditingId(null)
+                        }}
+                        placeholder="Match pattern (optional regex): ^ACH DEPOSIT PAYROLL"
+                        spellCheck={false}
+                      />
+                      <span className="payees-edit-hint">
+                        Incoming names matching this regex map here, case-insensitive
+                      </span>
                       <div className="payees-edit-btns">
                         <button className="payees-btn payees-btn--sm payees-btn--primary" onClick={() => saveEdit(p.id)}>
                           Save
@@ -478,7 +503,7 @@ export function PayeesPage() {
                     <div className="payees-table__name-cell">
                       <span
                         className="payees-table__name-text"
-                        onDoubleClick={() => startEdit(p.id, p.name, p.mapping_samples)}
+                        onDoubleClick={() => startEdit(p.id, p.name, p.mapping_samples, p.match_pattern)}
                         title="Double-click to rename"
                       >
                         {p.name}
@@ -486,6 +511,12 @@ export function PayeesPage() {
                       {p.mapping_samples && (
                         <span className="payees-table__mappings" title={`Match samples: ${p.mapping_samples}`}>
                           {p.mapping_samples}
+                        </span>
+                      )}
+                      {p.match_pattern && (
+                        <span className="payees-table__pattern" title={`Match pattern: ${p.match_pattern}`}>
+                          <Regex size={11} aria-hidden />
+                          {p.match_pattern}
                         </span>
                       )}
                     </div>
@@ -539,7 +570,7 @@ export function PayeesPage() {
                     <>
                       <button
                         className="payees-btn payees-btn--sm"
-                        onClick={() => startEdit(p.id, p.name, p.mapping_samples)}
+                        onClick={() => startEdit(p.id, p.name, p.mapping_samples, p.match_pattern)}
                       >
                         Edit
                       </button>
