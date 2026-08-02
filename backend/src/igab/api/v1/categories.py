@@ -170,7 +170,7 @@ async def update_category(
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
 ) -> CategoryResponse:
     try:
-        changes = body.model_dump(exclude_none=True)
+        changes = body.model_dump(exclude_unset=True)
         cat = await category_repo.update(category_id, **changes)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

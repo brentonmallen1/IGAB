@@ -110,3 +110,28 @@ export function paretoInsight(
 export function shareOfTotal(total: number, grandTotal: number): number {
   return grandTotal > 0 ? (total / grandTotal) * 100 : 0
 }
+
+/** Determines if spending adheres to the 80/20 rule.
+ * Returns null if data is insufficient, or an object with:
+ * - adherent: true if ≤30% of items account for 80% of spending
+ * - pct: the actual percentage of items needed for 80%
+ * - message: guidance for the user */
+export function paretoAdherence(
+  pct80coverage: string | null,
+  totalItemCount: number,
+): { adherent: boolean; pct: number; message: string } | null {
+  if (!pct80coverage || totalItemCount < 3) return null
+  const pct = parseFloat(pct80coverage)
+  if (pct <= 30) {
+    return {
+      adherent: true,
+      pct,
+      message: 'Spending is concentrated—easier to optimize the top items.',
+    }
+  }
+  return {
+    adherent: false,
+    pct,
+    message: 'Spending is spread thin—consider consolidating or reviewing smaller items.',
+  }
+}

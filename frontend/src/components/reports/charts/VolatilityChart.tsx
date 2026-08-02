@@ -7,7 +7,7 @@ import { useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
-import { COLOR_NEUTRAL } from './chartColors'
+import { COLOR_NEUTRAL, TOOLTIP_STYLE } from './chartColors'
 import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from './volatilityData'
 import { monthsAgoStartISO } from '../../../utils/dateWindow'
 import { today } from '../../../utils/dates'
@@ -106,6 +106,7 @@ export function VolatilityReport({ budgetId }: Props) {
                 formatter={(v: unknown, name: unknown) => [formatMoney(Number(v)), String(name)]}
                 offset={16}
                 isAnimationActive={false}
+                {...TOOLTIP_STYLE}
               />
               <Bar dataKey="Mean" fill={COLOR_NEUTRAL} barSize={12} radius={[0, 2, 2, 0]}>
                 <ErrorBar dataKey="errorY" width={4} strokeWidth={2} stroke="var(--text-secondary)" direction="x" />
