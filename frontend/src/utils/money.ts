@@ -95,6 +95,37 @@ export function parseMoney(value: string): number {
   return parseFloat(cleaned)
 }
 
+/**
+ * Parse a user-typed amount from a free-text/decimal-keyboard input into a
+ * non-negative number. Handles both separator conventions:
+ * - "12,34" (decimal comma, 1–2 digits after) → 12.34
+ * - "1,234" / "1,234.56" (comma grouping) → 1234 / 1234.56
+ * Currency symbols and spaces are ignored. Returns NaN for unparseable input
+ * and for negative input — outflow/inflow fields carry sign structurally.
+ */
+export function parseAmountInput(value: string): number {
+  const trimmed = value.trim()
+  if (trimmed === '') return NaN
+  if (trimmed.includes('-')) return NaN
+  let normalized: string
+  const commas = (trimmed.match(/,/g) ?? []).length
+  if (commas === 0) {
+    normalized = trimmed
+  } else if (trimmed.includes('.')) {
+    // Both present: commas are grouping ("1,234.56")
+    normalized = trimmed.replace(/,/g, '')
+  } else if (commas === 1 && /,\d{1,2}$/.test(trimmed)) {
+    // Single comma with 1–2 trailing digits: decimal comma ("12,34")
+    normalized = trimmed.replace(',', '.')
+  } else {
+    // Comma grouping without decimals ("1,234" / "1,234,567")
+    normalized = trimmed.replace(/,/g, '')
+  }
+  const cleaned = normalized.replace(/[^0-9.]/g, '')
+  if (cleaned === '' || cleaned === '.' || (cleaned.match(/\./g) ?? []).length > 1) return NaN
+  return parseFloat(cleaned)
+}
+
 // ── Cents-integer arithmetic ──────────────────────────────────────────────────
 // All client-side money math goes through integer cents: IEEE 754 makes
 // 999.99 - 999.89 !== 0.10, so float compares on sums are never safe.

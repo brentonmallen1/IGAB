@@ -105,3 +105,23 @@
   color: var(--text-muted);
   font-size: var(--font-size-xs);
 }
+
+@media (max-width: 768px) {
+  .txn-search {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .txn-search__input {
+    font-size: 16px; /* prevents iOS focus-zoom */
+    min-height: 44px;
+  }
+
+  .txn-search__suggestion {
+    min-height: 44px;
+  }
+
+  .txn-search__clear {
+    padding: var(--spacing-sm);
+  }
+}

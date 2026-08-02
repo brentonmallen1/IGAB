@@ -98,6 +98,19 @@
   cursor: default;
 }
 
+/* Mobile-only read-only cleared/reconciled markers in the status cluster */
+.txn-status-icon--cleared {
+  color: var(--color-positive);
+  cursor: default;
+  pointer-events: none;
+}
+
+.txn-status-icon--reconciled {
+  color: var(--text-muted);
+  cursor: default;
+  pointer-events: none;
+}
+
 .txn-col--cleared {
   display: flex;
   align-items: center;
@@ -306,7 +319,9 @@
     gap: var(--spacing-xs);
   }
 
-  .txn-col--cleared {
+  /* Extra specificity: TransactionTable.css declares display:flex on this
+     class and can win on cross-file order alone */
+  .transaction-row .txn-col--cleared {
     display: none;
   }
 }

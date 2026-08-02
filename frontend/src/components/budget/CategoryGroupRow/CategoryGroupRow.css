@@ -185,6 +185,11 @@
   color: var(--color-accent);
 }
 
+/* Mobile-only collapsed-group totals sub-line */
+.category-group-row__mobile-summary {
+  display: none;
+}
+
 /* ─── Touch / mobile adaptations ────────────────────────────────────────── */
 
 @media (hover: none) {
@@ -197,17 +202,57 @@
 }
 
 @media (max-width: 768px) {
-  /* Group header shows name + available; assigned/activity totals and group
-     management actions are desktop-only */
+  /* Group header shows name + available; assigned/activity columns and group
+     management actions are desktop-only. Collapsed groups get a summary
+     sub-line so those totals stay reachable. */
   .category-group-row__header {
     grid-template-columns: 20px auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
     min-height: 44px;
+    align-items: center;
+  }
+
+  /* Explicit placement — span rows without letting auto-flow shuffle columns */
+  .category-group-row__toggle {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .category-group-row__checkbox {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .category-group-row__name,
+  .category-group-row__rename-input {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .category-group-row__available {
+    grid-column: 4;
+    grid-row: 1 / span 2;
+    align-self: center;
   }
 
   .category-group-row__assigned,
   .category-group-row__activity,
   .category-group-row__actions {
     display: none;
+  }
+
+  .category-group-row__mobile-summary {
+    display: block;
+    grid-column: 3;
+    grid-row: 2;
+    font-size: var(--font-size-2xs);
+    font-weight: 400;
+    color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .category-group-row__add-cat-row {

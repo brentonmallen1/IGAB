@@ -67,12 +67,42 @@
   background: var(--bg-secondary);
 }
 
+.bottom-sheet-backdrop--closing {
+  animation: bottom-sheet-fade-out var(--transition-base) forwards;
+  pointer-events: none;
+}
+
+.bottom-sheet--closing {
+  animation: bottom-sheet-drop var(--transition-base) forwards;
+  pointer-events: none;
+}
+
 @keyframes bottom-sheet-fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
+@keyframes bottom-sheet-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 @keyframes bottom-sheet-rise {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
+}
+
+/* Starts from wherever a dismissing swipe left the panel (default: resting position) */
+@keyframes bottom-sheet-drop {
+  from { transform: translateY(var(--sheet-drag-y, 0px)); }
+  to { transform: translateY(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-sheet,
+  .bottom-sheet-backdrop,
+  .bottom-sheet--closing,
+  .bottom-sheet-backdrop--closing {
+    animation: none;
+  }
 }

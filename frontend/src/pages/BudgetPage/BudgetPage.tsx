@@ -131,6 +131,11 @@ export function BudgetPage() {
             closeMobileInspector()
             clearCategorySelection()
           }}
+          title={
+            selectedCategoryIds.size === 1
+              ? (categories.find((c) => selectedCategoryIds.has(c.id))?.name ?? 'Category')
+              : `${selectedCategoryIds.size} categories selected`
+          }
           height="full"
           historyKey="inspector"
         >

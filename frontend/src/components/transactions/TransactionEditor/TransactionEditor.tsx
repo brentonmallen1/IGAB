@@ -14,7 +14,7 @@ import { useSuggestCategory } from '../../../api/ai'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { today } from '../../../utils/dates'
-import { fromCents, sumToCents, toCents } from '../../../utils/money'
+import { fromCents, parseAmountInput, sumToCents, toCents } from '../../../utils/money'
 import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import './TransactionEditor.css'
@@ -138,13 +138,15 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   }
 
   function handleOutflowChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setOutflow(e.target.value)
-    if (e.target.value) setInflow('')
+    const v = e.target.value.replace(/[^0-9.,]/g, '')
+    setOutflow(v)
+    if (v) setInflow('')
   }
 
   function handleInflowChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setInflow(e.target.value)
-    if (e.target.value) setOutflow('')
+    const v = e.target.value.replace(/[^0-9.,]/g, '')
+    setInflow(v)
+    if (v) setOutflow('')
   }
 
   function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
@@ -161,8 +163,8 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const outflowVal = parseFloat(outflow) || 0
-    const inflowVal = parseFloat(inflow) || 0
+    const outflowVal = parseAmountInput(outflow) || 0
+    const inflowVal = parseAmountInput(inflow) || 0
     const amount = outflowVal > 0 ? -outflowVal : inflowVal
     const sign = amount < 0 ? -1 : 1
 
@@ -224,8 +226,8 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   const isPending = createTxn.isPending || updateTxn.isPending || deleteTxn.isPending
 
   const similarAmount = useMemo(() => {
-    const o = parseFloat(outflow)
-    const i = parseFloat(inflow)
+    const o = parseAmountInput(outflow)
+    const i = parseAmountInput(inflow)
     if (o > 0) return -o
     if (i > 0) return i
     return null
@@ -241,7 +243,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
   const splitIsValid = (() => {
     if (!isSplit) return true
     // Integer-cents comparison — float sums reject valid splits (0.10 issues)
-    const totalCents = Math.abs(toCents(outflow || inflow || '0')) || 0
+    const totalCents = Math.abs(toCents(parseAmountInput(outflow || inflow) || 0)) || 0
     const splitCents = sumToCents(splits.map((s) => s.amount))
     return (
       splitCents === totalCents &&
@@ -516,24 +518,22 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
             <div className="txn-editor__field">
               <label className="txn-editor__label">Outflow</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 className="txn-editor__input"
                 value={outflow}
                 onChange={handleOutflowChange}
-                min="0"
-                step="0.01"
                 placeholder="0.00"
               />
             </div>
             <div className="txn-editor__field">
               <label className="txn-editor__label">Inflow</label>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 className="txn-editor__input"
                 value={inflow}
                 onChange={handleInflowChange}
-                min="0"
-                step="0.01"
                 placeholder="0.00"
               />
             </div>

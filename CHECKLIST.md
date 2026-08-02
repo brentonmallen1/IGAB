@@ -288,7 +288,14 @@ fixes:
 -  budget item notes don't save or have a save button. 
 
 todo:
-- fable security audit - sql injection, etc.
-- fable impeccable? style consistency throughout the application
 - fable review the mobile interface. make sure the number pad shows up when clicking to add an amount, UI/UX for everything else when adding a transaction, as well as the ability to take a photo of the receipt
 - fable audit/ review for common component usage and remove arbitrarily unique components
+
+
+- payee suggestion for transactions that might be similar in amount but have payee names with different strings like transaction numbers, etc. 
+
+
+- receipt parsing and handling thing. uses gemma4 and ollama to parse the receipt and create a transaction record for it. might need to dump it on a queue so that asyc could happen like this: user adds transaction via image of receipt, submits receipt and can move on and then check back later for a transaction that is marked as requiring review so they can review that it was parsed correctly. the transaction created could try to use the payees and budget item relationship from previous transactions like the sugested payee, etc does. if there was an error in the parsing, then the transaction should still be made but with the other items empty or at 0 so that the user can reiew and the image was tied to the transaction for viewing.
+
+
+something to make it easier for me to add in transactions while looking at the budget and paying bills instead of having to use the phone. so, I guess being able to add transactions to a line item while looking at the budget - it should be a modal so that way I don't have to navigate away and then back to the budget page. also a button on the budget to see that line item's transactions. maybe takes to the transactions window with the search filter applied.

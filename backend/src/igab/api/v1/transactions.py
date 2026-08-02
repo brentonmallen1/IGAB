@@ -417,8 +417,12 @@ async def list_payees(
 ) -> list[PayeeWithCount]:
     rows = await payee_repo.get_all_with_counts(budget_id)
     return [
-        PayeeWithCount(**PayeeResponse.model_validate(p).model_dump(), transaction_count=count)
-        for p, count in rows
+        PayeeWithCount(
+            **PayeeResponse.model_validate(p).model_dump(),
+            transaction_count=count,
+            last_used=last_used,
+        )
+        for p, count, last_used in rows
     ]
 
 

@@ -420,7 +420,9 @@
 
   .category-row__editable {
     width: auto;
-    padding: 2px 0;
+    /* Visually small but a comfortable tap target — the only editable element on the card */
+    padding: 10px 0;
+    margin: -8px 0;
     font-size: var(--font-size-xs);
     color: var(--text-secondary);
     text-align: left;
@@ -433,7 +435,7 @@
 
   .category-row__input {
     width: 110px;
-    min-height: 36px;
+    min-height: 44px;
     font-size: 16px; /* prevents iOS focus-zoom */
   }
 
