@@ -11,6 +11,7 @@ import {
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { useSuggestCategory } from '../../../api/ai'
+import { useAppStore } from '../../../stores/appStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { today } from '../../../utils/dates'
@@ -21,12 +22,22 @@ import './TransactionEditor.css'
 
 interface Props {
   budgetId: string
-  accountId: string
+  /** Fixed account context (account page). Omit to let the user pick the
+   * account in the editor — e.g. when adding from the budget view. */
+  accountId?: string | null
   transaction: Transaction | null
+  /** Pre-selected category for new transactions (budget-row add flow). */
+  initialCategoryId?: string | null
   onClose: () => void
 }
 
-export function TransactionEditor({ budgetId, accountId, transaction, onClose }: Props) {
+export function TransactionEditor({
+  budgetId,
+  accountId: fixedAccountId = null,
+  transaction,
+  initialCategoryId = null,
+  onClose,
+}: Props) {
   const createTxn = useCreateTransaction(budgetId)
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
@@ -43,12 +54,30 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
 
   const isEdit = !!transaction
 
+  // No fixed account (budget-view add): the user picks one, defaulting to the
+  // same sticky "last used" account the quick-add flow remembers.
+  const lastPickedAccountId = useAppStore((s) => s.lastQuickAddAccountId)
+  const setLastPickedAccountId = useAppStore((s) => s.setLastQuickAddAccountId)
+  const [pickedAccountId, setPickedAccountId] = useState('')
+  const openAccounts = useMemo(() => accounts.filter((a) => !a.is_closed), [accounts])
+  useEffect(() => {
+    if (fixedAccountId || transaction || pickedAccountId || openAccounts.length === 0) return
+    const preferred =
+      lastPickedAccountId && openAccounts.some((a) => a.id === lastPickedAccountId)
+        ? lastPickedAccountId
+        : (openAccounts.find((a) => a.on_budget)?.id ?? openAccounts[0].id)
+    setPickedAccountId(preferred)
+  }, [fixedAccountId, transaction, pickedAccountId, openAccounts, lastPickedAccountId])
+  const accountId = fixedAccountId ?? transaction?.account_id ?? pickedAccountId
+
   const [date, setDate] = useState(transaction?.date.slice(0, 10) ?? today())
   const [payeeQuery, setPayeeQuery] = useState('')
   const [selectedPayeeId, setSelectedPayeeId] = useState<string | null>(
     transaction?.payee_id ?? null
   )
-  const [categoryId, setCategoryId] = useState(transaction?.category_id ?? '')
+  const [categoryId, setCategoryId] = useState(
+    transaction?.category_id ?? initialCategoryId ?? ''
+  )
   const [memo, setMemo] = useState(transaction?.memo ?? '')
   const [outflow, setOutflow] = useState(() => {
     if (!transaction || Number(transaction.amount) >= 0) return ''
@@ -163,6 +192,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!accountId) return
     const outflowVal = parseAmountInput(outflow) || 0
     const inflowVal = parseAmountInput(inflow) || 0
     const amount = outflowVal > 0 ? -outflowVal : inflowVal
@@ -185,6 +215,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
         })),
       }
       await createTxn.mutateAsync(splitPayload)
+      if (!fixedAccountId) setLastPickedAccountId(accountId)
       onClose()
       return
     }
@@ -212,6 +243,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
       await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
     } else {
       await createTxn.mutateAsync(payload)
+      if (!fixedAccountId) setLastPickedAccountId(accountId)
     }
     onClose()
   }
@@ -272,6 +304,37 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
         </div>
 
         <div className="txn-editor__body">
+          {!fixedAccountId && !isEdit && (
+            <div className="txn-editor__field">
+              <label className="txn-editor__label">Account</label>
+              <select
+                className="txn-editor__select"
+                value={pickedAccountId}
+                onChange={(e) => setPickedAccountId(e.target.value)}
+                required
+              >
+                <option value="">Select account…</option>
+                {openAccounts.some((a) => !a.on_budget) ? (
+                  <>
+                    <optgroup label="Budget accounts">
+                      {openAccounts.filter((a) => a.on_budget).map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Tracking">
+                      {openAccounts.filter((a) => !a.on_budget).map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </optgroup>
+                  </>
+                ) : (
+                  openAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))
+                )}
+              </select>
+            </div>
+          )}
           <div className="txn-editor__row">
             <div className="txn-editor__field">
               <label className="txn-editor__label">Date</label>
@@ -612,7 +675,7 @@ export function TransactionEditor({ budgetId, accountId, transaction, onClose }:
             <button
               type="submit"
               className="txn-editor__btn txn-editor__btn--primary"
-              disabled={isPending || !splitIsValid}
+              disabled={isPending || !splitIsValid || !accountId}
             >
               {isEdit ? 'Save' : 'Add'}
             </button>

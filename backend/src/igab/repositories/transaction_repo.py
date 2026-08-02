@@ -109,15 +109,27 @@ class TransactionRepository(BaseRepository[Transaction]):
         cash_flow_only: bool = False,
         direction: str | None = None,
         day_of_week: int | None = None,
+        cleared: str | None = None,
+        exclude_cleared: str | None = None,
+        uncategorized: bool = False,
+        unapproved: bool = False,
+        is_or_mode: bool = False,
+        amount_min: float | None = None,
+        amount_max: float | None = None,
+        order: str = "date",
         limit: int = 200,
         offset: int = 0,
     ) -> tuple[list[Transaction], int, Decimal]:
-        """Budget-wide listing for report drill-downs.
+        """Budget-wide listing for report drill-downs and the all-accounts register.
 
         scope="leaf" selects category-carrying rows (split children included,
         parents excluded); scope="parent" selects account-balance rows. The
         count/sum aggregate runs over the same predicate as the page query so
         callers can reconcile a paginated list against report totals.
+
+        order="register" sorts pending → needs-category → uncleared → rest
+        (same priority as the per-account register) so paginated clients load
+        rows needing attention first; order="date" is plain date-desc.
         """
         where = [Transaction.budget_id == budget_id, NOT_DELETED]
         where.append(LEAF if scope == "leaf" else PARENT_ROW)
@@ -142,6 +154,25 @@ class TransactionRepository(BaseRepository[Transaction]):
         if day_of_week is not None:
             # isodow is Monday=1..Sunday=7; the API uses Monday=0..Sunday=6
             where.append(func.extract("isodow", Transaction.date) == day_of_week + 1)
+        if cleared:
+            where.append(Transaction.cleared == cleared)
+        if exclude_cleared:
+            where.append(Transaction.cleared != exclude_cleared)
+        uncategorized_pred = and_(
+            Transaction.category_id.is_(None),
+            Transaction.is_split == False,  # noqa: E712
+        )
+        if uncategorized and unapproved and is_or_mode:
+            where.append(or_(uncategorized_pred, Transaction.approved == False))  # noqa: E712
+        else:
+            if uncategorized:
+                where.append(uncategorized_pred)
+            if unapproved:
+                where.append(Transaction.approved == False)  # noqa: E712
+        if amount_min is not None:
+            where.append(func.abs(Transaction.amount) >= amount_min)
+        if amount_max is not None:
+            where.append(func.abs(Transaction.amount) <= amount_max)
         if search:
             pattern = f"%{search}%"
             where.append(or_(Payee.name.ilike(pattern), Transaction.memo.ilike(pattern)))
@@ -153,12 +184,24 @@ class TransactionRepository(BaseRepository[Transaction]):
         if search:
             rows_q = rows_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             totals_q = totals_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
-        rows_q = (
-            rows_q.where(*where)
-            .order_by(Transaction.date.desc(), Transaction.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        if order == "register":
+            priority_rank = case(
+                (Transaction.cleared == "pending", 0),
+                (
+                    and_(
+                        Transaction.category_id.is_(None),
+                        Transaction.transfer_id.is_(None),
+                        Transaction.is_split == False,  # noqa: E712
+                    ),
+                    1,
+                ),
+                (Transaction.cleared == "uncleared", 2),
+                else_=3,
+            )
+            ordering = (priority_rank, Transaction.date.desc(), Transaction.created_at.desc())
+        else:
+            ordering = (Transaction.date.desc(), Transaction.created_at.desc())
+        rows_q = rows_q.where(*where).order_by(*ordering).limit(limit).offset(offset)
         totals_q = totals_q.where(*where)
 
         rows = list((await self.session.execute(rows_q)).scalars().all())

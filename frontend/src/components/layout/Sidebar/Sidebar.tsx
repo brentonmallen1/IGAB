@@ -164,13 +164,21 @@ export function Sidebar() {
       {!collapsed && <div className="sidebar__section-header">
         <button
           className="sidebar__section-header-link"
-          onClick={() => navigate('/accounts')}
-          title="All accounts"
+          onClick={() => navigate('/transactions')}
+          title="All transactions across accounts"
         >
           Budget Accounts
         </button>
         <span className="sidebar__section-header-actions">
           <span className="sidebar__total tabular">{formatMoney(onBudgetTotal)}</span>
+          <button
+            className="sidebar__add-account"
+            onClick={() => navigate('/accounts')}
+            aria-label="Manage accounts"
+            title="Manage accounts"
+          >
+            <Settings size={12} />
+          </button>
           <button
             className="sidebar__add-account"
             onClick={openAddAccountModal}

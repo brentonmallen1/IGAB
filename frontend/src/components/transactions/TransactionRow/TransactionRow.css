@@ -11,6 +11,30 @@
   min-height: 36px;
 }
 
+/* All-accounts register: extra account column after the date */
+.transaction-table--all-accounts .transaction-row {
+  grid-template-columns: 32px 28px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
+}
+
+.transaction-row .txn-col--account {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  padding-right: var(--spacing-sm);
+}
+
+/* Subtle identity mark: a small theme-palette dot, not a colored row */
+.txn-account-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+  opacity: 0.85;
+}
+
 .transaction-row:hover {
   background-color: var(--row-hover-bg);
 }
@@ -317,6 +341,13 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
+  }
+
+  /* All-accounts register: account gets its own card line under the date row */
+  .transaction-row .txn-col--account {
+    grid-column: 2 / span 3;
+    grid-row: 4;
+    padding-right: 0;
   }
 
   /* Extra specificity: TransactionTable.css declares display:flex on this

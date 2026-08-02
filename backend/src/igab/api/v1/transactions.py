@@ -118,14 +118,26 @@ async def list_budget_transactions(
     cash_flow_only: bool = False,
     direction: Literal["inflow", "outflow"] | None = None,
     day_of_week: int | None = Query(None, ge=0, le=6),
-    limit: int = Query(200, le=1000),
+    cleared: str | None = None,
+    exclude_cleared: str | None = None,
+    uncategorized: bool = False,
+    unapproved: bool = False,
+    is_or_mode: bool = False,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    order: Literal["date", "register"] = "date",
+    limit: int = Query(200, le=5000),
     offset: int = 0,
 ) -> BudgetTransactionListResponse:
-    """Budget-wide transaction listing for report drill-downs.
+    """Budget-wide transaction listing for report drill-downs and the
+    all-accounts register.
 
     The filter semantics mirror the report aggregates: leaf scope for
     category-keyed drills, parent scope for payee/month drills; posted_only
     and cash_flow_only reproduce the POSTED / CASH_FLOW_ROW predicates.
+    cleared/uncategorized/unapproved/amount filters and order="register"
+    mirror the per-account listing so the all-accounts register behaves
+    identically to a single account's.
     """
     txns, total_count, total_amount = await txn_repo.list_for_budget(
         budget_id,
@@ -140,6 +152,14 @@ async def list_budget_transactions(
         cash_flow_only=cash_flow_only,
         direction=direction,
         day_of_week=day_of_week,
+        cleared=cleared,
+        exclude_cleared=exclude_cleared,
+        uncategorized=uncategorized,
+        unapproved=unapproved,
+        is_or_mode=is_or_mode,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        order=order,
         limit=limit,
         offset=offset,
     )

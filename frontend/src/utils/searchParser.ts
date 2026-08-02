@@ -6,6 +6,8 @@ export interface TransactionFilters {
   unapproved?: boolean
   categoryIds?: string[]
   payeeIds?: string[]
+  /** Only resolved when an account map is supplied (all-accounts register) */
+  accountIds?: string[]
   amountMin?: number | null
   amountMax?: number | null
   isOrMode?: boolean
@@ -20,6 +22,7 @@ export function hasActiveFilters(f: TransactionFilters): boolean {
     f.unapproved ||
     (f.categoryIds?.length ?? 0) > 0 ||
     (f.payeeIds?.length ?? 0) > 0 ||
+    (f.accountIds?.length ?? 0) > 0 ||
     f.amountMin != null ||
     f.amountMax != null
   )
@@ -30,7 +33,8 @@ const CLEARED_VALUES = new Set(['cleared', 'uncleared', 'pending', 'reconciled']
 function parseSegment(
   tokens: string[],
   categoryMap: Map<string, string>,
-  payeeMap: Map<string, string>
+  payeeMap: Map<string, string>,
+  accountMap: Map<string, string>
 ): TransactionFilters {
   const result: TransactionFilters = {}
   const textParts: string[] = []
@@ -81,6 +85,21 @@ function parseSegment(
       continue
     }
 
+    // account: value  or  account:value — resolvable only where the caller
+    // provides an account map (the all-accounts register); otherwise the
+    // token falls through to free text
+    const accountPrefix = lower === 'account:' ? tokens[i + 1] : lower.match(/^account:(.+)$/)?.[1]
+    if (accountPrefix !== undefined && accountMap.size > 0) {
+      if (lower === 'account:') i++
+      const accountQuery = accountPrefix.replace(/^"|"$/g, '').toLowerCase()
+      const ids: string[] = []
+      for (const [id, name] of accountMap) {
+        if (name.toLowerCase().includes(accountQuery)) ids.push(id)
+      }
+      if (ids.length) result.accountIds = ids
+      continue
+    }
+
     // amount:>x  amount:<x  amount:x-y
     const amountExpr = lower === 'amount:' ? tokens[i + 1] : lower.match(/^amount:(.+)$/)?.[1]
     if (amountExpr !== undefined) {
@@ -107,6 +126,7 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
   const textParts: string[] = []
   const allCategoryIds: string[] = []
   const allPayeeIds: string[] = []
+  const allAccountIds: string[] = []
 
   for (const seg of segments) {
     if (seg.unapproved) merged.unapproved = true
@@ -115,6 +135,7 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
     if (seg.text) textParts.push(seg.text)
     if (seg.categoryIds) allCategoryIds.push(...seg.categoryIds)
     if (seg.payeeIds) allPayeeIds.push(...seg.payeeIds)
+    if (seg.accountIds) allAccountIds.push(...seg.accountIds)
     if (seg.amountMin != null) merged.amountMin = seg.amountMin
     if (seg.amountMax != null) merged.amountMax = seg.amountMax
   }
@@ -122,6 +143,7 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
   if (textParts.length) merged.text = textParts.join(' ')
   if (allCategoryIds.length) merged.categoryIds = allCategoryIds
   if (allPayeeIds.length) merged.payeeIds = allPayeeIds
+  if (allAccountIds.length) merged.accountIds = allAccountIds
 
   return merged
 }
@@ -129,7 +151,8 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
 export function parseTransactionSearch(
   query: string,
   categoryMap: Map<string, string>,
-  payeeMap: Map<string, string>
+  payeeMap: Map<string, string>,
+  accountMap: Map<string, string> = new Map()
 ): TransactionFilters {
   const tokens = tokenize(query)
 
@@ -176,7 +199,7 @@ export function parseTransactionSearch(
   }
   segments.push(current)
 
-  const parsed = segments.map((seg) => parseSegment(seg, categoryMap, payeeMap))
+  const parsed = segments.map((seg) => parseSegment(seg, categoryMap, payeeMap, accountMap))
   const positive = parsed.length === 1 ? parsed[0] : mergeWithOr(parsed)
 
   return Object.keys(exclusions).length ? { ...positive, ...exclusions } : positive
