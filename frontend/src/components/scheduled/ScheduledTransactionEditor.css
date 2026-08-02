@@ -104,3 +104,45 @@
   border-color: var(--color-negative);
   background: transparent;
 }
+
+/* Full-screen on mobile, matching the TransactionEditor pattern */
+@media (max-width: 768px) {
+  .sched-editor-overlay {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .sched-editor {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+
+  .sched-editor__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sched-editor__footer {
+    padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
+  }
+
+  .sched-editor__input {
+    min-height: 44px;
+    font-size: 16px; /* prevents iOS focus-zoom */
+  }
+
+  .sched-editor__btn {
+    min-height: 44px;
+  }
+
+  .sched-editor__close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

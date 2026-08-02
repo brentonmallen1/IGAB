@@ -4,6 +4,8 @@ import type { Payee } from '../types'
 
 export interface PayeeWithCount extends Payee {
   transaction_count: number
+  /** ISO date of the payee's most recent transaction, null if never used */
+  last_used: string | null
 }
 
 export interface NearbyPayee {

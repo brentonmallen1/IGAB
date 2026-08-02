@@ -191,6 +191,14 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
         >
           {formatMoney(groupAvailable)}
         </span>
+
+        {/* Collapsed groups on mobile hide the assigned/activity columns —
+            this sub-line keeps the totals visible (desktop: display none) */}
+        {!isExpanded && (
+          <span className="category-group-row__mobile-summary tabular">
+            Assigned {formatMoney(groupAssigned)} · Activity {formatMoney(groupActivity)}
+          </span>
+        )}
       </div>
 
       {isExpanded && (

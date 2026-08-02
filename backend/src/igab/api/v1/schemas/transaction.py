@@ -178,6 +178,7 @@ class PayeeResponse(BaseModel):
 
 class PayeeWithCount(PayeeResponse):
     transaction_count: int
+    last_used: datetime.date | None = None
 
 
 class PayeeMergeRequest(BaseModel):

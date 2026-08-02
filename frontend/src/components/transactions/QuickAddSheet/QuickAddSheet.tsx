@@ -3,17 +3,18 @@ import toast from 'react-hot-toast'
 import { Camera, ChevronRight, Images, StickyNote, X } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { SelectionSheet, type SelectionSheetOption } from '../../common/SelectionSheet/SelectionSheet'
-import { useCreateTransaction, usePayees } from '../../../api/transactions'
+import { useCreateTransaction } from '../../../api/transactions'
 import { uploadFilesToTransaction } from '../../../api/attachments'
-import { useCreatePayee, useNearbyPayees } from '../../../api/payees'
+import { useCreatePayee, useNearbyPayees, usePayees } from '../../../api/payees'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useCurrentPosition } from '../../../hooks/useCurrentPosition'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { toCents } from '../../../utils/money'
-import { today } from '../../../utils/dates'
+import { getCurrencySymbol, toCents } from '../../../utils/money'
+import { today, yesterday } from '../../../utils/dates'
+import { hapticTick } from '../../../utils/haptics'
 import './QuickAddSheet.css'
 
 type Direction = 'outflow' | 'inflow'
@@ -24,7 +25,8 @@ type Direction = 'outflow' | 'inflow'
  * across entries.
  */
 export function QuickAddSheet() {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, settings } = useFormatters()
+  const currencySymbol = getCurrencySymbol(settings.currencyCode).trim()
   const open = useUIStore((s) => s.quickAddOpen)
   const closeQuickAdd = useUIStore((s) => s.closeQuickAdd)
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -58,6 +60,7 @@ export function QuickAddSheet() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const libraryInputRef = useRef<HTMLInputElement>(null)
+  const amountInputRef = useRef<HTMLInputElement>(null)
 
   // Object URLs for receipt previews, revoked when files change/unmount
   const previews = useMemo(() => pendingFiles.map((f) => URL.createObjectURL(f)), [pendingFiles])
@@ -103,6 +106,17 @@ export function QuickAddSheet() {
       })),
     [nearbyPayees]
   )
+
+  // Most recently used payees — the checkout-line shortlist. Nearby (GPS) wins
+  // the top slot when available; recent covers the no-location case.
+  const recentOptions = useMemo<SelectionSheetOption[]>(() => {
+    const nearbyIds = new Set(nearbyPayees.map((p) => p.id))
+    return payees
+      .filter((p) => !p.transfer_account_id && p.last_used && !nearbyIds.has(p.id))
+      .sort((a, b) => b.last_used!.localeCompare(a.last_used!))
+      .slice(0, 6)
+      .map((p) => ({ id: p.id, label: p.name }))
+  }, [payees, nearbyPayees])
 
   const categoryOptions = useMemo<SelectionSheetOption[]>(() => {
     const groupName = new Map(categoryGroups.map((g) => [g.id, g.name]))
@@ -195,6 +209,7 @@ export function QuickAddSheet() {
       toast.success(
         `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}${categoryName ? ` · ${categoryName}` : ''}`
       )
+      hapticTick()
       if (addAnother) {
         setAmount('')
         setPayeeId(null)
@@ -203,6 +218,8 @@ export function QuickAddSheet() {
         setMemoOpen(false)
         setPendingFiles([])
         setSaving(false)
+        // Keep the keyboard up for rapid-fire entry — refocus after the reset renders
+        requestAnimationFrame(() => amountInputRef.current?.focus())
       } else {
         closeQuickAdd()
       }
@@ -241,8 +258,12 @@ export function QuickAddSheet() {
         <div className="quick-add">
           <div className="quick-add__amount-block">
             <div className={`quick-add__amount ${direction === 'outflow' ? 'quick-add__amount--out' : 'quick-add__amount--in'}`}>
-              <span className="quick-add__amount-sign">{direction === 'outflow' ? '−$' : '+$'}</span>
+              <span className="quick-add__amount-sign">
+                {direction === 'outflow' ? '−' : '+'}
+                {currencySymbol}
+              </span>
               <input
+                ref={amountInputRef}
                 type="text"
                 inputMode="decimal"
                 value={amount}
@@ -250,6 +271,7 @@ export function QuickAddSheet() {
                 placeholder="0.00"
                 autoFocus
                 aria-label="Amount"
+                style={{ width: `${Math.max(4, amount.length + 1)}ch` }}
               />
             </div>
             <div className="quick-add__direction" role="radiogroup" aria-label="Direction">
@@ -299,6 +321,20 @@ export function QuickAddSheet() {
 
             <div className="quick-add__row quick-add__row--date">
               <span className="quick-add__row-label">Date</span>
+              <div className="quick-add__date-chips" role="group" aria-label="Quick date">
+                <button
+                  className={`quick-add__date-chip ${date === today() ? 'quick-add__date-chip--active' : ''}`}
+                  onClick={() => setDate(today())}
+                >
+                  Today
+                </button>
+                <button
+                  className={`quick-add__date-chip ${date === yesterday() ? 'quick-add__date-chip--active' : ''}`}
+                  onClick={() => setDate(yesterday())}
+                >
+                  Yesterday
+                </button>
+              </div>
               <input
                 type="date"
                 value={date}
@@ -386,7 +422,10 @@ export function QuickAddSheet() {
         options={payeeOptions}
         value={payeeId}
         onChange={handlePayeePicked}
-        topSection={nearbyOptions.length > 0 ? { label: 'Nearby', options: nearbyOptions } : undefined}
+        topSection={[
+          { label: 'Nearby', options: nearbyOptions },
+          { label: 'Recent', options: recentOptions },
+        ]}
         onCreateNew={async (name) => {
           const payee = await createPayee.mutateAsync(name)
           // Mirror handlePayeePicked's memory prefill for brand-new payees

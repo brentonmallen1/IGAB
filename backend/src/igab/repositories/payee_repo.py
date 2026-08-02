@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 from rapidfuzz import fuzz
@@ -56,19 +57,32 @@ class PayeeRepository(BaseRepository[Payee]):
         )
         return [tuple(row) for row in result.all()]
 
-    async def get_all_with_counts(self, budget_id: uuid.UUID) -> list[tuple[Payee, int]]:
-        payees = await self.get_all(budget_id)
-        results = []
-        for payee in payees:
-            count_result = await self.session.execute(
-                select(func.count(Transaction.id)).where(
-                    Transaction.payee_id == payee.id,
-                    Transaction.is_deleted == False,  # noqa: E712
-                )
+    async def get_all_with_counts(
+        self, budget_id: uuid.UUID
+    ) -> list[tuple[Payee, int, datetime.date | None]]:
+        """All payees with their transaction count and most recent transaction
+        date, in a single grouped query (the count used to be an N+1 loop)."""
+        stats = (
+            select(
+                Transaction.payee_id.label("payee_id"),
+                func.count(Transaction.id).label("txn_count"),
+                func.max(Transaction.date).label("last_used"),
             )
-            count = count_result.scalar_one()
-            results.append((payee, count))
-        return results
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+            )
+            .group_by(Transaction.payee_id)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(Payee, func.coalesce(stats.c.txn_count, 0), stats.c.last_used)
+            .options(selectinload(Payee.tags))
+            .outerjoin(stats, stats.c.payee_id == Payee.id)
+            .where(Payee.budget_id == budget_id, Payee.is_deleted == False)  # noqa: E712
+            .order_by(Payee.name)
+        )
+        return [(payee, count, last_used) for payee, count, last_used in result.all()]
 
     async def find_by_name(self, budget_id: uuid.UUID, name: str) -> Payee | None:
         result = await self.session.execute(
@@ -171,10 +185,11 @@ class PayeeRepository(BaseRepository[Payee]):
         Each group contains payees that are similar to each other.
         Groups are sorted by total transaction count descending.
         """
-        payees_with_counts = await self.get_all_with_counts(budget_id)
         # Exclude transfer payees
         payees_with_counts = [
-            (p, c) for p, c in payees_with_counts if p.transfer_account_id is None
+            (p, c)
+            for p, c, _last_used in await self.get_all_with_counts(budget_id)
+            if p.transfer_account_id is None
         ]
 
         if len(payees_with_counts) < 2:

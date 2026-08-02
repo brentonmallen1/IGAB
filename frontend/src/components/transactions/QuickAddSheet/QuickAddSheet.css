@@ -27,7 +27,8 @@
 }
 
 .quick-add__amount input {
-  width: 190px;
+  /* Width tracks content via inline ch-based style; clamp so huge amounts never overflow */
+  max-width: min(70vw, 320px);
   border: none;
   outline: none;
   background: transparent;
@@ -61,6 +62,7 @@
 }
 
 .quick-add__direction-btn {
+  min-height: 44px;
   padding: 8px 20px;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
@@ -131,6 +133,35 @@
   background: transparent;
   color: var(--text-primary);
   font-size: 16px;
+}
+
+/* Chips take the middle of the date row; the native picker keeps its intrinsic width */
+.quick-add__row--date input {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.quick-add__date-chips {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.quick-add__date-chip {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.quick-add__date-chip--active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 .quick-add__add-memo {

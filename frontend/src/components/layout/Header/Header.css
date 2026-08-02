@@ -167,4 +167,12 @@
     width: 44px;
     height: 44px;
   }
+
+  /* Let the month label shrink so 320px screens don't crowd the nav buttons */
+  .header__month-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

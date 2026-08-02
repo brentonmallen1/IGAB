@@ -264,8 +264,23 @@
     line-height: 1.2;
   }
 
+  /* Keep the word — a bare red amount next to the TBA number is ambiguous */
   .tba-hero__chip-word {
-    display: none;
+    font-size: var(--font-size-xs);
+  }
+
+  .tba-hero__caret {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .tba-hero__assign-main {
+    min-height: 44px;
+  }
+
+  .tba-hero__overspent-chip {
+    min-height: 32px;
   }
 
   /* Drawer renders in a BottomSheet on mobile; remove inline chrome */
