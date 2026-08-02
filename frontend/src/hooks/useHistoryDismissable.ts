@@ -17,11 +17,23 @@ export function useHistoryDismissable(open: boolean, onClose: () => void, key: s
   const closedByPopRef = useRef(false)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  // history.back() scheduled by a cleanup, cancellable if the effect re-runs
+  // immediately (StrictMode dev remount). Without this, the fake cleanup's
+  // async back() lands after the re-run's pushState and instantly dismisses
+  // any overlay that mounts with open=true (e.g. the transaction editor).
+  const pendingBackRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!open) return
     closedByPopRef.current = false
-    window.history.pushState({ igabSheet: key } satisfies SheetHistoryState, '')
+    if (pendingBackRef.current !== null) {
+      window.clearTimeout(pendingBackRef.current)
+      pendingBackRef.current = null
+    }
+    // Re-runs (StrictMode) find our entry already on top — don't double-push
+    if ((window.history.state as SheetHistoryState | null)?.igabSheet !== key) {
+      window.history.pushState({ igabSheet: key } satisfies SheetHistoryState, '')
+    }
 
     const handlePop = (e: PopStateEvent) => {
       // Nested sheets: every open overlay hears this event. Popping lands on
@@ -36,12 +48,16 @@ export function useHistoryDismissable(open: boolean, onClose: () => void, key: s
 
     return () => {
       window.removeEventListener('popstate', handlePop)
-      // Closed via UI (backdrop, Escape, button): consume our history entry
+      // Closed via UI (backdrop, Escape, button): consume our history entry.
+      // Deferred so an immediate effect re-run can cancel it.
       if (
         !closedByPopRef.current &&
         (window.history.state as SheetHistoryState | null)?.igabSheet === key
       ) {
-        window.history.back()
+        pendingBackRef.current = window.setTimeout(() => {
+          pendingBackRef.current = null
+          window.history.back()
+        }, 0)
       }
     }
   }, [open, key])

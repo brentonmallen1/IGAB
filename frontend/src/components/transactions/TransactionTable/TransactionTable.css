@@ -147,6 +147,11 @@
   .transaction-table__header {
     display: none;
   }
+
+  /* The bottom-nav ＋ FAB is the canonical add path on mobile */
+  .transaction-table__add-btn {
+    display: none;
+  }
 }
 
 .upcoming-row {

@@ -9,6 +9,11 @@ export interface SelectionSheetOption extends ComboboxOption {
   hint?: string
 }
 
+export interface SelectionSheetSection {
+  label: string
+  options: SelectionSheetOption[]
+}
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -17,8 +22,8 @@ interface Props {
   value: string | null
   onChange: (id: string | null) => void
   onCreateNew?: (query: string) => Promise<ComboboxOption | void> | void
-  /** Pinned group rendered above the full list (e.g. "Nearby" payees) */
-  topSection?: { label: string; options: SelectionSheetOption[] }
+  /** Pinned group(s) rendered above the full list (e.g. "Nearby" / "Recent" payees) */
+  topSection?: SelectionSheetSection | SelectionSheetSection[]
   placeholder?: string
   /** Adds an explicit "None" row that selects null (e.g. "No category") */
   allowNone?: boolean
@@ -134,19 +139,35 @@ export function SelectionSheet({
             </button>
           )}
 
-          {topSection && topSection.options.length > 0 && !query && (
-            <>
-              <div className="selection-sheet__group-label">{topSection.label}</div>
-              {topSection.options.map(renderOption)}
-            </>
-          )}
+          {(() => {
+            const sections = (Array.isArray(topSection) ? topSection : topSection ? [topSection] : [])
+              .filter((s) => s.options.length > 0)
+            const showSections = !query && sections.length > 0
+            return (
+              <>
+                {showSections &&
+                  sections.map((s) => (
+                    <div key={s.label}>
+                      <div className="selection-sheet__group-label">{s.label}</div>
+                      {s.options.map(renderOption)}
+                    </div>
+                  ))}
 
-          {grouped.map(([group, opts]) => (
-            <div key={group || '__ungrouped__'}>
-              {group && <div className="selection-sheet__group-label">{group}</div>}
-              {opts.map(renderOption)}
-            </div>
-          ))}
+                {grouped.map(([group, opts]) => (
+                  <div key={group || '__ungrouped__'}>
+                    {group ? (
+                      <div className="selection-sheet__group-label">{group}</div>
+                    ) : (
+                      // Pinned sections need a divider before the ungrouped full
+                      // list, or the repeated entries read as duplicates
+                      showSections && <div className="selection-sheet__group-label">All</div>
+                    )}
+                    {opts.map(renderOption)}
+                  </div>
+                ))}
+              </>
+            )
+          })()}
 
           {filtered.length === 0 && !showCreate && (
             <div className="selection-sheet__empty">No matches</div>

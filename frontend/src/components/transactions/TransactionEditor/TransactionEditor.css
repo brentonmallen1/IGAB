@@ -434,6 +434,23 @@
     display: flex;
     align-items: center;
   }
+
+  .txn-editor__btn {
+    min-height: 44px;
+  }
+
+  .txn-editor__close {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .txn-editor__split-remove {
+    min-width: 36px;
+    min-height: 36px;
+  }
 }
 
 .txn-editor__attachments {

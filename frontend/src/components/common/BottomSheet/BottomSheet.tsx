@@ -30,6 +30,11 @@ function unlockBodyScroll() {
 const sheetStack: symbol[] = []
 
 const SWIPE_CLOSE_THRESHOLD_PX = 90
+// Matches --transition-base (200ms) with headroom; fallback in case animationend never fires
+const EXIT_FALLBACK_MS = 300
+
+const prefersReducedMotion = () =>
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
 export function BottomSheet({
   open,
@@ -45,6 +50,12 @@ export function BottomSheet({
   const panelRef = useRef<HTMLDivElement>(null)
   const dragStartYRef = useRef<number | null>(null)
   const [dragOffset, setDragOffset] = useState(0)
+  // Keeps the sheet mounted through the exit animation after `open` flips false.
+  // All other effects (scroll lock, history, escape) stay keyed to logical `open`.
+  const [closing, setClosing] = useState(false)
+  const wasOpenRef = useRef(false)
+  // Where the panel was when a swipe dismissed it, so the exit continues downward
+  const dragCloseYRef = useRef(0)
   // iOS Safari ignores interactive-widget=resizes-content; when the keyboard
   // shrinks the visual viewport, clamp the sheet so the footer stays reachable.
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
@@ -97,7 +108,22 @@ export function BottomSheet({
     if (panel && !panel.contains(document.activeElement)) panel.focus()
   }, [open])
 
-  if (!open) return null
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true
+      dragCloseYRef.current = 0
+      setClosing(false)
+      return
+    }
+    if (!wasOpenRef.current) return
+    wasOpenRef.current = false
+    if (prefersReducedMotion()) return
+    setClosing(true)
+    const t = setTimeout(() => setClosing(false), EXIT_FALLBACK_MS)
+    return () => clearTimeout(t)
+  }, [open])
+
+  if (!open && !closing) return null
 
   const handleTouchStart = (e: TouchEvent) => {
     dragStartYRef.current = e.touches[0].clientY
@@ -109,16 +135,24 @@ export function BottomSheet({
   }
   const handleTouchEnd = () => {
     if (dragOffset > SWIPE_CLOSE_THRESHOLD_PX) {
+      dragCloseYRef.current = dragOffset
       onClose()
     }
     dragStartYRef.current = null
     setDragOffset(0)
   }
 
+  const handleAnimationEnd = (e: React.AnimationEvent) => {
+    if (closing && e.animationName === 'bottom-sheet-drop') setClosing(false)
+  }
+
   const panelStyle: React.CSSProperties = {}
   if (dragOffset > 0) {
     panelStyle.transform = `translateY(${dragOffset}px)`
     panelStyle.transition = 'none'
+  }
+  if (closing && dragCloseYRef.current > 0) {
+    ;(panelStyle as Record<string, string>)['--sheet-drag-y'] = `${dragCloseYRef.current}px`
   }
   if (viewportHeight !== null) {
     panelStyle.maxHeight = `${viewportHeight - 12}px`
@@ -127,11 +161,16 @@ export function BottomSheet({
 
   return createPortal(
     <>
-      <div className="bottom-sheet-backdrop" onClick={onClose} aria-hidden />
+      <div
+        className={`bottom-sheet-backdrop ${closing ? 'bottom-sheet-backdrop--closing' : ''}`}
+        onClick={closing ? undefined : onClose}
+        aria-hidden
+      />
       <div
         ref={panelRef}
-        className={`bottom-sheet ${height === 'full' ? 'bottom-sheet--full' : ''}`}
+        className={`bottom-sheet ${height === 'full' ? 'bottom-sheet--full' : ''} ${closing ? 'bottom-sheet--closing' : ''}`}
         style={panelStyle}
+        onAnimationEnd={handleAnimationEnd}
         role="dialog"
         aria-modal="true"
         aria-label={title}

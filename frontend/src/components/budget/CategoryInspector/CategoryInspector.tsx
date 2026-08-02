@@ -64,27 +64,33 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
         </button>
       ) : (
         <>
-          <div className="category-inspector__header">
-            <button
-              className="category-inspector__collapse-btn"
-              onClick={() => setCategoryInspectorOpen(false)}
-              title="Collapse inspector"
-              aria-label="Collapse category inspector"
-            >
-              <ChevronRight size={14} />
-            </button>
-            <span className="category-inspector__title" title={headerTitle}>{headerTitle}</span>
-            {count > 0 && (
+          {/* Inside the mobile sheet the BottomSheet owns title + dismissal —
+              a second header with its own X would leave the sheet's history
+              entry dangling (clearCategorySelection alone collapses the sheet
+              without unwinding useHistoryDismissable). */}
+          {!forceOpen && (
+            <div className="category-inspector__header">
               <button
-                className="category-inspector__close-btn"
-                onClick={clearCategorySelection}
-                title="Clear selection"
-                aria-label="Clear category selection"
+                className="category-inspector__collapse-btn"
+                onClick={() => setCategoryInspectorOpen(false)}
+                title="Collapse inspector"
+                aria-label="Collapse category inspector"
               >
-                <X size={14} />
+                <ChevronRight size={14} />
               </button>
-            )}
-          </div>
+              <span className="category-inspector__title" title={headerTitle}>{headerTitle}</span>
+              {count > 0 && (
+                <button
+                  className="category-inspector__close-btn"
+                  onClick={clearCategorySelection}
+                  title="Clear selection"
+                  aria-label="Clear category selection"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="category-inspector__body">
             {count === 0 ? (

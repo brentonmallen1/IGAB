@@ -352,6 +352,17 @@ export const TransactionRow = memo(function TransactionRow({
             <Paperclip size={12} />
           </span>
         )}
+        {/* Mobile card hides the cleared column; surface non-default states read-only */}
+        {isMobile && txn.cleared === 'cleared' && (
+          <span className="txn-status-icon txn-status-icon--cleared" title="Cleared">
+            <CheckCircle size={12} />
+          </span>
+        )}
+        {isMobile && isReconciled && (
+          <span className="txn-status-icon txn-status-icon--reconciled" title="Reconciled">
+            <Lock size={12} />
+          </span>
+        )}
         {approveMenuOpen && (
           <ContextMenu
             items={APPROVE_MENU_ITEMS}
