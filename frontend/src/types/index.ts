@@ -259,6 +259,7 @@ export type AssignStrategy =
   | 'last_month_spent'
   | 'average_assigned'
   | 'average_spent'
+  | 'reduce_overfunded'
   | 'reset_available'
   | 'reset_assigned'
 

@@ -3,7 +3,9 @@ import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useCreateTransaction, useDeleteTransaction } from '../../../api/transactions'
 import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { fromCents, sumToCents, toCents } from '../../../utils/money'
+import { fromCents, toCents } from '../../../utils/money'
+import { expressionToCents, sumExpressionsToCents } from '../../../utils/amountExpression'
+import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import type { Category, CategoryGroup, Transaction } from '../../../types'
 import './SplitTransactionEditor.css'
@@ -25,13 +27,13 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
 
   const { totalAmount, splits } = splitEditing
   // Integer-cents math: float sums would reject valid splits (0.10 problems)
-  const assignedCents = sumToCents(splits.map((s) => s.amount))
+  const assignedCents = sumExpressionsToCents(splits.map((s) => s.amount))
   const remainingCents = Math.abs(toCents(totalAmount)) - assignedCents
   const remaining = fromCents(remainingCents)
   const isValid =
     remainingCents === 0 &&
     splits.every((s) => {
-      const cents = toCents(s.amount)
+      const cents = expressionToCents(s.amount)
       return s.categoryId && !isNaN(cents) && cents > 0
     })
 
@@ -53,7 +55,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
       memo: txn.memo ?? undefined,
       cleared: txn.cleared === 'reconciled' || txn.cleared === 'pending' ? 'cleared' : txn.cleared,
       splits: splits.map((s) => ({
-        amount: parseFloat(s.amount) * sign,
+        amount: (expressionToCents(s.amount) / 100) * sign,
         category_id: s.categoryId ?? undefined,
         memo: s.memo || undefined,
       })),
@@ -87,13 +89,10 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
               />
             </div>
 
-            <input
+            <AmountInput
               className="split-editor__amount"
-              type="number"
-              min="0"
-              step="0.01"
               value={split.amount}
-              onChange={(e) => updateSplit(split.tempId, { amount: e.target.value })}
+              onValueChange={(v) => updateSplit(split.tempId, { amount: v })}
               placeholder="0.00"
             />
 

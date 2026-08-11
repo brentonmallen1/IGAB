@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, Moon, Palette, Search, Sun } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, EyeOff, Moon, Palette, Search, Sun } from 'lucide-react'
 import { useAppStore, PALETTES, getPaletteForTheme, isLightTheme } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -13,6 +13,8 @@ export function Header() {
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
+  const privacyMode = useAppStore((s) => s.privacyMode)
+  const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const openPalette = useUIStore((s) => s.openPalette)
   const { formatMonth } = useFormatters()
   const [themeOpen, setThemeOpen] = useState(false)
@@ -73,6 +75,16 @@ export function Header() {
           <kbd className="kbd">{IS_MAC ? '⌘' : 'Ctrl+'}K</kbd>
         </button>
       </div>
+
+      <button
+        className={`header__privacy-btn ${privacyMode ? 'header__privacy-btn--active' : ''}`}
+        onClick={togglePrivacyMode}
+        aria-pressed={privacyMode}
+        aria-label={privacyMode ? 'Show amounts' : 'Hide amounts (privacy mode)'}
+        title={privacyMode ? 'Show amounts' : 'Hide amounts (privacy mode)'}
+      >
+        {privacyMode ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
 
       <div className="header__theme-picker" ref={themeRef}>
         <button

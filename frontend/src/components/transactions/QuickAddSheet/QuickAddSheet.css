@@ -54,6 +54,34 @@
   color: var(--color-positive);
 }
 
+.quick-add__calc-row {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.quick-add__calc-btn {
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0 var(--spacing-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-md);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.quick-add__calc-btn:active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.quick-add__calc-btn--eq {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 .quick-add__direction {
   display: flex;
   border: 1px solid var(--border-color);

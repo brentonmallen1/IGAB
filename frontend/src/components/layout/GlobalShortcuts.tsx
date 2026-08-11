@@ -9,6 +9,7 @@ import { addMonths, currentMonthStart } from '../../utils/dates'
 export function GlobalShortcuts() {
   const selectedMonth = useAppStore((s) => s.selectedMonth)
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
+  const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const [helpOpen, setHelpOpen] = useState(false)
 
   useShortcut(SHORTCUTS.help.combo, () => setHelpOpen((o) => !o))
@@ -16,6 +17,7 @@ export function GlobalShortcuts() {
   useShortcut(SHORTCUTS.monthPrev.combo, () => setSelectedMonth(addMonths(selectedMonth, -1)))
   useShortcut(SHORTCUTS.monthNext.combo, () => setSelectedMonth(addMonths(selectedMonth, 1)))
   useShortcut(SHORTCUTS.monthToday.combo, () => setSelectedMonth(currentMonthStart()))
+  useShortcut(SHORTCUTS.privacy.combo, togglePrivacyMode)
 
   if (!helpOpen) return null
   return <ShortcutHelp onClose={() => setHelpOpen(false)} />

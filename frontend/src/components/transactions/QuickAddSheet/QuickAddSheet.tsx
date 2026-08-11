@@ -16,7 +16,14 @@ import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useCurrentPosition } from '../../../hooks/useCurrentPosition'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { getCurrencySymbol, toCents } from '../../../utils/money'
+import { getCurrencySymbol } from '../../../utils/money'
+import {
+  centsToInputString,
+  evaluateExpressionCents,
+  expressionToCents,
+  isAmountExpression,
+} from '../../../utils/amountExpression'
+import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today, yesterday } from '../../../utils/dates'
 import { hapticTick } from '../../../utils/haptics'
 import './QuickAddSheet.css'
@@ -204,7 +211,8 @@ export function QuickAddSheet() {
     }
   }
 
-  const cents = toCents(amount)
+  // Expression-aware: "12.50+3.99" is valid the moment it's typed, no "=" needed
+  const cents = expressionToCents(amount)
   const amountValid = !isNaN(cents) && cents > 0
   const canSave = amountValid && !!accountId && !saving
 
@@ -302,17 +310,45 @@ export function QuickAddSheet() {
                 {direction === 'outflow' ? '−' : '+'}
                 {currencySymbol}
               </span>
-              <input
+              <AmountInput
                 ref={amountInputRef}
-                type="text"
-                inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onValueChange={setAmount}
                 placeholder="0.00"
                 autoFocus
                 aria-label="Amount"
                 style={{ width: `${Math.max(4, amount.length + 1)}ch` }}
               />
+            </div>
+            {/* The mobile decimal keypad has no operator keys — these chips
+                make receipt-summing ("12.50+3.99") possible on the phone.
+                onMouseDown is prevented so tapping never dismisses the keyboard. */}
+            <div className="quick-add__calc-row" role="group" aria-label="Calculator">
+              {(['+', '-', '*', '/'] as const).map((op) => (
+                <button
+                  key={op}
+                  type="button"
+                  className="quick-add__calc-btn"
+                  aria-label={`Operator ${op}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setAmount((prev) => prev + op)}
+                >
+                  {op === '*' ? '×' : op === '/' ? '÷' : op === '-' ? '−' : op}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="quick-add__calc-btn quick-add__calc-btn--eq"
+                aria-label="Evaluate"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (!isAmountExpression(amount)) return
+                  const evaluated = evaluateExpressionCents(amount)
+                  if (evaluated !== null && evaluated >= 0) setAmount(centsToInputString(evaluated))
+                }}
+              >
+                =
+              </button>
             </div>
             <div className="quick-add__direction" role="radiogroup" aria-label="Direction">
               <button

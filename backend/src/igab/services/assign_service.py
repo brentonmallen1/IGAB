@@ -37,7 +37,13 @@ HISTORY_STRATEGIES = (
     "average_assigned",
     "average_spent",
 )
-ASSIGN_STRATEGIES = ("underfunded", *HISTORY_STRATEGIES, "reset_available", "reset_assigned")
+ASSIGN_STRATEGIES = (
+    "underfunded",
+    *HISTORY_STRATEGIES,
+    "reduce_overfunded",
+    "reset_available",
+    "reset_assigned",
+)
 
 ZERO = Decimal("0")
 
@@ -47,6 +53,7 @@ def strategy_new_assigned(
     current_assigned: Decimal,
     available: Decimal,
     history: CategoryHistory,
+    target: CategoryTarget | None = None,
 ) -> Decimal | None:
     """Target assigned value for one category under a bulk strategy.
 
@@ -63,6 +70,14 @@ def strategy_new_assigned(
         return history.average_assigned
     if strategy == "average_spent":
         return history.average_spent
+    if strategy == "reduce_overfunded":
+        # Mirror of "underfunded": categories assigned beyond their target
+        # come back down to it and the excess returns to TBA. Uses the same
+        # definition as the overfunded quick filter (assigned > target
+        # amount), so the filter's rows are exactly what this strategy moves.
+        if target is not None and current_assigned > target.target_amount:
+            return target.target_amount
+        return None
     if strategy == "reset_available":
         # Only positive available returns to TBA; overspent categories are
         # Cover Overspending's job. Assigned may legitimately go negative.
@@ -215,7 +230,9 @@ class AssignService:
                 bal = ctx.balances.get(cat.id)
                 current = bal.assigned if bal else ZERO
                 available = bal.available if bal else ZERO
-                new = strategy_new_assigned(strategy, current, available, ctx.histories[cat.id])
+                new = strategy_new_assigned(
+                    strategy, current, available, ctx.histories[cat.id], ctx.targets.get(cat.id)
+                )
                 if new is None or new == current:
                     continue
                 items.append(

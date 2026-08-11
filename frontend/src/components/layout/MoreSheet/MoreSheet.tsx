@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles } from 'lucide-react'
+import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles, Eye, EyeOff } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { THEMES } from '../../../stores/appStore'
 import { useAIStatus } from '../../../api/ai'
@@ -15,6 +15,8 @@ export function MoreSheet() {
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
+  const privacyMode = useAppStore((s) => s.privacyMode)
+  const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const navigate = useNavigate()
   const logout = useLogout()
   const aiAvailable = useAIStatus().data?.available === true
@@ -52,6 +54,10 @@ export function MoreSheet() {
         <button className="more-sheet__item" onClick={() => go('/settings')}>
           <Settings size={18} />
           <span>Settings</span>
+        </button>
+        <button className="more-sheet__item" onClick={togglePrivacyMode} aria-pressed={privacyMode}>
+          {privacyMode ? <EyeOff size={18} /> : <Eye size={18} />}
+          <span>{privacyMode ? 'Show amounts' : 'Hide amounts'}</span>
         </button>
         <button
           className="more-sheet__item"

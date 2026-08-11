@@ -22,7 +22,13 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { today } from '../../../utils/dates'
-import { fromCents, parseAmountInput, sumToCents, toCents } from '../../../utils/money'
+import { fromCents, toCents } from '../../../utils/money'
+import {
+  expressionToCents,
+  parseAmountExpressionInput,
+  sumExpressionsToCents,
+} from '../../../utils/amountExpression'
+import { AmountInput } from '../../common/AmountInput/AmountInput'
 import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import './TransactionEditor.css'
@@ -233,16 +239,16 @@ export function TransactionEditor({
     setShowPayeeDropdown(true)
   }
 
-  function handleOutflowChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const v = e.target.value.replace(/[^0-9.,]/g, '')
-    setOutflow(v)
-    if (v) setInflow('')
+  function handleOutflowChange(v: string) {
+    const cleaned = v.replace(/[^0-9.,+\-*/() ]/g, '')
+    setOutflow(cleaned)
+    if (cleaned) setInflow('')
   }
 
-  function handleInflowChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const v = e.target.value.replace(/[^0-9.,]/g, '')
-    setInflow(v)
-    if (v) setOutflow('')
+  function handleInflowChange(v: string) {
+    const cleaned = v.replace(/[^0-9.,+\-*/() ]/g, '')
+    setInflow(cleaned)
+    if (cleaned) setOutflow('')
   }
 
   // AI-suggested split from receipt line items — offered, never auto-applied.
@@ -283,8 +289,8 @@ export function TransactionEditor({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!accountId) return
-    const outflowVal = parseAmountInput(outflow) || 0
-    const inflowVal = parseAmountInput(inflow) || 0
+    const outflowVal = parseAmountExpressionInput(outflow) || 0
+    const inflowVal = parseAmountExpressionInput(inflow) || 0
     const amount = outflowVal > 0 ? -outflowVal : inflowVal
     const sign = amount < 0 ? -1 : 1
 
@@ -302,7 +308,7 @@ export function TransactionEditor({
 
     if (isSplit && !isTransfer) {
       const splitList = splits.map((s) => ({
-        amount: parseFloat(s.amount) * sign,
+        amount: (expressionToCents(s.amount) / 100) * sign,
         category_id: s.categoryId ?? undefined,
         memo: s.memo || undefined,
       }))
@@ -402,8 +408,8 @@ export function TransactionEditor({
     createTxn.isPending || updateTxn.isPending || deleteTxn.isPending || convertToSplit.isPending
 
   const similarAmount = useMemo(() => {
-    const o = parseAmountInput(outflow)
-    const i = parseAmountInput(inflow)
+    const o = parseAmountExpressionInput(outflow)
+    const i = parseAmountExpressionInput(inflow)
     if (o > 0) return -o
     if (i > 0) return i
     return null
@@ -419,12 +425,12 @@ export function TransactionEditor({
   const splitIsValid = (() => {
     if (!isSplit) return true
     // Integer-cents comparison — float sums reject valid splits (0.10 issues)
-    const totalCents = Math.abs(toCents(parseAmountInput(outflow || inflow) || 0)) || 0
-    const splitCents = sumToCents(splits.map((s) => s.amount))
+    const totalCents = Math.abs(toCents(parseAmountExpressionInput(outflow || inflow) || 0)) || 0
+    const splitCents = sumExpressionsToCents(splits.map((s) => s.amount))
     return (
       splitCents === totalCents &&
       splits.every((s) => {
-        const cents = toCents(s.amount)
+        const cents = expressionToCents(s.amount)
         return s.categoryId && !isNaN(cents) && cents > 0
       })
     )
@@ -692,13 +698,10 @@ export function TransactionEditor({
                         </optgroup>
                       ))}
                     </select>
-                    <input
+                    <AmountInput
                       className="txn-editor__input txn-editor__split-amount"
-                      type="number"
-                      min="0"
-                      step="0.01"
                       value={s.amount}
-                      onChange={(e) => updateSplit(s.tempId, { amount: e.target.value })}
+                      onValueChange={(v) => updateSplit(s.tempId, { amount: v })}
                       placeholder="0.00"
                     />
                     <button
@@ -718,8 +721,9 @@ export function TransactionEditor({
                     <Plus size={12} /> Add split
                   </button>
                   {(() => {
-                    const splitCents = sumToCents(splits.map((s) => s.amount))
-                    const totalCents = Math.abs(toCents(outflow || inflow || '0')) || 0
+                    const splitCents = sumExpressionsToCents(splits.map((s) => s.amount))
+                    const totalCents =
+                      Math.abs(toCents(parseAmountExpressionInput(outflow || inflow) || 0)) || 0
                     const remainingCents = totalCents - splitCents
                     return (
                       <span className={`txn-editor__split-remaining ${remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}>
@@ -749,8 +753,8 @@ export function TransactionEditor({
                   title="AI suggest category"
                   disabled={suggestCategory.isPending}
                   onClick={async () => {
-                    const outflowVal = parseFloat(outflow) || 0
-                    const inflowVal = parseFloat(inflow) || 0
+                    const outflowVal = parseAmountExpressionInput(outflow) || 0
+                    const inflowVal = parseAmountExpressionInput(inflow) || 0
                     const amount = outflowVal > 0 ? -outflowVal : inflowVal
                     const result = await suggestCategory.mutateAsync({
                       payee_name: payeeQuery || 'Unknown',
@@ -797,23 +801,19 @@ export function TransactionEditor({
           <div className="txn-editor__row">
             <div className="txn-editor__field">
               <label className="txn-editor__label">Outflow</label>
-              <input
-                type="text"
-                inputMode="decimal"
+              <AmountInput
                 className="txn-editor__input"
                 value={outflow}
-                onChange={handleOutflowChange}
+                onValueChange={handleOutflowChange}
                 placeholder="0.00"
               />
             </div>
             <div className="txn-editor__field">
               <label className="txn-editor__label">Inflow</label>
-              <input
-                type="text"
-                inputMode="decimal"
+              <AmountInput
                 className="txn-editor__input"
                 value={inflow}
-                onChange={handleInflowChange}
+                onValueChange={handleInflowChange}
                 placeholder="0.00"
               />
             </div>
