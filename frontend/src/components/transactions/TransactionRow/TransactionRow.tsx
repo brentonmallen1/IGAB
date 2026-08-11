@@ -11,6 +11,7 @@ import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useHistoryStore } from '../../../stores/historyStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
+import { parseAmountExpressionInput } from '../../../utils/amountExpression'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
@@ -185,7 +186,7 @@ export const TransactionRow = memo(function TransactionRow({
   }
 
   function commitAmount(raw: string, sign: 1 | -1) {
-    const num = parseFloat(raw.replace(/[^0-9.]/g, ''))
+    const num = parseAmountExpressionInput(raw)
     if (!isNaN(num) && num !== 0) {
       useHistoryStore.getState().push({
         transactionId: txn.id,

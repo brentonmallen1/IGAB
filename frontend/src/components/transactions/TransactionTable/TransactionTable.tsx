@@ -21,6 +21,7 @@ import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
 import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
 import { TransactionSearch } from '../TransactionSearch/TransactionSearch'
+import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
@@ -758,6 +759,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           Add Transaction
         </button>
       </div>
+
+      <SearchFilterChips
+        query={transactionSearchQuery}
+        accountMapSize={allAccounts ? accountMap.size : 0}
+        onChange={setTransactionSearch}
+      />
 
       {nlEntryOpen && (
         <NLQuickEntry

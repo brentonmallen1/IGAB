@@ -34,12 +34,24 @@ class TransactionRepository(BaseRepository[Transaction]):
         amount_min: float | None = None,
         amount_max: float | None = None,
         has_attachment: bool | None = None,
+        direction: str | None = None,
+        is_transfer: bool | None = None,
     ) -> list[Transaction]:
         q = select(Transaction).where(
             Transaction.account_id == account_id,
             Transaction.is_deleted == False,  # noqa: E712
             Transaction.parent_transaction_id.is_(None),
         )
+        if direction == "outflow":
+            q = q.where(Transaction.amount < 0)
+        elif direction == "inflow":
+            q = q.where(Transaction.amount > 0)
+        if is_transfer is not None:
+            q = q.where(
+                Transaction.transfer_id.is_not(None)
+                if is_transfer
+                else Transaction.transfer_id.is_(None)
+            )
         if search:
             q = q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             pattern = f"%{search}%"
@@ -125,6 +137,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         amount_min: float | None = None,
         amount_max: float | None = None,
         has_attachment: bool | None = None,
+        is_transfer: bool | None = None,
         order: str = "date",
         limit: int = 200,
         offset: int = 0,
@@ -150,6 +163,12 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(Transaction.amount < 0)
         elif direction == "inflow":
             where.append(Transaction.amount > 0)
+        if is_transfer is not None:
+            where.append(
+                Transaction.transfer_id.is_not(None)
+                if is_transfer
+                else Transaction.transfer_id.is_(None)
+            )
         if start_date:
             where.append(Transaction.date >= start_date)
         if end_date:

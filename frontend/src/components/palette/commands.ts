@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   ArrowRightLeft,
   BarChart3,
+  EyeOff,
   CalendarClock,
   CalendarDays,
   ChevronLeft,
@@ -28,6 +29,7 @@ export interface CommandCtx {
   openTbaDrawer: () => void
   /** 1 = next month, -1 = previous, 0 = jump to current */
   goMonth: (delta: 1 | -1 | 0) => void
+  togglePrivacy: () => void
 }
 
 export interface AppCommand {
@@ -173,6 +175,14 @@ export const STATIC_COMMANDS: AppCommand[] = [
   },
 
   // ── Tools ──
+  {
+    id: 'tool-privacy',
+    label: 'Toggle privacy mode',
+    section: 'Tools',
+    keywords: 'mask hide amounts blur screen share',
+    icon: EyeOff,
+    run: (c) => c.togglePrivacy(),
+  },
   {
     id: 'tool-integrity',
     label: 'Run integrity check',

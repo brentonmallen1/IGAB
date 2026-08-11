@@ -13,7 +13,9 @@ import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { TransactionEditor } from '../../transactions/TransactionEditor/TransactionEditor'
 import { CategoryTransactionsModal } from '../CategoryTransactionsModal/CategoryTransactionsModal'
-import { parseMoney } from '../../../utils/money'
+import { toCents } from '../../../utils/money'
+import { parseAssignmentInput } from '../../../utils/amountExpression'
+import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Category, CategoryBalance } from '../../../types'
@@ -70,7 +72,8 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   }, [assigned])
 
   const handleCommit = useCallback(() => {
-    const amount = editValue.trim() === '' ? 0 : parseMoney(editValue)
+    // Expression-aware: "+50" / "*2" adjust the current assignment
+    const amount = editValue.trim() === '' ? 0 : parseAssignmentInput(editValue, assigned)
     if (isNaN(amount)) {
       // Unparseable input must never silently write $0 into the budget
       setIsEditing(false)
@@ -78,7 +81,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
     }
     setAssignment.mutate({ categoryId: category.id, month, amount })
     setIsEditing(false)
-  }, [editValue, category.id, month, setAssignment])
+  }, [editValue, assigned, category.id, month, setAssignment])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -327,16 +330,15 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
         <div className="category-row__assigned">
           {isEditing ? (
-            <input
+            <AmountInput
               ref={inputRef}
               className="category-row__input"
-              type="text"
               value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
+              onValueChange={setEditValue}
+              baseCents={toCents(assigned)}
               onBlur={handleCommit}
               onKeyDown={handleKeyDown}
               placeholder="0.00"
-              inputMode="decimal"
             />
           ) : (
             <button

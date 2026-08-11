@@ -1,19 +1,28 @@
 import { useCallback } from 'react'
+import { useAppStore } from '../stores/appStore'
 import { useFormatSettings } from '../contexts/FormatContext'
-import { formatMoneyWithOptions, formatAmountWithOptions } from '../utils/money'
+import { formatMoneyWithOptions, formatAmountWithOptions, getCurrencySymbol } from '../utils/money'
 import { formatDateWithOptions, formatMonthWithOptions, formatTimeWithOptions } from '../utils/dates'
+
+/** Privacy-mode mask: sign and digits hidden, so overspending can't be inferred. */
+const MASK = '••••'
 
 export function useFormatters() {
   const settings = useFormatSettings()
+  const privacyMode = useAppStore((s) => s.privacyMode)
 
   const formatMoney = useCallback(
-    (amount: number) => formatMoneyWithOptions(amount, settings.currencyCode, settings.numberFormat),
-    [settings.currencyCode, settings.numberFormat]
+    (amount: number) =>
+      privacyMode
+        ? `${getCurrencySymbol(settings.currencyCode)}${MASK}`
+        : formatMoneyWithOptions(amount, settings.currencyCode, settings.numberFormat),
+    [privacyMode, settings.currencyCode, settings.numberFormat]
   )
 
   const formatAmount = useCallback(
-    (amount: number) => formatAmountWithOptions(amount, settings.numberFormat),
-    [settings.numberFormat]
+    (amount: number) =>
+      privacyMode ? MASK : formatAmountWithOptions(amount, settings.numberFormat),
+    [privacyMode, settings.numberFormat]
   )
 
   const formatDate = useCallback(
@@ -31,5 +40,5 @@ export function useFormatters() {
     [settings.timeFormat]
   )
 
-  return { formatMoney, formatAmount, formatDate, formatMonth, formatTime, settings }
+  return { formatMoney, formatAmount, formatDate, formatMonth, formatTime, settings, privacyMode }
 }

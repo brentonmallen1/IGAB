@@ -85,6 +85,8 @@ async def list_account_transactions(
     amount_min: float | None = None,
     amount_max: float | None = None,
     has_attachment: bool | None = None,
+    direction: Literal["inflow", "outflow"] | None = None,
+    is_transfer: bool | None = None,
 ) -> list[TransactionResponse]:
     parsed_cat_ids = [uuid.UUID(x) for x in category_ids.split(",") if x] if category_ids else None
     parsed_pay_ids = [uuid.UUID(x) for x in payee_ids.split(",") if x] if payee_ids else None
@@ -105,6 +107,8 @@ async def list_account_transactions(
         amount_min=amount_min,
         amount_max=amount_max,
         has_attachment=has_attachment,
+        direction=direction,
+        is_transfer=is_transfer,
     )
     return [TransactionResponse.model_validate(t) for t in txns]
 
@@ -133,6 +137,7 @@ async def list_budget_transactions(
     amount_min: float | None = None,
     amount_max: float | None = None,
     has_attachment: bool | None = None,
+    is_transfer: bool | None = None,
     order: Literal["date", "register"] = "date",
     limit: int = Query(200, le=5000),
     offset: int = 0,
@@ -168,6 +173,7 @@ async def list_budget_transactions(
         amount_min=amount_min,
         amount_max=amount_max,
         has_attachment=has_attachment,
+        is_transfer=is_transfer,
         order=order,
         limit=limit,
         offset=offset,
