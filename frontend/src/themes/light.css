@@ -37,6 +37,11 @@
   --card-bg: #ffffff;
   --card-border: #e2e6f0;
 
+  /* Sidebar text — sidebar stays dark (#1a1d27) in light theme */
+  --sidebar-text-primary: #e8eaf0;
+  --sidebar-text-secondary: #b0b5c4;
+  --sidebar-text-muted: #7d8494;
+
   /* Tag color slots */
   --tag-red: #dc2626;
   --tag-orange: #ea580c;

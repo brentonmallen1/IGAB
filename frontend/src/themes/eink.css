@@ -1,0 +1,143 @@
+/* E-Ink Dark — inverted color e-ink, washed-out primaries */
+[data-theme="eink-dark"] {
+  --bg-primary: #0c0c0c;
+  --bg-secondary: #161616;
+  --bg-tertiary: #202020;
+  --bg-elevated: #2a2a2a;
+  --bg-hover: #202020;
+
+  --text-primary: #e8e8e8;
+  --text-secondary: #b0b0b0;
+  --text-muted: #686868;
+  --text-inverse: #0c0c0c;
+
+  --color-accent: #7090a8;
+  --color-accent-hover: #88a8c0;
+  --accent-color: var(--color-accent);
+  --color-positive: #709878;
+  --color-negative: #a87070;
+  --color-warning: #a89868;
+  --color-info: #7090a8;
+
+  --border-color: #383838;
+  --border-subtle: #161616;
+  --input-bg: #161616;
+  --input-border: #484848;
+  --input-focus-ring: #7090a8;
+
+  --row-hover-bg: rgba(112, 144, 168, 0.08);
+  --row-selected-bg: rgba(112, 144, 168, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  --sidebar-bg: #080808;
+  --header-bg: #080808;
+  --card-bg: #161616;
+  --card-border: #383838;
+
+  --sidebar-text-primary: #e8e8e8;
+  --sidebar-text-secondary: #b0b0b0;
+  --sidebar-text-muted: #686868;
+
+  --tag-red: #a87070;
+  --tag-orange: #a88868;
+  --tag-yellow: #a89868;
+  --tag-green: #709878;
+  --tag-teal: #709890;
+  --tag-blue: #7090a8;
+  --tag-purple: #907090;
+  --tag-pink: #a07888;
+
+  --chart-1: #7090a8;
+  --chart-2: #a89868;
+  --chart-3: #709878;
+  --chart-4: #a87070;
+  --chart-5: #907090;
+  --chart-6: #709890;
+  --chart-7: #a07888;
+  --chart-8: #a88868;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* E-Ink Light — color e-ink paper, washed-out primaries */
+[data-theme="eink-light"] {
+  --bg-primary: #f4f4f2;
+  --bg-secondary: #fafaf8;
+  --bg-tertiary: #ececea;
+  --bg-elevated: #fafaf8;
+  --bg-hover: #f0f0ee;
+
+  --text-primary: #141414;
+  --text-secondary: #3c3c3c;
+  --text-muted: #6c6c6c;
+  --text-inverse: #fafaf8;
+
+  --color-accent: #486878;
+  --color-accent-hover: #385868;
+  --accent-color: var(--color-accent);
+  --color-positive: #4a7050;
+  --color-negative: #804848;
+  --color-warning: #806840;
+  --color-info: #486878;
+
+  --border-color: #c8c8c6;
+  --border-subtle: #e0e0de;
+  --input-bg: #fafaf8;
+  --input-border: #b0b0ae;
+  --input-focus-ring: #486878;
+
+  --row-hover-bg: rgba(72, 104, 120, 0.06);
+  --row-selected-bg: rgba(72, 104, 120, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(20, 20, 20, 0.08);
+  --shadow-md: 0 4px 12px rgba(20, 20, 20, 0.12);
+  --shadow-lg: 0 8px 24px rgba(20, 20, 20, 0.16);
+
+  --sidebar-bg: #141414;
+  --header-bg: #fafaf8;
+  --card-bg: #fafaf8;
+  --card-border: #c8c8c6;
+
+  --sidebar-text-primary: #e8e8e8;
+  --sidebar-text-secondary: #b0b0b0;
+  --sidebar-text-muted: #686868;
+
+  --tag-red: #804848;
+  --tag-orange: #805838;
+  --tag-yellow: #806840;
+  --tag-green: #4a7050;
+  --tag-teal: #487068;
+  --tag-blue: #486878;
+  --tag-purple: #685068;
+  --tag-pink: #785060;
+
+  --chart-1: #486878;
+  --chart-2: #806840;
+  --chart-3: #4a7050;
+  --chart-4: #804848;
+  --chart-5: #685068;
+  --chart-6: #487068;
+  --chart-7: #785060;
+  --chart-8: #805838;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}

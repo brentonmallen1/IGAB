@@ -1,0 +1,143 @@
+/* Vapor Dark — soft vaporwave, hazy pink/purple/cyan */
+[data-theme="vapor-dark"] {
+  --bg-primary: #1a1822;
+  --bg-secondary: #22202c;
+  --bg-tertiary: #2a2838;
+  --bg-elevated: #343244;
+  --bg-hover: #2a2838;
+
+  --text-primary: #e8e4f0;
+  --text-secondary: #b8b0c8;
+  --text-muted: #7870888;
+  --text-inverse: #1a1822;
+
+  --color-accent: #c8a0c8;
+  --color-accent-hover: #d8b8d8;
+  --accent-color: var(--color-accent);
+  --color-positive: #90c8c0;
+  --color-negative: #d89090;
+  --color-warning: #d8c090;
+  --color-info: #90a8d8;
+
+  --border-color: #343244;
+  --border-subtle: #22202c;
+  --input-bg: #22202c;
+  --input-border: #444058;
+  --input-focus-ring: #c8a0c8;
+
+  --row-hover-bg: rgba(200, 160, 200, 0.08);
+  --row-selected-bg: rgba(200, 160, 200, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  --sidebar-bg: #14121c;
+  --header-bg: #14121c;
+  --card-bg: #22202c;
+  --card-border: #343244;
+
+  --sidebar-text-primary: #e8e4f0;
+  --sidebar-text-secondary: #b8b0c8;
+  --sidebar-text-muted: #787088;
+
+  --tag-red: #d89090;
+  --tag-orange: #d8b090;
+  --tag-yellow: #d8c090;
+  --tag-green: #90c8c0;
+  --tag-teal: #90d0d0;
+  --tag-blue: #90a8d8;
+  --tag-purple: #c8a0c8;
+  --tag-pink: #d8a0b8;
+
+  --chart-1: #90a8d8;
+  --chart-2: #d8c090;
+  --chart-3: #90c8c0;
+  --chart-4: #d8a0b8;
+  --chart-5: #c8a0c8;
+  --chart-6: #90d0d0;
+  --chart-7: #d89090;
+  --chart-8: #d8b090;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* Vapor Light — soft pastels, dreamy */
+[data-theme="vapor-light"] {
+  --bg-primary: #f8f6fc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0eef8;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f4f2fa;
+
+  --text-primary: #2a2838;
+  --text-secondary: #4a4860;
+  --text-muted: #8a88a0;
+  --text-inverse: #ffffff;
+
+  --color-accent: #a080a0;
+  --color-accent-hover: #886888;
+  --accent-color: var(--color-accent);
+  --color-positive: #609890;
+  --color-negative: #b07070;
+  --color-warning: #b09860;
+  --color-info: #6080b0;
+
+  --border-color: #e0dce8;
+  --border-subtle: #f0eef8;
+  --input-bg: #ffffff;
+  --input-border: #d0cce0;
+  --input-focus-ring: #a080a0;
+
+  --row-hover-bg: rgba(160, 128, 160, 0.06);
+  --row-selected-bg: rgba(160, 128, 160, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(42, 40, 56, 0.1);
+  --shadow-md: 0 4px 12px rgba(42, 40, 56, 0.15);
+  --shadow-lg: 0 8px 24px rgba(42, 40, 56, 0.2);
+
+  --sidebar-bg: #1a1822;
+  --header-bg: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: #e0dce8;
+
+  --sidebar-text-primary: #e8e4f0;
+  --sidebar-text-secondary: #b8b0c8;
+  --sidebar-text-muted: #787088;
+
+  --tag-red: #b07070;
+  --tag-orange: #b09070;
+  --tag-yellow: #b09860;
+  --tag-green: #609890;
+  --tag-teal: #50a0a0;
+  --tag-blue: #6080b0;
+  --tag-purple: #a080a0;
+  --tag-pink: #b08090;
+
+  --chart-1: #6080b0;
+  --chart-2: #b09860;
+  --chart-3: #609890;
+  --chart-4: #b08090;
+  --chart-5: #a080a0;
+  --chart-6: #50a0a0;
+  --chart-7: #b07070;
+  --chart-8: #b09070;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}

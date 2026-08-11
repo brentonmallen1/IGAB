@@ -1,0 +1,143 @@
+/* Cozy Dark — warm lamp-light, coffee shop at night */
+[data-theme="cozy-dark"] {
+  --bg-primary: #1c1816;
+  --bg-secondary: #252220;
+  --bg-tertiary: #2e2a28;
+  --bg-elevated: #383432;
+  --bg-hover: #2e2a28;
+
+  --text-primary: #e8dcd0;
+  --text-secondary: #c0b0a0;
+  --text-muted: #887868;
+  --text-inverse: #1c1816;
+
+  --color-accent: #d4a574;
+  --color-accent-hover: #e0b888;
+  --accent-color: var(--color-accent);
+  --color-positive: #8fac7a;
+  --color-negative: #c87060;
+  --color-warning: #d4a574;
+  --color-info: #7a9cb8;
+
+  --border-color: #383432;
+  --border-subtle: #252220;
+  --input-bg: #252220;
+  --input-border: #484038;
+  --input-focus-ring: #d4a574;
+
+  --row-hover-bg: rgba(212, 165, 116, 0.08);
+  --row-selected-bg: rgba(212, 165, 116, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  --sidebar-bg: #161412;
+  --header-bg: #161412;
+  --card-bg: #252220;
+  --card-border: #383432;
+
+  --sidebar-text-primary: #e8dcd0;
+  --sidebar-text-secondary: #c0b0a0;
+  --sidebar-text-muted: #887868;
+
+  --tag-red: #c87060;
+  --tag-orange: #d4a574;
+  --tag-yellow: #d8c080;
+  --tag-green: #8fac7a;
+  --tag-teal: #7ab8a8;
+  --tag-blue: #7a9cb8;
+  --tag-purple: #a890b0;
+  --tag-pink: #c89090;
+
+  --chart-1: #7a9cb8;
+  --chart-2: #d4a574;
+  --chart-3: #8fac7a;
+  --chart-4: #c89090;
+  --chart-5: #a890b0;
+  --chart-6: #7ab8a8;
+  --chart-7: #c87060;
+  --chart-8: #d8c080;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* Cozy Light — warm cafe, natural light */
+[data-theme="cozy-light"] {
+  --bg-primary: #f8f4f0;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0ebe5;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f4efe8;
+
+  --text-primary: #3a3230;
+  --text-secondary: #5a504a;
+  --text-muted: #8a7a70;
+  --text-inverse: #ffffff;
+
+  --color-accent: #a07850;
+  --color-accent-hover: #886540;
+  --accent-color: var(--color-accent);
+  --color-positive: #5a8048;
+  --color-negative: #a85040;
+  --color-warning: #a07850;
+  --color-info: #507090;
+
+  --border-color: #e0d8d0;
+  --border-subtle: #f0ebe5;
+  --input-bg: #ffffff;
+  --input-border: #d0c8c0;
+  --input-focus-ring: #a07850;
+
+  --row-hover-bg: rgba(160, 120, 80, 0.06);
+  --row-selected-bg: rgba(160, 120, 80, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(58, 50, 48, 0.1);
+  --shadow-md: 0 4px 12px rgba(58, 50, 48, 0.15);
+  --shadow-lg: 0 8px 24px rgba(58, 50, 48, 0.2);
+
+  --sidebar-bg: #1c1816;
+  --header-bg: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: #e0d8d0;
+
+  --sidebar-text-primary: #e8dcd0;
+  --sidebar-text-secondary: #c0b0a0;
+  --sidebar-text-muted: #887868;
+
+  --tag-red: #a85040;
+  --tag-orange: #a07850;
+  --tag-yellow: #908040;
+  --tag-green: #5a8048;
+  --tag-teal: #408878;
+  --tag-blue: #507090;
+  --tag-purple: #786088;
+  --tag-pink: #986868;
+
+  --chart-1: #507090;
+  --chart-2: #a07850;
+  --chart-3: #5a8048;
+  --chart-4: #986868;
+  --chart-5: #786088;
+  --chart-6: #408878;
+  --chart-7: #a85040;
+  --chart-8: #908040;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}

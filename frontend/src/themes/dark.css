@@ -38,6 +38,11 @@
   --card-bg: #1a1d27;
   --card-border: #252836;
 
+  /* Sidebar text — validated for contrast against --sidebar-bg: #13161f */
+  --sidebar-text-primary: #e8eaf0;
+  --sidebar-text-secondary: #9da3b4;
+  --sidebar-text-muted: #6b7280;
+
   /* Tag color slots */
   --tag-red: #f87171;
   --tag-orange: #fb923c;
