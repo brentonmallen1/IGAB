@@ -238,15 +238,46 @@ All configuration lives in `.env` (see `.env.example` for the full list):
 
 Financial data needs a backup story before it needs anything else.
 
+- **In-app (Settings → Backups):** see the backup service status and every
+  existing backup, change the schedule/retention/encryption settings (applied
+  by the agent within seconds, no restart), trigger a backup now, and restore
+  from a database dump. Restoring asks for confirmation, offers to back up the
+  current data first (kept as a `igab-prerestore-*.dump`), then the app goes
+  briefly into maintenance mode and restarts itself onto the restored
+  database.
 - `just backup` — writes `backups/igab-<timestamp>.dump` (pg_dump custom
   format) from the running `db` container.
 - `just restore <file>` — **drops and replaces** the current database from a
   dump. Exercise this once before trusting it; a backup you've never restored
   is a hope, not a backup.
-- In the production compose profile, the `db-backup` service dumps daily into
-  `${BACKUP_DIR:-./backups}` and prunes files older than
-  `${BACKUP_KEEP_DAYS:-30}`. Point `BACKUP_DIR` at a disk that is not the
-  database's disk.
+- In the production compose profile, the `db-backup` service
+  (`scripts/db-backup.sh`) runs every `backup_interval_hours` (default 24)
+  and writes two kinds of files into `${BACKUP_DIR:-./backups}`:
+  - `igab-<timestamp>.dump` — the database (pg_dump custom format)
+  - `igab-attachments-<timestamp>.tar.gz` — receipts/attachments, only when
+    their contents changed since the last archive
+- Settings precedence: values set in the app (stored in the database) win;
+  the `BACKUP_*` env vars are the fallback and the boot-time defaults. If the
+  database is unreachable the agent falls back to env values, so backups keep
+  running even when the app can't.
+- Retention: files older than `backup_keep_days` (default 30) are pruned,
+  but the newest `backup_keep_min` (default 7) of each kind are always kept —
+  a silent stretch of failed backups can't delete your last good ones. Writes
+  are atomic (temp file + rename), a failed dump skips pruning entirely, and
+  a failed cycle retries after 15 minutes instead of waiting a full interval.
+- **Encryption (optional):** set the encryption key in Settings → Backups (or
+  `BACKUP_AGE_RECIPIENT`) to an [age](https://age-encryption.org) public key
+  and both file kinds are written as `.age`-encrypted. Generate a keypair with
+  `age-keygen` and keep the private key somewhere that isn't this server.
+  Because the server deliberately has no private key, encrypted backups (and
+  attachment archives) can't be restored from the app — restore with
+  `BACKUP_AGE_KEY_FILE=<identity file> just restore <file>.dump.age`;
+  attachments:
+  `age -d -i <identity file> <file>.tar.gz.age | tar -xz -C data/attachments`.
+- Point `BACKUP_DIR` at a disk that is not the database's disk. There is no
+  database/field-level encryption at rest by design — the server needs
+  plaintext to run queries; use host disk encryption (e.g. LUKS) if stolen
+  disks are in your threat model.
 
 ### Data Integrity
 

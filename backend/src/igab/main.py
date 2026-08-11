@@ -99,6 +99,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# Registered before CORSMiddleware so CORS wraps these 503s too.
+@app.middleware("http")
+async def maintenance_guard(request: Request, call_next):
+    from igab.services import backup_service
+
+    if (
+        backup_service.maintenance_active()
+        and request.url.path.startswith("/api")
+        and request.url.path != "/api/v1/backups/status"
+    ):
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": "Restoring from backup — the app will restart shortly"},
+        )
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
