@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # Attachments storage
     ATTACHMENTS_DIR: str = "/data/attachments"
 
+    # Where the API sees the backups volume (host side is BACKUP_DIR in compose)
+    BACKUPS_DIR: str = "/backups"
+
     # SMTP (env-only, no UI override)
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
