@@ -6,6 +6,7 @@ import type {
   BulkActionResult,
   Payee,
   SimilarTransaction,
+  SplitCreate,
   Transaction,
   TransactionCreate,
 } from '../types'
@@ -40,6 +41,7 @@ export function useInfiniteTransactions(accountId: string | null, filters: Trans
       if (filters.payeeIds?.length) params.payee_ids = filters.payeeIds.join(',')
       if (filters.amountMin != null) params.amount_min = filters.amountMin
       if (filters.amountMax != null) params.amount_max = filters.amountMax
+      if (filters.hasAttachment != null) params.has_attachment = filters.hasAttachment
       if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
       const { data } = await apiClient.get<Transaction[]>(`/accounts/${accountId}/transactions`, { params })
       return data
@@ -77,6 +79,7 @@ export function useInfiniteBudgetTransactions(
       if (filters.accountIds?.length) params.account_ids = filters.accountIds.join(',')
       if (filters.amountMin != null) params.amount_min = filters.amountMin
       if (filters.amountMax != null) params.amount_max = filters.amountMax
+      if (filters.hasAttachment != null) params.has_attachment = filters.hasAttachment
       if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
@@ -196,6 +199,29 @@ export function useUpdateTransaction(budgetId: string) {
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['reconcile-status'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
+    },
+  })
+}
+
+export function useConvertToSplit(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, splits }: { id: string; splits: SplitCreate[] }) =>
+      apiClient
+        .post<Transaction>(
+          `/transactions/${id}/split`,
+          { splits },
+          { params: { budget_id: budgetId } },
+        )
+        .then((r) => r.data),
+    onSuccess: (txn) => {
+      qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
+      qc.invalidateQueries({ queryKey: ['all-transactions'] })
+      qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
+      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['pending-review-count'] })
       qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
     },

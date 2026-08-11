@@ -4,6 +4,9 @@ import { apiClient } from './client'
 export interface AppSetting {
   key: string
   value: string | null
+  /** Whether a stored override exists (vs env/default) */
+  is_overridden?: boolean | null
+  default_value?: string | null
 }
 
 export async function fetchSettings(): Promise<AppSetting[]> {
@@ -24,6 +27,18 @@ export function useUpdateSetting() {
   return useMutation({
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       apiClient.put<AppSetting>(`/settings/${key}`, { value }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['settings'] })
+    },
+  })
+}
+
+/** Remove a stored override — the setting reverts to its default. */
+export function useResetSetting() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (key: string) =>
+      apiClient.delete<AppSetting>(`/settings/${key}`).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['settings'] })
     },

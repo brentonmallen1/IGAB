@@ -107,6 +107,12 @@ async def process_auto_simplefin_sync() -> None:
             await session.rollback()
 
 
+async def _sweep_ai_staging() -> None:
+    from igab.tasks.ai_worker import sweep_orphaned_staging
+
+    await sweep_orphaned_staging()
+
+
 def start_scheduler() -> None:
     scheduler.add_job(
         process_due_scheduled_transactions,
@@ -121,6 +127,14 @@ def start_scheduler() -> None:
         trigger="cron",
         minute=0,
         id="auto_simplefin_sync",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _sweep_ai_staging,
+        trigger="cron",
+        hour=3,
+        minute=15,
+        id="sweep_ai_staging",
         replace_existing=True,
     )
     scheduler.start()

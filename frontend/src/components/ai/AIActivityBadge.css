@@ -1,0 +1,34 @@
+.ai-activity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-activity-badge:hover {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+/* Gentle pulse while jobs are in flight — state, not decoration */
+.ai-activity-badge__icon {
+  animation: ai-badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ai-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-activity-badge__icon {
+    animation: none;
+  }
+}

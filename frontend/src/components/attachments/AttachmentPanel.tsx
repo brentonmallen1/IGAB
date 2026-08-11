@@ -1,7 +1,17 @@
 import { useState, useRef, useCallback } from 'react'
 import { Camera, Paperclip, Upload, Trash2, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAttachments, useUploadAttachment, useDeleteAttachment, useAttachmentUrl, type Attachment } from '../../api/attachments'
+import {
+  ATTACHMENT_ACCEPT,
+  fetchAttachmentBlob,
+  isAttachableFile,
+  isPdfAttachment,
+  useAttachments,
+  useUploadAttachment,
+  useDeleteAttachment,
+  useAttachmentUrl,
+  type Attachment,
+} from '../../api/attachments'
 import { Lightbox } from './Lightbox'
 import './AttachmentPanel.css'
 
@@ -76,6 +86,8 @@ interface Props {
 
 export function AttachmentPanel({ transactionId, onClose, embedded = false }: Props) {
   const { data: attachments = [], isLoading } = useAttachments(transactionId)
+  // Lightbox prev/next navigates images only; PDFs open in a new tab
+  const imageAttachments = attachments.filter((a) => !isPdfAttachment(a))
   const upload = useUploadAttachment(transactionId)
   const deleteAttachment = useDeleteAttachment(transactionId)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -87,8 +99,8 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
     if (!files || files.length === 0) return
 
     for (const file of Array.from(files)) {
-      if (!file.type.startsWith('image/')) {
-        toast.error(`${file.name} is not an image`)
+      if (!isAttachableFile(file)) {
+        toast.error(`${file.name} is not an image or PDF`)
         continue
       }
       if (file.size > 20 * 1024 * 1024) {
@@ -145,7 +157,7 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={ATTACHMENT_ACCEPT}
           multiple
           onChange={(e) => handleFiles(e.target.files)}
           style={{ display: 'none' }}
@@ -177,11 +189,19 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
         <div className="attachment-panel__empty">No attachments yet</div>
       ) : (
         <div className="attachment-panel__grid">
-          {attachments.map((att, idx) => (
+          {attachments.map((att) => (
             <AttachmentThumb
               key={att.id}
               attachment={att}
-              onClick={() => setLightboxIndex(idx)}
+              onClick={() => {
+                // The lightbox is an image viewer — PDFs open in the
+                // browser's native viewer in a new tab
+                if (isPdfAttachment(att)) {
+                  void fetchAttachmentBlob(att.id).then((url) => window.open(url, '_blank'))
+                } else {
+                  setLightboxIndex(imageAttachments.indexOf(att))
+                }
+              }}
               onDelete={() => handleDelete(att.id)}
             />
           ))}
@@ -195,14 +215,14 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
         </div>
       )}
 
-      {lightboxIndex !== null && attachments[lightboxIndex] && (
+      {lightboxIndex !== null && imageAttachments[lightboxIndex] && (
         <LightboxWithFetch
-          attachment={attachments[lightboxIndex]}
+          attachment={imageAttachments[lightboxIndex]}
           onClose={() => setLightboxIndex(null)}
           onPrev={() => setLightboxIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
-          onNext={() => setLightboxIndex((i) => (i !== null && i < attachments.length - 1 ? i + 1 : i))}
+          onNext={() => setLightboxIndex((i) => (i !== null && i < imageAttachments.length - 1 ? i + 1 : i))}
           hasPrev={lightboxIndex > 0}
-          hasNext={lightboxIndex < attachments.length - 1}
+          hasNext={lightboxIndex < imageAttachments.length - 1}
         />
       )}
     </div>

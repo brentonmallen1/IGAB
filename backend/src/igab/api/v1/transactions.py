@@ -13,6 +13,7 @@ from igab.api.v1.schemas.transaction import (
     BulkClearedUpdate,
     BulkDelete,
     BulkItemFailure,
+    ConvertToSplitRequest,
     DuplicatePayeeEntry,
     DuplicatePayeeGroup,
     MergeTransactionsRequest,
@@ -34,20 +35,24 @@ from igab.dependencies import (
     BudgetAccess,
     CurrentUser,
     PayeeAccess,
+    SessionDep,
     TransactionAccess,
+    get_ai_job_repo,
     get_payee_repo,
     get_transaction_repo,
     get_transaction_service,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
+from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.ownership import require_in_budget
 from igab.services.transaction_service import (
-    TransactionCreate as SvcTxnCreate,
+    SplitSpec,
+    TransactionService,
 )
 from igab.services.transaction_service import (
-    TransactionService,
+    TransactionCreate as SvcTxnCreate,
 )
 from igab.services.transaction_service import (
     TransactionUpdate as SvcTxnUpdate,
@@ -79,6 +84,7 @@ async def list_account_transactions(
     payee_ids: str | None = None,
     amount_min: float | None = None,
     amount_max: float | None = None,
+    has_attachment: bool | None = None,
 ) -> list[TransactionResponse]:
     parsed_cat_ids = [uuid.UUID(x) for x in category_ids.split(",") if x] if category_ids else None
     parsed_pay_ids = [uuid.UUID(x) for x in payee_ids.split(",") if x] if payee_ids else None
@@ -98,6 +104,7 @@ async def list_account_transactions(
         payee_ids=parsed_pay_ids,
         amount_min=amount_min,
         amount_max=amount_max,
+        has_attachment=has_attachment,
     )
     return [TransactionResponse.model_validate(t) for t in txns]
 
@@ -125,6 +132,7 @@ async def list_budget_transactions(
     is_or_mode: bool = False,
     amount_min: float | None = None,
     amount_max: float | None = None,
+    has_attachment: bool | None = None,
     order: Literal["date", "register"] = "date",
     limit: int = Query(200, le=5000),
     offset: int = 0,
@@ -159,6 +167,7 @@ async def list_budget_transactions(
         is_or_mode=is_or_mode,
         amount_min=amount_min,
         amount_max=amount_max,
+        has_attachment=has_attachment,
         order=order,
         limit=limit,
         offset=offset,
@@ -206,8 +215,19 @@ async def create_transaction(
     budget_id: BudgetAccess,
     body: TransactionCreate,
     current_user: CurrentUser,
+    session: SessionDep,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    ai_job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
 ) -> TransactionResponse:
+    # AI provenance is derived from the linked job — never from the client.
+    created_via: str | None = None
+    ai_job = None
+    if body.ai_job_id is not None:
+        ai_job = await ai_job_repo.get(body.ai_job_id)
+        if ai_job is None or str(ai_job.budget_id) != str(budget_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI job not found")
+        created_via = "ai_nl" if ai_job.kind == "nl_parse" else "ai_receipt"
+
     try:
         if body.splits:
             header = SvcTxnCreate(
@@ -219,6 +239,7 @@ async def create_transaction(
                 memo=body.memo,
                 cleared=body.cleared,
                 approved=body.approved,
+                created_via=created_via,
                 latitude=body.latitude,
                 longitude=body.longitude,
             )
@@ -247,12 +268,18 @@ async def create_transaction(
                 cleared=body.cleared,
                 approved=body.approved,
                 transfer_account_id=body.transfer_account_id,
+                created_via=created_via,
                 latitude=body.latitude,
                 longitude=body.longitude,
             )
             txn = await txn_service.create(budget_id, svc_data)
     except InvariantViolation as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    if ai_job is not None and ai_job.transaction_id is None:
+        ai_job.transaction_id = txn.id
+        session.add(ai_job)
+        await session.flush()
     return TransactionResponse.model_validate(txn)
 
 
@@ -282,6 +309,33 @@ async def update_transaction(
         # explicit nulls clear nullable fields (category/payee/memo).
         svc_data = SvcTxnUpdate(**body.model_dump(exclude_unset=True))
         txn = await txn_service.update(budget_id, transaction_id, svc_data)
+    except (NotFoundError, InvariantViolation) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return TransactionResponse.model_validate(txn)
+
+
+@router.post("/transactions/{transaction_id}/split", response_model=TransactionResponse)
+async def convert_transaction_to_split(
+    transaction_id: TransactionAccess,
+    body: ConvertToSplitRequest,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    budget_id: BudgetAccess,
+) -> TransactionResponse:
+    """Split an existing transaction in place (row becomes the parent),
+    preserving attachments, AI links, and import/sync identity."""
+    try:
+        splits = [
+            SplitSpec(
+                amount=s.amount,
+                category_id=s.category_id,
+                payee_id=s.payee_id,
+                payee_name=s.payee_name,
+                memo=s.memo,
+            )
+            for s in body.splits
+        ]
+        txn = await txn_service.convert_to_split(budget_id, transaction_id, splits)
     except (NotFoundError, InvariantViolation) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return TransactionResponse.model_validate(txn)

@@ -117,9 +117,26 @@
   background-color: color-mix(in srgb, var(--color-warning) 15%, transparent);
 }
 
-.txn-status-icon--attachment {
+/* Image button: muted "add" affordance until an attachment exists, then
+   accent so rows with receipts are scannable at a glance */
+.txn-attach-btn {
   color: var(--text-muted);
-  cursor: default;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.txn-attach-btn:hover {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
+.txn-attach-btn--has {
+  color: var(--color-accent);
+  opacity: 1;
+}
+
+.txn-attach-btn--has:hover {
+  color: var(--color-accent-hover);
 }
 
 /* Mobile-only read-only cleared/reconciled markers in the status cluster */

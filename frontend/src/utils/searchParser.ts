@@ -10,6 +10,8 @@ export interface TransactionFilters {
   accountIds?: string[]
   amountMin?: number | null
   amountMax?: number | null
+  /** true = only rows with an image attached; false = only rows without */
+  hasAttachment?: boolean
   isOrMode?: boolean
 }
 
@@ -24,9 +26,12 @@ export function hasActiveFilters(f: TransactionFilters): boolean {
     (f.payeeIds?.length ?? 0) > 0 ||
     (f.accountIds?.length ?? 0) > 0 ||
     f.amountMin != null ||
-    f.amountMax != null
+    f.amountMax != null ||
+    f.hasAttachment != null
   )
 }
+
+const ATTACHMENT_VALUES = new Set(['attachment', 'image', 'receipt'])
 
 const CLEARED_VALUES = new Set(['cleared', 'uncleared', 'pending', 'reconciled'])
 
@@ -56,6 +61,19 @@ function parseSegment(
       if (isMatch[1] === 'uncategorized') result.uncategorized = true
       else if (isMatch[1] === 'unapproved') result.unapproved = true
       else if (CLEARED_VALUES.has(isMatch[1])) result.cleared = isMatch[1]
+      continue
+    }
+
+    // has: attachment  (space-separated)  or  has:attachment (compact) —
+    // 'image' and 'receipt' accepted as synonyms
+    if (lower === 'has:') {
+      const val = tokens[i + 1]?.toLowerCase()
+      if (val && ATTACHMENT_VALUES.has(val)) { result.hasAttachment = true; i++; continue }
+      continue
+    }
+    const hasMatch = lower.match(/^has:(\w+)$/)
+    if (hasMatch) {
+      if (ATTACHMENT_VALUES.has(hasMatch[1])) result.hasAttachment = true
       continue
     }
 
@@ -138,6 +156,7 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
     if (seg.accountIds) allAccountIds.push(...seg.accountIds)
     if (seg.amountMin != null) merged.amountMin = seg.amountMin
     if (seg.amountMax != null) merged.amountMax = seg.amountMax
+    if (seg.hasAttachment != null) merged.hasAttachment = seg.hasAttachment
   }
 
   if (textParts.length) merged.text = textParts.join(' ')
@@ -177,6 +196,17 @@ export function parseTransactionSearch(
       const isMatch = nextLower.match(/^is:(\w+)$/)
       if (isMatch && CLEARED_VALUES.has(isMatch[1])) {
         exclusions.excludeCleared = isMatch[1]
+        continue
+      }
+      // NOT has: attachment — rows without an image
+      if (nextLower === 'has:') {
+        const val = tokens[i + 1]?.toLowerCase()
+        if (val && ATTACHMENT_VALUES.has(val)) { exclusions.hasAttachment = false; i++ }
+        continue
+      }
+      const hasMatch = nextLower.match(/^has:(\w+)$/)
+      if (hasMatch && ATTACHMENT_VALUES.has(hasMatch[1])) {
+        exclusions.hasAttachment = false
         continue
       }
       // Unrecognised NOT — pass both tokens through as text
@@ -233,6 +263,8 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'is: uncleared ', description: 'Uncleared transactions' },
   { syntax: 'is: pending ', description: 'Pending transactions' },
   { syntax: 'is: reconciled ', description: 'Reconciled transactions' },
+  { syntax: 'has: attachment ', description: 'Transactions with an image attached' },
+  { syntax: 'NOT has: attachment ', description: 'Transactions without an image' },
   { syntax: 'category:', description: 'Filter by category name' },
   { syntax: 'payee:', description: 'Filter by payee name' },
   { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },

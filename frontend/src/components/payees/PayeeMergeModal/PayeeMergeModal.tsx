@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Check, GitMerge, Regex, X } from 'lucide-react'
+import { Check, GitMerge, Regex, Sparkles, X } from 'lucide-react'
 import type { PayeeWithCount } from '../../../api/payees'
+import { useAIStatus, useNormalizePayee } from '../../../api/ai'
+import { useAppStore } from '../../../stores/appStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { suggestPayeeRegex, testPattern } from '../../../utils/payeeRegex'
 import './PayeeMergeModal.css'
@@ -45,6 +47,19 @@ export function PayeeMergeModal({ payees, onConfirm, onCancel, isPending }: Prop
   const [pattern, setPattern] = useState('')
   const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
   const customInputRef = useRef<HTMLInputElement>(null)
+  const budgetId = useAppStore((s) => s.currentBudgetId)
+  const aiAvailable = useAIStatus().data?.available === true
+  const normalizePayee = useNormalizePayee(budgetId ?? '')
+
+  // AI cleanup of the surviving name: feeds the messiest raw name through
+  // normalize-payee and drops the result into the custom-name input.
+  async function handleNormalize() {
+    const source = customName.trim() || sorted[0]?.name
+    if (!source) return
+    const normalized = await normalizePayee.mutateAsync(source)
+    setUseCustomName(true)
+    setCustomName(normalized)
+  }
 
   useEffect(() => {
     if (useCustomName) customInputRef.current?.focus()
@@ -155,6 +170,22 @@ export function PayeeMergeModal({ payees, onConfirm, onCancel, isPending }: Prop
                 />
               ) : (
                 <span className="pmerge-option__name pmerge-option__name--placeholder">Enter a custom name…</span>
+              )}
+              {aiAvailable && (
+                <button
+                  type="button"
+                  className="pmerge-ai-normalize"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    void handleNormalize()
+                  }}
+                  disabled={normalizePayee.isPending}
+                  title="Normalize with AI — clean up the bank name"
+                >
+                  <Sparkles size={12} />
+                  {normalizePayee.isPending ? 'Thinking…' : 'Normalize'}
+                </button>
               )}
             </label>
           </div>

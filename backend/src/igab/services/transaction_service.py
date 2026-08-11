@@ -43,6 +43,9 @@ class TransactionCreate:
     import_description: str | None = None
     sync_id: str | None = None
     sync_source: str | None = None
+    # AI provenance ('ai_receipt' | 'ai_nl') — set server-side only, never
+    # accepted verbatim from clients.
+    created_via: str | None = None
     latitude: float | None = None
     longitude: float | None = None
 
@@ -58,6 +61,18 @@ class TransactionUpdate:
     approved: bool | None = UNSET
     latitude: float | None = UNSET
     longitude: float | None = UNSET
+
+
+@dataclass
+class SplitSpec:
+    """One leg of a split conversion — everything else (account, date,
+    cleared, approved) is inherited from the parent transaction."""
+
+    amount: Decimal
+    category_id: uuid.UUID | None = None
+    payee_id: uuid.UUID | None = None
+    payee_name: str | None = None
+    memo: str | None = None
 
 
 # Fields that may never be set to NULL via PATCH
@@ -128,6 +143,7 @@ class TransactionService:
             import_description=data.import_description,
             sync_id=data.sync_id,
             sync_source=data.sync_source,
+            created_via=data.created_via,
             latitude=data.latitude,
             longitude=data.longitude,
         )
@@ -163,6 +179,60 @@ class TransactionService:
 
         await self.session.refresh(parent)
         return parent
+
+    async def convert_to_split(
+        self, budget_id: uuid.UUID, transaction_id: uuid.UUID, splits: list[SplitSpec]
+    ) -> Transaction:
+        """Split an existing transaction in place: the row becomes the parent.
+
+        Unlike create-replacement-and-delete, this preserves the transaction's
+        identity — attachments, AI-job links, import/sync ids, and provenance
+        all stay put. Receipts made this mandatory: the image is attached to
+        the row being split.
+        """
+        txn = await self.transaction_repo.get_or_raise(transaction_id)
+        if str(txn.budget_id) != str(budget_id):
+            raise InvariantViolation("Transaction does not belong to this budget")
+        if txn.cleared == "reconciled":
+            raise InvariantViolation("Cannot split a reconciled transaction")
+        if txn.is_split:
+            raise InvariantViolation("Transaction is already split")
+        if txn.parent_transaction_id is not None:
+            raise InvariantViolation("Cannot split a split child")
+        if txn.transfer_id is not None:
+            raise InvariantViolation("Cannot split a transfer")
+
+        total = sum(s.amount for s in splits)
+        if abs(total - txn.amount) > Decimal("0.001"):
+            raise InvariantViolation(
+                f"Split amounts {total} do not sum to transaction amount {txn.amount}"
+            )
+
+        for split in splits:
+            await require_in_budget(
+                self.session, Category, split.category_id, budget_id, "Category"
+            )
+
+        await self.transaction_repo.update(txn.id, is_split=True, category_id=None)
+        for split in splits:
+            await self.create(
+                budget_id,
+                TransactionCreate(
+                    account_id=txn.account_id,
+                    date=txn.date,
+                    amount=split.amount,
+                    category_id=split.category_id,
+                    payee_id=split.payee_id,
+                    payee_name=split.payee_name,
+                    memo=split.memo,
+                    cleared=txn.cleared,
+                    approved=txn.approved,
+                    parent_transaction_id=txn.id,
+                ),
+            )
+
+        await self.session.refresh(txn)
+        return txn
 
     async def update(
         self, budget_id: uuid.UUID, transaction_id: uuid.UUID, data: TransactionUpdate
