@@ -29,6 +29,9 @@ from igab.api.v1.schemas.category import (
     CoverOverspentApplyRequest,
     CoverOverspentPreviewItem,
     CoverOverspentPreviewResponse,
+    FutureOverspendPreviewRequest,
+    FutureOverspendPreviewResponse,
+    FutureOverspendWarningOut,
     MoveMoneyRequest,
 )
 from igab.db.models import CategoryGroup
@@ -203,6 +206,7 @@ async def get_budget_month(
         total_assigned=summary.total_assigned,
         total_activity=summary.total_activity,
         total_overspent=summary.total_overspent,
+        assigned_in_future=summary.assigned_in_future,
         category_balances=[
             CategoryBalance(
                 category_id=b.category_id,
@@ -213,6 +217,35 @@ async def get_budget_month(
             )
             for b in summary.category_balances
         ],
+    )
+
+
+@router.post(
+    "/{budget_id}/months/preview-overspend",
+    response_model=FutureOverspendPreviewResponse,
+)
+async def preview_future_overspend(
+    budget_id: BudgetAccess,
+    body: FutureOverspendPreviewRequest,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+) -> FutureOverspendPreviewResponse:
+    """Pre-save check: would this edit push a future month's category negative?"""
+    warnings = await budget_service.preview_future_overspend(
+        budget_id,
+        [(i.category_id, i.date, i.amount_delta) for i in body.items],
+    )
+    return FutureOverspendPreviewResponse(
+        warnings=[
+            FutureOverspendWarningOut(
+                category_id=w.category_id,
+                category_name=w.category_name,
+                month=w.month,
+                available_before=w.available_before,
+                available_after=w.available_after,
+            )
+            for w in warnings
+        ]
     )
 
 

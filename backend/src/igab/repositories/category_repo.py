@@ -1,7 +1,8 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup
@@ -107,6 +108,16 @@ class BudgetAssignmentRepository(BaseRepository[BudgetAssignment]):
         q = q.order_by(BudgetAssignment.month)
         result = await self.session.execute(q)
         return list(result.scalars().all())
+
+    async def sum_after_month(self, budget_id: uuid.UUID, month: date) -> Decimal:
+        """Total assigned across all months strictly after the given month."""
+        result = await self.session.execute(
+            select(func.coalesce(func.sum(BudgetAssignment.assigned), 0)).where(
+                BudgetAssignment.budget_id == budget_id,
+                BudgetAssignment.month > month,
+            )
+        )
+        return Decimal(str(result.scalar_one()))
 
     async def get_or_create(
         self, budget_id: uuid.UUID, category_id: uuid.UUID, month: date

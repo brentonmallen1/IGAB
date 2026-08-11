@@ -37,6 +37,68 @@ export function useBudgetMonth(budgetId: string | null, month: string) {
   })
 }
 
+/** One (category, date, delta) probe for the future-overspend pre-save check.
+ * amount_delta is the signed change the save would apply — outflow negative;
+ * when editing, the old amount goes in as a positive reversal so only the net
+ * change counts. */
+export interface OverspendProbe {
+  category_id: string
+  date: string
+  amount_delta: number
+}
+
+interface FutureOverspendWarning {
+  category_id: string
+  category_name: string
+  month: string
+  available_before: string | number
+  available_after: string | number
+}
+
+function currentMonthKey(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * Pre-save guard: would this transaction push a *future* month's category
+ * negative? Current-month overspending is already visible on the budget page;
+ * a future month's negative would sit unseen until the user navigates there.
+ * Returns true to proceed with the save. Never blocks on a failed check —
+ * the warning is an affordance, not an invariant.
+ */
+export async function confirmFutureOverspend(
+  budgetId: string,
+  probes: OverspendProbe[],
+  formatMoney: (n: number) => string
+): Promise<boolean> {
+  const items = probes.filter(
+    (p) => p.category_id && p.amount_delta !== 0 && p.date.slice(0, 7) > currentMonthKey()
+  )
+  if (!items.some((p) => p.amount_delta < 0)) return true
+
+  let warnings: FutureOverspendWarning[]
+  try {
+    const { data } = await apiClient.post<{ warnings: FutureOverspendWarning[] }>(
+      `/${budgetId}/months/preview-overspend`,
+      { items }
+    )
+    warnings = data.warnings
+  } catch {
+    return true
+  }
+  if (warnings.length === 0) return true
+
+  const lines = warnings.map((w) => {
+    const month = new Date(`${w.month}T00:00:00`).toLocaleDateString(undefined, {
+      month: 'long',
+      year: 'numeric',
+    })
+    return `• ${w.category_name} in ${month} would drop to ${formatMoney(Number(w.available_after))}`
+  })
+  return confirm(`This would overspend a future month:\n\n${lines.join('\n')}\n\nSave anyway?`)
+}
+
 export function useSetAssignment(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({

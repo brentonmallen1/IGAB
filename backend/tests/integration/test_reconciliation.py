@@ -3,13 +3,14 @@ statement, and reconciled is a controlled state (finish grants it, only the
 explicit unreconcile removes it).
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
 from igab.domain.exceptions import InvariantViolation
 from igab.services.transaction_service import TransactionCreate, TransactionUpdate
+from igab.utils.clock import today_utc
 
 from .factories import (
     create_account,
@@ -145,6 +146,86 @@ async def test_user_cannot_set_reconciled_or_pending_via_update(db_session):
             await services.transactions.update(
                 budget.id, txn.id, TransactionUpdate(cleared=value)
             )
+
+
+async def test_future_dated_cleared_txn_excluded_from_status(db_session):
+    """A future-dated cleared transaction cannot be on any bank statement, so
+    it must not move the cleared balance or manufacture an adjustment."""
+    services, budget, checking = await _setup(db_session)
+    await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
+    await create_transaction(
+        db_session, budget, checking, "-120.00", today_utc() + timedelta(days=5),
+        cleared="cleared",
+    )
+
+    status = await services.reconciliation.get_status(checking.id)
+    assert status["cleared_balance"] == Decimal("500.00")
+
+
+async def test_future_dated_uncleared_and_pending_excluded_from_counts(db_session):
+    """Counts guide the user during reconciliation; future-dated rows aren't
+    reconcilable yet so they shouldn't nag."""
+    services, budget, checking = await _setup(db_session)
+    future = today_utc() + timedelta(days=3)
+    await create_transaction(db_session, budget, checking, "-10.00", TODAY, cleared="uncleared")
+    await create_transaction(db_session, budget, checking, "-20.00", future, cleared="uncleared")
+    await create_transaction(db_session, budget, checking, "-30.00", future, cleared="pending")
+
+    status = await services.reconciliation.get_status(checking.id)
+    assert status["uncleared_count"] == 1
+    assert status["pending_count"] == 0
+
+
+async def test_txn_dated_today_included_in_status(db_session):
+    """Boundary: today's transactions are on the statement side of the cutoff."""
+    services, budget, checking = await _setup(db_session)
+    await create_transaction(
+        db_session, budget, checking, "250.00", today_utc(), cleared="cleared"
+    )
+
+    status = await services.reconciliation.get_status(checking.id)
+    assert status["cleared_balance"] == Decimal("250.00")
+
+
+async def test_finish_ignores_future_cleared_txn_and_leaves_it_unlocked(db_session):
+    """finish() with a future-dated cleared txn present: no adjustment when the
+    statement matches past activity, and the future txn stays 'cleared' —
+    locking it as reconciled would bless an amount the statement never saw."""
+    services, budget, checking = await _setup(db_session)
+    past = await create_transaction(
+        db_session, budget, checking, "500.00", TODAY, cleared="cleared"
+    )
+    future = await create_transaction(
+        db_session, budget, checking, "-75.00", today_utc() + timedelta(days=10),
+        cleared="cleared",
+    )
+
+    snapshot = await services.reconciliation.finish(checking.id, Decimal("500.00"))
+
+    assert snapshot.adjustment_amount == Decimal("0")
+    assert snapshot.adjustment_transaction_id is None
+    await db_session.refresh(past)
+    await db_session.refresh(future)
+    assert past.cleared == "reconciled"
+    assert future.cleared == "cleared", "future txn must not be locked"
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_finish_adjustment_based_on_past_activity_only(db_session):
+    """Statement disagrees with past cleared activity while a future cleared
+    txn exists: the adjustment must reflect only the past."""
+    services, budget, checking = await _setup(db_session)
+    await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
+    await create_transaction(
+        db_session, budget, checking, "-999.00", today_utc() + timedelta(days=1),
+        cleared="cleared",
+    )
+
+    snapshot = await services.reconciliation.finish(checking.id, Decimal("480.00"))
+
+    # 480 statement - 500 past cleared = -20; the future -999 plays no part
+    assert snapshot.adjustment_amount == Decimal("-20.00")
+    await assert_financial_invariants(db_session, budget.id)
 
 
 async def test_api_rejects_reconciled_cleared_on_create_and_bulk(api_client, db_session):

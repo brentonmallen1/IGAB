@@ -56,6 +56,13 @@
   color: var(--text-muted);
 }
 
+.tba-hero__future {
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .tba-hero__actions {
   display: flex;
   align-items: center;
@@ -156,6 +163,24 @@
   letter-spacing: 0.5px;
   color: var(--text-muted);
   margin-bottom: var(--spacing-sm);
+}
+
+.tba-drawer__future {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.tba-drawer__future-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tba-drawer__future-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .tba-drawer__overspent {
@@ -262,6 +287,10 @@
   .tba-hero__amount {
     font-size: var(--font-size-lg);
     line-height: 1.2;
+  }
+
+  .tba-hero__future {
+    white-space: normal;
   }
 
   /* Keep the word — a bare red amount next to the TBA number is ambiguous */

@@ -43,6 +43,7 @@ export function TbaHero({ budgetId, month }: Props) {
 
   const tba = budgetMonth?.to_be_assigned ?? 0
   const overspent = Number(budgetMonth?.total_overspent ?? 0)
+  const assignedInFuture = Number(budgetMonth?.assigned_in_future ?? 0)
   const tbaClass = tba > 0 ? 'positive' : tba < 0 ? 'negative' : 'zero'
 
   const overspentCount = useMemo(() => {
@@ -77,6 +78,7 @@ export function TbaHero({ budgetId, month }: Props) {
       open={drawerOpen}
       totalOverspent={overspent}
       overspentCount={overspentCount}
+      assignedInFuture={assignedInFuture}
       onCoverOverspent={openCoverFromDrawer}
     />
   )
@@ -87,6 +89,11 @@ export function TbaHero({ budgetId, month }: Props) {
         <div className="tba-hero__info">
           <span className="tba-hero__label">To Be Assigned</span>
           <span className={`tba-hero__amount ${tbaClass}`}>{formatMoney(tba)}</span>
+          {assignedInFuture !== 0 && (
+            <span className="tba-hero__future" title="Already deducted from To Be Assigned">
+              {formatMoney(assignedInFuture)} assigned in future months
+            </span>
+          )}
         </div>
 
         <div className="tba-hero__actions">

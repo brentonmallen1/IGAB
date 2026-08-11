@@ -96,11 +96,38 @@ class BudgetMonthResponse(BaseModel):
     total_assigned: Decimal
     total_activity: Decimal
     total_overspent: Decimal
+    # Committed to months after this one; already deducted from to_be_assigned
+    assigned_in_future: Decimal = Decimal("0")
     category_balances: list[CategoryBalance]
 
 
 class AssignmentUpdate(BaseModel):
     amount: Money
+
+
+class FutureOverspendItem(BaseModel):
+    """One (category, month, delta) probe: the signed amount change a pending
+    transaction edit would apply — outflow negative, reversals positive."""
+
+    category_id: uuid.UUID
+    date: datetime.date
+    amount_delta: Money
+
+
+class FutureOverspendPreviewRequest(BaseModel):
+    items: list[FutureOverspendItem]
+
+
+class FutureOverspendWarningOut(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    month: datetime.date
+    available_before: Decimal
+    available_after: Decimal
+
+
+class FutureOverspendPreviewResponse(BaseModel):
+    warnings: list[FutureOverspendWarningOut]
 
 
 class MoveMoneyRequest(BaseModel):

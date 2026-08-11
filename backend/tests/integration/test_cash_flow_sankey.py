@@ -232,6 +232,28 @@ async def test_budgeted_mode_draws_positive_assignments_only(db_session):
     assert sankey["category_payees"] == {}
 
 
+async def test_budgeted_mode_account_filter_applies_to_income(db_session):
+    """Assignments have no account dimension, but the income total is
+    transaction-derived and must honor the account filter like spent mode."""
+    services, budget, checking, everyday, groceries, gas = await _setup(db_session)
+    other = await create_account(db_session, budget, "Other")
+
+    month = TODAY.replace(day=1)
+    await create_budget_assignment(db_session, budget, groceries, month, "500.00")
+    await create_transaction(db_session, budget, checking, "1000.00", TODAY)
+    await create_transaction(db_session, budget, other, "250.00", TODAY)
+
+    sankey = await ReportService(db_session).cash_flow_sankey(
+        budget.id, month, TODAY, mode="budgeted", account_ids=[checking.id]
+    )
+
+    assert sankey["total_income"] == Decimal("1000.00")
+    # Assignment flows are budget-level and stay unfiltered
+    assert sankey["total_expense"] == Decimal("500.00")
+    links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
+    assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("500.00")
+
+
 async def test_budgeted_mode_sums_across_months(db_session):
     services, budget, checking, everyday, groceries, gas = await _setup(db_session)
 

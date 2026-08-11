@@ -90,6 +90,19 @@ def make_service(
 
     assignment_repo.get_for_category = AsyncMock(side_effect=_get_for_category)
 
+    async def _sum_after_month(budget_id, month):
+        return sum(
+            (
+                a.assigned
+                for assigns in assignments_by_category.values()
+                for a in assigns
+                if a.month > month
+            ),
+            D("0"),
+        )
+
+    assignment_repo.sum_after_month = AsyncMock(side_effect=_sum_after_month)
+
     transaction_repo = MagicMock()
 
     async def _sum_all(cat_ids, end_date):

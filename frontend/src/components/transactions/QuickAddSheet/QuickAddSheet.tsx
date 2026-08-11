@@ -4,6 +4,7 @@ import { Camera, ChevronRight, FileText, Images, MessageSquareText, Sparkles, St
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { SelectionSheet, type SelectionSheetOption } from '../../common/SelectionSheet/SelectionSheet'
 import { useCreateTransaction } from '../../../api/transactions'
+import { confirmFutureOverspend } from '../../../api/budgets'
 import { ATTACHMENT_ACCEPT, isAttachableFile, uploadFilesToTransaction } from '../../../api/attachments'
 import { useAIStatus } from '../../../api/ai'
 import { useSubmitReceipt } from '../../../api/aiJobs'
@@ -209,8 +210,16 @@ export function QuickAddSheet() {
 
   async function save(addAnother: boolean) {
     if (!canSave || !budgetId || !accountId) return
-    setSaving(true)
     const signed = (cents / 100) * (direction === 'outflow' ? -1 : 1)
+    if (categoryId) {
+      const proceed = await confirmFutureOverspend(
+        budgetId,
+        [{ category_id: categoryId, date, amount_delta: signed }],
+        formatMoney
+      )
+      if (!proceed) return
+    }
+    setSaving(true)
     try {
       const txn = await createTxn.mutateAsync({
         account_id: accountId,

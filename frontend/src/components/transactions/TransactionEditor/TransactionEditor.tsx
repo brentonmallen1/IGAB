@@ -12,12 +12,14 @@ import {
 } from '../../../api/transactions'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
+import { confirmFutureOverspend, type OverspendProbe } from '../../../api/budgets'
 import { useAIStatus, useSuggestCategory } from '../../../api/ai'
 import { useSubmitReceipt, type AIJob } from '../../../api/aiJobs'
 import { ATTACHMENT_ACCEPT, isAttachableFile } from '../../../api/attachments'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../../../stores/appStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { today } from '../../../utils/dates'
 import { fromCents, parseAmountInput, sumToCents, toCents } from '../../../utils/money'
@@ -75,6 +77,7 @@ export function TransactionEditor({
   const { data: accounts = [] } = useAccounts(budgetId)
 
   const isMobile = useIsMobile()
+  const { formatMoney } = useFormatters()
   // Android back / swipe-back cancels the editor instead of leaving the page
   useHistoryDismissable(isMobile, onClose, 'txn-editor')
 
@@ -285,12 +288,35 @@ export function TransactionEditor({
     const amount = outflowVal > 0 ? -outflowVal : inflowVal
     const sign = amount < 0 ? -1 : 1
 
+    // Editing frees the old amount back to its category/month; only the net
+    // change should count against a future month's available.
+    const reversal: OverspendProbe[] = transaction?.category_id
+      ? [
+          {
+            category_id: transaction.category_id,
+            date: transaction.date.slice(0, 10),
+            amount_delta: -Number(transaction.amount),
+          },
+        ]
+      : []
+
     if (isSplit && !isTransfer) {
       const splitList = splits.map((s) => ({
         amount: parseFloat(s.amount) * sign,
         category_id: s.categoryId ?? undefined,
         memo: s.memo || undefined,
       }))
+      const proceed = await confirmFutureOverspend(
+        budgetId,
+        [
+          ...splitList
+            .filter((s) => s.category_id)
+            .map((s) => ({ category_id: s.category_id!, date, amount_delta: s.amount })),
+          ...reversal,
+        ],
+        formatMoney
+      )
+      if (!proceed) return
       if (isEdit) {
         // Split in place: the row becomes the parent, keeping attachments and
         // AI links (a create+delete replacement would orphan the receipt).
@@ -341,6 +367,20 @@ export function TransactionEditor({
             category_id: categoryId || undefined,
           }),
     }
+
+    const savedCategoryId =
+      'category_id' in payload && payload.category_id ? payload.category_id : null
+    const proceed = await confirmFutureOverspend(
+      budgetId,
+      [
+        ...(savedCategoryId
+          ? [{ category_id: savedCategoryId, date, amount_delta: amount }]
+          : []),
+        ...reversal,
+      ],
+      formatMoney
+    )
+    if (!proceed) return
 
     if (isEdit) {
       await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
