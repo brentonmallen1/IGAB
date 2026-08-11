@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, CalendarClock } from 'lucide-react'
 import { useMoveHistory } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { MoveHistoryList } from './MoveHistoryList'
@@ -11,6 +11,7 @@ interface Props {
   open: boolean
   totalOverspent: number
   overspentCount: number
+  assignedInFuture: number
   onCoverOverspent: () => void
 }
 
@@ -20,6 +21,7 @@ export function TbaDrawer({
   open,
   totalOverspent,
   overspentCount,
+  assignedInFuture,
   onCoverOverspent,
 }: Props) {
   const { formatMoney } = useFormatters()
@@ -28,6 +30,17 @@ export function TbaDrawer({
 
   return (
     <div className="tba-drawer">
+      {assignedInFuture !== 0 && (
+        <div className="tba-drawer__section">
+          <div className="tba-drawer__future">
+            <CalendarClock size={14} className="tba-drawer__future-icon" />
+            <span className="tba-drawer__future-text">
+              {formatMoney(assignedInFuture)} assigned in future months — already deducted from To
+              Be Assigned
+            </span>
+          </div>
+        </div>
+      )}
       {hasOverspending && (
         <div className="tba-drawer__section">
           <div className="tba-drawer__overspent">

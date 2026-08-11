@@ -223,9 +223,12 @@ describe('ParetoReport insight', () => {
 
     // total spending card (the drill table's total row shows it too)
     expect(screen.getAllByText('$1,000.00').length).toBeGreaterThan(0)
-    // Rent + Groceries reach 80%: 2 of 4 categories = 50% of them
+    // Rent + Groceries reach 80%: 2 of 4 categories = 50% coverage, which is
+    // above the 30% adherence threshold, so the spread-thin message shows
     expect(screen.getByText('2 categories')).toBeInTheDocument()
-    expect(screen.getByText('50% of all categories')).toBeInTheDocument()
+    expect(
+      screen.getByText('Spending is spread thin—consider consolidating or reviewing smaller items.')
+    ).toBeInTheDocument()
   })
 })
 

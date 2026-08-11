@@ -277,7 +277,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         <h2 className="report-section__title">Cash Flow</h2>
         <ReportInfoButton title="Cash Flow Sankey">
           <p>Shows how <strong>income flows into category groups</strong>. Band width = dollar amount.</p>
-          <p><strong>Spent</strong>: actual transactions — drill down to payees. <strong>Budgeted</strong>: budget assignments — drill down to categories only.</p>
+          <p><strong>Spent</strong>: actual transactions — drill down to payees. <strong>Budgeted</strong>: budget assignments — drill down to categories only. Assignments aren't tied to accounts, so in Budgeted mode the account filter applies to the income total only.</p>
           <p><strong>Compare</strong> overlays the change versus the preceding period of equal length on every node. In Spent mode, clicking a payee node (or a category node at the payee level) lists the transactions behind it below the chart.</p>
         </ReportInfoButton>
         <div className="report-toggle-group">

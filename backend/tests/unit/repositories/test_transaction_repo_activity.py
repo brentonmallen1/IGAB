@@ -98,6 +98,7 @@ def make_service(
         return assignments_by_category.get(cat_id, [])
 
     assignment_repo.get_for_category = AsyncMock(side_effect=_get_for_category)
+    assignment_repo.sum_after_month = AsyncMock(return_value=Decimal("0"))
 
     transaction_repo = MagicMock()
 

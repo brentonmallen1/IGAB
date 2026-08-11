@@ -713,13 +713,21 @@ class ReportService:
         account_ids: list[uuid.UUID] | None = None,
     ) -> dict:
         if mode == "budgeted":
-            return await self._cash_flow_budgeted(budget_id, start_date, end_date)
+            return await self._cash_flow_budgeted(budget_id, start_date, end_date, account_ids)
         return await self._cash_flow_spent(budget_id, start_date, end_date, account_ids)
 
     async def _cash_flow_budgeted(
-        self, budget_id: uuid.UUID, start_date: date, end_date: date
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        account_ids: list[uuid.UUID] | None = None,
     ) -> dict:
-        """Sankey based on budget assignments (no payee data)."""
+        """Sankey based on budget assignments (no payee data).
+
+        Assignments belong to the budget, not to accounts, so the account
+        filter applies only to the transaction-derived income total.
+        """
         months = _months_in_range(start_date, end_date)
 
         # Get budget assignments with category/group info
@@ -754,6 +762,8 @@ class ReportService:
             PARENT_ROW,
             CASH_FLOW_ROW,
         )
+        if account_ids:
+            income_q = income_q.where(Transaction.account_id.in_(account_ids))
         total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
 
         if not rows:

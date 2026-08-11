@@ -29,8 +29,16 @@ class ReconciliationService:
         self.transaction_repo = transaction_repo
 
     async def get_status(self, account_id: uuid.UUID) -> dict:
-        """Return current cleared balance and uncleared transaction count for the account."""
+        """Return current cleared balance and uncleared transaction count for the account.
+
+        Future-dated transactions are excluded everywhere: a bank statement
+        can only reflect what has already happened, so a future-dated cleared
+        transaction would skew the cleared balance and manufacture a bogus
+        adjustment against the statement.
+        """
         from sqlalchemy import func
+
+        as_of = today_utc()
 
         cleared_result = await self.session.execute(
             select(func.coalesce(func.sum(Transaction.amount), 0)).where(
@@ -38,6 +46,7 @@ class ReconciliationService:
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
                 Transaction.cleared.in_(["cleared", "reconciled"]),
+                Transaction.date <= as_of,
             )
         )
         cleared_balance = Decimal(str(cleared_result.scalar_one()))
@@ -48,6 +57,7 @@ class ReconciliationService:
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
                 Transaction.cleared == "uncleared",
+                Transaction.date <= as_of,
             )
         )
         uncleared_count = uncleared_result.scalar_one()
@@ -58,6 +68,7 @@ class ReconciliationService:
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
                 Transaction.cleared == "pending",
+                Transaction.date <= as_of,
             )
         )
         pending_count = pending_result.scalar_one()
@@ -114,13 +125,17 @@ class ReconciliationService:
             adjustment = await self.create_adjustment(account_id, difference)
             adjustment_transaction_id = adjustment.id
 
-        # Mark all cleared → reconciled (includes the fresh adjustment)
+        # Mark all cleared → reconciled (includes the fresh adjustment).
+        # Future-dated cleared transactions stay merely "cleared": they were
+        # excluded from the balance above, so locking them as reconciled
+        # would bless amounts the statement never confirmed.
         await self.session.execute(
             update(Transaction)
             .where(
                 Transaction.account_id == account_id,
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.cleared == "cleared",
+                Transaction.date <= today_utc(),
             )
             .values(cleared="reconciled")
         )
