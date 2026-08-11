@@ -8,6 +8,7 @@ from igab.api.v1.router import api_router
 from igab.config import settings
 from igab.db.session import engine, init_db
 from igab.domain.exceptions import IGABError, NotFoundError
+from igab.tasks.ai_worker import ai_worker
 from igab.tasks.scheduler import start_scheduler, stop_scheduler
 
 # Known-insecure sentinel values shipped in config.py defaults and .env.example.
@@ -47,7 +48,10 @@ async def lifespan(app: FastAPI):
     await _bootstrap_admin()
     await _seed_settings()
     start_scheduler()
+    await ai_worker.startup_recovery()
+    ai_worker.start()
     yield
+    await ai_worker.stop()
     stop_scheduler()
     await engine.dispose()
 

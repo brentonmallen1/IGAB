@@ -16,6 +16,12 @@ class SettingsRepository:
         result = await self.session.execute(select(AppSetting).order_by(AppSetting.key))
         return list(result.scalars().all())
 
+    async def delete(self, key: str) -> None:
+        existing = await self.get(key)
+        if existing is not None:
+            await self.session.delete(existing)
+            await self.session.flush()
+
     async def set(self, key: str, value: str) -> AppSetting:
         existing = await self.get(key)
         if existing is None:

@@ -21,7 +21,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -347,6 +347,9 @@ class Transaction(Base):
     # Bank sync deduplication (SimpleFIN, future: Plaid, etc.)
     sync_id: Mapped[str | None] = mapped_column(String(255))
     sync_source: Mapped[str | None] = mapped_column(String(50))
+    # AI provenance: 'ai_receipt' | 'ai_nl'. NULL for manual/import/sync rows
+    # (those are already distinguishable via import_id / sync_source).
+    created_via: Mapped[str | None] = mapped_column(String(20))
     scheduled_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # SimpleFIN match link
     linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -651,6 +654,10 @@ class TransactionAttachment(Base):
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
+    # Path relative to ATTACHMENTS_DIR, recorded at upload time. The on-disk
+    # location encodes the transaction date, so it must not be re-derived from
+    # txn.date on read — the date may have been edited after upload.
+    storage_path: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -658,6 +665,69 @@ class TransactionAttachment(Base):
     transaction: Mapped["Transaction"] = relationship(
         back_populates="attachments", foreign_keys=[transaction_id]
     )
+
+
+# ─── AI Jobs ─────────────────────────────────────────────────────────────────
+
+
+class AIJob(Base):
+    """Persistent queue + permanent audit log for AI-assisted entry.
+
+    Review semantics live on the created transaction (approved=False), not on
+    job status: 'done' means the job produced its output. A receipt job that
+    exhausts retries still creates a $0 stub transaction with the image
+    attached, then lands in 'error' with transaction_id set.
+    """
+
+    __tablename__ = "ai_jobs"
+    __table_args__ = (
+        Index("ix_ai_jobs_budget_status", "budget_id", "status"),
+        # Worker pickup scans only claimable rows
+        Index(
+            "ix_ai_jobs_queue",
+            "available_at",
+            postgresql_where=text("status = 'queued'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # 'receipt' | 'nl_parse'
+    status: Mapped[str] = mapped_column(
+        String(20), default="queued", nullable=False
+    )  # 'queued' | 'processing' | 'done' | 'error'
+    # Inputs: {account_id, original_filename, content_type, staged_path,
+    # text, client_today}. staged_path is relative to ATTACHMENTS_DIR so
+    # queued jobs survive restarts and volume remounts.
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    # Validated extraction output incl. line_items + suggested_split
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    # Retry backoff gate: the worker only claims jobs whose available_at has passed
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL")
+    )
+    attachment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transaction_attachments.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    transaction: Mapped["Transaction | None"] = relationship(foreign_keys=[transaction_id])
+    attachment: Mapped["TransactionAttachment | None"] = relationship(foreign_keys=[attachment_id])
 
 
 # ─── Tags ────────────────────────────────────────────────────────────────────

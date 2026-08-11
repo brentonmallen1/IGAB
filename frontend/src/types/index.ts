@@ -124,6 +124,8 @@ export interface Transaction {
   import_description: string | null
   sync_id: string | null
   sync_source: string | null
+  /** AI provenance: 'ai_receipt' | 'ai_nl'; null for manual/import/sync rows */
+  created_via: string | null
   has_sync_source: boolean
   linked_transaction_id: string | null
   link_confidence: number | null
@@ -163,6 +165,9 @@ export interface TransactionCreate {
   approved?: boolean
   transfer_account_id?: string
   splits?: SplitCreate[]
+  /** Links the created transaction to the AI job that drafted it (NL entry);
+   * the server derives created_via from the job. */
+  ai_job_id?: string
   /** Opt-in mobile capture (both or neither) — powers nearby-payee suggestions */
   latitude?: number
   longitude?: number

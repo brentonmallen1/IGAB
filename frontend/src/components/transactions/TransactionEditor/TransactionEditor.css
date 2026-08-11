@@ -49,6 +49,13 @@
   color: var(--text-primary);
 }
 
+.txn-editor__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .txn-editor__body {
   padding: var(--spacing-lg);
   overflow-y: auto;
@@ -56,6 +63,89 @@
   flex-direction: column;
   gap: var(--spacing-md);
   flex: 1;
+}
+
+/* ── AI review mode: receipt beside the form ─────────────────────────────── */
+
+.txn-editor--review {
+  width: 900px;
+}
+
+.txn-editor--review .txn-editor__main {
+  flex-direction: row;
+}
+
+.txn-editor__receipt {
+  flex: 0 0 42%;
+  min-width: 0;
+  display: flex;
+  padding: var(--spacing-lg) 0 var(--spacing-lg) var(--spacing-lg);
+}
+
+.txn-editor__receipt .receipt-pane {
+  flex: 1;
+}
+
+.txn-editor__scan-row {
+  padding: var(--spacing-sm) var(--spacing-lg) 0;
+  flex-shrink: 0;
+}
+
+.txn-editor__scan-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  min-height: 34px;
+  border: 1px dashed var(--color-accent);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  background: transparent;
+}
+
+.txn-editor__scan-btn:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.txn-editor__scan-btn:disabled {
+  opacity: 0.5;
+}
+
+.txn-editor__ai-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  flex-shrink: 0;
+}
+
+.txn-editor__ai-banner--error {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+}
+
+.txn-editor__ai-banner-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: var(--border-radius-sm);
+  color: inherit;
+  font-size: var(--font-size-xs);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.txn-editor__ai-banner-action:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 .txn-editor__row {
@@ -400,6 +490,17 @@
     padding: 0;
     align-items: stretch;
     justify-content: stretch;
+  }
+
+  /* Review mode stacks: receipt above the form, capped so fields stay usable */
+  .txn-editor--review .txn-editor__main {
+    flex-direction: column;
+  }
+
+  .txn-editor__receipt {
+    flex: 0 0 auto;
+    max-height: 32dvh;
+    padding: var(--spacing-md) var(--spacing-md) 0;
   }
 
   .txn-editor {

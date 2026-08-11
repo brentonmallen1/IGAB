@@ -22,6 +22,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage/ReportsPage').then((m
 const ScheduledTransactionsPage = lazy(() => import('./pages/ScheduledTransactionsPage/ScheduledTransactionsPage').then((m) => ({ default: m.ScheduledTransactionsPage })))
 const PayeesPage = lazy(() => import('./pages/PayeesPage/PayeesPage').then((m) => ({ default: m.PayeesPage })))
 const AccountsOverviewPage = lazy(() => import('./pages/AccountsOverviewPage/AccountsOverviewPage').then((m) => ({ default: m.AccountsOverviewPage })))
+const AIActivityPage = lazy(() => import('./pages/AIActivityPage/AIActivityPage').then((m) => ({ default: m.AIActivityPage })))
 const LiabilitiesOverviewPage = lazy(() => import('./pages/LiabilitiesOverviewPage/LiabilitiesOverviewPage').then((m) => ({ default: m.LiabilitiesOverviewPage })))
 const LiabilityPage = lazy(() => import('./pages/LiabilityPage/LiabilityPage').then((m) => ({ default: m.LiabilityPage })))
 
@@ -94,6 +95,7 @@ function App() {
                 <Route path="/reports" element={page(<ReportsPage />)} />
                 <Route path="/scheduled" element={page(<ScheduledTransactionsPage />)} />
                 <Route path="/payees" element={page(<PayeesPage />)} />
+                <Route path="/ai-activity" element={page(<AIActivityPage />)} />
               </Route>
               <Route index element={<BudgetRedirect />} />
             </Route>

@@ -251,7 +251,13 @@
 
 .quick-add__receipt-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-sm);
+}
+
+/* The AI pair (Scan receipt / Describe it) shares a row below the attach buttons */
+.quick-add__receipt-actions .quick-add__scan-btn {
+  flex: 1 1 40%;
 }
 
 .quick-add__receipt-actions button {
@@ -270,4 +276,29 @@
 
 .quick-add__receipt-actions button:active {
   background: var(--bg-hover);
+}
+
+.quick-add__receipt-thumb-pdf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  background: var(--bg-tertiary);
+}
+
+/* AI scan: solid border + accent so it reads as "does something", not "attach" */
+.quick-add__receipt-actions .quick-add__scan-btn {
+  border-style: solid;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.quick-add__receipt-actions .quick-add__scan-btn:disabled {
+  opacity: 0.5;
 }

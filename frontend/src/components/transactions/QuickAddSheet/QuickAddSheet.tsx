@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Camera, ChevronRight, Images, StickyNote, X } from 'lucide-react'
+import { Camera, ChevronRight, FileText, Images, MessageSquareText, Sparkles, StickyNote, X } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { SelectionSheet, type SelectionSheetOption } from '../../common/SelectionSheet/SelectionSheet'
 import { useCreateTransaction } from '../../../api/transactions'
-import { uploadFilesToTransaction } from '../../../api/attachments'
+import { ATTACHMENT_ACCEPT, isAttachableFile, uploadFilesToTransaction } from '../../../api/attachments'
+import { useAIStatus } from '../../../api/ai'
+import { useSubmitReceipt } from '../../../api/aiJobs'
+import { NLQuickEntry } from '../../ai/NLQuickEntry'
 import { useCreatePayee, useNearbyPayees, usePayees } from '../../../api/payees'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
@@ -44,6 +47,8 @@ export function QuickAddSheet() {
   const createTxn = useCreateTransaction(budgetId ?? '')
   const createPayee = useCreatePayee(budgetId ?? '')
   const { data: nearbyPayees = [] } = useNearbyPayees(open ? budgetId : null, coords)
+  const aiStatus = useAIStatus()
+  const submitReceipt = useSubmitReceipt(budgetId ?? '')
 
   const [amount, setAmount] = useState('')
   const [direction, setDirection] = useState<Direction>('outflow')
@@ -57,9 +62,11 @@ export function QuickAddSheet() {
   const [categorySheetOpen, setCategorySheetOpen] = useState(false)
   const [accountSheetOpen, setAccountSheetOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [nlEntryOpen, setNlEntryOpen] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const libraryInputRef = useRef<HTMLInputElement>(null)
+  const aiScanInputRef = useRef<HTMLInputElement>(null)
   const amountInputRef = useRef<HTMLInputElement>(null)
 
   // Object URLs for receipt previews, revoked when files change/unmount
@@ -159,8 +166,8 @@ export function QuickAddSheet() {
     if (!list) return
     const accepted: File[] = []
     for (const file of Array.from(list)) {
-      if (!file.type.startsWith('image/')) {
-        toast.error(`${file.name} is not an image`)
+      if (!isAttachableFile(file)) {
+        toast.error(`${file.name} is not an image or PDF`)
         continue
       }
       if (file.size > 20 * 1024 * 1024) {
@@ -170,6 +177,30 @@ export function QuickAddSheet() {
       accepted.push(file)
     }
     if (accepted.length) setPendingFiles((prev) => [...prev, ...accepted])
+  }
+
+  async function scanReceipt(list: FileList | null) {
+    const file = list?.[0]
+    if (!file || !accountId) return
+    if (!isAttachableFile(file)) {
+      toast.error(`${file.name} is not an image or PDF`)
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error(`${file.name} is too large (max 20MB)`)
+      return
+    }
+    try {
+      await submitReceipt.mutateAsync({ file, accountId })
+      setLastAccountId(accountId)
+      toast.success("Receipt queued — it'll appear for review shortly", { duration: 5000 })
+      hapticTick()
+      closeQuickAdd()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail
+      toast.error(detail ?? 'Failed to queue receipt')
+    }
   }
 
   const cents = toCents(amount)
@@ -368,7 +399,14 @@ export function QuickAddSheet() {
               <div className="quick-add__receipt-thumbs">
                 {previews.map((url, i) => (
                   <div key={url} className="quick-add__receipt-thumb">
-                    <img src={url} alt={`Receipt ${i + 1}`} loading="lazy" />
+                    {pendingFiles[i]?.type === 'application/pdf' ? (
+                      <div className="quick-add__receipt-thumb-pdf" title={pendingFiles[i].name}>
+                        <FileText size={18} />
+                        <span>PDF</span>
+                      </div>
+                    ) : (
+                      <img src={url} alt={`Receipt ${i + 1}`} loading="lazy" />
+                    )}
                     <button
                       onClick={() => setPendingFiles((prev) => prev.filter((_, idx) => idx !== i))}
                       aria-label={`Remove receipt ${i + 1}`}
@@ -388,6 +426,27 @@ export function QuickAddSheet() {
                 <Images size={15} />
                 Add from library
               </button>
+              {aiStatus.data?.available && (
+                <>
+                  <button
+                    className="quick-add__scan-btn"
+                    onClick={() => aiScanInputRef.current?.click()}
+                    disabled={submitReceipt.isPending || !accountId}
+                    title="AI reads the receipt and drafts the transaction for review"
+                  >
+                    <Sparkles size={15} />
+                    {submitReceipt.isPending ? 'Queuing…' : 'Scan receipt'}
+                  </button>
+                  <button
+                    className="quick-add__scan-btn"
+                    onClick={() => setNlEntryOpen(true)}
+                    title="Type or dictate the transaction — AI drafts it for you"
+                  >
+                    <MessageSquareText size={15} />
+                    Describe it
+                  </button>
+                </>
+              )}
             </div>
             <input
               ref={cameraInputRef}
@@ -403,7 +462,7 @@ export function QuickAddSheet() {
             <input
               ref={libraryInputRef}
               type="file"
-              accept="image/*"
+              accept={ATTACHMENT_ACCEPT}
               multiple
               onChange={(e) => {
                 addFiles(e.target.files)
@@ -411,9 +470,31 @@ export function QuickAddSheet() {
               }}
               style={{ display: 'none' }}
             />
+            {/* No capture attr: the OS sheet offers both camera and library */}
+            <input
+              ref={aiScanInputRef}
+              type="file"
+              accept={ATTACHMENT_ACCEPT}
+              onChange={(e) => {
+                void scanReceipt(e.target.files)
+                e.target.value = ''
+              }}
+              style={{ display: 'none' }}
+            />
           </div>
         </div>
       </BottomSheet>
+
+      {nlEntryOpen && budgetId && (
+        <NLQuickEntry
+          budgetId={budgetId}
+          accountId={accountId}
+          onClose={() => {
+            setNlEntryOpen(false)
+            closeQuickAdd()
+          }}
+        />
+      )}
 
       <SelectionSheet
         open={payeeSheetOpen}

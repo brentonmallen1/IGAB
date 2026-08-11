@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, update
 
-from igab.db.models import Payee, Transaction
+from igab.db.models import Payee, Transaction, TransactionAttachment
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import CASH_FLOW_ROW, LEAF, NOT_DELETED, PARENT_ROW, POSTED
 
@@ -33,6 +33,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         payee_ids: list[uuid.UUID] | None = None,
         amount_min: float | None = None,
         amount_max: float | None = None,
+        has_attachment: bool | None = None,
     ) -> list[Transaction]:
         q = select(Transaction).where(
             Transaction.account_id == account_id,
@@ -77,6 +78,13 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(func.abs(Transaction.amount) >= amount_min)
         if amount_max is not None:
             q = q.where(func.abs(Transaction.amount) <= amount_max)
+        if has_attachment is not None:
+            attachment_exists = (
+                select(TransactionAttachment.id)
+                .where(TransactionAttachment.transaction_id == Transaction.id)
+                .exists()
+            )
+            q = q.where(attachment_exists if has_attachment else ~attachment_exists)
         priority_rank = case(
             (Transaction.cleared == "pending", 0),
             (
@@ -116,6 +124,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         is_or_mode: bool = False,
         amount_min: float | None = None,
         amount_max: float | None = None,
+        has_attachment: bool | None = None,
         order: str = "date",
         limit: int = 200,
         offset: int = 0,
@@ -173,6 +182,13 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(func.abs(Transaction.amount) >= amount_min)
         if amount_max is not None:
             where.append(func.abs(Transaction.amount) <= amount_max)
+        if has_attachment is not None:
+            attachment_exists = (
+                select(TransactionAttachment.id)
+                .where(TransactionAttachment.transaction_id == Transaction.id)
+                .exists()
+            )
+            where.append(attachment_exists if has_attachment else ~attachment_exists)
         if search:
             pattern = f"%{search}%"
             where.append(or_(Payee.name.ilike(pattern), Transaction.memo.ilike(pattern)))

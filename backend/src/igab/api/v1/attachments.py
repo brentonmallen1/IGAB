@@ -26,6 +26,7 @@ ALLOWED_CONTENT_TYPES = {
     "image/heic",
     "image/heif",
     "image/gif",
+    "application/pdf",
 }
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
@@ -69,12 +70,18 @@ async def upload_attachment(
             detail="File too large (max 20MB)",
         )
 
-    attachment = await attachment_service.upload(
-        txn=txn,
-        file_content=content,
-        original_filename=file.filename or "attachment",
-        content_type=file.content_type or "image/jpeg",
-    )
+    try:
+        attachment = await attachment_service.upload(
+            txn=txn,
+            file_content=content,
+            original_filename=file.filename or "attachment",
+            content_type=file.content_type or "image/jpeg",
+        )
+    except ValueError as e:
+        # Corrupt/unreadable PDF or image
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unreadable file: {e}"
+        ) from e
     return AttachmentResponse.model_validate(attachment, from_attributes=True)
 
 
@@ -103,9 +110,11 @@ async def get_attachment(
     if not file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk")
 
+    # Thumbnails are always WebP renders — for PDFs the full file and its
+    # thumbnail have different types.
     return FileResponse(
         path=file_path,
-        media_type=attachment.content_type,
+        media_type="image/webp" if thumbnail else attachment.content_type,
         filename=attachment.original_filename,
     )
 
