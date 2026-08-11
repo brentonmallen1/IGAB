@@ -37,6 +37,11 @@
   --card-bg: #181825;
   --card-border: #313244;
 
+  /* Sidebar text — validated for contrast against --sidebar-bg: #11111b */
+  --sidebar-text-primary: #cdd6f4;
+  --sidebar-text-secondary: #a6adc8;
+  --sidebar-text-muted: #7f849c;
+
   /* Tag color slots — Catppuccin Mocha */
   --tag-red: #f38ba8;
   --tag-orange: #fab387;
@@ -108,6 +113,11 @@
   --header-bg: #ffffff;
   --card-bg: #ffffff;
   --card-border: #ccd0da;
+
+  /* Sidebar text — sidebar is medium-dark (#4c4f69) in catppuccin-latte */
+  --sidebar-text-primary: #eff1f5;
+  --sidebar-text-secondary: #ccd0da;
+  --sidebar-text-muted: #9ca0b0;
 
   /* Tag color slots — Catppuccin Latte */
   --tag-red: #d20f39;

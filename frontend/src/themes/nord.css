@@ -37,6 +37,11 @@
   --card-bg: #3b4252;
   --card-border: #434c5e;
 
+  /* Sidebar text — validated for contrast against --sidebar-bg: #242933 */
+  --sidebar-text-primary: #eceff4;
+  --sidebar-text-secondary: #d8dee9;
+  --sidebar-text-muted: #81899c;
+
   /* Tag color slots — Nord palette */
   --tag-red: #bf616a;
   --tag-orange: #d08770;

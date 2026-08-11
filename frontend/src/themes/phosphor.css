@@ -1,0 +1,143 @@
+/* Phosphor Dark — green CRT terminal */
+[data-theme="phosphor-dark"] {
+  --bg-primary: #0a0f0a;
+  --bg-secondary: #0f160f;
+  --bg-tertiary: #141c14;
+  --bg-elevated: #1a241a;
+  --bg-hover: #141c14;
+
+  --text-primary: #33ff33;
+  --text-secondary: #28cc28;
+  --text-muted: #1a801a;
+  --text-inverse: #0a0f0a;
+
+  --color-accent: #33ff33;
+  --color-accent-hover: #66ff66;
+  --accent-color: var(--color-accent);
+  --color-positive: #33ff33;
+  --color-negative: #ff4444;
+  --color-warning: #cccc33;
+  --color-info: #33ccff;
+
+  --border-color: #1a3a1a;
+  --border-subtle: #0f160f;
+  --input-bg: #0f160f;
+  --input-border: #286028;
+  --input-focus-ring: #33ff33;
+
+  --row-hover-bg: rgba(51, 255, 51, 0.06);
+  --row-selected-bg: rgba(51, 255, 51, 0.12);
+
+  --shadow-sm: 0 0 4px rgba(51, 255, 51, 0.2);
+  --shadow-md: 0 0 8px rgba(51, 255, 51, 0.3);
+  --shadow-lg: 0 0 16px rgba(51, 255, 51, 0.4);
+
+  --sidebar-bg: #060a06;
+  --header-bg: #060a06;
+  --card-bg: #0f160f;
+  --card-border: #1a3a1a;
+
+  --sidebar-text-primary: #33ff33;
+  --sidebar-text-secondary: #28cc28;
+  --sidebar-text-muted: #1a801a;
+
+  --tag-red: #ff4444;
+  --tag-orange: #ff9933;
+  --tag-yellow: #cccc33;
+  --tag-green: #33ff33;
+  --tag-teal: #33ffcc;
+  --tag-blue: #33ccff;
+  --tag-purple: #cc66ff;
+  --tag-pink: #ff66cc;
+
+  --chart-1: #33ccff;
+  --chart-2: #cccc33;
+  --chart-3: #33ff33;
+  --chart-4: #ff66cc;
+  --chart-5: #cc66ff;
+  --chart-6: #33ffcc;
+  --chart-7: #ff4444;
+  --chart-8: #ff9933;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* Phosphor Amber — amber CRT variant */
+[data-theme="phosphor-light"] {
+  --bg-primary: #0f0a06;
+  --bg-secondary: #16100a;
+  --bg-tertiary: #1c1610;
+  --bg-elevated: #241c14;
+  --bg-hover: #1c1610;
+
+  --text-primary: #ffaa33;
+  --text-secondary: #cc8828;
+  --text-muted: #80551a;
+  --text-inverse: #0f0a06;
+
+  --color-accent: #ffaa33;
+  --color-accent-hover: #ffcc66;
+  --accent-color: var(--color-accent);
+  --color-positive: #88cc44;
+  --color-negative: #ff4444;
+  --color-warning: #ffaa33;
+  --color-info: #44aaff;
+
+  --border-color: #3a2810;
+  --border-subtle: #16100a;
+  --input-bg: #16100a;
+  --input-border: #604020;
+  --input-focus-ring: #ffaa33;
+
+  --row-hover-bg: rgba(255, 170, 51, 0.06);
+  --row-selected-bg: rgba(255, 170, 51, 0.12);
+
+  --shadow-sm: 0 0 4px rgba(255, 170, 51, 0.2);
+  --shadow-md: 0 0 8px rgba(255, 170, 51, 0.3);
+  --shadow-lg: 0 0 16px rgba(255, 170, 51, 0.4);
+
+  --sidebar-bg: #0a0604;
+  --header-bg: #0a0604;
+  --card-bg: #16100a;
+  --card-border: #3a2810;
+
+  --sidebar-text-primary: #ffaa33;
+  --sidebar-text-secondary: #cc8828;
+  --sidebar-text-muted: #80551a;
+
+  --tag-red: #ff4444;
+  --tag-orange: #ff8833;
+  --tag-yellow: #ffaa33;
+  --tag-green: #88cc44;
+  --tag-teal: #44ccaa;
+  --tag-blue: #44aaff;
+  --tag-purple: #aa66ff;
+  --tag-pink: #ff66aa;
+
+  --chart-1: #44aaff;
+  --chart-2: #ffaa33;
+  --chart-3: #88cc44;
+  --chart-4: #ff66aa;
+  --chart-5: #aa66ff;
+  --chart-6: #44ccaa;
+  --chart-7: #ff4444;
+  --chart-8: #ff8833;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}

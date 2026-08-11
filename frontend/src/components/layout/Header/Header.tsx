@@ -1,24 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, Palette, Search } from 'lucide-react'
-import { useAppStore } from '../../../stores/appStore'
+import { CalendarDays, ChevronLeft, ChevronRight, Moon, Palette, Search, Sun } from 'lucide-react'
+import { useAppStore, PALETTES, getPaletteForTheme, isLightTheme } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { AIActivityBadge } from '../../ai/AIActivityBadge'
 import { IS_MAC } from '../../../keyboard/shortcuts'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
-import type { Theme } from '../../../stores/appStore'
 import './Header.css'
-
-export const THEMES: { value: Theme; label: string }[] = [
-  { value: 'dark', label: 'Dark' },
-  { value: 'light', label: 'Light' },
-  { value: 'gruvbox-dark', label: 'Gruvbox Dark' },
-  { value: 'gruvbox-light', label: 'Gruvbox Light' },
-  { value: 'catppuccin-mocha', label: 'Catppuccin Mocha' },
-  { value: 'catppuccin-latte', label: 'Catppuccin Latte' },
-  { value: 'rose-pine', label: 'Rosé Pine' },
-  { value: 'rose-pine-moon', label: 'Rosé Pine Moon' },
-  { value: 'nord', label: 'Nord' },
-]
 
 export function Header() {
   const selectedMonth = useAppStore((s) => s.selectedMonth)
@@ -71,6 +59,8 @@ export function Header() {
         )}
       </div>
 
+      <AIActivityBadge />
+
       <div className="header__palette-wrap">
         <button
           className="header__palette-btn"
@@ -95,15 +85,53 @@ export function Header() {
         </button>
         {themeOpen && (
           <div className="header__theme-dropdown">
-            {THEMES.map((t) => (
-              <button
-                key={t.value}
-                className={`header__theme-option ${theme === t.value ? 'header__theme-option--active' : ''}`}
-                onClick={() => { setTheme(t.value); setThemeOpen(false) }}
-              >
-                {t.label}
-              </button>
-            ))}
+            <div className="header__theme-toggle">
+              {(() => {
+                const currentPalette = getPaletteForTheme(theme)
+                const isLight = isLightTheme(theme)
+                const hasBothVariants = currentPalette.dark !== currentPalette.light
+                return (
+                  <>
+                    <button
+                      className={`header__theme-mode ${!isLight ? 'header__theme-mode--active' : ''}`}
+                      onClick={() => setTheme(currentPalette.dark)}
+                      disabled={!hasBothVariants}
+                      aria-label="Dark mode"
+                    >
+                      <Moon size={14} />
+                      <span>Dark</span>
+                    </button>
+                    <button
+                      className={`header__theme-mode ${isLight ? 'header__theme-mode--active' : ''}`}
+                      onClick={() => setTheme(currentPalette.light)}
+                      disabled={!hasBothVariants}
+                      aria-label="Light mode"
+                    >
+                      <Sun size={14} />
+                      <span>Light</span>
+                    </button>
+                  </>
+                )
+              })()}
+            </div>
+            <div className="header__theme-divider" />
+            {PALETTES.map((p) => {
+              const currentPalette = getPaletteForTheme(theme)
+              const isActive = p.id === currentPalette.id
+              return (
+                <button
+                  key={p.id}
+                  className={`header__theme-option ${isActive ? 'header__theme-option--active' : ''}`}
+                  onClick={() => {
+                    const useLight = isLightTheme(theme)
+                    setTheme(useLight ? p.light : p.dark)
+                    setThemeOpen(false)
+                  }}
+                >
+                  {p.label}
+                </button>
+              )
+            })}
           </div>
         )}
       </div>

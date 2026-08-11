@@ -49,6 +49,13 @@
   --header-height: 52px;
   --bottom-nav-height: 56px;
 
+  /* Sidebar text — the sidebar stays dark in all themes, so these need to
+     provide contrast against --sidebar-bg. Fallbacks assume a dark sidebar;
+     each theme overrides with colors validated for its specific sidebar-bg. */
+  --sidebar-text-primary: #e8eaf0;
+  --sidebar-text-secondary: #9da3b4;
+  --sidebar-text-muted: #6b7280;
+
   /* Tag color slots — fallbacks; each theme overrides with its own palette */
   --tag-red: #e57373;
   --tag-orange: #ffb74d;
@@ -262,4 +269,27 @@ a {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Font size scaling — small is the default (current sizes) */
+[data-font-size="medium"] {
+  --font-size-2xs: 0.75rem;    /* 12px, was 10px */
+  --font-size-xs: 0.8125rem;   /* 13px, was 11px */
+  --font-size-sm: 0.9375rem;   /* 15px, was 13px */
+  --font-size-base: 1rem;      /* 16px, was 14px */
+  --font-size-md: 1.0625rem;   /* 17px, was 15px */
+  --font-size-lg: 1.25rem;     /* 20px, was 18px */
+  --font-size-xl: 1.5rem;      /* 24px, was 22px */
+  --font-size-display: 2rem;   /* 32px, was 28px */
+}
+
+[data-font-size="large"] {
+  --font-size-2xs: 0.875rem;   /* 14px, was 10px */
+  --font-size-xs: 0.9375rem;   /* 15px, was 11px */
+  --font-size-sm: 1.0625rem;   /* 17px, was 13px */
+  --font-size-base: 1.125rem;  /* 18px, was 14px */
+  --font-size-md: 1.1875rem;   /* 19px, was 15px */
+  --font-size-lg: 1.375rem;    /* 22px, was 18px */
+  --font-size-xl: 1.625rem;    /* 26px, was 22px */
+  --font-size-display: 2.25rem; /* 36px, was 28px */
 }

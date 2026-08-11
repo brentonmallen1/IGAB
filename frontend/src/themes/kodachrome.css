@@ -1,0 +1,143 @@
+/* Kodachrome Dark — warm vintage film, saturated slides */
+[data-theme="kodachrome-dark"] {
+  --bg-primary: #1a1614;
+  --bg-secondary: #24201c;
+  --bg-tertiary: #2e2824;
+  --bg-elevated: #38322c;
+  --bg-hover: #2e2824;
+
+  --text-primary: #f0e8dc;
+  --text-secondary: #c8b8a8;
+  --text-muted: #888070;
+  --text-inverse: #1a1614;
+
+  --color-accent: #c84030;
+  --color-accent-hover: #d85848;
+  --accent-color: var(--color-accent);
+  --color-positive: #48884a;
+  --color-negative: #c84030;
+  --color-warning: #d89830;
+  --color-info: #3070a8;
+
+  --border-color: #38322c;
+  --border-subtle: #24201c;
+  --input-bg: #24201c;
+  --input-border: #484038;
+  --input-focus-ring: #c84030;
+
+  --row-hover-bg: rgba(200, 64, 48, 0.08);
+  --row-selected-bg: rgba(200, 64, 48, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.7);
+
+  --sidebar-bg: #141210;
+  --header-bg: #141210;
+  --card-bg: #24201c;
+  --card-border: #38322c;
+
+  --sidebar-text-primary: #f0e8dc;
+  --sidebar-text-secondary: #c8b8a8;
+  --sidebar-text-muted: #888070;
+
+  --tag-red: #c84030;
+  --tag-orange: #d87830;
+  --tag-yellow: #d89830;
+  --tag-green: #48884a;
+  --tag-teal: #38807a;
+  --tag-blue: #3070a8;
+  --tag-purple: #8850a0;
+  --tag-pink: #c85070;
+
+  --chart-1: #3070a8;
+  --chart-2: #d89830;
+  --chart-3: #48884a;
+  --chart-4: #c84030;
+  --chart-5: #8850a0;
+  --chart-6: #38807a;
+  --chart-7: #c85070;
+  --chart-8: #d87830;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* Kodachrome Light — warm vintage prints */
+[data-theme="kodachrome-light"] {
+  --bg-primary: #faf6f0;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f4ece0;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f8f0e4;
+
+  --text-primary: #2a2420;
+  --text-secondary: #4a4238;
+  --text-muted: #8a8070;
+  --text-inverse: #ffffff;
+
+  --color-accent: #b03020;
+  --color-accent-hover: #982818;
+  --accent-color: var(--color-accent);
+  --color-positive: #387038;
+  --color-negative: #b03020;
+  --color-warning: #b88020;
+  --color-info: #205888;
+
+  --border-color: #e8dcd0;
+  --border-subtle: #f4ece0;
+  --input-bg: #ffffff;
+  --input-border: #d8ccc0;
+  --input-focus-ring: #b03020;
+
+  --row-hover-bg: rgba(176, 48, 32, 0.06);
+  --row-selected-bg: rgba(176, 48, 32, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(42, 36, 32, 0.1);
+  --shadow-md: 0 4px 12px rgba(42, 36, 32, 0.15);
+  --shadow-lg: 0 8px 24px rgba(42, 36, 32, 0.2);
+
+  --sidebar-bg: #1a1614;
+  --header-bg: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: #e8dcd0;
+
+  --sidebar-text-primary: #f0e8dc;
+  --sidebar-text-secondary: #c8b8a8;
+  --sidebar-text-muted: #888070;
+
+  --tag-red: #b03020;
+  --tag-orange: #b86020;
+  --tag-yellow: #b88020;
+  --tag-green: #387038;
+  --tag-teal: #286860;
+  --tag-blue: #205888;
+  --tag-purple: #704088;
+  --tag-pink: #a84058;
+
+  --chart-1: #205888;
+  --chart-2: #b88020;
+  --chart-3: #387038;
+  --chart-4: #b03020;
+  --chart-5: #704088;
+  --chart-6: #286860;
+  --chart-7: #a84058;
+  --chart-8: #b86020;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}

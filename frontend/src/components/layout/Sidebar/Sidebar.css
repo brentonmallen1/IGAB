@@ -30,7 +30,7 @@
   align-items: center;
   gap: 4px;
   padding: var(--spacing-xs) var(--spacing-md);
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
   font-size: var(--font-size-xs);
   transition: color var(--transition-fast);
   border-bottom: 1px solid var(--border-subtle);
@@ -39,7 +39,7 @@
 }
 
 .sidebar__budget-back:hover {
-  color: var(--text-primary);
+  color: var(--sidebar-text-primary);
 }
 
 .sidebar__budget-name {
@@ -63,14 +63,14 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
+  color: var(--sidebar-text-secondary);
   font-size: var(--font-size-sm);
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .sidebar__nav-item:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  color: var(--sidebar-text-primary);
 }
 
 .sidebar__nav-item.active {
@@ -97,7 +97,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
 }
 
 .sidebar__section-header-link {
@@ -105,18 +105,18 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
   text-align: left;
   transition: color var(--transition-fast);
 }
 
 .sidebar__section-header-link:hover {
-  color: var(--text-primary);
+  color: var(--sidebar-text-primary);
 }
 
 .sidebar__total {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: var(--sidebar-text-secondary);
 }
 
 .sidebar__total.negative {
@@ -133,14 +133,14 @@
   width: 18px;
   height: 18px;
   border-radius: var(--border-radius-sm);
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
   transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .sidebar__add-account:hover,
 .sidebar__add-liability:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
+  color: var(--sidebar-text-primary);
+  background: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
 }
 
 /* Mode icon: Link2 = managed (tracked from an account), PenLine = manual */
@@ -148,7 +148,7 @@
   display: inline-flex;
   align-items: center;
   margin-right: 4px;
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
   flex-shrink: 0;
 }
 
@@ -163,7 +163,7 @@
 .sidebar__account-type {
   padding: var(--spacing-xs) var(--spacing-md);
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
   font-weight: 500;
 }
 
@@ -174,15 +174,15 @@
   width: 100%;
   padding: 5px var(--spacing-md);
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--sidebar-text-secondary);
   border-radius: 0;
   transition: background-color var(--transition-fast), color var(--transition-fast);
   text-align: left;
 }
 
 .sidebar__account:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  color: var(--sidebar-text-primary);
 }
 
 .sidebar__account-name {
@@ -244,7 +244,7 @@
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
-  color: var(--text-secondary);
+  color: var(--sidebar-text-secondary);
   font-size: var(--font-size-2xs);
   opacity: 0.7;
   transition: opacity 0.15s, background 0.15s;
@@ -252,7 +252,7 @@
 
 .sidebar__sync-btn:hover:not(:disabled) {
   opacity: 1;
-  background: var(--hover-bg);
+  background: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
 }
 
 .sidebar__sync-btn:disabled {
@@ -281,7 +281,7 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-xl) var(--spacing-md);
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
   font-size: var(--font-size-sm);
 }
 
@@ -292,15 +292,15 @@
   width: 28px;
   height: 28px;
   border-radius: var(--border-radius-sm);
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
   flex-shrink: 0;
   margin-left: auto;
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .sidebar__collapse-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  color: var(--sidebar-text-primary);
 }
 
 .sidebar__accounts-mini {
@@ -326,18 +326,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--sidebar-bg) 80%, white 20%);
+  border: 1px solid color-mix(in srgb, var(--sidebar-bg) 60%, white 40%);
+  color: var(--sidebar-text-secondary);
   cursor: pointer;
   transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
   flex-shrink: 0;
 }
 
 .sidebar__account-mini:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-color);
+  background-color: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  color: var(--sidebar-text-primary);
+  border-color: color-mix(in srgb, var(--sidebar-bg) 50%, white 50%);
 }
 
 .sidebar__account-mini-letter {
