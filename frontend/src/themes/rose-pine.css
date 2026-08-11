@@ -37,6 +37,11 @@
   --card-bg: #1f1d2e;
   --card-border: #26233a;
 
+  /* Sidebar text — validated for contrast against --sidebar-bg: #1f1d2e */
+  --sidebar-text-primary: #e0def4;
+  --sidebar-text-secondary: #908caa;
+  --sidebar-text-muted: #6e6a86;
+
   /* Tag color slots — Rosé Pine */
   --tag-red: #eb6f92;
   --tag-orange: #ebbcba;
@@ -109,6 +114,11 @@
   --header-bg: #2a273f;
   --card-bg: #2a273f;
   --card-border: #393552;
+
+  /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
+  --sidebar-text-primary: #e0def4;
+  --sidebar-text-secondary: #908caa;
+  --sidebar-text-muted: #6e6a86;
 
   /* Tag color slots — Rosé Pine Moon */
   --tag-red: #eb6f92;

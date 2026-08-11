@@ -1,0 +1,143 @@
+/* Blueprint Dark — technical drawing, white on blue */
+[data-theme="blueprint-dark"] {
+  --bg-primary: #0a1628;
+  --bg-secondary: #0f1e34;
+  --bg-tertiary: #142640;
+  --bg-elevated: #1a304c;
+  --bg-hover: #142640;
+
+  --text-primary: #e8f0ff;
+  --text-secondary: #a8c0e0;
+  --text-muted: #6080a8;
+  --text-inverse: #0a1628;
+
+  --color-accent: #60c0ff;
+  --color-accent-hover: #80d0ff;
+  --accent-color: var(--color-accent);
+  --color-positive: #60e0a0;
+  --color-negative: #ff7060;
+  --color-warning: #ffc060;
+  --color-info: #60c0ff;
+
+  --border-color: #1a3858;
+  --border-subtle: #0f1e34;
+  --input-bg: #0f1e34;
+  --input-border: #284870;
+  --input-focus-ring: #60c0ff;
+
+  --row-hover-bg: rgba(96, 192, 255, 0.08);
+  --row-selected-bg: rgba(96, 192, 255, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  --sidebar-bg: #061220;
+  --header-bg: #061220;
+  --card-bg: #0f1e34;
+  --card-border: #1a3858;
+
+  --sidebar-text-primary: #e8f0ff;
+  --sidebar-text-secondary: #a8c0e0;
+  --sidebar-text-muted: #6080a8;
+
+  --tag-red: #ff7060;
+  --tag-orange: #ffa060;
+  --tag-yellow: #ffc060;
+  --tag-green: #60e0a0;
+  --tag-teal: #60e0e0;
+  --tag-blue: #60c0ff;
+  --tag-purple: #a080ff;
+  --tag-pink: #ff80c0;
+
+  --chart-1: #60c0ff;
+  --chart-2: #ffc060;
+  --chart-3: #60e0a0;
+  --chart-4: #ff80c0;
+  --chart-5: #a080ff;
+  --chart-6: #60e0e0;
+  --chart-7: #ff7060;
+  --chart-8: #ffa060;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* Blueprint Light — inverted technical drawing */
+[data-theme="blueprint-light"] {
+  --bg-primary: #e8f0ff;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #d8e8f8;
+  --bg-elevated: #ffffff;
+  --bg-hover: #e0ecfa;
+
+  --text-primary: #0a1628;
+  --text-secondary: #283848;
+  --text-muted: #607088;
+  --text-inverse: #ffffff;
+
+  --color-accent: #1870c0;
+  --color-accent-hover: #1060a0;
+  --accent-color: var(--color-accent);
+  --color-positive: #208860;
+  --color-negative: #c84030;
+  --color-warning: #b88020;
+  --color-info: #1870c0;
+
+  --border-color: #c0d0e8;
+  --border-subtle: #d8e8f8;
+  --input-bg: #ffffff;
+  --input-border: #a8c0d8;
+  --input-focus-ring: #1870c0;
+
+  --row-hover-bg: rgba(24, 112, 192, 0.06);
+  --row-selected-bg: rgba(24, 112, 192, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(10, 22, 40, 0.1);
+  --shadow-md: 0 4px 12px rgba(10, 22, 40, 0.15);
+  --shadow-lg: 0 8px 24px rgba(10, 22, 40, 0.2);
+
+  --sidebar-bg: #0a1628;
+  --header-bg: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: #c0d0e8;
+
+  --sidebar-text-primary: #e8f0ff;
+  --sidebar-text-secondary: #a8c0e0;
+  --sidebar-text-muted: #6080a8;
+
+  --tag-red: #c84030;
+  --tag-orange: #c86820;
+  --tag-yellow: #b88020;
+  --tag-green: #208860;
+  --tag-teal: #208888;
+  --tag-blue: #1870c0;
+  --tag-purple: #7050b0;
+  --tag-pink: #c04080;
+
+  --chart-1: #1870c0;
+  --chart-2: #b88020;
+  --chart-3: #208860;
+  --chart-4: #c04080;
+  --chart-5: #7050b0;
+  --chart-6: #208888;
+  --chart-7: #c84030;
+  --chart-8: #c86820;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}

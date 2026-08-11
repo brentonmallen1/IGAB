@@ -1,0 +1,143 @@
+/* Desert Dark — sunset desert, warm earth tones */
+[data-theme="desert-dark"] {
+  --bg-primary: #1c1614;
+  --bg-secondary: #26201c;
+  --bg-tertiary: #302824;
+  --bg-elevated: #3a322c;
+  --bg-hover: #302824;
+
+  --text-primary: #f0e4d8;
+  --text-secondary: #c8b8a8;
+  --text-muted: #887868;
+  --text-inverse: #1c1614;
+
+  --color-accent: #c87850;
+  --color-accent-hover: #d89068;
+  --accent-color: var(--color-accent);
+  --color-positive: #6aa878;
+  --color-negative: #c85848;
+  --color-warning: #d8a050;
+  --color-info: #5898a8;
+
+  --border-color: #3a322c;
+  --border-subtle: #26201c;
+  --input-bg: #26201c;
+  --input-border: #4a403a;
+  --input-focus-ring: #c87850;
+
+  --row-hover-bg: rgba(200, 120, 80, 0.08);
+  --row-selected-bg: rgba(200, 120, 80, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  --sidebar-bg: #141210;
+  --header-bg: #141210;
+  --card-bg: #26201c;
+  --card-border: #3a322c;
+
+  --sidebar-text-primary: #f0e4d8;
+  --sidebar-text-secondary: #c8b8a8;
+  --sidebar-text-muted: #887868;
+
+  --tag-red: #c85848;
+  --tag-orange: #c87850;
+  --tag-yellow: #d8a050;
+  --tag-green: #6aa878;
+  --tag-teal: #5898a8;
+  --tag-blue: #5080a8;
+  --tag-purple: #9878a8;
+  --tag-pink: #c87888;
+
+  --chart-1: #5898a8;
+  --chart-2: #d8a050;
+  --chart-3: #6aa878;
+  --chart-4: #c87850;
+  --chart-5: #9878a8;
+  --chart-6: #5080a8;
+  --chart-7: #c85848;
+  --chart-8: #c87888;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* Desert Light — daytime desert, sand and sage */
+[data-theme="desert-light"] {
+  --bg-primary: #faf6f0;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f4ece0;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f8f0e4;
+
+  --text-primary: #3a302a;
+  --text-secondary: #5a4a40;
+  --text-muted: #8a7a68;
+  --text-inverse: #ffffff;
+
+  --color-accent: #a86040;
+  --color-accent-hover: #904830;
+  --accent-color: var(--color-accent);
+  --color-positive: #4a8858;
+  --color-negative: #a84838;
+  --color-warning: #b88040;
+  --color-info: #407888;
+
+  --border-color: #e8dcd0;
+  --border-subtle: #f4ece0;
+  --input-bg: #ffffff;
+  --input-border: #d8ccc0;
+  --input-focus-ring: #a86040;
+
+  --row-hover-bg: rgba(168, 96, 64, 0.06);
+  --row-selected-bg: rgba(168, 96, 64, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(58, 48, 42, 0.1);
+  --shadow-md: 0 4px 12px rgba(58, 48, 42, 0.15);
+  --shadow-lg: 0 8px 24px rgba(58, 48, 42, 0.2);
+
+  --sidebar-bg: #1c1614;
+  --header-bg: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: #e8dcd0;
+
+  --sidebar-text-primary: #f0e4d8;
+  --sidebar-text-secondary: #c8b8a8;
+  --sidebar-text-muted: #887868;
+
+  --tag-red: #a84838;
+  --tag-orange: #a86040;
+  --tag-yellow: #b88040;
+  --tag-green: #4a8858;
+  --tag-teal: #407888;
+  --tag-blue: #406888;
+  --tag-purple: #785888;
+  --tag-pink: #a86068;
+
+  --chart-1: #407888;
+  --chart-2: #b88040;
+  --chart-3: #4a8858;
+  --chart-4: #a86040;
+  --chart-5: #785888;
+  --chart-6: #406888;
+  --chart-7: #a84838;
+  --chart-8: #a86068;
+
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}

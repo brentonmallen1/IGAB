@@ -1,0 +1,165 @@
+/* 90s Retro Dark */
+[data-theme="nineties-dark"] {
+  /* Backgrounds — deep warm gray with teal undertone */
+  --bg-primary: #181a1c;
+  --bg-secondary: #222528;
+  --bg-tertiary: #2c3034;
+  --bg-elevated: #363a3f;
+  --bg-hover: #2c3034;
+
+  /* Text — warm off-white */
+  --text-primary: #f0ece8;
+  --text-secondary: #c0b8b0;
+  --text-muted: #808080;
+  --text-inverse: #181a1c;
+
+  /* Semantic colors from the 90s palette */
+  --color-accent: #5a9aa0;
+  --color-accent-hover: #70b0b8;
+  --accent-color: var(--color-accent);
+  --color-positive: #5a9aa0;
+  --color-negative: #c0654a;
+  --color-warning: #d4a84a;
+  --color-info: #4a6ab8;
+
+  /* Borders and inputs */
+  --border-color: #363a3f;
+  --border-subtle: #222528;
+  --input-bg: #222528;
+  --input-border: #464a50;
+  --input-focus-ring: #5a9aa0;
+
+  /* Row states */
+  --row-hover-bg: rgba(90, 154, 160, 0.08);
+  --row-selected-bg: rgba(90, 154, 160, 0.15);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  /* Chrome */
+  --sidebar-bg: #141618;
+  --header-bg: #141618;
+  --card-bg: #222528;
+  --card-border: #363a3f;
+
+  /* Sidebar text — validated for contrast against --sidebar-bg: #141618 */
+  --sidebar-text-primary: #f0ece8;
+  --sidebar-text-secondary: #c0b8b0;
+  --sidebar-text-muted: #808080;
+
+  /* Tag color slots — 90s palette */
+  --tag-red: #c0654a;
+  --tag-orange: #d4a84a;
+  --tag-yellow: #e0c060;
+  --tag-green: #5a9aa0;
+  --tag-teal: #70b0b8;
+  --tag-blue: #4a6ab8;
+  --tag-purple: #7a4a8a;
+  --tag-pink: #b86080;
+
+  /* Chart palette — validated for dark background */
+  --chart-1: #5a9aa0;
+  --chart-2: #d4a84a;
+  --chart-3: #4a6ab8;
+  --chart-4: #b86080;
+  --chart-5: #7a4a8a;
+  --chart-6: #c0654a;
+  --chart-7: #70b0b8;
+  --chart-8: #e0c060;
+
+  /* Aliases */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* 90s Retro Light */
+[data-theme="nineties-light"] {
+  /* Backgrounds — warm cream */
+  --bg-primary: #f8f5f0;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0ebe5;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f4f0ea;
+
+  /* Text — deep warm gray */
+  --text-primary: #282a2c;
+  --text-secondary: #484a50;
+  --text-muted: #888890;
+  --text-inverse: #ffffff;
+
+  /* Semantic colors — adjusted for light background */
+  --color-accent: #4a8890;
+  --color-accent-hover: #3a7078;
+  --accent-color: var(--color-accent);
+  --color-positive: #4a8890;
+  --color-negative: #a85040;
+  --color-warning: #b89040;
+  --color-info: #3a5aa0;
+
+  /* Borders and inputs */
+  --border-color: #e0dcd5;
+  --border-subtle: #f0ebe5;
+  --input-bg: #ffffff;
+  --input-border: #d0ccc5;
+  --input-focus-ring: #4a8890;
+
+  /* Row states */
+  --row-hover-bg: rgba(74, 136, 144, 0.06);
+  --row-selected-bg: rgba(74, 136, 144, 0.12);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(40, 42, 44, 0.1);
+  --shadow-md: 0 4px 12px rgba(40, 42, 44, 0.15);
+  --shadow-lg: 0 8px 24px rgba(40, 42, 44, 0.2);
+
+  /* Chrome — sidebar stays dark */
+  --sidebar-bg: #181a1c;
+  --header-bg: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: #e0dcd5;
+
+  /* Sidebar text — sidebar is dark (#181a1c) in light theme */
+  --sidebar-text-primary: #f0ece8;
+  --sidebar-text-secondary: #c0b8b0;
+  --sidebar-text-muted: #808080;
+
+  /* Tag color slots — 90s palette, adjusted for light bg */
+  --tag-red: #a85040;
+  --tag-orange: #b89040;
+  --tag-yellow: #a09030;
+  --tag-green: #4a8890;
+  --tag-teal: #3a7078;
+  --tag-blue: #3a5aa0;
+  --tag-purple: #6a4078;
+  --tag-pink: #a05068;
+
+  /* Chart palette — validated for light background */
+  --chart-1: #4a8890;
+  --chart-2: #b89040;
+  --chart-3: #3a5aa0;
+  --chart-4: #a05068;
+  --chart-5: #6a4078;
+  --chart-6: #a85040;
+  --chart-7: #3a7078;
+  --chart-8: #a09030;
+
+  /* Aliases */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}

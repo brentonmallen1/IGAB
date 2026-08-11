@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom'
-import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark } from 'lucide-react'
+import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
-import { THEMES } from '../Header/Header'
+import { THEMES } from '../../../stores/appStore'
+import { useAIStatus } from '../../../api/ai'
 import { useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -16,6 +17,7 @@ export function MoreSheet() {
   const setTheme = useAppStore((s) => s.setTheme)
   const navigate = useNavigate()
   const logout = useLogout()
+  const aiAvailable = useAIStatus().data?.available === true
 
   function go(path: string) {
     closeMoreSheet()
@@ -37,6 +39,12 @@ export function MoreSheet() {
           <Landmark size={18} />
           <span>Liabilities</span>
         </button>
+        {aiAvailable && (
+          <button className="more-sheet__item" onClick={() => go('/ai-activity')}>
+            <Sparkles size={18} />
+            <span>AI Activity</span>
+          </button>
+        )}
         <button className="more-sheet__item" onClick={() => go('/import')}>
           <Upload size={18} />
           <span>Import</span>

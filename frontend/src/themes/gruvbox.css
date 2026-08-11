@@ -37,6 +37,11 @@
   --card-bg: #32302f;
   --card-border: #504945;
 
+  /* Sidebar text — validated for contrast against --sidebar-bg: #1d2021 */
+  --sidebar-text-primary: #ebdbb2;
+  --sidebar-text-secondary: #bdae93;
+  --sidebar-text-muted: #928374;
+
   /* Tag color slots — Gruvbox Dark */
   --tag-red: #fb4934;
   --tag-orange: #fe8019;
@@ -109,6 +114,11 @@
   --header-bg: #f9f5d7;
   --card-bg: #f9f5d7;
   --card-border: #d5c4a1;
+
+  /* Sidebar text — sidebar stays dark (#3c3836) in gruvbox-light */
+  --sidebar-text-primary: #ebdbb2;
+  --sidebar-text-secondary: #d5c4a1;
+  --sidebar-text-muted: #a89984;
 
   /* Tag color slots — Gruvbox Light */
   --tag-red: #cc241d;
