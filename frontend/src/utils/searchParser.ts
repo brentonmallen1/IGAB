@@ -12,6 +12,12 @@ export interface TransactionFilters {
   amountMax?: number | null
   /** true = only rows with an image attached; false = only rows without */
   hasAttachment?: boolean
+  /** ISO yyyy-mm-dd bounds resolved from natural-language date tokens */
+  startDate?: string
+  endDate?: string
+  direction?: 'inflow' | 'outflow'
+  /** true = only transfers; false = exclude transfers */
+  isTransfer?: boolean
   isOrMode?: boolean
 }
 
@@ -27,7 +33,11 @@ export function hasActiveFilters(f: TransactionFilters): boolean {
     (f.accountIds?.length ?? 0) > 0 ||
     f.amountMin != null ||
     f.amountMax != null ||
-    f.hasAttachment != null
+    f.hasAttachment != null ||
+    f.startDate != null ||
+    f.endDate != null ||
+    f.direction != null ||
+    f.isTransfer != null
   )
 }
 
@@ -35,11 +45,144 @@ const ATTACHMENT_VALUES = new Set(['attachment', 'image', 'receipt'])
 
 const CLEARED_VALUES = new Set(['cleared', 'uncleared', 'pending', 'reconciled'])
 
+const DIRECTION_VALUES = new Set(['inflow', 'outflow'])
+
+// prettier-ignore
+const MONTH_NAMES: Record<string, number> = {
+  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+  may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10,
+  dec: 11, december: 11,
+}
+
+const PERIOD_WORDS = new Set(['week', 'month', 'year'])
+
+function toIsoDate(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
+/** Monday of the week containing d. */
+function startOfWeek(d: Date): Date {
+  const dow = (d.getDay() + 6) % 7
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - dow)
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+interface DateTokenMatch {
+  startDate: string
+  endDate: string
+  label: string
+  /** number of tokens consumed, starting at index i */
+  consumed: number
+}
+
+/**
+ * Recognise natural-language date tokens at position i:
+ * today · yesterday · this/last week|month|year · month names (optionally
+ * followed by a 4-digit year) · month ranges like "jan-mar". Bare month
+ * names resolve to the most recent occurrence (a month after the current
+ * one means last year). Weeks run Monday–Sunday.
+ */
+function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch | null {
+  const lower = tokens[i].toLowerCase()
+
+  if (lower === 'today') {
+    const d = toIsoDate(now)
+    return { startDate: d, endDate: d, label: 'Today', consumed: 1 }
+  }
+  if (lower === 'yesterday') {
+    const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    const d = toIsoDate(y)
+    return { startDate: d, endDate: d, label: 'Yesterday', consumed: 1 }
+  }
+
+  if (lower === 'this' || lower === 'last') {
+    const period = tokens[i + 1]?.toLowerCase()
+    if (!period || !PERIOD_WORDS.has(period)) return null
+    const label = `${capitalize(lower)} ${period}`
+    if (period === 'week') {
+      const monday = startOfWeek(now)
+      if (lower === 'last') monday.setDate(monday.getDate() - 7)
+      const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6)
+      return { startDate: toIsoDate(monday), endDate: toIsoDate(sunday), label, consumed: 2 }
+    }
+    if (period === 'month') {
+      const m = lower === 'last' ? now.getMonth() - 1 : now.getMonth()
+      const start = new Date(now.getFullYear(), m, 1)
+      const end = new Date(now.getFullYear(), m + 1, 0)
+      return { startDate: toIsoDate(start), endDate: toIsoDate(end), label, consumed: 2 }
+    }
+    const year = lower === 'last' ? now.getFullYear() - 1 : now.getFullYear()
+    return {
+      startDate: `${year}-01-01`,
+      endDate: `${year}-12-31`,
+      label,
+      consumed: 2,
+    }
+  }
+
+  // Month range: jan-mar. The end month picks the most recent past
+  // occurrence; a start month "after" the end month wraps into the prior
+  // year (nov-feb).
+  const rangeMatch = lower.match(/^([a-z]+)-([a-z]+)$/)
+  if (rangeMatch && rangeMatch[1] in MONTH_NAMES && rangeMatch[2] in MONTH_NAMES) {
+    const startMonth = MONTH_NAMES[rangeMatch[1]]
+    const endMonth = MONTH_NAMES[rangeMatch[2]]
+    const endYear = endMonth > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear()
+    const startYear = startMonth > endMonth ? endYear - 1 : endYear
+    return {
+      startDate: toIsoDate(new Date(startYear, startMonth, 1)),
+      endDate: toIsoDate(new Date(endYear, endMonth + 1, 0)),
+      label: `${capitalize(rangeMatch[1])}–${capitalize(rangeMatch[2])}`,
+      consumed: 1,
+    }
+  }
+
+  if (lower in MONTH_NAMES) {
+    const month = MONTH_NAMES[lower]
+    const yearToken = tokens[i + 1]?.match(/^\d{4}$/) ? Number(tokens[i + 1]) : null
+    const year =
+      yearToken ?? (month > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear())
+    return {
+      startDate: toIsoDate(new Date(year, month, 1)),
+      endDate: toIsoDate(new Date(year, month + 1, 0)),
+      label: yearToken ? `${capitalize(lower)} ${yearToken}` : capitalize(lower),
+      consumed: yearToken ? 2 : 1,
+    }
+  }
+
+  return null
+}
+
+function applyIsValue(result: TransactionFilters, val: string): void {
+  if (val === 'uncategorized') result.uncategorized = true
+  else if (val === 'unapproved') result.unapproved = true
+  else if (val === 'transfer') result.isTransfer = true
+  else if (DIRECTION_VALUES.has(val)) result.direction = val as 'inflow' | 'outflow'
+  else if (CLEARED_VALUES.has(val)) result.cleared = val
+}
+
+function isRecognizedIsValue(val: string): boolean {
+  return (
+    val === 'uncategorized' ||
+    val === 'unapproved' ||
+    val === 'transfer' ||
+    DIRECTION_VALUES.has(val) ||
+    CLEARED_VALUES.has(val)
+  )
+}
+
 function parseSegment(
   tokens: string[],
   categoryMap: Map<string, string>,
   payeeMap: Map<string, string>,
-  accountMap: Map<string, string>
+  accountMap: Map<string, string>,
+  now: Date
 ): TransactionFilters {
   const result: TransactionFilters = {}
   const textParts: string[] = []
@@ -51,16 +194,12 @@ function parseSegment(
     // is: value  (space-separated)  or  is:value  (compact)
     if (lower === 'is:') {
       const val = tokens[i + 1]?.toLowerCase()
-      if (val === 'uncategorized') { result.uncategorized = true; i++; continue }
-      if (val === 'unapproved') { result.unapproved = true; i++; continue }
-      if (val && CLEARED_VALUES.has(val)) { result.cleared = val; i++; continue }
+      if (val && isRecognizedIsValue(val)) { applyIsValue(result, val); i++ }
       continue
     }
     const isMatch = lower.match(/^is:(\w+)$/)
     if (isMatch) {
-      if (isMatch[1] === 'uncategorized') result.uncategorized = true
-      else if (isMatch[1] === 'unapproved') result.unapproved = true
-      else if (CLEARED_VALUES.has(isMatch[1])) result.cleared = isMatch[1]
+      applyIsValue(result, isMatch[1])
       continue
     }
 
@@ -131,6 +270,15 @@ function parseSegment(
       continue
     }
 
+    // Natural-language date tokens: today, yesterday, last week, march…
+    const dateMatch = matchDateTokens(tokens, i, now)
+    if (dateMatch) {
+      result.startDate = dateMatch.startDate
+      result.endDate = dateMatch.endDate
+      i += dateMatch.consumed - 1
+      continue
+    }
+
     textParts.push(token)
   }
 
@@ -157,6 +305,10 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
     if (seg.amountMin != null) merged.amountMin = seg.amountMin
     if (seg.amountMax != null) merged.amountMax = seg.amountMax
     if (seg.hasAttachment != null) merged.hasAttachment = seg.hasAttachment
+    if (seg.startDate != null) merged.startDate = seg.startDate
+    if (seg.endDate != null) merged.endDate = seg.endDate
+    if (seg.direction != null) merged.direction = seg.direction
+    if (seg.isTransfer != null) merged.isTransfer = seg.isTransfer
   }
 
   if (textParts.length) merged.text = textParts.join(' ')
@@ -171,7 +323,8 @@ export function parseTransactionSearch(
   query: string,
   categoryMap: Map<string, string>,
   payeeMap: Map<string, string>,
-  accountMap: Map<string, string> = new Map()
+  accountMap: Map<string, string> = new Map(),
+  now: Date = new Date()
 ): TransactionFilters {
   const tokens = tokenize(query)
 
@@ -190,12 +343,17 @@ export function parseTransactionSearch(
       if (nextLower === 'is:') {
         const val = tokens[i + 1]?.toLowerCase()
         if (val && CLEARED_VALUES.has(val)) { exclusions.excludeCleared = val; i++ }
+        else if (val === 'transfer') { exclusions.isTransfer = false; i++ }
         continue
       }
       // NOT is:value  (compact)
       const isMatch = nextLower.match(/^is:(\w+)$/)
       if (isMatch && CLEARED_VALUES.has(isMatch[1])) {
         exclusions.excludeCleared = isMatch[1]
+        continue
+      }
+      if (isMatch && isMatch[1] === 'transfer') {
+        exclusions.isTransfer = false
         continue
       }
       // NOT has: attachment — rows without an image
@@ -229,7 +387,7 @@ export function parseTransactionSearch(
   }
   segments.push(current)
 
-  const parsed = segments.map((seg) => parseSegment(seg, categoryMap, payeeMap, accountMap))
+  const parsed = segments.map((seg) => parseSegment(seg, categoryMap, payeeMap, accountMap, now))
   const positive = parsed.length === 1 ? parsed[0] : mergeWithOr(parsed)
 
   return Object.keys(exclusions).length ? { ...positive, ...exclusions } : positive
@@ -263,13 +421,167 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'is: uncleared ', description: 'Uncleared transactions' },
   { syntax: 'is: pending ', description: 'Pending transactions' },
   { syntax: 'is: reconciled ', description: 'Reconciled transactions' },
+  { syntax: 'is: inflow ', description: 'Money in (positive amounts)' },
+  { syntax: 'is: outflow ', description: 'Money out (negative amounts)' },
+  { syntax: 'is: transfer ', description: 'Transfers between accounts' },
   { syntax: 'has: attachment ', description: 'Transactions with an image attached' },
   { syntax: 'NOT has: attachment ', description: 'Transactions without an image' },
   { syntax: 'category:', description: 'Filter by category name' },
   { syntax: 'payee:', description: 'Filter by payee name' },
   { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },
   { syntax: 'amount:<', description: 'Amount less than (e.g. amount:<50)' },
+  { syntax: 'today ', description: 'Dated today (also: yesterday, last week, last month)' },
+  { syntax: 'last month ', description: 'Dated in the previous calendar month' },
+  { syntax: 'march ', description: 'Dated in a month (add a year: march 2025, or a range: jan-mar)' },
   { syntax: 'OR', description: 'Combine filters with OR logic (e.g. is: unapproved OR is: uncategorized)' },
   { syntax: 'NOT is: pending ', description: 'Exclude pending transactions (global, works with OR)' },
-  { syntax: 'NOT is: cleared ', description: 'Exclude cleared transactions' },
+  { syntax: 'NOT is: transfer ', description: 'Exclude transfers' },
 ]
+
+export interface SearchChip {
+  /** Stable identity for React keys */
+  key: string
+  label: string
+  /** Indices into tokenize(query) that this chip owns */
+  indices: number[]
+}
+
+const IS_LABELS: Record<string, string> = {
+  uncategorized: 'Uncategorized',
+  unapproved: 'Unapproved',
+  cleared: 'Cleared',
+  uncleared: 'Uncleared',
+  pending: 'Pending',
+  reconciled: 'Reconciled',
+  inflow: 'Inflow',
+  outflow: 'Outflow',
+  transfer: 'Transfer',
+}
+
+function stripQuotes(s: string): string {
+  return s.replace(/^"|"$/g, '')
+}
+
+/**
+ * Describe each recognised filter construct in the query as a removable
+ * chip. Mirrors parseTransactionSearch's token recognition; free text and
+ * OR keywords produce no chips. Remove a chip with removeSearchChip.
+ */
+export function describeSearchChips(
+  query: string,
+  accountMapSize = 0,
+  now: Date = new Date()
+): SearchChip[] {
+  const tokens = tokenize(query)
+  const chips: SearchChip[] = []
+  const push = (label: string, indices: number[]) =>
+    chips.push({ key: `${indices[0]}:${label}`, label, indices })
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    const lower = token.toLowerCase()
+
+    if (token.toUpperCase() === 'NOT') {
+      const nextLower = tokens[i + 1]?.toLowerCase()
+      if (nextLower === 'is:' || nextLower === 'has:') {
+        const val = tokens[i + 2]?.toLowerCase()
+        if (nextLower === 'is:' && val && (CLEARED_VALUES.has(val) || val === 'transfer')) {
+          push(`Not ${val}`, [i, i + 1, i + 2])
+          i += 2
+        } else if (nextLower === 'has:' && val && ATTACHMENT_VALUES.has(val)) {
+          push('No attachment', [i, i + 1, i + 2])
+          i += 2
+        }
+        continue
+      }
+      const isMatch = nextLower?.match(/^is:(\w+)$/)
+      if (isMatch && (CLEARED_VALUES.has(isMatch[1]) || isMatch[1] === 'transfer')) {
+        push(`Not ${isMatch[1]}`, [i, i + 1])
+        i++
+        continue
+      }
+      const hasMatch = nextLower?.match(/^has:(\w+)$/)
+      if (hasMatch && ATTACHMENT_VALUES.has(hasMatch[1])) {
+        push('No attachment', [i, i + 1])
+        i++
+      }
+      continue
+    }
+
+    if (lower === 'is:') {
+      const val = tokens[i + 1]?.toLowerCase()
+      if (val && isRecognizedIsValue(val)) {
+        push(IS_LABELS[val], [i, i + 1])
+        i++
+      }
+      continue
+    }
+    const isMatch = lower.match(/^is:(\w+)$/)
+    if (isMatch) {
+      if (isRecognizedIsValue(isMatch[1])) push(IS_LABELS[isMatch[1]], [i])
+      continue
+    }
+
+    if (lower === 'has:') {
+      const val = tokens[i + 1]?.toLowerCase()
+      if (val && ATTACHMENT_VALUES.has(val)) {
+        push('Has attachment', [i, i + 1])
+        i++
+      }
+      continue
+    }
+    const hasMatch = lower.match(/^has:(\w+)$/)
+    if (hasMatch) {
+      if (ATTACHMENT_VALUES.has(hasMatch[1])) push('Has attachment', [i])
+      continue
+    }
+
+    let prefixMatched = false
+    for (const [prefix, chipLabel] of [
+      ['category:', 'Category'],
+      ['payee:', 'Payee'],
+      ['account:', 'Account'],
+      ['amount:', 'Amount'],
+    ] as const) {
+      // account: only resolves on the all-accounts register (mirrors parser)
+      if (prefix === 'account:' && accountMapSize === 0) continue
+      const spaced = lower === prefix
+      const value = spaced
+        ? tokens[i + 1]
+        : lower.startsWith(prefix)
+          ? token.slice(prefix.length)
+          : undefined
+      if (!value) continue
+      push(`${chipLabel}: ${stripQuotes(value)}`, spaced ? [i, i + 1] : [i])
+      if (spaced) i++
+      prefixMatched = true
+      break
+    }
+    if (prefixMatched) continue
+
+    const dateMatch = matchDateTokens(tokens, i, now)
+    if (dateMatch) {
+      const indices = Array.from({ length: dateMatch.consumed }, (_, k) => i + k)
+      push(dateMatch.label, indices)
+      i += dateMatch.consumed - 1
+    }
+  }
+
+  return chips
+}
+
+/**
+ * Rebuild the query with a chip's tokens removed. ORs left dangling at
+ * the edges or doubled up by the removal are dropped too.
+ */
+export function removeSearchChip(query: string, chip: SearchChip): string {
+  const drop = new Set(chip.indices)
+  const kept = tokenize(query).filter((_, idx) => !drop.has(idx))
+  const cleaned = kept.filter((t, idx) => {
+    if (t.toUpperCase() !== 'OR') return true
+    const prev = kept[idx - 1]
+    const next = kept[idx + 1]
+    return !!prev && !!next && prev.toUpperCase() !== 'OR' && next.toUpperCase() !== 'OR'
+  })
+  return cleaned.join(' ')
+}

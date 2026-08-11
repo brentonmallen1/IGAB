@@ -110,6 +110,26 @@
   color: var(--text-primary);
 }
 
+.header__privacy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.header__privacy-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.header__privacy-btn--active {
+  color: var(--color-accent);
+}
+
 .header__theme-dropdown {
   position: absolute;
   right: 0;

@@ -43,6 +43,10 @@ export function useInfiniteTransactions(accountId: string | null, filters: Trans
       if (filters.amountMax != null) params.amount_max = filters.amountMax
       if (filters.hasAttachment != null) params.has_attachment = filters.hasAttachment
       if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
+      if (filters.startDate) params.start_date = filters.startDate
+      if (filters.endDate) params.end_date = filters.endDate
+      if (filters.direction) params.direction = filters.direction
+      if (filters.isTransfer != null) params.is_transfer = filters.isTransfer
       const { data } = await apiClient.get<Transaction[]>(`/accounts/${accountId}/transactions`, { params })
       return data
     },
@@ -81,6 +85,10 @@ export function useInfiniteBudgetTransactions(
       if (filters.amountMax != null) params.amount_max = filters.amountMax
       if (filters.hasAttachment != null) params.has_attachment = filters.hasAttachment
       if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
+      if (filters.startDate) params.start_date = filters.startDate
+      if (filters.endDate) params.end_date = filters.endDate
+      if (filters.direction) params.direction = filters.direction
+      if (filters.isTransfer != null) params.is_transfer = filters.isTransfer
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
         { params },

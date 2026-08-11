@@ -42,6 +42,7 @@ export function CommandPalette() {
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
+  const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
 
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -97,6 +98,7 @@ export function CommandPalette() {
     openTbaDrawer: () => setTbaDrawerOpen(true),
     goMonth: (delta) =>
       setSelectedMonth(delta === 0 ? currentMonthStart() : addMonths(selectedMonth, delta)),
+    togglePrivacy: togglePrivacyMode,
   }
 
   function run(action: () => void) {

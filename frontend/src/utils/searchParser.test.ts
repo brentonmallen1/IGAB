@@ -1,10 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { parseTransactionSearch, hasActiveFilters } from './searchParser'
+import {
+  parseTransactionSearch,
+  hasActiveFilters,
+  describeSearchChips,
+  removeSearchChip,
+} from './searchParser'
 
 const EMPTY_MAP = new Map<string, string>()
 
+// Tuesday, August 11 2026 — fixed so date-token tests are deterministic
+const NOW = new Date(2026, 7, 11)
+
 function parse(query: string) {
-  return parseTransactionSearch(query, EMPTY_MAP, EMPTY_MAP)
+  return parseTransactionSearch(query, EMPTY_MAP, EMPTY_MAP, new Map(), NOW)
 }
 
 // ─── Basic filter parsing ──────────────────────────────────────────────────────
@@ -297,5 +305,223 @@ describe('hasActiveFilters', () => {
 
   it('returns true when excludeCleared is set', () => {
     expect(hasActiveFilters({ excludeCleared: 'pending' })).toBe(true)
+  })
+
+  it('returns true for date, direction, and transfer filters', () => {
+    expect(hasActiveFilters({ startDate: '2026-08-01' })).toBe(true)
+    expect(hasActiveFilters({ direction: 'inflow' })).toBe(true)
+    expect(hasActiveFilters({ isTransfer: false })).toBe(true)
+  })
+})
+
+// ─── Direction and transfer tokens ─────────────────────────────────────────────
+
+describe('is: inflow / outflow / transfer', () => {
+  it('parses is: inflow (spaced) and is:outflow (compact)', () => {
+    expect(parse('is: inflow').direction).toBe('inflow')
+    expect(parse('is:outflow').direction).toBe('outflow')
+  })
+
+  it('parses is: transfer and compact is:transfer', () => {
+    expect(parse('is: transfer').isTransfer).toBe(true)
+    expect(parse('is:transfer').isTransfer).toBe(true)
+  })
+
+  it('parses NOT is: transfer as exclusion (spaced and compact)', () => {
+    expect(parse('NOT is: transfer').isTransfer).toBe(false)
+    expect(parse('NOT is:transfer').isTransfer).toBe(false)
+  })
+
+  it('combines direction with other filters and text', () => {
+    const f = parse('is:outflow coffee is: uncleared')
+    expect(f.direction).toBe('outflow')
+    expect(f.cleared).toBe('uncleared')
+    expect(f.text).toBe('coffee')
+  })
+
+  it('survives OR merging', () => {
+    const f = parse('is:inflow OR is: transfer')
+    expect(f.direction).toBe('inflow')
+    expect(f.isTransfer).toBe(true)
+    expect(f.isOrMode).toBe(true)
+  })
+})
+
+// ─── Natural-language date tokens ──────────────────────────────────────────────
+
+describe('date tokens (now = Tue 2026-08-11)', () => {
+  it('parses today', () => {
+    const f = parse('today')
+    expect(f.startDate).toBe('2026-08-11')
+    expect(f.endDate).toBe('2026-08-11')
+    expect(f.text).toBeUndefined()
+  })
+
+  it('parses yesterday', () => {
+    const f = parse('yesterday')
+    expect(f.startDate).toBe('2026-08-10')
+    expect(f.endDate).toBe('2026-08-10')
+  })
+
+  it('parses this week as the current Monday–Sunday week', () => {
+    const f = parse('this week')
+    expect(f.startDate).toBe('2026-08-10')
+    expect(f.endDate).toBe('2026-08-16')
+  })
+
+  it('parses last week as the previous Monday–Sunday week', () => {
+    const f = parse('last week')
+    expect(f.startDate).toBe('2026-08-03')
+    expect(f.endDate).toBe('2026-08-09')
+  })
+
+  it('parses this month and last month as calendar months', () => {
+    const thisMonth = parse('this month')
+    expect(thisMonth.startDate).toBe('2026-08-01')
+    expect(thisMonth.endDate).toBe('2026-08-31')
+    const lastMonth = parse('last month')
+    expect(lastMonth.startDate).toBe('2026-07-01')
+    expect(lastMonth.endDate).toBe('2026-07-31')
+  })
+
+  it('parses this year and last year as calendar years', () => {
+    const thisYear = parse('this year')
+    expect(thisYear.startDate).toBe('2026-01-01')
+    expect(thisYear.endDate).toBe('2026-12-31')
+    const lastYear = parse('last year')
+    expect(lastYear.startDate).toBe('2025-01-01')
+    expect(lastYear.endDate).toBe('2025-12-31')
+  })
+
+  it('parses a past month name in the current year', () => {
+    const f = parse('march')
+    expect(f.startDate).toBe('2026-03-01')
+    expect(f.endDate).toBe('2026-03-31')
+  })
+
+  it('resolves a month after the current one to last year', () => {
+    const f = parse('september')
+    expect(f.startDate).toBe('2025-09-01')
+    expect(f.endDate).toBe('2025-09-30')
+  })
+
+  it('accepts an explicit trailing year', () => {
+    const f = parse('march 2025')
+    expect(f.startDate).toBe('2025-03-01')
+    expect(f.endDate).toBe('2025-03-31')
+    expect(f.text).toBeUndefined()
+  })
+
+  it('accepts three-letter month abbreviations', () => {
+    const f = parse('feb')
+    expect(f.startDate).toBe('2026-02-01')
+    expect(f.endDate).toBe('2026-02-28')
+  })
+
+  it('parses a month range like jan-mar', () => {
+    const f = parse('jan-mar')
+    expect(f.startDate).toBe('2026-01-01')
+    expect(f.endDate).toBe('2026-03-31')
+  })
+
+  it('wraps a range crossing the year boundary (nov-feb)', () => {
+    const f = parse('nov-feb')
+    expect(f.startDate).toBe('2025-11-01')
+    expect(f.endDate).toBe('2026-02-28')
+  })
+
+  it('combines dates with other filters and text', () => {
+    const f = parse('last month is:outflow coffee')
+    expect(f.startDate).toBe('2026-07-01')
+    expect(f.endDate).toBe('2026-07-31')
+    expect(f.direction).toBe('outflow')
+    expect(f.text).toBe('coffee')
+  })
+
+  it('leaves "this" and "last" as text without a period word', () => {
+    const f = parse('last chance')
+    expect(f.startDate).toBeUndefined()
+    expect(f.text).toBe('last chance')
+  })
+
+  it('leaves quoted month names as text', () => {
+    const f = parse('"march"')
+    expect(f.startDate).toBeUndefined()
+    expect(f.text).toBe('"march"')
+  })
+})
+
+// ─── Filter chips ──────────────────────────────────────────────────────────────
+
+describe('describeSearchChips', () => {
+  function chips(query: string, accountMapSize = 0) {
+    return describeSearchChips(query, accountMapSize, NOW)
+  }
+
+  it('returns no chips for plain text', () => {
+    expect(chips('coffee shop')).toEqual([])
+  })
+
+  it('describes is:/has: filters with labels', () => {
+    const labels = chips('is: cleared has:attachment is:transfer').map((c) => c.label)
+    expect(labels).toEqual(['Cleared', 'Has attachment', 'Transfer'])
+  })
+
+  it('describes NOT filters', () => {
+    const labels = chips('NOT is: pending NOT has:attachment').map((c) => c.label)
+    expect(labels).toEqual(['Not pending', 'No attachment'])
+  })
+
+  it('describes category, payee, and amount filters', () => {
+    const labels = chips('category: groc payee:starbucks amount:>100').map((c) => c.label)
+    expect(labels).toEqual(['Category: groc', 'Payee: starbucks', 'Amount: >100'])
+  })
+
+  it('describes account filters only with an account map', () => {
+    expect(chips('account:checking').map((c) => c.label)).toEqual([])
+    expect(chips('account:checking', 2).map((c) => c.label)).toEqual(['Account: checking'])
+  })
+
+  it('describes date tokens with friendly labels', () => {
+    const labels = chips('today last week march 2025 jan-mar').map((c) => c.label)
+    expect(labels).toEqual(['Today', 'Last week', 'March 2025', 'Jan–Mar'])
+  })
+
+  it('free text between filters produces no chip', () => {
+    const labels = chips('is: cleared coffee last month').map((c) => c.label)
+    expect(labels).toEqual(['Cleared', 'Last month'])
+  })
+})
+
+describe('removeSearchChip', () => {
+  function removeByLabel(query: string, label: string, accountMapSize = 0) {
+    const chip = describeSearchChips(query, accountMapSize, NOW).find((c) => c.label === label)
+    expect(chip).toBeDefined()
+    return removeSearchChip(query, chip!)
+  }
+
+  it('removes a spaced filter and keeps the rest', () => {
+    expect(removeByLabel('is: cleared coffee march', 'Cleared')).toBe('coffee march')
+  })
+
+  it('removes a multi-token date filter', () => {
+    expect(removeByLabel('last week is:outflow', 'Last week')).toBe('is:outflow')
+  })
+
+  it('removes a month + year pair together', () => {
+    expect(removeByLabel('march 2025 coffee', 'March 2025')).toBe('coffee')
+  })
+
+  it('drops an OR left dangling at the edge', () => {
+    expect(removeByLabel('is:cleared OR is:pending', 'Cleared')).toBe('is:pending')
+    expect(removeByLabel('is:cleared OR is:pending', 'Pending')).toBe('is:cleared')
+  })
+
+  it('removes NOT filters including the NOT token', () => {
+    expect(removeByLabel('coffee NOT is: pending', 'Not pending')).toBe('coffee')
+  })
+
+  it('removing the only chip empties the query', () => {
+    expect(removeByLabel('is:transfer', 'Transfer')).toBe('')
   })
 })

@@ -23,6 +23,11 @@ export const STRATEGY_META: Record<AssignStrategy, { label: string; description:
     label: 'Average Spent',
     description: "Set each category's assigned amount to its six-month average spent.",
   },
+  reduce_overfunded: {
+    label: 'Reduce Overfunding',
+    description:
+      'Pull categories assigned beyond their target back to the target. The excess returns to Ready to Assign.',
+  },
   reset_available: {
     label: 'Reset Available Amounts',
     description:
@@ -42,4 +47,8 @@ export const AUTO_STRATEGY_ORDER: AssignStrategy[] = [
   'average_spent',
 ]
 
-export const RESET_STRATEGY_ORDER: AssignStrategy[] = ['reset_available', 'reset_assigned']
+export const RESET_STRATEGY_ORDER: AssignStrategy[] = [
+  'reduce_overfunded',
+  'reset_available',
+  'reset_assigned',
+]

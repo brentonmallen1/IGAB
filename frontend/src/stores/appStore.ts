@@ -97,6 +97,8 @@ interface AppState {
   lastQuickAddAccountId: string | null
   /** Opt-in, device-local: capture location on quick-add to suggest nearby payees */
   locationEnabled: boolean
+  /** Device-local: mask all amounts (screen-share / over-the-shoulder privacy) */
+  privacyMode: boolean
 
   setTheme: (theme: Theme) => void
   setFontScale: (scale: FontScale) => void
@@ -107,6 +109,7 @@ interface AppState {
   setAutoOpenLastBudget: (val: boolean) => void
   setLastQuickAddAccountId: (id: string) => void
   setLocationEnabled: (val: boolean) => void
+  togglePrivacyMode: () => void
 }
 
 function currentMonthString(): string {
@@ -125,6 +128,7 @@ export const useAppStore = create<AppState>()(
       autoOpenLastBudget: true,
       lastQuickAddAccountId: null,
       locationEnabled: false,
+      privacyMode: false,
 
       setTheme: (theme) => {
         document.documentElement.setAttribute('data-theme', theme)
@@ -142,6 +146,7 @@ export const useAppStore = create<AppState>()(
       setAutoOpenLastBudget: (val) => set({ autoOpenLastBudget: val }),
       setLastQuickAddAccountId: (id) => set({ lastQuickAddAccountId: id }),
       setLocationEnabled: (val) => set({ locationEnabled: val }),
+      togglePrivacyMode: () => set((s) => ({ privacyMode: !s.privacyMode })),
     }),
     {
       name: 'igab-app',
