@@ -24,7 +24,8 @@ dev-backend:
     set -a && source .env && set +a
     # bash mangles JSON arrays from .env; unset so pydantic-settings reads .env directly
     unset CORS_ORIGINS
-    cd backend && uv sync && PYTHONPATH=src DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT:-5432}/${DB_NAME}" \
+    BACKUPS_DIR="${BACKUP_DIR:-$(pwd)/backups}"
+    cd backend && uv sync && PYTHONPATH=src BACKUPS_DIR="$BACKUPS_DIR" DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT:-5432}/${DB_NAME}" \
         uv run uvicorn igab.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Run frontend dev server with HMR
@@ -128,14 +129,22 @@ backup:
     docker compose exec -T db pg_dump -U "${DB_USER:-igab}" -Fc "${DB_NAME:-igab}" > "$file"
     echo "wrote $file ($(du -h "$file" | cut -f1))"
 
-# Restore a dump created by `just backup` — DROPS AND REPLACES the database
+# Restore a dump created by `just backup` or the db-backup container — DROPS
+# AND REPLACES the database. For *.age dumps, set BACKUP_AGE_KEY_FILE to your
+# age identity (private key) file.
 restore FILE:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Restoring {{FILE}} — this REPLACES the current database. Ctrl-C to abort."
     sleep 3
-    docker compose exec -T db pg_restore -U "${DB_USER:-igab}" -d "${DB_NAME:-igab}" \
-        --clean --if-exists --no-owner < "{{FILE}}"
+    if [[ "{{FILE}}" == *.age ]]; then
+        : "${BACKUP_AGE_KEY_FILE:?dump is age-encrypted — set BACKUP_AGE_KEY_FILE to your age identity file}"
+        age -d -i "$BACKUP_AGE_KEY_FILE" "{{FILE}}" | docker compose exec -T db pg_restore \
+            -U "${DB_USER:-igab}" -d "${DB_NAME:-igab}" --clean --if-exists --no-owner
+    else
+        docker compose exec -T db pg_restore -U "${DB_USER:-igab}" -d "${DB_NAME:-igab}" \
+            --clean --if-exists --no-owner < "{{FILE}}"
+    fi
     echo "restore complete"
 
 # Run backend linting

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useAppStore, type Theme } from '../../stores/appStore'
+import { useAppStore, THEMES, FONT_SCALES, type Theme, type FontScale } from '../../stores/appStore'
 import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '../../api/accounts'
 import { useBudgets, useUpdateBudget } from '../../api/budgets'
 import { useSettings, useUpdateSetting } from '../../api/settings'
@@ -13,7 +13,10 @@ import {
 import { SimpleFINSetup } from '../../components/simplefin/SimpleFINSetup'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
+import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
+import { AIAdvancedSettings } from '../../components/settings/AIAdvancedSettings'
+import { AIPromptSettings } from '../../components/settings/AIPromptSettings'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -59,18 +62,6 @@ const CURRENCIES: { value: string; label: string; symbol: string }[] = [
 ]
 
 
-const THEMES: { value: Theme; label: string }[] = [
-  { value: 'dark', label: 'Dark' },
-  { value: 'light', label: 'Light' },
-  { value: 'gruvbox-dark', label: 'Gruvbox Dark' },
-  { value: 'gruvbox-light', label: 'Gruvbox Light' },
-  { value: 'catppuccin-mocha', label: 'Catppuccin Mocha' },
-  { value: 'catppuccin-latte', label: 'Catppuccin Latte' },
-  { value: 'rose-pine', label: 'Rosé Pine' },
-  { value: 'rose-pine-moon', label: 'Rosé Pine Moon' },
-  { value: 'nord', label: 'Nord' },
-]
-
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'checking', label: 'Checking' },
   { value: 'savings', label: 'Savings' },
@@ -83,6 +74,8 @@ export function SettingsPage() {
   const { formatMoney } = useFormatters()
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
+  const fontScale = useAppStore((s) => s.fontScale)
+  const setFontScale = useAppStore((s) => s.setFontScale)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const autoOpenLastBudget = useAppStore((s) => s.autoOpenLastBudget)
   const setAutoOpenLastBudget = useAppStore((s) => s.setAutoOpenLastBudget)
@@ -188,6 +181,23 @@ export function SettingsPage() {
               {THEMES.map((t) => (
                 <option key={t.value} value={t.value}>
                   {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row__label">Text size</div>
+              <div className="settings-row__desc">Adjust font size across the app</div>
+            </div>
+            <select
+              className="settings-select"
+              value={fontScale}
+              onChange={(e) => setFontScale(e.target.value as FontScale)}
+            >
+              {FONT_SCALES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
                 </option>
               ))}
             </select>
@@ -447,16 +457,7 @@ export function SettingsPage() {
           <div className="settings-section__title">Backups</div>
         </div>
         <div className="settings-section__body">
-          <div className="settings-row">
-            <div>
-              <div className="settings-row__label">Automatic backups</div>
-              <div className="settings-row__desc">
-                The production stack runs a daily pg_dump container writing to ./backups
-                (retention set via env vars). Manual backup/restore: <code>just backup</code> and{' '}
-                <code>just restore &lt;file&gt;</code> from the project root.
-              </div>
-            </div>
-          </div>
+          <BackupsPanel />
         </div>
       </div>
 
@@ -616,6 +617,8 @@ export function SettingsPage() {
               </div>
             </form>
           )}
+          <AIAdvancedSettings />
+          <AIPromptSettings />
         </div>
       </div>
 

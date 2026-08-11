@@ -10,7 +10,7 @@ _Reconciled 2026-07-21 after the financial-correctness audit (commit 540c2ac)._
 
 - [x] YNAB import: account-type mapping step (preview endpoint + Review Accounts step on the budget selector with name-based type suggestions)
 - [x] Code backup: pushed to private remote github.com/brentonmallen1/IGAB
-- [ ] Execute cutover per README.md (fresh DB → import → double sync → integrity green → parallel-run one statement cycle)
+- [ ] Execute cutover per README.md (fresh DB → import → double sync → integrity green → parallel-run one statement cycle) — 2026-08-10: will run on the Unraid host after budgero Phase B4 (packaging) rather than locally
 
 ---
 
@@ -78,10 +78,28 @@ _Add items here as they come up during development._
 ### Transactions
 - [x] Split transaction button always accessible (outside scroll area), opens modal
 - [x] Split transaction "add remaining to category" button
+- [x] In-place split conversion (2026-08-02): `POST /transactions/{id}/split` converts a row into a split parent, preserving attachments/AI links/sync ids — replaces the create+delete flow in the editor (which orphaned attachments); editor split-on-edit now routes through it
+
+### AI (Ollama) — receipt scanning, NL/voice entry, activity log (2026-08-02)
+- [x] Receipt photo → AI-extracted transaction: mobile quick-add "Scan receipt" queues a persistent job (`ai_jobs` table, migration b3f1c8a7d2e9); in-process asyncio worker (startup recovery, exponential backoff, SKIP LOCKED claims) extracts payee/total/date/category via Ollama vision (`format=json`, temp 0, category names not UUIDs) and creates an `approved=false` transaction with the image attached + `created_via='ai_receipt'`; terminal parse failure still creates a $0 stub with the image so the receipt is never stranded; retry refills an untouched stub
+- [x] Review modal: TransactionEditor review mode — zoomable receipt pane (Lightbox/pinch) beside the form, confidence banner, "Apply suggested split" from line items (never auto-applied), Approve button
+- [x] Suggested multi-category split from receipt line items: stored on the job result, offerable only when every line resolves and sums match within 1¢
+- [x] NL + voice entry, one DRY path: `POST /{budget}/ai/parse-transaction` (audited as `nl_parse` jobs) → draft prefills the existing TransactionEditor (`ai_job_id` links back, server stamps `created_via='ai_nl'`); Sparkles button in register toolbar + "Describe it" in quick-add; Web Speech API dictation (feature-detected, transcript confirmed before parse, mic hidden where unsupported)
+- [x] AI Activity page (`/ai-activity`, hidden when AI unconfigured): permanent audit log with status chips, error details, retry/delete, receipt thumbnails, view-transaction links; header badge with active-job count (fast poll only while active); Sidebar/MoreSheet entries
+- [x] Model-agnostic capabilities: `/api/show` probe — thinking auto-enables when advertised (`ai_thinking` auto/on/off), vision pre-checked at submit with a clear error; pass-through `ollama_options` + `ollama_vision_options` JSON and `ai_vision_timeout_s` in Settings → AI → Advanced; optional `ollama_vision_model` override toggle
+- [x] Editable AI prompts: all 4 task prompts viewable/editable in Settings (only overrides stored; revert-to-default via `DELETE /settings/{key}`); broken placeholders fall back to defaults; brace-safe literal substitution
+- [x] Register: per-row image button (muted = add, accent = view w/ lightbox) replacing the passive paperclip; `has: attachment` / `NOT has: attachment` search syntax → `has_attachment` param on both list endpoints
+- [x] Attachment path integrity fix: `storage_path` recorded at upload (migration backfills) — date edits after attach no longer orphan files
+- [x] AI payee polish: "Normalize" button in the merge modal (uses normalize-payee endpoint); `BudgetAccess` ownership guard added to the pre-existing AI routes
+- [x] PDF attachments (2026-08-02): `application/pdf` accepted everywhere images are (attachment panel, quick-add, row button, AI scan); stored verbatim with a rendered-first-page WebP thumbnail; PDFs open in the browser's native viewer (new tab / iframe in the review pane); AI extraction rasterizes the first page via PyMuPDF (AGPL-3.0 — deliberate copyleft choice)
+- [x] Receipt gate (2026-08-02): cheap "is this a receipt?" vision check (tiny output budget, thinking never enabled, editable `ai_prompt_receipt_gate`) before full extraction; not-a-receipt is terminal → same $0 stub-with-image path as failures; inconclusive answers proceed so the gate can never block a real receipt
+- [x] Desktop scan entry point (2026-08-02): "Scan a receipt instead" in the add-transaction editor (create mode, AI-gated) queues the same receipt job with the editor's selected account
 
 ### Data
 - [x] Generate sample budget (2026-07-25: one-click card on the budget selector + `just sample-budget <email>` CLI; 12 months of curated data — 5 account types, splits, transfers, targets, tags, scheduled, reconciliation; generator derives assignments from the data and sweeps surplus into Emergency Fund so TBA lands exactly at $150 with only Dining Out overspent, for any anchor date; integrity green, 7 integration tests)
-- [ ] Auto backups configurable in UI (daily backup container + retention exist via env vars; frequency/count/age settings do not)
+- [x] Auto backups configurable in UI (2026-08-10: Settings → Backups panel — interval/retention/keep-min/age-recipient stored in `app_settings` (env vars remain seeds + fallbacks), polled by the db-backup agent every 10s via psql so changes apply without restart; agent online/offline indicator, backup-now button, list of existing backups (kind/size/date/encrypted), and in-app restore: confirm dialog + optional pre-restore safety dump, file-based command protocol (`/backups/.agent/`), maintenance-mode 503s with DB-free status endpoint, API self-restarts onto the restored DB (kills its parent chain — needed under `UVICORN_RELOAD`); encrypted + attachments restores deliberately CLI-only since the server holds no age private key; live-tested full round-trip incl. restart)
+- [x] Backup hardening with sensible defaults (2026-08-10: inline compose loop → `scripts/db-backup.sh` — atomic temp-file+rename writes, keep-at-least-N floor so a silent month of failures can't prune the last good backups (KEEP_MIN=7), failed dump skips pruning, attachments now archived too (`igab-attachments-*.tar.gz`, only when contents changed via md5 manifest), all vars documented in .env.example, README updated; live-tested incl. restore of both artifact kinds)
+- [x] Encrypted backups: optional `age` public-key encryption in the db-backup container (2026-08-10: `BACKUP_AGE_RECIPIENT` env var encrypts dumps + attachment archives as `.age`; age installed in-container on demand; `just restore <file>.age` decrypts via `BACKUP_AGE_KEY_FILE`; restore docs in README; verified decrypt round-trip). Decision 2026-08-10: no DB/field-level encryption at rest — server-side queries need plaintext and host disk encryption (Unraid LUKS) is the right layer for stolen-disk risk; documented in README. Secrets stay app-encrypted (SimpleFIN Fernet)
 - [ ] YNAB-compatible export (exit strategy — a system of record needs a way out too)
 - [ ] Attachment file GC (files of long-deleted transactions are never removed from disk)
 
@@ -89,8 +107,8 @@ _Add items here as they come up during development._
 - [ ] Savings tools section (personal finance flowchart, savings guidance)
 - [ ] Education section (personal finance flowchart, other resources)
 - [ ] Migrating to a new budget plan (preserve transaction history)
-- [ ] Monthly category balance snapshots (O(1) budget summary, invalidate on change) — summary currently recomputes month-by-month per category; fine today, will crawl after years of data
-- [ ] Budget lookback / month comparison (side-by-side via snapshots)
+- [ ] Monthly category balance snapshots (O(1) budget summary, invalidate on change) — summary currently recomputes month-by-month per category; fine today, will crawl after years of data. Scheduled as the Phase B3 prerequisite in the budgero plan below
+- [ ] Budget lookback / month comparison (side-by-side via snapshots) — expanded into the multi-month budget view item in the budgero review section below
 
 ### Testing & CI
 - [ ] CI on push (GitHub Actions: `just quality` + backend suite with a Postgres service container + `npm run typecheck`) — deferred while development is active; run the suite manually before commits meanwhile
@@ -117,13 +135,52 @@ _Add items here as they come up during development._
 
 ### Other
 - [x] Locale/format settings — per-budget number format (1,234.56 vs 1.234,56 vs 1 234,56), date format (M/D/Y vs D/M/Y vs Y-M-D), time format (12h vs 24h) — Settings page UI + app-wide FormatContext
-- [ ] 2FA (TOTP) support
-- [ ] Budget notes / annotations
+- [ ] 2FA (TOTP) support — deferred 2026-08-10: self-hosters can front IGAB with Authelia/Authentik/etc.; revisit only if demand appears
+- [x] Budget notes / annotations
 - [ ] Transaction flags / colors
-- [ ] Multi-currency support (transactions in foreign currencies)
+- [x] Multi-currency support (transactions in foreign currencies)
 - [ ] Plugin framework + plugin management page
 - [ ] Mock SimpleFIN API for dev (a FakeClient exists in the integration tests; a dev-mode mock server with generated timestamps does not)
 - [ ] Budgeted-mode sankey ignores account filters (pre-existing backend inconsistency; spent mode honors them — compare mode inherits it)
+
+### Competitive review — budgero (2026-08-10, github.com/tombadilo-bombadilo/budgero)
+_Reviewed their feature set + Unraid packaging. Their model diverges from ours deliberately: RTA is a single global time-static number, and overspending stays in-category instead of being deducted from RTA — simpler, but our YNAB-style month-aware TBA is more correct; keep ours. Their "semantic search" is marketing: it's a structured token parser (date phrases, amount filters, category/label tokens) over substring matching, no embeddings. Items below are what's worth adopting._
+
+_Phased build plan (2026-08-10): ordered by value-per-effort — correctness first, then cheap high-value wins, then the big builds, then packaging; the last phase is deferred-until-demand. Effort tags S/M/L. Every item states its mobile handling explicitly._
+
+_Agreed execution order (2026-08-10): 1) data backups working with sensible defaults (incl. encrypted-backups item under Data) → 2) B1 + frontend test harness (Testing & CI) → 3) budgeted-mode sankey account-filter fix → 4) B2 → 5) B3 → 6) B4 → 7) host on Unraid and run the cutover parallel-test there (no local spin-up). 2FA/TOTP deferred: self-hosters can front the app with Authelia/Authentik or similar._
+
+#### Phase B1 — Correctness (do first: small diffs, highest value; core trust surface → exhaustive tests per CLAUDE.md)
+- [ ] (S) Reconciliation as-of cutoff: `ReconciliationService.get_status` sums all cleared transactions regardless of date, so a future-dated cleared transaction skews the cleared balance and produces a wrong adjustment vs the bank statement. Exclude transactions dated after today in `get_status`/`finish` (budgero shipped this exact fix in their changelog). Tests: future-dated cleared txn present → status and adjustment unchanged. Mobile: none — reconciliation UI already responsive
+- [ ] (M) Future-month assignments vs TBA: `get_budget_summary` simulates category balances only through the viewed month, so assigning $500 in September doesn't reduce August's TBA — the same dollars can be assigned twice. Decide handling (YNAB deducts future assignments from current RTA, or show an explicit "Assigned in Future" line on the hero) + tests for assign-ahead → navigate back. Mobile: whatever surfaces on the desktop hero pill must also appear in the mobile TBA hero drawer (BottomSheet), not just desktop
+- [ ] (S, rides on the previous item's machinery) Future overspending warning: when an edit made today pushes a *future* month's category available negative (e.g. spending against a category that has future assignments), warn with option to proceed. Mobile: warning must render in the full-screen mobile editor and quick-add sheet, not only the desktop inline editor
+
+#### Phase B2 — Quick wins (each roughly a day; immediately felt daily)
+- [ ] (M) Calculator amount inputs — ONE shared expression-evaluating amount component/hook, used everywhere: desktop inline assignment cells (`+50`, `-25`, `*2` against current value), TransactionEditor amount, split-editor line amounts, and the mobile QuickAddSheet amount-first entry (summing receipt items on the phone — `12.50+3.99` — is the killer use). Evaluate on blur/Enter/`=`; cents-integer math, no float eval; invalid expression keeps prior value with a shake/hint
+- [ ] (S) Privacy mode: app-wide amount-masking toggle for screen-sharing / over-the-shoulder use. Route all money rendering through the existing FormatContext so it's one switch; per-device persistence (localStorage). Desktop: command palette entry + keyboard shortcut. Mobile: toggle in MoreSheet (palette is desktop-only) + optional header eye icon
+- [ ] (S–M) "Reduce overfunding" auto-assign strategy: pull categories over their target back down to target, returning the excess to TBA (complements existing underfunded/cover-overspent strategies); signed-delta preview modal like the other strategies, apply recomputes server-side through move_money. Mobile: inherits automatically via the existing Assign BottomSheet drawer
+- [ ] (M) Search upgrades in searchParser.ts: natural-language date tokens ("today", "yesterday", "last week/month/year", month names, explicit ranges → existing start_date/end_date params) + type tokens (`is:inflow`, `is:outflow`, `is:transfer`); render matched tokens as removable filter chips above the register. Mobile: chips become a horizontally scrollable row under the search input on the cards view; tokens stay typeable since the palette is desktop-only
+
+#### Phase B3 — Bigger builds (high value, real effort)
+- [ ] (M) Plan vs Reality report: assigned vs actually spent per category per month, surfacing chronically over-budget categories (Insights group). Mostly assembly — existing report infra, drill-down panels, and export patterns apply. Mobile: nothing special, reports are already responsive
+- _(prerequisite)_ Monthly category balance snapshots — tracked under Accounts & Finance Tools above; do it first in this phase so the multi-month view isn't N slow parallel queries
+- [ ] (L) Side-by-side multi-month view: desktop-only sheet/overlay from the budget page showing 3–6 month cards (user-selectable count), editable assignments with changes rippling into later months, month anchor navigable independently of the main view, category search filter within the sheet. Budgero gates it at ≥1600px viewports and just runs N parallel month queries — snapshots make it cheap instead. Mobile: deliberately not ported — month-swipe (useSwipeNavigation) already covers sequential comparison; instead add a cheap "vs last month" delta line (assigned/activity/available) to the category inspector sheet
+
+#### Phase B4 — Self-host & Unraid packaging (independent of B1–B3; schedule around the cutover)
+_Budgero ships a single Go binary + embedded SQLite: one container, one port, one /data volume, one required env var, ~200MB RAM, CA template in their own template repo. We're a 3-container stack (Postgres + API + nginx) — can't match single-container without an architecture change, but can make Unraid first-class:_
+- [ ] (M) Publish multi-arch (amd64/arm64) images to GHCR on tag/release (api + nginx-frontend) — prerequisite for any Unraid story; currently images only build locally via compose
+- [ ] (S) Docs for Unraid's "Docker Compose Manager" plugin driving our existing compose file as-is — cheapest viable Unraid path, do before templates
+- [ ] (M) Unraid CA template repo (like their unraid-templates repo): templates for the API + frontend containers with a documented official-Postgres pairing, appdata volume layout (`/mnt/user/appdata/igab/` for pg data, attachments, backups), required env vars surfaced with descriptions (SECRET_KEY, ADMIN_EMAIL/ADMIN_PASSWORD, DATABASE_URL preset to the paired Postgres, VITE_API_URL/origin config); migrations already run on API container start so no manual step
+- _(pairs with)_ Encrypted backups — tracked under Data above; do alongside the template/docs work so self-hosting docs land once
+- [ ] (S–M) In-app update notification for self-hosted installs (opt-in, off by default): compare running version against GitHub releases, surface a toast/badge. Mobile: badge on MoreSheet entry mirrors the desktop sidebar badge
+
+#### Phase B5 — Deferred until demand (nice-to-haves that may not be worth the effort)
+- [ ] (L) Rules engine (their "auto rules"): conditions on payee/memo/amount/account (equals/contains/regex, AND-combined); ordered actions (set category/payee/memo, strip-from-memo via regex, set/adjust amount, reroute account); three modes — continuous (fires on import/sync/manual create), one-time retroactive run, autofill (suggestion-only in the editor); per-rule run history + one-click undo of the last run (the undo safety net is the trust feature that makes automation acceptable). Deferred because payee regex match patterns, most-recent-category auto-categorization, and scheduled transactions already cover the payee-normalization core — revisit after a few statement cycles on live data; if memo-cleanup/amount-tweak/retroactive-fix pain shows up, build as a v2 of the payee-matching system rather than a parallel engine
+- [ ] (M–L) True semantic search (AI-gated): embed payee+memo via an Ollama embedding model into pgvector, hybrid-rank with existing ILIKE + structured filters — only if the B2 token parser proves insufficient in practice
+- [ ] (L) All-in-one image (s6/supervisord running postgres+api+nginx in one container, single appdata volume) — the Unraid-native UX; only if templates + compose docs prove painful for real Unraid users
+
+#### Noted but not adopting
+- Global time-static RTA and overspending-stays-in-category (keep YNAB semantics); labels (our tags are a superset — multiple per transaction); local-first browser-SQLite + E2E-encrypted sync (whole different architecture); DuckDB SQL explorer + custom dashboards (our reports cover it; revisit if power-user querying demand appears); warranties tracker; crypto accounts with daily revaluation; Push API + email bridge (SimpleFIN + AI receipt scan cover ingestion)
 
 ---
 
@@ -275,28 +332,32 @@ ideas:
 - create a mock api for dev instead of calling the simplefin api, it calls this and returns a static set of data. though it would have to be generated for a relevant time stamp or something?
 
 
-- receipt extraction into categories and then do a split transaction. need to figure out a way to decode some things, maybe need a upc database interactoin or something to try to decode things and figure out what the item was. maybe have a table per receipt that has a column for the original item string and then the upc actual object name
+<!-- receipt extraction into split transactions: DONE 2026-08-02 (suggested_split from line items in the review modal). A UPC database lookup for decoding cryptic item strings remains a possible future enhancement — line_items keep the original strings in the job result. -->
 
-- receipts should be stored as a scan? or allow the phone to use the scan feature. this is to help with image sizes as well as potentially with ocr
+<!-- - receipts should be stored as a scan? or allow the phone to use the scan feature. this is to help with image sizes as well as potentially with ocr (partially addressed: images sent to the model are downscaled to 1536px JPEG; stored attachments remain WebP) -->
 - more account types like investment accounts, etc?
 
 - need to have a means to have/handle credit cards / other budget accounts in the budget view. like a section for credit cards, savings, etc. kinda like how ynab handles them a bit. need to find an explanation of how it works and try to remember/articulate why it was confusing for me.
 
 fixes:
-- cappuchin light color palette, the text color in the sidebar is too dark / no contrast and hard to read
-- pareto should indicate when the user's finances aren't adhearing to the idea. like yellow border around the % of cateogires with some commentary about what the user might want to do about it
-- report chart hover/tooltips have bad color palettes and are hard to read. need to check each color palette option
--  budget item notes don't save or have a save button. 
+- 
 
 todo:
 - fable audit/ review for common component usage and remove arbitrarily unique components
 
 
 
-- receipt parsing and handling thing. uses gemma4 and ollama to parse the receipt and create a transaction record for it. might need to dump it on a queue so that asyc could happen like this: user adds transaction via image of receipt, submits receipt and can move on and then check back later for a transaction that is marked as requiring review so they can review that it was parsed correctly. the transaction created could try to use the payees and budget item relationship from previous transactions like the sugested payee, etc does. if there was an error in the parsing, then the transaction should still be made but with the other items empty or at 0 so that the user can reiew and the image was tied to the transaction for viewing.
+<!-- receipt parsing with gemma4 + ollama: DONE 2026-08-02 — see "AI (Ollama)" section in the Backlog. Queue, needs-review transaction, payee/category memory reuse, and the error-stub-with-image behavior all implemented as described here. -->
 
 
 
 
 
 - a report idea for showing progress in reducing spending habits. not sure what that might look like but maybe as part of the savings plan/assistance stuff there could be a spending behavior/relationship improvement thing. the user sets a goal of how much to reduce their 'unnecessary' spending and they can see how that's going over time. would need a way to identify/categorize necessary spending.
+
+
+- paperless-ngx integration for a locally running instance of that. if configured, documents should be sent to that with a thumbnail stored locally. images should be tagged for the budget, with a uuid, and other information to tie it back to the transaction. this allows for the documents to be stored in one place for the user to search, etc.
+  - api docs: https://docs.paperless-ngx.com/api/#document-versions
+  - requires auth stuff to be saved for the requests
+  - if this isn't added, docs get stored in full resolution on volume specified during setup, if it is, then only thumbnail-ish (or the size used to send to the ai) gets stored in the volume while full image gets sent to paperless-ngx. Not sure if that's the best route or if it should be more involved interaction between the two for things like search and all that. I feel like that would make the UI really unresponsive trying to query for that. unless it's done only when looking at the transaction or something.
+  - 
