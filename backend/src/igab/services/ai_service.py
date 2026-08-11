@@ -1,13 +1,69 @@
+import base64
 import json
+import time
 import uuid
 from datetime import date
+from io import BytesIO
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category, Transaction
 from igab.integrations.ollama.client import OllamaClient
+from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
 from igab.services.settings_service import SettingsService
+
+# Images sent to the model: longest side capped and re-encoded as JPEG.
+# The stored attachment stays full-quality WebP; vision preprocessors are
+# more reliable with JPEG, and base64 blowup makes big payloads slow.
+MODEL_IMAGE_MAX_DIM = 1536
+MODEL_IMAGE_JPEG_QUALITY = 85
+
+# /api/show capability probe cache: (host, model) -> (capabilities|None, expiry)
+_CAPS_TTL_S = 300
+_caps_cache: dict[tuple[str, str], tuple[list[str] | None, float]] = {}
+
+
+def prepare_image_for_model(file_content: bytes) -> str:
+    """Downscale + JPEG-encode an uploaded image and return base64 for Ollama.
+
+    PDFs are rasterized (first page) before encoding — vision models only
+    take pixels."""
+    from PIL import Image
+    from pillow_heif import register_heif_opener
+
+    from igab.utils.pdf import is_pdf, render_pdf_first_page
+
+    register_heif_opener()
+
+    if is_pdf(file_content):
+        file_content = render_pdf_first_page(file_content)
+
+    img = Image.open(BytesIO(file_content))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    if img.width > MODEL_IMAGE_MAX_DIM or img.height > MODEL_IMAGE_MAX_DIM:
+        img.thumbnail((MODEL_IMAGE_MAX_DIM, MODEL_IMAGE_MAX_DIM), Image.Resampling.LANCZOS)
+    buf = BytesIO()
+    img.save(buf, "JPEG", quality=MODEL_IMAGE_JPEG_QUALITY)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def _json_from_response(raw: str) -> dict:
+    """Parse a model response that should be a JSON object; tolerates code
+    fences. Raises json.JSONDecodeError / ValueError on junk (retryable —
+    the model may produce valid JSON on the next attempt)."""
+    text = raw.strip()
+    if text.startswith("```"):
+        parts = text.split("```")
+        text = parts[1] if len(parts) > 1 else text
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected a JSON object, got {type(data).__name__}")
+    return data
 
 
 class AIService:
@@ -20,6 +76,62 @@ class AIService:
         model = await self.settings.get("ollama_model") or "llama3.2"
         return OllamaClient(host, model)
 
+    async def _vision_client(self) -> OllamaClient:
+        """Client for vision tasks: the vision-model override when set,
+        otherwise the primary model."""
+        host = await self.settings.get("ollama_host") or "http://localhost:11434"
+        model = (
+            await self.settings.get("ollama_vision_model")
+            or await self.settings.get("ollama_model")
+            or "llama3.2"
+        )
+        return OllamaClient(host, model)
+
+    async def _capabilities(self, client: OllamaClient) -> list[str] | None:
+        """Model capabilities via /api/show, cached briefly. None means the
+        server doesn't report capabilities (older Ollama) — callers must
+        degrade gracefully, never hard-fail."""
+        key = (client.host, client.model)
+        cached = _caps_cache.get(key)
+        now = time.monotonic()
+        if cached and cached[1] > now:
+            return cached[0]
+        caps = await client.capabilities()
+        _caps_cache[key] = (caps, now + _CAPS_TTL_S)
+        return caps
+
+    async def _resolve_think(self, client: OllamaClient) -> bool | None:
+        """auto = think only when the model advertises it; on/off force.
+        Returns None (field omitted) rather than False for off — older
+        servers reject the field entirely."""
+        mode = await self.settings.get("ai_thinking") or "auto"
+        if mode == "on":
+            return True
+        if mode == "off":
+            return None
+        caps = await self._capabilities(client)
+        return True if caps and "thinking" in caps else None
+
+    async def _merged_options(self, *, vision: bool, task_defaults: dict) -> dict:
+        """options = task defaults < ollama_options < ollama_vision_options.
+        The pass-through JSON settings are the model-agnostic escape hatch
+        for model-specific tuning (image tokens, num_ctx, ...)."""
+        options = dict(task_defaults)
+        keys = ["ollama_options"] + (["ollama_vision_options"] if vision else [])
+        for key in keys:
+            raw = await self.settings.get(key) or "{}"
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                continue  # invalid user JSON is rejected at save; never break a call
+            if isinstance(parsed, dict):
+                options.update(parsed)
+        return options
+
+    async def _prompt(self, key: str, values: dict[str, str]) -> str:
+        template = await self.settings.get(key) or DEFAULT_PROMPTS[key]
+        return render_prompt(template, values)
+
     async def check_availability(self) -> dict:
         """Check if Ollama is configured and reachable."""
         host = await self.settings.get("ollama_host")
@@ -28,6 +140,87 @@ class AIService:
         client = await self._client()
         available = await client.health()
         return {"available": available, "host": host}
+
+    async def check_vision_support(self) -> tuple[bool | None, str]:
+        """(supported, model): True/False when the server reports
+        capabilities, None when it doesn't (unknown — let the job try)."""
+        client = await self._vision_client()
+        caps = await self._capabilities(client)
+        if caps is None:
+            return None, client.model
+        return "vision" in caps, client.model
+
+    async def is_receipt_image(self, image_b64: str) -> bool | None:
+        """Cheap gate before full extraction: is this even a receipt?
+
+        Kept deliberately light — tiny output budget, thinking never enabled.
+        Returns None when inconclusive (unparseable answer): the gate must
+        never block a real receipt, so inconclusive proceeds to extraction.
+        Transport errors propagate — they'd fail extraction anyway and the
+        worker's retry/backoff should see them.
+        """
+        prompt = await self._prompt("ai_prompt_receipt_gate", {})
+        client = await self._vision_client()
+        raw = await client.generate(
+            prompt,
+            system="You are an image classifier. Return only valid JSON.",
+            images=[image_b64],
+            format="json",
+            options=await self._merged_options(
+                vision=True, task_defaults={"temperature": 0, "num_predict": 64}
+            ),
+            timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
+        )
+        try:
+            data = _json_from_response(raw)
+        except Exception:
+            return None
+        value = data.get("is_receipt")
+        return value if isinstance(value, bool) else None
+
+    async def extract_receipt(
+        self, budget_id: uuid.UUID, image_b64: str, client_today: date
+    ) -> dict:
+        """Vision extraction of a receipt photo into the JSON contract that
+        ai_draft_service.parse_extraction() consumes."""
+        categories = await self._get_categories(budget_id)
+        cat_list = "\n".join(f"- {c['name']} ({c['group']})" for c in categories)
+        prompt = await self._prompt(
+            "ai_prompt_receipt_extract",
+            {"categories": cat_list, "today": client_today.isoformat()},
+        )
+        client = await self._vision_client()
+        raw = await client.generate(
+            prompt,
+            system="You are a receipt data extraction engine. Return only valid JSON.",
+            images=[image_b64],
+            format="json",
+            think=await self._resolve_think(client),
+            options=await self._merged_options(vision=True, task_defaults={"temperature": 0}),
+            timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
+        )
+        return _json_from_response(raw)
+
+    async def parse_nl_transaction(
+        self, budget_id: uuid.UUID, text: str, client_today: date
+    ) -> dict:
+        """Parse a natural-language description ("coffee starbucks 5.50
+        yesterday") into the NL JSON contract for parse_extraction()."""
+        categories = await self._get_categories(budget_id)
+        cat_list = "\n".join(f"- {c['name']} ({c['group']})" for c in categories)
+        prompt = await self._prompt(
+            "ai_prompt_nl_parse",
+            {"text": text, "categories": cat_list, "today": client_today.isoformat()},
+        )
+        client = await self._client()
+        raw = await client.generate(
+            prompt,
+            system="You are a transaction parser. Return only valid JSON.",
+            format="json",
+            think=await self._resolve_think(client),
+            options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
+        )
+        return _json_from_response(raw)
 
     async def suggest_category(
         self,
@@ -40,30 +233,35 @@ class AIService:
         if not categories:
             return {"category_id": None, "category_name": None, "confidence": 0.0}
 
-        cat_list = "\n".join(f"- {c['id']}: {c['name']} ({c['group']})" for c in categories)
-        prompt = (
-            f"Transaction: payee='{payee_name}', amount={amount}"
-            + (f", memo='{memo}'" if memo else "")
-            + f"\n\nAvailable categories:\n{cat_list}"
-            + '\n\nRespond with JSON: {"category_id": "<uuid>", "confidence": <0-1>}. '
-            "Choose the most appropriate category. Only output valid JSON."
+        cat_list = "\n".join(f"- {c['name']} ({c['group']})" for c in categories)
+        prompt = await self._prompt(
+            "ai_prompt_suggest_category",
+            {
+                "payee_name": payee_name,
+                "amount": str(amount),
+                "memo": memo or "",
+                "categories": cat_list,
+            },
         )
         system = "You are a financial transaction categorizer. Return only JSON."
 
         try:
             client = await self._client()
-            raw = await client.generate(prompt, system)
-            raw = raw.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            data = json.loads(raw)
-            cat_id = data.get("category_id")
+            raw = await client.generate(
+                prompt,
+                system,
+                format="json",
+                options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
+            )
+            data = _json_from_response(raw)
+            name = data.get("category")
             confidence = float(data.get("confidence", 0.5))
-            matched = next((c for c in categories if str(c["id"]) == cat_id), None)
+            matched = None
+            if isinstance(name, str):
+                lowered = name.strip().lower()
+                matched = next((c for c in categories if c["name"].lower() == lowered), None)
             return {
-                "category_id": cat_id if matched else None,
+                "category_id": str(matched["id"]) if matched else None,
                 "category_name": matched["name"] if matched else None,
                 "confidence": confidence,
             }
@@ -71,10 +269,7 @@ class AIService:
             return {"category_id": None, "category_name": None, "confidence": 0.0}
 
     async def normalize_payee(self, payee_name: str) -> str:
-        prompt = (
-            f"Normalize this bank payee name to a clean, readable merchant name: '{payee_name}'\n"
-            "Respond with only the normalized name, nothing else."
-        )
+        prompt = await self._prompt("ai_prompt_normalize_payee", {"payee_name": payee_name})
         try:
             client = await self._client()
             result = await client.generate(prompt)

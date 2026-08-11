@@ -1,0 +1,57 @@
+.receipt-pane {
+  position: relative;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  display: flex;
+  min-height: 0;
+}
+
+.receipt-pane--loading {
+  min-height: 160px;
+}
+
+.receipt-pane__scroll {
+  overflow-y: auto;
+  width: 100%;
+  /* Tall receipts scroll inside the pane, never the modal */
+  max-height: 100%;
+}
+
+.receipt-pane__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: zoom-in;
+}
+
+.receipt-pane__pdf {
+  width: 100%;
+  min-height: 320px;
+  height: 100%;
+  border: none;
+  background: var(--bg-secondary);
+}
+
+.receipt-pane__expand {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+.receipt-pane__expand:hover {
+  opacity: 1;
+  color: var(--text-primary);
+}

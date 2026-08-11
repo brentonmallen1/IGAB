@@ -9,6 +9,7 @@ from igab.db.models import User
 from igab.db.session import get_session
 from igab.domain.exceptions import AuthenticationError
 from igab.repositories.account_repo import AccountRepository
+from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.attachment_repo import AttachmentRepository
 from igab.repositories.budget_view_repo import BudgetViewRepository
 from igab.repositories.category_repo import (
@@ -88,6 +89,10 @@ def get_account_repo(session: SessionDep) -> AccountRepository:
 
 def get_attachment_repo(session: SessionDep) -> AttachmentRepository:
     return AttachmentRepository(session)
+
+
+def get_ai_job_repo(session: SessionDep) -> AIJobRepository:
+    return AIJobRepository(session)
 
 
 def get_attachment_service(

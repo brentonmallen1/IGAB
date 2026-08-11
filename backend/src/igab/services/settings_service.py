@@ -1,10 +1,31 @@
 import os
 
 from igab.repositories.settings_repo import SettingsRepository
+from igab.services.ai_prompts import DEFAULT_PROMPTS
 
 DEFAULTS: dict[str, str] = {
     "ollama_host": "http://localhost:11434",
     "ollama_model": "llama3.2",
+    # Optional model used for vision tasks (receipt extraction). Empty means
+    # "use ollama_model".
+    "ollama_vision_model": "",
+    # 'auto' = enable thinking only when the model advertises the capability;
+    # 'on'/'off' force it.
+    "ai_thinking": "auto",
+    # JSON objects merged into every Ollama request's options. Vision options
+    # are merged on top for vision tasks only.
+    "ollama_options": "{}",
+    "ollama_vision_options": "{}",
+    # Request timeout for vision calls — big models on modest hardware are slow.
+    "ai_vision_timeout_s": "300",
+    # Backup agent settings — polled from the DB by scripts/db-backup.sh each
+    # cycle, so UI changes apply without a container restart. Env vars
+    # (BACKUP_INTERVAL_HOURS etc.) remain the defaults/fallback.
+    "backup_interval_hours": "24",
+    "backup_keep_days": "30",
+    "backup_keep_min": "7",
+    "backup_age_recipient": "",
+    **DEFAULT_PROMPTS,
 }
 
 
@@ -30,8 +51,30 @@ class SettingsService:
             result[key] = db_map.get(key) or env_val or default
         return result
 
+    async def get_all_detailed(self) -> list[dict]:
+        """All settings with override state, for the settings UI."""
+        rows = await self.repo.get_all()
+        db_map = {r.key: r.value for r in rows}
+        result = []
+        for key, default in DEFAULTS.items():
+            env_val = os.getenv(key.upper())
+            db_val = db_map.get(key)
+            result.append(
+                {
+                    "key": key,
+                    "value": db_val or env_val or default,
+                    "is_overridden": db_val is not None,
+                    "default_value": default,
+                }
+            )
+        return result
+
     async def set(self, key: str, value: str) -> None:
         await self.repo.set(key, value)
+
+    async def unset(self, key: str) -> None:
+        """Remove the stored override so the key reverts to env/default."""
+        await self.repo.delete(key)
 
     async def seed_from_env(self) -> None:
         """Seed Ollama defaults from env vars if not already set in DB."""

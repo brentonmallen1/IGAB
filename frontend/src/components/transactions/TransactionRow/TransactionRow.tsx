@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Paperclip, Split, Trash2 } from 'lucide-react'
+import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Split, Trash2 } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
 import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction } from '../../../api/transactions'
 import { useCreateCategory } from '../../../api/categories'
@@ -16,6 +16,7 @@ import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { TransactionLinkIcon } from '../../simplefin/TransactionLinkPopup'
+import { RowAttachmentButton } from './RowAttachmentButton'
 import type { Transaction, Category, CategoryGroup, Payee } from '../../../types'
 import './TransactionRow.css'
 
@@ -355,10 +356,10 @@ export const TransactionRow = memo(function TransactionRow({
         {txn.linked_transaction_id && (
           <TransactionLinkIcon transaction={txn} budgetId={txn.budget_id} />
         )}
-        {hasAttachment && (
-          <span className="txn-status-icon txn-status-icon--attachment" title="Has receipt/attachment">
-            <Paperclip size={12} />
-          </span>
+        {/* Mobile cards only show the icon when an image exists (view); adding
+            happens through the editor. Desktop always offers add-or-view. */}
+        {(!isMobile || hasAttachment) && (
+          <RowAttachmentButton transactionId={txn.id} hasAttachment={!!hasAttachment} />
         )}
         {/* Mobile card hides the cleared column; surface non-default states read-only */}
         {isMobile && txn.cleared === 'cleared' && (

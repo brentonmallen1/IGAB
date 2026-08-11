@@ -125,6 +125,29 @@
   font-style: italic;
 }
 
+.pmerge-ai-normalize {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-accent);
+  background: transparent;
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pmerge-ai-normalize:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.pmerge-ai-normalize:disabled {
+  opacity: 0.5;
+}
+
 .pmerge-custom-input {
   flex: 1;
   background: none;

@@ -43,6 +43,48 @@ describe('is: filters', () => {
   })
 })
 
+describe('has: attachment filter', () => {
+  it('parses has: attachment (spaced)', () => {
+    expect(parse('has: attachment').hasAttachment).toBe(true)
+  })
+
+  it('parses compact has:attachment', () => {
+    expect(parse('has:attachment').hasAttachment).toBe(true)
+  })
+
+  it('accepts image and receipt synonyms', () => {
+    expect(parse('has:image').hasAttachment).toBe(true)
+    expect(parse('has: receipt').hasAttachment).toBe(true)
+  })
+
+  it('parses NOT has: attachment as exclusion', () => {
+    expect(parse('NOT has: attachment').hasAttachment).toBe(false)
+    expect(parse('NOT has:attachment').hasAttachment).toBe(false)
+  })
+
+  it('combines with other filters', () => {
+    const f = parse('is: unapproved has:attachment')
+    expect(f.unapproved).toBe(true)
+    expect(f.hasAttachment).toBe(true)
+  })
+
+  it('survives OR merging', () => {
+    const f = parse('has:attachment OR is: uncategorized')
+    expect(f.hasAttachment).toBe(true)
+    expect(f.uncategorized).toBe(true)
+    expect(f.isOrMode).toBe(true)
+  })
+
+  it('unknown has: value falls through without setting the filter', () => {
+    expect(parse('has:wings').hasAttachment).toBeUndefined()
+  })
+
+  it('counts as an active filter', () => {
+    expect(hasActiveFilters(parse('has:attachment'))).toBe(true)
+    expect(hasActiveFilters(parse('NOT has:attachment'))).toBe(true)
+  })
+})
+
 describe('text search', () => {
   it('treats unrecognized tokens as text', () => {
     expect(parse('coffee shop').text).toBe('coffee shop')

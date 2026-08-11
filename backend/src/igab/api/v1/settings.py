@@ -1,14 +1,79 @@
+import json
+import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from igab.api.v1.schemas.settings import SettingResponse, SettingUpdate
 from igab.dependencies import CurrentUser, get_settings_service
+from igab.services.ai_prompts import DEFAULT_PROMPTS
 from igab.services.settings_service import SettingsService
 
 router = APIRouter()
 
-EDITABLE_KEYS = {"ollama_host", "ollama_model"}
+EDITABLE_KEYS = {
+    "ollama_host",
+    "ollama_model",
+    "ollama_vision_model",
+    "ai_thinking",
+    "ollama_options",
+    "ollama_vision_options",
+    "ai_vision_timeout_s",
+    "backup_interval_hours",
+    "backup_keep_days",
+    "backup_keep_min",
+    "backup_age_recipient",
+    *DEFAULT_PROMPTS.keys(),
+}
+
+# The backup agent clamps to these same bounds — a settings UI must not be
+# able to configure backups into not happening.
+_BACKUP_INT_BOUNDS = {
+    "backup_interval_hours": (1, 168),
+    "backup_keep_days": (1, 365),
+    "backup_keep_min": (1, 100),
+}
+
+
+def _validate_setting(key: str, value: str) -> None:
+    if key in ("ollama_options", "ollama_vision_options"):
+        try:
+            parsed = json.loads(value or "{}")
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{key} must be valid JSON",
+            )
+        if not isinstance(parsed, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{key} must be a JSON object",
+            )
+    elif key == "ai_vision_timeout_s":
+        if not value.isdigit() or int(value) <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="ai_vision_timeout_s must be a positive integer",
+            )
+    elif key == "ai_thinking":
+        if value not in ("auto", "on", "off"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="ai_thinking must be one of: auto, on, off",
+            )
+    elif key in _BACKUP_INT_BOUNDS:
+        lo, hi = _BACKUP_INT_BOUNDS[key]
+        if not value.isdigit() or not lo <= int(value) <= hi:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{key} must be an integer between {lo} and {hi}",
+            )
+    elif key == "backup_age_recipient":
+        if value and not re.fullmatch(r"age1[0-9a-z]+", value):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="backup_age_recipient must be an age public key (age1...) or empty",
+            )
 
 
 @router.get("/settings", response_model=list[SettingResponse])
@@ -16,8 +81,8 @@ async def get_settings(
     current_user: CurrentUser,
     svc: Annotated[SettingsService, Depends(get_settings_service)],
 ) -> list[SettingResponse]:
-    all_settings = await svc.get_all()
-    return [SettingResponse(key=k, value=v) for k, v in all_settings.items()]
+    detailed = await svc.get_all_detailed()
+    return [SettingResponse(**item) for item in detailed]
 
 
 @router.put("/settings/{key}", response_model=SettingResponse)
@@ -27,12 +92,28 @@ async def update_setting(
     current_user: CurrentUser,
     svc: Annotated[SettingsService, Depends(get_settings_service)],
 ) -> SettingResponse:
-    from fastapi import HTTPException, status
-
     if key not in EDITABLE_KEYS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Setting '{key}' is not editable via API",
         )
+    _validate_setting(key, body.value)
     await svc.set(key, body.value)
-    return SettingResponse(key=key, value=body.value)
+    return SettingResponse(key=key, value=body.value, is_overridden=True)
+
+
+@router.delete("/settings/{key}", response_model=SettingResponse)
+async def reset_setting(
+    key: str,
+    current_user: CurrentUser,
+    svc: Annotated[SettingsService, Depends(get_settings_service)],
+) -> SettingResponse:
+    """Remove the stored override; the setting reverts to its env/default value."""
+    if key not in EDITABLE_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Setting '{key}' is not editable via API",
+        )
+    await svc.unset(key)
+    effective = await svc.get(key)
+    return SettingResponse(key=key, value=effective, is_overridden=False)

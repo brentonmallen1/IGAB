@@ -1,4 +1,3 @@
-import uuid
 from datetime import date
 from typing import Annotated
 
@@ -13,7 +12,7 @@ from igab.api.v1.schemas.ai import (
     SuggestCategoryRequest,
     SuggestCategoryResponse,
 )
-from igab.dependencies import CurrentUser, get_ai_service
+from igab.dependencies import BudgetAccess, CurrentUser, get_ai_service
 from igab.services.ai_service import AIService
 
 router = APIRouter()
@@ -31,7 +30,7 @@ async def ai_status(
 
 @router.post("/{budget_id}/ai/suggest-category", response_model=SuggestCategoryResponse)
 async def suggest_category(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: SuggestCategoryRequest,
     current_user: CurrentUser,
     ai_svc: Annotated[AIService, Depends(get_ai_service)],
@@ -42,7 +41,7 @@ async def suggest_category(
 
 @router.post("/{budget_id}/ai/normalize-payee", response_model=NormalizePayeeResponse)
 async def normalize_payee(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     body: NormalizePayeeRequest,
     current_user: CurrentUser,
     ai_svc: Annotated[AIService, Depends(get_ai_service)],
@@ -53,7 +52,7 @@ async def normalize_payee(
 
 @router.get("/{budget_id}/ai/payee-cleanup", response_model=list[PayeeCleanupGroup])
 async def payee_cleanup_suggestions(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     ai_svc: Annotated[AIService, Depends(get_ai_service)],
 ) -> list[PayeeCleanupGroup]:
@@ -63,7 +62,7 @@ async def payee_cleanup_suggestions(
 
 @router.get("/{budget_id}/ai/insights", response_model=InsightsResponse)
 async def spending_insights(
-    budget_id: uuid.UUID,
+    budget_id: BudgetAccess,
     current_user: CurrentUser,
     ai_svc: Annotated[AIService, Depends(get_ai_service)],
     month: date | None = None,

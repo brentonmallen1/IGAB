@@ -1,16 +1,21 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, Paperclip } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
+import { ReceiptPane } from '../../ai/ReceiptPane'
 import {
   useCreateTransaction,
   useUpdateTransaction,
   useDeleteTransaction,
+  useConvertToSplit,
   usePayees,
   useSimilarTransactions,
 } from '../../../api/transactions'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
-import { useSuggestCategory } from '../../../api/ai'
+import { useAIStatus, useSuggestCategory } from '../../../api/ai'
+import { useSubmitReceipt, type AIJob } from '../../../api/aiJobs'
+import { ATTACHMENT_ACCEPT, isAttachableFile } from '../../../api/attachments'
+import toast from 'react-hot-toast'
 import { useAppStore } from '../../../stores/appStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
@@ -20,6 +25,19 @@ import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import './TransactionEditor.css'
 
+/** Prefill for create mode — the shared shape every AI entry path (NL text,
+ * voice) funnels into so there is exactly one add-transaction flow. */
+export interface EditorDraft {
+  date?: string
+  payeeName?: string
+  categoryId?: string | null
+  memo?: string
+  outflow?: string
+  inflow?: string
+  /** Links the saved transaction back to the AI job for the audit log. */
+  aiJobId?: string
+}
+
 interface Props {
   budgetId: string
   /** Fixed account context (account page). Omit to let the user pick the
@@ -28,6 +46,11 @@ interface Props {
   transaction: Transaction | null
   /** Pre-selected category for new transactions (budget-row add flow). */
   initialCategoryId?: string | null
+  /** Create-mode prefill from an AI parse (NL/voice entry). */
+  initialDraft?: EditorDraft | null
+  /** Review mode: the AI job that produced `transaction` — shows the receipt
+   * beside the form, the extraction banner, and the suggested-split action. */
+  aiJob?: AIJob | null
   onClose: () => void
 }
 
@@ -36,11 +59,14 @@ export function TransactionEditor({
   accountId: fixedAccountId = null,
   transaction,
   initialCategoryId = null,
+  initialDraft = null,
+  aiJob = null,
   onClose,
 }: Props) {
   const createTxn = useCreateTransaction(budgetId)
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
+  const convertToSplit = useConvertToSplit(budgetId)
   const suggestCategory = useSuggestCategory(budgetId)
 
   const { data: payees = [] } = usePayees(budgetId)
@@ -53,6 +79,8 @@ export function TransactionEditor({
   useHistoryDismissable(isMobile, onClose, 'txn-editor')
 
   const isEdit = !!transaction
+  // Review mode: an AI-created transaction being verified against its receipt
+  const isReview = !!aiJob && isEdit
 
   // No fixed account (budget-view add): the user picks one, defaulting to the
   // same sticky "last used" account the quick-add flow remembers.
@@ -70,21 +98,27 @@ export function TransactionEditor({
   }, [fixedAccountId, transaction, pickedAccountId, openAccounts, lastPickedAccountId])
   const accountId = fixedAccountId ?? transaction?.account_id ?? pickedAccountId
 
-  const [date, setDate] = useState(transaction?.date.slice(0, 10) ?? today())
-  const [payeeQuery, setPayeeQuery] = useState('')
+  const [date, setDate] = useState(
+    transaction?.date.slice(0, 10) ?? initialDraft?.date ?? today()
+  )
+  const [payeeQuery, setPayeeQuery] = useState(
+    !transaction && initialDraft?.payeeName ? initialDraft.payeeName : ''
+  )
   const [selectedPayeeId, setSelectedPayeeId] = useState<string | null>(
     transaction?.payee_id ?? null
   )
   const [categoryId, setCategoryId] = useState(
-    transaction?.category_id ?? initialCategoryId ?? ''
+    transaction?.category_id ?? initialDraft?.categoryId ?? initialCategoryId ?? ''
   )
-  const [memo, setMemo] = useState(transaction?.memo ?? '')
+  const [memo, setMemo] = useState(transaction?.memo ?? initialDraft?.memo ?? '')
   const [outflow, setOutflow] = useState(() => {
-    if (!transaction || Number(transaction.amount) >= 0) return ''
+    if (!transaction) return initialDraft?.outflow ?? ''
+    if (Number(transaction.amount) >= 0) return ''
     return String(Math.abs(Number(transaction.amount)))
   })
   const [inflow, setInflow] = useState(() => {
-    if (!transaction || Number(transaction.amount) < 0) return ''
+    if (!transaction) return initialDraft?.inflow ?? ''
+    if (Number(transaction.amount) < 0) return ''
     return String(Number(transaction.amount))
   })
   const [cleared, setCleared] = useState<'uncleared' | 'cleared'>(() => {
@@ -108,6 +142,36 @@ export function TransactionEditor({
 
   const payeeRef = useRef<HTMLDivElement>(null)
   const payeeInitialized = useRef(false)
+  const scanInputRef = useRef<HTMLInputElement>(null)
+
+  // Desktop path to the receipt pipeline: pick a file here instead of the
+  // mobile quick-add. Queues the same AI job; the editor closes and the
+  // drafted transaction arrives for review.
+  const aiAvailable = useAIStatus().data?.available === true
+  const submitReceipt = useSubmitReceipt(budgetId)
+
+  async function scanReceiptFile(list: FileList | null) {
+    const file = list?.[0]
+    if (!file || !accountId) return
+    if (!isAttachableFile(file)) {
+      toast.error(`${file.name} is not an image or PDF`)
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error(`${file.name} is too large (max 20MB)`)
+      return
+    }
+    try {
+      await submitReceipt.mutateAsync({ file, accountId })
+      if (!fixedAccountId) setLastPickedAccountId(accountId)
+      toast.success("Receipt queued — it'll appear for review shortly", { duration: 5000 })
+      onClose()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail
+      toast.error(detail ?? 'Failed to queue receipt')
+    }
+  }
 
   // Initialize payee query once payees are loaded (edit mode)
   useEffect(() => {
@@ -178,6 +242,29 @@ export function TransactionEditor({
     if (v) setOutflow('')
   }
 
+  // AI-suggested split from receipt line items — offered, never auto-applied.
+  // Lines resolved against live categories; a renamed category leaves that
+  // line's picker empty for the user to fill.
+  const suggestedSplit = isReview ? (aiJob?.result?.suggested_split ?? null) : null
+
+  function applySuggestedSplit() {
+    if (!suggestedSplit || suggestedSplit.length < 2) return
+    setSplits(
+      suggestedSplit.map((line) => {
+        const cat = categories.find(
+          (c) => c.name.toLowerCase() === line.category.toLowerCase()
+        )
+        return {
+          tempId: crypto.randomUUID(),
+          amount: Math.abs(parseFloat(line.amount)).toFixed(2),
+          categoryId: cat?.id ?? null,
+          memo: '',
+        }
+      })
+    )
+    setIsSplit(true)
+  }
+
   function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
     setSplits((prev) => prev.map((s) => s.tempId === tempId ? { ...s, ...data } : s))
   }
@@ -199,23 +286,39 @@ export function TransactionEditor({
     const sign = amount < 0 ? -1 : 1
 
     if (isSplit && !isTransfer) {
-      const splitPayload = {
-        account_id: accountId,
-        date,
-        amount,
-        memo: memo || undefined,
-        cleared,
-        approved: true,
-        payee_id: selectedPayeeId || undefined,
-        payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
-        splits: splits.map((s) => ({
-          amount: parseFloat(s.amount) * sign,
-          category_id: s.categoryId ?? undefined,
-          memo: s.memo || undefined,
-        })),
+      const splitList = splits.map((s) => ({
+        amount: parseFloat(s.amount) * sign,
+        category_id: s.categoryId ?? undefined,
+        memo: s.memo || undefined,
+      }))
+      if (isEdit) {
+        // Split in place: the row becomes the parent, keeping attachments and
+        // AI links (a create+delete replacement would orphan the receipt).
+        await updateTxn.mutateAsync({
+          id: transaction!.id,
+          date,
+          amount,
+          memo: memo || undefined,
+          cleared,
+          approved: true,
+          payee_id: selectedPayeeId || undefined,
+        })
+        await convertToSplit.mutateAsync({ id: transaction!.id, splits: splitList })
+      } else {
+        await createTxn.mutateAsync({
+          account_id: accountId,
+          date,
+          amount,
+          memo: memo || undefined,
+          cleared,
+          approved: true,
+          payee_id: selectedPayeeId || undefined,
+          payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
+          ai_job_id: initialDraft?.aiJobId,
+          splits: splitList,
+        })
+        if (!fixedAccountId) setLastPickedAccountId(accountId)
       }
-      await createTxn.mutateAsync(splitPayload)
-      if (!fixedAccountId) setLastPickedAccountId(accountId)
       onClose()
       return
     }
@@ -242,7 +345,7 @@ export function TransactionEditor({
     if (isEdit) {
       await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
     } else {
-      await createTxn.mutateAsync(payload)
+      await createTxn.mutateAsync({ ...payload, ai_job_id: initialDraft?.aiJobId })
       if (!fixedAccountId) setLastPickedAccountId(accountId)
     }
     onClose()
@@ -255,7 +358,8 @@ export function TransactionEditor({
     onClose()
   }
 
-  const isPending = createTxn.isPending || updateTxn.isPending || deleteTxn.isPending
+  const isPending =
+    createTxn.isPending || updateTxn.isPending || deleteTxn.isPending || convertToSplit.isPending
 
   const similarAmount = useMemo(() => {
     const o = parseAmountInput(outflow)
@@ -293,17 +397,90 @@ export function TransactionEditor({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <form className="txn-editor" role="dialog" aria-modal aria-labelledby="txn-editor-title" onSubmit={handleSubmit}>
+      <form
+        className={`txn-editor ${isReview ? 'txn-editor--review' : ''}`}
+        role="dialog"
+        aria-modal
+        aria-labelledby="txn-editor-title"
+        onSubmit={handleSubmit}
+      >
         <div className="txn-editor__header">
           <span id="txn-editor-title" className="txn-editor__title">
-            {isEdit ? 'Edit Transaction' : 'Add Transaction'}
+            {isReview ? 'Review AI Transaction' : isEdit ? 'Edit Transaction' : 'Add Transaction'}
           </span>
           <button type="button" className="txn-editor__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
-        <div className="txn-editor__body">
+        {isReview && (
+          <div
+            className={`txn-editor__ai-banner ${aiJob!.status === 'error' ? 'txn-editor__ai-banner--error' : ''}`}
+          >
+            {aiJob!.status === 'error' ? (
+              <>
+                <AlertTriangle size={13} />
+                <span>Scan failed — enter the details from the image, then approve.</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={13} />
+                <span>
+                  AI extracted from {aiJob!.kind === 'receipt' ? 'receipt' : 'text'}
+                  {aiJob!.result?.draft
+                    ? ` · ${Math.round((aiJob!.result.draft.confidence ?? 0) * 100)}% confidence`
+                    : ''}
+                </span>
+              </>
+            )}
+            {suggestedSplit && suggestedSplit.length >= 2 && !isSplit && (
+              <button
+                type="button"
+                className="txn-editor__ai-banner-action"
+                onClick={applySuggestedSplit}
+              >
+                <Split size={12} />
+                Apply suggested split ({suggestedSplit.length})
+              </button>
+            )}
+          </div>
+        )}
+
+        {!isEdit && aiAvailable && (
+          <div className="txn-editor__scan-row">
+            <button
+              type="button"
+              className="txn-editor__scan-btn"
+              onClick={() => scanInputRef.current?.click()}
+              disabled={submitReceipt.isPending || !accountId}
+              title="Upload a receipt image or PDF — AI drafts the transaction for review"
+            >
+              <Sparkles size={13} />
+              {submitReceipt.isPending ? 'Queuing…' : 'Scan a receipt instead'}
+            </button>
+            <input
+              ref={scanInputRef}
+              type="file"
+              accept={ATTACHMENT_ACCEPT}
+              onChange={(e) => {
+                void scanReceiptFile(e.target.files)
+                e.target.value = ''
+              }}
+              style={{ display: 'none' }}
+            />
+          </div>
+        )}
+
+        <div className="txn-editor__main">
+          {isReview && aiJob!.attachment_id && (
+            <div className="txn-editor__receipt">
+              <ReceiptPane
+                attachmentId={aiJob!.attachment_id}
+                contentType={aiJob!.payload.content_type ?? null}
+              />
+            </div>
+          )}
+          <div className="txn-editor__body">
           {!fixedAccountId && !isEdit && (
             <div className="txn-editor__field">
               <label className="txn-editor__label">Account</label>
@@ -601,6 +778,7 @@ export function TransactionEditor({
               />
             </div>
           </div>
+          </div>
         </div>
 
         {similarTxns.length > 0 && (
@@ -677,7 +855,7 @@ export function TransactionEditor({
               className="txn-editor__btn txn-editor__btn--primary"
               disabled={isPending || !splitIsValid || !accountId}
             >
-              {isEdit ? 'Save' : 'Add'}
+              {isReview ? 'Approve' : isEdit ? 'Save' : 'Add'}
             </button>
           </div>
         </div>

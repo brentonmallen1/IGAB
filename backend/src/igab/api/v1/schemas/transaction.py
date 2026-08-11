@@ -18,6 +18,10 @@ class SplitCreate(BaseModel):
     memo: str | None = None
 
 
+class ConvertToSplitRequest(BaseModel):
+    splits: list[SplitCreate]
+
+
 class TransactionCreate(BaseModel):
     account_id: uuid.UUID
     date: datetime.date
@@ -30,6 +34,10 @@ class TransactionCreate(BaseModel):
     approved: bool = True
     transfer_account_id: uuid.UUID | None = None
     splits: list[SplitCreate] | None = None
+    # Link back to the ai_jobs row this draft came from (NL entry). The server
+    # derives created_via from the job's kind — provenance is never accepted
+    # directly from the client.
+    ai_job_id: uuid.UUID | None = None
     # Opt-in mobile capture; powers nearby-payee suggestions. Never money.
     latitude: float | None = Field(None, ge=-90, le=90)
     longitude: float | None = Field(None, ge=-180, le=180)
@@ -84,6 +92,7 @@ class TransactionResponse(BaseModel):
     import_description: str | None
     sync_id: str | None
     sync_source: str | None
+    created_via: str | None = None
     has_sync_source: bool
     latitude: float | None = None
     longitude: float | None = None

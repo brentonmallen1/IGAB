@@ -13,6 +13,17 @@ export interface Attachment {
   created_at: string
 }
 
+/** What the attachment endpoints accept: images plus PDF receipts/bills. */
+export const ATTACHMENT_ACCEPT = 'image/*,application/pdf'
+
+export function isAttachableFile(file: File): boolean {
+  return file.type.startsWith('image/') || file.type === 'application/pdf'
+}
+
+export function isPdfAttachment(a: Pick<Attachment, 'content_type'>): boolean {
+  return a.content_type === 'application/pdf'
+}
+
 const blobCache = new Map<string, string>()
 
 export async function fetchAttachmentBlob(attachmentId: string, thumbnail = false): Promise<string> {
