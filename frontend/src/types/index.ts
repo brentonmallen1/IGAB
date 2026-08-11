@@ -94,6 +94,8 @@ export interface BudgetMonth {
   total_assigned: number
   total_activity: number
   total_overspent: number
+  /** Committed to months after this one; already deducted from to_be_assigned */
+  assigned_in_future: number
   category_balances: CategoryBalance[]
 }
 

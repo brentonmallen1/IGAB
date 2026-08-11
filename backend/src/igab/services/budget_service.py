@@ -13,6 +13,7 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.ownership import require_in_budget
+from igab.utils.clock import today_utc
 
 if TYPE_CHECKING:
     from igab.repositories.budget_move_repo import BudgetMoveRepository
@@ -69,7 +70,19 @@ class BudgetSummary:
     total_assigned: Decimal
     total_activity: Decimal
     total_overspent: Decimal
+    # Dollars already committed to months after the viewed month; deducted
+    # from to_be_assigned so the same dollars can't be assigned twice.
+    assigned_in_future: Decimal
     category_balances: list[CategoryBalance]
+
+
+@dataclass
+class FutureOverspendWarning:
+    category_id: uuid.UUID
+    category_name: str
+    month: date
+    available_before: Decimal
+    available_after: Decimal
 
 
 @dataclass
@@ -202,6 +215,13 @@ class BudgetService:
         Compute TBA and all category balances for a given month.
 
         TBA = sum(on-budget account balances) - sum(category balances)
+              - sum(assignments in months after the viewed month)
+
+        The future-assignment deduction is what makes TBA consistent across
+        months (YNAB behavior): assigning $500 in September must reduce
+        August's TBA too, or the same dollars could be assigned twice. With
+        it, a budget whose only allocation is that $500 shows the same TBA
+        whether August or September is on screen.
         """
         month_start = first_of_month(month)
 
@@ -240,15 +260,67 @@ class BudgetService:
             total_assigned += bal.assigned
             total_activity += bal.activity
 
-        to_be_assigned = total_account_balance - total_category_balance
+        assigned_in_future = await self.assignment_repo.sum_after_month(budget_id, month_start)
+        to_be_assigned = total_account_balance - total_category_balance - assigned_in_future
 
         return BudgetSummary(
             to_be_assigned=to_be_assigned,
             total_assigned=total_assigned,
             total_activity=total_activity,
             total_overspent=total_overspent,
+            assigned_in_future=assigned_in_future,
             category_balances=balances,
         )
+
+    async def preview_future_overspend(
+        self,
+        budget_id: uuid.UUID,
+        items: list[tuple[uuid.UUID, date, Decimal]],
+    ) -> list[FutureOverspendWarning]:
+        """Which categories would a pending edit push negative in a *future* month?
+
+        Each item is (category_id, transaction date, signed amount delta —
+        outflow negative). Only months after the current month are checked:
+        current-month overspending is already visible on the budget page, but a
+        future month's negative sits unseen until the user navigates there, so
+        the caller warns before saving. Items landing in the same category and
+        month are summed first (splits; edit reversals), and categories outside
+        this budget are ignored rather than leaked.
+        """
+        current_month = first_of_month(today_utc())
+        deltas: dict[tuple[uuid.UUID, date], Decimal] = {}
+        for category_id, txn_date, delta in items:
+            month = first_of_month(txn_date)
+            if month <= current_month:
+                continue
+            key = (category_id, month)
+            deltas[key] = deltas.get(key, Decimal("0")) + delta
+
+        if not deltas:
+            return []
+
+        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
+        name_by_id = {c.id: c.name for c in categories}
+
+        warnings: list[FutureOverspendWarning] = []
+        for (category_id, month), delta in sorted(
+            deltas.items(), key=lambda kv: (kv[0][1], str(kv[0][0]))
+        ):
+            if delta >= 0 or category_id not in name_by_id:
+                continue
+            bal = await self.get_category_balance(category_id, month)
+            after = bal.available + delta
+            if after < 0:
+                warnings.append(
+                    FutureOverspendWarning(
+                        category_id=category_id,
+                        category_name=name_by_id[category_id],
+                        month=month,
+                        available_before=bal.available,
+                        available_after=after,
+                    )
+                )
+        return warnings
 
     async def set_assignment(
         self,

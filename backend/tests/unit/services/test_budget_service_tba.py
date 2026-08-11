@@ -90,6 +90,19 @@ def make_service(
 
     assignment_repo.get_for_category = AsyncMock(side_effect=_get_for_category)
 
+    async def _sum_after_month(budget_id, month):
+        return sum(
+            (
+                a.assigned
+                for assigns in assignments_by_category.values()
+                for a in assigns
+                if a.month > month
+            ),
+            D("0"),
+        )
+
+    assignment_repo.sum_after_month = AsyncMock(side_effect=_sum_after_month)
+
     transaction_repo = MagicMock()
 
     async def _sum_all(cat_ids, end_date):
@@ -410,3 +423,85 @@ class TestTBASummaryTotals:
         )
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
         assert len(result.category_balances) == 3
+
+
+class TestTBAFutureAssignments:
+    """Assigning ahead must reduce the earlier months' TBA (YNAB behavior):
+    without the deduction the same dollars could be assigned twice."""
+
+    def _one_cat_service(self, balance, assignments):
+        acct = MockAccount()
+        grp = MockCategoryGroup()
+        cat = MockCategory(category_group_id=grp.id)
+        svc = make_service(
+            accounts=[acct],
+            balances={acct.id: balance},
+            categories=[cat],
+            groups=[grp],
+            assignments_by_category={
+                cat.id: [
+                    MockAssignment(category_id=cat.id, month=m, assigned=amt)
+                    for m, amt in assignments
+                ]
+            },
+        )
+        return svc
+
+    async def test_future_assignment_reduces_current_tba(self):
+        svc = self._one_cat_service(D("1000.00"), [(FEB, D("500.00"))])
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        assert result.to_be_assigned == D("500.00")
+        assert result.assigned_in_future == D("500.00")
+
+    async def test_tba_consistent_between_viewed_months(self):
+        """The same $500 shows the same TBA from January (as a future
+        commitment) and from February (as a category balance)."""
+        svc = self._one_cat_service(D("1000.00"), [(FEB, D("500.00"))])
+        jan = await svc.get_budget_summary(BUDGET_ID, JAN)
+        feb = await svc.get_budget_summary(BUDGET_ID, FEB)
+        assert jan.to_be_assigned == feb.to_be_assigned == D("500.00")
+        assert feb.assigned_in_future == D("0")
+
+    async def test_multiple_future_months_all_deducted(self):
+        mar = date(2026, 3, 1)
+        svc = self._one_cat_service(
+            D("1000.00"), [(FEB, D("200.00")), (mar, D("300.00"))]
+        )
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        assert result.assigned_in_future == D("500.00")
+        assert result.to_be_assigned == D("500.00")
+
+    async def test_current_and_future_assignments_not_double_counted(self):
+        """JAN's own assignment lands in category balances; only FEB's is a
+        future commitment. 1000 - 400 - 100 = 500 from either month."""
+        svc = self._one_cat_service(
+            D("1000.00"), [(JAN, D("400.00")), (FEB, D("100.00"))]
+        )
+        jan = await svc.get_budget_summary(BUDGET_ID, JAN)
+        feb = await svc.get_budget_summary(BUDGET_ID, FEB)
+        assert jan.to_be_assigned == D("500.00")
+        assert jan.assigned_in_future == D("100.00")
+        assert feb.to_be_assigned == D("500.00")
+
+    async def test_assigning_ahead_beyond_funds_pushes_tba_negative(self):
+        """Committing more to the future than exists on hand must show as
+        negative TBA now, not silently on arrival in that month."""
+        svc = self._one_cat_service(D("100.00"), [(FEB, D("500.00"))])
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        assert result.to_be_assigned == D("-400.00")
+
+    async def test_no_future_assignments_field_is_zero(self):
+        svc = self._one_cat_service(D("1000.00"), [(JAN, D("400.00"))])
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        assert result.assigned_in_future == D("0")
+        assert result.to_be_assigned == D("600.00")
+
+    async def test_negative_future_assignment_returns_money_to_tba(self):
+        """A negative assignment in a future month (money pulled back out)
+        increases current TBA symmetrically."""
+        svc = self._one_cat_service(
+            D("1000.00"), [(JAN, D("400.00")), (FEB, D("-100.00"))]
+        )
+        result = await svc.get_budget_summary(BUDGET_ID, JAN)
+        assert result.assigned_in_future == D("-100.00")
+        assert result.to_be_assigned == D("700.00")
