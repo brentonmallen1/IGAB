@@ -14,6 +14,7 @@ import { SimpleFINSetup } from '../../components/simplefin/SimpleFINSetup'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
+import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
 import { AIAdvancedSettings } from '../../components/settings/AIAdvancedSettings'
 import { AIPromptSettings } from '../../components/settings/AIPromptSettings'
@@ -458,6 +459,16 @@ export function SettingsPage() {
         </div>
         <div className="settings-section__body">
           <BackupsPanel />
+        </div>
+      </div>
+
+      {/* Updates */}
+      <div className="settings-section" id="updates">
+        <div className="settings-section__header">
+          <div className="settings-section__title">Updates</div>
+        </div>
+        <div className="settings-section__body">
+          <UpdatesPanel />
         </div>
       </div>
 

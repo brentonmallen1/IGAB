@@ -18,4 +18,9 @@ RUN uv sync --frozen --no-dev
 
 ENV PYTHONUNBUFFERED=1
 
+# Release version stamped by the GHCR workflow (git tag); "dev" for local builds.
+# Read by the opt-in update check to compare against GitHub releases.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 CMD ["sh", "-c", "uv run alembic upgrade head && uv run uvicorn igab.main:app --host 0.0.0.0 --port 8000"]

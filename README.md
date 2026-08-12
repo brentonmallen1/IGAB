@@ -190,6 +190,15 @@ just prod
 This runs nginx serving the built frontend with proper caching, proxies
 `/api` to the backend, and the daily `db-backup` service runs alongside.
 
+Tagged releases also publish multi-arch (amd64/arm64) images to GHCR —
+`ghcr.io/brentonmallen1/igab-api`, `igab-web`, and `igab-backup` — for
+deployments without a repo checkout.
+
+**Unraid:** see [docs/unraid.md](docs/unraid.md) for two supported paths —
+the Docker Compose Manager plugin driving this repo's production profile, or
+the Community Applications templates in [`unraid/`](unraid/) using the
+published images.
+
 ### Install on Your Phone (PWA)
 
 IGAB is an installable web app: add it to your home screen and it opens
@@ -278,6 +287,14 @@ Financial data needs a backup story before it needs anything else.
   database/field-level encryption at rest by design — the server needs
   plaintext to run queries; use host disk encryption (e.g. LUKS) if stolen
   disks are in your threat model.
+
+### Update Notifications
+
+Settings → Updates has an opt-in check against this repo's GitHub releases —
+**off by default**, and nothing is sent anywhere until you enable it. When a
+newer tagged release exists, a small dot appears next to Settings in the
+sidebar and the Settings page links to the release notes. Dev builds
+(`APP_VERSION=dev`, i.e. anything not built from a version tag) never nag.
 
 ### Data Integrity
 

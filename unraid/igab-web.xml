@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>igab-web</Name>
+  <Repository>ghcr.io/brentonmallen1/igab-web:latest</Repository>
+  <Registry>https://ghcr.io/brentonmallen1/igab-web</Registry>
+  <Network>igab</Network>
+  <Support>https://github.com/brentonmallen1/IGAB/issues</Support>
+  <Project>https://github.com/brentonmallen1/IGAB</Project>
+  <Overview>IGAB (I've Got A Budget) web UI — nginx serving the built frontend and proxying /api to the igab-api container. This is the only container that needs a host port; open it in a browser (works great installed as a PWA on phones). Requires igab-api and a PostgreSQL 16 container on the same custom Docker network. See https://github.com/brentonmallen1/IGAB/blob/main/docs/unraid.md for full setup.</Overview>
+  <Category>Tools: Productivity:</Category>
+  <TemplateURL>https://raw.githubusercontent.com/brentonmallen1/IGAB/main/unraid/igab-web.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/brentonmallen1/IGAB/main/frontend/public/pwa-192x192.png</Icon>
+  <WebUI>http://[IP]:[PORT:8480]</WebUI>
+  <Config Name="Web Port" Target="80" Default="8480" Mode="tcp" Description="Host port for the IGAB web UI." Type="Port" Display="always" Required="true" Mask="false">8480</Config>
+  <Config Name="API Upstream" Target="API_UPSTREAM" Default="igab-api:8000" Mode="" Description="host:port where the API container is reachable. The default matches the igab-api template on the igab custom network; only change it if you renamed that container." Type="Variable" Display="advanced" Required="true" Mask="false">igab-api:8000</Config>
+</Container>
