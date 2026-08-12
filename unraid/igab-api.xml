@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>igab-api</Name>
+  <Repository>ghcr.io/brentonmallen1/igab-api:latest</Repository>
+  <Registry>https://ghcr.io/brentonmallen1/igab-api</Registry>
+  <Network>igab</Network>
+  <Support>https://github.com/brentonmallen1/IGAB/issues</Support>
+  <Project>https://github.com/brentonmallen1/IGAB</Project>
+  <Overview>IGAB (I've Got A Budget) API server — the FastAPI backend of the self-hosted envelope-budgeting app. Runs database migrations automatically on start. Requires a PostgreSQL 16 container (name it igab-db on the same custom Docker network) and is fronted by the igab-web container, which serves the UI and proxies /api to this container. See https://github.com/brentonmallen1/IGAB/blob/main/docs/unraid.md for full setup.</Overview>
+  <Category>Tools: Productivity:</Category>
+  <TemplateURL>https://raw.githubusercontent.com/brentonmallen1/IGAB/main/unraid/igab-api.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/brentonmallen1/IGAB/main/frontend/public/pwa-192x192.png</Icon>
+  <Config Name="Database URL" Target="DATABASE_URL" Default="postgresql+asyncpg://igab:changeme@igab-db:5432/igab" Mode="" Description="SQLAlchemy async URL of the paired PostgreSQL container. Keep the postgres container named igab-db on the igab network and only change the password here to match it." Type="Variable" Display="always" Required="true" Mask="false">postgresql+asyncpg://igab:changeme@igab-db:5432/igab</Config>
+  <Config Name="Secret Key" Target="SECRET_KEY" Default="" Mode="" Description="REQUIRED - JWT signing secret; the app refuses to start without a strong value. Generate with: openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Admin Email" Target="ADMIN_EMAIL" Default="admin@example.com" Mode="" Description="Login email for the admin user, created on first run." Type="Variable" Display="always" Required="true" Mask="false">admin@example.com</Config>
+  <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="REQUIRED - initial admin password; the app refuses to start on a default/empty value." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="SimpleFIN Encryption Key" Target="SIMPLEFIN_ENCRYPTION_KEY" Default="" Mode="" Description="Optional - only needed for SimpleFIN bank sync. Fernet key; generate with: python3 -c &quot;from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())&quot;" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Ollama Host" Target="OLLAMA_HOST" Default="" Mode="" Description="Optional - URL of an Ollama server for AI receipt scanning / natural-language entry (e.g. http://192.168.1.10:11434). Also configurable in-app under Settings." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Attachments" Target="/data/attachments" Default="/mnt/user/appdata/igab/attachments" Mode="rw" Description="Receipt/document attachment storage." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/igab/attachments</Config>
+  <Config Name="Backups" Target="/backups" Default="/mnt/user/backups/igab" Mode="rw" Description="Backup archive folder, shared with the igab-backup container. Point this at the array (NOT the same pool/disk as the postgres data) so a dead cache drive can't take the database and its backups together." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/backups/igab</Config>
+  <Config Name="API Port" Target="8000" Default="8000" Mode="tcp" Description="Optional - only needed for direct API access from outside Docker (debugging). The igab-web container reaches the API over the igab network without this mapping." Type="Port" Display="advanced" Required="false" Mask="false">8000</Config>
+</Container>

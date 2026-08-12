@@ -12,7 +12,10 @@ FROM deps AS build
 COPY . .
 RUN npm run build
 
-# Production: nginx serves the static build; ../nginx/nginx.conf (mounted by
-# compose) handles caching headers and the /api proxy.
+# Production: nginx serves the static build. The config is baked in as an
+# envsubst template (nginx/default.conf.template) so the published image is
+# self-contained; API_UPSTREAM points the /api proxy at the backend.
 FROM nginx:alpine AS production
+ENV API_UPSTREAM=api:8000
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

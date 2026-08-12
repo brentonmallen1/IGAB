@@ -25,6 +25,9 @@ DEFAULTS: dict[str, str] = {
     "backup_keep_days": "30",
     "backup_keep_min": "7",
     "backup_age_recipient": "",
+    # Opt-in check against GitHub releases for self-hosted installs; off by
+    # default — the app never phones home unless this is switched on.
+    "update_check_enabled": "false",
     **DEFAULT_PROMPTS,
 }
 

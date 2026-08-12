@@ -6,6 +6,7 @@ import { useAIStatus } from '../../../api/ai'
 import { useBudgets } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
 import { useSimpleFINConnections, useSyncSimpleFIN, useSimpleFINRateLimitStatus } from '../../../api/simplefin'
+import { useUpdateStatus } from '../../../api/system'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
 import { AddAccountModal } from '../../accounts/AddAccountModal'
 import { useLogout } from '../../../api/auth'
@@ -47,6 +48,7 @@ export function Sidebar() {
   const { data: budgets = [] } = useBudgets()
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const aiAvailable = useAIStatus().data?.available === true
+  const updateAvailable = useUpdateStatus().data?.update_available === true
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
   const isAddAccountModalOpen = useUIStore((s) => s.isAddAccountModalOpen)
@@ -162,6 +164,12 @@ export function Sidebar() {
         <NavLink to="/settings" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Settings" aria-label="Settings">
           <Settings size={16} />
           {!collapsed && <span>Settings</span>}
+          {updateAvailable && (
+            <span
+              className="sidebar__update-badge"
+              title="Update available — see Settings → Updates"
+            />
+          )}
         </NavLink>
         <button className="sidebar__nav-item sidebar__nav-item--logout" onClick={logout} title="Sign out" aria-label="Sign out">
           <LogOut size={16} />

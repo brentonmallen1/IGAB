@@ -3,6 +3,7 @@ import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, L
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { THEMES } from '../../../stores/appStore'
 import { useAIStatus } from '../../../api/ai'
+import { useUpdateStatus } from '../../../api/system'
 import { useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -20,6 +21,7 @@ export function MoreSheet() {
   const navigate = useNavigate()
   const logout = useLogout()
   const aiAvailable = useAIStatus().data?.available === true
+  const updateAvailable = useUpdateStatus().data?.update_available === true
 
   function go(path: string) {
     closeMoreSheet()
@@ -54,6 +56,12 @@ export function MoreSheet() {
         <button className="more-sheet__item" onClick={() => go('/settings')}>
           <Settings size={18} />
           <span>Settings</span>
+          {updateAvailable && (
+            <span
+              className="more-sheet__update-badge"
+              title="Update available — see Settings → Updates"
+            />
+          )}
         </button>
         <button className="more-sheet__item" onClick={togglePrivacyMode} aria-pressed={privacyMode}>
           {privacyMode ? <EyeOff size={18} /> : <Eye size={18} />}

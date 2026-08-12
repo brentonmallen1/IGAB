@@ -2,6 +2,15 @@
   padding: 0 var(--spacing-sm) var(--spacing-sm);
 }
 
+/* Update-available dot on the Settings entry (opt-in update check) */
+.more-sheet__update-badge {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  flex-shrink: 0;
+}
+
 .more-sheet__item {
   display: flex;
   align-items: center;

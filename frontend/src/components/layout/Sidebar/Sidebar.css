@@ -212,6 +212,15 @@
   line-height: 1;
 }
 
+/* Update-available dot on the Settings nav entry (opt-in update check) */
+.sidebar__update-badge {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+  flex-shrink: 0;
+}
+
 .sidebar__account-right {
   display: flex;
   align-items: center;

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>igab-backup</Name>
+  <Repository>ghcr.io/brentonmallen1/igab-backup:latest</Repository>
+  <Registry>https://ghcr.io/brentonmallen1/igab-backup</Registry>
+  <Network>igab</Network>
+  <Support>https://github.com/brentonmallen1/IGAB/issues</Support>
+  <Project>https://github.com/brentonmallen1/IGAB</Project>
+  <Overview>IGAB backup agent — periodic pg_dump of the IGAB database plus attachment archives, with retention pruning and optional age encryption. Backup schedule/retention/encryption are configured in the IGAB app (Settings -> Backups) and picked up live; the env vars here are only fallbacks. Financial data with no backup story is a demo, not a system of record. See https://github.com/brentonmallen1/IGAB/blob/main/docs/unraid.md for full setup.</Overview>
+  <Category>Backup: Tools:</Category>
+  <TemplateURL>https://raw.githubusercontent.com/brentonmallen1/IGAB/main/unraid/igab-backup.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/brentonmallen1/IGAB/main/frontend/public/pwa-192x192.png</Icon>
+  <Config Name="Postgres Host" Target="PGHOST" Default="igab-db" Mode="" Description="Hostname of the PostgreSQL container on the igab network." Type="Variable" Display="always" Required="true" Mask="false">igab-db</Config>
+  <Config Name="Postgres User" Target="PGUSER" Default="igab" Mode="" Description="Database user (must match the postgres container)." Type="Variable" Display="always" Required="true" Mask="false">igab</Config>
+  <Config Name="Postgres Password" Target="PGPASSWORD" Default="" Mode="" Description="Database password (must match the postgres container)." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Postgres Database" Target="PGDATABASE" Default="igab" Mode="" Description="Database name." Type="Variable" Display="always" Required="true" Mask="false">igab</Config>
+  <Config Name="Backup Interval Hours" Target="BACKUP_INTERVAL_HOURS" Default="24" Mode="" Description="Fallback only - hours between backups when the app's Settings -> Backups values are unreadable." Type="Variable" Display="advanced" Required="false" Mask="false">24</Config>
+  <Config Name="Backup Keep Days" Target="BACKUP_KEEP_DAYS" Default="30" Mode="" Description="Fallback only - prune backups older than this many days." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="Backup Keep Min" Target="BACKUP_KEEP_MIN" Default="7" Mode="" Description="Fallback only - always keep at least this many newest files per kind, however old." Type="Variable" Display="advanced" Required="false" Mask="false">7</Config>
+  <Config Name="Age Recipient" Target="BACKUP_AGE_RECIPIENT" Default="" Mode="" Description="Optional - age public key (age1...). When set, dumps and archives are encrypted to it. Keep the private key OFF this server. Also configurable in-app." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Backups" Target="/backups" Default="/mnt/user/backups/igab" Mode="rw" Description="Backup destination - MUST be the same folder as the igab-api container's Backups path (the app lists/restores through it). Point at the array, not the postgres data pool." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/backups/igab</Config>
+  <Config Name="Attachments (read-only)" Target="/attachments" Default="/mnt/user/appdata/igab/attachments" Mode="ro" Description="The igab-api attachments folder, mounted read-only so attachment archives are included in backups." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/igab/attachments</Config>
+</Container>
