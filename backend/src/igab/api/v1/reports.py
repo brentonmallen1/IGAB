@@ -35,6 +35,8 @@ from igab.api.v1.schemas.report import (
     PayeeSpending,
     PayeeTopCategory,
     PayeeTrend,
+    PlanRealityCategory,
+    PlanRealityResponse,
     SankeyLink,
     SankeyNode,
     SavingsCategory,
@@ -222,6 +224,23 @@ async def budget_actual_report(
         categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
         total_spent=data["total_spent"],
+    )
+
+
+@router.get("/{budget_id}/reports/plan-vs-reality", response_model=PlanRealityResponse)
+async def plan_vs_reality_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: Annotated[int, Query(ge=3, le=24)] = 12,
+) -> PlanRealityResponse:
+    data = await report_svc.plan_vs_reality(budget_id, months)
+    return PlanRealityResponse(
+        months=data["months"],
+        categories=[PlanRealityCategory.model_validate(c) for c in data["categories"]],
+        total_assigned=data["total_assigned"],
+        total_spent=data["total_spent"],
+        chronic_count=data["chronic_count"],
     )
 
 

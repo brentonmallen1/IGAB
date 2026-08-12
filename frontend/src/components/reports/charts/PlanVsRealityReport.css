@@ -1,0 +1,124 @@
+.plan-reality__scroll {
+  overflow-x: auto;
+}
+
+.plan-reality__table {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: var(--font-size-sm);
+}
+
+.plan-reality__cat-header {
+  text-align: left;
+  padding: 6px var(--spacing-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  min-width: 160px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.plan-reality__month-header {
+  padding: 6px 4px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  text-align: center;
+  white-space: nowrap;
+  min-width: 60px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.plan-reality__over-header {
+  padding: 6px var(--spacing-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: var(--font-size-2xs);
+  text-align: right;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.plan-reality__cat-cell {
+  padding: 4px var(--spacing-sm);
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.plan-reality__cat-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  max-width: 170px;
+}
+
+.plan-reality__cat-btn:hover .plan-reality__cat-name {
+  color: var(--color-accent);
+}
+
+.plan-reality__cat-name {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-reality__cat-group {
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-reality__badge {
+  display: inline-block;
+  margin-left: var(--spacing-xs);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chart-negative) 15%, transparent);
+  color: var(--chart-negative);
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.plan-reality__cell {
+  padding: 4px 6px;
+  text-align: right;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--bg-primary);
+}
+
+.plan-reality__cell--under {
+  color: var(--text-muted);
+}
+
+.plan-reality__cell--over {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.plan-reality__cell--clickable {
+  cursor: pointer;
+}
+
+.plan-reality__cell--clickable:hover {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.plan-reality__over-count {
+  padding: 4px var(--spacing-sm);
+  text-align: right;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

@@ -441,6 +441,56 @@ class BudgetMove(Base):
     )
 
 
+# ─── Category Balance Snapshots (derived cache) ───────────────────────────────
+
+
+class CategoryMonthSnapshot(Base):
+    """Per-(category, month) balance cache derived from transactions and
+    assignments — materializes BudgetService's carryover simulation.
+
+    Rows exist only for months where the category has assignments or activity.
+    `available` is the raw end-of-month value: it may be negative in that
+    month, and readers floor it at zero when carrying it into later months.
+    Rows are never updated in place — a rebuild replaces the whole budget's
+    rows, and validity is signalled solely by the budget's BudgetSnapshotMeta
+    row (invalidated by igab.db.invalidation on any relevant write).
+    """
+
+    __tablename__ = "category_month_snapshots"
+    __table_args__ = (
+        UniqueConstraint("category_id", "month", name="uq_snapshot_category_month"),
+        Index("ix_snapshot_budget_month", "budget_id", "month"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+    )
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False
+    )
+    month: Mapped[date] = mapped_column(Date, nullable=False)
+    assigned: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    activity: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    available: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class BudgetSnapshotMeta(Base):
+    """Presence of a row means the budget's category snapshots are valid."""
+
+    __tablename__ = "budget_snapshot_meta"
+
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), primary_key=True
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 # ─── Scheduled Transactions ───────────────────────────────────────────────────
 
 
