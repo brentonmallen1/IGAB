@@ -14,6 +14,7 @@ import type {
   NetWorthReport,
   PaydayEffectReport,
   PayeeAnalysisReport,
+  PlanRealityReport,
   SavingsReport,
   SeasonalityReport,
   SpendingGroupedReport,
@@ -198,6 +199,23 @@ export function useBudgetActualReport(
       const { data } = await apiClient.get<BudgetActualReport>(
         `/${budgetId}/reports/budget-actual`,
         { params: params({ start_date: startDate, end_date: endDate, category_ids: catParam }) },
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+// ─── Plan vs Reality ───────────────────────────────────────────────────────
+
+export function usePlanVsRealityReport(budgetId: string | null, months = 12) {
+  return useQuery({
+    queryKey: ['reports', 'plan-vs-reality', budgetId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<PlanRealityReport>(
+        `/${budgetId}/reports/plan-vs-reality`,
+        { params: { months } },
       )
       return data
     },

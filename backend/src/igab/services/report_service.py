@@ -1195,6 +1195,164 @@ class ReportService:
 
         return results
 
+    # ─── Plan vs Reality ─────────────────────────────────────────────────────
+
+    async def plan_vs_reality(
+        self,
+        budget_id: uuid.UUID,
+        months: int = 12,
+    ) -> dict:
+        """Assigned vs actually spent, per category per month.
+
+        Deliberately ignores carryover: this report measures monthly plan
+        discipline (did the month's spending fit the month's assignment?),
+        not envelope health — a category living off January's surplus still
+        reads as over-plan in February if nothing was assigned then.
+
+        A month counts as "over" when spent > assigned among active months
+        (any assignment or spending). Chronic = over in 3+ of the last 6
+        months of the window — the signal that a plan is habitually wrong
+        rather than occasionally unlucky.
+        """
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        months_list = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+
+        assign_q = (
+            select(
+                BudgetAssignment.category_id,
+                BudgetAssignment.month,
+                BudgetAssignment.assigned,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+            )
+            .join(Category, BudgetAssignment.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                BudgetAssignment.budget_id == budget_id,
+                BudgetAssignment.month.in_(months_list),
+                Category.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+        )
+        spend_q = (
+            select(
+                Transaction.category_id,
+                Transaction.date,
+                Transaction.amount,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+            )
+            .join(Category, Transaction.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                Transaction.amount < 0,
+                Transaction.date >= months_list[0],
+                Transaction.date <= _last_day(months_list[-1]),
+                LEAF,
+                CASH_FLOW_ROW,
+                Category.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_system == False,  # noqa: E712
+            )
+        )
+        assignments = (await self.session.execute(assign_q)).all()
+        spending = (await self.session.execute(spend_q)).all()
+
+        zero = Decimal("0")
+        cats: dict[str, dict] = {}
+
+        def cat_entry(category_id, name: str, group: str) -> dict:
+            cid = str(category_id)
+            if cid not in cats:
+                cats[cid] = {
+                    "category_id": cid,
+                    "category_name": name,
+                    "category_group_name": group,
+                    "assigned": dict.fromkeys(months_list, zero),
+                    "spent": dict.fromkeys(months_list, zero),
+                }
+            return cats[cid]
+
+        for r in assignments:
+            m = r.month if isinstance(r.month, date) else date.fromisoformat(str(r.month))
+            entry = cat_entry(r.category_id, r.category_name, r.group_name)
+            entry["assigned"][m] += Decimal(str(r.assigned))
+        for r in spending:
+            m = r.date.replace(day=1)
+            entry = cat_entry(r.category_id, r.category_name, r.group_name)
+            entry["spent"][m] += abs(Decimal(str(r.amount)))
+
+        recent = set(months_list[-6:])
+        categories = []
+        total_assigned = zero
+        total_spent = zero
+        chronic_count = 0
+        for entry in cats.values():
+            monthly = []
+            months_over = 0
+            months_active = 0
+            recent_over = 0
+            over_total = zero
+            for m in months_list:
+                assigned = entry["assigned"][m]
+                spent = entry["spent"][m]
+                over = spent > assigned
+                if assigned != zero or spent != zero:
+                    months_active += 1
+                    if over:
+                        months_over += 1
+                        over_total += spent - assigned
+                        if m in recent:
+                            recent_over += 1
+                monthly.append(
+                    {"month": m, "assigned": assigned, "spent": spent, "variance": assigned - spent}
+                )
+            cat_assigned = sum(entry["assigned"].values(), zero)
+            cat_spent = sum(entry["spent"].values(), zero)
+            chronic = recent_over >= 3
+            if chronic:
+                chronic_count += 1
+            avg_overspend = (
+                (over_total / months_over).quantize(Decimal("0.01")) if months_over else zero
+            )
+            categories.append(
+                {
+                    "category_id": entry["category_id"],
+                    "category_name": entry["category_name"],
+                    "category_group_name": entry["category_group_name"],
+                    "monthly": monthly,
+                    "months_over": months_over,
+                    "months_active": months_active,
+                    "total_assigned": cat_assigned,
+                    "total_spent": cat_spent,
+                    "avg_overspend": avg_overspend,
+                    "chronic": chronic,
+                }
+            )
+            total_assigned += cat_assigned
+            total_spent += cat_spent
+
+        categories.sort(
+            key=lambda c: (
+                not c["chronic"],
+                -c["months_over"],
+                -c["total_spent"],
+                c["category_name"],
+            )
+        )
+        return {
+            "months": months_list,
+            "categories": categories,
+            "total_assigned": total_assigned,
+            "total_spent": total_spent,
+            "chronic_count": chronic_count,
+        }
+
     # ─── Category Volatility ─────────────────────────────────────────────────
 
     async def category_volatility(

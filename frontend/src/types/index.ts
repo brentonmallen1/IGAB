@@ -384,6 +384,34 @@ export interface BudgetActualReport {
   total_spent: number
 }
 
+export interface PlanRealityCell {
+  month: string
+  assigned: number
+  spent: number
+  variance: number
+}
+
+export interface PlanRealityCategory {
+  category_id: string
+  category_name: string
+  category_group_name: string
+  monthly: PlanRealityCell[]
+  months_over: number
+  months_active: number
+  total_assigned: number
+  total_spent: number
+  avg_overspend: number
+  chronic: boolean
+}
+
+export interface PlanRealityReport {
+  months: string[]
+  categories: PlanRealityCategory[]
+  total_assigned: number
+  total_spent: number
+  chronic_count: number
+}
+
 export interface VariancePoint {
   month: string
   budget_assigned: number

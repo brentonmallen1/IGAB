@@ -28,6 +28,7 @@ import { LiabilitiesReport } from '../../components/reports/charts/LiabilitiesRe
 import { SubscriptionsReport } from '../../components/reports/charts/SubscriptionsReport'
 import { SavingsReport } from '../../components/reports/charts/SavingsReport'
 import { AnomaliesReport } from '../../components/reports/charts/AnomaliesReport'
+import { PlanVsRealityReport } from '../../components/reports/charts/PlanVsRealityReport'
 import { CashProjectionReport } from '../../components/reports/charts/CashProjectionReport'
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
@@ -108,6 +109,7 @@ export function ReportsPage() {
       case 'treemap': return <SpendingTreemapReport budgetId={budgetId!} />
       case 'seasonality': return <SeasonalityReport budgetId={budgetId!} />
       case 'subscriptions': return <SubscriptionsReport budgetId={budgetId!} />
+      case 'plan-reality': return <PlanVsRealityReport budgetId={budgetId!} />
       case 'anomalies': return <AnomaliesReport budgetId={budgetId!} />
       case 'payees': return <PayeeReport budgetId={budgetId!} />
       case 'day-patterns': return <DayPatternsReport budgetId={budgetId!} />

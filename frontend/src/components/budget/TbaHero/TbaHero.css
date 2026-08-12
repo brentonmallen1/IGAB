@@ -91,6 +91,26 @@
   background-color: var(--color-accent-hover);
 }
 
+/* Multi-month view (desktop only) */
+.tba-hero__months-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border-radius: var(--border-radius-sm);
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tba-hero__months-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--color-accent);
+}
+
 /* Overspent chip */
 .tba-hero__overspent-chip {
   display: inline-flex;

@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react'
-import { ChevronDown, Wand2 } from 'lucide-react'
+import { CalendarRange, ChevronDown, Wand2 } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
@@ -39,6 +39,7 @@ export function TbaHero({ budgetId, month }: Props) {
   const setPreviewStrategy = useUIStore((s) => s.setAssignPreviewStrategy)
   const showCover = useUIStore((s) => s.isCoverOverspentOpen)
   const setShowCover = useUIStore((s) => s.setCoverOverspentOpen)
+  const setMultiMonthOpen = useUIStore((s) => s.setMultiMonthOpen)
   const assignRef = useRef<HTMLDivElement>(null)
 
   const tba = budgetMonth?.to_be_assigned ?? 0
@@ -110,6 +111,17 @@ export function TbaHero({ budgetId, month }: Props) {
               <ChevronDown size={13} />
             </button>
           </div>
+
+          {!isMobile && (
+            <button
+              className="tba-hero__months-btn"
+              onClick={() => setMultiMonthOpen(true)}
+              title="Side-by-side multi-month view"
+            >
+              <CalendarRange size={13} />
+              Months
+            </button>
+          )}
 
           {overspent > 0 && (
             <button

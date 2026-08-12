@@ -23,6 +23,7 @@ from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
 from igab.repositories.settings_repo import SettingsRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
+from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
@@ -153,12 +154,17 @@ def get_budget_move_repo(session: SessionDep):
     return BudgetMoveRepository(session)
 
 
+def get_snapshot_repo(session: SessionDep) -> SnapshotRepository:
+    return SnapshotRepository(session)
+
+
 def get_budget_service(
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     category_group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
     assignment_repo: Annotated[BudgetAssignmentRepository, Depends(get_assignment_repo)],
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    snapshot_repo: Annotated[SnapshotRepository, Depends(get_snapshot_repo)],
     move_repo=Depends(get_budget_move_repo),
 ) -> BudgetService:
     return BudgetService(
@@ -168,6 +174,7 @@ def get_budget_service(
         assignment_repo,
         transaction_repo,
         move_repo=move_repo,
+        snapshot_repo=snapshot_repo,
     )
 
 

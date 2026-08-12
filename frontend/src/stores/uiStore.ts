@@ -112,6 +112,10 @@ interface UIState {
   tbaDrawerOpen: boolean
   setTbaDrawerOpen: (open: boolean) => void
 
+  // Multi-month side-by-side view (desktop only)
+  multiMonthOpen: boolean
+  setMultiMonthOpen: (open: boolean) => void
+
   // Reconciliation mode
   isReconciling: boolean
   reconcileAccountId: string | null
@@ -337,6 +341,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   setCoverOverspentOpen: (open) => set({ isCoverOverspentOpen: open }),
   tbaDrawerOpen: false,
   setTbaDrawerOpen: (open) => set({ tbaDrawerOpen: open }),
+
+  multiMonthOpen: false,
+  setMultiMonthOpen: (open) => set({ multiMonthOpen: open }),
 
   isReconciling: false,
   reconcileAccountId: null,
