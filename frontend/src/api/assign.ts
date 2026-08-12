@@ -79,7 +79,7 @@ export function useAssignApply(budgetId: string) {
         .post<AssignApplyResponse>(`/${budgetId}/assign/apply`, data)
         .then((r) => r.data),
     onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
       qc.invalidateQueries({ queryKey: ['assignStrategies', budgetId, month] })
       qc.invalidateQueries({ queryKey: ['assignPreview', budgetId, month] })

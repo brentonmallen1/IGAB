@@ -45,7 +45,7 @@ export function useAutoAssign(budgetId: string, month: string) {
         .post(`/${budgetId}/categories/auto-assign`, { category_ids: categoryIds, action, month })
         .then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['categoryHistoryBatch', budgetId] })
     },
   })

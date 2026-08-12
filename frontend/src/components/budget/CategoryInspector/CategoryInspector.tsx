@@ -3,6 +3,7 @@ import { useUIStore } from '../../../stores/uiStore'
 import { useAppStore } from '../../../stores/appStore'
 import { useBudgetMonth } from '../../../api/budgets'
 import { useCategories } from '../../../api/categories'
+import { addMonths } from '../../../utils/dates'
 import { AvailableBreakdown } from './AvailableBreakdown'
 import { TargetSection } from './TargetSection'
 import { AutoAssignSection } from './AutoAssignSection'
@@ -30,6 +31,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const clearCategorySelection = useUIStore((s) => s.clearCategorySelection)
 
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
+  const { data: prevBudgetMonth } = useBudgetMonth(budgetId, addMonths(month, -1))
   const { data: categories } = useCategories(budgetId)
 
   const selectedIds = Array.from(selectedCategoryIds)
@@ -41,6 +43,9 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const selectedBalances = budgetMonth?.category_balances.filter((b) =>
     selectedCategoryIds.has(b.category_id)
   ) ?? []
+  const prevBalances = prevBudgetMonth?.category_balances.filter((b) =>
+    selectedCategoryIds.has(b.category_id)
+  )
 
   const isSingle = count === 1
   const singleCategory = isSingle ? selectedCategories[0] : null
@@ -97,7 +102,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
               <MonthSummary budgetId={budgetId} allCategoryIds={allCategoryIds} categories={categories ?? []} />
             ) : (
               <>
-                <AvailableBreakdown balances={selectedBalances} />
+                <AvailableBreakdown balances={selectedBalances} prevBalances={prevBalances} />
 
                 {isSingle && singleCategory && (
                   <TargetSection categoryId={singleCategory.id} />

@@ -11,6 +11,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.ownership import require_in_budget
 from igab.utils.clock import today_utc
@@ -141,6 +142,7 @@ class BudgetService:
         assignment_repo: BudgetAssignmentRepository,
         transaction_repo: TransactionRepository,
         move_repo: "BudgetMoveRepository | None" = None,
+        snapshot_repo: SnapshotRepository | None = None,
     ) -> None:
         self.account_repo = account_repo
         self.category_repo = category_repo
@@ -148,6 +150,7 @@ class BudgetService:
         self.assignment_repo = assignment_repo
         self.transaction_repo = transaction_repo
         self.move_repo = move_repo
+        self.snapshot_repo = snapshot_repo
 
     async def get_category_balance(
         self,
@@ -236,10 +239,21 @@ class BudgetService:
         groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
         system_group_ids = {g.id for g in groups if g.is_system}
 
-        # Batch per-month activity for all categories in a single query
-        all_activity_by_month = await self.transaction_repo.sum_all_categories_by_month(
-            [cat.id for cat in categories], end_date=last_of_month(month_start)
-        )
+        if self.snapshot_repo is not None:
+            balance_map = await self._snapshot_balances(budget_id, categories, month_start)
+        else:
+            # Live path: batch per-month activity in one query, then simulate
+            # each category. Kept as the no-snapshot fallback and the test
+            # oracle the snapshot path is verified against.
+            all_activity_by_month = await self.transaction_repo.sum_all_categories_by_month(
+                [cat.id for cat in categories], end_date=last_of_month(month_start)
+            )
+            balance_map = {
+                cat.id: await self.get_category_balance(
+                    cat.id, month_start, activity_by_month=all_activity_by_month.get(cat.id, {})
+                )
+                for cat in categories
+            }
 
         balances: list[CategoryBalance] = []
         total_category_balance = Decimal("0")
@@ -248,9 +262,7 @@ class BudgetService:
         total_overspent = Decimal("0")
 
         for cat in categories:
-            bal = await self.get_category_balance(
-                cat.id, month_start, activity_by_month=all_activity_by_month.get(cat.id, {})
-            )
+            bal = balance_map[cat.id]
             balances.append(bal)
             # Exclude system (Income) categories: income adds to TBA, not reduces it
             if cat.category_group_id not in system_group_ids:
@@ -271,6 +283,82 @@ class BudgetService:
             assigned_in_future=assigned_in_future,
             category_balances=balances,
         )
+
+    async def _snapshot_balances(
+        self,
+        budget_id: uuid.UUID,
+        categories: list[Category],
+        month_start: date,
+    ) -> dict[uuid.UUID, CategoryBalance]:
+        """Category balances served from the snapshot cache, rebuilding it first
+        if any relevant write invalidated it (see igab.db.invalidation)."""
+        assert self.snapshot_repo is not None
+        if not await self.snapshot_repo.is_valid(budget_id):
+            await self._rebuild_snapshots(budget_id, categories)
+
+        latest = await self.snapshot_repo.latest_per_category(budget_id, month_start)
+        zero = Decimal("0")
+        out: dict[uuid.UUID, CategoryBalance] = {}
+        for cat in categories:
+            row = latest.get(cat.id)
+            if row is None:
+                assigned, activity, available = zero, zero, zero
+            elif row.month == month_start:
+                # The viewed month has its own data; available may be negative.
+                assigned, activity, available = row.assigned, row.activity, row.available
+            else:
+                # No data in the viewed month: available is the floored
+                # carryover — overspending was already absorbed by TBA.
+                assigned, activity, available = zero, zero, max(zero, row.available)
+            out[cat.id] = CategoryBalance(
+                category_id=cat.id,
+                month=month_start,
+                assigned=assigned,
+                activity=activity,
+                available=available,
+            )
+        return out
+
+    async def _rebuild_snapshots(self, budget_id: uuid.UUID, categories: list[Category]) -> None:
+        """Recompute every (category, month) row from source data.
+
+        Two batched queries replace the per-category fetches of the live path;
+        the simulation itself must mirror get_category_balance exactly.
+        """
+        assert self.snapshot_repo is not None
+        zero = Decimal("0")
+
+        # No end_date: snapshots must cover future-dated activity too, so any
+        # month can be served. Forward simulation means later months never
+        # affect earlier rows.
+        activity = await self.transaction_repo.sum_all_categories_by_month(
+            [cat.id for cat in categories]
+        )
+        assignments = await self.assignment_repo.get_all_for_budget(budget_id)
+        assigned_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
+        for a in assignments:
+            assigned_by_cat.setdefault(a.category_id, {})[a.month] = a.assigned
+
+        rows: list[dict[str, object]] = []
+        for cat in categories:
+            asg = assigned_by_cat.get(cat.id, {})
+            act = activity.get(cat.id, {})
+            carryover = zero
+            for m in sorted(set(asg) | set(act)):
+                end_of_month = carryover + asg.get(m, zero) + act.get(m, zero)
+                rows.append(
+                    {
+                        "budget_id": budget_id,
+                        "category_id": cat.id,
+                        "month": m,
+                        "assigned": asg.get(m, zero),
+                        "activity": act.get(m, zero),
+                        "available": end_of_month,
+                    }
+                )
+                carryover = max(zero, end_of_month)
+
+        await self.snapshot_repo.replace_for_budget(budget_id, rows)
 
     async def preview_future_overspend(
         self,

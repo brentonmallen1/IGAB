@@ -6,6 +6,7 @@ import { CategoryMobileActions } from '../../components/budget/CategoryInspector
 import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
 import { BudgetViewModal } from '../../components/budget/BudgetViewModal/BudgetViewModal'
 import { ManageViewsModal } from '../../components/budget/ManageViewsModal/ManageViewsModal'
+import { MultiMonthSheet } from '../../components/budget/MultiMonthSheet/MultiMonthSheet'
 import { TbaHero } from '../../components/budget/TbaHero/TbaHero'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
@@ -33,6 +34,7 @@ export function BudgetPage() {
   const closeManageViewsModal = useUIStore((s) => s.closeManageViewsModal)
   const mobileInspectorOpen = useUIStore((s) => s.mobileInspectorOpen)
   const closeMobileInspector = useUIStore((s) => s.closeMobileInspector)
+  const multiMonthOpen = useUIStore((s) => s.multiMonthOpen)
   const isMobile = useIsMobile()
   const swipeHandlers = useSwipeNavigation(
     () => setSelectedMonth(addMonths(month, -1)),
@@ -196,6 +198,7 @@ export function BudgetPage() {
           onClose={closeManageViewsModal}
         />
       )}
+      {!isMobile && multiMonthOpen && <MultiMonthSheet budgetId={budgetId} />}
     </div>
   )
 }

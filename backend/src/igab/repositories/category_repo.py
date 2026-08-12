@@ -109,6 +109,14 @@ class BudgetAssignmentRepository(BaseRepository[BudgetAssignment]):
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
+    async def get_all_for_budget(self, budget_id: uuid.UUID) -> list[BudgetAssignment]:
+        result = await self.session.execute(
+            select(BudgetAssignment)
+            .where(BudgetAssignment.budget_id == budget_id)
+            .order_by(BudgetAssignment.month)
+        )
+        return list(result.scalars().all())
+
     async def sum_after_month(self, budget_id: uuid.UUID, month: date) -> Decimal:
         """Total assigned across all months strictly after the given month."""
         result = await self.session.execute(

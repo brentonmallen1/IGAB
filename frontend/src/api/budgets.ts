@@ -114,8 +114,10 @@ export function useSetAssignment(budgetId: string) {
       apiClient.patch(`/categories/${categoryId}/assignment`, { amount }, {
         params: { month, budget_id: budgetId },
       }),
-    onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId, month] })
+    onSuccess: () => {
+      // Assignments ripple: later months' available and every month's TBA
+      // shift, so refresh all cached months, not just the edited one.
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
     },
   })
 }
@@ -140,7 +142,7 @@ export function useMoveMoney(budgetId: string) {
       month: string
     }) => apiClient.post(`/${budgetId}/budget/move-money`, data),
     onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
     },
   })
@@ -260,7 +262,7 @@ export function useCoverOverspentApply(budgetId: string) {
       items: { category_id: string; proposed_addition: number }[]
     }) => apiClient.post(`/${budgetId}/cover-overspent/apply`, data),
     onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['coverOverspentPreview', budgetId, month] })
       qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
       qc.invalidateQueries({ queryKey: ['assignStrategies', budgetId, month] })

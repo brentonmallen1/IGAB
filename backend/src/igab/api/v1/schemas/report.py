@@ -158,6 +158,37 @@ class BudgetActualResponse(BaseModel):
     total_spent: Decimal
 
 
+# ─── Plan vs Reality ──────────────────────────────────────────────────────────
+
+
+class PlanRealityCell(BaseModel):
+    month: date
+    assigned: Decimal
+    spent: Decimal
+    variance: Decimal
+
+
+class PlanRealityCategory(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    category_group_name: str
+    monthly: list[PlanRealityCell]
+    months_over: int
+    months_active: int
+    total_assigned: Decimal
+    total_spent: Decimal
+    avg_overspend: Decimal
+    chronic: bool
+
+
+class PlanRealityResponse(BaseModel):
+    months: list[date]
+    categories: list[PlanRealityCategory]
+    total_assigned: Decimal
+    total_spent: Decimal
+    chronic_count: int
+
+
 # ─── Variance ─────────────────────────────────────────────────────────────────
 
 

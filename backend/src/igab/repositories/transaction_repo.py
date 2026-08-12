@@ -401,14 +401,18 @@ class TransactionRepository(BaseRepository[Transaction]):
     async def sum_all_categories_by_month(
         self,
         category_ids: list[uuid.UUID],
-        end_date: date,
+        end_date: date | None = None,
     ) -> dict[uuid.UUID, dict[date, Decimal]]:
-        """Batch return {category_id: {month_start: total_amount}} through end_date."""
+        """Batch return {category_id: {month_start: total_amount}} through end_date.
+
+        end_date=None returns all months, including future-dated activity —
+        the snapshot rebuild needs the full timeline.
+        """
         if not category_ids:
             return {}
         yr = cast(func.extract("year", Transaction.date), Integer)
         mo = cast(func.extract("month", Transaction.date), Integer)
-        result = await self.session.execute(
+        q = (
             select(
                 Transaction.category_id,
                 yr.label("yr"),
@@ -420,10 +424,12 @@ class TransactionRepository(BaseRepository[Transaction]):
                 NOT_DELETED,
                 LEAF,
                 POSTED,
-                Transaction.date <= end_date,
             )
             .group_by(Transaction.category_id, yr, mo)
         )
+        if end_date is not None:
+            q = q.where(Transaction.date <= end_date)
+        result = await self.session.execute(q)
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for row in result.mappings():
             month = date(row["yr"], row["mo"], 1)

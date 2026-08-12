@@ -46,6 +46,7 @@ import { LiabilitiesReport } from './charts/LiabilitiesReport'
 import { NetWorthReport } from './charts/NetWorthChart'
 import { ParetoReport } from './charts/ParetoChart'
 import { PayeeReport } from './charts/PayeeChart'
+import { PlanVsRealityReport } from './charts/PlanVsRealityReport'
 import { SavingsReport } from './charts/SavingsReport'
 import { SeasonalityReport } from './charts/SeasonalityHeatmap'
 import { SpendingTreemapReport } from './charts/SpendingTreemap'
@@ -71,6 +72,7 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Seasonality', SeasonalityReport],
   ['Subscriptions', SubscriptionsReport],
   ['Anomalies', AnomaliesReport],
+  ['PlanVsReality', PlanVsRealityReport],
   ['Payee', PayeeReport],
   ['DayPatterns', DayPatternsReport],
   ['Timeline', TimelineReport],
@@ -229,6 +231,70 @@ describe('ParetoReport insight', () => {
     expect(
       screen.getByText('Spending is spread thin—consider consolidating or reviewing smaller items.')
     ).toBeInTheDocument()
+  })
+})
+
+describe('PlanVsRealityReport matrix', () => {
+  const planData = {
+    months: ['2026-06-01', '2026-07-01', '2026-08-01'],
+    categories: [
+      {
+        category_id: 'c1',
+        category_name: 'Dining',
+        category_group_name: 'Everyday',
+        monthly: [
+          { month: '2026-06-01', assigned: '100', spent: '140', variance: '-40' },
+          { month: '2026-07-01', assigned: '100', spent: '90', variance: '10' },
+          { month: '2026-08-01', assigned: '0', spent: '0', variance: '0' },
+        ],
+        months_over: 1,
+        months_active: 2,
+        total_assigned: '200',
+        total_spent: '230',
+        avg_overspend: '40.00',
+        chronic: true,
+      },
+      {
+        category_id: 'c2',
+        category_name: 'Rent',
+        category_group_name: 'Home',
+        monthly: [
+          { month: '2026-06-01', assigned: '900', spent: '900', variance: '0' },
+          { month: '2026-07-01', assigned: '900', spent: '900', variance: '0' },
+          { month: '2026-08-01', assigned: '900', spent: '900', variance: '0' },
+        ],
+        months_over: 0,
+        months_active: 3,
+        total_assigned: '2700',
+        total_spent: '2700',
+        avg_overspend: '0',
+        chronic: false,
+      },
+    ],
+    total_assigned: '2900',
+    total_spent: '2930',
+    chronic_count: 1,
+  }
+
+  it('renders variance cells, over counts, and the chronic badge', () => {
+    setQuery({ data: planData })
+    renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+    expect(screen.getByText('Dining')).toBeInTheDocument()
+    expect(screen.getByText('Chronic')).toBeInTheDocument()
+    expect(screen.getByText('−40')).toBeInTheDocument() // overspent cell
+    expect(screen.getByText('+10')).toBeInTheDocument() // underspent cell
+    expect(screen.getByText('1/2')).toBeInTheDocument() // months over / active
+    expect(screen.getAllByText(/\$2,900\.00/).length).toBeGreaterThan(0)
+  })
+
+  it('filters to chronic categories only via the toggle', () => {
+    setQuery({ data: planData })
+    renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+    fireEvent.click(screen.getByLabelText('Chronic only'))
+    expect(screen.getByText('Dining')).toBeInTheDocument()
+    expect(screen.queryByText('Rent')).not.toBeInTheDocument()
   })
 })
 
