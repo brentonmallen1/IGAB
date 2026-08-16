@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, Paperclip } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { ReceiptPane } from '../../ai/ReceiptPane'
+import { ReceiptScanTab } from './ReceiptScanTab'
 import {
   useCreateTransaction,
   useUpdateTransaction,
@@ -9,14 +10,13 @@ import {
   useConvertToSplit,
   usePayees,
   useSimilarTransactions,
+  useTransaction,
 } from '../../../api/transactions'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { confirmFutureOverspend, type OverspendProbe } from '../../../api/budgets'
 import { useAIStatus, useSuggestCategory } from '../../../api/ai'
-import { useSubmitReceipt, type AIJob } from '../../../api/aiJobs'
-import { ATTACHMENT_ACCEPT, isAttachableFile } from '../../../api/attachments'
-import toast from 'react-hot-toast'
+import { type AIJob } from '../../../api/aiJobs'
 import { useAppStore } from '../../../stores/appStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -150,38 +150,18 @@ export function TransactionEditor({
     { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
   ])
 
+  // Tab state: "manual" or "receipt" in add mode
+  const [activeTab, setActiveTab] = useState<'manual' | 'receipt'>('manual')
+  const showTabs = !isEdit
+
+  // Review handoff: when an AI job completes, we render a nested TransactionEditor
+  const [reviewJob, setReviewJob] = useState<AIJob | null>(null)
+  const { data: reviewTxn } = useTransaction(reviewJob?.transaction_id ?? null)
+
   const payeeRef = useRef<HTMLDivElement>(null)
   const payeeInitialized = useRef(false)
-  const scanInputRef = useRef<HTMLInputElement>(null)
 
-  // Desktop path to the receipt pipeline: pick a file here instead of the
-  // mobile quick-add. Queues the same AI job; the editor closes and the
-  // drafted transaction arrives for review.
   const aiAvailable = useAIStatus().data?.available === true
-  const submitReceipt = useSubmitReceipt(budgetId)
-
-  async function scanReceiptFile(list: FileList | null) {
-    const file = list?.[0]
-    if (!file || !accountId) return
-    if (!isAttachableFile(file)) {
-      toast.error(`${file.name} is not an image or PDF`)
-      return
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error(`${file.name} is too large (max 20MB)`)
-      return
-    }
-    try {
-      await submitReceipt.mutateAsync({ file, accountId })
-      if (!fixedAccountId) setLastPickedAccountId(accountId)
-      toast.success("Receipt queued — it'll appear for review shortly", { duration: 5000 })
-      onClose()
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail
-      toast.error(detail ?? 'Failed to queue receipt')
-    }
-  }
 
   // Initialize payee query once payees are loaded (edit mode)
   useEffect(() => {
@@ -437,6 +417,54 @@ export function TransactionEditor({
     )
   })()
 
+  // Review handoff: when an AI job completes, render a nested TransactionEditor
+  // in review mode with the newly created transaction.
+  if (reviewJob && reviewTxn) {
+    return (
+      <TransactionEditor
+        key={reviewTxn.id}
+        budgetId={budgetId}
+        accountId={fixedAccountId}
+        transaction={reviewTxn}
+        aiJob={reviewJob}
+        onClose={onClose}
+      />
+    )
+  }
+
+  // Account field used in both tabs (shared state survives tab switches)
+  const accountField = !fixedAccountId && !isEdit ? (
+    <div className="txn-editor__field">
+      <label className="txn-editor__label">Account</label>
+      <select
+        className="txn-editor__select"
+        value={pickedAccountId}
+        onChange={(e) => setPickedAccountId(e.target.value)}
+        required
+      >
+        <option value="">Select account…</option>
+        {openAccounts.some((a) => !a.on_budget) ? (
+          <>
+            <optgroup label="Budget accounts">
+              {openAccounts.filter((a) => a.on_budget).map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Tracking">
+              {openAccounts.filter((a) => !a.on_budget).map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </optgroup>
+          </>
+        ) : (
+          openAccounts.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))
+        )}
+      </select>
+    </div>
+  ) : null
+
   return (
     <div
       className="txn-editor-overlay"
@@ -493,31 +521,50 @@ export function TransactionEditor({
           </div>
         )}
 
-        {!isEdit && aiAvailable && (
-          <div className="txn-editor__scan-row">
+        {showTabs && (
+          <div className="txn-editor__tabs" role="tablist" aria-label="Entry method">
             <button
               type="button"
-              className="txn-editor__scan-btn"
-              onClick={() => scanInputRef.current?.click()}
-              disabled={submitReceipt.isPending || !accountId}
-              title="Upload a receipt image or PDF — AI drafts the transaction for review"
+              role="tab"
+              aria-selected={activeTab === 'manual'}
+              className={`txn-editor__tab ${activeTab === 'manual' ? 'txn-editor__tab--active' : ''}`}
+              onClick={() => setActiveTab('manual')}
+            >
+              Manual entry
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'receipt'}
+              className={`txn-editor__tab ${activeTab === 'receipt' ? 'txn-editor__tab--active' : ''}`}
+              onClick={() => setActiveTab('receipt')}
             >
               <Sparkles size={13} />
-              {submitReceipt.isPending ? 'Queuing…' : 'Scan a receipt instead'}
+              From receipt
             </button>
-            <input
-              ref={scanInputRef}
-              type="file"
-              accept={ATTACHMENT_ACCEPT}
-              onChange={(e) => {
-                void scanReceiptFile(e.target.files)
-                e.target.value = ''
-              }}
-              style={{ display: 'none' }}
-            />
           </div>
         )}
 
+        {/* Receipt tab content */}
+        {showTabs && activeTab === 'receipt' ? (
+          <div className="txn-editor__main">
+            <div className="txn-editor__body">
+              {accountField}
+              <ReceiptScanTab
+                budgetId={budgetId}
+                accountId={accountId}
+                aiAvailable={aiAvailable}
+                onReviewReady={setReviewJob}
+                onRememberAccount={() => {
+                  if (!fixedAccountId && accountId) setLastPickedAccountId(accountId)
+                }}
+                onClose={onClose}
+              />
+            </div>
+          </div>
+        ) : (
+          /* Manual entry tab content (default) */
+          <>
         <div className="txn-editor__main">
           {isReview && aiJob!.attachment_id && (
             <div className="txn-editor__receipt">
@@ -528,37 +575,7 @@ export function TransactionEditor({
             </div>
           )}
           <div className="txn-editor__body">
-          {!fixedAccountId && !isEdit && (
-            <div className="txn-editor__field">
-              <label className="txn-editor__label">Account</label>
-              <select
-                className="txn-editor__select"
-                value={pickedAccountId}
-                onChange={(e) => setPickedAccountId(e.target.value)}
-                required
-              >
-                <option value="">Select account…</option>
-                {openAccounts.some((a) => !a.on_budget) ? (
-                  <>
-                    <optgroup label="Budget accounts">
-                      {openAccounts.filter((a) => a.on_budget).map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Tracking">
-                      {openAccounts.filter((a) => !a.on_budget).map((a) => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </optgroup>
-                  </>
-                ) : (
-                  openAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))
-                )}
-              </select>
-            </div>
-          )}
+          {accountField}
           <div className="txn-editor__row">
             <div className="txn-editor__field">
               <label className="txn-editor__label">Date</label>
@@ -891,6 +908,8 @@ export function TransactionEditor({
             </button>
           </div>
         </div>
+          </>
+        )}
       </form>
     </div>
   )

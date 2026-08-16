@@ -1,0 +1,191 @@
+.receipt-scan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) 0;
+}
+
+.receipt-scan__drop-zone {
+  padding: var(--spacing-xl);
+  border: 2px dashed var(--border-color);
+  border-radius: var(--border-radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.receipt-scan__drop-zone:hover {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+}
+
+.receipt-scan__drop-zone--active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--text-primary);
+}
+
+.receipt-scan__hint {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.receipt-scan__preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.receipt-scan__preview-img {
+  max-height: 240px;
+  max-width: 100%;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-subtle);
+  object-fit: contain;
+}
+
+.receipt-scan__preview-pdf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.receipt-scan__preview-name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-scan__preview-remove {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  border-radius: var(--border-radius-sm);
+  padding: 4px;
+  cursor: pointer;
+  color: var(--overlay-text);
+  display: flex;
+  align-items: center;
+  transition: background 0.15s;
+}
+
+.receipt-scan__preview-remove:hover {
+  background: var(--color-negative);
+}
+
+.receipt-scan__submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.receipt-scan__submit:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.receipt-scan__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.receipt-scan__progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  text-align: center;
+}
+
+.receipt-scan__progress-thumb {
+  max-height: 160px;
+  max-width: 100%;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-subtle);
+  object-fit: contain;
+  opacity: 0.7;
+}
+
+.receipt-scan__progress-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.receipt-scan__progress-note {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  max-width: 280px;
+  line-height: 1.4;
+}
+
+.receipt-scan__error,
+.receipt-scan__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.receipt-scan__error p,
+.receipt-scan__empty p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.receipt-scan__error {
+  color: var(--color-negative);
+}
+
+.receipt-scan__link {
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.receipt-scan__link:hover {
+  text-decoration: underline;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
