@@ -213,6 +213,10 @@ class Category(Base):
         UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Display-only annotation shown after the name (e.g. a funding reminder
+    # like "$457/mo") — keeps decorations out of the name itself so AI
+    # category matching and search see clean names.
+    subtitle: Mapped[str | None] = mapped_column(String(100))
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -758,6 +762,8 @@ class AIJob(Base):
     # Validated extraction output incl. line_items + suggested_split
     result: Mapped[dict | None] = mapped_column(JSONB)
     error: Mapped[str | None] = mapped_column(Text)
+    # Which model processed this job (for audit and reprocessing decisions)
+    model: Mapped[str | None] = mapped_column(String(100))
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     # Retry backoff gate: the worker only claims jobs whose available_at has passed

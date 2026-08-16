@@ -328,21 +328,173 @@ class TestStubRefillOnRetry:
         ).fetchall()
         assert len(attachments) == 1
 
-    async def test_retry_refuses_edited_stub(
+    async def test_retry_overwrites_unapproved_edits(
         self, db_session, attachments_dir, mock_extraction
+    ):
+        # Retry/Reprocess is an explicit click: while the transaction is still
+        # unapproved and uncleared it belongs to the AI pipeline, so even a
+        # hand-edited amount gets replaced by the fresh extraction.
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await _make_job(db_session, attachments_dir, budget, account, attempts=3)
+        await record_job_failure(db_session, job, httpx.ConnectError("refused"))
+
+        txn = await db_session.get(Transaction, job.transaction_id)
+        txn.amount = Decimal("-99.00")
+        job.status = "processing"
+        job.attempts = 1
+        await db_session.flush()
+
+        await process_one_job(db_session, job)
+
+        assert job.status == "done"
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.amount == Decimal("-42.50")
+
+    @pytest.mark.parametrize("edit", ["approved", "cleared"])
+    async def test_retry_refuses_approved_or_cleared(
+        self, db_session, attachments_dir, mock_extraction, edit
     ):
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account, attempts=3)
         await record_job_failure(db_session, job, httpx.ConnectError("refused"))
 
         txn = await db_session.get(Transaction, job.transaction_id)
-        txn.amount = Decimal("-99.00")  # user filled it in by hand
+        if edit == "approved":
+            txn.approved = True
+        else:
+            txn.cleared = "cleared"
         job.status = "processing"
         job.attempts = 1
         await db_session.flush()
 
-        with pytest.raises(NonRetryableJobError, match="already edited"):
+        with pytest.raises(NonRetryableJobError, match="approved or cleared"):
             await process_one_job(db_session, job)
+
+
+class TestReprocess:
+    async def _process_to_done(self, db_session, attachments_dir, budget, account) -> AIJob:
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+        assert job.status == "done"
+        return job
+
+    def _reset_like_reprocess_endpoint(self, job: AIJob) -> None:
+        # Mirrors POST /ai/jobs/{id}/reprocess: full reset of run state, but
+        # transaction_id/attachment_id are kept so the same rows get refreshed.
+        job.status = "processing"
+        job.attempts = 1
+        job.error = None
+        job.result = None
+        job.model = None
+
+    async def test_reprocess_done_job_updates_same_transaction(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await self._process_to_done(db_session, attachments_dir, budget, account)
+        txn_id, attachment_id = job.transaction_id, job.attachment_id
+
+        self._reset_like_reprocess_endpoint(job)
+        await db_session.flush()
+        await process_one_job(db_session, job)
+
+        assert job.status == "done"
+        assert job.transaction_id == txn_id
+        assert job.attachment_id == attachment_id
+        txn = await db_session.get(Transaction, txn_id)
+        assert txn.amount == Decimal("-42.50")
+        attachments = (
+            await db_session.execute(
+                TransactionAttachment.__table__.select().where(
+                    TransactionAttachment.transaction_id == txn_id
+                )
+            )
+        ).fetchall()
+        assert len(attachments) == 1
+
+    async def test_reprocess_after_delete_creates_fresh_transaction(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        # The user's bug: delete the AI-created transaction, then hit
+        # Reprocess. The job still points at the deleted row — the worker
+        # must start over instead of failing "transaction was deleted".
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await self._process_to_done(db_session, attachments_dir, budget, account)
+        old_txn_id, old_attachment_id = job.transaction_id, job.attachment_id
+
+        txn = await db_session.get(Transaction, old_txn_id)
+        txn.is_deleted = True
+        self._reset_like_reprocess_endpoint(job)
+        await db_session.flush()
+
+        await process_one_job(db_session, job)
+
+        assert job.status == "done"
+        assert job.transaction_id is not None and job.transaction_id != old_txn_id
+        assert job.attachment_id is not None and job.attachment_id != old_attachment_id
+        new_txn = await db_session.get(Transaction, job.transaction_id)
+        assert new_txn.amount == Decimal("-42.50")
+        assert new_txn.is_deleted is False
+        attachments = (
+            await db_session.execute(
+                TransactionAttachment.__table__.select().where(
+                    TransactionAttachment.transaction_id == job.transaction_id
+                )
+            )
+        ).fetchall()
+        assert len(attachments) == 1
+
+
+class TestRequestLogging:
+    """job.result carries the exact prompt/flags sent to the model — on
+    success alongside the extraction, and alone when the call fails."""
+
+    def _patch(self, monkeypatch, *, fail: bool = False):
+        monkeypatch.setattr(
+            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4"))
+        )
+        monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=True))
+
+        async def fake_extract(self, budget_id, image_b64, client_today):
+            self.last_request = {
+                "prompt": "PROMPT",
+                "system": "SYSTEM",
+                "model": "gemma4",
+                "think": True,
+                "format": None,
+            }
+            if fail:
+                raise httpx.ConnectError("refused")
+            return GOOD_EXTRACTION
+
+        monkeypatch.setattr(AIService, "extract_receipt", fake_extract)
+
+    async def test_success_result_carries_request(
+        self, db_session, attachments_dir, monkeypatch
+    ):
+        self._patch(monkeypatch)
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+        assert job.status == "done"
+        assert job.result["request"]["prompt"] == "PROMPT"
+        assert job.result["extraction"]["payee"] == "Whole Foods"
+
+    async def test_failed_call_still_persists_request(
+        self, db_session, attachments_dir, monkeypatch
+    ):
+        self._patch(monkeypatch, fail=True)
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        with pytest.raises(httpx.ConnectError):
+            await process_one_job(db_session, job)
+        assert job.result == {"request": {
+            "prompt": "PROMPT",
+            "system": "SYSTEM",
+            "model": "gemma4",
+            "think": True,
+            "format": None,
+        }}
 
 
 class TestStartupRecovery:
