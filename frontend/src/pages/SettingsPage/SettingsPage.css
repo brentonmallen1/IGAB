@@ -1,9 +1,61 @@
+/* Layout: nav sidebar + scrollable content */
 .settings-page {
-  padding: var(--spacing-xl);
-  max-width: 700px;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: var(--spacing-xl);
+  flex: 1;
+  min-height: 0; /* Critical: allow grid to shrink below content size */
+  overflow: hidden;
+}
+
+/* Fixed sidebar nav */
+.settings-nav {
+  padding: var(--spacing-xl) 0 var(--spacing-xl) var(--spacing-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  overflow-y: auto;
+  min-height: 0; /* Allow shrinking in grid */
+}
+
+.settings-nav__link {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+  cursor: pointer;
+  border: none;
+  background: none;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.settings-nav__link:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+}
+
+.settings-nav__link--active {
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  font-weight: 500;
+}
+
+/* Scrollable content area */
+.settings-content {
+  /* Containing block for absolutely-positioned descendants (e.g. .sr-only):
+     without this they resolve against <html> and stretch the document,
+     creating phantom page-level scroll */
+  position: relative;
+  padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-xl) 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xl);
+  max-width: 700px;
+  min-height: 0; /* Allow shrinking in grid */
 }
 
 .settings-section {
@@ -307,7 +359,32 @@
 
 @media (max-width: 768px) {
   .settings-page {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    height: auto;
+  }
+
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
     padding: var(--spacing-md);
+    gap: var(--spacing-xs);
+    max-height: none;
+    overflow: visible;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .settings-nav__link {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+  }
+
+  .settings-content {
+    padding: var(--spacing-md);
+    max-width: none;
+    overflow: visible;
   }
 
   .settings-row {
