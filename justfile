@@ -198,9 +198,11 @@ release VERSION:
     version="{{VERSION}}"
     # Ensure version starts with 'v'
     [[ "$version" == v* ]] || version="v$version"
-    # Validate semver-ish format
+    # Validate version format (semver or calver)
+    # semver: v1.2.3 or v1.2.3-beta.1
+    # calver: v2026.08.0 or v2026.08.1
     if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-        echo "Error: Version must be semver (e.g., 1.2.3 or v1.2.3)"
+        echo "Error: Version must be semver (1.2.3) or calver (2026.08.0)"
         exit 1
     fi
     # Check for uncommitted changes
