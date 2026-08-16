@@ -390,6 +390,4 @@ available command.
 
 ## License
 
-<!-- TODO: Add license -->
-
-*License TBD*
+AGPL-3.0 — see [LICENSE](LICENSE).
