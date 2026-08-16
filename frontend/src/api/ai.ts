@@ -1,9 +1,12 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 
 export interface AIStatus {
+  enabled: boolean
   available: boolean
   host: string | null
+  model: string | null
+  vision_model: string | null
 }
 
 export function useAIStatus() {
@@ -14,6 +17,38 @@ export function useAIStatus() {
       return data
     },
     staleTime: 300_000, // cache for 5 minutes
+    retry: false,
+  })
+}
+
+/** Force a fresh AI status check (bypasses cache). */
+export function useTestAIConnection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.get<AIStatus>('/ai/status')
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-status'] })
+    },
+  })
+}
+
+export interface OllamaModel {
+  name: string
+  size: number
+  capabilities: string[]
+}
+
+export function useOllamaModels() {
+  return useQuery({
+    queryKey: ['ollama-models'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ models: OllamaModel[] }>('/ai/models')
+      return data.models
+    },
+    staleTime: 60_000, // cache for 1 minute
     retry: false,
   })
 }
