@@ -1,16 +1,18 @@
 # Running IGAB on Unraid
 
-Two supported paths, pick one:
+Three supported paths — pick the one that fits:
 
-- **[Path A — Docker Compose Manager](#path-a--docker-compose-manager)**: drive the repo's
-  `docker-compose.yml` production profile from Unraid's Compose plugin. Cheapest to set up,
-  identical to the reference deployment, updates by `git pull`.
-- **[Path B — Community Applications templates](#path-b--ca-templates-with-published-images)**:
+- **[Path A — All-in-One (AIO)](#path-a--all-in-one-aio)**: single container with embedded
+  PostgreSQL, API, web UI, and backups. Simplest setup — one container, one appdata folder.
+- **[Path B — Docker Compose Manager](#path-b--docker-compose-manager)**: drive the repo's
+  `docker-compose.yml` production profile from Unraid's Compose plugin. Identical to the
+  reference deployment, updates by `git pull`.
+- **[Path C — Community Applications templates](#path-c--ca-templates-with-published-images)**:
   individual containers from published GHCR images using the templates in
   [`unraid/`](../unraid/). More idiomatic Unraid (per-container pages, WebUI button,
   update notifications from Docker tab), no repo checkout on the server.
 
-Either way you end up with the same four containers:
+Paths B and C end up with the same four containers:
 
 | Container | Image | Role |
 | --- | --- | --- |
@@ -23,7 +25,56 @@ Only `igab-web` needs a host port. The browser talks to nginx; nginx proxies `/a
 same-origin to the backend — so **no CORS configuration is needed** and `VITE_API_URL`
 does not exist in production images (the frontend is built with a relative `/api/v1`).
 
-## Storage layout
+---
+
+## Path A — All-in-One (AIO)
+
+The simplest option: everything runs in a single container.
+
+| Container | Image | Role |
+| --- | --- | --- |
+| `igab` | `ghcr.io/brentonmallen1/igab-aio` | PostgreSQL + API + nginx + backups |
+
+### 1. Install from Community Applications
+
+Search for "IGAB" in CA and install the **igab-aio** template, or add it manually from
+[`unraid/igab-aio.xml`](../unraid/igab-aio.xml).
+
+### 2. Configure
+
+| Setting | Value |
+| --- | --- |
+| **Secret Key** | Generate with `openssl rand -hex 32` |
+| **Admin Email** | Your login email |
+| **Admin Password** | Initial password (change in-app after first login) |
+| **Web Port** | `8080` (or any free port) |
+| **Data** | `/mnt/user/appdata/igab` — all data lives here |
+
+Optional settings (under "Show more"):
+- **Ollama Host**: URL of your Ollama server for AI features
+- **Backup settings**: interval, retention, encryption key
+
+### 3. Start
+
+Click Apply. Open `http://<unraid-ip>:8080` and log in.
+
+### Storage
+
+AIO uses a single `/data` mount containing:
+```
+/mnt/user/appdata/igab/
+├── postgres/      # database
+├── attachments/   # receipts/documents
+└── backups/       # backup archives
+```
+
+For extra safety, you can split backups to a separate share by mounting
+`/data/backups` separately in the template's advanced settings — but for most
+users the single-folder approach is fine.
+
+---
+
+## Storage layout (Paths B & C)
 
 Recommended shares:
 
@@ -36,7 +87,7 @@ Recommended shares:
 Put backups on a different disk/share than the database. If the cache drive holding
 appdata dies, backups that lived next to the database die with it.
 
-## Path A — Docker Compose Manager
+## Path B — Docker Compose Manager
 
 1. Install the **Docker Compose Manager** plugin from Community Applications.
 2. Get the repo onto the server, e.g. `/mnt/user/appdata/igab-src`:
@@ -70,7 +121,7 @@ appdata dies, backups that lived next to the database die with it.
 Updating: `git pull` in the repo directory, then **Compose Up** again (the plugin
 rebuilds changed images).
 
-## Path B — CA templates with published images
+## Path C — CA templates with published images
 
 The templates live in [`unraid/`](../unraid/) — see that folder's README for how to add
 them to Unraid (template repo URL or manual XML drop-in).
@@ -126,7 +177,7 @@ Schedule, retention, and encryption are configured in the app under
 **Settings → Backups** and picked up by the agent within seconds; the template's
 `BACKUP_*` variables are only fallbacks for when the database is unreachable.
 
-## After install (either path)
+## After install (any path)
 
 - **Log in** with `ADMIN_EMAIL` / `ADMIN_PASSWORD`, then change the password in-app.
 - **Backups**: verify in Settings → Backups that the agent shows as running, trigger a
@@ -138,8 +189,8 @@ Schedule, retention, and encryption are configured in the app under
   secure context. Front `http://<unraid-ip>:8480` with your existing reverse proxy
   (SWAG, Nginx Proxy Manager, Traefik) or Tailscale — see
   [Install on Your Phone](../README.md#install-on-your-phone-pwa).
-- **Update notifications**: Unraid's Docker tab flags new image versions (Path B). The
-  app also has its own opt-in check (Settings → Updates) that is **off by default** —
+- **Update notifications**: Unraid's Docker tab flags new image versions (Paths A & C).
+  The app also has its own opt-in check (Settings → Updates) that is **off by default** —
   nothing contacts GitHub unless you enable it.
 - **Auth hardening**: IGAB ships single-user password auth and deliberately no
   TOTP/2FA — if you expose it beyond your LAN/tailnet, put it behind your own auth
