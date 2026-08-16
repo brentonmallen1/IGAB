@@ -145,7 +145,12 @@ class TransactionMatchingService:
 
         The keeper inherits the loser's bank/import identity (sync_id is what
         prevents the next sync from re-importing the same bank transaction).
-        A reconciled row always wins the keeper role; the loser is soft-deleted
+        A reconciled row always wins the keeper role; after that a structured
+        row (split parent or transfer leg) beats a flat one — merging away a
+        split would orphan its children in category activity, and merging away
+        a transfer leg would strand its partner. When the loser would still be
+        structured, we raise instead of mutating anything: the match stays
+        pending and the API surfaces the reason. The loser is soft-deleted
         BEFORE the identity is written so the partial unique index on
         (account_id, sync_id) never sees two live rows.
         """
@@ -156,6 +161,13 @@ class TransactionMatchingService:
         if synced_txn.is_deleted or manual_txn.is_deleted:
             return  # stale match — one side is already gone
 
+        # Matches are persisted rows; defend against a split line sneaking in
+        # even though the candidate queries exclude them.
+        if synced_txn.parent_transaction_id or manual_txn.parent_transaction_id:
+            raise InvariantViolation(
+                "Cannot merge a split line; act on its parent transaction instead"
+            )
+
         synced_reconciled = synced_txn.cleared == "reconciled"
         manual_reconciled = manual_txn.cleared == "reconciled"
         if synced_reconciled and manual_reconciled:
@@ -163,16 +175,38 @@ class TransactionMatchingService:
                 "Cannot merge two reconciled transactions; unreconcile one first"
             )
 
+        def _structured(t: Transaction) -> bool:
+            return t.is_split or t.transfer_id is not None
+
         keeper, loser = manual_txn, synced_txn
         if synced_reconciled:
             keeper, loser = synced_txn, manual_txn
+        elif _structured(synced_txn) and not _structured(manual_txn) and not manual_reconciled:
+            # The structured row carries the category detail / transfer pair
+            # and must survive the merge.
+            keeper, loser = synced_txn, manual_txn
+
+        if loser.is_split:
+            raise InvariantViolation(
+                "Cannot merge away a split transaction; unreconcile the other row "
+                "so the split can be kept, or reject the match"
+            )
+        if loser.transfer_id:
+            raise InvariantViolation(
+                "Cannot merge away a transfer; reject the match or delete the transfer instead"
+            )
 
         if keeper.sync_id and loser.sync_id and keeper.sync_id != loser.sync_id:
             raise InvariantViolation("Both transactions are linked to different bank transactions")
 
+        # An id-less bank feed row has sync_source but no sync_id — it still
+        # carries bank identity and provenance.
+        loser_is_bank = bool(loser.sync_id or loser.sync_source)
+
         updates: dict[str, object] = {"has_sync_source": True}
         if loser.sync_id and not keeper.sync_id:
             updates["sync_id"] = loser.sync_id
+        if loser.sync_source and not keeper.sync_source:
             updates["sync_source"] = loser.sync_source
         if loser.import_id and not keeper.import_id:
             updates["import_id"] = loser.import_id
@@ -182,7 +216,7 @@ class TransactionMatchingService:
         # The keeper's ledger date is the user's date and stays untouched —
         # budget months follow it. The bank's posted date survives as
         # provenance metadata when the loser is the bank-sourced row.
-        if loser.sync_id:
+        if loser_is_bank:
             if keeper.bank_posted_date is None:
                 updates["bank_posted_date"] = loser.bank_posted_date or loser.date
             if keeper.cleared in ("uncleared", "pending") and loser.cleared in (
@@ -198,6 +232,9 @@ class TransactionMatchingService:
         await self.session.execute(
             update(Transaction).where(Transaction.id == keeper.id).values(**updates)
         )
+        if "cleared" in updates and keeper.is_split:
+            # Children always mirror the parent's cleared state.
+            await self.txn_repo.set_children_cleared(keeper.id, str(updates["cleared"]))
         await self.session.flush()
 
     async def accept_match(self, match_id: uuid.UUID) -> None:

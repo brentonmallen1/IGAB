@@ -515,6 +515,22 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         await self.session.flush()
 
+    async def set_children_cleared(self, parent_id: uuid.UUID, cleared: str) -> None:
+        """Mirror a parent's cleared state onto its split children.
+
+        Children must always share the parent's cleared status; any code path
+        that upgrades a split parent's cleared state goes through here.
+        """
+        await self.session.execute(
+            update(Transaction)
+            .where(
+                Transaction.parent_transaction_id == parent_id,
+                Transaction.is_deleted == False,  # noqa: E712
+            )
+            .values(cleared=cleared)
+        )
+        await self.session.flush()
+
     async def get_oldest_cleared_date_for_account(self, account_id: uuid.UUID) -> date | None:
         """Return the date of the oldest cleared or reconciled transaction on the account."""
         result = await self.session.execute(
@@ -549,6 +565,14 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         if exclude_id is not None:
             q = q.where(Transaction.id != exclude_id)
+        # Nearest-first with a unique tiebreak: an unordered LIMIT could
+        # arbitrarily evict the closest row when same-amount rows crowd the
+        # window (daily coffee, weekly fill-ups).
+        q = q.order_by(
+            func.abs(Transaction.date - txn_date),
+            Transaction.date.desc(),
+            Transaction.id,
+        )
         result = await self.session.execute(q.limit(5))
         return list(result.scalars().all())
 
@@ -696,6 +720,19 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.account_id == account_id,
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
+                # A merge must keep the structured row (split parent or
+                # transfer leg), so a pair where BOTH sides are structured can
+                # never be accepted — don't offer it for review at all.
+                or_(
+                    and_(
+                        Transaction.is_split == False,  # noqa: E712
+                        Transaction.transfer_id.is_(None),
+                    ),
+                    and_(
+                        other.is_split == False,  # noqa: E712
+                        other.transfer_id.is_(None),
+                    ),
+                ),
             )
         )
         return [(row[0], row[1], row[2], row[3]) for row in result.all()]
