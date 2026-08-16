@@ -34,6 +34,9 @@ services:
       # Shared with db-backup: the API lists backups and talks to the agent
       # via files in /backups/.agent (see services/backup_service.py)
       - ${BACKUP_DIR:-./backups}:/backups
+    extra_hosts:
+      # Allow the container to reach Ollama on the host machine
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
