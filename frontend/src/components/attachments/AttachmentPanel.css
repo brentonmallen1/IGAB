@@ -88,7 +88,7 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--spacing-sm);
-  padding: 0 var(--spacing-md) var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
   overflow-y: auto;
   flex: 1;
 }
@@ -202,7 +202,8 @@
 }
 
 .attachment-panel--embedded {
-  padding: 0;
+  padding: 4px;
   border: none;
   background: transparent;
+  backdrop-filter: blur(30px);
 }
