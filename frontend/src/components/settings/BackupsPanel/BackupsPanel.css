@@ -61,6 +61,7 @@
 
 .bkp-files {
   margin-top: var(--spacing-md, 1rem);
+  overflow-x: auto;
 }
 
 .bkp-files__title {
@@ -78,6 +79,7 @@
 
 .bkp-table {
   width: 100%;
+  min-width: 500px; /* Ensure table has minimum width and scrolls if needed */
   border-collapse: collapse;
   font-size: 0.82rem;
 }
@@ -132,12 +134,7 @@
   cursor: help;
 }
 
-/* Small screens: the table scrolls sideways rather than breaking the page */
-@media (max-width: 640px) {
-  .bkp-files {
-    overflow-x: auto;
-  }
-}
+/* Small screens: handled by the default overflow-x: auto on .bkp-files */
 
 /* --- Restore modal + blocking overlay --- */
 

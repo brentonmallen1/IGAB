@@ -125,19 +125,88 @@ export function SettingsPage() {
 
   const currentBudget = budgets?.find((b) => b.id === budgetId)
 
+  // Track active section for nav highlighting
+  const [activeSection, setActiveSection] = useState<string>('appearance')
+
+  const sections = [
+    { id: 'appearance', label: 'Appearance' },
+    { id: 'budget', label: 'Budget' },
+    ...(budgetId ? [{ id: 'tags', label: 'Tags' }] : []),
+    { id: 'mobile', label: 'Mobile' },
+    ...(budgetId ? [{ id: 'accounts', label: 'Accounts' }] : []),
+    ...(budgetId ? [{ id: 'integrity', label: 'Data Integrity' }] : []),
+    { id: 'data', label: 'Backups' },
+    { id: 'updates', label: 'Updates' },
+    { id: 'simplefin', label: 'SimpleFIN' },
+    { id: 'ai', label: 'AI' },
+    { id: 'session', label: 'Session' },
+  ]
+
   // Deep links (e.g. /settings#integrity from the command palette) scroll to
   // their section once the page renders
   const location = useLocation()
   useEffect(() => {
     if (!location.hash) return
-    document.getElementById(location.hash.slice(1))?.scrollIntoView({
+    const sectionId = location.hash.slice(1)
+    document.getElementById(sectionId)?.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
     })
+    setActiveSection(sectionId)
   }, [location.hash])
+
+  // Observe which section is in view to update nav highlighting
+  useEffect(() => {
+    const contentEl = document.querySelector('.settings-content')
+    if (!contentEl) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the entry with highest intersection ratio
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+        if (visible?.target.id) {
+          setActiveSection(visible.target.id)
+        }
+      },
+      { root: contentEl, rootMargin: '-20% 0px -60% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
+    )
+
+    sections.forEach(({ id }) => {
+      const el = document.getElementById(id)
+      if (el) observer.observe(el)
+    })
+
+    return () => observer.disconnect()
+  }, [budgetId]) // Re-run if budgetId changes (sections list changes)
+
+  function scrollToSection(id: string) {
+    const el = document.getElementById(id)
+    const contentEl = document.querySelector('.settings-content')
+    if (el && contentEl) {
+      contentEl.scrollTo({ top: el.offsetTop - 20, behavior: 'smooth' })
+      setActiveSection(id)
+    }
+  }
 
   return (
     <div className="settings-page">
+      {/* Navigation sidebar */}
+      <nav className="settings-nav" aria-label="Settings sections">
+        {sections.map(({ id, label }) => (
+          <button
+            key={id}
+            className={`settings-nav__link ${activeSection === id ? 'settings-nav__link--active' : ''}`}
+            onClick={() => scrollToSection(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Scrollable content */}
+      <div className="settings-content">
       {/* Appearance */}
       <div className="settings-section" id="appearance">
         <div className="settings-section__header">
@@ -572,6 +641,7 @@ export function SettingsPage() {
       {isAccountEditorOpen && editingAccountId && (
         <AccountSettingsModal accountId={editingAccountId} onClose={closeAccountEditor} />
       )}
+      </div>
     </div>
   )
 }
