@@ -35,6 +35,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const [showTargetEditor, setShowTargetEditor] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [subtitleValue, setSubtitleValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [movePopoverPos, setMovePopoverPos] = useState<{ x: number; y: number } | null>(null)
   const [moveSheetOpen, setMoveSheetOpen] = useState(false)
@@ -93,13 +94,18 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
   function startRename() {
     setRenameValue(category.name)
+    setSubtitleValue(category.subtitle ?? '')
     setIsRenaming(true)
     setTimeout(() => renameRef.current?.select(), 0)
   }
 
   function commitRename() {
     const name = renameValue.trim()
-    if (name && name !== category.name) updateCategory.mutate({ id: category.id, name })
+    const subtitle = subtitleValue.trim() || null
+    const changes: { name?: string; subtitle?: string | null } = {}
+    if (name && name !== category.name) changes.name = name
+    if (subtitle !== (category.subtitle ?? null)) changes.subtitle = subtitle
+    if (Object.keys(changes).length > 0) updateCategory.mutate({ id: category.id, ...changes })
     setIsRenaming(false)
   }
 
@@ -221,14 +227,30 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
         <div className="category-row__name">
           {isRenaming ? (
-            <input
-              ref={renameRef}
-              className="category-row__name-input"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={handleRenameKey}
-            />
+            <div
+              className="category-row__rename"
+              onBlur={(e) => {
+                // Commit only when focus leaves both inputs, not when tabbing
+                // between name and subtitle
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) commitRename()
+              }}
+            >
+              <input
+                ref={renameRef}
+                className="category-row__name-input"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={handleRenameKey}
+                placeholder="Name"
+              />
+              <input
+                className="category-row__name-input category-row__subtitle-input"
+                value={subtitleValue}
+                onChange={(e) => setSubtitleValue(e.target.value)}
+                onKeyDown={handleRenameKey}
+                placeholder="Subtitle (optional)"
+              />
+            </div>
           ) : (
             <>
               <span
@@ -238,6 +260,15 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
               >
                 {category.name}
               </span>
+              {category.subtitle && (
+                <span
+                  className="category-row__subtitle"
+                  onDoubleClick={startRename}
+                  title={category.subtitle}
+                >
+                  {category.subtitle}
+                </span>
+              )}
               {isTargetExpired ? (
                 <button
                   className="category-row__target-expired"

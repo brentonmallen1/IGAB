@@ -36,12 +36,14 @@ class CategoryGroupResponse(BaseModel):
 class CategoryCreate(BaseModel):
     category_group_id: uuid.UUID
     name: str
+    subtitle: str | None = None
     sort_order: int = 0
     note: str | None = None
 
 
 class CategoryUpdate(BaseModel):
     name: str | None = None
+    subtitle: str | None = None
     sort_order: int | None = None
     note: str | None = None
     is_hidden: bool | None = None
@@ -79,6 +81,7 @@ class CategoryResponse(BaseModel):
     category_group_id: uuid.UUID
     budget_id: uuid.UUID
     name: str
+    subtitle: str | None
     sort_order: int
     note: str | None
     is_hidden: bool
