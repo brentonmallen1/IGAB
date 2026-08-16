@@ -1,0 +1,111 @@
+# IGAB All-in-One (AIO) Dockerfile
+# Single container with PostgreSQL, FastAPI backend, Nginx frontend, and backup cron
+#
+# Usage:
+#   docker build -f Dockerfile.aio -t igab-aio .
+#   docker run -d -p 8080:8080 \
+#     -e SECRET_KEY=$(openssl rand -hex 32) \
+#     -e ADMIN_PASSWORD=yourpassword \
+#     -v ./data:/data \
+#     igab-aio
+
+# -----------------------------------------------------------------------------
+# Stage 1: Build frontend
+# -----------------------------------------------------------------------------
+FROM node:22-alpine AS frontend-builder
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# -----------------------------------------------------------------------------
+# Stage 2: AIO runtime image (Debian-based for pymupdf wheels)
+# -----------------------------------------------------------------------------
+FROM python:3.13-slim
+
+# s6-overlay for process supervision
+ARG S6_OVERLAY_VERSION=3.2.0.2
+ARG TARGETARCH
+# Map Docker arch names to s6-overlay arch names
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y --no-install-recommends wget xz-utils && \
+    S6_ARCH=$(case "$TARGETARCH" in arm64) echo "aarch64";; amd64) echo "x86_64";; *) echo "$TARGETARCH";; esac) && \
+    wget -qO /tmp/s6-noarch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" && \
+    wget -qO /tmp/s6-arch.tar.xz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" && \
+    tar -C / -Jxpf /tmp/s6-noarch.tar.xz && \
+    tar -C / -Jxpf /tmp/s6-arch.tar.xz && \
+    rm /tmp/s6-*.tar.xz
+
+# Add PostgreSQL apt repository (modern signed-by approach)
+RUN apt-get update && apt-get install -y --no-install-recommends gnupg lsb-release ca-certificates && \
+    mkdir -p /usr/share/postgresql-common/pgdg && \
+    wget -qO /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc && \
+    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+    rm -rf /var/lib/apt/lists/*
+
+# Runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-16 \
+    postgresql-client-16 \
+    nginx \
+    age \
+    tzdata \
+    gettext-base \
+    libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv for Python package management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Python backend
+WORKDIR /app
+
+# Install third-party deps first (cached layer)
+COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+# Copy source and install the package
+COPY backend/src/ ./src/
+COPY backend/alembic.ini ./
+COPY backend/alembic/ ./alembic/
+RUN uv sync --frozen --no-dev
+
+# Frontend static files
+COPY --from=frontend-builder /app/dist /var/www/html
+
+# Nginx config template
+COPY frontend/nginx/default.conf.template /etc/nginx/sites-available/default.template
+
+# s6 service definitions
+COPY aio/s6-rc.d /etc/s6-overlay/s6-rc.d
+COPY aio/scripts /etc/s6-overlay/scripts
+RUN chmod +x /etc/s6-overlay/scripts/*
+
+# Backup script
+COPY scripts/db-backup.sh /usr/local/bin/db-backup.sh
+RUN chmod +x /usr/local/bin/db-backup.sh
+
+# Data directories (will be mounted as volume)
+RUN mkdir -p /data/postgres /data/attachments /data/backups && \
+    chown -R postgres:postgres /data/postgres
+
+# Release version (stamped by CI)
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
+# s6 settings
+ENV S6_KEEP_ENV=1
+ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
+ENV S6_CMD_WAIT_FOR_SERVICES_MAXTIME=60000
+
+# Default environment
+ENV WEB_PORT=8080
+ENV PYTHONUNBUFFERED=1
+ENV DATABASE_URL=postgresql+asyncpg://igab:igab@localhost:5432/igab
+ENV ATTACHMENTS_DIR=/data/attachments
+ENV BACKUP_DIR=/data/backups
+
+EXPOSE 8080
+
+ENTRYPOINT ["/init"]

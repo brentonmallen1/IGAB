@@ -1,0 +1,33 @@
+#!/bin/sh
+# Start nginx after rendering config template
+
+set -e
+
+# Wait for API to be ready (check docs endpoint which always exists)
+echo "Waiting for API server..."
+until wget -q --spider http://127.0.0.1:8000/docs 2>/dev/null; do
+    sleep 1
+done
+echo "API server is ready."
+
+# Render nginx config from template
+export API_UPSTREAM="127.0.0.1:8000"
+envsubst '${API_UPSTREAM}' < /etc/nginx/sites-available/default.template > /etc/nginx/sites-available/default
+
+# Update nginx to listen on WEB_PORT and fix root path
+sed -i "s|listen 80;|listen ${WEB_PORT:-8080};|" /etc/nginx/sites-available/default
+sed -i "s|root /usr/share/nginx/html;|root /var/www/html;|" /etc/nginx/sites-available/default
+
+# Remove duplicate gzip directive (Debian nginx.conf already enables it)
+sed -i '/^gzip on;/d' /etc/nginx/sites-available/default
+sed -i '/^gzip_min_length/d' /etc/nginx/sites-available/default
+sed -i '/^gzip_types/d' /etc/nginx/sites-available/default
+
+# Ensure sites-enabled symlink exists
+ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+
+# Remove default config that might conflict
+rm -f /etc/nginx/sites-enabled/default.dpkg-dist 2>/dev/null || true
+
+echo "Starting nginx on port ${WEB_PORT:-8080}..."
+exec nginx -g "daemon off;"

@@ -1,0 +1,63 @@
+#!/bin/sh
+# Initialize PostgreSQL data directory if needed
+
+set -e
+
+PGDATA=/data/postgres
+export PATH="/usr/lib/postgresql/16/bin:$PATH"
+
+# Ensure data directories exist
+mkdir -p /data/postgres /data/attachments /data/backups
+
+# Check if database is already initialized
+if [ ! -f "$PGDATA/PG_VERSION" ]; then
+    echo "Initializing PostgreSQL database..."
+
+    # Ensure proper ownership
+    chown -R postgres:postgres /data/postgres
+    chmod 700 /data/postgres
+
+    # Initialize the database
+    su -s /bin/sh postgres -c "initdb -D '$PGDATA' --encoding=UTF8 --locale=C"
+
+    # Configure PostgreSQL for local connections
+    cat >> "$PGDATA/postgresql.conf" <<EOF
+
+# IGAB AIO configuration
+listen_addresses = 'localhost'
+max_connections = 50
+shared_buffers = 128MB
+EOF
+
+    # Allow local connections without password for the igab user
+    cat > "$PGDATA/pg_hba.conf" <<EOF
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             all                                     trust
+host    all             all             127.0.0.1/32            trust
+host    all             all             ::1/128                 trust
+EOF
+
+    echo "PostgreSQL initialized."
+else
+    echo "PostgreSQL data directory already exists."
+    # Ensure ownership is correct on existing data
+    chown -R postgres:postgres /data/postgres
+fi
+
+# Start PostgreSQL temporarily to create the database and user
+echo "Starting PostgreSQL temporarily for setup..."
+su -s /bin/sh postgres -c "pg_ctl -D '$PGDATA' -w start -o '-c listen_addresses=localhost'"
+
+# Create user and database if they don't exist
+su -s /bin/sh postgres -c "psql -v ON_ERROR_STOP=1" <<EOF
+SELECT 'CREATE USER igab' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'igab')\gexec
+SELECT 'ALTER USER igab WITH PASSWORD ''igab''' \gexec
+SELECT 'CREATE DATABASE igab OWNER igab' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'igab')\gexec
+EOF
+
+echo "Database setup complete."
+
+# Stop PostgreSQL (s6 will start it properly)
+su -s /bin/sh postgres -c "pg_ctl -D '$PGDATA' -w stop"
+
+echo "PostgreSQL initialization complete."

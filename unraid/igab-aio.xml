@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>igab-aio</Name>
+  <Repository>ghcr.io/brentonmallen1/igab-aio:latest</Repository>
+  <Registry>https://ghcr.io/brentonmallen1/igab-aio</Registry>
+  <Network>bridge</Network>
+  <Support>https://github.com/brentonmallen1/IGAB/issues</Support>
+  <Project>https://github.com/brentonmallen1/IGAB</Project>
+  <Overview>IGAB (I've Got A Budget) All-in-One — self-hosted envelope-budgeting in a single container. Includes PostgreSQL, API, web UI, and automatic backups. No external database required. Perfect for home servers. See https://github.com/brentonmallen1/IGAB for documentation.</Overview>
+  <Category>Tools: Productivity:</Category>
+  <TemplateURL>https://raw.githubusercontent.com/brentonmallen1/IGAB/main/unraid/igab-aio.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/brentonmallen1/IGAB/main/frontend/public/pwa-192x192.png</Icon>
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+
+  <!-- Required -->
+  <Config Name="Secret Key" Target="SECRET_KEY" Default="" Mode="" Description="REQUIRED - JWT signing secret; the app refuses to start without a strong value. Generate with: openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Admin Email" Target="ADMIN_EMAIL" Default="admin@example.com" Mode="" Description="Login email for the admin user, created on first run." Type="Variable" Display="always" Required="true" Mask="false">admin@example.com</Config>
+  <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="REQUIRED - initial admin password; the app refuses to start on a default/empty value." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <!-- Ports -->
+  <Config Name="Web Port" Target="8080" Default="8080" Mode="tcp" Description="Port for the web interface." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+
+  <!-- Paths -->
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/igab" Mode="rw" Description="All application data: database, attachments, and backups. Use a single folder for simplicity." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/igab</Config>
+
+  <!-- AI/Ollama -->
+  <Config Name="Ollama Host" Target="OLLAMA_HOST" Default="" Mode="" Description="Optional - URL of an Ollama server for AI receipt scanning / natural-language entry (e.g. http://192.168.1.10:11434). Also configurable in-app under Settings." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Ollama Model" Target="OLLAMA_MODEL" Default="llama3.2" Mode="" Description="Default Ollama model for text tasks. Can be changed in-app." Type="Variable" Display="advanced" Required="false" Mask="false">llama3.2</Config>
+  <Config Name="Ollama Vision Model" Target="OLLAMA_VISION_MODEL" Default="" Mode="" Description="Optional - separate Ollama model for receipt scanning. Uses the default model if not set." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <!-- SimpleFIN -->
+  <Config Name="SimpleFIN Encryption Key" Target="SIMPLEFIN_ENCRYPTION_KEY" Default="" Mode="" Description="Optional - only needed for SimpleFIN bank sync. Fernet key; generate with: python3 -c &quot;from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())&quot;" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <!-- Backups -->
+  <Config Name="Backup Interval (hours)" Target="BACKUP_INTERVAL_HOURS" Default="24" Mode="" Description="Hours between automatic backups. Default: 24 (daily)." Type="Variable" Display="advanced" Required="false" Mask="false">24</Config>
+  <Config Name="Backup Retention (days)" Target="BACKUP_KEEP_DAYS" Default="30" Mode="" Description="Delete backups older than this many days." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="Minimum Backups to Keep" Target="BACKUP_KEEP_MIN" Default="7" Mode="" Description="Always keep at least this many backups, regardless of age." Type="Variable" Display="advanced" Required="false" Mask="false">7</Config>
+  <Config Name="Backup Encryption Key" Target="BACKUP_AGE_RECIPIENT" Default="" Mode="" Description="Optional - age public key for encrypting backups. Generate keypair with: age-keygen" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <!-- SMTP -->
+  <Config Name="SMTP Host" Target="SMTP_HOST" Default="" Mode="" Description="Optional - SMTP server for email notifications." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="SMTP Port" Target="SMTP_PORT" Default="587" Mode="" Description="SMTP server port." Type="Variable" Display="advanced" Required="false" Mask="false">587</Config>
+  <Config Name="SMTP Username" Target="SMTP_USER" Default="" Mode="" Description="SMTP authentication username." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="SMTP Password" Target="SMTP_PASS" Default="" Mode="" Description="SMTP authentication password." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="SMTP TLS" Target="SMTP_TLS" Default="true" Mode="" Description="Use TLS for SMTP connection." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="SMTP From Address" Target="SMTP_FROM" Default="noreply@igab.local" Mode="" Description="From address for notification emails." Type="Variable" Display="advanced" Required="false" Mask="false">noreply@igab.local</Config>
+
+  <!-- Timezone -->
+  <Config Name="Timezone" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone for scheduled tasks." Type="Variable" Display="advanced" Required="false" Mask="false">America/New_York</Config>
+</Container>

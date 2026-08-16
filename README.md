@@ -181,23 +181,67 @@ a feel for the workflow before importing your real data.
 
 ### Production Deployment
 
-For a production-style deployment, use the compose production profile:
+IGAB offers two deployment modes:
+
+#### All-in-One (Recommended for Home Servers)
+
+The simplest way to run IGAB — everything in a single container:
+
+```sh
+docker run -d \
+  --name igab \
+  -p 8080:8080 \
+  -e SECRET_KEY=$(openssl rand -hex 32) \
+  -e ADMIN_PASSWORD=your-password \
+  -v ./data:/data \
+  ghcr.io/brentonmallen1/igab-aio:latest
+```
+
+Or with Docker Compose:
+
+```sh
+cp .env.example .env
+$EDITOR .env                           # set SECRET_KEY, ADMIN_PASSWORD
+docker compose -f docker-compose.aio.yml up -d
+```
+
+The AIO image includes PostgreSQL, the API, nginx, and automatic backups. All
+data lives in `/data` (database, attachments, backups) — just mount one volume.
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `SECRET_KEY` | ✓ | — | JWT signing key (generate with `openssl rand -hex 32`) |
+| `ADMIN_PASSWORD` | ✓ | — | Initial admin password |
+| `ADMIN_EMAIL` | | `admin@example.com` | Admin login email |
+| `WEB_PORT` | | `8080` | Web UI port |
+| `TZ` | | `UTC` | Timezone |
+| `OLLAMA_HOST` | | — | Ollama server URL for AI features |
+| `OLLAMA_MODEL` | | `llama3.2` | Default LLM model |
+| `BACKUP_INTERVAL_HOURS` | | `24` | Hours between backups |
+| `BACKUP_KEEP_DAYS` | | `30` | Prune backups older than this |
+| `BACKUP_AGE_RECIPIENT` | | — | age public key for encrypted backups |
+| `SIMPLEFIN_ENCRYPTION_KEY` | | — | Fernet key for bank sync |
+
+#### Multi-Container (Advanced)
+
+For more control, use the multi-container production profile:
 
 ```sh
 just prod
 ```
 
-This runs nginx serving the built frontend with proper caching, proxies
-`/api` to the backend, and the daily `db-backup` service runs alongside.
+This runs separate containers for PostgreSQL, the API, nginx, and backups.
+Useful when you want to use an external database, scale components independently,
+or integrate with existing infrastructure.
 
-Tagged releases also publish multi-arch (amd64/arm64) images to GHCR —
-`ghcr.io/brentonmallen1/igab-api`, `igab-web`, and `igab-backup` — for
-deployments without a repo checkout.
+Tagged releases publish multi-arch (amd64/arm64) images to GHCR —
+`ghcr.io/brentonmallen1/igab-api`, `igab-web`, `igab-backup`, and `igab-aio`.
 
 **Unraid:** see [docs/unraid.md](docs/unraid.md) for two supported paths —
 the Docker Compose Manager plugin driving this repo's production profile, or
 the Community Applications templates in [`unraid/`](unraid/) using the
-published images.
+published images. The `igab-aio` template is the easiest — one container, one
+appdata folder.
 
 ### Install on Your Phone (PWA)
 
