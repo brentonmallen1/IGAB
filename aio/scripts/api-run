@@ -1,0 +1,22 @@
+#!/bin/sh
+# Start the FastAPI backend with Alembic migrations
+
+set -e
+
+cd /app
+export PATH="/usr/lib/postgresql/16/bin:$PATH"
+
+# Wait for PostgreSQL to be ready
+echo "Waiting for PostgreSQL..."
+until pg_isready -h localhost -U igab -d igab -q; do
+    sleep 1
+done
+echo "PostgreSQL is ready."
+
+# Run database migrations
+echo "Running database migrations..."
+uv run alembic upgrade head
+
+# Start uvicorn
+echo "Starting API server..."
+exec uv run uvicorn igab.main:app --host 127.0.0.1 --port 8000

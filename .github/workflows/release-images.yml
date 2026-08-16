@@ -4,6 +4,7 @@
 #   ghcr.io/<owner>/igab-api     — FastAPI backend (runs migrations on start)
 #   ghcr.io/<owner>/igab-web     — nginx serving the built frontend + /api proxy
 #   ghcr.io/<owner>/igab-backup  — pg_dump/attachments backup agent (+ age)
+#   ghcr.io/<owner>/igab-aio     — All-in-One: Postgres + API + nginx + backups
 #
 # Tag a release with `git tag v1.2.3 && git push origin v1.2.3`.
 # Each image gets :1.2.3, :1.2, and :latest tags.
@@ -28,12 +29,19 @@ jobs:
         include:
           - image: igab-api
             context: backend
+            dockerfile: backend/Dockerfile
             target: ""
           - image: igab-web
             context: frontend
+            dockerfile: frontend/Dockerfile
             target: production
           - image: igab-backup
             context: scripts
+            dockerfile: scripts/Dockerfile
+            target: ""
+          - image: igab-aio
+            context: .
+            dockerfile: Dockerfile.aio
             target: ""
     steps:
       - uses: actions/checkout@v4
@@ -60,6 +68,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true

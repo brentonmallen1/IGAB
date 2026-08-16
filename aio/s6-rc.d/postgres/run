@@ -1,0 +1,4 @@
+#!/command/execlineb -P
+fdmove -c 2 1
+s6-setuidgid postgres
+exec /usr/lib/postgresql/16/bin/postgres -D /data/postgres

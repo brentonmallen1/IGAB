@@ -1,0 +1,22 @@
+#!/bin/sh
+# Run the backup script in AIO mode
+
+set -e
+
+export PATH="/usr/lib/postgresql/16/bin:$PATH"
+
+# Wait for PostgreSQL to be ready
+echo "Waiting for PostgreSQL for backup service..."
+until pg_isready -h localhost -U igab -d igab -q; do
+    sleep 1
+done
+echo "PostgreSQL is ready, starting backup service."
+
+# Set environment for local postgres connection
+export PGHOST=localhost
+export PGUSER=igab
+export PGPASSWORD=igab
+export PGDATABASE=igab
+
+# Run backup script in AIO mode (skips file-based agent communication)
+exec /usr/local/bin/db-backup.sh --aio-mode

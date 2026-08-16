@@ -1,5 +1,6 @@
 #!/bin/sh
-# IGAB backup agent — runs in the db-backup container (postgres:16-alpine).
+# IGAB backup agent — runs in the db-backup container (postgres:16-alpine)
+# or inside the AIO container with --aio-mode.
 #
 # Every poll it: touches a heartbeat, re-reads backup settings from the
 # app_settings table (so UI changes apply without a restart), executes any
@@ -18,7 +19,18 @@
 #   BACKUP_AGE_RECIPIENT   optional age public key (age1...); when set, dumps
 #                          and attachment archives are encrypted to it (*.age)
 #   BACKUP_RUN_ONCE        set to 1 to run a single poll cycle and exit (testing)
+#
+# Modes:
+#   (default)    — multi-container mode, uses file-based agent communication
+#   --aio-mode   — AIO container mode, skips agent communication (same container)
 set -u
+
+AIO_MODE=0
+for arg in "$@"; do
+    case "$arg" in
+        --aio-mode) AIO_MODE=1 ;;
+    esac
+done
 
 BK=/backups
 AG=$BK/.agent
@@ -249,13 +261,19 @@ handle_command() {
 
 # Heartbeat runs in its own subshell so long dumps/restores don't make the
 # agent look dead; it dies with the container (this script is PID 1).
-( while true; do touch "$AG/heartbeat"; sleep 5; done ) &
+# In AIO mode, we skip the file-based agent communication entirely.
+if [ "$AIO_MODE" -eq 0 ]; then
+    ( while true; do touch "$AG/heartbeat"; sleep 5; done ) &
+fi
 
-log "agent started (poll ${POLL_S}s)"
+log "agent started (poll ${POLL_S}s, aio=$AIO_MODE)"
 while true; do
     find "$BK" -name ".tmp-*" -mmin +180 -delete 2>/dev/null
     read_settings
-    handle_command
+    # In AIO mode, skip file-based command handling — API calls backup functions directly
+    if [ "$AIO_MODE" -eq 0 ]; then
+        handle_command
+    fi
     if backup_due; then
         log "scheduled backup starting (interval ${INTERVAL}h, keep ${KEEP_DAYS}d/min ${KEEP_MIN})"
         backup_cycle || true
