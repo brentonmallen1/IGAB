@@ -459,3 +459,15 @@ export function usePayees(budgetId: string | null) {
     staleTime: 60_000,
   })
 }
+
+/** Fetch a single transaction by ID — powers the review handoff when an AI job completes. */
+export function useTransaction(transactionId: string | null) {
+  return useQuery({
+    queryKey: ['transaction', transactionId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<Transaction>(`/transactions/${transactionId}`)
+      return data
+    },
+    enabled: !!transactionId,
+  })
+}

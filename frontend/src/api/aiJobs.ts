@@ -181,3 +181,19 @@ export function useParseNLTransaction(budgetId: string) {
         .then((r) => r.data),
   })
 }
+
+/** Poll a single job while it's in flight — powers the in-modal receipt watch. */
+export function useAIJob(budgetId: string | null, jobId: string | null) {
+  return useQuery({
+    queryKey: ['ai-job', budgetId, jobId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<AIJob>(`/${budgetId}/ai/jobs/${jobId}`)
+      return data
+    },
+    enabled: !!budgetId && !!jobId,
+    refetchInterval: (query) => {
+      const s = query.state.data?.status
+      return s === 'done' || s === 'error' ? false : 2_000
+    },
+  })
+}
