@@ -4,6 +4,8 @@ These are the model-agnostic mechanisms that replace per-model code paths —
 any model's quirks flow through settings, not through the codebase.
 """
 
+import uuid
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -131,6 +133,86 @@ class TestReceiptGate:
         await svc.is_receipt_image("aW1n")
         assert "think" not in captured or captured.get("think") is None
         assert captured["options"]["num_predict"] == 64
+
+
+class TestFormatThinkConflict:
+    """format=json grammar-constrains decoding from the first token, which
+    silently suppresses the thinking phase — the two must never be combined."""
+
+    def capture_service(self, overrides, monkeypatch) -> tuple[AIService, dict]:
+        captured: dict = {}
+
+        async def fake_generate(self, prompt, system=None, **kwargs):
+            captured.update(kwargs)
+            return '{"total": 1}'
+
+        monkeypatch.setattr(OllamaClient, "generate", fake_generate)
+        svc = make_service(overrides)
+        monkeypatch.setattr(svc, "_get_categories", AsyncMock(return_value=[]))
+        return svc, captured
+
+    async def test_receipt_drops_json_format_when_thinking(self, monkeypatch):
+        svc, captured = self.capture_service({"ai_thinking": "on"}, monkeypatch)
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
+        assert captured["think"] is True
+        assert captured["format"] is None
+
+    async def test_receipt_keeps_json_format_without_thinking(self, monkeypatch):
+        svc, captured = self.capture_service({"ai_thinking": "off"}, monkeypatch)
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
+        assert captured["think"] is None
+        assert captured["format"] == "json"
+
+    async def test_nl_parse_gates_format_the_same_way(self, monkeypatch):
+        svc, captured = self.capture_service({"ai_thinking": "on"}, monkeypatch)
+        await svc.parse_nl_transaction(uuid.uuid4(), "coffee 5.50", date(2026, 8, 16))
+        assert captured["think"] is True
+        assert captured["format"] is None
+
+
+class TestLastRequestRecording:
+    """The exact prompt/flags are recorded on the service BEFORE the model is
+    invoked, so callers can persist them for debugging even on failure."""
+
+    def capture_service(self, monkeypatch, *, generate=None) -> AIService:
+        async def default_generate(self, prompt, system=None, **kwargs):
+            return '{"total": 1}'
+
+        monkeypatch.setattr(OllamaClient, "generate", generate or default_generate)
+        svc = make_service({"ai_thinking": "on", "ollama_model": "gemma4:test"})
+        monkeypatch.setattr(
+            svc,
+            "_get_categories",
+            AsyncMock(return_value=[{"id": 1, "name": "Groceries", "group": "Everyday"}]),
+        )
+        return svc
+
+    async def test_extract_records_request(self, monkeypatch):
+        svc = self.capture_service(monkeypatch)
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
+        req = svc.last_request
+        assert req is not None
+        assert req["model"] == "gemma4:test"
+        assert req["think"] is True
+        assert req["format"] is None
+        assert "Groceries (Everyday)" in req["prompt"]
+        assert "2026-08-16" in req["prompt"]
+
+    async def test_recorded_even_when_call_fails(self, monkeypatch):
+        async def failing_generate(self, prompt, system=None, **kwargs):
+            raise ConnectionError("refused")
+
+        svc = self.capture_service(monkeypatch, generate=failing_generate)
+        with pytest.raises(ConnectionError):
+            await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
+        assert svc.last_request is not None
+        assert "Groceries (Everyday)" in svc.last_request["prompt"]
+
+    async def test_nl_parse_records_request(self, monkeypatch):
+        svc = self.capture_service(monkeypatch)
+        await svc.parse_nl_transaction(uuid.uuid4(), "coffee 5.50", date(2026, 8, 16))
+        assert svc.last_request is not None
+        assert "coffee 5.50" in svc.last_request["prompt"]
 
 
 class TestJsonFromResponse:

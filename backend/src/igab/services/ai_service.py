@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Category, Transaction
 from igab.integrations.ollama.client import OllamaClient
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
+from igab.services.category_matching import match_category
 from igab.services.settings_service import SettingsService
 
 # Images sent to the model: longest side capped and re-encoded as JPEG.
@@ -70,6 +71,10 @@ class AIService:
     def __init__(self, session: AsyncSession, settings: SettingsService) -> None:
         self.session = session
         self.settings = settings
+        # The exact request of the last extraction/parse call — recorded
+        # before the model is invoked so callers can persist it for
+        # debugging even when the call itself fails.
+        self.last_request: dict | None = None
 
     async def _client(self) -> OllamaClient:
         host = await self.settings.get("ollama_host") or "http://localhost:11434"
@@ -234,12 +239,24 @@ class AIService:
             {"categories": cat_list, "today": client_today.isoformat()},
         )
         client = await self._vision_client()
+        think = await self._resolve_think(client)
+        system = "You are a receipt data extraction engine. Return only valid JSON."
+        self.last_request = {
+            "prompt": prompt,
+            "system": system,
+            "model": client.model,
+            "think": think,
+            "format": None if think else "json",
+        }
         raw = await client.generate(
             prompt,
-            system="You are a receipt data extraction engine. Return only valid JSON.",
+            system=system,
             images=[image_b64],
-            format="json",
-            think=await self._resolve_think(client),
+            # The JSON grammar constrains decoding from the first token, which
+            # silently suppresses the thinking phase — never combine the two.
+            # _json_from_response tolerates the fenced output this produces.
+            format=None if think else "json",
+            think=think,
             options=await self._merged_options(vision=True, task_defaults={"temperature": 0}),
             timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
         )
@@ -257,11 +274,21 @@ class AIService:
             {"text": text, "categories": cat_list, "today": client_today.isoformat()},
         )
         client = await self._client()
+        think = await self._resolve_think(client)
+        system = "You are a transaction parser. Return only valid JSON."
+        self.last_request = {
+            "prompt": prompt,
+            "system": system,
+            "model": client.model,
+            "think": think,
+            "format": None if think else "json",
+        }
         raw = await client.generate(
             prompt,
-            system="You are a transaction parser. Return only valid JSON.",
-            format="json",
-            think=await self._resolve_think(client),
+            system=system,
+            # Same think/format conflict as extract_receipt: grammar kills thinking.
+            format=None if think else "json",
+            think=think,
             options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
         )
         return _json_from_response(raw)
@@ -300,10 +327,11 @@ class AIService:
             data = _json_from_response(raw)
             name = data.get("category")
             confidence = float(data.get("confidence", 0.5))
-            matched = None
-            if isinstance(name, str):
-                lowered = name.strip().lower()
-                matched = next((c for c in categories if c["name"].lower() == lowered), None)
+            index = match_category(
+                name if isinstance(name, str) else None,
+                [(c["name"], c["group"]) for c in categories],
+            )
+            matched = categories[index] if index is not None else None
             return {
                 "category_id": str(matched["id"]) if matched else None,
                 "category_name": matched["name"] if matched else None,

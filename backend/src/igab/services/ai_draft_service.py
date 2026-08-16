@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, cast
 
 from igab.db.models import Transaction
 from igab.domain.exceptions import InvariantViolation
+from igab.services.category_matching import Candidate, canonical_label, match_category
 from igab.services.transaction_service import TransactionCreate, TransactionService
 
 _CENT = Decimal("0.01")
@@ -87,8 +89,24 @@ def _clean_str(value: object) -> str | None:
     return None
 
 
+def _as_candidates(
+    category_names: Collection[str | tuple[str, str | None]] | None,
+) -> list[Candidate]:
+    """Callers pass either bare names or (name, group) pairs; group names
+    enable disambiguation when the same category name exists in several
+    groups."""
+    candidates: list[Candidate] = []
+    for entry in category_names or ():
+        if isinstance(entry, str):
+            candidates.append((entry, None))
+        else:
+            name, group = entry
+            candidates.append((name, group))
+    return candidates
+
+
 def _parse_split(
-    raw_split: object, total: Decimal, known_categories: set[str]
+    raw_split: object, total: Decimal, candidates: Sequence[Candidate]
 ) -> list[SplitLine] | None:
     """Validate a suggested split. Offerable only when every line's category
     resolves against the budget and the lines sum to the total (within one
@@ -98,13 +116,13 @@ def _parse_split(
         return None
     lines: list[SplitLine] = []
     running = Decimal("0")
-    lowered = {c.lower() for c in known_categories}
     for item in raw_split:
         if not isinstance(item, dict):
             return None
         entry = cast(dict[str, Any], item)
         name = _clean_str(entry.get("category"))
-        if name is None or name.lower() not in lowered:
+        matched = match_category(name, candidates)
+        if matched is None:
             return None
         try:
             line_amount = Decimal(str(entry.get("amount"))).quantize(_CENT, rounding=ROUND_HALF_UP)
@@ -115,7 +133,7 @@ def _parse_split(
         # Model amounts are positive; carry the draft's sign
         signed = -line_amount.copy_abs() if total < 0 else line_amount.copy_abs()
         running += signed
-        lines.append(SplitLine(category_name=name, amount=signed))
+        lines.append(SplitLine(category_name=canonical_label(matched, candidates), amount=signed))
     if (running - total).copy_abs() > _CENT:
         return None
     return lines
@@ -126,15 +144,19 @@ def parse_extraction(
     *,
     kind: str,
     client_today: datetime.date,
-    category_names: set[str] | None = None,
+    category_names: Collection[str | tuple[str, str | None]] | None = None,
 ) -> AIDraft:
     """Map validated-JSON model output to a draft.
 
     kind='receipt': `total` is the amount; positive totals are purchases
     (outflow ⇒ negated), negative totals are refunds (inflow).
     kind='nl_parse': `amount` + `direction` (outflow|inflow).
+
+    category_names entries may be bare names or (name, group) pairs; matching
+    is tolerant (see category_matching) and the draft carries the real
+    category's canonical label, not the model's spelling of it.
     """
-    categories = category_names or set()
+    candidates = _as_candidates(category_names)
 
     if kind == "receipt":
         amount = _parse_amount(raw.get("total"))
@@ -146,9 +168,8 @@ def parse_extraction(
     else:
         raise InvariantViolation(f"Unknown AI draft kind: {kind}")
 
-    category_name = _clean_str(raw.get("category"))
-    if category_name is not None and category_name.lower() not in {c.lower() for c in categories}:
-        category_name = None
+    matched = match_category(_clean_str(raw.get("category")), candidates)
+    category_name = canonical_label(matched, candidates) if matched is not None else None
 
     try:
         confidence = min(max(float(raw.get("confidence", 0.0)), 0.0), 1.0)
@@ -157,7 +178,7 @@ def parse_extraction(
 
     suggested_split = None
     if kind == "receipt":
-        suggested_split = _parse_split(raw.get("suggested_split"), signed, categories)
+        suggested_split = _parse_split(raw.get("suggested_split"), signed, candidates)
 
     return AIDraft(
         payee_name=_clean_str(raw.get("payee")),
@@ -176,17 +197,15 @@ class AIDraftService:
         self.transactions = transaction_service
 
     async def resolve_category(self, budget_id: uuid.UUID, name: str | None) -> uuid.UUID | None:
-        """Case-insensitive exact name match against the budget's live
-        categories. No match ⇒ None (uncategorized), letting the existing
-        payee auto-categorization in TransactionService.create() apply."""
+        """Tolerant name match against the budget's live categories —
+        decoration-stripping and group qualification via category_matching.
+        No match ⇒ None (uncategorized), letting the existing payee
+        auto-categorization in TransactionService.create() apply."""
         if not name:
             return None
-        categories = await self.transactions.category_repo.get_all(budget_id)
-        lowered = name.lower()
-        for cat in categories:
-            if cat.name.lower() == lowered:
-                return cat.id
-        return None
+        pairs = await self.transactions.category_repo.get_all_with_group_names(budget_id)
+        matched = match_category(name, [(cat.name, group) for cat, group in pairs])
+        return pairs[matched][0].id if matched is not None else None
 
     async def create_transaction(
         self,

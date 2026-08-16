@@ -150,6 +150,7 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
         raise NonRetryableJobError("Account for this receipt no longer exists")
 
     supported, model = await svcs["ai"].check_vision_support()
+    job.model = model  # Record which model processed this job
     if supported is False:
         raise NonRetryableJobError(
             f"Model '{model}' does not support vision — set a vision model in Settings → AI"
@@ -173,21 +174,34 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
             "transaction with the image attached for manual entry"
         )
 
-    raw = await svcs["ai"].extract_receipt(job.budget_id, image_b64, client_today)
+    try:
+        raw = await svcs["ai"].extract_receipt(job.budget_id, image_b64, client_today)
+    finally:
+        # Persist the exact prompt/flags for debugging — also when the call
+        # fails, so a bad extraction can be replayed outside the app.
+        if svcs["ai"].last_request is not None:
+            job.result = {"request": svcs["ai"].last_request}
 
-    categories = await svcs["transactions"].category_repo.get_all(job.budget_id)
+    categories = await svcs["transactions"].category_repo.get_all_with_group_names(job.budget_id)
     draft = parse_extraction(
         raw,
         kind="receipt",
         client_today=client_today,
-        category_names={c.name for c in categories},
+        category_names=[(cat.name, group) for cat, group in categories],
     )
 
+    txn: Transaction | None = None
     if job.transaction_id is not None:
-        # Retry after a terminal failure that created a stub: fill the stub
-        # in, but only if the user hasn't touched it.
-        txn = await _apply_draft_to_stub(svcs, job, draft)
-    else:
+        # A prior run already produced a transaction (failure stub, or a done
+        # job being reprocessed): refresh it in place while it still belongs
+        # to the AI pipeline.
+        txn = await _apply_draft_to_existing(svcs, job, draft)
+        if txn is None:
+            # The transaction was deleted since — start over with a fresh one.
+            # The old attachment belongs to the deleted row, so re-attach too.
+            job.transaction_id = None
+            job.attachment_id = None
+    if txn is None:
         txn = await svcs["drafts"].create_transaction(
             job.budget_id, account_id, draft, created_via="ai_receipt"
         )
@@ -201,7 +215,10 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
         )
         job.attachment_id = attachment.id
 
-    job.result = _draft_result_json(draft)
+    result = _draft_result_json(draft)
+    if svcs["ai"].last_request is not None:
+        result["request"] = svcs["ai"].last_request
+    job.result = result
     job.transaction_id = txn.id
     job.status = "done"
     job.error = None
@@ -211,16 +228,23 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
     cleanup_staging(job.id)
 
 
-async def _apply_draft_to_stub(svcs: dict, job: AIJob, draft) -> Transaction:
+async def _apply_draft_to_existing(svcs: dict, job: AIJob, draft) -> Transaction | None:
+    """Refresh the job's existing transaction (a failure stub, or the result
+    of a done job being reprocessed) with a freshly extracted draft.
+
+    Returns None when the transaction was deleted so the caller can create a
+    replacement. An approved or cleared transaction belongs to the user —
+    refuse rather than overwrite."""
     from igab.services.transaction_service import TransactionCreate, TransactionUpdate
 
     txn_svc = svcs["transactions"]
     txn = await txn_svc.transaction_repo.get(job.transaction_id)
     if txn is None:
-        raise NonRetryableJobError("The transaction for this receipt was deleted")
-    if txn.approved or txn.amount != 0:
+        return None
+    if txn.approved or txn.cleared != "uncleared":
         raise NonRetryableJobError(
-            "The transaction for this receipt was already edited — retry is no longer possible"
+            "The transaction for this receipt was already approved or cleared"
+            " — edit it directly, or delete it first to reprocess from scratch"
         )
 
     payee = await txn_svc._resolve_payee(

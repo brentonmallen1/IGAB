@@ -16,6 +16,7 @@ class AIJobResponse(BaseModel):
     payload: dict[str, Any]
     result: dict[str, Any] | None
     error: str | None
+    model: str | None
     attempts: int
     max_attempts: int
     transaction_id: uuid.UUID | None
@@ -35,6 +36,7 @@ class AIJobResponse(BaseModel):
             payload={k: payload[k] for k in PUBLIC_PAYLOAD_KEYS if k in payload},
             result=job.result,
             error=job.error,
+            model=job.model,
             attempts=job.attempts,
             max_attempts=job.max_attempts,
             transaction_id=job.transaction_id,

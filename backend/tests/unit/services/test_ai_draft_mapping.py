@@ -162,7 +162,7 @@ class TestCategories:
             client_today=TODAY,
             category_names=CATEGORIES,
         )
-        assert draft.category_name == "gRoCeRiEs"  # resolved later by id lookup
+        assert draft.category_name == "Groceries"  # canonicalized to the real name
 
     def test_invented_category_dropped(self):
         draft = parse_extraction(
