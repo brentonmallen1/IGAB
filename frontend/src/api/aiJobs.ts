@@ -19,10 +19,19 @@ export interface AIJobSplitLine {
   amount: string
 }
 
+export interface AIJobRequest {
+  prompt: string
+  system?: string
+  model?: string
+  think?: boolean | null
+  format?: string | null
+}
+
 export interface AIJobResult {
   extraction?: Record<string, unknown>
   draft?: AIJobDraft
   suggested_split?: AIJobSplitLine[] | null
+  request?: AIJobRequest
 }
 
 export interface AIJob {
@@ -39,6 +48,7 @@ export interface AIJob {
   }
   result: AIJobResult | null
   error: string | null
+  model: string | null
   attempts: number
   max_attempts: number
   transaction_id: string | null
@@ -152,6 +162,18 @@ export function useRetryAIJob(budgetId: string) {
   return useMutation({
     mutationFn: (jobId: string) =>
       apiClient.post<AIJob>(`/${budgetId}/ai/jobs/${jobId}/retry`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-jobs'] })
+      qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
+    },
+  })
+}
+
+export function useReprocessAIJob(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (jobId: string) =>
+      apiClient.post<AIJob>(`/${budgetId}/ai/jobs/${jobId}/reprocess`).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ai-jobs'] })
       qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })

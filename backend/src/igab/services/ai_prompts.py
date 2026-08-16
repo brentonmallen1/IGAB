@@ -31,7 +31,20 @@ DEFAULT_PROMPTS: dict[str, str] = {
     "ai_prompt_receipt_extract": (
         "You are given a photo of a purchase receipt. Extract the transaction data.\n"
         "Today's date is {today}.\n\n"
-        "Budget categories (name (group)):\n{categories}\n\n"
+        "Budget categories, listed as name (group):\n{categories}\n\n"
+        "Choosing categories:\n"
+        "- Match on the category NAME first — the name says what the category is for.\n"
+        "- The (group) is where the category sits in the budget — organizational context"
+        " such as payment timing, an area of the budget, or a person's name. It does NOT"
+        " narrow the category's meaning: 'Tech (House Projects)' still covers technology"
+        " purchases in general.\n"
+        "- Use the group only as a tie-breaker between competing candidates.\n"
+        "- A category named after a person usually holds that person's personal spending —"
+        " a matching name on the receipt (buyer or addressee) is a strong hint.\n"
+        "- Prefer a reasonable category over null; use null only when nothing plausibly"
+        " fits.\n"
+        "- Use category names exactly as they appear in the list. Never invent"
+        " categories.\n\n"
         "Return ONLY a JSON object with exactly these fields:\n"
         "{\n"
         '  "payee": "merchant name, cleaned up (e.g. \'Whole Foods\', not'
@@ -39,18 +52,25 @@ DEFAULT_PROMPTS: dict[str, str] = {
         '  "total": 0.00,\n'
         '  "date": "YYYY-MM-DD or null if not visible",\n'
         '  "category": "the single best-matching category NAME from the list, or null",\n'
+        '  "reason": "one short sentence: why this category, mentioning the runner-up'
+        ' if it was close",\n'
         '  "confidence": 0.0,\n'
-        '  "memo": "short note if something is noteworthy, else null",\n'
+        '  "memo": "a short reminder of what was bought, a few words or up to three'
+        " items (e.g. 'Nova handheld + accessories') — never an exhaustive list; null"
+        ' if the payee name already says it",\n'
         '  "line_items": [{"description": "item as printed", "amount": 0.00,'
         ' "category": "best category NAME or null"}],\n'
         '  "suggested_split": [{"category": "category NAME", "amount": 0.00}]\n'
         "}\n\n"
         "Rules:\n"
         "- total is the grand total actually paid, after tax and discounts.\n"
-        "- Use category names exactly as they appear in the list. Never invent categories.\n"
         "- suggested_split: group the line items by category and distribute tax"
         " proportionally so the split amounts sum exactly to total. If everything"
         " belongs to one category, return an empty array.\n"
+        "- Shipping, delivery, handling, and similar order-level fees are never"
+        " their own split entry: distribute them across the item categories"
+        " proportionally, exactly like tax — unless the receipt is solely a"
+        " shipping or postage charge.\n"
         "- confidence is your overall confidence in payee+total+date, from 0 to 1.\n"
         "- Amounts are positive numbers. Output only the JSON object."
     ),
@@ -58,7 +78,11 @@ DEFAULT_PROMPTS: dict[str, str] = {
         "Parse this natural-language description of a financial transaction into JSON.\n"
         "Today's date is {today}.\n\n"
         "Description: {text}\n\n"
-        "Budget categories (name (group)):\n{categories}\n\n"
+        "Budget categories, listed as name (group):\n{categories}\n\n"
+        "Choosing a category: match on the category NAME first — the (group) is"
+        " organizational context (payment timing, budget area, or a person's name),"
+        " not a restriction on the category's meaning; use it only as a tie-breaker"
+        " between competing candidates.\n\n"
         "Return ONLY a JSON object with exactly these fields:\n"
         "{\n"
         '  "payee": "merchant/person name or null",\n'
@@ -77,10 +101,12 @@ DEFAULT_PROMPTS: dict[str, str] = {
     ),
     "ai_prompt_suggest_category": (
         "Transaction: payee='{payee_name}', amount={amount}, memo='{memo}'\n\n"
-        "Budget categories (name (group)):\n{categories}\n\n"
+        "Budget categories, listed as name (group):\n{categories}\n\n"
         "Return ONLY a JSON object:\n"
         '{"category": "the single best-matching category NAME from the list, or null",'
         ' "confidence": 0.0}\n'
+        "Match on the category NAME first — the (group) is organizational context, not"
+        " a restriction on meaning; use it only as a tie-breaker between candidates.\n"
         "Use category names exactly as they appear in the list. Never invent categories."
     ),
     "ai_prompt_normalize_payee": (

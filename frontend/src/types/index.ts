@@ -63,6 +63,7 @@ export interface Category {
   category_group_id: string
   budget_id: string
   name: string
+  subtitle: string | null
   sort_order: number
   note: string | null
   is_hidden: boolean

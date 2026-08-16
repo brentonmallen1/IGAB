@@ -201,6 +201,36 @@ async def retry_job(
     return AIJobResponse.from_job(job)
 
 
+@router.post("/{budget_id}/ai/jobs/{job_id}/reprocess", response_model=AIJobResponse)
+async def reprocess_job(
+    budget_id: BudgetAccess,
+    job_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+    job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
+) -> AIJobResponse:
+    """Re-queue a completed job to run again with the current model settings.
+    Useful after changing models or for getting better results on a failed extraction."""
+    job = await _get_owned_job(job_repo, job_id, budget_id)
+    if job.status not in ("done", "error"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only completed jobs can be reprocessed",
+        )
+    job.status = "queued"
+    job.attempts = 0
+    job.error = None
+    job.result = None
+    job.model = None  # Will be set when the new model processes it
+    job.started_at = None
+    job.finished_at = None
+    job.available_at = datetime.now(UTC)
+    session.add(job)
+    await session.commit()
+    ai_worker.notify()
+    return AIJobResponse.from_job(job)
+
+
 @router.delete("/{budget_id}/ai/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job(
     budget_id: BudgetAccess,
@@ -254,16 +284,18 @@ async def parse_nl_transaction(
 
     try:
         raw = await ai_svc.parse_nl_transaction(budget_id, text, today)
-        categories = await txn_svc.category_repo.get_all(budget_id)
+        categories = await txn_svc.category_repo.get_all_with_group_names(budget_id)
         draft = parse_extraction(
             raw,
             kind="nl_parse",
             client_today=today,
-            category_names={c.name for c in categories},
+            category_names=[(cat.name, group) for cat, group in categories],
         )
     except Exception as exc:
         job.status = "error"
         job.error = f"{type(exc).__name__}: {exc}"[:2000]
+        if ai_svc.last_request is not None:
+            job.result = {"request": ai_svc.last_request}
         job.finished_at = datetime.now(UTC)
         session.add(job)
         await session.commit()
@@ -275,7 +307,7 @@ async def parse_nl_transaction(
     category_id = await AIDraftService(txn_svc).resolve_category(budget_id, draft.category_name)
     job.status = "done"
     job.finished_at = datetime.now(UTC)
-    job.result = {
+    result: dict = {
         "extraction": draft.raw,
         "draft": {
             "payee": draft.payee_name,
@@ -286,6 +318,9 @@ async def parse_nl_transaction(
             "confidence": draft.confidence,
         },
     }
+    if ai_svc.last_request is not None:
+        result["request"] = ai_svc.last_request
+    job.result = result
     session.add(job)
     await session.commit()
 

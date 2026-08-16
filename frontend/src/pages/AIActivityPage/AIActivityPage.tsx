@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
+  Check,
   CheckCircle,
   ChevronDown,
   ChevronUp,
   Clock,
+  Copy,
   ExternalLink,
   Loader2,
   MessageSquareText,
@@ -16,12 +18,11 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../../stores/appStore'
-import { useAIStatus } from '../../api/ai'
 import {
   useAIJobs,
   useActiveAIJobCount,
   useDeleteAIJob,
-  useRetryAIJob,
+  useReprocessAIJob,
   type AIJob,
   type AIJobStatus,
 } from '../../api/aiJobs'
@@ -50,6 +51,31 @@ function StatusChip({ status }: { status: AIJobStatus }) {
   )
 }
 
+function CopyButton({ text, title }: { text: string; title: string }) {
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error('Could not copy — clipboard unavailable')
+    }
+  }
+
+  return (
+    <button
+      className={`ai-activity__copy ${copied ? 'ai-activity__copy--copied' : ''}`}
+      onClick={handleCopy}
+      title={title}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
+}
+
 function JobThumbnail({ attachmentId }: { attachmentId: string }) {
   const { data: url } = useAttachmentUrl(attachmentId, true)
   if (!url) return <div className="ai-activity__thumb ai-activity__thumb--empty" />
@@ -59,11 +85,14 @@ function JobThumbnail({ attachmentId }: { attachmentId: string }) {
 function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
   const navigate = useNavigate()
   const { formatMoney } = useFormatters()
-  const retry = useRetryAIJob(budgetId)
+  const reprocess = useReprocessAIJob(budgetId)
   const remove = useDeleteAIJob(budgetId)
   const [errorOpen, setErrorOpen] = useState(false)
+  const [responseOpen, setResponseOpen] = useState(false)
+  const [promptOpen, setPromptOpen] = useState(false)
 
   const draft = job.result?.draft
+  const reason = job.result?.extraction?.reason
   const title =
     draft?.payee ??
     job.payload.text ??
@@ -71,14 +100,14 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
     (job.kind === 'receipt' ? 'Receipt' : 'Text entry')
   const amount = draft ? parseFloat(draft.amount) : null
 
-  async function handleRetry() {
+  async function handleReprocess() {
     try {
-      await retry.mutateAsync(job.id)
-      toast.success('Retrying — check back shortly')
+      await reprocess.mutateAsync(job.id)
+      toast.success('Reprocessing with current model — check back shortly')
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail
-      toast.error(detail ?? 'Retry failed')
+      toast.error(detail ?? 'Reprocess failed')
     }
   }
 
@@ -112,6 +141,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
           <span className="ai-activity__kind">
             {job.kind === 'receipt' ? 'Receipt scan' : 'Text entry'}
           </span>
+          {job.model && <span className="ai-activity__model">{job.model}</span>}
           <span className="ai-activity__time">
             {new Date(job.created_at).toLocaleString()}
           </span>
@@ -121,6 +151,11 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             </span>
           )}
         </div>
+        {typeof reason === 'string' && reason && (
+          <div className="ai-activity__reason" title="The model's stated reason for its category choice">
+            {reason}
+          </div>
+        )}
         {job.error && (
           <div className="ai-activity__error">
             <button
@@ -131,6 +166,50 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
               Error details
             </button>
             {errorOpen && <pre className="ai-activity__error-text">{job.error}</pre>}
+          </div>
+        )}
+        {job.result?.extraction && (
+          <div className="ai-activity__response">
+            <button
+              className="ai-activity__response-toggle"
+              onClick={() => setResponseOpen((v) => !v)}
+            >
+              {responseOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              LLM response
+            </button>
+            <CopyButton
+              text={JSON.stringify(job.result.extraction, null, 2)}
+              title="Copy LLM response as JSON"
+            />
+            {responseOpen && (
+              <pre className="ai-activity__response-text">
+                {JSON.stringify(job.result.extraction, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
+        {job.result?.request?.prompt && (
+          <div className="ai-activity__response">
+            <button
+              className="ai-activity__response-toggle"
+              onClick={() => setPromptOpen((v) => !v)}
+            >
+              {promptOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              Prompt
+            </button>
+            <CopyButton text={job.result.request.prompt} title="Copy the exact prompt sent" />
+            {promptOpen && (
+              <pre className="ai-activity__response-text">
+                {[
+                  `model: ${job.result.request.model ?? '?'}  think: ${String(job.result.request.think)}  format: ${job.result.request.format ?? 'none'}`,
+                  job.result.request.system ? `system: ${job.result.request.system}` : null,
+                  '',
+                  job.result.request.prompt,
+                ]
+                  .filter((l) => l !== null)
+                  .join('\n')}
+              </pre>
+            )}
           </div>
         )}
       </div>
@@ -146,18 +225,18 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             <span>View</span>
           </button>
         )}
-        {job.status === 'error' && (
+        {(job.status === 'done' || job.status === 'error') && (
           <button
             className="ai-activity__action"
-            onClick={handleRetry}
-            disabled={retry.isPending}
-            title="Retry extraction"
+            onClick={handleReprocess}
+            disabled={reprocess.isPending}
+            title="Reprocess with current model"
           >
             <RotateCcw size={14} />
-            <span>Retry</span>
+            <span>Reprocess</span>
           </button>
         )}
-        {job.status !== 'processing' && (
+        {job.status !== 'processing' && job.status !== 'queued' && (
           <button
             className="ai-activity__action ai-activity__action--danger"
             onClick={handleDelete}
@@ -174,7 +253,6 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
 
 export function AIActivityPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
-  const aiStatus = useAIStatus()
   const [statusFilter, setStatusFilter] = useState<AIJobStatus | ''>('')
   const [offset, setOffset] = useState(0)
 
@@ -188,18 +266,6 @@ export function AIActivityPage() {
   const jobs = useMemo(() => data?.jobs ?? [], [data])
   const total = data?.total_count ?? 0
 
-  if (aiStatus.data && !aiStatus.data.available) {
-    return (
-      <div className="ai-activity ai-activity--unavailable">
-        <Sparkles size={24} />
-        <h2>AI is not set up</h2>
-        <p>
-          Connect a local Ollama server in Settings → AI to scan receipts and use
-          natural-language entry. Activity will appear here.
-        </p>
-      </div>
-    )
-  }
 
   return (
     <div className="ai-activity">
