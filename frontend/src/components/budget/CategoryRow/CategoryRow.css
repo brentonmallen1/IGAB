@@ -216,6 +216,25 @@
   min-width: 0;
 }
 
+.category-row__subtitle {
+  font-size: var(--font-size-2xs);
+  font-style: italic;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Give way before the name does when space runs out */
+  flex-shrink: 4;
+  min-width: 0;
+}
+
+.category-row__rename {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex: 1;
+  min-width: 0;
+}
+
 .category-row__name-input {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
@@ -227,6 +246,16 @@
   box-shadow: var(--input-focus-shadow);
   width: 100%;
   min-width: 0;
+}
+
+.category-row__rename .category-row__name-input {
+  width: auto;
+  flex: 3;
+}
+
+.category-row__rename .category-row__subtitle-input {
+  flex: 2;
+  font-style: italic;
 }
 
 .category-row__target-btn {

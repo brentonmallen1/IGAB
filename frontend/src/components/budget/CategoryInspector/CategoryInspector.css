@@ -365,6 +365,31 @@
   color: var(--text-muted);
 }
 
+/* ─── Subtitle ──────────────────────────────────────────────────────────── */
+
+.inspector-subtitle-input {
+  width: 100%;
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  color: var(--text-primary);
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  outline: none;
+  font-family: inherit;
+}
+
+.inspector-subtitle-input:focus {
+  border-color: var(--input-focus-ring);
+  box-shadow: var(--input-focus-shadow);
+}
+
+.inspector-subtitle-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ─── Multi-select notice ───────────────────────────────────────────────── */
 
 .inspector-multi-notice {

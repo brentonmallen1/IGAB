@@ -20,10 +20,15 @@ export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
   const deleteCategory = useDeleteCategory(budgetId)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(category.name)
+  const [subtitleValue, setSubtitleValue] = useState(category.subtitle ?? '')
 
   function commitRename() {
     const name = renameValue.trim()
-    if (name && name !== category.name) updateCategory.mutate({ id: category.id, name })
+    const subtitle = subtitleValue.trim() || null
+    const changes: { name?: string; subtitle?: string | null } = {}
+    if (name && name !== category.name) changes.name = name
+    if (subtitle !== (category.subtitle ?? null)) changes.subtitle = subtitle
+    if (Object.keys(changes).length > 0) updateCategory.mutate({ id: category.id, ...changes })
     setIsRenaming(false)
   }
 
@@ -36,16 +41,29 @@ export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
   if (isRenaming) {
     return (
       <div className="cat-mobile-actions cat-mobile-actions--renaming">
-        <input
-          className="cat-mobile-actions__input"
-          value={renameValue}
-          onChange={(e) => setRenameValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitRename()
-            if (e.key === 'Escape') setIsRenaming(false)
-          }}
-          autoFocus
-        />
+        <div className="cat-mobile-actions__fields">
+          <input
+            className="cat-mobile-actions__input"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename()
+              if (e.key === 'Escape') setIsRenaming(false)
+            }}
+            placeholder="Name"
+            autoFocus
+          />
+          <input
+            className="cat-mobile-actions__input"
+            value={subtitleValue}
+            onChange={(e) => setSubtitleValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename()
+              if (e.key === 'Escape') setIsRenaming(false)
+            }}
+            placeholder="Subtitle (optional)"
+          />
+        </div>
         <button className="cat-mobile-actions__btn" onClick={commitRename} aria-label="Save name">
           <Check size={16} />
         </button>
@@ -66,6 +84,7 @@ export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
         className="cat-mobile-actions__btn"
         onClick={() => {
           setRenameValue(category.name)
+          setSubtitleValue(category.subtitle ?? '')
           setIsRenaming(true)
         }}
       >

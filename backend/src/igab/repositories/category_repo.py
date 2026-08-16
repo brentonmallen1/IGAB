@@ -44,6 +44,26 @@ class CategoryRepository(BaseRepository[Category]):
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
+    async def get_all_with_group_names(
+        self, budget_id: uuid.UUID, include_hidden: bool = False
+    ) -> list[tuple[Category, str]]:
+        """Categories paired with their group's name — for AI name matching,
+        where the same category name in several groups must be
+        disambiguated."""
+        q = (
+            select(Category, CategoryGroup.name)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Category.budget_id == budget_id,
+                Category.is_deleted == False,  # noqa: E712
+            )
+        )
+        if not include_hidden:
+            q = q.where(Category.is_hidden == False)  # noqa: E712
+        q = q.order_by(Category.sort_order)
+        result = await self.session.execute(q)
+        return [(row[0], row[1]) for row in result.all()]
+
     async def get_with_tags(self, category_id: uuid.UUID) -> Category | None:
         result = await self.session.execute(
             select(Category)

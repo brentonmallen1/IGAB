@@ -47,6 +47,7 @@ export function useCreateCategory(budgetId: string) {
     mutationFn: (data: {
       category_group_id: string
       name: string
+      subtitle?: string
       sort_order?: number
       note?: string
     }) => apiClient.post<Category>(`/${budgetId}/categories`, data).then((r) => r.data),
