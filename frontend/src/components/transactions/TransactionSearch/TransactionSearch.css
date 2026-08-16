@@ -62,7 +62,9 @@
   border-radius: var(--border-radius-sm);
   box-shadow: var(--shadow-md);
   z-index: 50;
-  overflow: hidden;
+  /* Cap the list so the full syntax reference doesn't cover the register */
+  max-height: min(320px, 45vh);
+  overflow-y: auto;
 }
 
 .txn-search__suggestions-header {

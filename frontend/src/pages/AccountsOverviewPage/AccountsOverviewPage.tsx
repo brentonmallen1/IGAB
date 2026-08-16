@@ -178,7 +178,9 @@ export function AccountsOverviewPage() {
         setSyncMsg(null)
       } else {
         const parts = [`Imported ${result.imported}`, `skipped ${result.skipped}`]
+        if (result.matched) parts.push(`matched ${result.matched}`)
         if (result.cleared) parts.push(`cleared ${result.cleared}`)
+        if (result.review_queued) parts.push(`${result.review_queued} need review`)
         const msg = parts.join(', ')
         setSyncMsg(msg)
         toast.success(msg)
@@ -203,7 +205,11 @@ export function AccountsOverviewPage() {
           if (result.error) {
             toast.error(result.error)
           } else {
-            toast.success(`Synced ${account.name}`)
+            toast.success(
+              result.review_queued
+                ? `Synced ${account.name} — ${result.review_queued} need review`
+                : `Synced ${account.name}`,
+            )
           }
         },
         onError: () => toast.error(`Failed to sync ${account.name}`),

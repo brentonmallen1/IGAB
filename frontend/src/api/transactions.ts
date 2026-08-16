@@ -176,6 +176,27 @@ export function useCategoryTransactions(
   })
 }
 
+/** Recent transactions for a single payee across all accounts, newest first.
+ * Used to preview what a payee actually is before merging it away. */
+export function usePayeeTransactions(
+  budgetId: string | null,
+  payeeId: string | null,
+  limit: number,
+) {
+  return useQuery({
+    queryKey: ['payee-transactions', budgetId, payeeId, limit],
+    queryFn: async () => {
+      const { data } = await apiClient.get<BudgetTransactionsResponse>(
+        `/${budgetId}/transactions`,
+        { params: { payee_ids: payeeId, limit } },
+      )
+      return data
+    },
+    enabled: !!budgetId && !!payeeId,
+    staleTime: 10_000,
+  })
+}
+
 export function useCreateTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({

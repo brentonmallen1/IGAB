@@ -40,6 +40,8 @@ class LinkSimpleFINRequest(BaseModel):
 class SyncResult(BaseModel):
     imported: int
     skipped: int
+    matched: int = 0
+    review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0
     error: str | None = None

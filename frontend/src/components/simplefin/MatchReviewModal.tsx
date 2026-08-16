@@ -122,7 +122,10 @@ function MergedPreview({
       ? manualTxn.cleared
       : syncedTxn.cleared
 
-  // Accept logic: manual transaction wins on payee/category/memo, synced wins on date/import data
+  // Accept logic: the manual transaction keeps its date/payee/category/memo;
+  // the bank's posted date and import data arrive as metadata.
+  const bankPostedDate =
+    manualTxn.bank_posted_date ?? syncedTxn.bank_posted_date ?? syncedTxn.date
   const payeeName = manualTxn.payee_id
     ? (payeeMap.get(manualTxn.payee_id) ?? '—')
     : syncedTxn.payee_id
@@ -142,8 +145,14 @@ function MergedPreview({
       </div>
       <div className="match-modal__merged-row">
         <span className="match-modal__txn-key">Date</span>
-        <span>{formatDate(syncedTxn.date)}</span>
+        <span>{formatDate(manualTxn.date)}</span>
       </div>
+      {bankPostedDate !== manualTxn.date && (
+        <div className="match-modal__merged-row">
+          <span className="match-modal__txn-key">Bank posted</span>
+          <span>{formatDate(bankPostedDate)}</span>
+        </div>
+      )}
       <div className="match-modal__merged-row">
         <span className="match-modal__txn-key">Amount</span>
         <span className={manualTxn.amount < 0 ? 'txn-outflow' : 'txn-inflow'}>

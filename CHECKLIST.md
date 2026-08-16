@@ -375,3 +375,28 @@ todo:
   - requires auth stuff to be saved for the requests
   - if this isn't added, docs get stored in full resolution on volume specified during setup, if it is, then only thumbnail-ish (or the size used to send to the ai) gets stored in the volume while full image gets sent to paperless-ngx. Not sure if that's the best route or if it should be more involved interaction between the two for things like search and all that. I feel like that would make the UI really unresponsive trying to query for that. unless it's done only when looking at the transaction or something.
   - 
+
+## YNAB parity round 3 — UX feedback (2026-08-16)
+
+Fixed in working tree (see git log once committed): stale-data invalidations after
+sync/accept, offset-pagination row shuffling (missing unique sort tiebreaker),
+YNAB import result toast, filter suggestion matching + dropdown scroll, payee
+cleanup modal scroll, category dropdown group/category contrast.
+
+Remaining feature requests from side-by-side reconciliation:
+
+- [ ] Uncategorized-transactions pseudo-category pinned at top of the budget view
+      (YNAB parity): shows inflow/outflow totals of uncategorized rows, clicking it
+      jumps to those transactions. Doubles as a "needs attention" signal for people
+      who live in the budget view rather than the account registers.
+- [ ] "New transactions to review" banner on the budget view when unapproved rows
+      or pending matches exist; clicking navigates to the relevant account register.
+- [ ] Review-visibility design gap: imported-but-unapproved *uncleared* rows don't
+      appear under the account Review button (it only surfaces the match queue).
+      User expects YNAB-like behavior where the review view covers everything
+      needing attention. Decide: extend the Review filter, or add a combined
+      "needs attention" view (see banner + pseudo-category above — same concept).
+- [ ] Richer import report: the import toast now shows counts (transactions,
+      accounts, categories, assignments, skipped, errors); consider a persistent
+      import summary screen (per-account counts, date ranges, error detail) since
+      toasts are ephemeral.

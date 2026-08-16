@@ -43,6 +43,7 @@ class TransactionCreate:
     import_description: str | None = None
     sync_id: str | None = None
     sync_source: str | None = None
+    bank_posted_date: datetime.date | None = None
     # AI provenance ('ai_receipt' | 'ai_nl') — set server-side only, never
     # accepted verbatim from clients.
     created_via: str | None = None
@@ -143,6 +144,7 @@ class TransactionService:
             import_description=data.import_description,
             sync_id=data.sync_id,
             sync_source=data.sync_source,
+            bank_posted_date=data.bank_posted_date,
             created_via=data.created_via,
             latitude=data.latitude,
             longitude=data.longitude,
@@ -505,17 +507,22 @@ class TransactionService:
         if deleted.has_sync_source or survivor.has_sync_source:
             updates["has_sync_source"] = True
 
-        # Bank data wins on dates: when the survivor adopts the deleted row's
-        # bank identity, it adopts the bank posted date too, preserving the
-        # user's date once in entered_date. In the mirror case (survivor is
-        # the bank row) the manual date becomes the provenance metadata.
-        if deleted.date != survivor.date:
-            if not survivor.sync_id and deleted.sync_id and survivor.cleared != "reconciled":
-                updates["date"] = deleted.date
-                if survivor.entered_date is None:
-                    updates["entered_date"] = survivor.date
-            elif survivor.sync_id and not deleted.sync_id and survivor.entered_date is None:
-                updates["entered_date"] = deleted.date
+        # The survivor's ledger date is never touched — it is the date the
+        # user chose by picking the survivor. Bank provenance follows the
+        # merge as metadata instead.
+        if survivor.bank_posted_date is None:
+            inherited = deleted.bank_posted_date or (deleted.date if deleted.sync_id else None)
+            if inherited is not None:
+                updates["bank_posted_date"] = inherited
+        # Mirror case: survivor is the bank row, the deleted row is manual —
+        # keep the user's date once as entered-date provenance.
+        if (
+            survivor.sync_id
+            and not deleted.sync_id
+            and survivor.entered_date is None
+            and deleted.date != survivor.date
+        ):
+            updates["entered_date"] = deleted.date
 
         # Delete first so the partial unique indexes never see two live rows
         # with the same identity, then write metadata onto the survivor.

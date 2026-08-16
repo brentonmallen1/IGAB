@@ -1,17 +1,27 @@
 import csv
 import io
+import re
 import zipfile
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from igab.integrations.ynab.models import YNABBudget, YNABBudgetEntry, YNABTransaction
+from igab.integrations.ynab.models import (
+    YNABBudget,
+    YNABBudgetEntry,
+    YNABSplitLeg,
+    YNABTransaction,
+)
 
 _CLEARED_MAP = {
     "Uncleared": "uncleared",
     "Cleared": "cleared",
     "Reconciled": "reconciled",
 }
+
+# YNAB register exports flatten split transactions: each leg becomes its own
+# CSV row whose memo is prefixed "Split (i/n) <leg memo>".
+_SPLIT_MEMO_RE = re.compile(r"^Split \((\d+)/(\d+)\)\s*(.*)$")
 
 _MONTH_ABBREVS = {
     "Jan": 1,
@@ -61,6 +71,74 @@ def _parse_month(val: str) -> date | None:
     return date(year, month_num, 1)
 
 
+def _reassemble_splits(
+    rows: list[tuple[YNABTransaction, tuple[int, int, str] | None]],
+) -> list[YNABTransaction]:
+    """Regroup flattened YNAB split legs into single transactions.
+
+    A run is grouped only when it is complete and unambiguous: markers
+    (1/n)…(n/n) on consecutive rows sharing account, date, payee, and cleared
+    state. Anything irregular — interrupted, truncated, out of order, or a
+    lone memo that merely resembles a marker — falls back to flat rows, so a
+    malformed export degrades to today's behavior instead of losing data.
+
+    The grouped transaction carries the sum of the legs (the amount the bank
+    statement shows) with no category; per-leg category/amount/memo live in
+    `splits`, marker prefix stripped.
+    """
+    out: list[YNABTransaction] = []
+    i = 0
+    while i < len(rows):
+        txn, marker = rows[i]
+        if marker is None or marker[0] != 1 or marker[1] < 2:
+            out.append(txn)
+            i += 1
+            continue
+
+        n = marker[1]
+        run = rows[i : i + n]
+        is_complete_run = len(run) == n and all(
+            m is not None
+            and m[0] == pos + 1
+            and m[1] == n
+            and t.account_name == txn.account_name
+            and t.date == txn.date
+            and t.payee == txn.payee
+            and t.cleared == txn.cleared
+            for pos, (t, m) in enumerate(run)
+        )
+        if not is_complete_run:
+            out.append(txn)
+            i += 1
+            continue
+
+        legs = [
+            YNABSplitLeg(
+                category_group=t.category_group,
+                category=t.category,
+                memo=(m[2] or None) if m else None,
+                amount=t.amount,
+            )
+            for t, m in run
+        ]
+        out.append(
+            YNABTransaction(
+                account_name=txn.account_name,
+                date=txn.date,
+                payee=txn.payee,
+                category_group=None,
+                category=None,
+                memo=None,
+                amount=sum((leg.amount for leg in legs), Decimal("0")),
+                cleared=txn.cleared,
+                splits=legs,
+            )
+        )
+        i += n
+
+    return out
+
+
 class YNABParser:
     def parse_zip(self, path: Path) -> YNABBudget:
         with zipfile.ZipFile(path) as zf:
@@ -86,7 +164,7 @@ class YNABParser:
 
     def parse_register_csv(self, content: str) -> list[YNABTransaction]:
         reader = csv.DictReader(io.StringIO(content))
-        transactions: list[YNABTransaction] = []
+        rows: list[tuple[YNABTransaction, tuple[int, int, str] | None]] = []
         for row in reader:
             account = row.get("Account", "").strip()
             payee = row.get("Payee", "").strip()
@@ -111,20 +189,29 @@ class YNABParser:
 
             cleared = _CLEARED_MAP.get(cleared_raw, "uncleared")
 
-            transactions.append(
-                YNABTransaction(
-                    account_name=account,
-                    date=txn_date,
-                    payee=payee,
-                    category_group=category_group,
-                    category=category,
-                    memo=memo,
-                    amount=amount,
-                    cleared=cleared,
+            marker: tuple[int, int, str] | None = None
+            if memo:
+                m = _SPLIT_MEMO_RE.match(memo)
+                if m:
+                    marker = (int(m.group(1)), int(m.group(2)), m.group(3).strip())
+
+            rows.append(
+                (
+                    YNABTransaction(
+                        account_name=account,
+                        date=txn_date,
+                        payee=payee,
+                        category_group=category_group,
+                        category=category,
+                        memo=memo,
+                        amount=amount,
+                        cleared=cleared,
+                    ),
+                    marker,
                 )
             )
 
-        return transactions
+        return _reassemble_splits(rows)
 
     def parse_plan_csv(self, content: str) -> list[YNABBudgetEntry]:
         reader = csv.DictReader(io.StringIO(content))

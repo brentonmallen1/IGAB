@@ -163,8 +163,18 @@ class YNABImporter:
         leg carrying a category (YNAB's off-budget spending transfer) imports
         as a plain categorized row and is NOT transfer-linked. Legs whose
         partner never appears import unlinked so balances stay correct.
+
+        Transactions the parser reassembled from YNAB's flattened split legs
+        become a parent row (is_split, no category, amount = bank total — the
+        row sync matching and account balances see) plus child rows carrying
+        the per-leg category/amount/memo. Children ride with their parent:
+        import_ids derive from the parent's, and a skipped parent skips its
+        children. Counters count top-level transactions only, matching YNAB's
+        register view.
         """
         rows: list[dict] = []
+        # parent row id → its child rows (split legs)
+        split_children: dict[uuid.UUID, list[dict]] = {}
         # Pairing pool: (account_a, account_b, date, abs_amount) → unmatched
         # legs (either sign) awaiting their opposite-sign partner.
         unpaired_legs: dict[tuple, list[dict]] = {}
@@ -175,6 +185,60 @@ class YNABImporter:
         for txn in budget.transactions:
             try:
                 account = await self._get_or_create_account(txn.account_name, result)
+
+                if txn.splits:
+                    parent_row = {
+                        "id": uuid.uuid4(),
+                        "budget_id": self.budget_id,
+                        "account_id": account.id,
+                        "date": txn.date,
+                        "amount": txn.amount,
+                        "payee_id": payee_map.get(txn.payee) if txn.payee else None,
+                        "category_id": None,
+                        "memo": txn.memo or None,
+                        "cleared": txn.cleared,
+                        "approved": True,
+                        "is_split": True,
+                        "is_deleted": False,
+                        "transfer_id": None,
+                        "parent_transaction_id": None,
+                        "import_id": _generate_import_id(
+                            txn.account_name, txn.date, txn.amount, txn.payee or ""
+                        ),
+                    }
+                    children: list[dict] = []
+                    for leg in txn.splits:
+                        leg_category_id: uuid.UUID | None = None
+                        if leg.category_group and leg.category:
+                            cat = await self._get_or_create_category(
+                                leg.category_group, leg.category, result
+                            )
+                            leg_category_id = cat.id
+                        children.append(
+                            {
+                                "id": uuid.uuid4(),
+                                "budget_id": self.budget_id,
+                                "account_id": account.id,
+                                "date": txn.date,
+                                "amount": leg.amount,
+                                "payee_id": payee_map.get(txn.payee) if txn.payee else None,
+                                "category_id": leg_category_id,
+                                "memo": leg.memo,
+                                "cleared": txn.cleared,
+                                "approved": True,
+                                "is_split": False,
+                                "is_deleted": False,
+                                "transfer_id": None,
+                                "parent_transaction_id": parent_row["id"],
+                                # assigned once parent import_ids are final
+                                "import_id": None,
+                            }
+                        )
+                    # Append only after every leg resolved, so a failed leg
+                    # can never leave a parent whose children don't sum to it.
+                    rows.append(parent_row)
+                    split_children[parent_row["id"]] = children
+                    continue
 
                 category_id: uuid.UUID | None = None
                 if txn.category_group and txn.category:
@@ -197,6 +261,7 @@ class YNABImporter:
                     "is_split": False,
                     "is_deleted": False,
                     "transfer_id": None,
+                    "parent_transaction_id": None,
                     "import_id": _generate_import_id(
                         txn.account_name, txn.date, txn.amount, txn.payee or ""
                     ),
@@ -234,10 +299,18 @@ class YNABImporter:
                 row["import_id"] = f"{row['import_id']}:{count}"
             seen_keys[key] = count + 1
 
+        # Split children derive their import_ids from the parent's final
+        # (uniquified) one. The ":s" prefix can't collide with the numeric
+        # duplicate suffix above.
+        for row in rows:
+            for pos, kid in enumerate(split_children.get(row["id"], ()), start=1):
+                kid["import_id"] = f"{row['import_id']}:s{pos}"
+
         # Deduplicate against existing import_ids before inserting. If one leg
         # of a linked pair already exists, drop the link on the fresh leg
         # rather than pointing at a row that won't be inserted.
-        all_import_ids = [r["import_id"] for r in rows if r.get("import_id")]
+        all_children = [kid for kids in split_children.values() for kid in kids]
+        all_import_ids = [r["import_id"] for r in [*rows, *all_children] if r.get("import_id")]
         existing_ids = await self.transaction_repo.get_existing_import_ids(
             self.budget_id, all_import_ids
         )
@@ -249,7 +322,19 @@ class YNABImporter:
             if row["transfer_id"] is not None and row["transfer_id"] not in new_ids:
                 row["transfer_id"] = None
 
+        # Children insert only when their parent does (fresh parent uuid —
+        # a child can never attach to a row from a previous import).
+        new_children = [
+            kid
+            for parent_id, kids in split_children.items()
+            if parent_id in new_ids
+            for kid in kids
+            if kid["import_id"] not in existing_ids
+        ]
+
+        # Parents must hit the table before their children (FK).
         inserted = await self.transaction_repo.bulk_create(new_rows)
+        await self.transaction_repo.bulk_create(new_children)
         result.transactions_imported += inserted
 
     async def _import_assignments(self, budget: YNABBudget, result: ImportResult) -> None:

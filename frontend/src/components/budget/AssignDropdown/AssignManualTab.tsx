@@ -4,6 +4,7 @@ import { useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { toCents } from '../../../utils/money'
+import { GroupedCategoryOptions } from '../../common/GroupedCategoryOptions/GroupedCategoryOptions'
 
 interface Props {
   budgetId: string
@@ -83,19 +84,11 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
           <option value="" disabled>
             Choose a category…
           </option>
-          {eligibleGroups.map((g) => {
-            const cats = categoriesByGroup(g.id)
-            if (cats.length === 0) return null
-            return (
-              <optgroup key={g.id} label={g.name}>
-                {cats.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            )
-          })}
+          <GroupedCategoryOptions
+            groups={eligibleGroups
+              .map((g) => ({ group: g, cats: categoriesByGroup(g.id) }))
+              .filter(({ cats }) => cats.length > 0)}
+          />
         </select>
       </label>
       {exceedsTba && (

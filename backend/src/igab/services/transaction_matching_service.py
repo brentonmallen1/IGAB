@@ -179,14 +179,12 @@ class TransactionMatchingService:
         if loser.import_description and not keeper.import_description:
             updates["import_description"] = loser.import_description
 
-        # Bank data wins: when the loser is the bank-sourced row and the keeper
-        # is editable, align the keeper's ledger date to the bank date and
-        # preserve the user's date once as provenance.
-        if loser.sync_id and keeper.cleared != "reconciled":
-            if loser.date != keeper.date:
-                updates["date"] = loser.date
-                if keeper.entered_date is None:
-                    updates["entered_date"] = keeper.date
+        # The keeper's ledger date is the user's date and stays untouched —
+        # budget months follow it. The bank's posted date survives as
+        # provenance metadata when the loser is the bank-sourced row.
+        if loser.sync_id:
+            if keeper.bank_posted_date is None:
+                updates["bank_posted_date"] = loser.bank_posted_date or loser.date
             if keeper.cleared in ("uncleared", "pending") and loser.cleared in (
                 "cleared",
                 "reconciled",
