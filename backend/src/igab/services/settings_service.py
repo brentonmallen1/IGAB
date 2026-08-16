@@ -4,6 +4,8 @@ from igab.repositories.settings_repo import SettingsRepository
 from igab.services.ai_prompts import DEFAULT_PROMPTS
 
 DEFAULTS: dict[str, str] = {
+    # Master switch for AI features — false until the user explicitly enables
+    "ai_enabled": "false",
     "ollama_host": "http://localhost:11434",
     "ollama_model": "llama3.2",
     # Optional model used for vision tasks (receipt extraction). Empty means

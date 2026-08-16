@@ -8,6 +8,8 @@ from igab.api.v1.schemas.ai import (
     InsightsResponse,
     NormalizePayeeRequest,
     NormalizePayeeResponse,
+    OllamaModelInfo,
+    OllamaModelsResponse,
     PayeeCleanupGroup,
     SuggestCategoryRequest,
     SuggestCategoryResponse,
@@ -23,9 +25,19 @@ async def ai_status(
     current_user: CurrentUser,
     ai_svc: Annotated[AIService, Depends(get_ai_service)],
 ) -> AIStatusResponse:
-    """Check if Ollama AI is configured and reachable."""
+    """Check if AI is enabled and Ollama is reachable."""
     result = await ai_svc.check_availability()
     return AIStatusResponse(**result)
+
+
+@router.get("/ai/models", response_model=OllamaModelsResponse)
+async def list_ollama_models(
+    current_user: CurrentUser,
+    ai_svc: Annotated[AIService, Depends(get_ai_service)],
+) -> OllamaModelsResponse:
+    """List available models from the configured Ollama instance."""
+    models = await ai_svc.list_models()
+    return OllamaModelsResponse(models=[OllamaModelInfo(**m) for m in models])
 
 
 @router.post("/{budget_id}/ai/suggest-category", response_model=SuggestCategoryResponse)

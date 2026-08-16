@@ -36,5 +36,18 @@ class PayeeCleanupGroup(BaseModel):
 
 
 class AIStatusResponse(BaseModel):
+    enabled: bool
     available: bool
     host: str | None
+    model: str | None
+    vision_model: str | None
+
+
+class OllamaModelInfo(BaseModel):
+    name: str
+    size: int
+    capabilities: list[str]
+
+
+class OllamaModelsResponse(BaseModel):
+    models: list[OllamaModelInfo]

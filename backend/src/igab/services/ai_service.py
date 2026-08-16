@@ -133,13 +133,57 @@ class AIService:
         return render_prompt(template, values)
 
     async def check_availability(self) -> dict:
-        """Check if Ollama is configured and reachable."""
+        """Check if AI is enabled and Ollama is reachable."""
+        enabled = (await self.settings.get("ai_enabled") or "false").lower() == "true"
         host = await self.settings.get("ollama_host")
-        if not host:
-            return {"available": False, "host": None}
+        model = await self.settings.get("ollama_model")
+        vision_model = await self.settings.get("ollama_vision_model") or None
+
+        if not enabled or not host:
+            return {
+                "enabled": enabled,
+                "available": False,
+                "host": host,
+                "model": model,
+                "vision_model": vision_model,
+            }
+
         client = await self._client()
         available = await client.health()
-        return {"available": available, "host": host}
+        return {
+            "enabled": enabled,
+            "available": available,
+            "host": host,
+            "model": model,
+            "vision_model": vision_model,
+        }
+
+    async def list_models(self) -> list[dict]:
+        """List available models from the configured Ollama instance."""
+        host = await self.settings.get("ollama_host")
+        if not host:
+            return []
+
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as http:
+                resp = await http.get(f"{host.rstrip('/')}/api/tags")
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception:
+            return []
+
+        models = []
+        for m in data.get("models", []):
+            models.append(
+                {
+                    "name": m.get("name", ""),
+                    "size": m.get("size", 0),
+                    "capabilities": m.get("capabilities", []),
+                }
+            )
+        return models
 
     async def check_vision_support(self) -> tuple[bool | None, str]:
         """(supported, model): True/False when the server reports

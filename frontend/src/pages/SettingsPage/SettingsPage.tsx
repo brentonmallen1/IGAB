@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom'
 import { useAppStore, THEMES, FONT_SCALES, type Theme, type FontScale } from '../../stores/appStore'
 import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '../../api/accounts'
 import { useBudgets, useUpdateBudget } from '../../api/budgets'
-import { useSettings, useUpdateSetting } from '../../api/settings'
 import {
   useSimpleFINConnections,
   useSimpleFINRateLimitStatus,
@@ -16,8 +15,7 @@ import { IntegrityPanel } from '../../components/settings/IntegrityPanel/Integri
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
-import { AIAdvancedSettings } from '../../components/settings/AIAdvancedSettings'
-import { AIPromptSettings } from '../../components/settings/AIPromptSettings'
+import { AISettingsPanel } from '../../components/settings/AISettingsPanel'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -92,29 +90,6 @@ export function SettingsPage() {
 
   const { isAccountEditorOpen, editingAccountId, openAccountEditor, closeAccountEditor } = useUIStore()
 
-  const { data: appSettings } = useSettings()
-  const updateSetting = useUpdateSetting()
-
-  const ollamaHost = appSettings?.find((s) => s.key === 'ollama_host')?.value ?? ''
-  const ollamaModel = appSettings?.find((s) => s.key === 'ollama_model')?.value ?? ''
-  const [editOllamaHost, setEditOllamaHost] = useState('')
-  const [editOllamaModel, setEditOllamaModel] = useState('')
-  const [ollamaEditing, setOllamaEditing] = useState(false)
-
-  function startOllamaEdit() {
-    setEditOllamaHost(ollamaHost)
-    setEditOllamaModel(ollamaModel)
-    setOllamaEditing(true)
-  }
-
-  async function saveOllamaSettings(e: React.FormEvent) {
-    e.preventDefault()
-    if (editOllamaHost.trim())
-      await updateSetting.mutateAsync({ key: 'ollama_host', value: editOllamaHost.trim() })
-    if (editOllamaModel.trim())
-      await updateSetting.mutateAsync({ key: 'ollama_model', value: editOllamaModel.trim() })
-    setOllamaEditing(false)
-  }
 
   const { data: sfConnections } = useSimpleFINConnections()
   const updateConnection = useUpdateSimpleFINConnection()
@@ -577,61 +552,7 @@ export function SettingsPage() {
 
 
       {/* AI Settings */}
-      <div className="settings-section" id="ai">
-        <div className="settings-section__header">
-          <div className="settings-section__title">AI (Ollama)</div>
-        </div>
-        <div className="settings-section__body">
-          {!ollamaEditing ? (
-            <>
-              <div className="settings-row">
-                <div>
-                  <div className="settings-row__label">Host</div>
-                  <div className="settings-row__desc">{ollamaHost || '—'}</div>
-                </div>
-              </div>
-              <div className="settings-row">
-                <div>
-                  <div className="settings-row__label">Model</div>
-                  <div className="settings-row__desc">{ollamaModel || '—'}</div>
-                </div>
-              </div>
-              <button className="settings-btn settings-btn--secondary" onClick={startOllamaEdit}>
-                Edit
-              </button>
-            </>
-          ) : (
-            <form onSubmit={saveOllamaSettings} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div className="settings-row">
-                <div className="settings-row__label">Host</div>
-                <input
-                  type="text"
-                  className="settings-input"
-                  value={editOllamaHost}
-                  onChange={(e) => setEditOllamaHost(e.target.value)}
-                  placeholder="http://localhost:11434"
-                />
-              </div>
-              <div className="settings-row">
-                <div className="settings-row__label">Model</div>
-                <input
-                  type="text"
-                  className="settings-input"
-                  value={editOllamaModel}
-                  onChange={(e) => setEditOllamaModel(e.target.value)}
-                  placeholder="llama3.2"
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="submit" className="settings-btn settings-btn--primary">Save</button>
-                <button type="button" className="settings-btn settings-btn--secondary" onClick={() => setOllamaEditing(false)}>Cancel</button>
-              </div>
-            </form>
-          )}
-          <AIAdvancedSettings />
-          <AIPromptSettings />
-        </div>
-      </div>
+      <AISettingsPanel />
 
       {/* Session */}
       <div className="settings-section" id="session">
