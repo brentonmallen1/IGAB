@@ -1,0 +1,62 @@
+# IGAB All-in-One Docker Compose
+#
+# Single container with PostgreSQL, API, frontend, and backups.
+# Simpler than the multi-container setup — ideal for home servers.
+#
+# Usage:
+#   1. Copy .env.example to .env and configure required variables
+#   2. docker compose -f docker-compose.aio.yml up -d
+#
+# Required environment variables:
+#   - SECRET_KEY: JWT signing key (generate with: openssl rand -hex 32)
+#   - ADMIN_PASSWORD: Initial admin password (not 'changeme')
+
+services:
+  igab:
+    build:
+      context: .
+      dockerfile: Dockerfile.aio
+    image: ghcr.io/brentonmallen1/igab-aio:latest
+    container_name: igab
+    ports:
+      - "${WEB_PORT:-8080}:${WEB_PORT:-8080}"
+    environment:
+      # Required
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+
+      # Optional with defaults
+      - WEB_PORT=${WEB_PORT:-8080}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - TZ=${TZ:-UTC}
+
+      # AI/Ollama
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - OLLAMA_VISION_MODEL=${OLLAMA_VISION_MODEL:-}
+
+      # Backups
+      - BACKUP_INTERVAL_HOURS=${BACKUP_INTERVAL_HOURS:-24}
+      - BACKUP_KEEP_DAYS=${BACKUP_KEEP_DAYS:-30}
+      - BACKUP_KEEP_MIN=${BACKUP_KEEP_MIN:-7}
+      - BACKUP_AGE_RECIPIENT=${BACKUP_AGE_RECIPIENT:-}
+
+      # SimpleFIN bank sync
+      - SIMPLEFIN_ENCRYPTION_KEY=${SIMPLEFIN_ENCRYPTION_KEY:-}
+
+      # SMTP notifications
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_TLS=${SMTP_TLS:-true}
+      - SMTP_FROM=${SMTP_FROM:-noreply@igab.local}
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:${WEB_PORT:-8080}/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
