@@ -1,0 +1,15 @@
+/* Best-effort styling for browsers that render their own select popups
+   (Firefox, Chrome on Windows/Linux). macOS native popups ignore this and
+   rely on the indent baked into the option labels. */
+.grouped-cat__group {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text-muted);
+  background-color: var(--bg-secondary);
+}
+
+.grouped-cat__option {
+  font-weight: 400;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+}

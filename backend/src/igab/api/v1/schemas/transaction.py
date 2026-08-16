@@ -79,6 +79,7 @@ class TransactionResponse(BaseModel):
     account_id: uuid.UUID
     date: datetime.date
     entered_date: datetime.date | None = None
+    bank_posted_date: datetime.date | None = None
     amount: Decimal
     payee_id: uuid.UUID | None
     category_id: uuid.UUID | None

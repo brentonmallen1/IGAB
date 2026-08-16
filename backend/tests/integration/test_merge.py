@@ -1,6 +1,7 @@
 """Phase 3 spec: merge asserts two rows are the same real transaction.
 Amounts must match, attachments follow the survivor, pending review matches
-die with the deleted row, and bank identity (with its date) is adopted."""
+die with the deleted row, and bank identity is adopted. The survivor's ledger
+date is never rewritten — bank provenance arrives as bank_posted_date."""
 
 from datetime import date, timedelta
 from decimal import Decimal
@@ -82,7 +83,7 @@ async def test_merge_moves_attachments_and_cancels_matches(db_session):
     await assert_financial_invariants(db_session, budget.id)
 
 
-async def test_merge_adopts_bank_date_with_provenance(db_session):
+async def test_merge_keeps_survivor_date_and_inherits_bank_posted_date(db_session):
     services, budget, checking = await _setup(db_session)
     user_day = TODAY - timedelta(days=2)
     manual = await create_transaction(db_session, budget, checking, "-50.00", user_day)
@@ -95,8 +96,45 @@ async def test_merge_adopts_bank_date_with_provenance(db_session):
         budget.id, [manual.id, synced.id], survivor_id=manual.id
     )
 
-    assert survivor.date == TODAY, "ledger aligns to the bank posted date"
-    assert survivor.entered_date == user_day, "user's date preserved as metadata"
+    assert survivor.date == user_day, "the survivor's ledger date is never rewritten"
+    assert survivor.entered_date is None, "no date rewrite, no provenance copy"
+    assert survivor.bank_posted_date == TODAY, "bank date arrives as metadata instead"
+
+
+async def test_merge_prefers_losers_explicit_bank_posted_date(db_session):
+    services, budget, checking = await _setup(db_session)
+    posted_day = TODAY - timedelta(days=1)
+    manual = await create_transaction(db_session, budget, checking, "-50.00", TODAY)
+    synced = await create_transaction(
+        db_session, budget, checking, "-50.00", TODAY,
+        sync_id="t-3", sync_source="simplefin", bank_posted_date=posted_day,
+    )
+
+    survivor = await services.transactions.merge(
+        budget.id, [manual.id, synced.id], survivor_id=manual.id
+    )
+
+    assert survivor.bank_posted_date == posted_day
+
+
+async def test_merge_bank_row_survivor_keeps_own_date_with_provenance(db_session):
+    """Mirror case: the user picks the bank row as survivor — it keeps its own
+    (bank) date and the manual row's date is preserved once in entered_date."""
+    services, budget, checking = await _setup(db_session)
+    user_day = TODAY - timedelta(days=2)
+    manual = await create_transaction(db_session, budget, checking, "-50.00", user_day)
+    synced = await create_transaction(
+        db_session, budget, checking, "-50.00", TODAY,
+        sync_id="t-4", sync_source="simplefin",
+    )
+
+    survivor = await services.transactions.merge(
+        budget.id, [manual.id, synced.id], survivor_id=synced.id
+    )
+
+    assert survivor.id == synced.id
+    assert survivor.date == TODAY
+    assert survivor.entered_date == user_day, "manual date kept once as provenance"
 
 
 async def test_merge_conflicting_sync_ids_rejected(db_session):

@@ -4,8 +4,11 @@ with per-leg cleared state preserved and both legs linked."""
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import select
+
+from igab.db.models import Transaction
 from igab.integrations.ynab.importer import YNABImporter
-from igab.integrations.ynab.models import YNABBudget, YNABTransaction
+from igab.integrations.ynab.models import YNABBudget, YNABSplitLeg, YNABTransaction
 from igab.repositories.category_repo import CategoryGroupRepository
 
 from .factories import create_budget, create_user, make_services
@@ -178,3 +181,157 @@ async def test_account_type_overrides_applied(db_session):
     brokerage = accounts["Brokerage"]
     assert brokerage.account_type == "tracking"
     assert brokerage.on_budget is False
+
+
+def _split_txn(account, payee, legs, *, cleared="cleared"):
+    """legs: (amount, group, category, memo) tuples; total computed."""
+    return YNABTransaction(
+        account_name=account,
+        date=JAN5,
+        payee=payee,
+        category_group=None,
+        category=None,
+        memo=None,
+        amount=sum((Decimal(a) for a, _, _, _ in legs), Decimal("0")),
+        cleared=cleared,
+        splits=[
+            YNABSplitLeg(category_group=g, category=c, memo=m, amount=Decimal(a))
+            for a, g, c, m in legs
+        ],
+    )
+
+
+async def _all_rows(db_session, account_id) -> list[Transaction]:
+    rows = await db_session.execute(
+        select(Transaction).where(Transaction.account_id == account_id)
+    )
+    return list(rows.scalars().all())
+
+
+async def test_split_imports_as_parent_plus_children(db_session):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    data = YNABBudget(
+        transactions=[
+            _split_txn(
+                "Checking",
+                "BJs Wholesale",
+                [
+                    ("-63.97", "Everyday", "Groceries", None),
+                    ("0.00", "Everyday", "Pets", None),
+                    ("-90.93", "Everyday", "Household", "paper towels"),
+                ],
+                cleared="reconciled",
+            )
+        ]
+    )
+    result = await _importer(services, db_session, budget).import_budget(data)
+
+    assert result.errors == []
+    assert result.transactions_imported == 1, "a split counts as ONE transaction"
+
+    accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
+    rows = await _all_rows(db_session, accounts["Checking"].id)
+    assert len(rows) == 4
+
+    parent = next(r for r in rows if r.is_split)
+    assert parent.amount == Decimal("-154.90")
+    assert parent.category_id is None
+    assert parent.parent_transaction_id is None
+    assert parent.cleared == "reconciled"
+    assert parent.import_id is not None
+
+    children = sorted(
+        (r for r in rows if r.parent_transaction_id == parent.id),
+        key=lambda r: r.import_id or "",
+    )
+    assert [c.amount for c in children] == [
+        Decimal("-63.97"),
+        Decimal("0.00"),
+        Decimal("-90.93"),
+    ]
+    assert all(c.cleared == "reconciled" and c.approved for c in children)
+    assert all(c.category_id is not None for c in children)
+    assert children[2].memo == "paper towels"
+    assert [c.import_id for c in children] == [
+        f"{parent.import_id}:s1",
+        f"{parent.import_id}:s2",
+        f"{parent.import_id}:s3",
+    ]
+
+    # Balances count the parent only — the bank sees one -154.90 charge
+    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal(
+        "-154.90"
+    )
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_split_reimport_fully_idempotent(db_session):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    data = YNABBudget(
+        transactions=[
+            _split_txn(
+                "Checking",
+                "Target",
+                [
+                    ("-74.44", "Everyday", "Groceries", None),
+                    ("-89.50", "Everyday", "Household", None),
+                ],
+            )
+        ]
+    )
+    first = await _importer(services, db_session, budget).import_budget(data)
+    assert first.transactions_imported == 1
+
+    second = await _importer(services, db_session, budget).import_budget(data)
+    assert second.transactions_imported == 0, (
+        f"re-import duplicated a split (errors={second.errors})"
+    )
+
+    accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
+    rows = await _all_rows(db_session, accounts["Checking"].id)
+    assert len(rows) == 3, "parent + 2 children, nothing duplicated"
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_split_and_identical_flat_row_coexist(db_session):
+    """A split totalling -50.00 and a plain -50.00 row, same day and payee:
+    both must import (distinct import_ids) and re-import must stay clean."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    data = YNABBudget(
+        transactions=[
+            _split_txn(
+                "Checking",
+                "Corner Market",
+                [
+                    ("-30.00", "Everyday", "Groceries", None),
+                    ("-20.00", "Everyday", "Household", None),
+                ],
+            ),
+            _txn(
+                "Checking", "Corner Market", "-50.00", group="Everyday", category="Groceries"
+            ),
+        ]
+    )
+    first = await _importer(services, db_session, budget).import_budget(data)
+    assert first.transactions_imported == 2
+    assert first.errors == []
+
+    second = await _importer(services, db_session, budget).import_budget(data)
+    assert second.transactions_imported == 0
+
+    accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
+    rows = await _all_rows(db_session, accounts["Checking"].id)
+    assert len(rows) == 4, "split parent + 2 children + flat row"
+    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal(
+        "-100.00"
+    )
+    await assert_financial_invariants(db_session, budget.id)

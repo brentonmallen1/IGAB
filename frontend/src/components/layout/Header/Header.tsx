@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { CalendarDays, ChevronLeft, ChevronRight, Eye, EyeOff, Moon, Palette, Search, Sun } from 'lucide-react'
 import { useAppStore, PALETTES, getPaletteForTheme, isLightTheme } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -19,6 +20,8 @@ export function Header() {
   const { formatMonth } = useFormatters()
   const [themeOpen, setThemeOpen] = useState(false)
   const themeRef = useRef<HTMLDivElement>(null)
+  // selectedMonth only drives the budget view; elsewhere the nav is dead weight.
+  const onBudgetPage = useLocation().pathname === '/budget'
 
   useEffect(() => {
     if (!themeOpen) return
@@ -33,33 +36,35 @@ export function Header() {
 
   return (
     <header className="header">
-      <div className="header__month-nav">
-        <button
-          className="header__month-btn"
-          onClick={() => setSelectedMonth(addMonths(selectedMonth, -1))}
-          aria-label="Previous month"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <span className="header__month-label">{formatMonth(selectedMonth)}</span>
-        <button
-          className="header__month-btn"
-          onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
-          aria-label="Next month"
-        >
-          <ChevronRight size={16} />
-        </button>
-        {selectedMonth !== currentMonthStart() && (
+      {onBudgetPage && (
+        <div className="header__month-nav">
           <button
-            className="header__today-btn"
-            onClick={() => setSelectedMonth(currentMonthStart())}
-            title="Go to current month"
-            aria-label="Go to current month"
+            className="header__month-btn"
+            onClick={() => setSelectedMonth(addMonths(selectedMonth, -1))}
+            aria-label="Previous month"
           >
-            <CalendarDays size={14} />
+            <ChevronLeft size={16} />
           </button>
-        )}
-      </div>
+          <span className="header__month-label">{formatMonth(selectedMonth)}</span>
+          <button
+            className="header__month-btn"
+            onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+            aria-label="Next month"
+          >
+            <ChevronRight size={16} />
+          </button>
+          {selectedMonth !== currentMonthStart() && (
+            <button
+              className="header__today-btn"
+              onClick={() => setSelectedMonth(currentMonthStart())}
+              title="Go to current month"
+              aria-label="Go to current month"
+            >
+              <CalendarDays size={14} />
+            </button>
+          )}
+        </div>
+      )}
 
       <AIActivityBadge />
 

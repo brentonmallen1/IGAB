@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { LogOut, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import {
   useBudgets,
@@ -147,6 +148,21 @@ export function BudgetSelectorPage() {
         file,
         accountTypes: accountChoices,
       })
+      const r = result.import_result
+      const parts = [
+        `${r.transactions.toLocaleString()} transactions`,
+        `${r.accounts} accounts`,
+        `${r.categories} categories`,
+      ]
+      if (r.assignments) parts.push(`${r.assignments.toLocaleString()} budget assignments`)
+      if (r.skipped) parts.push(`${r.skipped.toLocaleString()} skipped`)
+      toast.success(`Imported ${parts.join(', ')}`, { duration: 15000 })
+      if (r.errors.length > 0) {
+        toast.error(
+          `${r.errors.length} rows had problems — first: ${r.errors[0]}`,
+          { duration: 15000 },
+        )
+      }
       setCurrentBudgetId(result.budget.id)
       navigate('/budget')
     } catch (err: unknown) {

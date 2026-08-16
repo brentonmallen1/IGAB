@@ -388,9 +388,16 @@ export const TransactionRow = memo(function TransactionRow({
         className="txn-col txn-col--date"
         onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'date')}
         title={
-          txn.entered_date && txn.entered_date !== txn.date
-            ? `Bank posted date. Originally entered ${formatDate(txn.entered_date)}.`
-            : undefined
+          [
+            txn.bank_posted_date && txn.bank_posted_date !== txn.date
+              ? `Bank posted ${formatDate(txn.bank_posted_date)}.`
+              : null,
+            txn.entered_date && txn.entered_date !== txn.date
+              ? `Originally entered ${formatDate(txn.entered_date)}.`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
         }
       >
         {isEditing('date') ? (

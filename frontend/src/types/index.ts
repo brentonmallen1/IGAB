@@ -113,6 +113,8 @@ export interface Transaction {
   date: string
   /** The user's originally-entered date when bank data overwrote `date` */
   entered_date: string | null
+  /** The bank's posted date; `date` stays the user's ledger date */
+  bank_posted_date: string | null
   amount: number
   payee_id: string | null
   category_id: string | null
@@ -649,6 +651,8 @@ export interface SimpleFINRateLimitStatus {
 export interface SyncResult {
   imported: number
   skipped: number
+  matched: number
+  review_queued: number
   cleared: number
   error: string | null
   global_used: number | null

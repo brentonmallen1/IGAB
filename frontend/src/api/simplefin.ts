@@ -102,9 +102,18 @@ export function useSyncSimpleFIN(budgetId: string | null) {
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: ['all-transactions'] })
       qc.invalidateQueries({ queryKey: ['accounts'] })
       qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
       qc.invalidateQueries({ queryKey: ['simplefin-rate-limit'] })
+      // Sync can queue review matches, create unapproved rows, and advance
+      // cleared state — every "needs attention" surface must refetch.
+      qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
+      qc.invalidateQueries({ queryKey: ['pending-matches-account'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
+      qc.invalidateQueries({ queryKey: ['reconcile-status'] })
+      qc.invalidateQueries({ queryKey: ['budgetMonth'] })
     },
   })
 }
@@ -197,6 +206,11 @@ export function useAcceptMatch(accountId?: string) {
       qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
       qc.invalidateQueries({ queryKey: ['pending-matches-account', accountId] })
       qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: ['all-transactions'] })
+      // Accepting merges away the duplicate — cleared/working balances change
+      qc.invalidateQueries({ queryKey: ['accounts'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+      qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
     },
   })
 }

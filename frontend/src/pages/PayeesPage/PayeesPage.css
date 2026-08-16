@@ -286,6 +286,9 @@
   border-radius: var(--border-radius-lg);
   width: 440px;
   max-width: calc(100vw - 32px);
+  /* Long candidate lists scroll inside the body — header and footer
+     controls stay pinned and reachable */
+  max-height: min(640px, 85vh);
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
@@ -316,6 +319,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .payees-wizard__label {
@@ -357,6 +362,85 @@
 .payees-wizard__option--selected {
   background: color-mix(in srgb, var(--color-accent) 10%, var(--bg-secondary));
   border-color: var(--color-accent);
+}
+
+.payees-wizard__option--check {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.payees-wizard__candidate {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.payees-wizard__peek-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.payees-wizard__peek-btn:hover,
+.payees-wizard__peek-btn--open {
+  background-color: var(--bg-hover, var(--bg-tertiary));
+  color: var(--text-primary);
+}
+
+.payees-peek {
+  margin: 0 var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-primary);
+  font-size: var(--font-size-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.payees-peek--muted {
+  color: var(--text-muted);
+}
+
+.payees-peek__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.payees-peek__date {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.payees-peek__memo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.payees-peek__amount {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.payees-peek__more {
+  margin-top: 2px;
+  color: var(--text-muted);
 }
 
 /* Cleanup method toggle */
