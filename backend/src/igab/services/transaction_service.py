@@ -503,6 +503,9 @@ class TransactionService:
             updates["import_description"] = deleted.import_description
         if not survivor.sync_id and deleted.sync_id:
             updates["sync_id"] = deleted.sync_id
+        # An id-less bank feed row has sync_source but no sync_id — its bank
+        # identity still transfers to the survivor.
+        if not survivor.sync_source and deleted.sync_source:
             updates["sync_source"] = deleted.sync_source
         if deleted.has_sync_source or survivor.has_sync_source:
             updates["has_sync_source"] = True
@@ -511,14 +514,15 @@ class TransactionService:
         # user chose by picking the survivor. Bank provenance follows the
         # merge as metadata instead.
         if survivor.bank_posted_date is None:
-            inherited = deleted.bank_posted_date or (deleted.date if deleted.sync_id else None)
+            deleted_is_bank = bool(deleted.sync_id or deleted.sync_source)
+            inherited = deleted.bank_posted_date or (deleted.date if deleted_is_bank else None)
             if inherited is not None:
                 updates["bank_posted_date"] = inherited
         # Mirror case: survivor is the bank row, the deleted row is manual —
         # keep the user's date once as entered-date provenance.
         if (
-            survivor.sync_id
-            and not deleted.sync_id
+            (survivor.sync_id or survivor.sync_source)
+            and not (deleted.sync_id or deleted.sync_source)
             and survivor.entered_date is None
             and deleted.date != survivor.date
         ):
