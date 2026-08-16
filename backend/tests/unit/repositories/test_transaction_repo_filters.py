@@ -134,3 +134,40 @@ class TestGetForAccountFilterBranching:
         sql1 = _captured_sql(repo1)
         sql2 = _captured_sql(repo2)
         assert sql1 == sql2
+
+
+class TestSimilarTransactionOrdering:
+    """find_similar_transactions must be deterministic: an unordered LIMIT
+    could arbitrarily evict the closest row when same-amount rows crowd the
+    date window."""
+
+    @pytest.mark.asyncio
+    async def test_orders_nearest_date_first_with_unique_tiebreak(self) -> None:
+        repo = _make_repo()
+        await repo.find_similar_transactions(uuid.uuid4(), 100, date(2026, 8, 10))
+        sql = _captured_sql(repo)
+        assert "order by" in sql.lower()
+        assert "abs(" in sql.lower(), "nearest-date-first ordering"
+        assert "transactions.id" in sql.lower(), "unique tiebreak so LIMIT is stable"
+        assert "limit" in sql.lower()
+
+
+class TestDuplicatePairStructuredFilter:
+    """Pairs where BOTH sides are structured (split parent / transfer leg)
+    can never be merged, so the scan must not offer them for review."""
+
+    @pytest.mark.asyncio
+    async def test_pair_query_excludes_double_structured_pairs(self) -> None:
+        repo = _make_repo()
+        result_mock = MagicMock()
+        result_mock.all.return_value = []
+        repo.session.execute = AsyncMock(return_value=result_mock)
+        await repo.find_duplicate_candidate_pairs(uuid.uuid4())
+        # No literal_binds: the date-window timedelta param can't be rendered
+        # as a literal, and these assertions only need column names.
+        stmt = repo.session.execute.call_args[0][0]
+        sql = str(stmt.compile(dialect=sqlite.dialect()))
+        assert "is_split" in sql.lower()
+        assert "transfer_id" in sql.lower()
+        # At least one side of every pair must be flat (not split, not transfer)
+        assert " or " in sql.lower()
