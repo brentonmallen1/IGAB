@@ -191,7 +191,7 @@ test-frontend:
 prod:
     docker compose --profile production up -d
 
-# Tag and push a new release (triggers CI to build and publish images)
+# Create a GitHub release (triggers CI to build and publish images)
 release VERSION:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -210,13 +210,18 @@ release VERSION:
         echo "Error: Uncommitted changes. Commit or stash first."
         exit 1
     fi
+    # Check gh CLI is available
+    if ! command -v gh &> /dev/null; then
+        echo "Error: gh CLI not found. Install from https://cli.github.com"
+        exit 1
+    fi
     echo "Releasing $version..."
     git push origin main
-    git tag "$version"
-    git push origin "$version"
-    echo "✓ Tagged and pushed $version"
+    # Create release (also creates the tag) with auto-generated notes
+    gh release create "$version" --generate-notes --latest
+    echo "✓ Released $version"
     echo "  CI will build and publish images to ghcr.io"
-    echo "  Watch: https://github.com/brentonmallen1/IGAB/actions"
+    echo "  Release: https://github.com/brentonmallen1/IGAB/releases/tag/$version"
 
 # ─── Utility ──────────────────────────────────────────────────────────────────
 
