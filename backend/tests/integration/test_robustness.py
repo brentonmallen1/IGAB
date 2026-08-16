@@ -144,3 +144,33 @@ async def test_duplicate_scan_sql_pairs(db_session):
     # Idempotent: re-scan creates nothing new
     again = await services.matching.scan_for_duplicates(account.id)
     assert again == 0
+
+
+async def test_find_similar_deterministic_under_crowding(db_session):
+    """Seven same-amount rows crowd the ±3-day window; a LIMIT 5 without an
+    ORDER BY would return an arbitrary subset. Nearest-first with a unique
+    tiebreak must return the same five rows, nearest first, every time."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    account = await create_account(db_session, budget, "Checking")
+    center = TODAY - timedelta(days=10)
+
+    by_delta = {}
+    for delta in (0, 1, -1, 2, -2, 3, -3):
+        by_delta[delta] = await create_transaction(
+            db_session, budget, account, "-9.99", center + timedelta(days=delta)
+        )
+
+    first = await services.transaction_repo.find_similar_transactions(
+        account.id, Decimal("-9.99"), center
+    )
+    second = await services.transaction_repo.find_similar_transactions(
+        account.id, Decimal("-9.99"), center
+    )
+
+    assert [t.id for t in first] == [t.id for t in second], "same query, same answer"
+    expected = [by_delta[d].id for d in (0, 1, -1, 2, -2)]
+    assert [t.id for t in first] == expected, (
+        "nearest date first, future side wins ties; the ±3 rows fall to the LIMIT"
+    )
