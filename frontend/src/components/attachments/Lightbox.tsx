@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { usePinchZoom } from '../../hooks/usePinchZoom'
 import './Lightbox.css'
@@ -57,7 +58,9 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext }
     reset()
   }, [src, reset])
 
-  return (
+  // Portal to document.body so the lightbox escapes any parent stacking context
+  // (e.g. TransactionEditor's z-index: 100) and renders above everything.
+  return createPortal(
     <div
       className="lightbox-overlay"
       onClick={onClose}
@@ -98,6 +101,7 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext }
           <ChevronRight size={32} />
         </button>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }
