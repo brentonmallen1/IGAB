@@ -625,10 +625,14 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     [buildRowItems, regularTxns]
   )
 
-  const bodyRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    let el: HTMLElement | null = bodyRef.current?.parentElement ?? null
+  // Callback ref, not a mount effect: the body div doesn't exist while the
+  // loading/empty branches render, so discovery must run whenever it attaches.
+  const attachBody = useCallback((node: HTMLDivElement | null) => {
+    bodyRef.current = node
+    if (!node) return
+    let el: HTMLElement | null = node.parentElement
     while (el && el !== document.body) {
       const { overflowY } = getComputedStyle(el)
       if (overflowY === 'auto' || overflowY === 'scroll') break
@@ -883,7 +887,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           )}
 
           <div
-            ref={bodyRef}
+            ref={attachBody}
             className="transaction-table__body"
             style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
           >
