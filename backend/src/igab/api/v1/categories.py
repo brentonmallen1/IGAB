@@ -155,6 +155,7 @@ async def create_category(
         budget_id=budget_id,
         category_group_id=body.category_group_id,
         name=body.name,
+        subtitle=body.subtitle,
         sort_order=body.sort_order,
         note=body.note,
     )

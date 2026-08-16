@@ -8,6 +8,7 @@ import { AvailableBreakdown } from './AvailableBreakdown'
 import { TargetSection } from './TargetSection'
 import { AutoAssignSection } from './AutoAssignSection'
 import { CategoryNotesSection } from './CategoryNotesSection'
+import { CategorySubtitleSection } from './CategorySubtitleSection'
 import { TagsSection } from './TagsSection'
 import { MonthSummary } from './MonthSummary'
 import './CategoryInspector.css'
@@ -115,6 +116,10 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
                 )}
 
                 <AutoAssignSection categoryIds={selectedIds} budgetId={budgetId} />
+
+                {isSingle && singleCategory && (
+                  <CategorySubtitleSection category={singleCategory} budgetId={budgetId} />
+                )}
 
                 {isSingle && singleCategory && (
                   <CategoryNotesSection category={singleCategory} budgetId={budgetId} />
