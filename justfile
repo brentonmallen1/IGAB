@@ -191,6 +191,31 @@ test-frontend:
 prod:
     docker compose --profile production up -d
 
+# Tag and push a new release (triggers CI to build and publish images)
+release VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version="{{VERSION}}"
+    # Ensure version starts with 'v'
+    [[ "$version" == v* ]] || version="v$version"
+    # Validate semver-ish format
+    if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+        echo "Error: Version must be semver (e.g., 1.2.3 or v1.2.3)"
+        exit 1
+    fi
+    # Check for uncommitted changes
+    if ! git diff --quiet HEAD; then
+        echo "Error: Uncommitted changes. Commit or stash first."
+        exit 1
+    fi
+    echo "Releasing $version..."
+    git push origin main
+    git tag "$version"
+    git push origin "$version"
+    echo "✓ Tagged and pushed $version"
+    echo "  CI will build and publish images to ghcr.io"
+    echo "  Watch: https://github.com/brentonmallen1/IGAB/actions"
+
 # ─── Utility ──────────────────────────────────────────────────────────────────
 
 # Show running containers
