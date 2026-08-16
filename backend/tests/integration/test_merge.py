@@ -137,6 +137,28 @@ async def test_merge_bank_row_survivor_keeps_own_date_with_provenance(db_session
     assert survivor.entered_date == user_day, "manual date kept once as provenance"
 
 
+async def test_merge_idless_bank_loser_confers_identity(db_session):
+    """An id-less feed row (sync_source set, sync_id NULL) is still the bank's
+    row: the survivor inherits sync_source and posted-date provenance."""
+    services, budget, checking = await _setup(db_session)
+    manual = await create_transaction(
+        db_session, budget, checking, "-50.00", TODAY - timedelta(days=1)
+    )
+    idless = await create_transaction(
+        db_session, budget, checking, "-50.00", TODAY, sync_source="simplefin"
+    )
+
+    survivor = await services.transactions.merge(
+        budget.id, [manual.id, idless.id], survivor_id=manual.id
+    )
+
+    assert survivor.id == manual.id
+    assert survivor.sync_id is None
+    assert survivor.sync_source == "simplefin", "id-less bank identity transfers"
+    assert survivor.bank_posted_date == TODAY, "the bank row's date arrives as provenance"
+    await assert_financial_invariants(db_session, budget.id)
+
+
 async def test_merge_conflicting_sync_ids_rejected(db_session):
     services, budget, checking = await _setup(db_session)
     a = await create_transaction(
