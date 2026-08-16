@@ -12,6 +12,7 @@ from igab.services.settings_service import SettingsService
 router = APIRouter()
 
 EDITABLE_KEYS = {
+    "ai_enabled",
     "ollama_host",
     "ollama_model",
     "ollama_vision_model",
@@ -69,11 +70,11 @@ def _validate_setting(key: str, value: str) -> None:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"{key} must be an integer between {lo} and {hi}",
             )
-    elif key == "update_check_enabled":
+    elif key in ("update_check_enabled", "ai_enabled"):
         if value not in ("true", "false"):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="update_check_enabled must be 'true' or 'false'",
+                detail=f"{key} must be 'true' or 'false'",
             )
     elif key == "backup_age_recipient":
         if value and not re.fullmatch(r"age1[0-9a-z]+", value):
