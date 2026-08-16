@@ -14,8 +14,15 @@
 
 .main-layout__main {
   flex: 1;
+  min-height: 0; /* Allow shrinking in flex container */
   overflow-y: auto;
   background-color: var(--bg-primary);
+  /* Containing block for absolutely-positioned descendants (e.g. .sr-only) so
+     they clip to this scroll container instead of stretching <html> */
+  position: relative;
+  /* Enable pages to fill height when they need to manage their own scroll */
+  display: flex;
+  flex-direction: column;
 }
 
 @media (max-width: 768px) {
