@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
@@ -25,8 +26,20 @@ MAX_RETRY_ATTEMPTS = 3
 RETRY_BASE_DELAY = 2.0  # seconds, doubles each attempt
 
 DEDUP_AUTO_MATCH_THRESHOLD = 0.80
-DEDUP_REVIEW_THRESHOLD = 0.55
-DEDUP_DATE_WINDOW_DAYS = 5
+# How far to search for exact-amount candidates. Wide enough to cover
+# settlement lag: a payment the user dates when initiated can post a week+
+# later (observed: credit-card payment dated 6/15, posted 6/22).
+DEDUP_DATE_WINDOW_DAYS = 10
+# Auto-matching is confined to this radius (the date-proximity score curve is
+# anchored here too). Beyond it, exact amount + similar payee is as likely a
+# recurring charge as a settlement-lagged duplicate — those candidates only
+# ever reach the review queue.
+DEDUP_AUTO_DATE_MAX_DAYS = 5
+# Exact amount + a date this tight is near-certain identity regardless of payee
+# (bank descriptors rarely resemble user-renamed payees).
+DEDUP_TIGHT_DATE_DAYS = 1
+# Payee-similarity margin that resolves a same-day tie between candidates.
+DEDUP_TIEBREAK_MARGIN = 0.10
 
 
 def _payee_similarity(a: str | None, b: str | None) -> float:
@@ -39,9 +52,9 @@ def _payee_similarity(a: str | None, b: str | None) -> float:
 
 def _date_proximity_score(synced: date, existing: date) -> float:
     delta = abs((synced - existing).days)
-    if delta > DEDUP_DATE_WINDOW_DAYS:
+    if delta > DEDUP_AUTO_DATE_MAX_DAYS:
         return 0.0
-    return 1.0 - (delta / (DEDUP_DATE_WINDOW_DAYS + 1))
+    return 1.0 - (delta / (DEDUP_AUTO_DATE_MAX_DAYS + 1))
 
 
 def _calculate_dedup_score(
@@ -58,6 +71,65 @@ def _calculate_dedup_score(
         + _payee_similarity(synced_payee, existing_payee) * 0.8,
         4,
     )
+
+
+@dataclass(frozen=True)
+class _MatchDecision:
+    action: Literal["auto", "review", "create"]
+    candidate: Transaction | None = None
+    score: float = 0.0
+
+
+def _decide_match(
+    synced_payee: str | None,
+    txn_date: date,
+    is_posted: bool,
+    candidates: list[tuple[Transaction, str | None]],
+) -> _MatchDecision:
+    """Decide how an incoming bank transaction relates to existing rows.
+
+    Candidates already share the exact amount within the date window. The
+    ladder: payee-driven auto-match on combined score, then structural
+    auto-match (≤1 day, posted rows only — pending amounts are provisional),
+    then review. A candidate is never silently ignored: an unmatched
+    exact-amount neighbor left behind is how duplicate rows are born.
+    """
+    if not candidates:
+        return _MatchDecision("create")
+
+    scored = [
+        (
+            txn,
+            _payee_similarity(synced_payee, payee_name),
+            abs((txn_date - txn.date).days),
+            _calculate_dedup_score(synced_payee, txn_date, payee_name, txn.date),
+        )
+        for txn, payee_name in candidates
+    ]
+
+    best = max(scored, key=lambda s: s[3])
+    if best[3] >= DEDUP_AUTO_MATCH_THRESHOLD:
+        if best[2] <= DEDUP_AUTO_DATE_MAX_DAYS:
+            return _MatchDecision("auto", best[0], best[3])
+        # A candidate this strong but this distant (long settlement? weekly
+        # recurring charge?) makes every structural shortcut below unsafe —
+        # a human sorts it out.
+        return _MatchDecision("review", best[0], best[3])
+
+    if is_posted:
+        near = [s for s in scored if s[2] <= DEDUP_TIGHT_DATE_DAYS]
+        if len(near) == 1:
+            return _MatchDecision("auto", near[0][0], near[0][3])
+        if len(near) > 1:
+            # Same-amount, same-day rows (recurring purchases, split legs):
+            # payee similarity is the only disambiguator left. A clear winner
+            # takes the match; a near-tie goes to human review over a guess.
+            near.sort(key=lambda s: (-s[1], s[2]))
+            if near[0][1] - near[1][1] >= DEDUP_TIEBREAK_MARGIN:
+                return _MatchDecision("auto", near[0][0], near[0][3])
+            return _MatchDecision("review", near[0][0], near[0][3])
+
+    return _MatchDecision("review", best[0], best[3])
 
 
 class RateLimitError(IGABError):
@@ -226,7 +298,14 @@ class SimpleFINService:
         target_sf_ids = {a.simplefin_account_id for a in targets}
         imported = 0
         skipped = 0
+        matched = 0
+        review_queued = 0
         cleared = 0
+        # Rows claimed this run — matched candidates, review candidates, and
+        # rows we created. Excluded from later candidate queries so two
+        # identical feed rows can never collapse onto the same existing row
+        # (or onto each other, for id-less feeds).
+        consumed_ids: set[uuid.UUID] = set()
 
         for t in txns_raw:
             acct_sf_id = t.get("account_id")
@@ -262,7 +341,10 @@ class SimpleFINService:
                     # routinely change — tips, gas holds). The prior date is
                     # preserved once in entered_date as provenance.
                     if existing.cleared == "pending" and is_posted:
-                        updates: dict[str, object] = {"cleared": "cleared"}
+                        updates: dict[str, object] = {
+                            "cleared": "cleared",
+                            "bank_posted_date": txn_date,
+                        }
                         if existing.amount != amount:
                             updates["amount"] = amount
                         if existing.date != txn_date:
@@ -278,45 +360,35 @@ class SimpleFINService:
             # Dedup against transactions that lack a sync link
             # (YNAB imports, manual entries, CSV imports)
             candidates = await self.txn_repo.find_existing_match_candidates(
-                account.id, amount, txn_date, date_window_days=DEDUP_DATE_WINDOW_DAYS
+                account.id,
+                amount,
+                txn_date,
+                date_window_days=DEDUP_DATE_WINDOW_DAYS,
+                exclude_ids=consumed_ids,
             )
-            best_match: Transaction | None = None
-            best_score = 0.0
-            if candidates:
-                for existing_txn, existing_payee in candidates:
-                    score = _calculate_dedup_score(
-                        synced_payee, txn_date, existing_payee, existing_txn.date
-                    )
-                    if score > best_score:
-                        best_score, best_match = score, existing_txn
+            decision = _decide_match(synced_payee, txn_date, is_posted, candidates)
 
-                if best_match is not None and best_score >= DEDUP_AUTO_MATCH_THRESHOLD:
-                    updates = {
-                        "sync_source": "simplefin",
-                        "import_description": t.get("description"),
-                        "has_sync_source": True,
-                    }
-                    if sync_id is not None:
-                        updates["sync_id"] = sync_id
-                    if best_match.cleared != "reconciled":
-                        # Bank posted date wins for ledger alignment; keep the
-                        # user's entered date once as provenance.
-                        if best_match.date != txn_date:
-                            updates["date"] = txn_date
-                            if best_match.entered_date is None:
-                                updates["entered_date"] = best_match.date
-                        if best_match.cleared in ("pending", "uncleared") and is_posted:
-                            updates["cleared"] = "cleared"
-                            cleared += 1
-                    await self.txn_repo.update(best_match.id, **updates)
-                    skipped += 1
-                    continue
-
-            near_miss_candidate = (
-                best_match
-                if best_match is not None and best_score >= DEDUP_REVIEW_THRESHOLD
-                else None
-            )
+            if decision.action == "auto" and decision.candidate is not None:
+                best_match = decision.candidate
+                updates = {
+                    "sync_source": "simplefin",
+                    "import_description": t.get("description"),
+                    "has_sync_source": True,
+                }
+                if sync_id is not None:
+                    updates["sync_id"] = sync_id
+                if is_posted:
+                    # Provenance metadata only — safe on reconciled rows. The
+                    # user's ledger date is never touched; budget months
+                    # follow the date the user (or their YNAB history) chose.
+                    updates["bank_posted_date"] = txn_date
+                if best_match.cleared in ("pending", "uncleared") and is_posted:
+                    updates["cleared"] = "cleared"
+                    cleared += 1
+                await self.txn_repo.update(best_match.id, **updates)
+                consumed_ids.add(best_match.id)
+                matched += 1
+                continue
 
             try:
                 # Savepoint so a duplicate-identity IntegrityError (unique
@@ -334,18 +406,26 @@ class SimpleFINService:
                             sync_source="simplefin",
                             cleared=new_cleared,
                             approved=False,
+                            bank_posted_date=txn_date if is_posted else None,
                         ),
                     )
             except IntegrityError:
                 skipped += 1
                 continue
             if new_txn is not None:
-                if near_miss_candidate is not None and self.matching_service is not None:
-                    await self.matching_service.match_repo.create(
-                        synced_transaction_id=new_txn.id,
-                        manual_transaction_id=near_miss_candidate.id,
-                        confidence_score=best_score,
-                    )
+                consumed_ids.add(new_txn.id)
+                if decision.action == "review" and decision.candidate is not None:
+                    if self.matching_service is not None:
+                        await self.matching_service.match_repo.create(
+                            synced_transaction_id=new_txn.id,
+                            manual_transaction_id=decision.candidate.id,
+                            confidence_score=decision.score,
+                        )
+                        # One review claim per candidate per run: a second
+                        # identical feed row must queue against a different
+                        # existing row, or import clean.
+                        consumed_ids.add(decision.candidate.id)
+                        review_queued += 1
                 elif self.matching_service is not None:
                     await self.matching_service.try_match(new_txn)
             imported += 1
@@ -389,6 +469,8 @@ class SimpleFINService:
         return {
             "imported": imported,
             "skipped": skipped,
+            "matched": matched,
+            "review_queued": review_queued,
             "cleared": cleared,
             "removed_pending": removed_pending,
             **rate_status,

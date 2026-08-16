@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { Settings } from 'lucide-react'
+import {
+  CheckCircle,
+  CircleDot,
+  Link as LinkIcon,
+  Lock,
+  Pencil,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
 import { ReconcileBanner } from '../../components/accounts/ReconcileBanner'
 import { PendingReviewBanner } from '../../components/accounts/PendingReviewBanner'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
-import { formatSyncAge } from '../../components/simplefin/SyncStatusIcon'
 import { useAccounts } from '../../api/accounts'
 import {
   useSimpleFINConnections,
@@ -18,6 +23,15 @@ import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import './AccountPage.css'
+
+function formatReconcileAge(lastReconciledAt: string | null): string {
+  if (!lastReconciledAt) return 'Never reconciled'
+  const ageMs = Date.now() - new Date(lastReconciledAt).getTime()
+  const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+  if (ageDays === 0) return 'Reconciled today'
+  if (ageDays === 1) return 'Reconciled yesterday'
+  return `Reconciled ${ageDays} days ago`
+}
 
 export function AccountPage() {
   const { formatMoney } = useFormatters()
@@ -67,7 +81,9 @@ export function AccountPage() {
         setSyncMsg(null)
       } else {
         const parts = [`Imported ${result.imported}`, `skipped ${result.skipped}`]
+        if (result.matched) parts.push(`matched ${result.matched}`)
         if (result.cleared) parts.push(`cleared ${result.cleared}`)
+        if (result.review_queued) parts.push(`${result.review_queued} need review`)
         const msg = parts.join(', ')
         setSyncMsg(msg)
         toast.success(msg)
@@ -90,63 +106,87 @@ export function AccountPage() {
     )
   }
 
-  const balanceClass = Number(account.balance) < 0 ? 'negative' : 'positive'
+  const clearedClass = Number(account.cleared_balance) < 0 ? 'negative' : 'positive'
+  const workingClass = Number(account.balance) < 0 ? 'negative' : 'positive'
+  const isConnected = account.simplefin_account_id && account.simplefin_sync_enabled
 
   return (
     <div className="account-page">
       <div className="account-page__header">
+        {/* Left: Account identity + balances stacked */}
         <div className="account-page__header-left">
-          <div className="account-page__name">{account.name}</div>
+          <div className="account-page__identity">
+            <h1 className="account-page__name">{account.name}</h1>
+            <div className="account-page__status-row">
+              {isConnected && (
+                <span className="account-page__status-badge account-page__status-badge--connected">
+                  <LinkIcon size={12} />
+                  Connected
+                </span>
+              )}
+              <span className="account-page__status-badge">
+                <Lock size={12} />
+                {formatReconcileAge(account.last_reconciled_at)}
+              </span>
+            </div>
+          </div>
+          <div className="account-page__balances">
+            <div className="account-page__balance-item">
+              <span className={`account-page__balance-value ${clearedClass}`}>
+                {formatMoney(Number(account.cleared_balance))}
+              </span>
+              <span className="account-page__balance-label">
+                <CheckCircle size={10} />
+                Cleared Balance
+              </span>
+            </div>
+            <span className="account-page__balance-op">+</span>
+            <div className="account-page__balance-item">
+              <span className="account-page__balance-value">
+                {formatMoney(Number(account.uncleared_balance))}
+              </span>
+              <span className="account-page__balance-label">
+                <CircleDot size={10} />
+                Uncleared Balance
+              </span>
+            </div>
+            <span className="account-page__balance-op">=</span>
+            <div className="account-page__balance-item account-page__balance-item--working">
+              <span className={`account-page__balance-value ${workingClass}`}>
+                {formatMoney(Number(account.balance))}
+              </span>
+              <span className="account-page__balance-label">Working Balance</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Actions (vertically centered) */}
+        <div className="account-page__actions">
           <button
-            className="account-page__sync-btn"
+            className="account-page__action-btn"
+            onClick={() => openAccountEditor(accountId!)}
+            aria-label="Edit account"
+            title="Edit account"
+          >
+            <Pencil size={16} />
+          </button>
+          {isConnected && (
+            <button
+              className="account-page__action-btn account-page__action-btn--sync"
+              onClick={handleSync}
+              disabled={sync.isPending || !firstConnection}
+            >
+              {sync.isPending ? 'Syncing…' : 'Sync'}
+            </button>
+          )}
+          <button
+            className="account-page__reconcile-btn"
             onClick={() => startReconciliation(accountId!)}
             disabled={isReconciling && reconcileAccountId === accountId}
           >
             Reconcile
           </button>
-          <button
-            className="account-page__settings-btn"
-            onClick={() => openAccountEditor(accountId!)}
-            aria-label="Account settings"
-            title="Account settings"
-          >
-            <Settings size={14} />
-          </button>
-          {account.simplefin_account_id && account.simplefin_sync_enabled && (
-            <div className="account-page__sync-strip">
-              <span className="account-page__sync-age">
-                {formatSyncAge(account.last_simplefin_sync_at ?? null)}
-              </span>
-              <button
-                className="account-page__sync-btn"
-                onClick={handleSync}
-                disabled={sync.isPending || !firstConnection}
-              >
-                {sync.isPending ? 'Syncing…' : 'Sync Now'}
-              </button>
-              {syncMsg && <span className="account-page__sync-msg">{syncMsg}</span>}
-            </div>
-          )}
-        </div>
-        <div className="account-page__meta">
-          <div className="account-page__balance-item">
-            <span className="account-page__balance-label">Cleared</span>
-            <span className={`account-page__balance-value ${Number(account.cleared_balance) < 0 ? 'negative' : ''}`}>
-              {formatMoney(Number(account.cleared_balance))}
-            </span>
-          </div>
-          <div className="account-page__balance-item">
-            <span className="account-page__balance-label">Uncleared</span>
-            <span className="account-page__balance-value">
-              {formatMoney(Number(account.uncleared_balance))}
-            </span>
-          </div>
-          <div className="account-page__balance-item">
-            <span className="account-page__balance-label">Working Balance</span>
-            <span className={`account-page__balance-value ${balanceClass}`}>
-              {formatMoney(Number(account.balance))}
-            </span>
-          </div>
+          {syncMsg && <span className="account-page__sync-msg">{syncMsg}</span>}
         </div>
       </div>
 

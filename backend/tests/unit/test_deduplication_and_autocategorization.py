@@ -429,8 +429,8 @@ class TestSimpleFINSyncDeduplication:
         svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
         return svc
 
-    async def test_skips_when_existing_match_found(self, mock_svc):
-        """Should skip import when find_existing_match_candidates returns a high-score match."""
+    async def test_matches_when_existing_match_found(self, mock_svc):
+        """Should match (not import) when find_existing_match_candidates returns a high-score match."""
         from unittest.mock import patch
 
         budget_id = uuid.uuid4()
@@ -489,7 +489,8 @@ class TestSimpleFINSyncDeduplication:
         ):
             result = await mock_svc.sync(conn.id, budget_id)
 
-        assert result["skipped"] == 1
+        assert result["matched"] == 1
+        assert result["skipped"] == 0
         assert result["imported"] == 0
         mock_svc.txn_service.create.assert_not_called()
 

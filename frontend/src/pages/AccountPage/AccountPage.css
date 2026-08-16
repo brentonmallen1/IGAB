@@ -5,55 +5,86 @@
   overflow: hidden;
 }
 
+/* ---------- Header ---------- */
 .account-page__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-lg);
+  gap: var(--spacing-xl);
+  padding: var(--spacing-lg) var(--spacing-lg);
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
+/* Left: Account identity + balances stacked */
 .account-page__header-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.account-page__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-page__name {
+  font-size: var(--font-size-display);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.1;
+}
+
+.account-page__status-row {
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
 }
 
-.account-page__name {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
+.account-page__status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
 }
 
-.account-page__meta {
+.account-page__status-badge--connected {
+  color: var(--color-positive);
+}
+
+/* Balance equation row */
+.account-page__balances {
   display: flex;
   align-items: center;
-  gap: var(--spacing-lg);
-  font-size: var(--font-size-sm);
+  gap: var(--spacing-md);
 }
 
 .account-page__balance-item {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 2px;
 }
 
-.account-page__balance-label {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+.account-page__balance-item--working {
+  margin-left: var(--spacing-xs);
 }
 
 .account-page__balance-value {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-lg);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.account-page__balance-item--working .account-page__balance-value {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
 }
 
 .account-page__balance-value.positive {
@@ -62,6 +93,77 @@
 
 .account-page__balance-value.negative {
   color: var(--color-negative);
+}
+
+.account-page__balance-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.account-page__balance-op {
+  font-size: var(--font-size-lg);
+  font-weight: 300;
+  color: var(--text-muted);
+  padding: 0 var(--spacing-xs);
+}
+
+/* Right: Actions (vertically centered via parent align-items) */
+.account-page__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.account-page__action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.account-page__action-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.account-page__action-btn--sync {
+  padding: 6px 12px;
+  font-size: var(--font-size-sm);
+  gap: var(--spacing-xs);
+}
+
+.account-page__action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.account-page__reconcile-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.account-page__reconcile-btn:hover {
+  opacity: 0.9;
+}
+
+.account-page__reconcile-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .account-page__body {
@@ -78,62 +180,10 @@
   font-size: var(--font-size-sm);
 }
 
-.account-page__settings-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.account-page__settings-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--text-secondary);
-}
-
-.account-page__sync-strip {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.account-page__sync-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-}
-
-.account-page__sync-age {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
-.account-page__sync-btn {
-  padding: 4px 12px;
-  border: 1px solid var(--color-accent);
-  border-radius: var(--border-radius-sm);
-  background: var(--color-accent);
-  color: var(--bg-primary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.account-page__sync-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .account-page__sync-msg {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+  text-align: right;
 }
 
 .account-page__match-banner {
@@ -206,22 +256,47 @@
   color: var(--text-muted);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .account-page__header {
     flex-direction: column;
-    align-items: flex-start;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm) var(--spacing-md);
+    align-items: stretch;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
   }
 
-  .account-page__meta {
-    width: 100%;
-    gap: var(--spacing-md);
+  .account-page__actions {
+    align-self: flex-start;
+  }
+
+  .account-page__balances {
     justify-content: space-between;
+    width: 100%;
   }
 
   .account-page__balance-item {
     align-items: center;
     flex: 1;
+  }
+
+  .account-page__balance-value {
+    font-size: var(--font-size-base);
+  }
+
+  .account-page__balance-item--working .account-page__balance-value {
+    font-size: var(--font-size-lg);
+  }
+
+  .account-page__name {
+    font-size: var(--font-size-xl);
+  }
+}
+
+@media (max-width: 600px) {
+  .account-page__balance-op {
+    display: none;
+  }
+
+  .account-page__balance-label {
+    font-size: 10px;
   }
 }

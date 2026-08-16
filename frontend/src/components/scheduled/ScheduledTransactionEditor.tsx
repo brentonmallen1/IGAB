@@ -5,6 +5,7 @@ import { useCreateScheduledTransaction, useUpdateScheduledTransaction, useDelete
 import { today } from '../../utils/dates'
 import type { ScheduledTransaction } from '../../types'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { GroupedCategoryOptions } from '../common/GroupedCategoryOptions/GroupedCategoryOptions'
 import './ScheduledTransactionEditor.css'
 
 const FREQUENCIES = [
@@ -148,11 +149,7 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
             Category
             <select className="sched-editor__input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               <option value="">No category</option>
-              {groupedCategories.map(({ group, cats }) => (
-                <optgroup key={group.id} label={group.name}>
-                  {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </optgroup>
-              ))}
+              <GroupedCategoryOptions groups={groupedCategories} />
             </select>
           </label>
 

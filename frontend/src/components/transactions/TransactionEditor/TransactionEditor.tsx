@@ -29,6 +29,7 @@ import {
   sumExpressionsToCents,
 } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
+import { GroupedCategoryOptions } from '../../common/GroupedCategoryOptions/GroupedCategoryOptions'
 import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import './TransactionEditor.css'
@@ -83,7 +84,7 @@ export function TransactionEditor({
   const { data: accounts = [] } = useAccounts(budgetId)
 
   const isMobile = useIsMobile()
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatDate } = useFormatters()
   // Android back / swipe-back cancels the editor instead of leaving the page
   useHistoryDismissable(isMobile, onClose, 'txn-editor')
 
@@ -656,13 +657,7 @@ export function TransactionEditor({
                     onChange={(e) => setCategoryId(e.target.value)}
                   >
                     <option value="">No category</option>
-                    {groupedCategories.map(({ group, cats }) => (
-                      <optgroup key={group.id} label={group.name}>
-                        {cats.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </optgroup>
-                    ))}
+                    <GroupedCategoryOptions groups={groupedCategories} />
                   </select>
                 </div>
               )}
@@ -690,13 +685,7 @@ export function TransactionEditor({
                       onChange={(e) => updateSplit(s.tempId, { categoryId: e.target.value || null })}
                     >
                       <option value="">Category…</option>
-                      {groupedCategories.map(({ group, cats }) => (
-                        <optgroup key={group.id} label={group.name}>
-                          {cats.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </optgroup>
-                      ))}
+                      <GroupedCategoryOptions groups={groupedCategories} />
                     </select>
                     <AmountInput
                       className="txn-editor__input txn-editor__split-amount"
@@ -774,15 +763,7 @@ export function TransactionEditor({
                 onChange={(e) => setCategoryId(e.target.value)}
               >
                 <option value="">No category</option>
-                {groupedCategories.map(({ group, cats }) => (
-                  <optgroup key={group.id} label={group.name}>
-                    {cats.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
+                <GroupedCategoryOptions groups={groupedCategories} />
               </select>
             </div>
           )}
@@ -820,6 +801,17 @@ export function TransactionEditor({
           </div>
           </div>
         </div>
+
+        {isEdit && transaction && (transaction.bank_posted_date || transaction.import_description) && (
+          <div className="txn-editor__bank-meta">
+            {transaction.bank_posted_date && (
+              <span>Bank posted {formatDate(transaction.bank_posted_date)}</span>
+            )}
+            {transaction.import_description && (
+              <span className="txn-editor__bank-meta-desc">{transaction.import_description}</span>
+            )}
+          </div>
+        )}
 
         {similarTxns.length > 0 && (
           <div className="txn-editor__similar">

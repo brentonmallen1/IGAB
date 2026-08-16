@@ -27,10 +27,24 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
 
   // Use the trimmed value so trailing spaces don't produce an empty last token
   const trimmedValue = localValue.trimEnd()
-  const lastToken = trimmedValue.split(' ').at(-1) ?? ''
-  const activeSuggestions = SEARCH_SUGGESTIONS.filter(
-    (s) => !trimmedValue || s.syntax.startsWith(lastToken)
-  )
+  const tokens = trimmedValue ? trimmedValue.split(' ') : []
+  // Suggestion syntaxes span multiple tokens ("is: unapproved"), so match a
+  // trailing run of input tokens — not just the last one — and remember how
+  // much of the input each match covers so selecting it replaces exactly that.
+  function matchedTailLen(syntax: string): number {
+    const lower = syntax.toLowerCase()
+    for (let n = Math.min(3, tokens.length); n >= 1; n--) {
+      const tail = tokens.slice(-n).join(' ')
+      if (lower.startsWith(tail.toLowerCase())) return tail.length
+    }
+    return 0
+  }
+  const activeSuggestions =
+    tokens.length === 0
+      ? SEARCH_SUGGESTIONS.map((s) => ({ ...s, matchedLen: 0 }))
+      : SEARCH_SUGGESTIONS.map((s) => ({ ...s, matchedLen: matchedTailLen(s.syntax) })).filter(
+          (s) => s.matchedLen > 0
+        )
   const shouldShowSuggestions = focused && showSuggestions &&
     (localValue.length === 0 || activeSuggestions.length > 0)
 
@@ -63,10 +77,9 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
     propagate(v)
   }
 
-  function appendSuggestion(syntax: string) {
-    // Replace the current (possibly partial) last token, ignoring trailing spaces
-    const lastSpaceIdx = trimmedValue.lastIndexOf(' ')
-    const prefix = lastSpaceIdx >= 0 ? trimmedValue.slice(0, lastSpaceIdx + 1) : ''
+  function appendSuggestion(syntax: string, matchedLen: number) {
+    // Replace the matched trailing portion of the input with the full syntax
+    const prefix = trimmedValue.slice(0, trimmedValue.length - matchedLen)
     const next = prefix + syntax
     setLocalValue(next)
     propagate(next, true)
@@ -95,12 +108,14 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
       }
       if (e.key === 'Enter' && activeIndex >= 0) {
         e.preventDefault()
-        appendSuggestion(activeSuggestions[activeIndex].syntax)
+        const s = activeSuggestions[activeIndex]
+        appendSuggestion(s.syntax, s.matchedLen)
         return
       }
       if (e.key === 'Tab' && activeIndex >= 0) {
         e.preventDefault()
-        appendSuggestion(activeSuggestions[activeIndex].syntax)
+        const s = activeSuggestions[activeIndex]
+        appendSuggestion(s.syntax, s.matchedLen)
         return
       }
     }
@@ -143,8 +158,9 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
           {activeSuggestions.map((s, i) => (
             <button
               key={s.syntax}
+              ref={i === activeIndex ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
               className={`txn-search__suggestion ${i === activeIndex ? 'txn-search__suggestion--active' : ''}`}
-              onMouseDown={(e) => { e.preventDefault(); appendSuggestion(s.syntax) }}
+              onMouseDown={(e) => { e.preventDefault(); appendSuggestion(s.syntax, s.matchedLen) }}
               onMouseEnter={() => setActiveIndex(i)}
             >
               <code className="txn-search__syntax">{s.syntax}</code>

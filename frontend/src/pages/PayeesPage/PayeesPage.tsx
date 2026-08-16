@@ -4,6 +4,8 @@ import { ChevronDown, ChevronUp, GitMerge, Regex, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, useFetchPayeeDuplicates, type PayeeWithCount } from '../../api/payees'
+import { usePayeeTransactions } from '../../api/transactions'
+import { useFormatters } from '../../hooks/useFormatters'
 import { useTags, useBulkAddPayeeTags, useCreateTag, useSetPayeeTags } from '../../api/tags'
 import { usePayeeCleanupSuggestions, useAIStatus } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
@@ -13,6 +15,40 @@ import { testPattern } from '../../utils/payeeRegex'
 import { TagChip } from '../../components/common/TagChip'
 import { TagPicker, type TagOption } from '../../components/common/TagPicker'
 import './PayeesPage.css'
+
+type WizardGroup = {
+  label: string
+  payees: Array<{ id: string; name: string; transaction_count?: number }>
+}
+
+const PEEK_LIMIT = 5
+
+/** A few recent transactions for one merge candidate, so the user can tell
+ * Lowes from Lowes Food before deciding what belongs in the merge. */
+function PayeeTransactionPeek({ budgetId, payeeId }: { budgetId: string; payeeId: string }) {
+  const { data, isLoading } = usePayeeTransactions(budgetId, payeeId, PEEK_LIMIT)
+  const { formatMoney, formatDate } = useFormatters()
+
+  if (isLoading) return <div className="payees-peek payees-peek--muted">Loading…</div>
+  const txns = data?.transactions ?? []
+  if (txns.length === 0) return <div className="payees-peek payees-peek--muted">No transactions.</div>
+  return (
+    <div className="payees-peek">
+      {txns.map((t) => (
+        <div key={t.id} className="payees-peek__row">
+          <span className="payees-peek__date">{formatDate(t.date)}</span>
+          <span className="payees-peek__memo">{t.memo || t.import_description || '—'}</span>
+          <span className="payees-peek__amount">{formatMoney(t.amount)}</span>
+        </div>
+      ))}
+      {data && data.total_count > txns.length && (
+        <div className="payees-peek__more">
+          {txns.length} most recent of {data.total_count}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function PayeesPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -43,8 +79,11 @@ export function PayeesPage() {
   const [search, setSearch] = useState(searchParams.get('q') ?? '')
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
-  const [wizardGroups, setWizardGroups] = useState<Array<{ label: string; payees: Array<{ id: string; name: string; transaction_count?: number }> }>>([])
+  const [wizardGroups, setWizardGroups] = useState<WizardGroup[]>([])
   const [wizardIdx, setWizardIdx] = useState(0)
+  const [wizardChecked, setWizardChecked] = useState<Set<string>>(new Set())
+  const [wizardPeekId, setWizardPeekId] = useState<string | null>(null)
+  const [wizardMergePayees, setWizardMergePayees] = useState<PayeeWithCount[] | null>(null)
   const [showCleanupModal, setShowCleanupModal] = useState(false)
   const [cleanupMethod, setCleanupMethod] = useState<'fuzzy' | 'ai'>('fuzzy')
   const [sensitivity, setSensitivity] = useState<'strict' | 'balanced' | 'loose'>('balanced')
@@ -138,13 +177,13 @@ export function PayeesPage() {
     clearPayeeSelection()
   }
 
-  async function executeMerge(config: MergeConfig) {
+  async function executeMergeWith(mergeList: PayeeWithCount[], config: MergeConfig) {
     const { targetId, addToMappingSamples, customName, matchPattern } = config
     const target = payees.find((p) => p.id === targetId)
-    const sources = selectedPayees.filter((p) => p.id !== targetId)
+    const sources = mergeList.filter((p) => p.id !== targetId)
     if (!target) return
 
-    const absorbedPayees = customName ? selectedPayees : sources
+    const absorbedPayees = customName ? mergeList : sources
 
     const update: { name?: string; mapping_samples?: string | null; match_pattern?: string } = {}
     if (customName) update.name = customName
@@ -178,7 +217,10 @@ export function PayeesPage() {
     for (const source of sources) {
       await mergePayee.mutateAsync({ sourceId: source.id, targetId })
     }
+  }
 
+  async function executeMerge(config: MergeConfig) {
+    await executeMergeWith(selectedPayees, config)
     setShowMergeModal(false)
     clearPayeeSelection()
   }
@@ -191,47 +233,79 @@ export function PayeesPage() {
       const threshold = sensitivityThresholds[sensitivity]
       const result = await fetchDuplicates.mutateAsync(threshold)
       if (result && result.length > 0) {
-        setWizardGroups(result.map((g) => ({
+        openWizard(result.map((g) => ({
           label: `${g.similarity}% similar`,
           payees: g.payees,
         })))
-        setWizardIdx(0)
-        setShowWizard(true)
       } else {
         alert('No duplicate payees found.')
       }
     } else {
       const result = await cleanup.refetch()
       if (result.data && result.data.length > 0) {
-        setWizardGroups(result.data.map((g) => ({
+        openWizard(result.data.map((g) => ({
           label: g.canonical,
           payees: g.payees,
         })))
-        setWizardIdx(0)
-        setShowWizard(true)
       } else {
         alert('No duplicate payees found.')
       }
     }
   }
 
-  async function acceptWizardGroup(group: typeof wizardGroups[0], keepId: string) {
-    const toMerge = group.payees.filter((p) => p.id !== keepId)
-    for (const p of toMerge) {
-      await mergePayee.mutateAsync({ sourceId: p.id, targetId: keepId })
+  function openWizard(groups: WizardGroup[]) {
+    setWizardGroups(groups)
+    goToWizardGroup(groups, 0)
+    setShowWizard(true)
+  }
+
+  // Every checkbox starts checked when a group comes into view.
+  function goToWizardGroup(groups: WizardGroup[], idx: number) {
+    setWizardIdx(idx)
+    setWizardChecked(new Set(groups[idx]?.payees.map((p) => p.id)))
+    setWizardPeekId(null)
+  }
+
+  function startWizardMerge() {
+    if (checkedPayees.length < 2) return
+    setWizardMergePayees(checkedPayees)
+  }
+
+  async function executeWizardMerge(config: MergeConfig) {
+    if (!wizardMergePayees || !currentGroup) return
+    await executeMergeWith(wizardMergePayees, config)
+    setWizardMergePayees(null)
+    // The unchecked leftovers may still be duplicates of each other
+    // (Lowes Food vs Lowes Foods) — keep them as a group if a merge is
+    // still possible, otherwise the group is done.
+    const leftover = currentGroup.payees.filter((p) => !wizardChecked.has(p.id))
+    const remaining = wizardGroups
+      .map((g, i) => (i !== wizardIdx ? g : leftover.length >= 2 ? { ...g, payees: leftover } : null))
+      .filter((g): g is WizardGroup => g !== null)
+    setWizardGroups(remaining)
+    if (remaining.length === 0) {
+      setShowWizard(false)
+    } else {
+      goToWizardGroup(remaining, Math.min(wizardIdx, remaining.length - 1))
     }
-    nextWizard()
   }
 
   function nextWizard() {
     if (wizardIdx + 1 >= wizardGroups.length) {
       setShowWizard(false)
     } else {
-      setWizardIdx(wizardIdx + 1)
+      goToWizardGroup(wizardGroups, wizardIdx + 1)
     }
   }
 
+  function prevWizard() {
+    goToWizardGroup(wizardGroups, Math.max(0, wizardIdx - 1))
+  }
+
   const currentGroup = wizardGroups[wizardIdx]
+  // Full payee records for the checked wizard rows — the merge modal needs
+  // mapping samples and patterns, which the suggestion groups don't carry.
+  const checkedPayees: PayeeWithCount[] = payees.filter((p) => wizardChecked.has(p.id))
   const selectedPayees: PayeeWithCount[] = payees.filter((p) => selectedPayeeIds.has(p.id))
   const selectedCount = selectedPayeeIds.size
   const hiddenSelected = selectedCount - selectedInFiltered.length
@@ -365,25 +439,74 @@ export function PayeesPage() {
               <p className="payees-wizard__label">
                 These payees look similar: <strong>{currentGroup.label}</strong>
               </p>
-              <p className="payees-wizard__sub">Select which name to keep — the others will be merged into it.</p>
+              <p className="payees-wizard__sub">
+                Uncheck any that don't belong, then merge the rest — you'll choose the surviving
+                name next.
+              </p>
               <div className="payees-wizard__options">
-                {currentGroup.payees.map((p) => (
-                  <button
-                    key={p.id}
-                    className="payees-wizard__option"
-                    onClick={() => acceptWizardGroup(currentGroup, p.id)}
-                    disabled={mergePayee.isPending}
-                  >
-                    Keep <strong>"{p.name}"</strong>
-                    {p.transaction_count !== undefined && (
-                      <span className="payees-wizard__option-count">({p.transaction_count} txns)</span>
-                    )}
-                  </button>
-                ))}
+                {currentGroup.payees.map((p) => {
+                  const isChecked = wizardChecked.has(p.id)
+                  const isPeeking = wizardPeekId === p.id
+                  return (
+                    <div key={p.id} className="payees-wizard__candidate">
+                      <label
+                        className={`payees-wizard__option payees-wizard__option--check ${isChecked ? 'payees-wizard__option--selected' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="payees-checkbox"
+                          checked={isChecked}
+                          onChange={() =>
+                            setWizardChecked((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(p.id)) next.delete(p.id)
+                              else next.add(p.id)
+                              return next
+                            })
+                          }
+                        />
+                        <span>
+                          <strong>"{p.name}"</strong>
+                          {p.transaction_count !== undefined && (
+                            <span className="payees-wizard__option-count">({p.transaction_count} txns)</span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          className={`payees-wizard__peek-btn ${isPeeking ? 'payees-wizard__peek-btn--open' : ''}`}
+                          onClick={(e) => {
+                            // Inside a <label>: without preventDefault the click
+                            // would also toggle the checkbox.
+                            e.preventDefault()
+                            setWizardPeekId(isPeeking ? null : p.id)
+                          }}
+                          title={isPeeking ? 'Hide transactions' : 'Show recent transactions'}
+                          aria-expanded={isPeeking}
+                        >
+                          {isPeeking ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      </label>
+                      {isPeeking && budgetId && (
+                        <PayeeTransactionPeek budgetId={budgetId} payeeId={p.id} />
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
             <div className="payees-wizard__footer">
+              <button className="payees-btn" onClick={prevWizard} disabled={wizardIdx === 0}>
+                Back
+              </button>
               <button className="payees-btn" onClick={nextWizard}>Skip</button>
+              <button
+                className="payees-btn payees-btn--primary"
+                onClick={startWizardMerge}
+                disabled={checkedPayees.length < 2 || mergePayee.isPending || updatePayee.isPending}
+                title={checkedPayees.length < 2 ? 'Check at least 2 payees to merge' : undefined}
+              >
+                Merge {checkedPayees.length}…
+              </button>
             </div>
           </div>
         </div>
@@ -394,6 +517,15 @@ export function PayeesPage() {
           payees={selectedPayees}
           onConfirm={executeMerge}
           onCancel={() => setShowMergeModal(false)}
+          isPending={mergePayee.isPending || updatePayee.isPending}
+        />
+      )}
+
+      {wizardMergePayees && (
+        <PayeeMergeModal
+          payees={wizardMergePayees}
+          onConfirm={executeWizardMerge}
+          onCancel={() => setWizardMergePayees(null)}
           isPending={mergePayee.isPending || updatePayee.isPending}
         />
       )}

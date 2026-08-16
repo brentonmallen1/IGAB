@@ -4,6 +4,14 @@ from decimal import Decimal
 
 
 @dataclass
+class YNABSplitLeg:
+    category_group: str | None
+    category: str | None
+    memo: str | None
+    amount: Decimal  # negative = outflow, positive = inflow
+
+
+@dataclass
 class YNABTransaction:
     account_name: str
     date: date
@@ -13,6 +21,9 @@ class YNABTransaction:
     memo: str | None
     amount: Decimal  # negative = outflow, positive = inflow
     cleared: str
+    # Non-empty when this transaction was reassembled from a YNAB split:
+    # amount is the sum of the legs and category_group/category are None.
+    splits: list[YNABSplitLeg] = field(default_factory=list)
 
 
 @dataclass

@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Collection
 from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -110,7 +111,15 @@ class TransactionRepository(BaseRepository[Transaction]):
             (Transaction.cleared == "uncleared", 2),
             else_=3,
         )
-        q = q.order_by(priority_rank, Transaction.date.desc(), Transaction.created_at.desc())
+        # id as final tiebreaker: bulk imports give thousands of rows identical
+        # created_at, and offset pagination over a non-unique order silently
+        # skips/duplicates rows across pages.
+        q = q.order_by(
+            priority_rank,
+            Transaction.date.desc(),
+            Transaction.created_at.desc(),
+            Transaction.id.desc(),
+        )
         result = await self.session.execute(q.limit(limit).offset(offset))
         return list(result.scalars().all())
 
@@ -233,9 +242,18 @@ class TransactionRepository(BaseRepository[Transaction]):
                 (Transaction.cleared == "uncleared", 2),
                 else_=3,
             )
-            ordering = (priority_rank, Transaction.date.desc(), Transaction.created_at.desc())
+            ordering = (
+                priority_rank,
+                Transaction.date.desc(),
+                Transaction.created_at.desc(),
+                Transaction.id.desc(),
+            )
         else:
-            ordering = (Transaction.date.desc(), Transaction.created_at.desc())
+            ordering = (
+                Transaction.date.desc(),
+                Transaction.created_at.desc(),
+                Transaction.id.desc(),
+            )
         rows_q = rows_q.where(*where).order_by(*ordering).limit(limit).offset(offset)
         totals_q = totals_q.where(*where)
 
@@ -553,6 +571,9 @@ class TransactionRepository(BaseRepository[Transaction]):
             Transaction.date.between(date_low, date_high),
             Transaction.import_id.is_(None),
             Transaction.sync_id.is_(None),
+            # sync_id alone misses id-less feeds: a sync-created row without a
+            # bank id is still bank-sourced, never a "manual" match candidate.
+            Transaction.sync_source.is_(None),
             Transaction.linked_transaction_id.is_(None),
             Transaction.is_deleted == False,  # noqa: E712
             Transaction.parent_transaction_id.is_(None),
@@ -584,17 +605,20 @@ class TransactionRepository(BaseRepository[Transaction]):
         txn_date: date,
         date_window_days: int = 5,
         limit: int = 5,
+        exclude_ids: Collection[uuid.UUID] | None = None,
     ) -> list[tuple[Transaction, str | None]]:
         """Return (Transaction, payee_name) candidates matching by exact amount and date window.
 
         Used to detect duplicates during sync for transactions without import_id.
         Caller is responsible for scoring and selecting the best match.
+        exclude_ids: rows already claimed earlier in the same sync run — filtered
+        before LIMIT so consumption can't starve the candidate pool.
         """
         from datetime import timedelta
 
         date_low = txn_date - timedelta(days=date_window_days)
         date_high = txn_date + timedelta(days=date_window_days)
-        result = await self.session.execute(
+        query = (
             select(Transaction, Payee.name)
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
             .where(
@@ -605,9 +629,14 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
             )
-            .order_by(Transaction.date.desc())
+            # Nearest-first, so the LIMIT can't evict the true match when many
+            # same-amount rows crowd the window (daily coffee, weekly fill-ups).
+            .order_by(func.abs(Transaction.date - txn_date), Transaction.date.desc())
             .limit(limit)
         )
+        if exclude_ids:
+            query = query.where(Transaction.id.notin_(list(exclude_ids)))
+        result = await self.session.execute(query)
         return [(row[0], row[1]) for row in result.all()]
 
     async def get_all_with_payee_for_account(
@@ -710,6 +739,6 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(Transaction.date <= end_date)
         if category_id:
             q = q.where(Transaction.category_id == category_id)
-        q = q.order_by(Transaction.date.desc()).limit(limit).offset(offset)
+        q = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(limit).offset(offset)
         result = await self.session.execute(q)
         return list(result.scalars().all())

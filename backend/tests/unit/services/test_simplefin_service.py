@@ -22,9 +22,11 @@ import pytest
 
 from igab.services.simplefin_service import (
     ACCOUNT_DAILY_LIMIT,
+    DEDUP_AUTO_MATCH_THRESHOLD,
     GLOBAL_DAILY_LIMIT,
     RateLimitError,
     SimpleFINService,
+    _decide_match,
 )
 from igab.services.transaction_matching_service import (
     AUTO_ACCEPT_THRESHOLD,
@@ -95,6 +97,7 @@ def make_transaction(
     txn.amount = D(amount)
     txn.date = date_ or today_utc()
     txn.entered_date = None
+    txn.bank_posted_date = None
     txn.payee_id = payee_id
     txn.category_id = category_id
     txn.import_id = import_id
@@ -681,7 +684,7 @@ class TestSyncFlow:
         }
 
     @pytest.mark.asyncio
-    async def test_find_existing_match_skips_without_importing(self) -> None:
+    async def test_find_existing_match_counts_as_matched_without_importing(self) -> None:
         """When fuzzy-match finds an existing transaction, no new import is created."""
         svc = self._make_svc()
         conn = make_connection()
@@ -698,7 +701,8 @@ class TestSyncFlow:
             result = await svc.sync(conn.id, uuid.uuid4())
 
         assert result["imported"] == 0
-        assert result["skipped"] == 1
+        assert result["matched"] == 1
+        assert result["skipped"] == 0
         svc.txn_service.create.assert_not_called()
 
     @pytest.mark.asyncio
@@ -747,6 +751,10 @@ class TestSyncFlow:
         assert call_kwargs.get("sync_id") == "txn-match"
         assert call_kwargs.get("sync_source") == "simplefin"
         assert "import_id" not in call_kwargs
+        # The user's ledger date is never rewritten by a match.
+        assert "date" not in call_kwargs
+        assert "entered_date" not in call_kwargs
+        assert call_kwargs.get("bank_posted_date") == today_utc()
 
     @pytest.mark.asyncio
     async def test_find_existing_match_advances_pending_to_cleared_when_posted(self) -> None:
@@ -898,8 +906,350 @@ class TestSyncFlow:
             result = await svc.sync(conn.id, uuid.uuid4())
 
         assert result["imported"] == 0
-        assert result["skipped"] == 1
+        assert result["matched"] == 1
         svc.txn_service.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_renamed_payee_auto_match_preserves_reconciled_row(self) -> None:
+        """The Bread Financial scenario end-to-end at the loop level: a
+        reconciled YNAB row with a renamed payee absorbs the bank row —
+        sync identity and bank_posted_date only, no date/cleared changes."""
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+
+        existing = make_transaction(cleared="reconciled")
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "Bread Financial")]
+        )
+
+        raw_txns = [
+            {
+                "id": "txn-comenity",
+                "account_id": account.simplefin_account_id,
+                "posted": int(datetime.now(UTC).timestamp()),
+                "amount": "-320.35",
+                "description": "COMENITY PAY VI WEB PYMT",
+            }
+        ]
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            result = await svc.sync(conn.id, uuid.uuid4())
+
+        assert result["matched"] == 1
+        assert result["imported"] == 0
+        svc.txn_service.create.assert_not_called()
+        call_kwargs = svc.txn_repo.update.call_args.kwargs
+        assert call_kwargs.get("sync_id") == "txn-comenity"
+        assert call_kwargs.get("bank_posted_date") == today_utc()
+        assert "date" not in call_kwargs
+        assert "entered_date" not in call_kwargs
+        assert "cleared" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_candidates_create_review_match(self) -> None:
+        """Two same-day lookalike candidates: the bank row is created
+        (approved=False) with a pending review match — never silently."""
+        svc = self._make_svc()
+        matching_svc = AsyncMock()
+        svc.matching_service = matching_svc
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+
+        cand_a = make_transaction(amount="-12.50", cleared="cleared")
+        cand_b = make_transaction(amount="-12.50", cleared="cleared")
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(cand_a, "Lunch"), (cand_b, "Lunch")]
+        )
+        new_txn = make_transaction(amount="-12.50")
+        svc.txn_service.create = AsyncMock(return_value=new_txn)
+
+        raw_txns = [
+            {
+                "id": "txn-food",
+                "account_id": account.simplefin_account_id,
+                "posted": int(datetime.now(UTC).timestamp()),
+                "amount": "-12.50",
+                "description": "SQ *FOOD TRUCK",
+            }
+        ]
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            result = await svc.sync(conn.id, uuid.uuid4())
+
+        assert result["imported"] == 1
+        assert result["review_queued"] == 1
+        create_data = svc.txn_service.create.call_args[0][1]
+        assert create_data.approved is False
+        match_kwargs = matching_svc.match_repo.create.call_args.kwargs
+        assert match_kwargs["synced_transaction_id"] == new_txn.id
+        assert match_kwargs["manual_transaction_id"] in (cand_a.id, cand_b.id)
+        assert match_kwargs["confidence_score"] > 0.0
+        matching_svc.try_match.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_created_posted_row_carries_bank_posted_date(self) -> None:
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
+        svc.txn_service.create = AsyncMock(return_value=make_transaction())
+
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            await svc.sync(conn.id, uuid.uuid4())
+
+        create_data = svc.txn_service.create.call_args[0][1]
+        assert create_data.bank_posted_date == today_utc()
+        assert create_data.date == today_utc()
+
+    @pytest.mark.asyncio
+    async def test_created_pending_row_has_no_bank_posted_date(self) -> None:
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
+        svc.txn_service.create = AsyncMock(return_value=make_transaction(cleared="pending"))
+
+        raw_txns = [
+            {
+                "id": "txn-hold",
+                "account_id": account.simplefin_account_id,
+                "posted": 0,
+                "transacted_at": int(datetime.now(UTC).timestamp()),
+                "amount": "-40.00",
+                "description": "GAS HOLD",
+            }
+        ]
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            await svc.sync(conn.id, uuid.uuid4())
+
+        create_data = svc.txn_service.create.call_args[0][1]
+        assert create_data.bank_posted_date is None
+        assert create_data.cleared == "pending"
+
+    @pytest.mark.asyncio
+    async def test_matched_candidate_excluded_for_subsequent_feed_rows(self) -> None:
+        """Two identical feed rows, one existing candidate: the first row
+        consumes it; the second row's candidate query must exclude it so the
+        pair can't collapse onto the same existing transaction."""
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+
+        existing = make_transaction(amount="-10.00", cleared="cleared")
+        calls: list[set[uuid.UUID]] = []
+
+        async def fake_candidates(*args, **kwargs):
+            calls.append(set(kwargs.get("exclude_ids") or ()))
+            if existing.id in (kwargs.get("exclude_ids") or ()):
+                return []
+            return [(existing, "GROCERY")]
+
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(side_effect=fake_candidates)
+        created = make_transaction(amount="-10.00")
+        svc.txn_service.create = AsyncMock(return_value=created)
+
+        posted = int(datetime.now(UTC).timestamp())
+        raw_txns = [
+            {
+                "id": "txn-a",
+                "account_id": account.simplefin_account_id,
+                "posted": posted,
+                "amount": "-10.00",
+                "description": "GROCERY",
+            },
+            {
+                "id": "txn-b",
+                "account_id": account.simplefin_account_id,
+                "posted": posted,
+                "amount": "-10.00",
+                "description": "GROCERY",
+            },
+        ]
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            result = await svc.sync(conn.id, uuid.uuid4())
+
+        assert result["matched"] == 1
+        assert result["imported"] == 1
+        assert calls[0] == set()
+        assert calls[1] == {existing.id}
+
+
+# ─── Match decision ladder ────────────────────────────────────────────────────
+
+
+def _candidate(
+    *,
+    amount: str = "-320.35",
+    days_ago: int = 0,
+    payee: str | None = None,
+    cleared: str = "reconciled",
+) -> tuple[MagicMock, str | None]:
+    txn = make_transaction(
+        amount=amount,
+        date_=today_utc() - timedelta(days=days_ago),
+        cleared=cleared,
+    )
+    return (txn, payee)
+
+
+class TestMatchDecision:
+    """Pure decision-ladder tests. Candidates already share the exact amount
+    within the ±10 day search window (SQL guarantees that); the ladder only
+    chooses between auto / review / create. Auto-matching is confined to
+    ±5 days — candidates beyond that only ever reach review."""
+
+    def test_no_candidates_creates(self) -> None:
+        d = _decide_match("STARBUCKS", today_utc(), True, [])
+        assert d.action == "create"
+        assert d.candidate is None
+
+    def test_renamed_payee_same_day_auto_matches(self) -> None:
+        """Bread Financial regression: the user renamed the payee in YNAB, the
+        bank descriptor shares no words with it — exact amount + same day must
+        still auto-match instead of silently duplicating."""
+        cand = _candidate(days_ago=0, payee="Bread Financial")
+        d = _decide_match("COMENITY PAY VI WEB PYMT", today_utc(), True, [cand])
+        assert d.action == "auto"
+        assert d.candidate is cand[0]
+
+    def test_check_descriptor_one_day_off_auto_matches(self) -> None:
+        cand = _candidate(days_ago=1, payee="Lawn Service")
+        d = _decide_match("CHECK # 1234", today_utc(), True, [cand])
+        assert d.action == "auto"
+        assert d.candidate is cand[0]
+
+    def test_dissimilar_payee_two_days_off_goes_to_review(self) -> None:
+        """Outside the tight window, payee dissimilarity means real doubt —
+        create the row but queue it for human review, never silently."""
+        cand = _candidate(days_ago=2, payee="Bread Financial")
+        d = _decide_match("COMENITY PAY VI WEB PYMT", today_utc(), True, [cand])
+        assert d.action == "review"
+        assert d.candidate is cand[0]
+        assert d.score > 0.0
+
+    def test_similar_payee_two_days_off_still_auto_matches(self) -> None:
+        """Rule 1 preserved: strong payee similarity auto-matches at any
+        distance inside the window, as before this fix."""
+        cand = _candidate(days_ago=2, payee="Whole Foods Market")
+        d = _decide_match("WHOLE FOODS MARKET #123", today_utc(), True, [cand])
+        assert d.action == "auto"
+        assert d.candidate is cand[0]
+        assert d.score >= DEDUP_AUTO_MATCH_THRESHOLD
+
+    def test_two_same_day_lookalikes_go_to_review(self) -> None:
+        """Two identical-amount same-day candidates with equally weak payee
+        similarity: guessing would corrupt one of them — review instead."""
+        a = _candidate(days_ago=0, payee="Lunch")
+        b = _candidate(days_ago=0, payee="Lunch")
+        d = _decide_match("SQ *FOOD TRUCK", today_utc(), True, [a, b])
+        assert d.action == "review"
+
+    def test_same_day_pair_with_clear_payee_winner_auto_matches(self) -> None:
+        with patch(
+            "igab.services.simplefin_service._payee_similarity",
+            side_effect=lambda a, b: {"close": 0.62, "far": 0.30}[b],
+        ):
+            close = _candidate(days_ago=0, payee="close")
+            far = _candidate(days_ago=0, payee="far")
+            d = _decide_match("BANK DESCRIPTOR", today_utc(), True, [close, far])
+        assert d.action == "auto"
+        assert d.candidate is close[0]
+
+    def test_same_day_pair_below_margin_goes_to_review(self) -> None:
+        with patch(
+            "igab.services.simplefin_service._payee_similarity",
+            side_effect=lambda a, b: {"close": 0.45, "far": 0.40}[b],
+        ):
+            close = _candidate(days_ago=0, payee="close")
+            far = _candidate(days_ago=0, payee="far")
+            d = _decide_match("BANK DESCRIPTOR", today_utc(), True, [close, far])
+        assert d.action == "review"
+
+    def test_far_candidates_do_not_block_structural_match(self) -> None:
+        """A second candidate 3 days out does not make the same-day one
+        ambiguous — date proximity disambiguates recurring amounts."""
+        near = _candidate(days_ago=0, payee="Bread Financial")
+        far = _candidate(days_ago=3, payee="Card Payment")
+        d = _decide_match("COMENITY PAY VI WEB PYMT", today_utc(), True, [near, far])
+        assert d.action == "auto"
+        assert d.candidate is near[0]
+
+    def test_missing_payees_tight_window_auto_matches(self) -> None:
+        """Neutral 0.5 similarity on both sides: structure still decides."""
+        cand = _candidate(days_ago=1, payee=None)
+        d = _decide_match("", today_utc(), True, [cand])
+        assert d.action == "auto"
+
+    def test_pending_feed_row_never_structurally_matches(self) -> None:
+        """Pending amounts are provisional (tips, gas holds) — a same-day
+        dissimilar candidate goes to review, not auto."""
+        cand = _candidate(days_ago=0, payee="Bread Financial")
+        d = _decide_match("COMENITY PAY VI WEB PYMT", today_utc(), False, [cand])
+        assert d.action == "review"
+
+    def test_pending_feed_row_still_payee_matches(self) -> None:
+        cand = _candidate(days_ago=0, payee="Whole Foods Market")
+        d = _decide_match("WHOLE FOODS MARKET #123", today_utc(), False, [cand])
+        assert d.action == "auto"
+
+    def test_window_edge_dissimilar_goes_to_review(self) -> None:
+        cand = _candidate(days_ago=5, payee="Bread Financial")
+        d = _decide_match("COMENITY PAY VI WEB PYMT", today_utc(), True, [cand])
+        assert d.action == "review"
+        assert d.candidate is cand[0]
+
+    def test_settlement_lag_candidate_reviews_instead_of_silent_create(self) -> None:
+        """Citi regression: a card payment the user dated 6/15 posted 6/22 —
+        7 days out, beyond the old ±5 search window, so it silently
+        duplicated. The widened window must surface it for review."""
+        cand = _candidate(days_ago=7, payee="Citi")
+        d = _decide_match("CITI CARD ONLINE PAYMENT", today_utc(), True, [cand])
+        assert d.action == "review"
+        assert d.candidate is cand[0]
+
+    def test_identical_payee_beyond_auto_radius_never_auto_matches(self) -> None:
+        """An identical payee a week out is as likely a weekly recurring
+        charge as a settlement-lagged duplicate — review, never auto."""
+        cand = _candidate(days_ago=7, payee="Spotify")
+        d = _decide_match("SPOTIFY", today_utc(), True, [cand])
+        assert d.action == "review"
+        assert d.candidate is cand[0]
+
+    def test_strong_far_candidate_blocks_structural_shortcut(self) -> None:
+        """A perfect-payee candidate 7 days out plus a weak same-day one is
+        genuinely ambiguous — review, not a silent structural pick."""
+        far_strong = _candidate(days_ago=7, payee="Spotify")
+        near_weak = _candidate(days_ago=0, payee="Lunch Money")
+        d = _decide_match("SPOTIFY", today_utc(), True, [far_strong, near_weak])
+        assert d.action == "review"
+
+    def test_weak_far_candidates_do_not_block_structural_match(self) -> None:
+        """Weak candidates in the widened 6–10 day band leave the same-day
+        singleton auto-match intact."""
+        near = _candidate(days_ago=0, payee="Bread Financial")
+        far = _candidate(days_ago=8, payee="Card Payment")
+        d = _decide_match("COMENITY PAY VI WEB PYMT", today_utc(), True, [near, far])
+        assert d.action == "auto"
+        assert d.candidate is near[0]
 
 
 # ─── Confidence Scoring ───────────────────────────────────────────────────────

@@ -160,6 +160,8 @@ async def create_transaction(
     is_deleted: bool = False,
     latitude: float | None = None,
     longitude: float | None = None,
+    bank_posted_date: date | None = None,
+    entered_date: date | None = None,
 ) -> Transaction:
     txn = Transaction(
         budget_id=budget.id,
@@ -180,6 +182,8 @@ async def create_transaction(
         is_deleted=is_deleted,
         latitude=latitude,
         longitude=longitude,
+        bank_posted_date=bank_posted_date,
+        entered_date=entered_date,
     )
     session.add(txn)
     await session.flush()

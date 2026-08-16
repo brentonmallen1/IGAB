@@ -316,6 +316,9 @@ class Transaction(Base):
     # user-entered date is preserved here for display as provenance metadata.
     # _PyDate alias: the `date` name is shadowed by the column above.
     entered_date: Mapped[_PyDate | None] = mapped_column(Date, nullable=True)
+    # The bank's posted date for synced/matched rows. `date` stays the user's
+    # ledger date (budget months follow it); this is display-only provenance.
+    bank_posted_date: Mapped[_PyDate | None] = mapped_column(Date, nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
     payee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("payees.id", ondelete="SET NULL")
