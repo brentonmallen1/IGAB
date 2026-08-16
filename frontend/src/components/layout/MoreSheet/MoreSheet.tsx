@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom'
 import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles, Eye, EyeOff } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { THEMES } from '../../../stores/appStore'
-import { useAIStatus } from '../../../api/ai'
 import { useUpdateStatus } from '../../../api/system'
 import { useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
@@ -20,7 +19,6 @@ export function MoreSheet() {
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const navigate = useNavigate()
   const logout = useLogout()
-  const aiAvailable = useAIStatus().data?.available === true
   const updateAvailable = useUpdateStatus().data?.update_available === true
 
   function go(path: string) {
@@ -43,12 +41,10 @@ export function MoreSheet() {
           <Landmark size={18} />
           <span>Liabilities</span>
         </button>
-        {aiAvailable && (
-          <button className="more-sheet__item" onClick={() => go('/ai-activity')}>
-            <Sparkles size={18} />
-            <span>AI Activity</span>
-          </button>
-        )}
+        <button className="more-sheet__item" onClick={() => go('/ai-activity')}>
+          <Sparkles size={18} />
+          <span>AI Activity</span>
+        </button>
         <button className="more-sheet__item" onClick={() => go('/import')}>
           <Upload size={18} />
           <span>Import</span>
