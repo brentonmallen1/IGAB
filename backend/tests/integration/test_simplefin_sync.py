@@ -13,7 +13,6 @@ any remaining exact-amount candidate (including settlement-lagged ones out to
 ±10 days) forces a review match — never a silent duplicate.
 """
 
-import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -576,9 +575,10 @@ async def test_match_candidates_exclude_bank_sourced_rows(db_session):
 # ─── Split parents and the widened search window ──────────────────────────────
 
 
-async def _make_split(db_session, budget, account, payee, day, total, leg_amounts):
+async def _make_split(db_session, budget, account, payee, day, total, leg_amounts, *,
+                      cleared="cleared"):
     parent = await create_transaction(
-        db_session, budget, account, total, day, payee=payee, cleared="cleared", is_split=True
+        db_session, budget, account, total, day, payee=payee, cleared=cleared, is_split=True
     )
     for amt in leg_amounts:
         await create_transaction(
@@ -588,7 +588,7 @@ async def _make_split(db_session, budget, account, payee, day, total, leg_amount
             amt,
             day,
             parent_transaction_id=parent.id,
-            cleared="cleared",
+            cleared=cleared,
         )
     return parent
 
@@ -617,6 +617,33 @@ async def test_sync_auto_matches_split_parent_by_total(db_session):
     children = [r for r in rows if r.parent_transaction_id == parent.id]
     assert len(children) == 3
     assert all(c.sync_id is None for c in children), "sync stamps the parent only"
+
+
+async def test_sync_cleared_upgrade_on_split_parent_clears_children(db_session):
+    """Auto-matching an uncleared split parent upgrades it to cleared — the
+    children must follow, or the next reconcile strands uncleared children
+    under a reconciled parent."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    day = date.today() - timedelta(days=3)
+    payee = await create_payee(db_session, budget, "Target")
+    parent = await _make_split(
+        db_session, budget, account, payee, day, "-163.94",
+        ["-74.44", "-65.00", "-24.50"], cleared="uncleared",
+    )
+
+    svc = _service(services, [bank_txn("t-split-u", "-163.94", day, payee="TARGET T- 0423")])
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["matched"] == 1
+    await db_session.refresh(parent)
+    assert parent.cleared == "cleared"
+    rows = await _live_rows(db_session, account.id)
+    children = [r for r in rows if r.parent_transaction_id == parent.id]
+    assert len(children) == 3
+    assert all(c.cleared == "cleared" for c in children), (
+        "children mirror the parent's cleared upgrade"
+    )
 
 
 async def test_sync_never_matches_split_child_amount(db_session):
