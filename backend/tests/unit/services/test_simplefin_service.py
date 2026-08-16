@@ -91,6 +91,8 @@ def make_transaction(
     cleared: str = "cleared",
     linked_transaction_id: uuid.UUID | None = None,
     parent_transaction_id: uuid.UUID | None = None,
+    is_split: bool = False,
+    transfer_id: uuid.UUID | None = None,
 ) -> MagicMock:
     txn = MagicMock()
     txn.id = uuid.uuid4()
@@ -107,6 +109,8 @@ def make_transaction(
     txn.cleared = cleared
     txn.has_sync_source = False
     txn.is_deleted = False
+    txn.is_split = is_split
+    txn.transfer_id = transfer_id
     txn.linked_transaction_id = linked_transaction_id
     txn.parent_transaction_id = parent_transaction_id
     txn.account_id = uuid.uuid4()
@@ -948,6 +952,72 @@ class TestSyncFlow:
         assert "date" not in call_kwargs
         assert "entered_date" not in call_kwargs
         assert "cleared" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_auto_match_on_split_parent_clears_children_too(self) -> None:
+        """A YNAB split parent absorbing a posted bank row is upgraded to
+        cleared — its children must mirror that, or the children-mirror-
+        cleared invariant breaks and reconcile strands them."""
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+
+        existing = make_transaction(cleared="uncleared", is_split=True, amount="-50.00")
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "Costco")]
+        )
+
+        raw_txns = [
+            {
+                "id": "txn-split",
+                "account_id": account.simplefin_account_id,
+                "posted": int(datetime.now(UTC).timestamp()),
+                "amount": "-50.00",
+                "description": "COSTCO WHSE",
+            }
+        ]
+        decrypt_target = "igab.services.simplefin_service.decrypt"
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch(decrypt_target, return_value="https://user:pass@example.com"),
+        ):
+            result = await svc.sync(conn.id, uuid.uuid4())
+
+        assert result["matched"] == 1
+        assert svc.txn_repo.update.call_args.kwargs.get("cleared") == "cleared"
+        svc.txn_repo.set_children_cleared.assert_awaited_once_with(existing.id, "cleared")
+
+    @pytest.mark.asyncio
+    async def test_auto_match_on_already_cleared_split_parent_skips_children(self) -> None:
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+
+        existing = make_transaction(cleared="cleared", is_split=True, amount="-50.00")
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "Costco")]
+        )
+
+        raw_txns = [
+            {
+                "id": "txn-split2",
+                "account_id": account.simplefin_account_id,
+                "posted": int(datetime.now(UTC).timestamp()),
+                "amount": "-50.00",
+                "description": "COSTCO WHSE",
+            }
+        ]
+        decrypt_target = "igab.services.simplefin_service.decrypt"
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch(decrypt_target, return_value="https://user:pass@example.com"),
+        ):
+            result = await svc.sync(conn.id, uuid.uuid4())
+
+        assert result["matched"] == 1
+        svc.txn_repo.set_children_cleared.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_ambiguous_candidates_create_review_match(self) -> None:

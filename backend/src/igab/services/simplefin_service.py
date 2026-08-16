@@ -386,6 +386,9 @@ class SimpleFINService:
                     updates["cleared"] = "cleared"
                     cleared += 1
                 await self.txn_repo.update(best_match.id, **updates)
+                if updates.get("cleared") == "cleared" and best_match.is_split:
+                    # Children always mirror the parent's cleared state.
+                    await self.txn_repo.set_children_cleared(best_match.id, "cleared")
                 consumed_ids.add(best_match.id)
                 matched += 1
                 continue
