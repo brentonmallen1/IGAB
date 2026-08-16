@@ -118,7 +118,7 @@
 }
 
 /* Image button: muted "add" affordance until an attachment exists, then
-   accent so rows with receipts are scannable at a glance */
+   accent + filled so rows with receipts are scannable at a glance */
 .txn-attach-btn {
   color: var(--text-muted);
   opacity: 0.55;
@@ -133,6 +133,13 @@
 .txn-attach-btn--has {
   color: var(--color-accent);
   opacity: 1;
+}
+
+/* Fill the icon when attachment exists — lucide icons use stroke by default,
+   adding fill makes them read as solid/active at small sizes */
+.txn-attach-btn--has svg {
+  fill: currentColor;
+  fill-opacity: 0.25;
 }
 
 .txn-attach-btn--has:hover {
