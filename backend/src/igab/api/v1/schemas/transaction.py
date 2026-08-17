@@ -137,6 +137,14 @@ class BulkItemFailure(BaseModel):
 class BulkActionResult(BaseModel):
     updated: list[uuid.UUID]
     failed: list[BulkItemFailure]
+    # Change-log batch covering the whole bulk action, for undo
+    batch_id: uuid.UUID | None = None
+
+
+class DeleteTransactionResult(BaseModel):
+    """Returned by transaction delete so the UI can offer toast-undo."""
+
+    batch_id: uuid.UUID
 
 
 class PendingReviewCount(BaseModel):
@@ -210,6 +218,12 @@ class PayeeWithCount(PayeeResponse):
 
 class PayeeMergeRequest(BaseModel):
     target_id: uuid.UUID
+
+
+class PayeeMergeResult(BaseModel):
+    """Returned by payee merge so the UI can offer toast-undo."""
+
+    change_id: uuid.UUID
 
 
 class NearbyPayeeResponse(BaseModel):

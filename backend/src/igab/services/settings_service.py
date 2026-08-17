@@ -30,6 +30,11 @@ DEFAULTS: dict[str, str] = {
     # Opt-in check against GitHub releases for self-hosted installs; off by
     # default — the app never phones home unless this is switched on.
     "update_check_enabled": "false",
+    # How long finished (done/error) AI activity log entries are kept before
+    # the nightly cleanup removes them. 0 = keep forever. Transactions and
+    # their attachments are never touched — only the log rows and any
+    # job-owned staging files.
+    "ai_activity_retention_days": "30",
     **DEFAULT_PROMPTS,
 }
 

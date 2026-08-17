@@ -293,3 +293,26 @@ a {
   --font-size-xl: 1.625rem;    /* 26px, was 22px */
   --font-size-display: 2.25rem; /* 36px, was 28px */
 }
+
+
+/* Toast with inline undo button (toastUndo.tsx) */
+.toast-undo-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+.toast-undo-button {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  border: none;
+  transition: opacity var(--transition-fast);
+}
+.toast-undo-button:hover {
+  opacity: 0.85;
+}

@@ -462,36 +462,37 @@ export function QuickAddSheet() {
                 ))}
               </div>
             )}
+            {/* AI entry paths lead; manual attach is the fallback row below */}
+            {aiStatus.data?.available && (
+              <div className="quick-add__scan-row">
+                <button
+                  className="quick-add__scan-btn"
+                  onClick={() => aiScanInputRef.current?.click()}
+                  disabled={submitReceipt.isPending || !accountId}
+                  title="AI reads the receipt and drafts the transaction for review"
+                >
+                  <Sparkles size={15} />
+                  {submitReceipt.isPending ? 'Queuing…' : 'Scan receipt'}
+                </button>
+                <button
+                  className="quick-add__scan-btn"
+                  onClick={() => setNlEntryOpen(true)}
+                  title="Type or dictate the transaction — AI drafts it for you"
+                >
+                  <MessageSquareText size={15} />
+                  Describe it
+                </button>
+              </div>
+            )}
             <div className="quick-add__receipt-actions">
               <button onClick={() => cameraInputRef.current?.click()}>
                 <Camera size={15} />
-                Take photo
+                Attach photo
               </button>
               <button onClick={() => libraryInputRef.current?.click()}>
                 <Images size={15} />
-                Add from library
+                Attach from library
               </button>
-              {aiStatus.data?.available && (
-                <>
-                  <button
-                    className="quick-add__scan-btn"
-                    onClick={() => aiScanInputRef.current?.click()}
-                    disabled={submitReceipt.isPending || !accountId}
-                    title="AI reads the receipt and drafts the transaction for review"
-                  >
-                    <Sparkles size={15} />
-                    {submitReceipt.isPending ? 'Queuing…' : 'Scan receipt'}
-                  </button>
-                  <button
-                    className="quick-add__scan-btn"
-                    onClick={() => setNlEntryOpen(true)}
-                    title="Type or dictate the transaction — AI drafts it for you"
-                  >
-                    <MessageSquareText size={15} />
-                    Describe it
-                  </button>
-                </>
-              )}
             </div>
             <input
               ref={cameraInputRef}

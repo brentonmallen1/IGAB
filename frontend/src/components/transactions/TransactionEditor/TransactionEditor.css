@@ -564,11 +564,19 @@
     flex-direction: column;
   }
 
+  /* Full-screen editor runs under the notch — keep the title/close below it */
+  .txn-editor__header {
+    padding-top: calc(var(--spacing-md) + env(safe-area-inset-top, 0px));
+  }
+
   .txn-editor__body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    /* Keep the focused input clear of the scroll container's edges when the
+       browser scrolls it into view above the keyboard */
+    scroll-padding-block: 72px;
   }
 
   .txn-editor__footer {

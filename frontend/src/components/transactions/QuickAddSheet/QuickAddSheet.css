@@ -283,11 +283,6 @@
   gap: var(--spacing-sm);
 }
 
-/* The AI pair (Scan receipt / Describe it) shares a row below the attach buttons */
-.quick-add__receipt-actions .quick-add__scan-btn {
-  flex: 1 1 40%;
-}
-
 .quick-add__receipt-actions button {
   display: flex;
   align-items: center;
@@ -320,13 +315,32 @@
   background: var(--bg-tertiary);
 }
 
-/* AI scan: solid border + accent so it reads as "does something", not "attach" */
-.quick-add__receipt-actions .quick-add__scan-btn {
-  border-style: solid;
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+/* AI pair (Scan receipt / Describe it) leads the receipt section — solid
+   accent so it reads as "does something", vs the dashed "attach" row below */
+.quick-add__scan-row {
+  display: flex;
+  gap: var(--spacing-sm);
 }
 
-.quick-add__receipt-actions .quick-add__scan-btn:disabled {
+.quick-add__scan-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  flex: 1;
+  min-height: 48px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--border-radius-md);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.quick-add__scan-btn:active {
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.quick-add__scan-btn:disabled {
   opacity: 0.5;
 }

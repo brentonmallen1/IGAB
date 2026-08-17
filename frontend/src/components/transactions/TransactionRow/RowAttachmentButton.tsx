@@ -11,7 +11,7 @@ import {
   uploadFilesToTransaction,
   type Attachment,
 } from '../../../api/attachments'
-import { Lightbox } from '../../attachments/Lightbox'
+import { AttachmentLightbox } from '../../attachments/Lightbox'
 
 interface Props {
   transactionId: string
@@ -26,7 +26,7 @@ interface Props {
 export function RowAttachmentButton({ transactionId, hasAttachment }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const qc = useQueryClient()
-  const [viewer, setViewer] = useState<{ urls: string[]; index: number } | null>(null)
+  const [viewer, setViewer] = useState<{ atts: Attachment[]; index: number } | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function openViewer() {
@@ -43,8 +43,7 @@ export function RowAttachmentButton({ transactionId, hasAttachment }: Props) {
       // Lightbox shows images; PDFs use the browser's native viewer
       const images = data.filter((a) => !isPdfAttachment(a))
       if (images.length > 0) {
-        const urls = await Promise.all(images.map((a) => fetchAttachmentBlob(a.id)))
-        setViewer({ urls, index: 0 })
+        setViewer({ atts: images, index: 0 })
       } else {
         const url = await fetchAttachmentBlob(data[0].id)
         window.open(url, '_blank')
@@ -103,15 +102,14 @@ export function RowAttachmentButton({ transactionId, hasAttachment }: Props) {
         onClick={(e) => e.stopPropagation()}
       />
       {viewer && (
-        <Lightbox
-          src={viewer.urls[viewer.index]}
-          alt="Attachment"
+        <AttachmentLightbox
+          attachment={viewer.atts[viewer.index]}
           onClose={() => setViewer(null)}
           hasPrev={viewer.index > 0}
-          hasNext={viewer.index < viewer.urls.length - 1}
+          hasNext={viewer.index < viewer.atts.length - 1}
           onPrev={() => setViewer((v) => v && { ...v, index: Math.max(0, v.index - 1) })}
           onNext={() =>
-            setViewer((v) => v && { ...v, index: Math.min(v.urls.length - 1, v.index + 1) })
+            setViewer((v) => v && { ...v, index: Math.min(v.atts.length - 1, v.index + 1) })
           }
         />
       )}

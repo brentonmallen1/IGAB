@@ -77,6 +77,16 @@
   flex-shrink: 0;
 }
 
+.ai-panel__retention-input {
+  width: 72px;
+}
+
+.ai-panel__retention-unit {
+  align-self: center;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
 .ai-panel__models {
   display: flex;
   flex-direction: column;

@@ -70,6 +70,10 @@ async def api_client(db_session):
 
     async def _session_override():
         yield db_session
+        # Production get_session commits at request end; the session here runs
+        # autoflush=False, so flush to make each request's writes (including
+        # change-log rows added without an explicit flush) visible to the next.
+        await db_session.flush()
 
     app.dependency_overrides[get_session] = _session_override
     app.dependency_overrides[get_current_user] = lambda: user

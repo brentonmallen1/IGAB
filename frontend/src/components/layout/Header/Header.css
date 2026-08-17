@@ -1,10 +1,12 @@
 .header {
-  height: var(--header-height);
+  /* viewport-fit=cover lets content run under the notch/status bar in the
+     standalone PWA — the inset padding keeps header controls below it */
+  height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
   background-color: var(--header-bg);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  padding: 0 var(--spacing-lg);
+  padding: env(safe-area-inset-top, 0px) var(--spacing-lg) 0;
   flex-shrink: 0;
 }
 
@@ -216,8 +218,22 @@
 }
 
 @media (max-width: 768px) {
-  /* Palette is desktop-only; the wrap keeps its flex:1 as spacer */
+  /* Icon-only palette trigger — search stays reachable without the wide bar */
   .header__palette-btn {
+    min-width: 0;
+    width: 44px;
+    height: 44px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .header__palette-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .header__palette-text,
+  .header__palette-btn .kbd {
     display: none;
   }
 

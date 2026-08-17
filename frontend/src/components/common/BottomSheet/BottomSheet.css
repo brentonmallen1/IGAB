@@ -58,6 +58,9 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* Keep the focused input clear of the container edges when the browser
+     scrolls it into view above the keyboard */
+  scroll-padding-block: 72px;
 }
 
 .bottom-sheet__footer {

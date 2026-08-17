@@ -34,6 +34,20 @@
   font-weight: 600;
 }
 
+/* Step: question ("Does your balance match $X?") */
+.reconcile-banner__step-question {
+  flex: 1;
+}
+
+.reconcile-banner__question {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.reconcile-banner__question strong {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Step: input */
 .reconcile-banner__step-input {
   display: flex;
@@ -46,18 +60,6 @@
 .reconcile-banner__hint {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-}
-
-.reconcile-banner__input-row {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.reconcile-banner__input-label {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
 }
 
 .reconcile-banner__input {

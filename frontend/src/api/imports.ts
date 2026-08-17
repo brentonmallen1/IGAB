@@ -4,6 +4,8 @@ export interface CsvImportResult {
   imported: number
   skipped: number
   errors: string[]
+  /** Change-log batch id for undo (null if nothing was imported). */
+  batch_id: string | null
 }
 
 export interface YnabImportResult {

@@ -144,6 +144,13 @@ export type ClearedStatus = 'pending' | 'uncleared' | 'cleared' | 'reconciled'
 export interface BulkActionResult {
   updated: string[]
   failed: Array<{ id: string; reason: string }>
+  /** Change-log batch id for undo (null if nothing was updated). */
+  batch_id: string | null
+}
+
+/** DELETE /transactions/{id} response (was 204, now returns batch for undo). */
+export interface DeleteTransactionResult {
+  batch_id: string
 }
 
 export interface Payee {

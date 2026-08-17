@@ -91,6 +91,10 @@ interface UIState {
   setActiveQuickFilter: (filter: QuickFilter | null) => void
   reorderQuickFilters: (order: QuickFilter[]) => void
 
+  // Category name filter (combines with views/quick filters)
+  categorySearch: string
+  setCategorySearch: (query: string) => void
+
   // Manage views modal
   isManageViewsModalOpen: boolean
   openManageViewsModal: () => void
@@ -323,6 +327,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   quickFilterOrder: [...ALL_QUICK_FILTERS],
   setActiveQuickFilter: (filter) => set({ activeQuickFilter: filter, activeBudgetViewId: null }),
   reorderQuickFilters: (order) => set({ quickFilterOrder: order }),
+
+  categorySearch: '',
+  setCategorySearch: (query) => set({ categorySearch: query }),
 
   isManageViewsModalOpen: false,
   openManageViewsModal: () => set({ isManageViewsModalOpen: true }),

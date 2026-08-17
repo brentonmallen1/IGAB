@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
+import { useVisualViewportHeight } from '../../../hooks/useVisualViewportHeight'
 import './BottomSheet.css'
 
 interface BottomSheetProps {
@@ -58,7 +59,7 @@ export function BottomSheet({
   const dragCloseYRef = useRef(0)
   // iOS Safari ignores interactive-widget=resizes-content; when the keyboard
   // shrinks the visual viewport, clamp the sheet so the footer stays reachable.
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+  const viewportHeight = useVisualViewportHeight(open)
 
   useHistoryDismissable(Boolean(open && historyKey), onClose, historyKey ?? 'sheet')
 
@@ -83,22 +84,6 @@ export function BottomSheet({
       unlockBodyScroll()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    const vv = window.visualViewport
-    if (!vv) return
-    const update = () => {
-      // Only clamp when the visual viewport is meaningfully smaller (keyboard up)
-      setViewportHeight(vv.height < window.innerHeight - 50 ? vv.height : null)
-    }
-    update()
-    vv.addEventListener('resize', update)
-    return () => {
-      vv.removeEventListener('resize', update)
-      setViewportHeight(null)
-    }
   }, [open])
 
   useEffect(() => {

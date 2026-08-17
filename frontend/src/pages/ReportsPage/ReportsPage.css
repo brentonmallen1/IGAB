@@ -674,4 +674,24 @@
     height: 32px;
     margin-top: var(--spacing-xs);
   }
+
+  /* Phone real estate: tighter cards, smaller headings */
+  .report-section {
+    padding: var(--spacing-md);
+  }
+
+  .report-section__title {
+    font-size: var(--font-size-lg);
+  }
+
+  .report-section__header {
+    flex-wrap: wrap;
+  }
+
+  /* Wide tables scroll within their card instead of pushing the page sideways */
+  .report-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }

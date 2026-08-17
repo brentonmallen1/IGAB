@@ -1,6 +1,7 @@
 import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Split, Trash2 } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
 import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction } from '../../../api/transactions'
+import { confirmDeleteTransaction } from '../../../api/attachments'
 import { useCreateCategory } from '../../../api/categories'
 import { useCreatePayee } from '../../../api/payees'
 import { useAppStore } from '../../../stores/appStore'
@@ -11,6 +12,7 @@ import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useHistoryStore } from '../../../stores/historyStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
+import { useToastUndo } from '../../../utils/toastUndo'
 import { parseAmountExpressionInput } from '../../../utils/amountExpression'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
@@ -127,6 +129,7 @@ export const TransactionRow = memo(function TransactionRow({
   const { formatMoney, formatDate } = useFormatters()
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
+  const showUndo = useToastUndo(budgetId, txn.account_id)
   const unreconcileTxn = useUnreconcileTransaction(budgetId)
   const createCat = useCreateCategory(budgetId)
   const createPayee = useCreatePayee(budgetId)
@@ -235,9 +238,15 @@ export const TransactionRow = memo(function TransactionRow({
     setApproveMenuOpen(true)
   }
 
+  async function handleDelete() {
+    if (!(await confirmDeleteTransaction(txn.id))) return
+    const { batchId } = await deleteTxn.mutateAsync({ id: txn.id, accountId: txn.account_id })
+    showUndo(batchId, 'Transaction deleted')
+  }
+
   function handleApproveAction(id: string) {
     if (id === 'approve') updateTxn.mutate({ id: txn.id, approved: true })
-    else if (id === 'delete') deleteTxn.mutate({ id: txn.id, accountId: txn.account_id })
+    else if (id === 'delete') void handleDelete()
   }
 
   function handleContextAction(id: string) {
@@ -258,7 +267,7 @@ export const TransactionRow = memo(function TransactionRow({
         updateTxn.mutate({ id: txn.id, approved: true })
         break
       case 'delete':
-        deleteTxn.mutate({ id: txn.id, accountId: txn.account_id })
+        void handleDelete()
         break
     }
   }

@@ -36,8 +36,9 @@
   color: var(--text-secondary);
 }
 
-.move-money-popover__field select,
-.move-money-popover__field input {
+/* Direct children only — the category combobox styles its own nested input */
+.move-money-popover__field > select,
+.move-money-popover__field > input {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border-color, var(--bg-tertiary));
@@ -46,8 +47,8 @@
   font-size: var(--font-size-sm);
 }
 
-.move-money-popover__field input:focus,
-.move-money-popover__field select:focus {
+.move-money-popover__field > input:focus,
+.move-money-popover__field > select:focus {
   outline: 2px solid var(--color-accent);
   outline-offset: -1px;
 }

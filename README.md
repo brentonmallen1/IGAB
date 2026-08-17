@@ -5,7 +5,7 @@
 <h1 align="center">IGAB — I've Got A Budget</h1>
 
 <p align="center">
-  <strong>Self-hosted envelope budgeting for your household.<br/>Your money, your rules, your hardware.</strong>
+  <strong>Self-hosted envelope budgeting for your household.<br/>Your money, your data, your hardware.</strong>
 </p>
 
 <p align="center">
@@ -95,7 +95,8 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
   for uncertain matches
 - **YNAB import** — switching from YNAB? Import your full export (accounts,
   categories, transactions, budget history) and run both in parallel until
-  you trust the numbers
+  you trust the numbers. Note: YNAB's export does not include saved views — those
+  are not available in the data file, so they cannot be imported.
 - **CSV import** — per-account bank CSV import with configurable parsing
   (including EU decimal formats) and hash-based dedup
 
@@ -331,6 +332,24 @@ Financial data needs a backup story before it needs anything else.
   database/field-level encryption at rest by design — the server needs
   plaintext to run queries; use host disk encryption (e.g. LUKS) if stolen
   disks are in your threat model.
+
+### Updating
+
+Updates never touch the data volume, but back up first anyway — it takes two
+minutes and it's your money's history. The routine:
+
+```sh
+# 1. Back up (Settings → Backups → "Back up now", or just backup)
+# 2. Pull and restart
+docker compose -f docker-compose.aio.yml pull
+docker compose -f docker-compose.aio.yml up -d
+# 3. Verify: health endpoint, log in, spot-check balances
+```
+
+Database migrations run automatically on startup. See
+[docs/upgrading.md](docs/upgrading.md) for the full runbook: pre-update
+checks, what lives where, multi-container/Unraid steps, rollback, and
+one-time notes for specific releases.
 
 ### Update Notifications
 

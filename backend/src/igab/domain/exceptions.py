@@ -24,3 +24,12 @@ class DuplicateError(IGABError):
 
 class ImportError(IGABError):
     pass
+
+
+class UndoConflict(IGABError):
+    """Raised when a change cannot be (re)undone: the entity has changed
+    since, is reconciled, or the change was already undone."""
+
+    def __init__(self, message: str, fields: list[str] | None = None):
+        super().__init__(message)
+        self.fields = fields or []

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowRightLeft } from 'lucide-react'
 import { useMoveHistory, useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
+import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { toCents } from '../../../utils/money'
 import type { Category } from '../../../types'
@@ -40,6 +41,13 @@ export function MoveMoneyForm({ budgetId, month, category, available, onClose }:
   const otherCategories = categories.filter(
     (c) => c.id !== category.id && !c.is_hidden && !systemGroupIds.has(c.category_group_id)
   )
+  const groupedOthers = groups
+    .filter((g) => !g.is_system && !g.is_hidden)
+    .map((g) => ({
+      group: g,
+      cats: otherCategories.filter((c) => c.category_group_id === g.id),
+    }))
+    .filter((g) => g.cats.length > 0)
   const nameOf = (id: string | null) =>
     id === null ? 'Ready to Assign' : (categories.find((c) => c.id === id)?.name ?? '—')
 
@@ -80,15 +88,17 @@ export function MoveMoneyForm({ budgetId, month, category, available, onClose }:
       </div>
 
       <form className="move-money-popover__form" onSubmit={handleSubmit}>
-        <label className="move-money-popover__field">
+        <div className="move-money-popover__field">
           <span>{isCover ? 'From' : 'To'}</span>
-          <select value={otherId} onChange={(e) => setOtherId(e.target.value)}>
-            <option value={TBA}>Ready to Assign</option>
-            {otherCategories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>
+          <CategoryCombobox
+            value={otherId}
+            onChange={(id) => setOtherId(id ?? TBA)}
+            groups={groupedOthers}
+            topOptions={[{ id: TBA, label: 'Ready to Assign' }]}
+            sheetTitle={isCover ? 'Cover from' : 'Move to'}
+            aria-label={isCover ? 'Cover from' : 'Move to'}
+          />
+        </div>
         <label className="move-money-popover__field">
           <span>Amount</span>
           <input
