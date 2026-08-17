@@ -450,6 +450,44 @@ class AIJobWorker:
 ai_worker = AIJobWorker()
 
 
+async def run_retention_cleanup(session: AsyncSession) -> list[uuid.UUID]:
+    """Delete done/error job rows older than ai_activity_retention_days
+    (0 = keep forever). Returns the deleted ids; the caller commits.
+    Transactions and their attachments are the user's records — never
+    touched here, only log rows and job-owned staging files."""
+    from igab.repositories.ai_job_repo import AIJobRepository
+    from igab.repositories.settings_repo import SettingsRepository
+    from igab.services.settings_service import SettingsService
+
+    raw = await SettingsService(SettingsRepository(session)).get("ai_activity_retention_days")
+    try:
+        days = int(raw or "30")
+    except ValueError:
+        days = 30
+    if days <= 0:
+        return []
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    return await AIJobRepository(session).delete_finished_before(cutoff)
+
+
+async def cleanup_old_jobs() -> None:
+    """Nightly retention pass over the AI activity log."""
+    from igab.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        try:
+            deleted = await run_retention_cleanup(session)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception("ai_worker: retention cleanup failed")
+            return
+    for job_id in deleted:
+        cleanup_staging(job_id)
+    if deleted:
+        logger.info("ai_worker: retention cleanup removed %d old job(s)", len(deleted))
+
+
 async def sweep_orphaned_staging() -> None:
     """Daily sweep: staging dirs whose job vanished (crash between file write
     and row insert, or manual DB surgery) get removed."""

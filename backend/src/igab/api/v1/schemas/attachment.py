@@ -1,7 +1,12 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
+
+
+class AttachmentRotateRequest(BaseModel):
+    degrees: Literal[90, 180, 270]
 
 
 class AttachmentResponse(BaseModel):

@@ -42,6 +42,15 @@ async def _get_owned_job(repo: AIJobRepository, job_id: uuid.UUID, budget_id: uu
     return job
 
 
+async def _removed_transaction_ids(repo: AIJobRepository, jobs: list[AIJob]) -> set[uuid.UUID]:
+    """Transaction ids referenced by these jobs that no longer resolve."""
+    txn_ids = list({j.transaction_id for j in jobs if j.transaction_id is not None})
+    if not txn_ids:
+        return set()
+    existing = await repo.existing_transaction_ids(txn_ids)
+    return {tid for tid in txn_ids if tid not in existing}
+
+
 def _parse_client_today(value: str | None) -> date:
     if not value:
         return datetime.now(UTC).date()
@@ -153,7 +162,13 @@ async def list_jobs(
         limit=min(limit, 200),
         offset=offset,
     )
-    return AIJobListResponse(jobs=[AIJobResponse.from_job(j) for j in jobs], total_count=total)
+    removed = await _removed_transaction_ids(job_repo, jobs)
+    return AIJobListResponse(
+        jobs=[
+            AIJobResponse.from_job(j, transaction_removed=j.transaction_id in removed) for j in jobs
+        ],
+        total_count=total,
+    )
 
 
 @router.get("/{budget_id}/ai/jobs/active-count", response_model=ActiveCountResponse)
@@ -173,7 +188,8 @@ async def get_job(
     job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
 ) -> AIJobResponse:
     job = await _get_owned_job(job_repo, job_id, budget_id)
-    return AIJobResponse.from_job(job)
+    removed = await _removed_transaction_ids(job_repo, [job])
+    return AIJobResponse.from_job(job, transaction_removed=job.transaction_id in removed)
 
 
 @router.post("/{budget_id}/ai/jobs/{job_id}/retry", response_model=AIJobResponse)

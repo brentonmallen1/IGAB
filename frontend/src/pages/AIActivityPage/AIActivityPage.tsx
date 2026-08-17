@@ -26,7 +26,8 @@ import {
   type AIJob,
   type AIJobStatus,
 } from '../../api/aiJobs'
-import { useAttachmentUrl } from '../../api/attachments'
+import { fetchAttachmentBlob, useAttachmentUrl } from '../../api/attachments'
+import { AttachmentLightbox } from '../../components/attachments/Lightbox'
 import { useFormatters } from '../../hooks/useFormatters'
 import './AIActivityPage.css'
 
@@ -76,10 +77,20 @@ function CopyButton({ text, title }: { text: string; title: string }) {
   )
 }
 
-function JobThumbnail({ attachmentId }: { attachmentId: string }) {
+function JobThumbnail({ attachmentId, onOpen }: { attachmentId: string; onOpen: () => void }) {
   const { data: url } = useAttachmentUrl(attachmentId, true)
   if (!url) return <div className="ai-activity__thumb ai-activity__thumb--empty" />
-  return <img className="ai-activity__thumb" src={url} alt="Receipt thumbnail" loading="lazy" />
+  return (
+    <button
+      type="button"
+      className="ai-activity__thumb-btn"
+      onClick={onOpen}
+      title="View receipt image"
+      aria-label="View receipt image"
+    >
+      <img className="ai-activity__thumb" src={url} alt="Receipt thumbnail" loading="lazy" />
+    </button>
+  )
 }
 
 function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
@@ -90,6 +101,30 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
   const [errorOpen, setErrorOpen] = useState(false)
   const [responseOpen, setResponseOpen] = useState(false)
   const [promptOpen, setPromptOpen] = useState(false)
+  const [viewerOpen, setViewerOpen] = useState(false)
+
+  // The job log stores only the attachment id + original upload metadata; the
+  // stored file is the transaction attachment (WebP for images, PDF verbatim).
+  const isPdf = job.payload.content_type === 'application/pdf'
+  const viewerAttachment = job.attachment_id
+    ? {
+        id: job.attachment_id,
+        original_filename: job.payload.original_filename ?? 'receipt',
+        content_type: isPdf ? 'application/pdf' : 'image/webp',
+      }
+    : null
+
+  function openImage() {
+    if (!viewerAttachment) return
+    if (isPdf) {
+      // PDFs use the browser's native viewer, same as the attachment panel
+      void fetchAttachmentBlob(viewerAttachment.id)
+        .then((url) => window.open(url, '_blank'))
+        .catch(() => toast.error('Could not load the receipt file'))
+    } else {
+      setViewerOpen(true)
+    }
+  }
 
   const draft = job.result?.draft
   const reason = job.result?.extraction?.reason
@@ -120,7 +155,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
   return (
     <div className={`ai-activity__row ai-activity__row--${job.status}`}>
       {job.attachment_id ? (
-        <JobThumbnail attachmentId={job.attachment_id} />
+        <JobThumbnail attachmentId={job.attachment_id} onOpen={openImage} />
       ) : (
         <div className="ai-activity__thumb ai-activity__thumb--icon">
           {job.kind === 'receipt' ? <ReceiptText size={18} /> : <MessageSquareText size={18} />}
@@ -148,6 +183,15 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
           {job.attempts > 1 && (
             <span className="ai-activity__attempts">
               attempt {job.attempts}/{job.max_attempts}
+            </span>
+          )}
+          {job.transaction_removed && (
+            <span
+              className="ai-activity__chip ai-activity__chip--removed"
+              title="The transaction this job created has since been deleted — the log entry is kept for the record"
+            >
+              <Trash2 size={11} />
+              Transaction removed
             </span>
           )}
         </div>
@@ -215,7 +259,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
       </div>
 
       <div className="ai-activity__actions">
-        {job.transaction_id && (
+        {job.transaction_id && !job.transaction_removed && (
           <button
             className="ai-activity__action"
             onClick={() => navigate(`/transactions?highlight=${job.transaction_id}`)}
@@ -247,6 +291,13 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
           </button>
         )}
       </div>
+
+      {viewerOpen && viewerAttachment && (
+        <AttachmentLightbox
+          attachment={viewerAttachment}
+          onClose={() => setViewerOpen(false)}
+        />
+      )}
     </div>
   )
 }

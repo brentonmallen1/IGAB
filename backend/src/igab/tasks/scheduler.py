@@ -113,6 +113,18 @@ async def _sweep_ai_staging() -> None:
     await sweep_orphaned_staging()
 
 
+async def _cleanup_ai_jobs() -> None:
+    from igab.tasks.ai_worker import cleanup_old_jobs
+
+    await cleanup_old_jobs()
+
+
+async def _sweep_attachments() -> None:
+    from igab.tasks.attachment_sweep import sweep_attachments
+
+    await sweep_attachments()
+
+
 def start_scheduler() -> None:
     scheduler.add_job(
         process_due_scheduled_transactions,
@@ -135,6 +147,22 @@ def start_scheduler() -> None:
         hour=3,
         minute=15,
         id="sweep_ai_staging",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _sweep_attachments,
+        trigger="cron",
+        hour=3,
+        minute=30,
+        id="sweep_attachments",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _cleanup_ai_jobs,
+        trigger="cron",
+        hour=3,
+        minute=45,
+        id="cleanup_ai_jobs",
         replace_existing=True,
     )
     scheduler.start()

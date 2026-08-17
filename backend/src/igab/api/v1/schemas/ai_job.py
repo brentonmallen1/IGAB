@@ -20,13 +20,15 @@ class AIJobResponse(BaseModel):
     attempts: int
     max_attempts: int
     transaction_id: uuid.UUID | None
+    # The linked transaction has since been deleted — the log entry outlives it
+    transaction_removed: bool = False
     attachment_id: uuid.UUID | None
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
 
     @classmethod
-    def from_job(cls, job) -> "AIJobResponse":
+    def from_job(cls, job, *, transaction_removed: bool = False) -> "AIJobResponse":
         payload = job.payload or {}
         return cls(
             id=job.id,
@@ -40,6 +42,7 @@ class AIJobResponse(BaseModel):
             attempts=job.attempts,
             max_attempts=job.max_attempts,
             transaction_id=job.transaction_id,
+            transaction_removed=transaction_removed,
             attachment_id=job.attachment_id,
             created_at=job.created_at,
             started_at=job.started_at,

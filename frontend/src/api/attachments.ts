@@ -44,6 +44,60 @@ export function getAttachmentUrl(attachmentId: string, thumbnail = false): strin
   return blobCache.get(cacheKey) ?? ''
 }
 
+/** Drop cached blob URLs for an attachment whose bytes changed (e.g. rotate). */
+export function invalidateAttachmentBlob(attachmentId: string) {
+  for (const thumbnail of [true, false]) {
+    const cacheKey = `${attachmentId}-${thumbnail}`
+    const url = blobCache.get(cacheKey)
+    if (url) {
+      URL.revokeObjectURL(url)
+      blobCache.delete(cacheKey)
+    }
+  }
+}
+
+export function useRotateAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { attachmentId: string; degrees: 90 | 180 | 270 }) => {
+      const { data } = await apiClient.post<Attachment>(
+        `/attachments/${vars.attachmentId}/rotate`,
+        { degrees: vars.degrees }
+      )
+      return data
+    },
+    onSuccess: (data) => {
+      invalidateAttachmentBlob(data.id)
+      qc.invalidateQueries({ queryKey: ['attachmentBlob', data.id] })
+      qc.invalidateQueries({ queryKey: ['attachments', data.transaction_id] })
+    },
+  })
+}
+
+/** The stored file is a WebP re-encode for images (PDFs are kept verbatim) —
+ * download under the original base name with the real extension. */
+export function attachmentDownloadName(
+  a: Pick<Attachment, 'original_filename' | 'content_type'>
+): string {
+  if (isPdfAttachment(a)) {
+    return /\.pdf$/i.test(a.original_filename) ? a.original_filename : `${a.original_filename}.pdf`
+  }
+  const base = a.original_filename.replace(/\.[^.]+$/, '')
+  return `${base || a.original_filename}.webp`
+}
+
+export async function downloadAttachment(
+  a: Pick<Attachment, 'id' | 'original_filename' | 'content_type'>
+): Promise<void> {
+  const url = await fetchAttachmentBlob(a.id)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = attachmentDownloadName(a)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
 export function useAttachments(transactionId: string | null) {
   return useQuery({
     queryKey: ['attachments', transactionId],
@@ -115,6 +169,28 @@ export async function uploadFilesToTransaction(
     }
   }
   return { ok, failed }
+}
+
+/**
+ * Confirm a transaction delete, warning about attached receipt images.
+ * Attachment files are removed for good after the deletion grace period,
+ * so the user should know images go down with the transaction.
+ */
+export async function confirmDeleteTransaction(transactionId: string): Promise<boolean> {
+  let message = 'Delete this transaction?'
+  try {
+    const { data } = await apiClient.get<Attachment[]>(
+      `/transactions/${transactionId}/attachments`
+    )
+    if (data.length === 1) {
+      message = 'Delete this transaction? The attached receipt image will be deleted with it.'
+    } else if (data.length > 1) {
+      message = `Delete this transaction? The ${data.length} attached receipt images will be deleted with it.`
+    }
+  } catch {
+    // Count is best-effort; the plain confirmation still protects the delete.
+  }
+  return confirm(message)
 }
 
 export function useCheckAttachments(transactionIds: string[]) {

@@ -12,7 +12,7 @@ import {
   useAttachmentUrl,
   type Attachment,
 } from '../../api/attachments'
-import { Lightbox } from './Lightbox'
+import { AttachmentLightbox } from './Lightbox'
 import './AttachmentPanel.css'
 
 function AttachmentThumb({
@@ -42,38 +42,6 @@ function AttachmentThumb({
       </button>
       <span className="attachment-thumb__name">{attachment.original_filename}</span>
     </div>
-  )
-}
-
-function LightboxWithFetch({
-  attachment,
-  onClose,
-  onPrev,
-  onNext,
-  hasPrev,
-  hasNext,
-}: {
-  attachment: Attachment
-  onClose: () => void
-  onPrev: () => void
-  onNext: () => void
-  hasPrev: boolean
-  hasNext: boolean
-}) {
-  const { data: fullUrl } = useAttachmentUrl(attachment.id, false)
-
-  if (!fullUrl) return null
-
-  return (
-    <Lightbox
-      src={fullUrl}
-      alt={attachment.original_filename}
-      onClose={onClose}
-      onPrev={onPrev}
-      onNext={onNext}
-      hasPrev={hasPrev}
-      hasNext={hasNext}
-    />
   )
 }
 
@@ -216,7 +184,7 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
       )}
 
       {lightboxIndex !== null && imageAttachments[lightboxIndex] && (
-        <LightboxWithFetch
+        <AttachmentLightbox
           attachment={imageAttachments[lightboxIndex]}
           onClose={() => setLightboxIndex(null)}
           onPrev={() => setLightboxIndex((i) => (i !== null && i > 0 ? i - 1 : i))}

@@ -23,6 +23,17 @@ class AttachmentRepository(BaseRepository[TransactionAttachment]):
         )
         return list(result.scalars().all())
 
+    async def update_media(
+        self, attachment_id: uuid.UUID, *, width: int, height: int, file_size: int
+    ) -> None:
+        """Refresh the stored media metadata after an in-place re-encode."""
+        await self.session.execute(
+            update(TransactionAttachment)
+            .where(TransactionAttachment.id == attachment_id)
+            .values(width=width, height=height, file_size=file_size)
+        )
+        await self.session.flush()
+
     async def delete_attachment(self, attachment_id: uuid.UUID) -> None:
         await self.session.execute(
             delete(TransactionAttachment).where(TransactionAttachment.id == attachment_id)
