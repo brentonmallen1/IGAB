@@ -1,0 +1,194 @@
+.activity-page {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: var(--spacing-lg);
+}
+
+.activity-page__header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.activity-page__title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.activity-page__count {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.activity-page__loading,
+.activity-page__error,
+.activity-page__empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-xl) 0;
+  text-align: center;
+}
+
+.activity-page__error {
+  color: var(--color-negative);
+}
+
+/* ─── Activity list ─────────────────────────────────────────────────────────── */
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.activity-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.activity-group__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: var(--spacing-xs) 0;
+}
+
+.activity-group__header svg {
+  opacity: 0.7;
+}
+
+/* ─── Change card ───────────────────────────────────────────────────────────── */
+
+.change-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius-md);
+}
+
+.change-card--undone {
+  opacity: 0.5;
+}
+
+.change-card__icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+}
+
+.change-card__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.change-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.change-card__action {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.change-card__time {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.change-card__summary {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.change-card__undone-badge {
+  display: inline-block;
+  margin-top: var(--spacing-xs);
+  padding: 2px var(--spacing-xs);
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.change-card__undo {
+  flex-shrink: 0;
+  padding: var(--spacing-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.change-card__undo:hover {
+  background: var(--bg-tertiary);
+  color: var(--color-accent);
+}
+
+.change-card__undo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Pagination ────────────────────────────────────────────────────────────── */
+
+.activity-page__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--border-color);
+}
+
+.activity-page__page-btn {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.activity-page__page-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+
+.activity-page__page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.activity-page__page-info {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

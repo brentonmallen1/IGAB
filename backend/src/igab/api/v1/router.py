@@ -10,6 +10,7 @@ from igab.api.v1 import (
     budget_views,
     budgets,
     categories,
+    changes,
     imports,
     liabilities,
     reconciliation,
@@ -28,6 +29,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(budgets.router, tags=["budgets"])
 api_router.include_router(accounts.router, tags=["accounts"])
 api_router.include_router(categories.router, tags=["categories"])
+api_router.include_router(changes.router, tags=["changes"])
 api_router.include_router(transactions.router, tags=["transactions"])
 api_router.include_router(imports.router, tags=["imports"])
 api_router.include_router(settings.router, tags=["settings"])

@@ -1,0 +1,74 @@
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from igab.api.v1.schemas.change import ChangeListResponse, ChangeOut, UndoResult
+from igab.dependencies import (
+    BudgetAccess,
+    CurrentUser,
+    get_change_log_repo,
+    get_undo_service,
+)
+from igab.domain.exceptions import NotFoundError, UndoConflict
+from igab.repositories.change_log_repo import ChangeLogRepository
+from igab.services.undo_service import UndoService
+
+router = APIRouter()
+
+
+@router.get("/{budget_id}/changes", response_model=ChangeListResponse)
+async def list_changes(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    change_repo: Annotated[ChangeLogRepository, Depends(get_change_log_repo)],
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> ChangeListResponse:
+    changes = await change_repo.list_for_budget(budget_id, limit=limit, offset=offset)
+    total = await change_repo.count_for_budget(budget_id)
+    return ChangeListResponse(
+        changes=[ChangeOut.model_validate(c) for c in changes],
+        total=total,
+    )
+
+
+def _conflict(e: UndoConflict) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"message": str(e), "fields": e.fields},
+    )
+
+
+@router.post("/{budget_id}/changes/{change_id}/undo", response_model=UndoResult)
+async def undo_change(
+    budget_id: BudgetAccess,
+    change_id: uuid.UUID,
+    current_user: CurrentUser,
+    undo_service: Annotated[UndoService, Depends(get_undo_service)],
+    force: bool = Query(False),
+) -> UndoResult:
+    try:
+        undone = await undo_service.undo_change(budget_id, change_id, force=force)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except UndoConflict as e:
+        raise _conflict(e) from e
+    return UndoResult(undone_change_ids=undone)
+
+
+@router.post("/{budget_id}/changes/batch/{batch_id}/undo", response_model=UndoResult)
+async def undo_batch(
+    budget_id: BudgetAccess,
+    batch_id: uuid.UUID,
+    current_user: CurrentUser,
+    undo_service: Annotated[UndoService, Depends(get_undo_service)],
+    force: bool = Query(False),
+) -> UndoResult:
+    try:
+        undone = await undo_service.undo_batch(budget_id, batch_id, force=force)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except UndoConflict as e:
+        raise _conflict(e) from e
+    return UndoResult(undone_change_ids=undone)
