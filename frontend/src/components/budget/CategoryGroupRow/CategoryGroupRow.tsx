@@ -27,6 +27,7 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
   const toggleGroup = useUIStore((s) => s.toggleGroupExpanded)
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const selectGroupCategories = useUIStore((s) => s.selectGroupCategories)
+  const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const anySelected = selectedCategoryIds.size > 0
   const categoryIds = categories.map((c) => c.id)
   const allGroupSelected = categoryIds.length > 0 && categoryIds.every((id) => selectedCategoryIds.has(id))
@@ -95,7 +96,7 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
   }
 
   return (
-    <div className="category-group-row">
+    <div className={`category-group-row ${budgetRowMode === 'compressed' ? 'category-group-row--compressed' : ''}`}>
       <div className="category-group-row__header">
         <button
           className="category-group-row__toggle"

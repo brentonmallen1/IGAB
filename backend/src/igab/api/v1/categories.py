@@ -33,6 +33,7 @@ from igab.api.v1.schemas.category import (
     FutureOverspendPreviewResponse,
     FutureOverspendWarningOut,
     MoveMoneyRequest,
+    RecentPayeeResponse,
 )
 from igab.db.models import CategoryGroup
 from igab.dependencies import (
@@ -44,14 +45,18 @@ from igab.dependencies import (
     get_budget_service,
     get_category_group_repo,
     get_category_repo,
+    get_change_recorder,
     get_target_repo,
     get_target_service,
+    get_transaction_repo,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.assign_service import AssignPreview, AssignService
 from igab.services.budget_service import BudgetService
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import require_in_budget
 from igab.services.target_service import TargetService
 
@@ -82,11 +87,19 @@ async def create_category_group(
     body: CategoryGroupCreate,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> CategoryGroupResponse:
     group = await group_repo.create(
         budget_id=budget_id,
         name=body.name,
         sort_order=body.sort_order,
+    )
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="category_group",
+        entity_id=group.id,
+        action="create",
+        after=snapshot("category_group", group),
     )
     return CategoryGroupResponse.model_validate(group)
 
@@ -97,12 +110,24 @@ async def update_category_group(
     body: CategoryGroupUpdate,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> CategoryGroupResponse:
     try:
+        before = snapshot("category_group", await group_repo.get_or_raise(group_id))
         changes = body.model_dump(exclude_none=True)
         group = await group_repo.update(group_id, **changes)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    after = snapshot("category_group", group)
+    if snapshots_match(after, before):
+        await recorder.record(
+            budget_id=group.budget_id,
+            entity_type="category_group",
+            entity_id=group_id,
+            action="update",
+            before=before,
+            after=after,
+        )
     return CategoryGroupResponse.model_validate(group)
 
 
@@ -111,6 +136,7 @@ async def delete_category_group(
     group_id: CategoryGroupAccess,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> None:
     group = await group_repo.get_or_raise(group_id)
     if group.is_system:
@@ -118,7 +144,15 @@ async def delete_category_group(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete system category groups",
         )
+    before = snapshot("category_group", group)
     await group_repo.soft_delete(group_id)
+    await recorder.record(
+        budget_id=group.budget_id,
+        entity_type="category_group",
+        entity_id=group_id,
+        action="delete",
+        before=before,
+    )
 
 
 # ─── Categories ───────────────────────────────────────────────────────────────
@@ -145,6 +179,7 @@ async def create_category(
     body: CategoryCreate,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> CategoryResponse:
     # category_group_id comes from the body, bypassing BudgetAccess; reject a
     # group belonging to another budget before creating the category.
@@ -159,6 +194,13 @@ async def create_category(
         sort_order=body.sort_order,
         note=body.note,
     )
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="category",
+        entity_id=cat.id,
+        action="create",
+        after=snapshot("category", cat),
+    )
     # Reload with tags eagerly loaded; serializing the freshly created row would
     # otherwise lazy-load the `tags` relationship in a sync context and raise
     # MissingGreenlet.
@@ -172,13 +214,25 @@ async def update_category(
     body: CategoryUpdate,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> CategoryResponse:
     try:
+        before = snapshot("category", await category_repo.get_or_raise(category_id))
         changes = body.model_dump(exclude_unset=True)
         cat = await category_repo.update(category_id, **changes)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
-    return CategoryResponse.model_validate(cat)
+    after = snapshot("category", cat)
+    if snapshots_match(after, before):
+        await recorder.record(
+            budget_id=cat.budget_id,
+            entity_type="category",
+            entity_id=category_id,
+            action="update",
+            before=before,
+            after=after,
+        )
+    return CategoryResponse.model_validate(await category_repo.get_with_tags(category_id))
 
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -186,8 +240,18 @@ async def delete_category(
     category_id: CategoryAccess,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> None:
+    cat = await category_repo.get_or_raise(category_id)
+    before = snapshot("category", cat)
     await category_repo.soft_delete(category_id)
+    await recorder.record(
+        budget_id=cat.budget_id,
+        entity_type="category",
+        entity_id=category_id,
+        action="delete",
+        before=before,
+    )
 
 
 # ─── Budget Month / Assignments ───────────────────────────────────────────────
@@ -308,6 +372,20 @@ async def list_budget_targets(
     return [CategoryTargetResponse.model_validate(t) for t in targets]
 
 
+@router.get("/categories/{category_id}/recent-payee", response_model=RecentPayeeResponse | None)
+async def get_recent_payee_for_category(
+    category_id: CategoryAccess,
+    current_user: CurrentUser,
+    budget_id: BudgetAccess,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+) -> RecentPayeeResponse | None:
+    """Most recent (non-transfer) payee in this category, for add-transaction prefill."""
+    row = await txn_repo.get_most_recent_payee_for_category(budget_id, category_id)
+    if row is None:
+        return None
+    return RecentPayeeResponse(payee_id=row[0], name=row[1])
+
+
 @router.patch("/categories/{category_id}/assignment", status_code=status.HTTP_204_NO_CONTENT)
 async def set_category_assignment(
     category_id: CategoryAccess,
@@ -416,8 +494,9 @@ async def auto_assign_categories(
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
 ) -> None:
-    for cat_id in body.category_ids:
-        await budget_service.auto_assign(budget_id, cat_id, body.month, body.action)
+    with budget_service.changes.batch():
+        for cat_id in body.category_ids:
+            await budget_service.auto_assign(budget_id, cat_id, body.month, body.action)
 
 
 # ─── Assign Strategies (TBA hero dropdown) ────────────────────────────────────

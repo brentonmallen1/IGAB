@@ -260,6 +260,22 @@
   }
 }
 
+/* Compressed mode — tighter rows, smaller text (desktop only) */
+@media (min-width: 769px) {
+  .category-group-row--compressed .category-group-row__header {
+    min-height: 26px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: var(--font-size-xs);
+  }
+
+  .category-group-row--compressed .category-group-row__assigned,
+  .category-group-row--compressed .category-group-row__activity,
+  .category-group-row--compressed .category-group-row__available {
+    font-size: var(--font-size-xs);
+  }
+}
+
 /* Hidden group styling */
 .category-group-row--hidden .category-group-row__header {
   opacity: 0.5;

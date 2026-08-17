@@ -391,6 +391,36 @@
   color: var(--text-muted);
 }
 
+/* ─── Compressed row mode ───────────────────────────────────────────────── */
+
+/* Desktop density mode: tighter rows, smaller text, no subtitle. Scoped above 768px —
+   the mobile card layout keeps its full-size tap targets regardless. */
+@media (min-width: 769px) {
+  .category-row--compressed {
+    min-height: 24px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .category-row--compressed .category-row__name-text {
+    font-size: var(--font-size-xs);
+  }
+
+  .category-row--compressed .category-row__subtitle {
+    display: none;
+  }
+
+  .category-row--compressed .category-row__editable {
+    font-size: var(--font-size-xs);
+    padding: 1px 4px;
+  }
+
+  .category-row--compressed .category-row__input {
+    font-size: var(--font-size-xs);
+    padding: 1px 4px;
+  }
+}
+
 /* ─── Touch / mobile adaptations ────────────────────────────────────────── */
 
 /* On touch devices, always show actions since hover never fires */

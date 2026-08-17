@@ -24,6 +24,7 @@ export function BudgetTable() {
   const expandAll = useUIStore((s) => s.expandAll)
   const activeBudgetViewId = useUIStore((s) => s.activeBudgetViewId)
   const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
+  const categorySearch = useUIStore((s) => s.categorySearch)
 
   const [showHidden, setShowHidden] = useState(false)
   const [isAddingGroup, setIsAddingGroup] = useState(false)
@@ -57,6 +58,9 @@ export function BudgetTable() {
   const activeView = views?.find((v) => v.id === activeBudgetViewId) ?? null
   const viewCategoryIds = activeView ? new Set(activeView.category_ids) : null
 
+  const groupNameById = new Map((groups ?? []).map((g) => [g.id, g.name]))
+  const searchNeedle = categorySearch.trim().toLowerCase()
+
   function categoryMatchesFilter(catId: string): boolean {
     if (viewCategoryIds) return viewCategoryIds.has(catId)
     if (!activeQuickFilter) return true
@@ -70,14 +74,22 @@ export function BudgetTable() {
     }
   }
 
+  // Text search matches the category name or its group's name, and stacks
+  // with the active view / quick filter
+  function categoryMatchesSearch(cat: { id: string; name: string; category_group_id: string }) {
+    if (!searchNeedle) return true
+    if (cat.name.toLowerCase().includes(searchNeedle)) return true
+    return (groupNameById.get(cat.category_group_id) ?? '').toLowerCase().includes(searchNeedle)
+  }
+
   const catsByGroup = new Map<string, typeof categories>()
   categories?.forEach((cat) => {
-    if (!categoryMatchesFilter(cat.id)) return
+    if (!categoryMatchesFilter(cat.id) || !categoryMatchesSearch(cat)) return
     if (!catsByGroup.has(cat.category_group_id)) catsByGroup.set(cat.category_group_id, [])
     catsByGroup.get(cat.category_group_id)!.push(cat)
   })
 
-  const isFiltered = viewCategoryIds != null || activeQuickFilter != null
+  const isFiltered = viewCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
   const visibleGroups = isFiltered
     ? groups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
     : groups

@@ -49,6 +49,15 @@ export function Combobox({
   const selectedOption = value ? options.find((o) => o.id === value) : null
   const [query, setQuery] = useState(autoFocus ? '' : (selectedOption?.label ?? ''))
   const [open, setOpen] = useState(autoFocus)
+
+  // Sync the text when the selection changes from outside (e.g. an AI
+  // suggestion or autofill setting the value) — but never while the user is
+  // actively typing in the open dropdown
+  const [lastValue, setLastValue] = useState(value)
+  if (value !== lastValue) {
+    setLastValue(value)
+    if (!open) setQuery(selectedOption?.label ?? '')
+  }
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)

@@ -46,6 +46,8 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
   const inputRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
+  // True while a keyboard commit/cancel is in flight, so blur doesn't re-commit
+  const committedRef = useRef(false)
 
   const setAssignment = useSetAssignment(budgetId)
   const updateCategory = useUpdateCategory(budgetId)
@@ -67,6 +69,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const available = Number(balance?.available ?? 0)
 
   const handleStartEdit = useCallback(() => {
+    committedRef.current = false
     setEditValue(assigned === 0 ? '' : String(assigned))
     setIsEditing(true)
     setTimeout(() => inputRef.current?.select(), 0)
@@ -84,13 +87,47 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
     setIsEditing(false)
   }, [editValue, assigned, category.id, month, setAssignment])
 
+  // Open the adjacent visible row's assignment editor. DOM order handles
+  // groups, collapse, and filtering for free.
+  const moveToAdjacent = useCallback(
+    (dir: 1 | -1) => {
+      const cells = Array.from(document.querySelectorAll<HTMLElement>('[data-assign-id]'))
+      const idx = cells.findIndex((el) => el.dataset.assignId === category.id)
+      if (idx === -1) return
+      cells[idx + dir]?.querySelector<HTMLElement>('button.category-row__editable')?.click()
+    },
+    [category.id]
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') handleCommit()
-      if (e.key === 'Escape') setIsEditing(false)
+      if (e.key === 'Enter' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        committedRef.current = true
+        handleCommit()
+        moveToAdjacent(1)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        committedRef.current = true
+        handleCommit()
+        moveToAdjacent(-1)
+      } else if (e.key === 'Escape') {
+        committedRef.current = true
+        setIsEditing(false)
+      }
     },
-    [handleCommit]
+    [handleCommit, moveToAdjacent]
   )
+
+  // The keyboard handlers above commit before focus moves; skip the
+  // resulting blur so the same edit isn't committed twice.
+  const handleBlur = useCallback(() => {
+    if (committedRef.current) {
+      committedRef.current = false
+      return
+    }
+    handleCommit()
+  }, [handleCommit])
 
   function startRename() {
     setRenameValue(category.name)
@@ -210,7 +247,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
         />
       )}
       <div
-        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''}`}
+        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'compressed' ? 'category-row--compressed' : ''}`}
         role="row"
         {...(isMobile ? longPress : { onClick: handleRowClick })}
         style={{ cursor: 'default' }}
@@ -359,7 +396,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
           )}
         </div>
 
-        <div className="category-row__assigned">
+        <div className="category-row__assigned" data-assign-id={category.id}>
           {isEditing ? (
             <AmountInput
               ref={inputRef}
@@ -367,7 +404,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
               value={editValue}
               onValueChange={setEditValue}
               baseCents={toCents(assigned)}
-              onBlur={handleCommit}
+              onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               placeholder="0.00"
             />
