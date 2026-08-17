@@ -102,6 +102,7 @@ export async function confirmFutureOverspend(
 export function useSetAssignment(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
+    mutationKey: ['setAssignment', budgetId],
     mutationFn: ({
       categoryId,
       month,
@@ -114,10 +115,46 @@ export function useSetAssignment(budgetId: string) {
       apiClient.patch(`/categories/${categoryId}/assignment`, { amount }, {
         params: { month, budget_id: budgetId },
       }),
-    onSuccess: () => {
+    // Optimistic: the row and month totals update instantly; the server
+    // refetch below reconciles cross-month ripple effects.
+    onMutate: async ({ categoryId, month, amount }) => {
+      await qc.cancelQueries({ queryKey: ['budgetMonth', budgetId, month] })
+      const previous = qc.getQueryData<BudgetMonth>(['budgetMonth', budgetId, month])
+      if (previous) {
+        const existing = previous.category_balances.find((b) => b.category_id === categoryId)
+        const delta = amount - Number(existing?.assigned ?? 0)
+        const category_balances = existing
+          ? previous.category_balances.map((b) =>
+              b.category_id === categoryId
+                ? { ...b, assigned: amount, available: Number(b.available) + delta }
+                : b
+            )
+          : [
+              ...previous.category_balances,
+              { category_id: categoryId, month, assigned: amount, activity: 0, available: amount },
+            ]
+        qc.setQueryData<BudgetMonth>(['budgetMonth', budgetId, month], {
+          ...previous,
+          total_assigned: Number(previous.total_assigned) + delta,
+          to_be_assigned: Number(previous.to_be_assigned) - delta,
+          category_balances,
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, { month }, context) => {
+      if (context?.previous) {
+        qc.setQueryData(['budgetMonth', budgetId, month], context.previous)
+      }
+    },
+    onSettled: () => {
       // Assignments ripple: later months' available and every month's TBA
-      // shift, so refresh all cached months, not just the edited one.
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      // shift, so refresh all cached months, not just the edited one — but
+      // only once the last of rapid sequential edits settles, so an early
+      // refetch can't clobber a later edit's optimistic state.
+      if (qc.isMutating({ mutationKey: ['setAssignment', budgetId] }) === 1) {
+        qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      }
     },
   })
 }

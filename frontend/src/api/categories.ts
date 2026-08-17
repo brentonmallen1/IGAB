@@ -30,6 +30,27 @@ export function useCategories(budgetId: string | null, includeHidden = false) {
   })
 }
 
+export interface RecentPayee {
+  payee_id: string
+  name: string
+}
+
+/** Most recent (non-transfer) payee used in a category — add-transaction prefill */
+export function useRecentPayeeForCategory(budgetId: string, categoryId: string | null) {
+  return useQuery({
+    queryKey: ['recentPayee', budgetId, categoryId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<RecentPayee | null>(
+        `/categories/${categoryId}/recent-payee`,
+        { params: { budget_id: budgetId } }
+      )
+      return data
+    },
+    enabled: !!budgetId && !!categoryId,
+    staleTime: 60_000,
+  })
+}
+
 export function useCreateCategoryGroup(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({

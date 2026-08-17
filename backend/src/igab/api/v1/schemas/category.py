@@ -242,3 +242,10 @@ class AssignApplyResponse(BaseModel):
     to_return: Decimal
     categories_changed: int
     tba_after: Decimal
+
+
+class RecentPayeeResponse(BaseModel):
+    """Most recent payee used in a category — powers add-transaction prefill."""
+
+    payee_id: uuid.UUID
+    name: str

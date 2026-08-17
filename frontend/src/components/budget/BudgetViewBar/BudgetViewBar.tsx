@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { ListFilter, Plus, Settings2, AlignJustify, AlignLeft } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ListFilter, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore } from '../../../stores/uiStore'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
@@ -23,9 +23,16 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
   const openManageViewsModal = useUIStore((s) => s.openManageViewsModal)
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const toggleBudgetRowMode = useUIStore((s) => s.toggleBudgetRowMode)
+  const categorySearch = useUIStore((s) => s.categorySearch)
+  const setCategorySearch = useUIStore((s) => s.setCategorySearch)
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // The filter is ephemeral — leaving the budget page clears it so the user
+  // never comes back to a mysteriously short category list
+  useEffect(() => () => useUIStore.getState().setCategorySearch(''), [])
 
   const targetMap = new Map(targets.map((t) => [t.category_id, t]))
 
@@ -108,6 +115,34 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
         </button>
       ))}
 
+      <div className={`budget-view-bar__search ${categorySearch ? 'has-value' : ''}`}>
+        <Search size={13} className="budget-view-bar__search-icon" />
+        <input
+          ref={searchRef}
+          className="budget-view-bar__search-input"
+          type="text"
+          value={categorySearch}
+          onChange={(e) => setCategorySearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setCategorySearch('')
+              searchRef.current?.blur()
+            }
+          }}
+          placeholder="Filter categories…"
+          aria-label="Filter categories by name"
+        />
+        {categorySearch && (
+          <button
+            className="budget-view-bar__search-clear"
+            onClick={() => setCategorySearch('')}
+            title="Clear filter"
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
+
       <div className="budget-view-bar__menu-wrap">
         <button
           className="budget-view-bar__menu-btn"
@@ -124,17 +159,20 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
         >
           <ListFilter size={14} />
         </button>
-        {menuOpen && (
-          <ContextMenu
-            items={[
-              { id: 'new', label: 'New View', icon: Plus },
-              { id: 'manage', label: 'Manage Views', icon: Settings2 },
-            ]}
-            onSelect={handleMenuSelect}
-            onClose={() => setMenuOpen(false)}
-            className="budget-view-bar__dropdown"
-          />
-        )}
+        {menuOpen && menuAnchorRef.current && (() => {
+          const rect = menuAnchorRef.current.getBoundingClientRect()
+          return (
+            <ContextMenu
+              items={[
+                { id: 'new', label: 'New View', icon: Plus },
+                { id: 'manage', label: 'Manage Views', icon: Settings2 },
+              ]}
+              onSelect={handleMenuSelect}
+              onClose={() => setMenuOpen(false)}
+              position={{ x: rect.right, y: rect.bottom + 4, alignRight: true }}
+            />
+          )
+        })()}
       </div>
     </div>
   )

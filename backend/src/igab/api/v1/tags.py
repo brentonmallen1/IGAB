@@ -15,7 +15,7 @@ from igab.dependencies import (
 )
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
-from igab.repositories.tag_repo import TAG_COLOR_SLOTS, TagRepository
+from igab.repositories.tag_repo import TAG_COLOR_SLOTS, TagRepository, seed_system_tags
 
 router = APIRouter()
 
@@ -27,6 +27,13 @@ async def list_tags(
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
 ) -> list[TagOut]:
     tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
+
+    # Backfill system tags for budgets created before the seeding feature
+    has_system = any(tag.system_key is not None for tag, _, _ in tags_with_counts)
+    if not has_system:
+        await seed_system_tags(tag_repo.session, budget_id)
+        tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
+
     return [
         TagOut(
             id=tag.id,
