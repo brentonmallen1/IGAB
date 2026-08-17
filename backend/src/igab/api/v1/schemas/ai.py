@@ -21,6 +21,14 @@ class NormalizePayeeResponse(BaseModel):
     normalized_name: str
 
 
+class SuggestRegexRequest(BaseModel):
+    names: list[str]
+
+
+class SuggestRegexResponse(BaseModel):
+    pattern: str | None
+
+
 class InsightsResponse(BaseModel):
     insights: str
 

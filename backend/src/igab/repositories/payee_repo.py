@@ -194,12 +194,15 @@ class PayeeRepository(BaseRepository[Payee]):
             payee_map[name] = payee.id
         return payee_map
 
-    async def merge(self, source_id: uuid.UUID, target_id: uuid.UUID) -> None:
+    async def merge(self, source_id: uuid.UUID, target_id: uuid.UUID) -> list[uuid.UUID]:
         """Reassign all transactions from source to target, then soft-delete source.
 
         The route guards `source_id` (PayeeAccess) but `target_id` comes from the
         request body; require both live in the same budget so a merge cannot
         re-point the caller's transactions onto another budget's payee.
+
+        Returns the ids of the transactions that were moved, so the change log
+        can undo the merge by moving exactly those back.
         """
         source = await self.session.get(Payee, source_id)
         target = await self.session.get(Payee, target_id)
@@ -211,11 +214,17 @@ class PayeeRepository(BaseRepository[Payee]):
             or source.budget_id != target.budget_id
         ):
             raise InvariantViolation("Cannot merge payees from different budgets")
-        await self.session.execute(
-            update(Transaction).where(Transaction.payee_id == source_id).values(payee_id=target_id)
+        result = await self.session.execute(
+            update(Transaction)
+            .where(Transaction.payee_id == source_id)
+            .values(payee_id=target_id)
+            .returning(Transaction.id)
+            .execution_options(synchronize_session=False)
         )
+        moved = list(result.scalars().all())
         await self.soft_delete(source_id)
         await self.session.flush()
+        return moved
 
     async def delete(self, payee_id: uuid.UUID) -> None:
         await self.soft_delete(payee_id)
@@ -225,8 +234,12 @@ class PayeeRepository(BaseRepository[Payee]):
     ) -> list[dict]:
         """Find groups of similar payees using fuzzy matching.
 
-        Returns groups of payees with similarity >= threshold.
-        Each group contains payees that are similar to each other.
+        Complete-linkage grouping: a payee joins a group only if its similarity
+        to EVERY member is >= threshold, so a chain like A~B, B~C can never pull
+        a dissimilar A and C into one group. The reported similarity is the
+        minimum pairwise score in the group (the weakest link), which by
+        construction is always >= threshold.
+
         Groups are sorted by total transaction count descending.
         """
         # Exclude transfer payees
@@ -236,61 +249,50 @@ class PayeeRepository(BaseRepository[Payee]):
             if p.transfer_account_id is None
         ]
 
-        if len(payees_with_counts) < 2:
+        n = len(payees_with_counts)
+        if n < 2:
             return []
 
-        # Build adjacency using Union-Find for grouping
-        parent: dict[str, str] = {}
-        rank: dict[str, int] = {}
+        names = [p.name.lower() for p, _ in payees_with_counts]
+        score = [[0] * n for _ in range(n)]
+        pairs: list[tuple[int, int, int]] = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                s = int(fuzz.token_set_ratio(names[i], names[j]))
+                score[i][j] = score[j][i] = s
+                if s >= threshold:
+                    pairs.append((s, i, j))
 
-        def find(x: str) -> str:
-            if parent.get(x, x) != x:
-                parent[x] = find(parent[x])
-            return parent.get(x, x)
+        # Greedy agglomeration, strongest pairs first, so the closest names
+        # seed groups and borderline members attach to their best match.
+        pairs.sort(key=lambda t: -t[0])
+        group_of: dict[int, int] = {}
+        groups: dict[int, list[int]] = {}
+        next_gid = 0
 
-        def union(x: str, y: str) -> None:
-            px, py = find(x), find(y)
-            if px == py:
-                return
-            if rank.get(px, 0) < rank.get(py, 0):
-                px, py = py, px
-            parent[py] = px
-            if rank.get(px, 0) == rank.get(py, 0):
-                rank[px] = rank.get(px, 0) + 1
+        for _s, i, j in pairs:
+            gi, gj = group_of.get(i), group_of.get(j)
+            if gi is None and gj is None:
+                groups[next_gid] = [i, j]
+                group_of[i] = group_of[j] = next_gid
+                next_gid += 1
+            elif gi is None or gj is None:
+                loner, gid = (i, gj) if gj is not None else (j, gi)
+                if gid is not None and all(score[loner][m] >= threshold for m in groups[gid]):
+                    groups[gid].append(loner)
+                    group_of[loner] = gid
+            elif gi != gj:
+                if all(score[a][b] >= threshold for a in groups[gi] for b in groups[gj]):
+                    for m in groups[gj]:
+                        group_of[m] = gi
+                    groups[gi].extend(groups.pop(gj))
 
-        # Compare all pairs
-        for i, (p1, _) in enumerate(payees_with_counts):
-            for p2, _ in payees_with_counts[i + 1 :]:
-                score = fuzz.token_set_ratio(p1.name.lower(), p2.name.lower())
-                if score >= threshold:
-                    union(str(p1.id), str(p2.id))
-
-        # Build groups from Union-Find
-        groups_map: dict[str, list[tuple[Payee, int]]] = {}
-        for payee, count in payees_with_counts:
-            root = find(str(payee.id))
-            if root not in groups_map:
-                groups_map[root] = []
-            groups_map[root].append((payee, count))
-
-        # Filter to groups with 2+ payees, compute total count, sort
         result = []
-        for members in groups_map.values():
-            if len(members) < 2:
-                continue
+        for indices in groups.values():
+            members = [payees_with_counts[i] for i in indices]
             total_count = sum(c for _, c in members)
-            # Compute average similarity within group
-            if len(members) == 2:
-                similarity = int(
-                    fuzz.token_set_ratio(members[0][0].name.lower(), members[1][0].name.lower())
-                )
-            else:
-                # Average of all pairwise similarities
-                sims = []
-                for i, (p1, _) in enumerate(members):
-                    for p2, _ in members[i + 1 :]:
-                        sims.append(fuzz.token_set_ratio(p1.name.lower(), p2.name.lower()))
-                similarity = int(sum(sims) / len(sims)) if sims else 0
+            # Weakest link in the group — honest about the worst pair
+            similarity = min(score[a][b] for x, a in enumerate(indices) for b in indices[x + 1 :])
 
             result.append(
                 {

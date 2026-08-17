@@ -164,6 +164,17 @@
   font-family: inherit;
 }
 
+.pmerge-external-combobox {
+  flex: 1;
+  min-width: 0;
+}
+
+.pmerge-external-combobox .combobox__input {
+  font-size: var(--font-size-sm);
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
 .pmerge-divider {
   height: 1px;
   background: var(--border-color);
@@ -194,6 +205,44 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
+}
+
+.pmerge-checkbox-row--static {
+  cursor: default;
+}
+
+.pmerge-existing-pattern {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 1px 4px;
+  word-break: break-all;
+}
+
+.pmerge-pattern-actions {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.pmerge-pattern-action {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.pmerge-pattern-action input[type="radio"] {
+  accent-color: var(--color-accent);
+}
+
+.pmerge-pattern-action--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .pmerge-pattern {
@@ -242,6 +291,18 @@
 
 .pmerge-pattern__suggest:hover {
   background: var(--bg-secondary);
+}
+
+.pmerge-pattern__suggest--ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-color: var(--color-accent);
+}
+
+.pmerge-pattern__suggest--ai:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .pmerge-pattern__error {
@@ -323,6 +384,33 @@
 
 .pmerge-preview__value em {
   color: var(--text-muted);
+}
+
+.pmerge-warnings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.pmerge-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--bg-primary));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, var(--border-color));
+  border-radius: var(--border-radius-sm);
+}
+
+.pmerge-warning svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--color-warning);
 }
 
 .pmerge-summary {
