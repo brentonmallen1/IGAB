@@ -78,8 +78,13 @@ export function useDeletePayee(budgetId: string | null) {
 export function useMergePayee(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ sourceId, targetId }: { sourceId: string; targetId: string }) =>
-      apiClient.post(`/payees/${sourceId}/merge`, { target_id: targetId }),
+    mutationFn: async ({ sourceId, targetId }: { sourceId: string; targetId: string }) => {
+      const { data } = await apiClient.post<{ change_id: string }>(
+        `/payees/${sourceId}/merge`,
+        { target_id: targetId }
+      )
+      return data
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payees', budgetId] })
       qc.invalidateQueries({ queryKey: ['transactions'] })

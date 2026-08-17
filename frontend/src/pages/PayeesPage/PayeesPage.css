@@ -1,5 +1,6 @@
 .payees-page {
-  padding: var(--spacing-xl);
+  --payees-pad: var(--spacing-xl);
+  padding: var(--payees-pad);
   max-width: 100%;
   display: flex;
   flex-direction: column;
@@ -17,6 +18,20 @@
   justify-content: space-between;
   gap: var(--spacing-md);
   flex-wrap: wrap;
+  /* Stays pinned while the table scrolls; negative margins stretch it over the
+     page padding so rows can't peek through above or beside it */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-primary);
+  margin: calc(-1 * var(--payees-pad)) calc(-1 * var(--payees-pad)) 0;
+  padding: var(--payees-pad) var(--payees-pad) var(--spacing-md);
+}
+
+.payees-title-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-md);
 }
 
 .payees-title {
@@ -24,6 +39,12 @@
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+}
+
+.payees-count {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .payees-actions {
@@ -253,6 +274,30 @@
 
 .payees-edit-input--pattern {
   font-family: var(--font-mono);
+}
+
+.payees-edit-pattern-row {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.payees-edit-pattern-row .payees-edit-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.payees-edit-ai-suggest {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.payees-edit-ai-suggest:disabled {
+  opacity: 0.5;
 }
 
 .payees-table__count {
@@ -544,7 +589,7 @@
 
 @media (max-width: 768px) {
   .payees-page {
-    padding: var(--spacing-md);
+    --payees-pad: var(--spacing-md);
   }
 
   .payees-table__head,

@@ -77,6 +77,15 @@ export function useNormalizePayee(budgetId: string) {
   })
 }
 
+export function useSuggestRegex(budgetId: string) {
+  return useMutation({
+    mutationFn: (names: string[]) =>
+      apiClient
+        .post<{ pattern: string | null }>(`/${budgetId}/ai/suggest-regex`, { names })
+        .then((r) => r.data.pattern),
+  })
+}
+
 export interface PayeeCleanupEntry {
   id: string
   name: string

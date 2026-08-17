@@ -16,6 +16,7 @@ PROMPT_PLACEHOLDERS: dict[str, list[str]] = {
     "ai_prompt_nl_parse": ["{text}", "{categories}", "{today}"],
     "ai_prompt_suggest_category": ["{payee_name}", "{amount}", "{memo}", "{categories}"],
     "ai_prompt_normalize_payee": ["{payee_name}"],
+    "ai_prompt_suggest_regex": ["{names}"],
 }
 
 DEFAULT_PROMPTS: dict[str, str] = {
@@ -112,6 +113,22 @@ DEFAULT_PROMPTS: dict[str, str] = {
     "ai_prompt_normalize_payee": (
         "Normalize this bank payee name to a clean, readable merchant name: '{payee_name}'\n"
         "Respond with only the normalized name, nothing else."
+    ),
+    "ai_prompt_suggest_regex": (
+        "These raw bank payee names all belong to the same real-world payee:\n"
+        "{names}\n\n"
+        "Write ONE Python-compatible regular expression that matches every name above"
+        " and future variants of the same payee (banks append changing store numbers,"
+        " reference codes, or dates), while staying specific enough not to match"
+        " unrelated merchants.\n"
+        "Rules:\n"
+        "- It will be used with a case-insensitive, unanchored search; add ^ or $ only"
+        " when they make the pattern safer.\n"
+        "- Keep it as simple as possible: escaped literal text, '.*', '\\d+', and"
+        " character classes. No lookarounds, no named groups, no inline flags.\n"
+        "- Escape regex metacharacters that appear literally in the names"
+        " (* . ( ) [ ] etc).\n\n"
+        'Return ONLY a JSON object: {"pattern": "the regex"}'
     ),
 }
 

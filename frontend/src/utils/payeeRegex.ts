@@ -82,3 +82,88 @@ export function testPattern(pattern: string, name: string): boolean | null {
     return null
   }
 }
+
+/** Split a pattern on top-level `|` (ignoring alternation inside groups,
+ * character classes, and escapes). */
+function splitTopLevelAlternation(pattern: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let inClass = false
+  let current = ''
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]
+    if (c === '\\') {
+      current += c + (pattern[i + 1] ?? '')
+      i++
+      continue
+    }
+    if (inClass) {
+      current += c
+      if (c === ']') inClass = false
+      continue
+    }
+    if (c === '[') inClass = true
+    else if (c === '(') depth++
+    else if (c === ')') depth--
+    else if (c === '|' && depth === 0) {
+      parts.push(current)
+      current = ''
+      continue
+    }
+    current += c
+  }
+  parts.push(current)
+  return parts
+}
+
+/** Unwrap `(?:...)` when the whole string is one non-capturing group. */
+function stripNonCaptureWrap(pattern: string): string {
+  if (!pattern.startsWith('(?:') || !pattern.endsWith(')')) return pattern
+  let depth = 0
+  let inClass = false
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]
+    if (c === '\\') {
+      i++
+      continue
+    }
+    if (inClass) {
+      if (c === ']') inClass = false
+      continue
+    }
+    if (c === '[') inClass = true
+    else if (c === '(') depth++
+    else if (c === ')') {
+      depth--
+      // The opening group closes before the end: the wrap isn't whole-string
+      if (depth === 0 && i < pattern.length - 1) return pattern
+    }
+  }
+  return pattern.slice(3, -1)
+}
+
+/**
+ * Union two or more patterns into one that matches what any of them matched:
+ * `(?:a)|(?:b)`. Existing top-level alternations are flattened and duplicate
+ * branches dropped, so repeatedly extending a pattern never nests. Returns
+ * null when any input (or the result) is not a valid regex.
+ */
+export function unionPatterns(...patterns: string[]): string | null {
+  const branches: string[] = []
+  const seen = new Set<string>()
+  for (const raw of patterns) {
+    const pattern = raw.trim()
+    if (!pattern) continue
+    if (testPattern(pattern, '') === null) return null
+    for (const part of splitTopLevelAlternation(pattern)) {
+      const bare = stripNonCaptureWrap(part.trim())
+      if (bare && !seen.has(bare)) {
+        seen.add(bare)
+        branches.push(bare)
+      }
+    }
+  }
+  if (branches.length === 0) return null
+  const union = branches.length === 1 ? branches[0] : branches.map((b) => `(?:${b})`).join('|')
+  return testPattern(union, '') === null ? null : union
+}

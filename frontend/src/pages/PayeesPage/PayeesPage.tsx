@@ -1,13 +1,13 @@
 import { useRef, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, GitMerge, Regex, Tag } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitMerge, Regex, Sparkles, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, useFetchPayeeDuplicates, type PayeeWithCount } from '../../api/payees'
 import { usePayeeTransactions } from '../../api/transactions'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useTags, useBulkAddPayeeTags, useCreateTag, useSetPayeeTags } from '../../api/tags'
-import { usePayeeCleanupSuggestions, useAIStatus } from '../../api/ai'
+import { usePayeeCleanupSuggestions, useAIStatus, useSuggestRegex } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
@@ -59,6 +59,7 @@ export function PayeesPage() {
   const cleanup = usePayeeCleanupSuggestions(budgetId)
   const fetchDuplicates = useFetchPayeeDuplicates(budgetId)
   const aiStatus = useAIStatus()
+  const suggestRegex = useSuggestRegex(budgetId ?? '')
   const { data: allTags = [] } = useTags(budgetId)
   const bulkAddTags = useBulkAddPayeeTags(budgetId)
   const setPayeeTags = useSetPayeeTags(budgetId)
@@ -116,6 +117,7 @@ export function PayeesPage() {
       })
   }, [payees, search, sortColumn, sortDirection])
 
+  const totalPayees = payees.filter((p) => !p.transfer_account_id).length
   const filteredIds = filtered.map((p) => p.id)
   const allOrderedIds = filtered.map((p) => p.id)
   const selectedInFiltered = filteredIds.filter((id) => selectedPayeeIds.has(id))
@@ -333,7 +335,15 @@ export function PayeesPage() {
   return (
     <div className={`payees-page ${selectedCount > 0 ? 'payees-page--with-bar' : ''}`}>
       <div className="payees-header">
-        <h1 className="payees-title">Payees</h1>
+        <div className="payees-title-wrap">
+          <h1 className="payees-title">Payees</h1>
+          {!isLoading && (
+            <span className="payees-count">
+              {totalPayees} payee{totalPayees !== 1 ? 's' : ''}
+              {search.trim() ? ` · ${filtered.length} shown` : ''}
+            </span>
+          )}
+        </div>
         <div className="payees-actions">
           <input
             type="search"
@@ -515,6 +525,7 @@ export function PayeesPage() {
       {showMergeModal && (
         <PayeeMergeModal
           payees={selectedPayees}
+          allPayees={payees}
           onConfirm={executeMerge}
           onCancel={() => setShowMergeModal(false)}
           isPending={mergePayee.isPending || updatePayee.isPending}
@@ -524,6 +535,7 @@ export function PayeesPage() {
       {wizardMergePayees && (
         <PayeeMergeModal
           payees={wizardMergePayees}
+          allPayees={payees}
           onConfirm={executeWizardMerge}
           onCancel={() => setWizardMergePayees(null)}
           isPending={mergePayee.isPending || updatePayee.isPending}
@@ -608,17 +620,39 @@ export function PayeesPage() {
                       <span className="payees-edit-hint">
                         Bank names that should match this payee, comma-separated
                       </span>
-                      <input
-                        className="payees-edit-input payees-edit-input--pattern"
-                        value={editPattern}
-                        onChange={(e) => setEditPattern(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveEdit(p.id)
-                          if (e.key === 'Escape') setEditingId(null)
-                        }}
-                        placeholder="Match pattern (optional regex): ^ACH DEPOSIT PAYROLL"
-                        spellCheck={false}
-                      />
+                      <div className="payees-edit-pattern-row">
+                        <input
+                          className="payees-edit-input payees-edit-input--pattern"
+                          value={editPattern}
+                          onChange={(e) => setEditPattern(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit(p.id)
+                            if (e.key === 'Escape') setEditingId(null)
+                          }}
+                          placeholder="Match pattern (optional regex): ^ACH DEPOSIT PAYROLL"
+                          spellCheck={false}
+                        />
+                        {aiStatus.data?.available === true && (
+                          <button
+                            type="button"
+                            className="payees-btn payees-btn--sm payees-edit-ai-suggest"
+                            onClick={() => {
+                              const names = [
+                                editName.trim() || p.name,
+                                ...(editMappings.split(',').map((s) => s.trim()).filter(Boolean)),
+                              ]
+                              void suggestRegex
+                                .mutateAsync(names)
+                                .then((pat) => { if (pat) setEditPattern(pat) })
+                            }}
+                            disabled={suggestRegex.isPending}
+                            title="Ask the AI for a pattern generalizing this payee's names"
+                          >
+                            <Sparkles size={12} aria-hidden />
+                            {suggestRegex.isPending ? 'Thinking…' : 'AI'}
+                          </button>
+                        )}
+                      </div>
                       <span className="payees-edit-hint">
                         Incoming names matching this regex map here, case-insensitive
                       </span>

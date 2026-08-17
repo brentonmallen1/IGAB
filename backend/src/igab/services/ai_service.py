@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 import time
 import uuid
 from datetime import date
@@ -339,6 +340,35 @@ class AIService:
             }
         except Exception:
             return {"category_id": None, "category_name": None, "confidence": 0.0}
+
+    async def suggest_regex(self, names: list[str]) -> str | None:
+        """Suggest a match pattern generalizing a set of raw payee names.
+
+        Returns None when the model produces nothing usable — the caller falls
+        back to the frontend's structural heuristic.
+        """
+        cleaned = [n.strip() for n in names if n.strip()]
+        if not cleaned:
+            return None
+        prompt = await self._prompt("ai_prompt_suggest_regex", {"names": "\n".join(cleaned)})
+        try:
+            client = await self._client()
+            raw = await client.generate(
+                prompt,
+                format="json",
+                options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
+            )
+            data = _json_from_response(raw)
+            pattern = data.get("pattern")
+            if not isinstance(pattern, str) or not pattern.strip():
+                return None
+            # Trim newline junk only — a trailing space is significant in a
+            # regex ("^ACH DEPOSIT PAYROLL " must keep it).
+            pattern = pattern.strip("\r\n")
+            re.compile(pattern)
+            return pattern
+        except Exception:
+            return None
 
     async def normalize_payee(self, payee_name: str) -> str:
         prompt = await self._prompt("ai_prompt_normalize_payee", {"payee_name": payee_name})

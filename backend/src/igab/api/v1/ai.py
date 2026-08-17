@@ -13,6 +13,8 @@ from igab.api.v1.schemas.ai import (
     PayeeCleanupGroup,
     SuggestCategoryRequest,
     SuggestCategoryResponse,
+    SuggestRegexRequest,
+    SuggestRegexResponse,
 )
 from igab.dependencies import BudgetAccess, CurrentUser, get_ai_service
 from igab.services.ai_service import AIService
@@ -60,6 +62,18 @@ async def normalize_payee(
 ) -> NormalizePayeeResponse:
     normalized = await ai_svc.normalize_payee(body.payee_name)
     return NormalizePayeeResponse(normalized_name=normalized)
+
+
+@router.post("/{budget_id}/ai/suggest-regex", response_model=SuggestRegexResponse)
+async def suggest_regex(
+    budget_id: BudgetAccess,
+    body: SuggestRegexRequest,
+    current_user: CurrentUser,
+    ai_svc: Annotated[AIService, Depends(get_ai_service)],
+) -> SuggestRegexResponse:
+    """Suggest a payee match pattern generalizing the given raw names."""
+    pattern = await ai_svc.suggest_regex(body.names)
+    return SuggestRegexResponse(pattern=pattern)
 
 
 @router.get("/{budget_id}/ai/payee-cleanup", response_model=list[PayeeCleanupGroup])
