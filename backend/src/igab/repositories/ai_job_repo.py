@@ -1,8 +1,9 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 
-from igab.db.models import AIJob
+from igab.db.models import AIJob, Transaction
 from igab.repositories.base import BaseRepository
 
 ACTIVE_STATUSES = ("queued", "processing")
@@ -62,6 +63,34 @@ class AIJobRepository(BaseRepository[AIJob]):
             .where(AIJob.budget_id == budget_id, AIJob.status.in_(ACTIVE_STATUSES))
         )
         return int(count or 0)
+
+    async def existing_transaction_ids(self, txn_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+        """Which of these transaction ids still resolve to a live (non-deleted)
+        transaction — powers the 'transaction removed' badge in the log."""
+        if not txn_ids:
+            return set()
+        result = await self.session.execute(
+            select(Transaction.id).where(
+                Transaction.id.in_(txn_ids),
+                Transaction.is_deleted == False,  # noqa: E712
+            )
+        )
+        return set(result.scalars().all())
+
+    async def delete_finished_before(self, cutoff: datetime) -> list[uuid.UUID]:
+        """Remove done/error jobs finished before the cutoff; returns the
+        deleted ids so callers can clean up job-owned staging files."""
+        result = await self.session.execute(
+            select(AIJob.id).where(
+                AIJob.status.in_(("done", "error")),
+                func.coalesce(AIJob.finished_at, AIJob.created_at) < cutoff,
+            )
+        )
+        ids = list(result.scalars().all())
+        if ids:
+            await self.session.execute(delete(AIJob).where(AIJob.id.in_(ids)))
+            await self.session.flush()
+        return ids
 
     async def reset_stale_processing(self) -> int:
         """Crash recovery: rows stuck in 'processing' from a previous run go

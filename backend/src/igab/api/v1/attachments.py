@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
-from igab.api.v1.schemas.attachment import AttachmentResponse
+from igab.api.v1.schemas.attachment import AttachmentResponse, AttachmentRotateRequest
 from igab.dependencies import (
     AttachmentAccess,
     CurrentUser,
@@ -117,6 +117,35 @@ async def get_attachment(
         media_type="image/webp" if thumbnail else attachment.content_type,
         filename=attachment.original_filename,
     )
+
+
+@router.post("/attachments/{attachment_id}/rotate", response_model=AttachmentResponse)
+async def rotate_attachment(
+    attachment_id: AttachmentAccess,
+    body: AttachmentRotateRequest,
+    current_user: CurrentUser,
+    attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
+    attachment_service: Annotated[AttachmentService, Depends(get_attachment_service)],
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+) -> AttachmentResponse:
+    """Rotate an image attachment clockwise; the change is persisted on disk."""
+    attachment = await attachment_repo.get_by_id(attachment_id)
+    if attachment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+
+    txn = await txn_repo.get(attachment.transaction_id)
+    if txn is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+
+    try:
+        updated = await attachment_service.rotate(attachment, txn, body.degrees)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk"
+        ) from e
+    return AttachmentResponse.model_validate(updated, from_attributes=True)
 
 
 @router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)

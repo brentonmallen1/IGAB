@@ -52,6 +52,8 @@ export interface AIJob {
   attempts: number
   max_attempts: number
   transaction_id: string | null
+  /** The linked transaction was deleted after this job ran */
+  transaction_removed?: boolean
   attachment_id: string | null
   created_at: string
   started_at: string | null

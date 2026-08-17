@@ -133,6 +133,50 @@ class AttachmentService:
         base = self._resolve_path(attachment, txn)
         return base.parent / f"thumb_{base.name}"
 
+    async def rotate(
+        self, attachment: TransactionAttachment, txn: Transaction, degrees: int
+    ) -> TransactionAttachment:
+        """Rotate an image attachment clockwise and persist it: the stored
+        WebP is re-encoded in place and the thumbnail regenerated. PDFs are
+        documents, not photos — rotating them is not supported."""
+        if attachment.content_type == "application/pdf":
+            raise ValueError("PDF attachments cannot be rotated")
+        if degrees not in (90, 180, 270):
+            raise ValueError("Rotation must be 90, 180, or 270 degrees")
+
+        file_path = self._resolve_path(attachment, txn)
+        if not file_path.exists():
+            raise FileNotFoundError(str(file_path))
+
+        # transpose() is a lossless reorientation — no resampling artifacts.
+        # Transpose constants are counter-clockwise, ours are clockwise.
+        transpose = {
+            90: Image.Transpose.ROTATE_270,
+            180: Image.Transpose.ROTATE_180,
+            270: Image.Transpose.ROTATE_90,
+        }[degrees]
+
+        img = Image.open(file_path)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        rotated = img.transpose(transpose)
+        rotated.save(file_path, "WEBP", quality=WEBP_QUALITY)
+
+        thumb = rotated.copy()
+        thumb.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
+        thumb.save(file_path.parent / f"thumb_{file_path.name}", "WEBP", quality=80)
+
+        await self.repo.update_media(
+            attachment.id,
+            width=rotated.width,
+            height=rotated.height,
+            file_size=file_path.stat().st_size,
+        )
+        attachment.width = rotated.width
+        attachment.height = rotated.height
+        attachment.file_size = file_path.stat().st_size
+        return attachment
+
     async def delete(self, attachment: TransactionAttachment, txn: Transaction) -> None:
         file_path = self._resolve_path(attachment, txn)
         thumb_path = file_path.parent / f"thumb_{file_path.name}"
