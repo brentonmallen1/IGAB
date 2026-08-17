@@ -3,12 +3,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../../stores/appStore'
 import { useAccounts } from '../../api/accounts'
 import { importCsv, type CsvImportResult } from '../../api/imports'
+import { useToastUndo } from '../../utils/toastUndo'
 import './ImportPage.css'
 
 export function ImportPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const qc = useQueryClient()
   const { data: accounts = [] } = useAccounts(budgetId)
+  const showUndo = useToastUndo(budgetId ?? '')
 
   const csvFileRef = useRef<HTMLInputElement>(null)
   const [csvAccountId, setCsvAccountId] = useState('')
@@ -28,6 +30,9 @@ export function ImportPage() {
       const result = await importCsv(budgetId, csvAccountId, file)
       setCsvResult(result)
       if (csvFileRef.current) csvFileRef.current.value = ''
+      if (result.batch_id && result.imported > 0) {
+        showUndo(result.batch_id, `Imported ${result.imported} transaction${result.imported > 1 ? 's' : ''}`)
+      }
       qc.invalidateQueries({ queryKey: ['transactions'] })
       qc.invalidateQueries({ queryKey: ['accounts'] })
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })

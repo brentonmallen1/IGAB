@@ -27,11 +27,30 @@ export function AISettingsPanel() {
   // Edit state
   const [editHost, setEditHost] = useState('')
   const [editing, setEditing] = useState(false)
+  const [editRetention, setEditRetention] = useState('')
 
   // Sync edit state when settings load
   useEffect(() => {
     if (!editing && ollamaHost) setEditHost(ollamaHost)
   }, [ollamaHost, editing])
+
+  const retentionDays =
+    appSettings?.find((s) => s.key === 'ai_activity_retention_days')?.value ?? '30'
+  useEffect(() => {
+    if (appSettings) setEditRetention(retentionDays)
+    // Sync from server once loaded; local edits win afterwards
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appSettings === undefined])
+
+  const retentionValid = /^\d+$/.test(editRetention)
+
+  async function saveRetention() {
+    await updateSetting.mutateAsync({
+      key: 'ai_activity_retention_days',
+      value: String(parseInt(editRetention, 10)),
+    })
+    toast.success('Saved')
+  }
 
   async function toggleEnabled() {
     const newValue = aiEnabled ? 'false' : 'true'
@@ -233,6 +252,34 @@ export function AISettingsPanel() {
                 No models found. Make sure you have pulled at least one model in Ollama.
               </div>
             )}
+
+            <div className="settings-row">
+              <div>
+                <div className="settings-row__label">Activity log retention</div>
+                <div className="settings-row__desc">
+                  Finished entries older than this are cleaned up nightly. 0 keeps
+                  them forever. Transactions and receipt images are never touched.
+                </div>
+              </div>
+              <div className="ai-panel__actions">
+                <input
+                  type="number"
+                  min={0}
+                  className="settings-input ai-panel__retention-input"
+                  value={editRetention}
+                  onChange={(e) => setEditRetention(e.target.value)}
+                  aria-label="Retention in days"
+                />
+                <span className="ai-panel__retention-unit">days</span>
+                <button
+                  className="settings-btn settings-btn--secondary"
+                  onClick={() => void saveRetention()}
+                  disabled={!retentionValid || updateSetting.isPending}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
 
             <AIAdvancedSettings />
             <AIPromptSettings />

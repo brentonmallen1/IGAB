@@ -104,7 +104,11 @@ ENV WEB_PORT=8080
 ENV PYTHONUNBUFFERED=1
 ENV DATABASE_URL=postgresql+asyncpg://igab:igab@localhost:5432/igab
 ENV ATTACHMENTS_DIR=/data/attachments
+# BACKUP_DIR is read by the backup agent (scripts/db-backup.sh); BACKUPS_DIR
+# is the API's setting for the same directory — they must agree so the
+# file-based agent protocol (heartbeat/command/status) works.
 ENV BACKUP_DIR=/data/backups
+ENV BACKUPS_DIR=/data/backups
 
 EXPOSE 8080
 

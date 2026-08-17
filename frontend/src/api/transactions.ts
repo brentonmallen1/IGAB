@@ -260,11 +260,14 @@ export function useConvertToSplit(budgetId: string) {
 export function useDeleteTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, accountId }: { id: string; accountId: string }) =>
-      apiClient
-        .delete(`/transactions/${id}`, { params: { budget_id: budgetId } })
-        .then(() => accountId),
-    onSuccess: (accountId) => {
+    mutationFn: async ({ id, accountId }: { id: string; accountId: string }) => {
+      const { data } = await apiClient.delete<{ batch_id: string }>(
+        `/transactions/${id}`,
+        { params: { budget_id: budgetId } }
+      )
+      return { accountId, batchId: data.batch_id }
+    },
+    onSuccess: ({ accountId }) => {
       qc.refetchQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['all-transactions'] })
       qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
@@ -319,9 +322,13 @@ export function useBulkCategorize(budgetId: string) {
 export function useBulkDeleteTransactions(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string | null }) =>
-      apiClient.post<BulkActionResult>(`/${budgetId}/transactions/bulk-delete`, { transaction_ids: transactionIds })
-        .then((r) => ({ accountId, result: r.data })),
+    mutationFn: async ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string | null }) => {
+      const { data } = await apiClient.post<BulkActionResult>(
+        `/${budgetId}/transactions/bulk-delete`,
+        { transaction_ids: transactionIds }
+      )
+      return { accountId, result: data }
+    },
     onSuccess: ({ accountId, result }) => {
       reportBulkFailures(result, 'deleted')
       qc.refetchQueries({ queryKey: accountId ? ['transactions', accountId] : ['transactions'] })

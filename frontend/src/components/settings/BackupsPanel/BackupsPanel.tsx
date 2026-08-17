@@ -256,7 +256,7 @@ function RestoringOverlay() {
             <AlertTriangle size={28} className="bkp-restoring__error-icon" />
             <div className="bkp-restoring__title">Restore failed</div>
             <p className="bkp-restoring__detail">
-              {job?.detail ?? 'See the db-backup container logs for details.'}
+              {job?.detail ?? 'See the backup service container logs for details.'}
             </p>
             <button
               className="settings-btn settings-btn--primary"
@@ -327,7 +327,7 @@ export function BackupsPanel() {
           <div className="settings-row__desc">
             {agentOnline
               ? 'Automatic pg_dump + attachment archives on a schedule, with retention pruning. Settings below apply within seconds — no restart needed.'
-              : 'The db-backup container is not running. It starts with the production compose profile; in local dev, run: docker compose up -d db-backup'}
+              : 'The backup service is not running — check the container logs. Multi-container: it starts with the production compose profile (docker compose up -d db-backup). AIO: it runs inside the main container; make sure you are on the latest image.'}
           </div>
         </div>
         <button

@@ -295,13 +295,14 @@ class AssignService:
     async def apply(self, budget_id: uuid.UUID, month: date, strategy: str) -> AssignPreview:
         """Recompute the strategy fresh and apply it through move_money."""
         preview = await self.preview(budget_id, month, strategy)
-        for item in preview.items:
-            if item.delta > ZERO:
-                await self.budget_service.move_money(
-                    budget_id, None, item.category_id, item.delta, month
-                )
-            elif item.delta < ZERO:
-                await self.budget_service.move_money(
-                    budget_id, item.category_id, None, -item.delta, month
-                )
+        with self.budget_service.changes.batch():
+            for item in preview.items:
+                if item.delta > ZERO:
+                    await self.budget_service.move_money(
+                        budget_id, None, item.category_id, item.delta, month
+                    )
+                elif item.delta < ZERO:
+                    await self.budget_service.move_money(
+                        budget_id, item.category_id, None, -item.delta, month
+                    )
         return preview

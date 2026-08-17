@@ -25,6 +25,7 @@ import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
+import { useToastUndo } from '../../../utils/toastUndo'
 import { useHistoryStore } from '../../../stores/historyStore'
 import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simplefin'
 import { useShortcut } from '../../../hooks/useShortcut'
@@ -96,6 +97,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const bulkSetCleared = useBulkUpdateCleared(budgetId)
   const bulkCategorize = useBulkCategorize(budgetId)
   const bulkDelete = useBulkDeleteTransactions(budgetId)
+  const showUndo = useToastUndo(budgetId, accountId)
   const bulkApprove = useBulkApprove(budgetId)
   const mergeTxns = useMergeTransactions(budgetId)
   const [showMergeModal, setShowMergeModal] = useState(false)
@@ -360,13 +362,18 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     )
   }, [bulkSetCleared, selectedTransactionIds, accountId, clearTransactionSelection])
 
-  const handleBulkDelete = useCallback(() => {
+  const handleBulkDelete = useCallback(async () => {
     const eligibleIds = [...selectedTransactionIds].filter((id) => {
       const txn = transactionMap.get(id)
       return txn && txn.cleared !== 'reconciled'
     })
-    bulkDelete.mutate({ transactionIds: eligibleIds, accountId }, { onSuccess: clearTransactionSelection })
-  }, [bulkDelete, selectedTransactionIds, transactionMap, accountId, clearTransactionSelection])
+    const { result } = await bulkDelete.mutateAsync({ transactionIds: eligibleIds, accountId })
+    clearTransactionSelection()
+    const count = result.updated.length
+    if (count > 0) {
+      showUndo(result.batch_id, `${count} transaction${count > 1 ? 's' : ''} deleted`)
+    }
+  }, [bulkDelete, selectedTransactionIds, transactionMap, accountId, clearTransactionSelection, showUndo])
 
   const duplicateTransaction = useCallback((txn: Transaction) => {
     createTxn.mutate({

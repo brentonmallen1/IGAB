@@ -13,6 +13,7 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.change_log import ChangeRecorder, snapshot
 from igab.services.ownership import require_in_budget
 from igab.utils.clock import today_utc
 
@@ -151,6 +152,23 @@ class BudgetService:
         self.transaction_repo = transaction_repo
         self.move_repo = move_repo
         self.snapshot_repo = snapshot_repo
+        self.changes = ChangeRecorder(assignment_repo.session)
+
+    async def _record_assignment(self, assignment, before_assigned: Decimal) -> None:
+        """Record an assignment change (all assignment writes are updates —
+        get_or_create means the row may be fresh, in which case before is 0)."""
+        await self.changes.record(
+            budget_id=assignment.budget_id,
+            entity_type="assignment",
+            entity_id=assignment.id,
+            action="update",
+            before={
+                "category_id": str(assignment.category_id),
+                "month": assignment.month.isoformat(),
+                "assigned": str(before_assigned),
+            },
+            after=snapshot("assignment", assignment),
+        )
 
     async def get_category_balance(
         self,
@@ -423,7 +441,10 @@ class BudgetService:
             category_id=category_id,
             month=month_start,
         )
-        await self.assignment_repo.update(assignment.id, assigned=amount)
+        before_assigned = assignment.assigned
+        updated = await self.assignment_repo.update(assignment.id, assigned=amount)
+        if updated.assigned != before_assigned:
+            await self._record_assignment(updated, before_assigned)
 
     async def get_category_history(
         self,
@@ -521,20 +542,25 @@ class BudgetService:
             if category is None or str(category.budget_id) != str(budget_id):
                 raise InvariantViolation("Category does not belong to this budget")
 
-        if from_category_id is not None:
-            from_assignment = await self.assignment_repo.get_or_create(
-                budget_id, from_category_id, month_start
-            )
-            await self.assignment_repo.update(
-                from_assignment.id, assigned=from_assignment.assigned - amount
-            )
-        if to_category_id is not None:
-            to_assignment = await self.assignment_repo.get_or_create(
-                budget_id, to_category_id, month_start
-            )
-            await self.assignment_repo.update(
-                to_assignment.id, assigned=to_assignment.assigned + amount
-            )
+        with self.changes.batch():
+            if from_category_id is not None:
+                from_assignment = await self.assignment_repo.get_or_create(
+                    budget_id, from_category_id, month_start
+                )
+                before_from = from_assignment.assigned
+                updated_from = await self.assignment_repo.update(
+                    from_assignment.id, assigned=from_assignment.assigned - amount
+                )
+                await self._record_assignment(updated_from, before_from)
+            if to_category_id is not None:
+                to_assignment = await self.assignment_repo.get_or_create(
+                    budget_id, to_category_id, month_start
+                )
+                before_to = to_assignment.assigned
+                updated_to = await self.assignment_repo.update(
+                    to_assignment.id, assigned=to_assignment.assigned + amount
+                )
+                await self._record_assignment(updated_to, before_to)
 
         if self.move_repo is not None:
             await self.move_repo.create(
@@ -630,5 +656,6 @@ class BudgetService:
                     "Cover amount exceeds current overspending — refresh the preview and try again"
                 )
 
-        for cat_id, amount in to_apply:
-            await self.move_money(budget_id, None, cat_id, amount, month)
+        with self.changes.batch():
+            for cat_id, amount in to_apply:
+                await self.move_money(budget_id, None, cat_id, amount, month)

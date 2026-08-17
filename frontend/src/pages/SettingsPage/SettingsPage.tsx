@@ -544,25 +544,37 @@ export function SettingsPage() {
                     <div className="settings-row__label">Daily auto-sync time</div>
                     <div className="settings-row__desc">Hour of day (UTC) to automatically sync</div>
                   </div>
-                  <select
-                    className="settings-select"
-                    value={conn.daily_sync_time ? String(parseInt(conn.daily_sync_time.split(':')[0], 10)) : ''}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      updateConnection.mutate({
-                        id: conn.id,
-                        daily_sync_time: val === '' ? null : `${val.padStart(2, '0')}:00:00`,
-                      })
-                    }}
-                    style={{ minWidth: 130 }}
-                  >
-                    <option value="">Disabled</option>
-                    {Array.from({ length: 24 }, (_, i) => (
-                      <option key={i} value={String(i)}>
-                        {String(i).padStart(2, '0')}:00 UTC
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <select
+                      className="settings-select"
+                      value={conn.daily_sync_time ? String(parseInt(conn.daily_sync_time.split(':')[0], 10)) : ''}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        updateConnection.mutate({
+                          id: conn.id,
+                          daily_sync_time: val === '' ? null : `${val.padStart(2, '0')}:00:00`,
+                        })
+                      }}
+                      style={{ minWidth: 130 }}
+                    >
+                      <option value="">Disabled</option>
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={String(i)}>
+                          {String(i).padStart(2, '0')}:00 UTC
+                        </option>
+                      ))}
+                    </select>
+                    {conn.daily_sync_time && (
+                      <span className="settings-row__local-time">
+                        = {(() => {
+                          const utcHour = parseInt(conn.daily_sync_time.split(':')[0], 10)
+                          const d = new Date()
+                          d.setUTCHours(utcHour, 0, 0, 0)
+                          return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                        })()} your time
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {rateLimitStatus && (

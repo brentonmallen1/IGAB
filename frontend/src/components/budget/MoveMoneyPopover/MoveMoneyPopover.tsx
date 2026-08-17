@@ -19,10 +19,18 @@ export function MoveMoneyPopover({ budgetId, month, category, available, positio
 
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      const target = e.target as HTMLElement
+      // The category combobox portals its dropdown to <body>; clicking an
+      // option there must not dismiss the popover
+      if (ref.current && !ref.current.contains(target) && !target.closest('.combobox__dropdown')) {
+        onClose()
+      }
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      // Let an open combobox consume Escape to close just its dropdown
+      if (e.key === 'Escape' && !(e.target as HTMLElement).closest?.('.combobox--open')) {
+        onClose()
+      }
     }
     document.addEventListener('mousedown', handler)
     document.addEventListener('keydown', onKey)

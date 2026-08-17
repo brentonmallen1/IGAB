@@ -29,6 +29,7 @@ class TestRenderPrompt:
             "payee_name": "STARBUCKS #123",
             "amount": "5.50",
             "memo": "",
+            "names": "STARBUCKS #123\nSTARBUCKS #77",
         }
         for key, template in DEFAULT_PROMPTS.items():
             rendered = render_prompt(template, sample_values)

@@ -192,6 +192,9 @@ Schedule, retention, and encryption are configured in the app under
 - **Update notifications**: Unraid's Docker tab flags new image versions (Paths A & C).
   The app also has its own opt-in check (Settings → Updates) that is **off by default** —
   nothing contacts GitHub unless you enable it.
+- **Updating safely**: back up before pulling a new image — the two-minute routine
+  (backup → pull → recreate → verify), rollback steps, and release-specific notes are
+  in [docs/upgrading.md](upgrading.md).
 - **Auth hardening**: IGAB ships single-user password auth and deliberately no
   TOTP/2FA — if you expose it beyond your LAN/tailnet, put it behind your own auth
   layer (Authelia, Authentik, Tailscale) like the rest of your self-hosted stack.

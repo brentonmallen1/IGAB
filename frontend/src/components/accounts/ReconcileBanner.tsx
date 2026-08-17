@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { CheckCircle } from 'lucide-react'
 import {
   useReconciliationStatus,
@@ -24,8 +24,12 @@ export function ReconcileBanner({ accountId, accountName }: Props) {
     cancelReconciliation,
   } = useUIStore()
 
+  // "question" shows "Does your balance match $X?", "input" shows the custom balance field,
+  // "reconciling" shows the diff + finish step
+  const [showInput, setShowInput] = useState(false)
   const [inputValue, setInputValue] = useState('')
-  const step = reconcileStatementBalance === null ? 'input' : 'reconciling'
+  const inputRef = useRef<HTMLInputElement>(null)
+  const step = reconcileStatementBalance === null ? (showInput ? 'input' : 'question') : 'reconciling'
 
   const { data: status } = useReconciliationStatus(accountId, {
     refetchInterval: step === 'reconciling' ? 1000 : undefined,
@@ -38,6 +42,21 @@ export function ReconcileBanner({ accountId, accountName }: Props) {
   const statementBalance = reconcileStatementBalance ?? 0
   const difference = statementBalance - clearedBalance
   const isBalanced = Math.abs(difference) < 0.005
+
+  // Focus the input when it becomes visible
+  useEffect(() => {
+    if (showInput) inputRef.current?.focus()
+  }, [showInput])
+
+  function handleYes() {
+    // The bank balance matches the cleared balance
+    setReconcileStatementBalance(clearedBalance)
+  }
+
+  function handleNo() {
+    // Show the input field for the actual bank balance
+    setShowInput(true)
+  }
 
   function handleContinue() {
     const balance = parseFloat(inputValue.replace(/[^0-9.-]/g, ''))
@@ -75,26 +94,30 @@ export function ReconcileBanner({ accountId, accountName }: Props) {
           <span className="reconcile-banner__account">{accountName}</span>
         </div>
 
+        {step === 'question' && (
+          <div className="reconcile-banner__step-question">
+            <span className="reconcile-banner__question">
+              Does your bank balance match{' '}
+              <strong>{formatMoney(clearedBalance)}</strong>?
+            </span>
+          </div>
+        )}
+
         {step === 'input' && (
           <div className="reconcile-banner__step-input">
             <span className="reconcile-banner__hint">
-              Your cleared balance is{' '}
-              <strong>{formatMoney(Number(status?.cleared_balance ?? 0))}</strong>.
               Enter your current bank balance:
             </span>
-            <div className="reconcile-banner__input-row">
-              <label className="reconcile-banner__input-label">Statement balance</label>
-              <input
-                type="number"
-                step="0.01"
-                className="reconcile-banner__input"
-                placeholder="0.00"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleContinue()}
-                autoFocus
-              />
-            </div>
+            <input
+              ref={inputRef}
+              type="text"
+              inputMode="decimal"
+              className="reconcile-banner__input"
+              placeholder="0.00"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleContinue()}
+            />
           </div>
         )}
 
@@ -145,6 +168,22 @@ export function ReconcileBanner({ accountId, accountName }: Props) {
         )}
 
         <div className="reconcile-banner__actions">
+          {step === 'question' && (
+            <>
+              <button className="reconcile-banner__btn" onClick={cancelReconciliation}>
+                Cancel
+              </button>
+              <button className="reconcile-banner__btn" onClick={handleNo}>
+                No
+              </button>
+              <button
+                className="reconcile-banner__btn reconcile-banner__btn--primary"
+                onClick={handleYes}
+              >
+                Yes
+              </button>
+            </>
+          )}
           {step === 'input' && (
             <>
               <button className="reconcile-banner__btn" onClick={cancelReconciliation}>

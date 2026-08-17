@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { suggestPayeeRegex, testPattern, escapeRegex } from './payeeRegex'
+import { suggestPayeeRegex, testPattern, escapeRegex, unionPatterns } from './payeeRegex'
 
 describe('suggestPayeeRegex', () => {
   it('generalizes a shared prefix with random suffixes', () => {
@@ -94,5 +94,50 @@ describe('escapeRegex', () => {
   it('escapes all metacharacters', () => {
     const raw = 'a.b*c+d?e^f$g{h}i(j)k|l[m]n\\o'
     expect(new RegExp(`^${escapeRegex(raw)}$`).test(raw)).toBe(true)
+  })
+})
+
+describe('unionPatterns', () => {
+  it('unions two plain patterns and matches what each matched', () => {
+    const union = unionPatterns('^ACH PAYROLL', 'DIRECT DEP$')
+    expect(union).toBe('(?:^ACH PAYROLL)|(?:DIRECT DEP$)')
+    expect(testPattern(union!, 'ACH PAYROLL 123')).toBe(true)
+    expect(testPattern(union!, 'ACME DIRECT DEP')).toBe(true)
+    expect(testPattern(union!, 'SOMETHING ELSE')).toBe(false)
+  })
+
+  it('flattens an already-unioned pattern instead of nesting', () => {
+    const first = unionPatterns('^A', '^B')!
+    const second = unionPatterns(first, '^C')
+    expect(second).toBe('(?:^A)|(?:^B)|(?:^C)')
+  })
+
+  it('drops duplicate branches', () => {
+    expect(unionPatterns('^A', '^A')).toBe('^A')
+    expect(unionPatterns('(?:^A)|(?:^B)', '^B')).toBe('(?:^A)|(?:^B)')
+  })
+
+  it('does not split alternation inside groups or classes', () => {
+    const union = unionPatterns('^(A|B) CORP', '[|]END$')
+    expect(union).toBe('(?:^(A|B) CORP)|(?:[|]END$)')
+    expect(testPattern(union!, 'A CORP')).toBe(true)
+    expect(testPattern(union!, 'X |END')).toBe(true)
+  })
+
+  it('keeps a non-capture wrap that is not the whole branch', () => {
+    // "(?:A)(?:B)" must not be unwrapped into "A)(?:B"
+    const union = unionPatterns('(?:A)(?:B)', '^C')
+    expect(union).toBe('(?:(?:A)(?:B))|(?:^C)')
+    expect(testPattern(union!, 'AB')).toBe(true)
+  })
+
+  it('returns the single branch when only one pattern is given', () => {
+    expect(unionPatterns('^ONLY')).toBe('^ONLY')
+    expect(unionPatterns('^ONLY', '', '  ')).toBe('^ONLY')
+  })
+
+  it('returns null when an input pattern is invalid or empty', () => {
+    expect(unionPatterns('([bad', '^ok')).toBeNull()
+    expect(unionPatterns('', '  ')).toBeNull()
   })
 })

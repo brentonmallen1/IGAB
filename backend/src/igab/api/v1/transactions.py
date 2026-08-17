@@ -14,12 +14,14 @@ from igab.api.v1.schemas.transaction import (
     BulkDelete,
     BulkItemFailure,
     ConvertToSplitRequest,
+    DeleteTransactionResult,
     DuplicatePayeeEntry,
     DuplicatePayeeGroup,
     MergeTransactionsRequest,
     NearbyPayeeResponse,
     PayeeCreate,
     PayeeMergeRequest,
+    PayeeMergeResult,
     PayeeResponse,
     PayeeUpdate,
     PayeeWithCount,
@@ -38,6 +40,7 @@ from igab.dependencies import (
     SessionDep,
     TransactionAccess,
     get_ai_job_repo,
+    get_change_recorder,
     get_payee_repo,
     get_transaction_repo,
     get_transaction_service,
@@ -46,6 +49,7 @@ from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import require_in_budget
 from igab.services.transaction_service import (
     SplitSpec,
@@ -347,30 +351,38 @@ async def convert_transaction_to_split(
     return TransactionResponse.model_validate(txn)
 
 
-@router.delete("/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/transactions/{transaction_id}", response_model=DeleteTransactionResult)
 async def delete_transaction(
     transaction_id: TransactionAccess,
     current_user: CurrentUser,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
     budget_id: BudgetAccess,
-) -> None:
+) -> DeleteTransactionResult:
     try:
-        await txn_service.delete(budget_id, transaction_id)
+        batch_id = await txn_service.delete(budget_id, transaction_id)
     except (NotFoundError, InvariantViolation) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return DeleteTransactionResult(batch_id=batch_id)
 
 
-async def _run_bulk(transaction_ids: list[uuid.UUID], action) -> BulkActionResult:
-    """Apply an action per id, reporting each failure instead of swallowing it."""
+async def _run_bulk(
+    txn_service: TransactionService, transaction_ids: list[uuid.UUID], action
+) -> BulkActionResult:
+    """Apply an action per id, reporting each failure instead of swallowing it.
+
+    Every recorded change shares one change-log batch so the whole bulk
+    action undoes as a unit; the batch id is omitted when nothing succeeded.
+    """
     updated: list[uuid.UUID] = []
     failed: list[BulkItemFailure] = []
-    for txn_id in transaction_ids:
-        try:
-            await action(txn_id)
-            updated.append(txn_id)
-        except (NotFoundError, InvariantViolation) as e:
-            failed.append(BulkItemFailure(id=txn_id, reason=str(e)))
-    return BulkActionResult(updated=updated, failed=failed)
+    with txn_service.changes.batch() as batch_id:
+        for txn_id in transaction_ids:
+            try:
+                await action(txn_id)
+                updated.append(txn_id)
+            except (NotFoundError, InvariantViolation) as e:
+                failed.append(BulkItemFailure(id=txn_id, reason=str(e)))
+    return BulkActionResult(updated=updated, failed=failed, batch_id=batch_id if updated else None)
 
 
 @router.patch("/{budget_id}/transactions/bulk-cleared", response_model=BulkActionResult)
@@ -381,6 +393,7 @@ async def bulk_update_cleared(
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> BulkActionResult:
     return await _run_bulk(
+        txn_service,
         body.transaction_ids,
         lambda txn_id: txn_service.update(budget_id, txn_id, SvcTxnUpdate(cleared=body.cleared)),
     )
@@ -394,6 +407,7 @@ async def bulk_categorize(
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> BulkActionResult:
     return await _run_bulk(
+        txn_service,
         body.transaction_ids,
         lambda txn_id: txn_service.update(
             budget_id, txn_id, SvcTxnUpdate(category_id=body.category_id)
@@ -409,7 +423,7 @@ async def bulk_delete(
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> BulkActionResult:
     return await _run_bulk(
-        body.transaction_ids, lambda txn_id: txn_service.delete(budget_id, txn_id)
+        txn_service, body.transaction_ids, lambda txn_id: txn_service.delete(budget_id, txn_id)
     )
 
 
@@ -448,7 +462,7 @@ async def bulk_approve(
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> BulkActionResult:
     return await _run_bulk(
-        body.transaction_ids, lambda txn_id: txn_service.approve(txn_id, budget_id)
+        txn_service, body.transaction_ids, lambda txn_id: txn_service.approve(txn_id, budget_id)
     )
 
 
@@ -587,8 +601,19 @@ async def create_payee(
     body: PayeeCreate,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> PayeeResponse:
-    payee = await payee_repo.find_or_create(budget_id, body.name)
+    # find-or-create: only log when a payee actually gets created
+    existing = await payee_repo.find_by_name(budget_id, body.name)
+    payee = existing or await payee_repo.create(budget_id=budget_id, name=body.name)
+    if existing is None:
+        await recorder.record(
+            budget_id=budget_id,
+            entity_type="payee",
+            entity_id=payee.id,
+            action="create",
+            after=snapshot("payee", payee),
+        )
     return PayeeResponse.model_validate(await payee_repo.get_with_tags(payee.id))
 
 
@@ -598,6 +623,7 @@ async def update_payee(
     body: PayeeUpdate,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> PayeeResponse:
     # exclude_unset (not exclude_none) so an explicit null clears nullable
     # fields like mapping_samples and match_pattern; name stays required.
@@ -613,7 +639,19 @@ async def update_payee(
             owner.budget_id,
             "Category",
         )
-    await payee_repo.update(payee_id, **changes)
+    before = snapshot("payee", owner) if owner is not None else None
+    updated = await payee_repo.update(payee_id, **changes)
+    if owner is not None and before is not None:
+        after = snapshot("payee", updated)
+        if snapshots_match(after, before):
+            await recorder.record(
+                budget_id=owner.budget_id,
+                entity_type="payee",
+                entity_id=payee_id,
+                action="update",
+                before=before,
+                after=after,
+            )
     return PayeeResponse.model_validate(await payee_repo.get_with_tags(payee_id))
 
 
@@ -622,20 +660,45 @@ async def delete_payee(
     payee_id: PayeeAccess,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> None:
+    payee = await payee_repo.get_or_raise(payee_id)
+    before = snapshot("payee", payee)
     await payee_repo.delete(payee_id)
+    await recorder.record(
+        budget_id=payee.budget_id,
+        entity_type="payee",
+        entity_id=payee_id,
+        action="delete",
+        before=before,
+    )
 
 
-@router.post("/payees/{payee_id}/merge", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/payees/{payee_id}/merge", response_model=PayeeMergeResult)
 async def merge_payee(
     payee_id: PayeeAccess,
     body: PayeeMergeRequest,
     current_user: CurrentUser,
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
-) -> None:
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
+) -> PayeeMergeResult:
     if payee_id == body.target_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot merge a payee into itself",
         )
-    await payee_repo.merge(payee_id, body.target_id)
+    source = await payee_repo.get_or_raise(payee_id)
+    source_before = snapshot("payee", source)
+    try:
+        moved = await payee_repo.merge(payee_id, body.target_id)
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    change = await recorder.record(
+        budget_id=source.budget_id,
+        entity_type="payee",
+        entity_id=payee_id,
+        action="merge",
+        before={**source_before, "_transaction_ids": [str(t) for t in moved]},
+        after={"merged_into": str(body.target_id)},
+    )
+    return PayeeMergeResult(change_id=change.id)

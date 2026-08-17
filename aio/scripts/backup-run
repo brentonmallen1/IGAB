@@ -18,5 +18,6 @@ export PGUSER=igab
 export PGPASSWORD=igab
 export PGDATABASE=igab
 
-# Run backup script in AIO mode (skips file-based agent communication)
-exec /usr/local/bin/db-backup.sh --aio-mode
+# Run the backup agent — the file-based protocol with the API works inside
+# the AIO container too, since both halves share one filesystem.
+exec /usr/local/bin/db-backup.sh

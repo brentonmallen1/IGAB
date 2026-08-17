@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.db.models import ChangeLog, new_uuid
 from igab.db.session import get_session
 from igab.dependencies import (
     AccountAccess,
@@ -35,6 +36,7 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.change_log import snapshot
 from igab.services.transaction_service import TransactionService
 
 router = APIRouter()
@@ -49,6 +51,8 @@ class ImportResult(BaseModel):
     imported: int
     skipped: int
     errors: list[str]
+    # Change-log batch covering the imported transactions, for undo
+    batch_id: uuid.UUID | None = None
 
 
 class YNABImportResult(BaseModel):
@@ -351,4 +355,27 @@ async def import_csv(
     skipped += len(rows_to_insert) - len(new_rows)
 
     imported = await transaction_repo.bulk_create(new_rows)
-    return ImportResult(imported=imported, skipped=skipped, errors=errors)
+
+    # One change-log row per imported transaction, grouped under the import
+    # batch id so the whole import can be undone as a unit.
+    transaction_repo.session.add_all(
+        [
+            ChangeLog(
+                id=new_uuid(),
+                budget_id=budget_id,
+                entity_type="transaction",
+                entity_id=r["id"],
+                action="import",
+                after=snapshot("transaction", r),
+                batch_id=batch_id,
+                source="import",
+            )
+            for r in new_rows
+        ]
+    )
+    return ImportResult(
+        imported=imported,
+        skipped=skipped,
+        errors=errors,
+        batch_id=batch_id if new_rows else None,
+    )

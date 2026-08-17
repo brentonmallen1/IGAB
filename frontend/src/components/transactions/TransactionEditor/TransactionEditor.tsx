@@ -12,16 +12,19 @@ import {
   useSimilarTransactions,
   useTransaction,
 } from '../../../api/transactions'
-import { useCategories, useCategoryGroups } from '../../../api/categories'
+import { confirmDeleteTransaction } from '../../../api/attachments'
+import { useCategories, useCategoryGroups, useRecentPayeeForCategory } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { confirmFutureOverspend, type OverspendProbe } from '../../../api/budgets'
 import { useAIStatus, useSuggestCategory } from '../../../api/ai'
 import { type AIJob } from '../../../api/aiJobs'
 import { useAppStore } from '../../../stores/appStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
+import { useVisualViewportHeight } from '../../../hooks/useVisualViewportHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { today } from '../../../utils/dates'
+import { useToastUndo } from '../../../utils/toastUndo'
 import { fromCents, toCents } from '../../../utils/money'
 import {
   expressionToCents,
@@ -29,7 +32,7 @@ import {
   sumExpressionsToCents,
 } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
-import { GroupedCategoryOptions } from '../../common/GroupedCategoryOptions/GroupedCategoryOptions'
+import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import './TransactionEditor.css'
@@ -75,6 +78,8 @@ export function TransactionEditor({
   const createTxn = useCreateTransaction(budgetId)
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
+  // accountId for undo resolved after hooks; toastUndo called with final value
+  const showUndo = useToastUndo(budgetId)
   const convertToSplit = useConvertToSplit(budgetId)
   const suggestCategory = useSuggestCategory(budgetId)
 
@@ -84,6 +89,8 @@ export function TransactionEditor({
   const { data: accounts = [] } = useAccounts(budgetId)
 
   const isMobile = useIsMobile()
+  // Clamp the full-screen editor above the iOS keyboard so the footer stays reachable
+  const viewportHeight = useVisualViewportHeight(isMobile)
   const { formatMoney, formatDate } = useFormatters()
   // Android back / swipe-back cancels the editor instead of leaving the page
   useHistoryDismissable(isMobile, onClose, 'txn-editor')
@@ -173,6 +180,22 @@ export function TransactionEditor({
       }
     }
   }, [payees, transaction?.payee_id])
+
+  // Category-context add: prefill the most recent payee for this category
+  // (fully editable — just a head start). Never overwrite anything the user
+  // or an AI draft already put in the field.
+  const { data: recentPayee } = useRecentPayeeForCategory(
+    budgetId,
+    !isEdit && !initialDraft?.payeeName && initialCategoryId ? initialCategoryId : null
+  )
+  useEffect(() => {
+    if (!recentPayee || payeeInitialized.current) return
+    payeeInitialized.current = true
+    if (payeeQuery || selectedPayeeId) return
+    setPayeeQuery(recentPayee.name)
+    setSelectedPayeeId(recentPayee.payee_id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentPayee])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -380,9 +403,10 @@ export function TransactionEditor({
 
   async function handleDelete() {
     if (!transaction) return
-    if (!confirm('Delete this transaction?')) return
-    await deleteTxn.mutateAsync({ id: transaction.id, accountId })
+    if (!(await confirmDeleteTransaction(transaction.id))) return
+    const { batchId } = await deleteTxn.mutateAsync({ id: transaction.id, accountId })
     onClose()
+    showUndo(batchId, 'Transaction deleted')
   }
 
   const isPending =
@@ -474,6 +498,7 @@ export function TransactionEditor({
     >
       <form
         className={`txn-editor ${isReview ? 'txn-editor--review' : ''}`}
+        style={viewportHeight !== null ? { height: viewportHeight, maxHeight: viewportHeight } : undefined}
         role="dialog"
         aria-modal
         aria-labelledby="txn-editor-title"
@@ -668,14 +693,13 @@ export function TransactionEditor({
                       {' '}— transfers to off-budget accounts count as spending
                     </span>
                   </label>
-                  <select
-                    className="txn-editor__select"
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                  >
-                    <option value="">No category</option>
-                    <GroupedCategoryOptions groups={groupedCategories} />
-                  </select>
+                  <CategoryCombobox
+                    value={categoryId || null}
+                    onChange={(id) => setCategoryId(id ?? '')}
+                    groups={groupedCategories}
+                    allowNone
+                    aria-label="Category"
+                  />
                 </div>
               )}
             </>
@@ -696,14 +720,16 @@ export function TransactionEditor({
               <div className="txn-editor__splits">
                 {splits.map((s) => (
                   <div key={s.tempId} className="txn-editor__split-row">
-                    <select
-                      className="txn-editor__select txn-editor__split-category"
-                      value={s.categoryId ?? ''}
-                      onChange={(e) => updateSplit(s.tempId, { categoryId: e.target.value || null })}
-                    >
-                      <option value="">Category…</option>
-                      <GroupedCategoryOptions groups={groupedCategories} />
-                    </select>
+                    <CategoryCombobox
+                      className="txn-editor__split-category"
+                      value={s.categoryId}
+                      onChange={(id) => updateSplit(s.tempId, { categoryId: id })}
+                      groups={groupedCategories}
+                      allowNone
+                      noneLabel="Category…"
+                      sheetTitle="Split category"
+                      aria-label="Split category"
+                    />
                     <AmountInput
                       className="txn-editor__input txn-editor__split-amount"
                       value={s.amount}
@@ -774,14 +800,13 @@ export function TransactionEditor({
                   {suggestCategory.isPending ? 'Thinking…' : 'AI Suggest'}
                 </button>
               </label>
-              <select
-                className="txn-editor__select"
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-              >
-                <option value="">No category</option>
-                <GroupedCategoryOptions groups={groupedCategories} />
-              </select>
+              <CategoryCombobox
+                value={categoryId || null}
+                onChange={(id) => setCategoryId(id ?? '')}
+                groups={groupedCategories}
+                allowNone
+                aria-label="Category"
+              />
             </div>
           )}
 

@@ -4,12 +4,14 @@ from datetime import date as _PyDate  # un-shadowable alias for class-body annot
 from decimal import Decimal
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     Date,
     DateTime,
     Float,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     Numeric,
@@ -443,6 +445,49 @@ class BudgetMove(Base):
         UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ─── Change Log (undo/audit) ──────────────────────────────────────────────────
+
+
+class ChangeLog(Base):
+    """Audit log of user-visible mutations, with enough state to undo them.
+
+    `before`/`after` are full JSONB snapshots of the entity's restorable
+    fields (create: after only; delete: before only). `batch_id` groups the
+    rows of one compound operation — a transfer pair, a split, a merge, an
+    import, a bulk action — which is always undone as a unit. `undone_at`
+    marks a change as reverted; undo never appends new rows.
+    """
+
+    __tablename__ = "change_log"
+    __table_args__ = (
+        Index("ix_change_log_budget_created", "budget_id", "created_at"),
+        Index("ix_change_log_batch", "batch_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    # created_at is the transaction timestamp — identical for every row in a
+    # request — so this identity column is the only total order, needed to
+    # undo a batch's changes in exact reverse order.
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False, unique=True)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+    )
+    # transaction | payee | category | category_group | assignment
+    entity_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # create | update | delete | approve | import | merge
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    before: Mapped[dict | None] = mapped_column(JSONB)
+    after: Mapped[dict | None] = mapped_column(JSONB)
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # manual | import | ai | system
+    source: Mapped[str] = mapped_column(String(20), default="manual", nullable=False)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

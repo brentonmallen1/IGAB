@@ -1,16 +1,22 @@
 #!/bin/sh
 # IGAB backup agent — runs in the db-backup container (postgres:16-alpine)
-# or inside the AIO container with --aio-mode.
+# or inside the AIO container (as the s6 "backup" service).
 #
 # Every poll it: touches a heartbeat, re-reads backup settings from the
 # app_settings table (so UI changes apply without a restart), executes any
-# command the API dropped in /backups/.agent/command.json (backup-now or
+# command the API dropped in $BACKUP_DIR/.agent/command.json (backup-now or
 # restore), and runs a scheduled backup when one is due. The API half of
 # this protocol lives in backend/src/igab/services/backup_service.py.
+# The file protocol requires the API and this agent to share the backups
+# directory — true both across containers (shared bind mount) and inside
+# the AIO container (same filesystem).
 #
 # Environment (defaults, and the fallback when DB settings are unreadable
 # or out of bounds):
 #   PGHOST / PGUSER / PGPASSWORD / PGDATABASE — connection (set by compose)
+#   BACKUP_DIR             where dumps/archives are written (default /backups);
+#                          must match the API's BACKUPS_DIR
+#   ATTACHMENTS_DIR        attachments to archive (default /attachments)
 #   BACKUP_INTERVAL_HOURS  hours between scheduled backups (default 24)
 #   BACKUP_KEEP_DAYS       prune files older than this many days (default 30)
 #   BACKUP_KEEP_MIN        never prune below this many newest files per kind,
@@ -20,20 +26,14 @@
 #                          and attachment archives are encrypted to it (*.age)
 #   BACKUP_RUN_ONCE        set to 1 to run a single poll cycle and exit (testing)
 #
-# Modes:
-#   (default)    — multi-container mode, uses file-based agent communication
-#   --aio-mode   — AIO container mode, skips agent communication (same container)
+# The historical --aio-mode flag is accepted but is a no-op: the file-based
+# agent protocol works identically inside the AIO container, since the API
+# and the agent share one filesystem there.
 set -u
 
-AIO_MODE=0
-for arg in "$@"; do
-    case "$arg" in
-        --aio-mode) AIO_MODE=1 ;;
-    esac
-done
-
-BK=/backups
+BK="${BACKUP_DIR:-/backups}"
 AG=$BK/.agent
+ATT="${ATTACHMENTS_DIR:-/attachments}"
 POLL_S=10
 
 ENV_INTERVAL="${BACKUP_INTERVAL_HOURS:-24}"
@@ -129,16 +129,16 @@ dump_db() {
 }
 
 backup_attachments() {
-    [ -d /attachments ] || return 0
-    [ -n "$(find /attachments -type f 2>/dev/null | head -n 1)" ] || return 0
-    manifest=$( (cd /attachments && find . -type f -exec md5sum {} + 2>/dev/null) | sort | md5sum | cut -d' ' -f1 )
+    [ -d "$ATT" ] || return 0
+    [ -n "$(find "$ATT" -type f 2>/dev/null | head -n 1)" ] || return 0
+    manifest=$( (cd "$ATT" && find . -type f -exec md5sum {} + 2>/dev/null) | sort | md5sum | cut -d' ' -f1 )
     state=$AG/attachments-manifest
     if [ -f "$state" ] && [ "$(cat "$state")" = "$manifest" ]; then
         return 0
     fi
     ts=$(date +%Y%m%d-%H%M%S)
     tmp="$BK/.tmp-igab-attachments-$ts.tar.gz"
-    tar -C /attachments -czf "$tmp" . || { rm -f "$tmp"; return 1; }
+    tar -C "$ATT" -czf "$tmp" . || { rm -f "$tmp"; return 1; }
     final=$(encrypt_maybe "$tmp") || { rm -f "$tmp" "$tmp.age"; return 1; }
     out="$BK/$(basename "$final" | sed 's/^\.tmp-//')"
     mv "$final" "$out"
@@ -260,20 +260,14 @@ handle_command() {
 }
 
 # Heartbeat runs in its own subshell so long dumps/restores don't make the
-# agent look dead; it dies with the container (this script is PID 1).
-# In AIO mode, we skip the file-based agent communication entirely.
-if [ "$AIO_MODE" -eq 0 ]; then
-    ( while true; do touch "$AG/heartbeat"; sleep 5; done ) &
-fi
+# agent look dead; it dies with this script.
+( while true; do touch "$AG/heartbeat"; sleep 5; done ) &
 
-log "agent started (poll ${POLL_S}s, aio=$AIO_MODE)"
+log "agent started (poll ${POLL_S}s, backups in $BK)"
 while true; do
     find "$BK" -name ".tmp-*" -mmin +180 -delete 2>/dev/null
     read_settings
-    # In AIO mode, skip file-based command handling — API calls backup functions directly
-    if [ "$AIO_MODE" -eq 0 ]; then
-        handle_command
-    fi
+    handle_command
     if backup_due; then
         log "scheduled backup starting (interval ${INTERVAL}h, keep ${KEEP_DAYS}d/min ${KEEP_MIN})"
         backup_cycle || true

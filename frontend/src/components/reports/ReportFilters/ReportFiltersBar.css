@@ -76,3 +76,11 @@
   color: var(--bg-primary);
   border-color: var(--accent-color);
 }
+
+@media (max-width: 768px) {
+  /* Side-by-side groups force the date presets past the viewport edge — stack */
+  .rfb {
+    flex-direction: column;
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+}

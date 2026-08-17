@@ -756,6 +756,31 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return result.scalar_one_or_none()
 
+    async def get_most_recent_payee_for_category(
+        self,
+        budget_id: uuid.UUID,
+        category_id: uuid.UUID,
+    ) -> tuple[uuid.UUID, str] | None:
+        """Find the payee from the most recent transaction in this category.
+
+        Transfer payees are excluded — prefill should suggest a merchant,
+        not the other side of an account transfer.
+        """
+        result = await self.session.execute(
+            select(Transaction.payee_id, Payee.name)
+            .join(Payee, Payee.id == Transaction.payee_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.category_id == category_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Payee.transfer_account_id.is_(None),
+            )
+            .order_by(Transaction.date.desc(), Transaction.created_at.desc())
+            .limit(1)
+        )
+        row = result.first()
+        return (row[0], row[1]) if row else None
+
     async def get_for_budget(
         self,
         budget_id: uuid.UUID,

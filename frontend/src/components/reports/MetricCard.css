@@ -61,3 +61,16 @@
   font-size: var(--font-size-sm);
   color: var(--text-muted);
 }
+
+@media (max-width: 768px) {
+  /* Two cards per row instead of a tall single-column stack */
+  .metric-card {
+    min-width: 0;
+    flex: 1 1 40%;
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .metric-card__value {
+    font-size: 1.25rem;
+  }
+}

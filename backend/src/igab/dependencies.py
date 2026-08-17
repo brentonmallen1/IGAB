@@ -17,6 +17,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.change_log_repo import ChangeLogRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
@@ -34,6 +35,7 @@ from igab.services.assign_service import AssignService
 from igab.services.attachment_service import AttachmentService
 from igab.services.auth_service import AuthService
 from igab.services.budget_service import BudgetService
+from igab.services.change_log import ChangeRecorder
 from igab.services.liability_service import LiabilityService
 from igab.services.reconciliation_service import ReconciliationService
 from igab.services.report_service import ReportService
@@ -43,6 +45,7 @@ from igab.services.simplefin_service import SimpleFINService
 from igab.services.target_service import TargetService
 from igab.services.transaction_matching_service import TransactionMatchingService
 from igab.services.transaction_service import TransactionService
+from igab.services.undo_service import UndoService
 
 bearer_scheme = HTTPBearer()
 
@@ -156,6 +159,18 @@ def get_budget_move_repo(session: SessionDep):
 
 def get_snapshot_repo(session: SessionDep) -> SnapshotRepository:
     return SnapshotRepository(session)
+
+
+def get_change_recorder(session: SessionDep) -> ChangeRecorder:
+    return ChangeRecorder(session)
+
+
+def get_change_log_repo(session: SessionDep) -> ChangeLogRepository:
+    return ChangeLogRepository(session)
+
+
+def get_undo_service(session: SessionDep) -> UndoService:
+    return UndoService(session)
 
 
 def get_budget_service(

@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, Sparkles, History } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useBudgets } from '../../../api/budgets'
@@ -152,6 +152,10 @@ export function Sidebar() {
         <NavLink to="/ai-activity" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="AI Activity" aria-label="AI Activity">
           <Sparkles size={16} />
           {!collapsed && <span>AI Activity</span>}
+        </NavLink>
+        <NavLink to="/activity" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Activity" aria-label="Activity">
+          <History size={16} />
+          {!collapsed && <span>Activity</span>}
         </NavLink>
         <NavLink to="/import" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Import" aria-label="Import">
           <Upload size={16} />
