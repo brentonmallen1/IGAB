@@ -67,9 +67,21 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
 
 ## Screenshots
 
-<!-- Screenshots coming soon — budget grid, reports, mobile views -->
+<p align="center">
+  <img src="screenshots/budget.png" alt="Monthly budget grid with category groups, targets, and available balances" width="900" />
+</p>
 
-*Screenshots of the budget grid, reports, and mobile interface coming soon.*
+<p align="center"><em>The budget grid — every dollar assigned a job.</em></p>
+
+<p align="center">
+  <img src="screenshots/accounts.png" alt="Checking account register with cleared, uncleared, and working balances" width="900" />
+</p>
+
+<p align="center"><em>The account register — cleared, uncleared, and working balances, with upcoming scheduled transactions.</em></p>
+
+<p align="center">
+  <a href="screenshots/"><strong>See more screenshots →</strong></a>
+</p>
 
 ---
 
