@@ -1,0 +1,39 @@
+.overlay {
+  position: fixed;
+  /* Anchored to the VISIBLE viewport, not the layout viewport — see
+     useAppViewport. --app-h already excludes the on-screen keyboard, so a
+     panel sized `height: 100%` inside this is keyboard-correct for free. */
+  top: var(--vv-top);
+  left: 0;
+  width: 100%;
+  height: var(--app-h);
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+  background-color: rgba(0, 0, 0, 0.55);
+  overscroll-behavior: contain;
+  outline: none;
+}
+
+/* Any scrollable region inside a panel. Without overscroll containment a
+   touch scroll that reaches the end chains straight into the page behind. */
+.overlay__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  /* Keep a focused input clear of the container edges when the browser
+     scrolls it into view above the keyboard */
+  scroll-padding-block: 72px;
+}
+
+@media (max-width: 768px) {
+  .overlay {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+}

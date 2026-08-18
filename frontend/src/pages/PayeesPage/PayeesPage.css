@@ -22,7 +22,7 @@
      page padding so rows can't peek through above or beside it */
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--z-sticky);
   background: var(--bg-primary);
   margin: calc(-1 * var(--payees-pad)) calc(-1 * var(--payees-pad)) 0;
   padding: var(--payees-pad) var(--payees-pad) var(--spacing-md);
@@ -322,7 +322,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: var(--z-overlay);
 }
 
 .payees-wizard {
@@ -333,7 +333,7 @@
   max-width: calc(100vw - 32px);
   /* Long candidate lists scroll inside the body — header and footer
      controls stay pinned and reachable */
-  max-height: min(640px, 85vh);
+  max-height: min(640px, calc(var(--app-h) - 80px));
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
@@ -366,6 +366,7 @@
   gap: var(--spacing-sm);
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .payees-wizard__label {

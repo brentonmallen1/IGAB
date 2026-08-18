@@ -23,6 +23,26 @@ class AttachmentRepository(BaseRepository[TransactionAttachment]):
         )
         return list(result.scalars().all())
 
+    async def find_duplicate_in_budget(
+        self, budget_id: uuid.UUID, content_hash: str
+    ) -> TransactionAttachment | None:
+        """An attachment in this budget holding byte-identical source content.
+
+        Scoped through the owning transaction, and skips soft-deleted ones so a
+        receipt the user already threw away can be submitted again.
+        """
+        result = await self.session.execute(
+            select(TransactionAttachment)
+            .join(Transaction, TransactionAttachment.transaction_id == Transaction.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                TransactionAttachment.content_hash == content_hash,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def update_media(
         self, attachment_id: uuid.UUID, *, width: int, height: int, file_size: int
     ) -> None:

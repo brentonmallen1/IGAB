@@ -760,6 +760,12 @@ class TransactionAttachment(Base):
     # location encodes the transaction date, so it must not be re-derived from
     # txn.date on read — the date may have been edited after upload.
     storage_path: Mapped[str | None] = mapped_column(String(500))
+    # sha256 of the bytes as UPLOADED, not as stored — the stored copy is a
+    # re-encoded WebP, so hashing it would never match a resubmission of the
+    # original file. Detects the same receipt being submitted twice, which on a
+    # budgeting app is a double-count, not just clutter. Nullable: rows created
+    # before this column existed have no hash and simply never match.
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

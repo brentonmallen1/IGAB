@@ -6,7 +6,7 @@
   align-items: flex-start;
   justify-content: center;
   padding-top: 80px;
-  z-index: 100;
+  z-index: var(--z-overlay);
 }
 
 .category-txns {
@@ -16,7 +16,7 @@
   box-shadow: var(--shadow-lg);
   width: 620px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100dvh - 120px);
+  max-height: calc(var(--app-h) - 120px);
   display: flex;
   flex-direction: column;
 }
@@ -79,6 +79,7 @@
 
 .category-txns__body {
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1;
   min-height: 0;
 }
@@ -215,4 +216,36 @@
 .category-txns__count {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+}
+
+/* Full-screen on phones: a 620px panel with an 80px top pad does not fit a
+   390px viewport, and the list inside needs a real scroll container. */
+@media (max-width: 768px) {
+  .category-txns-overlay {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .category-txns {
+    width: 100%;
+    max-width: none;
+    height: var(--app-h);
+    max-height: none;
+    border-radius: 0;
+    border: none;
+  }
+
+  .category-txns__header {
+    padding-top: calc(var(--spacing-md) + var(--safe-top));
+  }
+
+  .category-txns__body {
+    overscroll-behavior: contain;
+  }
+
+  .category-txns__close,
+  .category-txns__footer-btn {
+    min-height: var(--tap-min);
+  }
 }

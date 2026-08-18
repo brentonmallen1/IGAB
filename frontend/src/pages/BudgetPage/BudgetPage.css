@@ -14,13 +14,16 @@
 .budget-page__table-container {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   /* Narrow desktop windows (sidebar + table min-width > viewport) scroll
      sideways instead of clipping the money columns */
   overflow-x: auto;
   min-width: 0;
 }
 
-/* Let the last rows scroll clear of the floating selection bar */
+/* Let the last rows scroll clear of the floating selection bar. No --nav-h
+   term: this container already ends at the in-flow nav's top edge, so the
+   bar's offset from the viewport bottom is measured from here too. */
 .budget-page__table-container--with-bar {
   padding-bottom: calc(var(--spacing-lg) * 2 + 72px);
 }

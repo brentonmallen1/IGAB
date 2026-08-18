@@ -4,6 +4,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { useNetWorthReport } from '../../../api/reports'
+import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
@@ -15,6 +16,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 interface Props { budgetId: string }
 
 export function NetWorthReport({ budgetId }: Props) {
+  const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
   const { data, isLoading, isError, refetch } = useNetWorthReport(budgetId, months)
@@ -79,7 +81,7 @@ export function NetWorthReport({ budgetId }: Props) {
       {chartData.length === 0 ? (
         <div className="reports-empty">No account data available.</div>
       ) : (
-        <ResponsiveContainer width="100%" height={340}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="nw-assets" x1="0" y1="0" x2="0" y2="1">

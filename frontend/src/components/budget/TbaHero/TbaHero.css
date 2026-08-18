@@ -249,6 +249,7 @@
   gap: 2px;
   max-height: 240px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .move-history__item {

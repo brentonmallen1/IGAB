@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: var(--z-overlay);
 }
 
 .sched-editor {
@@ -14,8 +14,9 @@
   border-radius: var(--border-radius);
   width: 440px;
   max-width: 95vw;
-  max-height: 90vh;
+  max-height: calc(var(--app-h) - 80px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
 }
@@ -115,10 +116,16 @@
   .sched-editor {
     width: 100%;
     max-width: none;
-    height: 100dvh;
-    max-height: 100dvh;
+    height: var(--app-h);
+    max-height: var(--app-h);
     border-radius: 0;
     border: none;
+  }
+
+  /* Full-screen editor runs under the notch — keep the title/close below it,
+     matching TransactionEditor. */
+  .sched-editor__header {
+    padding-top: calc(var(--spacing-md) + var(--safe-top));
   }
 
   .sched-editor__body {
@@ -126,10 +133,12 @@
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scroll-padding-block: 72px;
   }
 
   .sched-editor__footer {
-    padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--spacing-md) + var(--safe-bottom));
   }
 
   .sched-editor__input {

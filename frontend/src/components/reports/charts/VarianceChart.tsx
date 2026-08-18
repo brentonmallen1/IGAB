@@ -4,6 +4,7 @@ import {
   ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { useVarianceReport } from '../../../api/reports'
+import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
@@ -15,6 +16,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 interface Props { budgetId: string }
 
 export function VarianceReport({ budgetId }: Props) {
+  const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
   const { data, isLoading, isError, refetch } = useVarianceReport(budgetId, months)
@@ -86,7 +88,7 @@ export function VarianceReport({ budgetId }: Props) {
       {chartData.length === 0 ? (
         <div className="reports-empty">No data for this period.</div>
       ) : (
-        <ResponsiveContainer width="100%" height={340}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
             <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />

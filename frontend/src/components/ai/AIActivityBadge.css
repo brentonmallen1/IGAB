@@ -22,6 +22,20 @@
   animation: ai-badge-pulse 2s ease-in-out infinite;
 }
 
+/* Reviews waiting is a standing fact, not activity. A pulse here would read
+   as "still working" and keep drawing the eye to something that isn't moving. */
+.ai-activity-badge--review .ai-activity-badge__icon {
+  animation: none;
+}
+
+/* Touch target: the header bumps its other buttons to 44px on phones. */
+@media (max-width: 768px) {
+  .ai-activity-badge {
+    min-height: var(--tap-min);
+    padding: 3px var(--spacing-sm);
+  }
+}
+
 @keyframes ai-badge-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { confirmAsync } from '../stores/confirmStore'
 import type { Budget, BudgetMonth } from '../types'
 import type { YnabImportResult } from './imports'
 
@@ -96,7 +97,12 @@ export async function confirmFutureOverspend(
     })
     return `• ${w.category_name} in ${month} would drop to ${formatMoney(Number(w.available_after))}`
   })
-  return confirm(`This would overspend a future month:\n\n${lines.join('\n')}\n\nSave anyway?`)
+  return confirmAsync({
+    title: 'Overspend a future month?',
+    message: lines.join('\n'),
+    confirmLabel: 'Save anyway',
+    cancelLabel: 'Go back',
+  })
 }
 
 export function useSetAssignment(budgetId: string) {

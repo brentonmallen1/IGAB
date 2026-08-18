@@ -4,9 +4,10 @@ import { Toaster } from 'react-hot-toast'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { FormatProvider } from './contexts/FormatContext'
 import { MainLayout } from './components/layout/MainLayout/MainLayout'
-import { OfflineBanner } from './components/pwa/OfflineBanner'
 import { UpdateToast } from './components/pwa/UpdateToast'
 import { useIsMobile } from './hooks/useMediaQuery'
+import { useAppViewport } from './hooks/useAppViewport'
+import { ConfirmHost } from './components/common/ConfirmSheet/ConfirmHost'
 import { useAppStore } from './stores/appStore'
 
 // Pages are split per-route so the initial bundle stays lean — ReportsPage in
@@ -63,9 +64,23 @@ function AppToaster() {
   return (
     <Toaster
       position={isMobile ? 'top-center' : 'bottom-right'}
+      containerStyle={{
+        // react-hot-toast hardcodes z-index 9999; bring it onto the app's
+        // ladder so it clears modals without outranking the skip link.
+        zIndex: 'var(--z-toast)',
+        // Its default is a flat 16px inset. In a standalone PWA the status bar
+        // and Dynamic Island overlay the top of the viewport, and iOS routes
+        // taps there to scroll-to-top — so a top-center toast rendered under
+        // them is visible but impossible to press. --vv-top additionally keeps
+        // it on the visible viewport when the keyboard shifts things.
+        top: 'calc(var(--vv-top) + var(--safe-top) + var(--spacing-sm))',
+        bottom: 'calc(var(--nav-h) + var(--safe-bottom) + var(--spacing-sm))',
+        left: 'calc(var(--safe-left) + var(--spacing-sm))',
+        right: 'calc(var(--safe-right) + var(--spacing-sm))',
+      }}
       toastOptions={{
         duration: 4000,
-        style: { fontSize: '13px', maxWidth: '400px' },
+        style: { fontSize: '13px', maxWidth: 'min(400px, calc(100vw - 32px))' },
         ariaProps: { role: 'status', 'aria-live': 'polite' },
       }}
     />
@@ -73,12 +88,19 @@ function AppToaster() {
 }
 
 function App() {
+  // Single source of viewport truth for the whole app. Mounted here rather
+  // than in MainLayout because LoginPage and BudgetSelectorPage render
+  // outside it and size themselves against the same tokens.
+  useAppViewport()
   return (
     <QueryClientProvider client={queryClient}>
       <FormatProvider>
         <AppToaster />
         <UpdateToast />
-        <OfflineBanner />
+        {/* Above the router: LoginPage and BudgetSelectorPage render outside
+            MainLayout, and confirmAsync() must resolve for them too — an
+            unrendered host leaves the caller awaiting forever. */}
+        <ConfirmHost />
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={page(<LoginPage />)} />

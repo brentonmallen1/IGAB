@@ -3,6 +3,7 @@ import { Check, Eye, EyeOff, Pencil, Trash2, X } from 'lucide-react'
 import { useDeleteCategory, useUpdateCategory } from '../../../api/categories'
 import type { Category } from '../../../types'
 import './CategoryMobileActions.css'
+import { confirmAsync } from '../../../stores/confirmStore'
 
 interface Props {
   budgetId: string
@@ -32,8 +33,14 @@ export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
     setIsRenaming(false)
   }
 
-  function handleDelete() {
-    if (!confirm(`Delete ${category.name}? Transactions will lose their category.`)) return
+  async function handleDelete() {
+    const ok = await confirmAsync({
+      title: `Delete ${category.name}?`,
+      message: 'Transactions will lose their category.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     deleteCategory.mutate(category.id)
     onDone()
   }

@@ -169,6 +169,7 @@
 .account-page__body {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .account-page__not-found {

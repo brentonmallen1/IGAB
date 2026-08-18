@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Camera, ChevronRight, FileText, Images, MessageSquareText, Sparkles, StickyNote, X } from 'lucide-react'
+import { AlertTriangle, Camera, ChevronRight, FileText, Images, MessageSquareText, Sparkles, StickyNote, X } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { SelectionSheet, type SelectionSheetOption } from '../../common/SelectionSheet/SelectionSheet'
+import { ConfirmSheet } from '../../common/ConfirmSheet/ConfirmSheet'
 import { useCreateTransaction } from '../../../api/transactions'
 import { confirmFutureOverspend } from '../../../api/budgets'
 import { ATTACHMENT_ACCEPT, isAttachableFile, uploadFilesToTransaction } from '../../../api/attachments'
@@ -26,7 +27,9 @@ import {
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today, yesterday } from '../../../utils/dates'
 import { hapticTick } from '../../../utils/haptics'
+import { downscaleForUpload } from '../../../utils/imageUpload'
 import './QuickAddSheet.css'
+import { apiErrorMessage } from '../../../api/client'
 
 type Direction = 'outflow' | 'inflow'
 
@@ -71,6 +74,12 @@ export function QuickAddSheet() {
   const [accountSheetOpen, setAccountSheetOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [nlEntryOpen, setNlEntryOpen] = useState(false)
+  const [discardOpen, setDiscardOpen] = useState(false)
+  // Receipts whose upload failed. Held so the photo survives a bad
+  // connection — clearing the file input would otherwise discard it.
+  const [failedScans, setFailedScans] = useState<File[]>([])
+  const [scanTotal, setScanTotal] = useState(0)
+  const [scanDone, setScanDone] = useState(0)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const libraryInputRef = useRef<HTMLInputElement>(null)
@@ -101,6 +110,10 @@ export function QuickAddSheet() {
     setDate(today())
     setSaving(false)
     setPendingFiles([])
+    setDiscardOpen(false)
+    setFailedScans([])
+    setScanTotal(0)
+    setScanDone(0)
   }, [open])
 
   useEffect(() => {
@@ -187,28 +200,85 @@ export function QuickAddSheet() {
     if (accepted.length) setPendingFiles((prev) => [...prev, ...accepted])
   }
 
-  async function scanReceipt(list: FileList | null) {
-    const file = list?.[0]
-    if (!file || !accountId) return
-    if (!isAttachableFile(file)) {
-      toast.error(`${file.name} is not an image or PDF`)
-      return
+  /**
+   * Queue receipts for server-side extraction.
+   *
+   * Uploads sequentially rather than in one batch request: after downscaling
+   * each file is small, so the round trips cost little, and one dropped
+   * connection then loses one receipt instead of the whole stack. Anything
+   * that fails is KEPT in `failedScans` so the user can retry it — the photo
+   * is usually taken at a checkout on poor cellular, which is exactly when
+   * silently discarding it would hurt most.
+   */
+  async function scanReceipts(files: File[]) {
+    if (!accountId || files.length === 0) return
+
+    const accepted: File[] = []
+    for (const file of files) {
+      if (!isAttachableFile(file)) {
+        toast.error(`${file.name} is not an image or PDF`)
+      } else if (file.size > 20 * 1024 * 1024) {
+        toast.error(`${file.name} is too large (max 20MB)`)
+      } else {
+        accepted.push(file)
+      }
     }
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error(`${file.name} is too large (max 20MB)`)
-      return
+    if (accepted.length === 0) return
+
+    setScanTotal(accepted.length)
+    setScanDone(0)
+    const failed: File[] = []
+    let queued = 0
+    let duplicates = 0
+
+    for (const [i, original] of accepted.entries()) {
+      setScanDone(i)
+      try {
+        const file = await downscaleForUpload(original)
+        await submitReceipt.mutateAsync({ file, accountId })
+        queued += 1
+      } catch (err: unknown) {
+        const response = (err as { response?: { status?: number } })?.response
+        if (response?.status === 409) {
+          // Already in the budget — nothing was lost, so don't offer a retry
+          // that can only fail the same way.
+          duplicates += 1
+        } else {
+          failed.push(original)
+        }
+      }
     }
-    try {
-      await submitReceipt.mutateAsync({ file, accountId })
+
+    setScanTotal(0)
+    setScanDone(0)
+    setFailedScans(failed)
+
+    if (queued > 0) {
       setLastAccountId(accountId)
-      toast.success("Receipt queued — it'll appear for review shortly", { duration: 5000 })
       hapticTick()
-      closeQuickAdd()
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail
-      toast.error(detail ?? 'Failed to queue receipt')
+      toast.success(
+        queued === 1
+          ? "Receipt queued — it'll show up in your transactions to review"
+          : `${queued} receipts queued — they'll show up in your transactions to review`,
+        { duration: 5000 }
+      )
     }
+    if (duplicates > 0) {
+      toast(
+        duplicates === 1
+          ? "You've already added that receipt"
+          : `${duplicates} of those receipts were already added`
+      )
+    }
+    if (failed.length > 0) {
+      toast.error(
+        failed.length === 1
+          ? "That receipt didn't upload — tap Retry to try again"
+          : `${failed.length} receipts didn't upload — tap Retry to try again`
+      )
+      return // stay open so the retry affordance is reachable
+    }
+    closeQuickAdd()
   }
 
   // Expression-aware: "12.50+3.99" is valid the moment it's typed, no "=" needed
@@ -272,10 +342,28 @@ export function QuickAddSheet() {
         closeQuickAdd()
       }
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast.error(detail ?? 'Failed to add transaction')
+      toast.error(apiErrorMessage(err, 'Failed to add transaction'))
       setSaving(false)
     }
+  }
+
+  // Everything the user could have typed or picked. Account and date are
+  // sticky across entries by design, so only a date moved off today counts.
+  const isDirty =
+    amount !== '' ||
+    payeeId !== null ||
+    categoryId !== null ||
+    memo !== '' ||
+    pendingFiles.length > 0 ||
+    date !== today()
+
+  // Runs before every dismissal path — close button, backdrop, Escape, swipe,
+  // and the Android back gesture. Returning false holds the sheet open while
+  // the discard confirmation is answered.
+  function canClose() {
+    if (!isDirty || saving) return true
+    setDiscardOpen(true)
+    return false
   }
 
   if (!budgetId) return null
@@ -288,16 +376,18 @@ export function QuickAddSheet() {
         title="Add Transaction"
         height="full"
         historyKey="quick-add"
+        canClose={canClose}
+        closeLabel="Cancel"
         footer={
           <div className="quick-add__footer">
             <button
-              className="quick-add__save-another"
+              className="quick-add__save-another press-scale"
               disabled={!canSave}
               onClick={() => save(true)}
             >
               Save & add another
             </button>
-            <button className="quick-add__save" disabled={!canSave} onClick={() => save(false)}>
+            <button className="quick-add__save press-scale" disabled={!canSave} onClick={() => save(false)}>
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
@@ -316,13 +406,18 @@ export function QuickAddSheet() {
                 onValueChange={setAmount}
                 placeholder="0.00"
                 autoFocus
+                enterKeyHint="done"
                 aria-label="Amount"
                 style={{ width: `${Math.max(4, amount.length + 1)}ch` }}
               />
             </div>
             {/* The mobile decimal keypad has no operator keys — these chips
                 make receipt-summing ("12.50+3.99") possible on the phone.
-                onMouseDown is prevented so tapping never dismisses the keyboard. */}
+                pointerdown is prevented so the chip never takes focus and the
+                keyboard stays up. It must be pointerdown, not touchstart:
+                cancelling touchstart suppresses the whole compatibility
+                sequence including the click, which would break the chips
+                outright on iOS. */}
             <div className="quick-add__calc-row" role="group" aria-label="Calculator">
               {(['+', '-', '*', '/'] as const).map((op) => (
                 <button
@@ -330,8 +425,11 @@ export function QuickAddSheet() {
                   type="button"
                   className="quick-add__calc-btn"
                   aria-label={`Operator ${op}`}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setAmount((prev) => prev + op)}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                  hapticTick()
+                  setAmount((prev) => prev + op)
+                }}
                 >
                   {op === '*' ? '×' : op === '/' ? '÷' : op === '-' ? '−' : op}
                 </button>
@@ -340,7 +438,7 @@ export function QuickAddSheet() {
                 type="button"
                 className="quick-add__calc-btn quick-add__calc-btn--eq"
                 aria-label="Evaluate"
-                onMouseDown={(e) => e.preventDefault()}
+                onPointerDown={(e) => e.preventDefault()}
                 onClick={() => {
                   if (!isAmountExpression(amount)) return
                   const evaluated = evaluateExpressionCents(amount)
@@ -355,7 +453,10 @@ export function QuickAddSheet() {
                 role="radio"
                 aria-checked={direction === 'outflow'}
                 className={`quick-add__direction-btn ${direction === 'outflow' ? 'quick-add__direction-btn--active' : ''}`}
-                onClick={() => setDirection('outflow')}
+                onClick={() => {
+                  hapticTick()
+                  setDirection('outflow')
+                }}
               >
                 Spent
               </button>
@@ -363,7 +464,10 @@ export function QuickAddSheet() {
                 role="radio"
                 aria-checked={direction === 'inflow'}
                 className={`quick-add__direction-btn ${direction === 'inflow' ? 'quick-add__direction-btn--active' : ''}`}
-                onClick={() => setDirection('inflow')}
+                onClick={() => {
+                  hapticTick()
+                  setDirection('inflow')
+                }}
               >
                 Received
               </button>
@@ -428,6 +532,7 @@ export function QuickAddSheet() {
                   onChange={(e) => setMemo(e.target.value)}
                   placeholder="Optional note…"
                   autoFocus
+                  enterKeyHint="done"
                   aria-label="Memo"
                 />
               </div>
@@ -462,8 +567,14 @@ export function QuickAddSheet() {
                 ))}
               </div>
             )}
-            {/* AI entry paths lead; manual attach is the fallback row below */}
-            {aiStatus.data?.available && (
+            {/* AI entry paths lead; manual attach is the fallback row below.
+                Scanning is gated on AI being CONFIGURED, not on the server
+                answering a ping right now — the upload is queued and the
+                worker retries, so a server that is briefly down or busy must
+                not remove the user's ability to hand off a receipt and walk
+                away. "Describe it" is synchronous and genuinely does need a
+                live server, so it keeps the stricter gate. */}
+            {aiStatus.data?.enabled && (
               <div className="quick-add__scan-row">
                 <button
                   className="quick-add__scan-btn"
@@ -472,15 +583,42 @@ export function QuickAddSheet() {
                   title="AI reads the receipt and drafts the transaction for review"
                 >
                   <Sparkles size={15} />
-                  {submitReceipt.isPending ? 'Queuing…' : 'Scan receipt'}
+                  {scanTotal > 1
+                    ? `Queuing ${scanDone + 1} of ${scanTotal}…`
+                    : submitReceipt.isPending
+                      ? 'Queuing…'
+                      : 'Scan receipt'}
                 </button>
+                {aiStatus.data?.available && (
+                  <button
+                    className="quick-add__scan-btn"
+                    onClick={() => setNlEntryOpen(true)}
+                    title="Type or dictate the transaction — AI drafts it for you"
+                  >
+                    <MessageSquareText size={15} />
+                    Describe it
+                  </button>
+                )}
+              </div>
+            )}
+            {failedScans.length > 0 && (
+              <div className="quick-add__scan-failed" role="status">
+                <AlertTriangle size={14} />
+                <span>
+                  {failedScans.length === 1
+                    ? "1 receipt didn't upload"
+                    : `${failedScans.length} receipts didn't upload`}
+                </span>
                 <button
-                  className="quick-add__scan-btn"
-                  onClick={() => setNlEntryOpen(true)}
-                  title="Type or dictate the transaction — AI drafts it for you"
+                  type="button"
+                  className="quick-add__scan-retry"
+                  onClick={() => {
+                    const retrying = failedScans
+                    setFailedScans([])
+                    void scanReceipts(retrying)
+                  }}
                 >
-                  <MessageSquareText size={15} />
-                  Describe it
+                  Retry
                 </button>
               </div>
             )}
@@ -516,13 +654,17 @@ export function QuickAddSheet() {
               }}
               style={{ display: 'none' }}
             />
-            {/* No capture attr: the OS sheet offers both camera and library */}
+            {/* No capture attr: the OS sheet offers both camera and library.
+                `multiple` so a stack of receipts is one trip through the sheet
+                — the model still processes them one at a time, but the user
+                shouldn't have to. */}
             <input
               ref={aiScanInputRef}
               type="file"
               accept={ATTACHMENT_ACCEPT}
+              multiple
               onChange={(e) => {
-                void scanReceipt(e.target.files)
+                void scanReceipts(Array.from(e.target.files ?? []))
                 e.target.value = ''
               }}
               style={{ display: 'none' }}
@@ -530,6 +672,20 @@ export function QuickAddSheet() {
           </div>
         </div>
       </BottomSheet>
+
+      <ConfirmSheet
+        open={discardOpen}
+        title="Discard this transaction?"
+        message="What you've entered won't be saved."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        destructive
+        onConfirm={() => {
+          setDiscardOpen(false)
+          closeQuickAdd()
+        }}
+        onCancel={() => setDiscardOpen(false)}
+      />
 
       {nlEntryOpen && budgetId && (
         <NLQuickEntry

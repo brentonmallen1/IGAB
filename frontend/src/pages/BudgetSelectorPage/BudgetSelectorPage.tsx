@@ -17,6 +17,7 @@ import { useLogout } from '../../api/auth'
 import { useAppStore } from '../../stores/appStore'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
 import './BudgetSelectorPage.css'
+import { confirmAsync } from '../../stores/confirmStore'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
@@ -86,7 +87,13 @@ export function BudgetSelectorPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete budget "${name}"? This will permanently delete all accounts and transactions in this budget.`)) return
+    const ok = await confirmAsync({
+      title: `Delete budget "${name}"?`,
+      message: 'This will permanently delete all accounts and transactions in this budget.',
+      confirmLabel: 'Delete budget',
+      destructive: true,
+    })
+    if (!ok) return
     await deleteBudget.mutateAsync(id)
     if (currentBudgetId === id) clearCurrentBudget()
   }

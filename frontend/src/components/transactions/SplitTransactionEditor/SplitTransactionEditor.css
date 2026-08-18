@@ -149,3 +149,11 @@
 .split-editor__save:hover:not(:disabled) {
   opacity: 0.85;
 }
+
+@media (max-width: 768px) {
+  .split-editor input,
+  .split-editor select,
+  .split-editor button {
+    min-height: var(--tap-min);
+  }
+}

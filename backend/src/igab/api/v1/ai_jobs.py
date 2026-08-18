@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, date, datetime
+from hashlib import sha256
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -21,11 +22,15 @@ from igab.dependencies import (
     get_account_repo,
     get_ai_job_repo,
     get_ai_service,
+    get_attachment_repo,
     get_settings_service,
+    get_transaction_repo,
     get_transaction_service,
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.ai_job_repo import AIJobRepository
+from igab.repositories.attachment_repo import AttachmentRepository
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.ai_draft_service import AIDraftService, parse_extraction
 from igab.services.ai_service import AIService
 from igab.services.settings_service import SettingsService
@@ -74,14 +79,23 @@ async def submit_receipt(
     session: SessionDep,
     job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
-    ai_svc: Annotated[AIService, Depends(get_ai_service)],
+    attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
     settings_svc: Annotated[SettingsService, Depends(get_settings_service)],
     file: UploadFile = File(...),
     account_id: uuid.UUID = Form(...),
     client_today: str | None = Form(None),
 ) -> AIJobResponse:
     """Queue a receipt photo for AI extraction. Returns immediately; the
-    worker creates a needs-review transaction with the image attached."""
+    worker creates a needs-review transaction with the image attached.
+
+    Deliberately does NOT check whether the model can do vision. This used to
+    reject the upload with a 422 before anything was persisted, which
+    destroyed the photo — the user had nothing to retry and no record it ever
+    happened. Every model/availability problem now belongs to the worker,
+    which already degrades correctly: a terminal failure still produces a $0
+    needs-review transaction with the image attached (_create_failure_stub),
+    so a receipt is never stranded. Only malformed requests are rejected here.
+    """
     if not await settings_svc.get("ollama_host"):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -104,15 +118,20 @@ async def submit_receipt(
             detail="File too large (max 20MB)",
         )
 
-    # Fail fast with a clear message when the configured model definitely
-    # lacks vision. Unknown (older Ollama, server down) lets the job try.
-    supported, model = await ai_svc.check_vision_support()
-    if supported is False:
+    # Submitting the same receipt twice would double-count the expense. Unlike
+    # the capability gate this endpoint used to have, refusing here loses
+    # nothing: the image is demonstrably already in the budget, and the
+    # response carries the transaction so the client can offer to open it.
+    duplicate = await attachment_repo.find_duplicate_in_budget(
+        budget_id, sha256(content).hexdigest()
+    )
+    if duplicate is not None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Model '{model}' does not support vision — enable a vision model in Settings → AI"
-            ),
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "You've already added this receipt",
+                "transaction_id": str(duplicate.transaction_id),
+            },
         )
 
     today = _parse_client_today(client_today)
@@ -176,8 +195,13 @@ async def active_job_count(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     job_repo: Annotated[AIJobRepository, Depends(get_ai_job_repo)],
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
 ) -> ActiveCountResponse:
-    return ActiveCountResponse(count=await job_repo.active_count(budget_id))
+    """Badge counts: work in flight, and work waiting for the user."""
+    return ActiveCountResponse(
+        count=await job_repo.active_count(budget_id),
+        needs_review=await txn_repo.count_ai_needs_review(budget_id),
+    )
 
 
 @router.get("/{budget_id}/ai/jobs/{job_id}", response_model=AIJobResponse)

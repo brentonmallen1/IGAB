@@ -56,7 +56,12 @@ class AIJobListResponse(BaseModel):
 
 
 class ActiveCountResponse(BaseModel):
+    #: Jobs queued or processing right now.
     count: int
+    #: AI-created transactions still awaiting review. Drives the header badge
+    #: after the work finishes — `count` alone drops to zero at exactly the
+    #: moment there is something for the user to look at.
+    needs_review: int = 0
 
 
 class NLParseRequest(BaseModel):

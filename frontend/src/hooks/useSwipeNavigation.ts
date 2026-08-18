@@ -1,4 +1,5 @@
 import { useRef, type TouchEvent } from 'react'
+import { hapticTick } from '../utils/haptics'
 
 const SWIPE_THRESHOLD_PX = 60
 
@@ -20,6 +21,9 @@ export function useSwipeNavigation(onPrev: () => void, onNext: () => void) {
       const dx = e.changedTouches[0].clientX - start.x
       const dy = e.changedTouches[0].clientY - start.y
       if (Math.abs(dx) < SWIPE_THRESHOLD_PX || Math.abs(dy) > Math.abs(dx)) return
+      // Confirms the swipe committed — the month change itself is the only
+      // other feedback, and it lands a frame later.
+      hapticTick()
       if (dx > 0) onPrev()
       else onNext()
     },

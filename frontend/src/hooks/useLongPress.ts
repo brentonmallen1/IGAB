@@ -1,4 +1,5 @@
 import { useRef, type MouseEvent, type TouchEvent } from 'react'
+import { hapticTick } from '../utils/haptics'
 
 const MOVE_CANCEL_PX = 10
 
@@ -31,6 +32,9 @@ export function useLongPress(
       clear()
       timerRef.current = window.setTimeout(() => {
         triggeredRef.current = true
+        // The only confirmation the hold registered, and it lands before any
+        // visual change does. (Android only — iOS has no vibration API.)
+        hapticTick()
         onLongPress()
       }, ms)
     },

@@ -1,8 +1,27 @@
 .main-layout {
   display: flex;
-  height: 100dvh;
+  /* Not 100dvh: dvh tracks browser chrome but knows nothing about the
+     on-screen keyboard. --app-h subtracts the keyboard too, and reduces to
+     exactly 100dvh whenever there isn't one. */
+  height: var(--app-h);
   overflow: hidden;
   background-color: var(--bg-primary);
+}
+
+@media (max-width: 768px) {
+  /* Pin the shell to the VISUAL viewport. Fixed positioning resolves against
+     the layout viewport, which iOS scrolls out from under the visible area
+     when the keyboard opens; --vv-top cancels that offset exactly.
+
+     DO NOT add transform / filter / contain / backdrop-filter here — any of
+     them would make .main-layout the containing block for fixed descendants,
+     and .main-layout__main's overflow would then clip every modal overlay. */
+  .main-layout {
+    position: fixed;
+    top: var(--vv-top);
+    left: 0;
+    width: 100%;
+  }
 }
 
 .main-layout__content {
@@ -16,6 +35,8 @@
   flex: 1;
   min-height: 0; /* Allow shrinking in flex container */
   overflow-y: auto;
+  /* No rubber-band chaining out into <body> behind the fixed shell */
+  overscroll-behavior: contain;
   background-color: var(--bg-primary);
   /* Containing block for absolutely-positioned descendants (e.g. .sr-only) so
      they clip to this scroll container instead of stretching <html> */
@@ -25,9 +46,8 @@
   flex-direction: column;
 }
 
-@media (max-width: 768px) {
-  /* Keep scrollable content clear of the fixed bottom nav */
-  .main-layout__main {
-    padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
-  }
-}
+/* No mobile padding-bottom here. The nav is an in-flow sibling below this
+   element, so content already stops at its top edge — and any padding would
+   sit BELOW pages that set height: 100% to own their scrolling, recreating in
+   miniature the very dead band this change removed. Pages that want breathing
+   room add it to their own scroll container. */

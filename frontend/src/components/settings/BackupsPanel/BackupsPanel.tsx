@@ -75,6 +75,7 @@ function NumberSettingRow({ label, desc, settingKey, min, max }: NumberSettingRo
       </div>
       <input
         type="number"
+        inputMode="numeric"
         className="settings-input bkp-number-input"
         min={min}
         max={max}

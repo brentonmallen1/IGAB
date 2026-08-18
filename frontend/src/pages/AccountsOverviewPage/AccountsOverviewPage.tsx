@@ -15,6 +15,7 @@ import { useAppStore } from '../../stores/appStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
+import { confirmAsync } from '../../stores/confirmStore'
 
 const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'credit_card', 'loan'] as const
 const ACCOUNT_TYPE_LABELS: Record<string, string> = {
@@ -224,7 +225,13 @@ export function AccountsOverviewPage() {
 
   async function handleDelete(account: Account, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!confirm(`Delete "${account.name}"? This will also delete all its transactions. This cannot be undone.`)) return
+    const ok = await confirmAsync({
+      title: `Delete "${account.name}"?`,
+      message: 'This will also delete all its transactions. This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     try {
       await deleteAccount.mutateAsync(account.id)
       toast.success(`Deleted ${account.name}`)

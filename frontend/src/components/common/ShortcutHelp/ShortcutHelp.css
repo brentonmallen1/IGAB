@@ -5,14 +5,14 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12vh;
-  z-index: 9999;
+  padding-top: min(12vh, 96px);
+  z-index: var(--z-overlay);
 }
 
 .shortcut-help {
   width: 420px;
   max-width: calc(100vw - 32px);
-  max-height: 70vh;
+  max-height: calc(var(--app-h) - 160px);
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
@@ -53,6 +53,7 @@
 .shortcut-help__body {
   padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .shortcut-help__group + .shortcut-help__group {

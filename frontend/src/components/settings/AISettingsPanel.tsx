@@ -264,6 +264,7 @@ export function AISettingsPanel() {
               <div className="ai-panel__actions">
                 <input
                   type="number"
+                  inputMode="numeric"
                   min={0}
                   className="settings-input ai-panel__retention-input"
                   value={editRetention}

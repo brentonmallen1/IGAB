@@ -37,6 +37,7 @@
 .all-txns-page__body {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .all-txns-page__not-found {

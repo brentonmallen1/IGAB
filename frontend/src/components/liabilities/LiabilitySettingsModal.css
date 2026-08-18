@@ -6,7 +6,7 @@
   align-items: flex-start;
   justify-content: center;
   padding-top: 60px;
-  z-index: 100;
+  z-index: var(--z-overlay);
 }
 
 .liability-modal {
@@ -16,10 +16,11 @@
   box-shadow: var(--shadow-lg);
   width: 520px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100dvh - 100px);
+  max-height: calc(var(--app-h) - 100px);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .liability-modal__header {

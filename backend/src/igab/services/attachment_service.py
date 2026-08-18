@@ -1,9 +1,10 @@
 import uuid
 from datetime import date
+from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 
 from igab.config import settings
@@ -60,6 +61,10 @@ class AttachmentService:
         filename = f"{file_id}.webp"
 
         img = Image.open(BytesIO(file_content))
+        # Must happen before the WEBP save below: that save drops the EXIF
+        # orientation tag, so an unrotated frame becomes permanently sideways
+        # and the only remedy left is the manual rotate button.
+        img = ImageOps.exif_transpose(img)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
 
@@ -86,6 +91,7 @@ class AttachmentService:
             width=img.width,
             height=img.height,
             storage_path=str(storage_path.relative_to(self.base_dir)),
+            content_hash=sha256(file_content).hexdigest(),
         )
         return attachment
 
@@ -124,6 +130,7 @@ class AttachmentService:
             width=page.width,
             height=page.height,
             storage_path=str(storage_path.relative_to(self.base_dir)),
+            content_hash=sha256(file_content).hexdigest(),
         )
 
     def get_file_path(self, attachment: TransactionAttachment, txn: Transaction) -> Path:

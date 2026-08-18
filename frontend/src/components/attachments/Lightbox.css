@@ -1,7 +1,7 @@
 .lightbox-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-nested-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11,7 +11,9 @@
 
 .lightbox-close {
   position: absolute;
-  top: var(--spacing-md);
+  /* max(), not a plain inset: in a standalone PWA the status bar overlays
+     the top of the viewport and a fixed --spacing-md puts this under it. */
+  top: max(var(--spacing-md), var(--safe-top));
   right: var(--spacing-md);
   background: none;
   border: none;
@@ -29,7 +31,7 @@
 
 .lightbox-toolbar {
   position: absolute;
-  top: var(--spacing-md);
+  top: max(var(--spacing-md), var(--safe-top));
   left: var(--spacing-md);
   display: flex;
   gap: var(--spacing-xs);
@@ -61,7 +63,7 @@
 
 .lightbox-image {
   max-width: 90vw;
-  max-height: 90vh;
+  max-height: calc(var(--app-h) - 96px);
   object-fit: contain;
   cursor: default;
   border-radius: var(--border-radius-sm);
@@ -104,4 +106,16 @@
 
 .lightbox-nav--next {
   right: var(--spacing-md);
+}
+
+@media (max-width: 768px) {
+  .lightbox-close,
+  .lightbox-toolbar__btn,
+  .lightbox-nav {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 }

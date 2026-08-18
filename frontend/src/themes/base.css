@@ -88,11 +88,70 @@
   --chart-net: var(--color-accent);
   --chart-other: var(--text-muted);
 
-  /* Mobile layering: nav above page chrome (≤200), below the sidebar/backdrop
-     pair (299/300); sheets above everything except Combobox/Tooltip portals (9999) */
-  --z-bottom-nav: 250;
-  --z-sheet-backdrop: 400;
-  --z-sheet: 401;
+  /* Layering scale. One ladder for the whole app — raw z-index values in
+     component CSS are a bug, because the value that "works" is only ever true
+     against whatever else happened to be on screen at the time.
+
+     Every modal, sheet and drawer shares --z-overlay ON PURPOSE: they all
+     portal to document.body, so the most recently opened is last in the DOM
+     and paints on top. That is the correct ordering, and sharing one value
+     ends the arms race that previously produced 9999. */
+  --z-sticky: 10;          /* sticky table headers and rows                    */
+  --z-page-chrome: 20;     /* in-page floating chrome, search dropdowns        */
+  --z-nav: 30;             /* bottom nav — in flow; only for the ＋ overhang    */
+  --z-float: 100;          /* floating action bars over page content           */
+  --z-overlay-backdrop: 400;
+  --z-overlay: 401;        /* every modal, sheet and drawer                    */
+
+  /* Above --z-overlay, and that ordering is load-bearing: these portal to
+     document.body but are opened from a control INSIDE an overlay (the payee
+     combobox in the transaction editor, the tag picker in the category
+     inspector). Ranked below an overlay they render behind the thing that
+     raised them. */
+  --z-dropdown: 500;       /* popover or menu attached to a control            */
+  --z-nested-overlay: 600; /* a modal raised from inside a modal (lightbox)    */
+
+  --z-banner: 700;         /* connectivity / update banners                    */
+  --z-toast: 800;          /* must clear a modal that raised the toast         */
+  --z-tooltip: 900;
+  --z-skip-link: 1000;
+
+  /* Safe areas, aliased once so nothing else re-types env(). */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  /* Live visual-viewport geometry, written to <html> by useAppViewport().
+     These fallbacks are what desktop, jsdom, and the first paint before the
+     effect runs all see — they must be correct on their own.
+
+     Why this layer exists: `position: fixed` resolves against the LAYOUT
+     viewport. iOS raises the keyboard without resizing the layout viewport —
+     it shrinks the visual viewport inside it — so every fixed element ends up
+     anchored to an edge that is no longer on screen. */
+  --vvh: 100dvh;    /* measured visible height                                */
+  --vv-top: 0px;    /* visual viewport's top offset in the layout viewport    */
+  --vv-bottom: 0px; /* layout-viewport band hidden below the visible region   */
+  --kb: 0px;        /* keyboard-only bottom inset                             */
+
+  /* Height of any full-screen shell. dvh handles UA chrome (the browser
+     smooths it during toolbar animations); --kb handles the keyboard;
+     --vv-top handles iOS's offset. With no keyboard this reduces to exactly
+     100dvh — i.e. desktop behaviour is unchanged. */
+  --app-h: calc(100dvh - var(--kb) - var(--vv-top));
+
+  /* Minimum comfortable touch target (WCAG 2.5.5 / Apple HIG). */
+  --tap-min: 44px;
+
+  /* Live bottom-nav height: 0 on desktop (the nav is display:none) and 0 while
+     typing (it is hidden). Anything positioning against the nav reads this and
+     needs no media query of its own. */
+  --nav-h: 0px;
+
+  /* Touch press scrim. Derived from --text-primary so it inverts correctly in
+     all 19 themes with no per-theme value. */
+  --press-scrim: color-mix(in srgb, var(--text-primary) 10%, transparent);
 
   /* Heatmap scale — semantic colors for intensity visualization */
   --heatmap-low: color-mix(in srgb, var(--color-info) 25%, transparent);
@@ -227,7 +286,7 @@ a {
   position: absolute;
   top: -100%;
   left: var(--spacing-sm);
-  z-index: 10000;
+  z-index: var(--z-skip-link);
   padding: var(--spacing-sm) var(--spacing-md);
   background: var(--bg-elevated);
   color: var(--text-primary);
@@ -242,10 +301,151 @@ a {
   top: var(--spacing-sm);
 }
 
-/* Touch: quiet the gray tap flash but keep keyboard focus visible */
+@media (max-width: 768px) {
+  :root {
+    --nav-h: calc(var(--bottom-nav-height) + var(--safe-bottom));
+  }
+}
+
+/* Specificity 0,1,1 beats :root (0,1,0) regardless of media-query nesting, so
+   this wins wherever the keyboard is up. */
+html[data-keyboard='open'] {
+  --nav-h: 0px;
+}
+
+/* Touch feedback.
+   The gray tap flash is quieted — but it was previously killed with the
+   universal selector, which stripped the ONLY press feedback from the ~118
+   CSS files that never wrote an :active rule, and made every tap feel dead.
+   Narrow the suppression to interactive elements and give them all a press
+   state back.
+
+   The scrim is a background-IMAGE, not a background-color: it composites over
+   whatever background the component already declares — accent-filled,
+   transparent, or color-mix tinted — so it never fights per-component
+   theming and needs no per-theme value. */
 @media (hover: none) {
-  * {
+  button,
+  a,
+  label,
+  summary,
+  [role='button'],
+  [role='option'],
+  [role='radio'],
+  [role='tab'],
+  [role='menuitem'] {
     -webkit-tap-highlight-color: transparent;
+    /* Also removes the legacy 300ms click delay and double-tap-to-zoom. */
+    touch-action: manipulation;
+    /* No iOS long-press callout on the ＋ FAB or sheet rows. */
+    -webkit-touch-callout: none;
+  }
+
+  button:active,
+  a:active,
+  label:active,
+  summary:active,
+  [role='button']:active,
+  [role='option']:active,
+  [role='radio']:active,
+  [role='tab']:active,
+  [role='menuitem']:active {
+    background-image: linear-gradient(var(--press-scrim), var(--press-scrim));
+  }
+
+  button:disabled:active,
+  [aria-disabled='true']:active {
+    background-image: none;
+  }
+}
+
+/* Opt-in press depression for primary affordances (the ＋ FAB, Save, sheet
+   rows) — deliberately not applied to every control, which would read as
+   noise on a dense list. */
+@media (hover: none) and (prefers-reduced-motion: no-preference) {
+  .press-scale {
+    transition: transform var(--transition-fast);
+  }
+  .press-scale:active {
+    transform: scale(0.97);
+  }
+}
+
+/* Short viewports — a phone in landscape is ~390px tall, and a foldable or a
+   split-screen tablet lands here too. Nothing in the app accounted for it: the
+   overlay's 80px top pad plus a header left almost no room for content, and
+   the bottom nav ate another 90px of a very scarce axis.
+
+   Keyed on height rather than `orientation: landscape` so it also catches a
+   portrait phone with a large accessibility text size, and never fires on a
+   landscape tablet that has plenty of room. */
+@media (max-height: 500px) {
+  .overlay {
+    padding-top: var(--spacing-sm);
+    align-items: stretch;
+  }
+
+  /* A short viewport is exactly when a sheet should use everything it has. */
+  .bottom-sheet {
+    max-height: calc(var(--vvh) - var(--spacing-sm));
+  }
+
+  .bottom-sheet--full {
+    top: calc(var(--vv-top) + var(--safe-top));
+  }
+}
+
+/* In landscape the nav's label+icon stack does not fit 56px comfortably and
+   the row is pure overhead on the short axis — go icon-only and slim. */
+@media (max-width: 900px) and (max-height: 500px) {
+  :root {
+    --bottom-nav-height: 44px;
+  }
+
+  .bottom-nav__item span {
+    display: none;
+  }
+
+  .bottom-nav__add {
+    width: 40px;
+    height: 40px;
+    margin-top: -10px;
+  }
+}
+
+/* Every overlay in the app names its dismiss button `<block>__close`, and on a
+   phone that button is the primary — sometimes only — way out. They were
+   uniformly desktop-density (`padding: 4px` on a 16px icon, one at 2px), so
+   this is one rule against a convention rather than 25 scattered overrides.
+   Verified: all 25 matching classes are dismiss buttons; there are no other
+   `__close*` classes in the codebase. */
+@media (max-width: 768px) {
+  button[class*='__close'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+}
+
+/* Expands a control's hit area to --tap-min without changing its visual size
+   or perturbing its siblings' layout — unlike a negative-margin/padding pair,
+   which mutates the border box and can collide in a flex row.
+   Only for controls with no overlapping neighbours: the pseudo-element eats
+   pointer events across the whole expanded region. */
+@media (max-width: 768px) {
+  .tap-expand {
+    position: relative;
+  }
+  .tap-expand::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--tap-min));
+    height: max(100%, var(--tap-min));
+    transform: translate(-50%, -50%);
   }
 }
 

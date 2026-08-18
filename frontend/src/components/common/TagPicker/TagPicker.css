@@ -37,11 +37,12 @@
   max-width: 280px;
   max-height: 300px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-lg);
-  z-index: 9999;
+  z-index: var(--z-dropdown);
 }
 
 .tag-picker__search {

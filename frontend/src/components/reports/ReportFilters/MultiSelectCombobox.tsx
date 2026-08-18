@@ -96,7 +96,7 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
     <div
       ref={listRef}
       className="msc__dropdown"
-      style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, zIndex: 9999 }}
+      style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, zIndex: 'var(--z-dropdown)' }}
     >
       <div className="msc__search-wrap">
         <input

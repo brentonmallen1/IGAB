@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useDayPatternsReport, usePaydayEffectReport } from '../../../api/reports'
+import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
@@ -17,6 +18,7 @@ interface Props { budgetId: string }
 const WINDOW_OPTIONS = [7, 14, 21] as const
 
 export function DayPatternsReport({ budgetId }: Props) {
+  const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
@@ -109,7 +111,7 @@ export function DayPatternsReport({ budgetId }: Props) {
         {chartData.length === 0 ? (
           <div className="reports-empty">No spending data for this period.</div>
         ) : (
-          <ResponsiveContainer width="100%" height={320}>
+          <ResponsiveContainer width="100%" height={chartHeight}>
             <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-muted)' }} />

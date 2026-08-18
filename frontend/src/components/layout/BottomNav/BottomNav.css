@@ -3,18 +3,29 @@
 }
 
 @media (max-width: 768px) {
+  /* In flow as the last row of .main-layout__content — see MainLayout.tsx.
+     position:relative only so the ＋ button's -16px overhang paints above
+     .main-layout__main, which is itself position:relative and would otherwise
+     win paint order against a static sibling. */
   .bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: var(--z-bottom-nav);
+    position: relative;
+    z-index: var(--z-nav);
+    flex-shrink: 0;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
+    height: var(--nav-h);
+    padding-bottom: var(--safe-bottom);
     background: var(--header-bg);
     border-top: 1px solid var(--border-color);
+  }
+
+  /* Five tab targets pressed against the top edge of a keyboard is a mis-tap
+     generator, and two of them are route changes that would discard whatever
+     is being typed. display:none rather than visibility/opacity so the row
+     collapses and the form reclaims the height — which matters when the
+     keyboard has already taken half the screen. */
+  html[data-keyboard='open'] .bottom-nav {
+    display: none;
   }
 
   .bottom-nav__item {
@@ -53,7 +64,4 @@
     box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.3));
   }
 
-  .bottom-nav__add:active {
-    transform: scale(0.95);
-  }
 }

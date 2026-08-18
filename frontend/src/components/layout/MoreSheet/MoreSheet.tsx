@@ -29,27 +29,27 @@ export function MoreSheet() {
   return (
     <BottomSheet open={open} onClose={closeMoreSheet} historyKey="more">
       <div className="more-sheet">
-        <button className="more-sheet__item" onClick={() => go('/payees')}>
+        <button className="more-sheet__item press-scale" onClick={() => go('/payees')}>
           <Users size={18} />
           <span>Payees</span>
         </button>
-        <button className="more-sheet__item" onClick={() => go('/scheduled')}>
+        <button className="more-sheet__item press-scale" onClick={() => go('/scheduled')}>
           <CalendarClock size={18} />
           <span>Scheduled</span>
         </button>
-        <button className="more-sheet__item" onClick={() => go('/liabilities')}>
+        <button className="more-sheet__item press-scale" onClick={() => go('/liabilities')}>
           <Landmark size={18} />
           <span>Liabilities</span>
         </button>
-        <button className="more-sheet__item" onClick={() => go('/ai-activity')}>
+        <button className="more-sheet__item press-scale" onClick={() => go('/ai-activity')}>
           <Sparkles size={18} />
           <span>AI Activity</span>
         </button>
-        <button className="more-sheet__item" onClick={() => go('/import')}>
+        <button className="more-sheet__item press-scale" onClick={() => go('/import')}>
           <Upload size={18} />
           <span>Import</span>
         </button>
-        <button className="more-sheet__item" onClick={() => go('/settings')}>
+        <button className="more-sheet__item press-scale" onClick={() => go('/settings')}>
           <Settings size={18} />
           <span>Settings</span>
           {updateAvailable && (
@@ -59,12 +59,12 @@ export function MoreSheet() {
             />
           )}
         </button>
-        <button className="more-sheet__item" onClick={togglePrivacyMode} aria-pressed={privacyMode}>
+        <button className="more-sheet__item press-scale" onClick={togglePrivacyMode} aria-pressed={privacyMode}>
           {privacyMode ? <EyeOff size={18} /> : <Eye size={18} />}
           <span>{privacyMode ? 'Show amounts' : 'Hide amounts'}</span>
         </button>
         <button
-          className="more-sheet__item"
+          className="more-sheet__item press-scale"
           onClick={() => {
             closeMoreSheet()
             clearCurrentBudget()
@@ -74,7 +74,7 @@ export function MoreSheet() {
           <ChevronLeft size={18} />
           <span>Switch budget</span>
         </button>
-        <button className="more-sheet__item" onClick={logout}>
+        <button className="more-sheet__item press-scale" onClick={logout}>
           <LogOut size={18} />
           <span>Sign out</span>
         </button>

@@ -1,12 +1,19 @@
+/* The offline banner, when shown, is the topmost row and owns the notch
+   inset; the header must not inset a second time underneath it. */
+.offline-banner + .header {
+  height: var(--header-height);
+  padding-top: 0;
+}
+
 .header {
   /* viewport-fit=cover lets content run under the notch/status bar in the
      standalone PWA — the inset padding keeps header controls below it */
-  height: calc(var(--header-height) + env(safe-area-inset-top, 0px));
+  height: calc(var(--header-height) + var(--safe-top));
   background-color: var(--header-bg);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  padding: env(safe-area-inset-top, 0px) var(--spacing-lg) 0;
+  padding: var(--safe-top) var(--spacing-lg) 0;
   flex-shrink: 0;
 }
 
@@ -141,7 +148,7 @@
   border-radius: var(--border-radius);
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,0.2));
   min-width: 160px;
-  z-index: 200;
+  z-index: var(--z-dropdown);
   overflow: hidden;
   padding: 4px 0;
 }

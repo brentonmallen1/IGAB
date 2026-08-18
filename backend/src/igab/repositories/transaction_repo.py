@@ -281,6 +281,30 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
         )
 
+    async def count_ai_needs_review(self, budget_id: uuid.UUID) -> int:
+        """How many AI-created transactions are still waiting to be reviewed.
+
+        Counts transactions rather than jobs on purpose: a job whose
+        transaction was deleted must not keep a badge lit, and the AI pipeline
+        already tracks that case separately (transaction_removed).
+
+        Exclusions mirror _count_pending_review — soft-deleted rows, split
+        children, and 'pending' rows are not things the user can act on.
+        """
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(Transaction)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.cleared != "pending",
+                Transaction.approved == False,  # noqa: E712
+                Transaction.created_via.like("ai%"),
+            )
+        )
+        return result.scalar_one() or 0
+
     async def _count_pending_review(self, base_where) -> dict:
         needs_category = and_(
             Transaction.category_id.is_(None),

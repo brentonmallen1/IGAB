@@ -61,6 +61,7 @@
 .ddp__scroll {
   max-height: 420px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border-subtle);
   border-radius: var(--border-radius);
 }

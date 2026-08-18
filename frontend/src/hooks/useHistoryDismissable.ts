@@ -13,10 +13,28 @@ interface SheetHistoryState {
  * entry via history.back() so the stack stays balanced. Same-URL pushState is
  * invisible to React Router's route matching.
  */
-export function useHistoryDismissable(open: boolean, onClose: () => void, key: string) {
+export function useHistoryDismissable(
+  open: boolean,
+  onClose: () => void,
+  key: string,
+  /**
+   * Synchronous veto. Return false to keep the overlay open; the consumed
+   * history entry is pushed straight back so the stack stays balanced and a
+   * second back gesture still works. Side effects are allowed and are how an
+   * async confirmation is driven — raise the confirmation, return false, and
+   * close for real once the user answers.
+   */
+  canClose?: () => boolean
+) {
   const closedByPopRef = useRef(false)
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  const canCloseRef = useRef(canClose)
+  // Effect rather than render-phase assignment: popstate can only fire after
+  // commit, so the handler always sees the current callbacks either way.
+  useEffect(() => {
+    onCloseRef.current = onClose
+    canCloseRef.current = canClose
+  })
   // history.back() scheduled by a cleanup, cancellable if the effect re-runs
   // immediately (StrictMode dev remount). Without this, the fake cleanup's
   // async back() lands after the re-run's pushState and instantly dismisses
@@ -41,6 +59,11 @@ export function useHistoryDismissable(open: boolean, onClose: () => void, key: s
       // top sheet and must stay open; only the sheet whose entry was popped
       // (state no longer ours) closes.
       if ((e.state as SheetHistoryState | null)?.igabSheet === key) return
+      if (canCloseRef.current?.() === false) {
+        // Re-arm: our entry was just consumed by the pop, so put it back.
+        window.history.pushState({ igabSheet: key } satisfies SheetHistoryState, '')
+        return
+      }
       closedByPopRef.current = true
       onCloseRef.current()
     }

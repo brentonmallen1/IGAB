@@ -65,7 +65,7 @@
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 100;
+  z-index: var(--z-dropdown);
   min-width: 200px;
   padding: var(--spacing-xs);
   margin: 0;
@@ -154,6 +154,7 @@
 .reports-content {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--spacing-xl);
 }
 

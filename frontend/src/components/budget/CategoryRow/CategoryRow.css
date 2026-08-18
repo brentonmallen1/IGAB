@@ -436,6 +436,25 @@
 /* Card layout on phones: name + available prominent, assigned/activity as a
    muted sub-line. Row actions live in the inspector sheet instead of hover. */
 @media (max-width: 768px) {
+  /* Skip layout and paint for rows scrolled out of view. A household budget is
+     40-80 rows, each a grid with pseudo-element labels, and all of them are
+     laid out on every month change — which is exactly the swipe that is
+     supposed to feel instant.
+
+     Chosen over virtualising the list: CategoryRow is already memo()'d so
+     re-renders are cheap, the cost is initial layout, and this gets that back
+     without changing what is mounted — so selection, the inspector, and inline
+     editing keep working on rows the user has scrolled past. `auto` in
+     contain-intrinsic-size means the browser remembers each row's real height
+     after first measure, so the scrollbar does not drift.
+
+     Scoped to mobile deliberately: the desktop MoveMoneyPopover renders inline
+     inside the row rather than through a portal, and containment would clip it. */
+  .category-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+
   .category-row {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     grid-template-rows: auto auto;

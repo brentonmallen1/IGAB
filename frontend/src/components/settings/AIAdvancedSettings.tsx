@@ -145,6 +145,7 @@ export function AIAdvancedSettings() {
             <div className="ai-settings__inline">
               <input
                 type="number"
+                inputMode="numeric"
                 min={10}
                 className="settings-input ai-settings__timeout"
                 value={editTimeout}

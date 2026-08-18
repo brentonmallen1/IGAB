@@ -3,6 +3,7 @@ import { Lock } from 'lucide-react';
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag, type Tag } from '../../../api/tags';
 import { TagChip, type TagColorSlot } from '../../common/TagChip';
 import './TagsPanel.css';
+import { confirmAsync } from '../../../stores/confirmStore'
 
 const COLOR_SLOTS: TagColorSlot[] = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
 
@@ -44,7 +45,13 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete tag "${name}"? It will be removed from all categories and payees.`)) return;
+    const ok = await confirmAsync({
+      title: `Delete tag "${name}"?`,
+      message: "It will be removed from all categories and payees.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     await deleteTag.mutateAsync(id);
   }
 

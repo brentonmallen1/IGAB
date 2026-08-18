@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, RotateCw, Download, Printer, Loader2 } from 'lucide-react'
 import { usePinchZoom } from '../../hooks/usePinchZoom'
+import { lockBodyScroll, unlockBodyScroll } from '../../utils/scrollLock'
 import {
   downloadAttachment,
   isPdfAttachment,
@@ -51,12 +52,16 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext, 
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = ''
-    }
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
+
+  // Separate effect with no deps: handleKeyDown changes on every navigation
+  // between images, and the lock must span the whole lightbox lifetime rather
+  // than churning the shared refcount on each arrow press.
+  useEffect(() => {
+    lockBodyScroll()
+    return unlockBodyScroll
+  }, [])
 
   function handleTouchStart(e: React.TouchEvent) {
     if (isZoomed) return
@@ -81,8 +86,9 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext, 
     reset()
   }, [src, reset])
 
-  // Portal to document.body so the lightbox escapes any parent stacking context
-  // (e.g. TransactionEditor's z-index: 100) and renders above everything.
+  // Portal to document.body so the lightbox escapes any parent stacking
+  // context, and rank it at --z-nested-overlay: it is opened from inside
+  // another overlay and must sit above the one that raised it.
   return createPortal(
     <div
       className="lightbox-overlay"

@@ -15,6 +15,7 @@
   flex-direction: column;
   gap: var(--spacing-xs);
   overflow-y: auto;
+  overscroll-behavior: contain;
   min-height: 0; /* Allow shrinking in grid */
 }
 
@@ -51,6 +52,7 @@
   position: relative;
   padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-xl) 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xl);

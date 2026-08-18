@@ -60,8 +60,8 @@
 }
 
 .quick-add__calc-btn {
-  min-width: 44px;
-  min-height: 32px;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
   padding: 0 var(--spacing-sm);
   background: var(--bg-tertiary);
   color: var(--text-muted);
@@ -175,8 +175,8 @@
 }
 
 .quick-add__date-chip {
-  min-height: 32px;
-  padding: 4px 12px;
+  min-height: var(--tap-min);
+  padding: 4px var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: 999px;
   background: transparent;
@@ -197,6 +197,7 @@
   align-items: center;
   gap: var(--spacing-xs);
   align-self: flex-start;
+  min-height: var(--tap-min);
   padding: var(--spacing-sm) var(--spacing-xs);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
@@ -265,13 +266,17 @@
 
 .quick-add__receipt-thumb button {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  /* .tap-expand would overflow the 64px thumb's `overflow: hidden`; a
+     transparent border grows the hit box inside it instead. */
+  border: 8px solid transparent;
+  background-clip: padding-box;
+  top: -4px;
+  right: -4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.55);
   color: var(--text-inverse);
@@ -343,4 +348,31 @@
 
 .quick-add__scan-btn:disabled {
   opacity: 0.5;
+}
+
+/* Retained failures: the photo is still in memory, so this is a real second
+   chance rather than an apology. Warning-toned because it's an unfinished
+   action, not an error the user caused. */
+.quick-add__scan-failed {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: var(--tap-min);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  border-radius: var(--border-radius-md);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.quick-add__scan-retry {
+  margin-left: auto;
+  min-height: var(--tap-min);
+  padding: 0 var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
 }

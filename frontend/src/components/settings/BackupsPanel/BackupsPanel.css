@@ -145,12 +145,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-nested-overlay);
   padding: var(--spacing-md, 1rem);
 }
 
 .bkp-overlay--blocking {
-  z-index: 1100;
+  z-index: calc(var(--z-nested-overlay) + 1);
 }
 
 .bkp-modal {

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from igab.api.v1.schemas.settings import SettingResponse, SettingUpdate
 from igab.dependencies import CurrentUser, get_settings_service
 from igab.services.ai_prompts import DEFAULT_PROMPTS
+from igab.services.ai_service import invalidate_capabilities
 from igab.services.settings_service import SettingsService
 
 router = APIRouter()
@@ -35,6 +36,11 @@ _BACKUP_INT_BOUNDS = {
     "backup_keep_days": (1, 365),
     "backup_keep_min": (1, 100),
 }
+
+
+# Settings that change which model the vision capability probe describes. A
+# stale probe outlives the fix that made it wrong, so drop it on any write.
+_CAPABILITY_KEYS = {"ollama_host", "ollama_model", "ollama_vision_model"}
 
 
 def _validate_setting(key: str, value: str) -> None:
@@ -107,6 +113,8 @@ async def update_setting(
         )
     _validate_setting(key, body.value)
     await svc.set(key, body.value)
+    if key in _CAPABILITY_KEYS:
+        invalidate_capabilities()
     return SettingResponse(key=key, value=body.value, is_overridden=True)
 
 
@@ -123,5 +131,7 @@ async def reset_setting(
             detail=f"Setting '{key}' is not editable via API",
         )
     await svc.unset(key)
+    if key in _CAPABILITY_KEYS:
+        invalidate_capabilities()
     effective = await svc.get(key)
     return SettingResponse(key=key, value=effective, is_overridden=False)

@@ -26,12 +26,23 @@ _CAPS_TTL_S = 300
 _caps_cache: dict[tuple[str, str], tuple[list[str] | None, float]] = {}
 
 
+def invalidate_capabilities() -> None:
+    """Drop the cached /api/show probe.
+
+    Call whenever the host or a model setting changes. Without this, a user who
+    pulls a vision model and immediately reprocesses a failed receipt can still
+    hit a cached 'no vision' answer for up to five minutes and watch the retry
+    fail for a reason they already fixed.
+    """
+    _caps_cache.clear()
+
+
 def prepare_image_for_model(file_content: bytes) -> str:
     """Downscale + JPEG-encode an uploaded image and return base64 for Ollama.
 
     PDFs are rasterized (first page) before encoding — vision models only
     take pixels."""
-    from PIL import Image
+    from PIL import Image, ImageOps
     from pillow_heif import register_heif_opener
 
     from igab.utils.pdf import is_pdf, render_pdf_first_page
@@ -42,6 +53,10 @@ def prepare_image_for_model(file_content: bytes) -> str:
         file_content = render_pdf_first_page(file_content)
 
     img = Image.open(BytesIO(file_content))
+    # Phones store a portrait photo as landscape pixels plus an EXIF rotation
+    # tag; PIL does not apply it. Without this the model is handed a receipt
+    # lying on its side, and vision models read rotated text markedly worse.
+    img = ImageOps.exif_transpose(img)
     if img.mode != "RGB":
         img = img.convert("RGB")
     if img.width > MODEL_IMAGE_MAX_DIM or img.height > MODEL_IMAGE_MAX_DIM:

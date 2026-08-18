@@ -55,7 +55,10 @@
 }
 
 .more-sheet__theme {
-  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  padding: 8px var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-md);
   background: var(--bg-primary);

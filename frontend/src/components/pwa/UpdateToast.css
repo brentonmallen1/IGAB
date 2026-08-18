@@ -39,3 +39,27 @@
 .update-toast__dismiss:hover {
   color: var(--text-primary);
 }
+
+/* The update prompt is persistent (duration: Infinity) and its two actions are
+   the only way to dismiss it, so they have to be comfortably pressable. */
+@media (max-width: 768px) {
+  .update-toast {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-xs);
+  }
+
+  .update-toast__text {
+    flex: 1 0 100%;
+  }
+
+  .update-toast__button,
+  .update-toast__dismiss {
+    min-height: var(--tap-min);
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+
+  .update-toast__dismiss {
+    margin-left: auto;
+  }
+}

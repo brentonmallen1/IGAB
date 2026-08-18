@@ -123,18 +123,34 @@ export function useAIJobForTransaction(budgetId: string | null, transactionId: s
   })
 }
 
-export function useActiveAIJobCount(budgetId: string | null) {
+export interface AIJobCounts {
+  /** Jobs queued or processing right now. */
+  active: number
+  /** AI-created transactions still waiting to be reviewed. */
+  needsReview: number
+}
+
+/**
+ * The header badge's two numbers. `active` alone drops to zero at exactly the
+ * moment the work finishes — i.e. when there is finally something for the user
+ * to look at — so the badge has to know about both.
+ */
+export function useAIJobCounts(budgetId: string | null) {
   const aiStatus = useAIStatus()
   return useQuery({
     queryKey: ['ai-jobs-active', budgetId],
     queryFn: async () => {
-      const { data } = await apiClient.get<{ count: number }>(
+      const { data } = await apiClient.get<{ count: number; needs_review?: number }>(
         `/${budgetId}/ai/jobs/active-count`
       )
-      return data.count
+      return { active: data.count, needsReview: data.needs_review ?? 0 } satisfies AIJobCounts
     },
-    enabled: !!budgetId && aiStatus.data?.available === true,
-    refetchInterval: (query) => ((query.state.data ?? 0) > 0 ? 4_000 : 30_000),
+    // Gated on `enabled`, not `available`: how many transactions are waiting
+    // for review is a fact about the user's own data. Hiding it because Ollama
+    // happens not to answer a ping right now would drop the notification
+    // precisely when nothing new can arrive to replace it.
+    enabled: !!budgetId && aiStatus.data?.enabled === true,
+    refetchInterval: (query) => ((query.state.data?.active ?? 0) > 0 ? 4_000 : 30_000),
     refetchIntervalInBackground: false,
   })
 }

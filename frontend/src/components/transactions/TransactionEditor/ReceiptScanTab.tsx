@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ATTACHMENT_ACCEPT, isAttachableFile } from '../../../api/attachments'
 import { useSubmitReceipt, useAIJob, type AIJob } from '../../../api/aiJobs'
 import './ReceiptScanTab.css'
+import { apiErrorMessage } from '../../../api/client'
 
 type Stage =
   | { kind: 'pick' }
@@ -125,8 +126,7 @@ export function ReceiptScanTab({
       handled.current = false
       setStage({ kind: 'watching', jobId: result.id })
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast.error(detail ?? 'Failed to queue receipt')
+      toast.error(apiErrorMessage(err, 'Failed to queue receipt'))
     }
   }
 

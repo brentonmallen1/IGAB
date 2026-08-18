@@ -1,15 +1,16 @@
+/* In flow as the first row of the app shell rather than fixed over it: as a
+   fixed banner it covered the header — including the month navigation, which
+   is the one control you still want while offline. */
 .offline-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 500;
+  position: relative;
+  z-index: var(--z-banner);
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--spacing-sm);
   padding: 6px var(--spacing-md);
-  padding-top: calc(6px + env(safe-area-inset-top));
+  padding-top: calc(6px + var(--safe-top));
   background: color-mix(in srgb, var(--color-warning) 18%, var(--bg-secondary));
   border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
   color: var(--text-primary);
@@ -24,6 +25,7 @@
 
 .offline-banner__retry {
   padding: 2px 10px;
+  min-height: 28px;
   border: 1px solid color-mix(in srgb, var(--color-warning) 50%, transparent);
   border-radius: var(--border-radius-sm);
   background: transparent;
@@ -36,4 +38,11 @@
 
 .offline-banner__retry:hover {
   background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+}
+
+@media (max-width: 768px) {
+  .offline-banner__retry {
+    min-height: var(--tap-min);
+    padding: 2px var(--spacing-md);
+  }
 }

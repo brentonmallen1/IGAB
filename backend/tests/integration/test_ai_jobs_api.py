@@ -1,7 +1,9 @@
 """AI jobs API: submit/list/detail/retry/delete, ownership scoping, the
 ai_job_id link on transaction create, and the has_attachment filter."""
 
+import hashlib
 import uuid
+from datetime import date
 from io import BytesIO
 
 import pytest
@@ -10,6 +12,8 @@ from sqlalchemy import select
 
 import igab.config
 from igab.db.models import AIJob, Transaction
+from igab.services.ai_service import AIService
+from igab.services.settings_service import SettingsService
 
 from .factories import create_account, create_budget, create_transaction, create_user
 
@@ -87,6 +91,206 @@ class TestSubmitReceipt:
         budget, account = await _setup(api_client, db_session)
         resp = await _submit(api_client, budget, account, client_today="last tuesday")
         assert resp.status_code == 422
+
+    async def test_queues_even_when_the_model_cannot_do_vision(
+        self, api_client, db_session, attachments_dir, monkeypatch
+    ):
+        """A model that can't read images must never cost the user their photo.
+
+        This endpoint used to probe for vision support and reject with a 422
+        *before* staging the file or inserting the job — so the upload was
+        destroyed, with nothing to retry and no record it happened. Capability
+        problems belong to the worker, which still produces a $0 needs-review
+        transaction with the image attached. Regression guard: if a pre-flight
+        capability gate is ever reintroduced here, this fails.
+        """
+
+        async def no_vision(self):
+            return False, "text-only-model"
+
+        monkeypatch.setattr(AIService, "check_vision_support", no_vision)
+
+        budget, account = await _setup(api_client, db_session)
+        resp = await _submit(api_client, budget, account)
+
+        assert resp.status_code == 202, resp.text
+        job = await db_session.get(AIJob, uuid.UUID(resp.json()["id"]))
+        assert job is not None
+        assert job.status == "queued"
+        # The photo is on disk, so the worker can still attach it to a stub.
+        staged = attachments_dir / job.payload["staged_path"]
+        assert staged.exists()
+        assert staged.read_bytes() == tiny_jpeg()
+
+    async def test_no_ollama_host_still_rejected(
+        self, api_client, db_session, attachments_dir, monkeypatch
+    ):
+        """The one genuine 'nothing will ever process this' state stays a 503."""
+
+        async def blank_host(self, key, default=None):
+            return "" if key == "ollama_host" else default
+
+        monkeypatch.setattr(SettingsService, "get", blank_host)
+        budget, account = await _setup(api_client, db_session)
+        resp = await _submit(api_client, budget, account)
+        assert resp.status_code == 503
+
+
+class TestDuplicateReceipts:
+    """Submitting the same receipt twice would double-count the expense — a
+    correctness problem on a budgeting app, not just clutter."""
+
+    async def _attach(self, db_session, budget, account, content: bytes):
+        from igab.repositories.attachment_repo import AttachmentRepository
+        from igab.services.attachment_service import AttachmentService
+
+        txn = await create_transaction(
+            db_session, budget, account, "-42.50", date(2026, 8, 2)
+        )
+        svc = AttachmentService(AttachmentRepository(db_session))
+        await svc.upload(txn, content, "receipt.jpg", "image/jpeg")
+        return txn
+
+    async def test_rejects_a_receipt_already_in_the_budget(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._attach(db_session, budget, account, tiny_jpeg())
+
+        resp = await _submit(api_client, budget, account)
+        assert resp.status_code == 409, resp.text
+        detail = resp.json()["detail"]
+        # The client needs the transaction so it can offer to open it — a bare
+        # refusal would leave the user with no idea where the original went.
+        assert detail["transaction_id"] == str(txn.id)
+
+        jobs = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        assert jobs["total_count"] == 0, "a duplicate must not queue work"
+
+    async def test_hashes_the_uploaded_bytes_not_the_stored_copy(
+        self, api_client, db_session, attachments_dir
+    ):
+        """The stored file is a re-encoded WebP. Hashing that would never match
+        a resubmission of the original JPEG, silently disabling the check."""
+        budget, account = await _setup(api_client, db_session)
+        await self._attach(db_session, budget, account, tiny_jpeg())
+
+        from igab.db.models import TransactionAttachment
+
+        row = (
+            await db_session.execute(select(TransactionAttachment))
+        ).scalars().first()
+        assert row.content_hash == hashlib.sha256(tiny_jpeg()).hexdigest()
+
+    async def test_a_different_receipt_still_goes_through(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        other = BytesIO()
+        Image.new("RGB", (64, 64), "black").save(other, "JPEG")
+        await self._attach(db_session, budget, account, other.getvalue())
+
+        assert (await _submit(api_client, budget, account)).status_code == 202
+
+    async def test_scoped_to_the_budget(self, api_client, db_session, attachments_dir):
+        budget, account = await _setup(api_client, db_session)
+        other_budget = await create_budget(db_session, api_client.test_user)
+        other_account = await create_account(db_session, other_budget, "Other")
+        await self._attach(db_session, other_budget, other_account, tiny_jpeg())
+
+        # Same image, different budget — a legitimately separate record.
+        assert (await _submit(api_client, budget, account)).status_code == 202
+
+    async def test_deleted_transactions_free_the_receipt(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._attach(db_session, budget, account, tiny_jpeg())
+        txn.is_deleted = True
+        await db_session.flush()
+
+        # The user threw it away; re-submitting must not be blocked forever.
+        assert (await _submit(api_client, budget, account)).status_code == 202
+
+
+class TestAINeedsReviewCount:
+    """The header badge's count. It must survive the job finishing — the old
+    active-only count dropped to zero at exactly the moment the user had
+    something to look at."""
+
+    async def _count(self, api_client, budget):
+        resp = await api_client.get(f"/api/v1/{budget.id}/ai/jobs/active-count")
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    async def test_counts_unapproved_ai_transactions(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        await create_transaction(
+            db_session, budget, account, "-12.50", date(2026, 8, 2),
+            approved=False, created_via="ai_receipt", cleared="uncleared",
+        )
+        await create_transaction(
+            db_session, budget, account, "-4.00", date(2026, 8, 2),
+            approved=False, created_via="ai_nl", cleared="uncleared",
+        )
+        body = await self._count(api_client, budget)
+        assert body["needs_review"] == 2
+        # No jobs were queued — the two counts are independent on purpose.
+        assert body["count"] == 0
+
+    async def test_excludes_approved_and_non_ai_rows(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        # Approved AI row — already dealt with.
+        await create_transaction(
+            db_session, budget, account, "-1.00", date(2026, 8, 2),
+            approved=True, created_via="ai_receipt", cleared="uncleared",
+        )
+        # Unapproved, but from a bank import rather than the AI.
+        await create_transaction(
+            db_session, budget, account, "-2.00", date(2026, 8, 2),
+            approved=False, created_via=None, cleared="uncleared",
+        )
+        assert (await self._count(api_client, budget))["needs_review"] == 0
+
+    async def test_excludes_pending_deleted_and_split_children(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        common = dict(approved=False, created_via="ai_receipt")
+        # Pending rows aren't actionable yet.
+        await create_transaction(
+            db_session, budget, account, "-1.00", date(2026, 8, 2),
+            cleared="pending", **common,
+        )
+        await create_transaction(
+            db_session, budget, account, "-2.00", date(2026, 8, 2),
+            cleared="uncleared", is_deleted=True, **common,
+        )
+        parent = await create_transaction(
+            db_session, budget, account, "-9.00", date(2026, 8, 2),
+            cleared="uncleared", is_split=True, approved=True, created_via="ai_receipt",
+        )
+        # A split child would otherwise double-count against its parent.
+        await create_transaction(
+            db_session, budget, account, "-9.00", date(2026, 8, 2),
+            cleared="uncleared", parent_transaction_id=parent.id, **common,
+        )
+        assert (await self._count(api_client, budget))["needs_review"] == 0
+
+    async def test_scoped_to_the_budget(self, api_client, db_session, attachments_dir):
+        budget, account = await _setup(api_client, db_session)
+        other_budget = await create_budget(db_session, api_client.test_user)
+        other_account = await create_account(db_session, other_budget, "Other")
+        await create_transaction(
+            db_session, other_budget, other_account, "-5.00", date(2026, 8, 2),
+            approved=False, created_via="ai_receipt", cleared="uncleared",
+        )
+        assert (await self._count(api_client, budget))["needs_review"] == 0
+        assert (await self._count(api_client, other_budget))["needs_review"] == 1
 
 
 class TestJobListingAndLifecycle:

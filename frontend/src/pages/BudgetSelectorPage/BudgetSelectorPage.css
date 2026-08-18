@@ -324,6 +324,7 @@
   gap: var(--spacing-xs);
   max-height: 260px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border-color, var(--bg-tertiary));
   border-radius: var(--radius-sm);
   padding: var(--spacing-sm);
