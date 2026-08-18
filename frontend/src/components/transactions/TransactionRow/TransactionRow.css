@@ -117,6 +117,16 @@
   background-color: color-mix(in srgb, var(--color-warning) 15%, transparent);
 }
 
+/* Accent, matching every other AI surface. Sits beside the warning eye rather
+   than replacing it — the eye says "needs review", this says why. Read-only,
+   so no hover or pointer affordance. */
+.txn-status-icon--ai {
+  color: var(--color-accent);
+  opacity: 0.85;
+  cursor: inherit;
+  pointer-events: none;
+}
+
 /* Image button: muted "add" affordance until an attachment exists, then
    accent + filled so rows with receipts are scannable at a glance */
 .txn-attach-btn {
@@ -285,6 +295,16 @@
 .txn-more-btn:hover {
   color: var(--text-primary);
   background-color: var(--row-hover-bg);
+}
+
+/* display:none until hover means the row's overflow menu simply does not exist
+   on touch. Keep it visible and give it a real target instead. */
+@media (hover: none) {
+  .txn-more-btn {
+    display: flex;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
 }
 
 /* Three-line card: payee + amount / category / date · memo · status.

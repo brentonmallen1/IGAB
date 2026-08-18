@@ -11,6 +11,21 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver
 
+// jsdom implements no media queries at all, so useMediaQuery/useIsMobile throws
+// in any component that consults the breakpoint. Default to desktop; a test
+// that needs the mobile branch mocks useMediaQuery directly, as the transaction
+// editor suite does.
+globalThis.matchMedia ??= ((query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addEventListener() {},
+  removeEventListener() {},
+  addListener() {},
+  removeListener() {},
+  dispatchEvent: () => false,
+})) as unknown as typeof window.matchMedia
+
 afterEach(() => {
   cleanup()
 })

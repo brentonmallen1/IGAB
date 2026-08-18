@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Split, Trash2 } from 'lucide-react'
+import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Sparkles, Split, Trash2 } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
 import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction } from '../../../api/transactions'
 import { confirmDeleteTransaction } from '../../../api/attachments'
@@ -22,6 +22,7 @@ import { TransactionLinkIcon } from '../../simplefin/TransactionLinkPopup'
 import { RowAttachmentButton } from './RowAttachmentButton'
 import type { Transaction, Category, CategoryGroup, Payee } from '../../../types'
 import './TransactionRow.css'
+import { confirmAsync } from '../../../stores/confirmStore'
 
 interface Props {
   transaction: Transaction
@@ -166,14 +167,13 @@ export const TransactionRow = memo(function TransactionRow({
     updateTxn.mutate({ id: txn.id, cleared: next })
   }
 
-  function handleUnreconcile() {
-    if (
-      confirm(
-        'Unlock this reconciled transaction? It will return to cleared and become editable again.'
-      )
-    ) {
-      unreconcileTxn.mutate(txn.id)
-    }
+  async function handleUnreconcile() {
+    const ok = await confirmAsync({
+      title: 'Unlock this reconciled transaction?',
+      message: 'It will return to cleared and become editable again.',
+      confirmLabel: 'Unlock',
+    })
+    if (ok) unreconcileTxn.mutate(txn.id)
   }
 
   function commitField(field: string, value: unknown) {
@@ -362,6 +362,23 @@ export const TransactionRow = memo(function TransactionRow({
           >
             <Eye size={12} />
           </button>
+        )}
+        {/* Separates an AI-extracted row from an unapproved bank import: both
+            are dimmed and carry the warning eye, but only one of them was
+            read off a photo and may have got the details wrong. Accent
+            Sparkles is the app's established "AI" pairing (header badge,
+            review banner). Non-interactive — tapping the row already opens
+            the review modal, and the cluster is crowded enough. Drops away on
+            approve, like every other glyph here: it means "this needs you". */}
+        {!txn.approved && txn.created_via?.startsWith('ai') && (
+          <span
+            className="txn-status-icon txn-status-icon--ai"
+            role="img"
+            aria-label="Extracted from an image by AI — needs review"
+            title="Extracted from an image by AI — needs review"
+          >
+            <Sparkles size={12} />
+          </span>
         )}
         {txn.linked_transaction_id && (
           <TransactionLinkIcon transaction={txn} budgetId={txn.budget_id} />

@@ -8,7 +8,7 @@
   border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  z-index: 100;
+  z-index: var(--z-overlay);
   box-shadow: var(--shadow-lg);
 }
 
@@ -90,6 +90,7 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1;
 }
 
@@ -143,6 +144,17 @@
 
 .attachment-thumb:hover .attachment-thumb__delete {
   opacity: 1;
+}
+
+/* Without this the delete control is permanently invisible on touch — there is
+   no hover to reveal it, and no other way to remove a receipt on a phone. */
+@media (hover: none) {
+  .attachment-thumb__delete {
+    opacity: 1;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    justify-content: center;
+  }
 }
 
 .attachment-thumb__delete:hover {
@@ -206,4 +218,28 @@
   border: none;
   background: transparent;
   backdrop-filter: blur(30px);
+}
+
+/* On a 390px screen a 300px side drawer leaves a 90px sliver of page. Take
+   the full width and anchor to the visible viewport like every other overlay. */
+@media (max-width: 768px) {
+  /* Standalone drawer only — the --embedded variant renders inside the
+     transaction editor and must keep its own geometry. */
+  .attachment-panel:not(.attachment-panel--embedded) {
+    top: var(--vv-top);
+    height: var(--app-h);
+    bottom: auto;
+    width: 100%;
+    border-left: none;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .attachment-panel__close {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 }

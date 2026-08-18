@@ -5,8 +5,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12vh;
-  z-index: 9999;
+  padding-top: min(12vh, 96px);
+  z-index: var(--z-overlay);
 }
 
 .palette {
@@ -50,8 +50,9 @@
 }
 
 .palette [cmdk-list] {
-  max-height: min(420px, 55vh);
+  max-height: min(420px, calc(var(--app-h) - 160px));
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--spacing-xs) 0 var(--spacing-sm);
   scroll-padding-block: var(--spacing-sm);
 }

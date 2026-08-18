@@ -22,6 +22,7 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { useUIStore } from '../../stores/uiStore'
 import type { AccountType, NumberFormat, DateFormat, TimeFormat } from '../../types'
 import './SettingsPage.css'
+import { confirmAsync } from '../../stores/confirmStore'
 
 const NUMBER_FORMATS: { value: NumberFormat; label: string; example: string }[] = [
   { value: 'comma_dot', label: 'US/UK', example: '1,234.56' },
@@ -99,7 +100,13 @@ export function SettingsPage() {
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(firstConnectionId)
 
   async function handleDeleteAccount(id: string, name: string) {
-    if (!confirm(`Delete account "${name}"? This cannot be undone.`)) return
+    const ok = await confirmAsync({
+      title: `Delete account "${name}"?`,
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     await deleteAccount.mutateAsync(id)
   }
 
@@ -616,8 +623,13 @@ export function SettingsPage() {
                 <div style={{ paddingTop: 4 }}>
                   <button
                     className="settings-btn settings-btn--danger"
-                    onClick={() => {
-                      if (confirm('Remove this SimpleFIN connection?')) deleteConnection.mutate(conn.id)
+                    onClick={async () => {
+                      const ok = await confirmAsync({
+                        title: 'Remove this SimpleFIN connection?',
+                        confirmLabel: 'Remove',
+                        destructive: true,
+                      })
+                      if (ok) deleteConnection.mutate(conn.id)
                     }}
                   >
                     Remove connection

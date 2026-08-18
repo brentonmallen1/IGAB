@@ -3,6 +3,7 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useBudgets } from '../../../api/budgets'
 import { Sidebar } from '../Sidebar/Sidebar'
 import { Header } from '../Header/Header'
+import { OfflineBanner } from '../../pwa/OfflineBanner'
 import { BottomNav } from '../BottomNav/BottomNav'
 import { MoreSheet } from '../MoreSheet/MoreSheet'
 import { QuickAddSheet } from '../../transactions/QuickAddSheet/QuickAddSheet'
@@ -39,12 +40,18 @@ export function MainLayout() {
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <Sidebar />
       <div className="main-layout__content">
+        <OfflineBanner />
         <Header />
         <main id="main-content" className="main-layout__main">
           <Outlet />
         </main>
+        {/* In flow as the last row of the content column, not position:fixed.
+            A fixed nav is anchored to the layout viewport, which iOS slides out
+            from under the visible area when the keyboard opens — and it can
+            paint over any overlay that ranks below it. In flow, neither is
+            possible by construction. */}
+        <BottomNav />
       </div>
-      <BottomNav />
       <MoreSheet />
       <QuickAddSheet />
       <CommandPalette />

@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore, type GroupBy } from '../../../stores/reportStore'
 import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/reports'
+import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
@@ -60,6 +61,7 @@ function ParetoTooltip({
 }
 
 export function ParetoReport({ budgetId }: Props) {
+  const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
@@ -214,7 +216,7 @@ export function ParetoReport({ budgetId }: Props) {
         <div className="reports-empty">No spending data for this period.</div>
       ) : (
         <>
-          <ResponsiveContainer width="100%" height={340}>
+          <ResponsiveContainer width="100%" height={chartHeight}>
             <ComposedChart data={chartData} margin={{ top: 8, right: 50, left: 0, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} angle={-40} textAnchor="end" interval={0} height={70} />

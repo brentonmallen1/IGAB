@@ -1,0 +1,48 @@
+.confirm-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: 0 var(--spacing-md) var(--spacing-md);
+}
+
+.confirm-sheet__message {
+  /* Callers pass newline-separated detail lines (e.g. one per overspent
+     category) — preserve them without needing markup. */
+  white-space: pre-line;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  text-align: center;
+}
+
+/* Confirm on top, cancel below: the thumb rests nearer the bottom of the
+   screen, so the safer action is the one it lands on by default. */
+.confirm-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.confirm-sheet__confirm,
+.confirm-sheet__cancel {
+  min-height: 48px;
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.confirm-sheet__confirm {
+  background: var(--color-accent);
+  color: var(--bg-primary);
+}
+
+.confirm-sheet__confirm--destructive {
+  background: var(--color-danger);
+  color: var(--overlay-text);
+}
+
+.confirm-sheet__cancel {
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+}

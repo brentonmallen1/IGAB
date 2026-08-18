@@ -65,6 +65,7 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
             Amount
             <input
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0"
               className="target-editor__input"

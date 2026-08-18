@@ -4,6 +4,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { useBurnRateReport } from '../../../api/reports'
+import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
@@ -15,6 +16,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 interface Props { budgetId: string }
 
 export function BurnRateReport({ budgetId }: Props) {
+  const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
   const { data, isLoading, isError, refetch } = useBurnRateReport(budgetId, months)
@@ -77,7 +79,7 @@ export function BurnRateReport({ budgetId }: Props) {
       {chartData.length === 0 ? (
         <div className="reports-empty">No spending data available.</div>
       ) : (
-        <ResponsiveContainer width="100%" height={320}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
             <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />

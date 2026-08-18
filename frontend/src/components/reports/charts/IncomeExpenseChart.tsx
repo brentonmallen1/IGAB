@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
+import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { monthWindow } from '../../../utils/dateWindow'
@@ -18,6 +19,7 @@ import './IncomeExpenseChart.css'
 interface Props { budgetId: string }
 
 export function IncomeExpenseReport({ budgetId }: Props) {
+  const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
@@ -95,7 +97,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
         <div className="reports-empty">No data for this period.</div>
       ) : (
         <div ref={captureRef} className="report-capture">
-          <ResponsiveContainer width="100%" height={340}>
+          <ResponsiveContainer width="100%" height={chartHeight}>
             <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />

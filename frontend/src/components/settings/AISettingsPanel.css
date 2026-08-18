@@ -94,6 +94,7 @@
   margin-top: var(--spacing-sm);
   max-height: 300px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 2px;
 }
 

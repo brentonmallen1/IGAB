@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: var(--z-overlay);
 }
 
 .target-editor {
@@ -90,4 +90,18 @@
 .target-editor__btn--danger {
   color: var(--color-negative);
   border-color: var(--color-negative);
+}
+
+@media (max-width: 768px) {
+  .target-editor {
+    width: 100%;
+    max-width: none;
+    max-height: calc(var(--app-h) - 80px);
+  }
+
+  .target-editor input,
+  .target-editor select,
+  .target-editor button {
+    min-height: var(--tap-min);
+  }
 }

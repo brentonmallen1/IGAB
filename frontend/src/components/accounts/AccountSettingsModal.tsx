@@ -13,6 +13,7 @@ import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useAppStore } from '../../stores/appStore'
 import type { AccountType } from '../../types'
 import './AccountSettingsModal.css'
+import { confirmAsync } from '../../stores/confirmStore'
 
 const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
   { value: 'checking', label: 'Checking' },
@@ -94,7 +95,11 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
     if (!account) return
     setCloseError(null)
     const action = account.is_closed ? 'reopen' : 'close'
-    if (!confirm(`${action === 'close' ? 'Close' : 'Reopen'} this account?`)) return
+    const ok = await confirmAsync({
+      title: `${action === 'close' ? 'Close' : 'Reopen'} this account?`,
+      confirmLabel: action === 'close' ? 'Close account' : 'Reopen account',
+    })
+    if (!ok) return
     try {
       await updateAccount.mutateAsync({ id: accountId, is_closed: !account.is_closed })
       onClose()
@@ -115,7 +120,13 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   }
 
   async function handleUnlink() {
-    if (!confirm('Unlink this account from SimpleFIN? Synced transactions will remain.')) return
+    const ok = await confirmAsync({
+      title: 'Unlink this account from SimpleFIN?',
+      message: 'Synced transactions will remain.',
+      confirmLabel: 'Unlink',
+      destructive: true,
+    })
+    if (!ok) return
     await unlink.mutate()
   }
 

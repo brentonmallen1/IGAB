@@ -1,6 +1,7 @@
 """Worker job processing: extraction → transaction + attachment, retry
 bookkeeping, terminal-failure stub, stub refill on retry, crash recovery."""
 
+import base64
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -22,7 +23,36 @@ from igab.tasks.ai_worker import (
     record_job_failure,
 )
 
-from .factories import create_account, create_budget, create_category, create_category_group
+from .factories import (
+    create_account,
+    create_budget,
+    create_category,
+    create_category_group,
+    create_transaction,
+)
+from .invariants import assert_financial_invariants
+
+async def _on_budget_total(session, budget_id) -> Decimal:
+    """Sum of posted on-budget parent rows — what every balance derives from."""
+    from sqlalchemy import and_, func, select
+
+    from igab.db.models import Account
+
+    result = await session.execute(
+        select(func.coalesce(func.sum(Transaction.amount), 0))
+        .join(Account, Transaction.account_id == Account.id)
+        .where(
+            and_(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.cleared != "pending",
+                Transaction.parent_transaction_id.is_(None),
+                Account.on_budget == True,  # noqa: E712
+            )
+        )
+    )
+    return Decimal(str(result.scalar_one()))
+
 
 GOOD_EXTRACTION = {
     "payee": "Whole Foods",
@@ -204,6 +234,42 @@ class TestReceiptFailures:
         assert attachment is not None
         assert (attachments_dir / attachment.storage_path).exists()
         assert not (attachments_dir / "ai_staging" / str(job.id)).exists()
+
+    async def test_stub_is_financially_inert(self, db_session, attachments_dir):
+        """A $0 placeholder must not move any money.
+
+        It is a real transactions row created by an automated path, so it sits
+        squarely in the money surface CLAUDE.md calls out. Zero is the only
+        amount that lets the receipt be filed without changing a balance the
+        user did not touch.
+        """
+        budget, account = await _setup(db_session, attachments_dir)
+        before = await _on_budget_total(db_session, budget.id)
+
+        job = await _make_job(db_session, attachments_dir, budget, account, attempts=3)
+        await record_job_failure(db_session, job, httpx.ConnectError("refused"))
+
+        txn = await db_session.get(Transaction, job.transaction_id)
+        assert txn.amount == Decimal("0")
+        # Uncategorized, so it cannot land in a category's activity either.
+        assert txn.category_id is None
+        assert txn.is_split is False
+        assert await _on_budget_total(db_session, budget.id) == before
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_successful_extraction_preserves_invariants(
+        self, db_session, attachments_dir, mock_extraction
+    ):
+        """The happy path writes a real amount — prove the books still balance."""
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        await process_one_job(db_session, job)
+
+        txn = await db_session.get(Transaction, job.transaction_id)
+        # Positive receipt totals are outflows.
+        assert txn.amount == Decimal("-42.50")
+        assert txn.approved is False
+        await assert_financial_invariants(db_session, budget.id)
 
     async def test_non_retryable_failure_skips_stub_when_account_gone(
         self, db_session, attachments_dir
@@ -538,3 +604,59 @@ class TestStartupRecovery:
         assert claimed is not None
         assert claimed.id == ready.id
         assert claimed.id != future.id
+
+
+class TestImageOrientation:
+    """Phones store portrait photos as landscape pixels plus an EXIF rotation
+    tag. PIL does not apply it, so before this the model was handed sideways
+    receipts (vision models read rotated text markedly worse) and the archived
+    copy was saved sideways for good — WEBP drops the tag."""
+
+    @staticmethod
+    def _rotated_jpeg() -> bytes:
+        """160x80 pixels tagged 'rotate to view' — i.e. really 80x160."""
+        from PIL import Image as PILImage
+
+        img = PILImage.new("RGB", (160, 80), "white")
+        exif = PILImage.Exif()
+        exif[274] = 6  # Orientation: rotate 90° CW
+        buf = BytesIO()
+        img.save(buf, "JPEG", exif=exif)
+        return buf.getvalue()
+
+    def test_model_receives_the_upright_image(self):
+        from PIL import Image as PILImage
+
+        from igab.services.ai_service import prepare_image_for_model
+
+        decoded = PILImage.open(BytesIO(base64.b64decode(prepare_image_for_model(self._rotated_jpeg()))))
+        assert decoded.size == (80, 160), "model got the sideways frame"
+
+    def test_untagged_images_are_left_alone(self):
+        from PIL import Image as PILImage
+
+        from igab.services.ai_service import prepare_image_for_model
+
+        buf = BytesIO()
+        PILImage.new("RGB", (160, 80), "white").save(buf, "JPEG")
+        decoded = PILImage.open(BytesIO(base64.b64decode(prepare_image_for_model(buf.getvalue()))))
+        assert decoded.size == (160, 80)
+
+    async def test_stored_attachment_is_upright(self, db_session, attachments_dir):
+        from PIL import Image as PILImage
+
+        from igab.repositories.attachment_repo import AttachmentRepository
+        from igab.services.attachment_service import AttachmentService
+
+        budget, account = await _setup(db_session, attachments_dir)
+        txn = await create_transaction(
+            db_session, budget, account, "-5.00", date(2026, 8, 2)
+        )
+        svc = AttachmentService(AttachmentRepository(db_session))
+        attachment = await svc.upload(txn, self._rotated_jpeg(), "receipt.jpg", "image/jpeg")
+
+        stored = PILImage.open(attachments_dir / attachment.storage_path)
+        assert stored.size == (80, 160)
+        # The tag is gone after the WEBP save, which is exactly why the pixels
+        # themselves had to be corrected first.
+        assert stored.getexif().get(274) is None

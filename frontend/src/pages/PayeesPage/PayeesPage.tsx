@@ -15,6 +15,8 @@ import { testPattern } from '../../utils/payeeRegex'
 import { TagChip } from '../../components/common/TagChip'
 import { TagPicker, type TagOption } from '../../components/common/TagPicker'
 import './PayeesPage.css'
+import { confirmAsync } from '../../stores/confirmStore'
+import toast from 'react-hot-toast'
 
 type WizardGroup = {
   label: string
@@ -159,7 +161,7 @@ export function PayeesPage() {
   async function saveEdit(id: string) {
     const pattern = editPattern.trim()
     if (pattern && testPattern(pattern, '') === null) {
-      alert('The match pattern is not a valid regular expression.')
+      toast.error('That match pattern is not a valid regular expression.')
       return
     }
     if (editName.trim()) {
@@ -174,7 +176,13 @@ export function PayeesPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete payee "${name}"? Transactions will have no payee.`)) return
+    const ok = await confirmAsync({
+      title: `Delete payee "${name}"?`,
+      message: 'Transactions will have no payee.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     await deletePayee.mutateAsync(id)
     clearPayeeSelection()
   }
@@ -240,7 +248,7 @@ export function PayeesPage() {
           payees: g.payees,
         })))
       } else {
-        alert('No duplicate payees found.')
+        toast.success('No duplicate payees found.')
       }
     } else {
       const result = await cleanup.refetch()
@@ -250,7 +258,7 @@ export function PayeesPage() {
           payees: g.payees,
         })))
       } else {
-        alert('No duplicate payees found.')
+        toast.success('No duplicate payees found.')
       }
     }
   }

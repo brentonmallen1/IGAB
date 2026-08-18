@@ -1,6 +1,6 @@
 .move-money-popover {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-dropdown);
   min-width: 260px;
   max-width: 320px;
   background: var(--bg-secondary);
@@ -94,4 +94,16 @@
   gap: 2px;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .move-money-popover {
+    max-width: calc(100vw - 32px);
+  }
+
+  .move-money-popover input,
+  .move-money-popover select,
+  .move-money-popover button {
+    min-height: var(--tap-min);
+  }
 }

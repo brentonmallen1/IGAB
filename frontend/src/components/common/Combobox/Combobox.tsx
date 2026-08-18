@@ -223,7 +223,7 @@ export function Combobox({
         top: dropdownPos.top,
         left: dropdownPos.left,
         width: dropdownPos.width,
-        zIndex: 9999,
+        zIndex: 'var(--z-dropdown)',
       }}
     >
       {onCreateNew && (

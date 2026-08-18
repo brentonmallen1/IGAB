@@ -15,3 +15,13 @@
 .sab__category-picker {
   width: 220px;
 }
+
+/* The bar's action buttons are .fsb__btn, sized in FloatingSelectionBar.css.
+   These are the controls this component owns. */
+@media (max-width: 768px) {
+  .sab__categorize > button,
+  .sab__category-picker input,
+  .sab__category-picker button {
+    min-height: var(--tap-min);
+  }
+}

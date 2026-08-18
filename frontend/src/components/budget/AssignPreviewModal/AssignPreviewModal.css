@@ -6,7 +6,7 @@
   align-items: flex-start;
   justify-content: center;
   padding-top: 80px;
-  z-index: 100;
+  z-index: var(--z-overlay);
 }
 
 .assign-preview-modal {
@@ -16,7 +16,7 @@
   box-shadow: var(--shadow-lg);
   width: 560px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100dvh - 120px);
+  max-height: calc(var(--app-h) - 120px);
   display: flex;
   flex-direction: column;
 }
@@ -52,6 +52,7 @@
 .assign-preview-modal__body {
   padding: var(--spacing-lg);
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1;
 }
 

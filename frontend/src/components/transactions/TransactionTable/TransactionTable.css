@@ -25,7 +25,7 @@
   background-color: var(--bg-secondary);
   position: sticky;
   top: 0;
-  z-index: 6;
+  z-index: calc(var(--z-sticky) + 1);
 }
 
 .transaction-table__add-btn {
@@ -76,7 +76,7 @@
   background-color: var(--bg-secondary);
   position: sticky;
   top: 44px;
-  z-index: 5;
+  z-index: var(--z-sticky);
 }
 
 /* All-accounts register: extra account column after the date */
@@ -207,6 +207,15 @@
   display: flex;
   gap: 4px;
   justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  .upcoming-row__btn,
+  .txn-duplicate-group__btn {
+    min-height: var(--tap-min);
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
 }
 
 .upcoming-row__btn {

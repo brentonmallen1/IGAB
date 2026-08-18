@@ -18,6 +18,7 @@ import { addMonths } from '../../utils/dates'
 import { useBudgets, useCreateBudget } from '../../api/budgets'
 import { useCategories, useCategoryGroups, useUpdateCategory, useDeleteCategory } from '../../api/categories'
 import './BudgetPage.css'
+import { confirmAsync } from '../../stores/confirmStore'
 
 export function BudgetPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -80,7 +81,13 @@ export function BudgetPage() {
 
   async function handleDeleteSelected() {
     const count = selectedCategoryIds.size
-    if (!confirm(`Delete ${count} categor${count !== 1 ? 'ies' : 'y'}? Transactions will lose their category.`)) return
+    const ok = await confirmAsync({
+      title: `Delete ${count} categor${count !== 1 ? 'ies' : 'y'}?`,
+      message: 'Transactions will lose their category.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     const ids = Array.from(selectedCategoryIds)
     await Promise.all(ids.map((id) => deleteCategory.mutateAsync(id)))
     clearCategorySelection()

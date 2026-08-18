@@ -20,7 +20,7 @@ import toast from 'react-hot-toast'
 import { useAppStore } from '../../stores/appStore'
 import {
   useAIJobs,
-  useActiveAIJobCount,
+  useAIJobCounts,
   useDeleteAIJob,
   useReprocessAIJob,
   type AIJob,
@@ -30,6 +30,7 @@ import { fetchAttachmentBlob, useAttachmentUrl } from '../../api/attachments'
 import { AttachmentLightbox } from '../../components/attachments/Lightbox'
 import { useFormatters } from '../../hooks/useFormatters'
 import './AIActivityPage.css'
+import { confirmAsync } from '../../stores/confirmStore'
 
 const PAGE_SIZE = 50
 
@@ -147,8 +148,13 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
   }
 
   async function handleDelete() {
-    if (!confirm('Remove this entry from the AI activity log? The transaction (if any) is kept.'))
-      return
+    const ok = await confirmAsync({
+      title: 'Remove this entry from the AI activity log?',
+      message: 'The transaction (if any) is kept.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    })
+    if (!ok) return
     await remove.mutateAsync(job.id)
   }
 
@@ -307,7 +313,8 @@ export function AIActivityPage() {
   const [statusFilter, setStatusFilter] = useState<AIJobStatus | ''>('')
   const [offset, setOffset] = useState(0)
 
-  const { data: activeCount = 0 } = useActiveAIJobCount(budgetId)
+  const { data: counts } = useAIJobCounts(budgetId)
+  const activeCount = counts?.active ?? 0
   const { data, isLoading } = useAIJobs(
     budgetId,
     { status: statusFilter || undefined, limit: PAGE_SIZE, offset },

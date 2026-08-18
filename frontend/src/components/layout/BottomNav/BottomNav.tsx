@@ -23,7 +23,7 @@ export function BottomNav() {
         <span>Accounts</span>
       </NavLink>
       <div className="bottom-nav__add-slot">
-        <button className="bottom-nav__add" onClick={openQuickAdd} aria-label="Add transaction">
+        <button className="bottom-nav__add press-scale" onClick={openQuickAdd} aria-label="Add transaction">
           <Plus size={24} />
         </button>
       </div>

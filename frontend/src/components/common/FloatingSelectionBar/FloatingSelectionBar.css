@@ -1,6 +1,9 @@
 .fsb {
   position: fixed;
-  bottom: calc(var(--spacing-lg) * 2);
+  /* One expression for every viewport: --nav-h is 0 on desktop and 0 while
+     typing, and --vv-bottom is 0 unless something (keyboard, UA toolbar) is
+     occluding the bottom of the layout viewport this bar is anchored to. */
+  bottom: calc(var(--vv-bottom) + var(--nav-h) + var(--spacing-lg) * 2);
   left: 50%;
   transform: translateX(-50%);
   background: var(--color-accent);
@@ -12,7 +15,7 @@
   font-size: var(--font-size-sm);
   color: var(--bg-primary);
   box-shadow: var(--shadow-md);
-  z-index: 100;
+  z-index: var(--z-float);
   white-space: nowrap;
   animation: fsb-rise 0.15s ease;
 }
@@ -80,13 +83,27 @@
   cursor: not-allowed;
 }
 
-/* Stack above the mobile bottom nav; allow actions to wrap on narrow screens */
+/* Nav clearance is in the base rule via --nav-h; this block only handles
+   wrapping on narrow screens and comfortable touch targets. */
 @media (max-width: 768px) {
   .fsb {
-    bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + var(--spacing-md));
+    /* Tighter gap than desktop: vertical space is scarcer and the bar is
+       already lifted clear of the nav by --nav-h. */
+    bottom: calc(var(--vv-bottom) + var(--nav-h) + var(--spacing-md));
     max-width: calc(100vw - 16px);
     white-space: normal;
     flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .fsb__btn {
+    min-height: var(--tap-min);
+    padding: 4px var(--spacing-md);
+  }
+
+  .fsb__close {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
     justify-content: center;
   }
 }

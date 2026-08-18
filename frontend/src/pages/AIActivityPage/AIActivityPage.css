@@ -204,6 +204,7 @@
   word-break: break-word;
   max-height: 120px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .ai-activity__response {
@@ -259,6 +260,7 @@
   word-break: break-word;
   max-height: 300px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .ai-activity__model {

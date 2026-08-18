@@ -4,6 +4,7 @@
  * integer-cents validation gating the submit button.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ id: 'new-txn' })))
@@ -32,12 +33,14 @@ vi.mock('../../../api/transactions', () => ({
   useUpdateTransaction: () => ({ mutateAsync: updateMutate, isPending: false }),
   useDeleteTransaction: () => ({ mutateAsync: deleteMutate, isPending: false }),
   useConvertToSplit: () => ({ mutateAsync: convertMutate, isPending: false }),
+  useTransaction: () => ({ data: undefined }),
   usePayees: () => ({ data: [] }),
   useSimilarTransactions: () => ({ data: [] }),
 }))
 vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: CATEGORIES }),
   useCategoryGroups: () => ({ data: GROUPS }),
+  useRecentPayeeForCategory: () => ({ data: undefined }),
 }))
 vi.mock('../../../api/accounts', () => ({ useAccounts: () => ({ data: ACCOUNTS }) }))
 vi.mock('../../../api/ai', () => ({
@@ -46,6 +49,7 @@ vi.mock('../../../api/ai', () => ({
 }))
 vi.mock('../../../api/aiJobs', () => ({
   useSubmitReceipt: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useReprocessAIJob: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('../../../api/attachments', () => ({
   ATTACHMENT_ACCEPT: 'image/*,application/pdf',
@@ -61,14 +65,22 @@ import { TransactionEditor } from './TransactionEditor'
 import type { Transaction } from '../../../types'
 
 function renderEditor(props: Partial<Parameters<typeof TransactionEditor>[0]> = {}) {
+  // The api/* hooks are mocked, but useToastUndo reaches the real
+  // useQueryClient — without a provider every render in this file throws
+  // before a single assertion runs.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
   return render(
-    <TransactionEditor
-      budgetId="b1"
-      accountId="acc-1"
-      transaction={null}
-      onClose={vi.fn()}
-      {...props}
-    />
+    <QueryClientProvider client={queryClient}>
+      <TransactionEditor
+        budgetId="b1"
+        accountId="acc-1"
+        transaction={null}
+        onClose={vi.fn()}
+        {...props}
+      />
+    </QueryClientProvider>
   )
 }
 
@@ -81,16 +93,17 @@ function submitButton(name = 'Add') {
   return screen.getByRole('button', { name })
 }
 
-// The editor renders several native selects (cleared status, category, split
-// rows); tell them apart by their first option's text.
-function selectsWithFirstOption(text: string) {
-  return screen
-    .getAllByRole('combobox')
-    .filter((el) => (el as HTMLSelectElement).options[0]?.text === text) as HTMLSelectElement[]
-}
-
-function categorySelect() {
-  return selectsWithFirstOption('No category')[0]
+/**
+ * Category is picked through CategoryCombobox, not a native <select>: focus
+ * opens the portalled listbox, typing filters it, and options commit on
+ * mousedown (so the input never blurs first).
+ */
+function pickCategory(name: string, label = 'Category', index = 0) {
+  const input = screen.getAllByRole('combobox', { name: label })[index]
+  fireEvent.focus(input)
+  fireEvent.change(input, { target: { value: name } })
+  const option = screen.getAllByRole('option', { name }).at(-1)!
+  fireEvent.mouseDown(option)
 }
 
 function setDate(value: string) {
@@ -147,7 +160,7 @@ describe('TransactionEditor future-overspend gate (B1)', () => {
   it('sends the categorized amount as a probe before saving', async () => {
     renderEditor()
     setDate('2030-01-15')
-    fireEvent.change(categorySelect(), { target: { value: 'cat-1' } })
+    pickCategory('Groceries')
     fireEvent.change(amountInputs()[0], { target: { value: '50' } })
     fireEvent.click(submitButton())
 
@@ -162,7 +175,7 @@ describe('TransactionEditor future-overspend gate (B1)', () => {
   it('does not save when the user declines the warning', async () => {
     confirmOverspend.mockImplementation(() => Promise.resolve(false))
     renderEditor()
-    fireEvent.change(categorySelect(), { target: { value: 'cat-1' } })
+    pickCategory('Groceries')
     fireEvent.change(amountInputs()[0], { target: { value: '50' } })
     fireEvent.click(submitButton())
 
@@ -217,8 +230,6 @@ describe('TransactionEditor split-mode validation', () => {
 
     expect(submitButton()).toBeDisabled()
 
-    // Two split rows, one category select each
-    const selects = selectsWithFirstOption('Category…')
     const splitAmounts = screen
       .getAllByPlaceholderText('0.00')
       .filter((el) => el.classList.contains('txn-editor__split-amount'))
@@ -229,8 +240,9 @@ describe('TransactionEditor split-mode validation', () => {
     // Amounts right but categories missing — still blocked
     expect(submitButton()).toBeDisabled()
 
-    fireEvent.change(selects[0], { target: { value: 'cat-1' } })
-    fireEvent.change(selects[1], { target: { value: 'cat-2' } })
+    // Two split rows, one category picker each
+    pickCategory('Groceries', 'Split category', 0)
+    pickCategory('Fun', 'Split category', 1)
     expect(submitButton()).toBeEnabled()
 
     fireEvent.click(submitButton())

@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { AlertTriangle, Calendar } from 'lucide-react'
 import { useCashProjectionReport } from '../../../api/reports'
+import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
@@ -18,6 +19,7 @@ interface Props {
 const HORIZON_OPTIONS = [30, 60, 90, 180] as const
 
 export function CashProjectionReport({ budgetId }: Props) {
+  const chartHeight = useChartHeight(360)
   const [horizon, setHorizon] = useState<(typeof HORIZON_OPTIONS)[number]>(90)
   const { data, isLoading, isError, refetch } = useCashProjectionReport(budgetId, horizon)
   const { formatMoney, formatDate, settings } = useFormatters()
@@ -110,7 +112,7 @@ export function CashProjectionReport({ budgetId }: Props) {
       {chartData.length === 0 ? (
         <div className="reports-empty">No projection data available.</div>
       ) : (
-        <ResponsiveContainer width="100%" height={360}>
+        <ResponsiveContainer width="100%" height={chartHeight}>
           <ComposedChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
             <XAxis

@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { useReportStore } from '../../../stores/reportStore'
 import { useCashFlowReport } from '../../../api/reports'
 import { usePayees } from '../../../api/payees'
+import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { previousWindow } from '../../../utils/dateWindow'
@@ -157,6 +158,7 @@ function SankeyTooltip({
 }
 
 export function CashFlowSankeyReport({ budgetId }: Props) {
+  const chartHeight = useChartHeight(500)
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const [viewMode, setViewMode] = useState<'spent' | 'budgeted'>('spent')
@@ -383,7 +385,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         </p>
       )}
 
-      <ResponsiveContainer width="100%" height={500}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
         <Sankey
           data={sankeyData}
           nodePadding={14}

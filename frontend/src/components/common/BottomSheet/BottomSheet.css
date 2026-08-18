@@ -1,38 +1,67 @@
-.bottom-sheet-backdrop {
+/* One layer per sheet: spans the layout viewport so the absolutely-positioned
+   children below resolve against exactly the box a fixed element would. */
+.bottom-sheet-layer {
   position: fixed;
   inset: 0;
+  z-index: var(--z-overlay);
+}
+
+.bottom-sheet-layer--closing {
+  pointer-events: none;
+}
+
+.bottom-sheet-backdrop {
+  position: absolute;
+  inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: var(--z-sheet-backdrop);
   animation: bottom-sheet-fade var(--transition-base);
 }
 
 .bottom-sheet {
-  position: fixed;
+  position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
-  z-index: var(--z-sheet);
+  /* Sit on the VISIBLE bottom edge. --vv-bottom is whatever the layout
+     viewport currently hides down there (keyboard, UA toolbar); `bottom: 0`
+     put the footer behind the keyboard, and clamping height instead only
+     moved the sheet's TOP edge down — the wrong axis for a bottom-anchored
+     box, which is why the sheet appeared to slide away. */
+  bottom: var(--vv-bottom);
   display: flex;
   flex-direction: column;
-  max-height: 85dvh;
+  max-height: calc(var(--vvh) * 0.85);
   background: var(--bg-secondary);
   border-top-left-radius: var(--border-radius-lg);
   border-top-right-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-lg, 0 -8px 32px rgba(0, 0, 0, 0.35));
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-bottom);
   animation: bottom-sheet-rise var(--transition-base);
   outline: none;
   transition: transform var(--transition-fast);
 }
 
+/* top + bottom define the height, so it re-solves the instant --vv-* change
+   with no JS clamp in the loop. */
 .bottom-sheet--full {
-  height: calc(100dvh - max(24px, env(safe-area-inset-top)));
+  top: calc(var(--vv-top) + max(24px, var(--safe-top)));
+  height: auto;
   max-height: none;
+}
+
+/* The home indicator sits behind the keyboard; reserving its inset there is
+   dead space between the footer and the keys. */
+html[data-keyboard='open'] .bottom-sheet {
+  padding-bottom: 0;
 }
 
 .bottom-sheet__header {
   flex-shrink: 0;
   padding-bottom: var(--spacing-sm);
+}
+
+/* Only the drag surface opts out of native touch handling; a full-height
+   sheet's header holds a button and must stay tappable. */
+.bottom-sheet__header--draggable {
   touch-action: none;
 }
 
@@ -44,8 +73,36 @@
   background: var(--border-color);
 }
 
+/* Three tracks so the title stays optically centred whether or not a close
+   button is present. */
+.bottom-sheet__bar {
+  display: grid;
+  grid-template-columns: var(--tap-min) 1fr var(--tap-min);
+  align-items: center;
+  min-height: var(--tap-min);
+  padding-top: var(--spacing-xs);
+}
+
+/* Top-left: the iOS Cancel position — thumb-reachable, and unconfusable with
+   a destructive action on the right. This is the only guaranteed exit from a
+   full-height sheet: the backdrop is a sliver under the notch, and an
+   installed PWA has no back gesture at all. */
+.bottom-sheet__close {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin-left: var(--spacing-xs);
+  border-radius: var(--border-radius-md);
+  color: var(--text-secondary);
+  touch-action: manipulation;
+}
+
 .bottom-sheet__title {
-  padding: var(--spacing-sm) var(--spacing-md) 0;
+  grid-column: 2;
+  padding: 0 var(--spacing-sm);
   font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-primary);

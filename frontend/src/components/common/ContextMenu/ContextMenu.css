@@ -5,7 +5,7 @@
   box-shadow: var(--shadow-lg);
   padding: var(--spacing-xs) 0;
   min-width: 180px;
-  z-index: 200;
+  z-index: var(--z-dropdown);
 }
 
 .context-menu__item {
@@ -61,4 +61,19 @@
   height: 1px;
   background-color: var(--border-subtle);
   margin: var(--spacing-xs) 0;
+}
+
+/* A context menu is only reachable by long-press on touch, so its rows must
+   be comfortable targets rather than desktop-density. */
+@media (max-width: 768px) {
+  .context-menu {
+    min-width: 200px;
+    max-width: calc(100vw - 32px);
+  }
+
+  .context-menu__item {
+    min-height: var(--tap-min);
+    display: flex;
+    align-items: center;
+  }
 }

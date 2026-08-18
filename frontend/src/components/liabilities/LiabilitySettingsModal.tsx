@@ -12,6 +12,7 @@ import {
 } from '../../api/liabilities'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import './LiabilitySettingsModal.css'
+import { confirmAsync } from '../../stores/confirmStore'
 
 const LIABILITY_TYPES: { value: LiabilityType; label: string }[] = [
   { value: 'mortgage', label: 'Mortgage' },
@@ -133,12 +134,13 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
 
   async function handleDelete() {
     if (!liability) return
-    if (
-      !confirm(
-        `Stop tracking "${liability.name}"? This won't touch any accounts or transactions.`
-      )
-    )
-      return
+    const ok = await confirmAsync({
+      title: `Stop tracking "${liability.name}"?`,
+      message: "This won't touch any accounts or transactions.",
+      confirmLabel: 'Stop tracking',
+      destructive: true,
+    })
+    if (!ok) return
     await deleteLiability.mutateAsync(liability.id)
     toast.success('Liability removed')
     onClose()
@@ -198,9 +200,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               <span>Interest rate (% / yr)</span>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.001"
-                inputMode="decimal"
                 value={rate}
                 onChange={(e) => setRate(e.target.value)}
                 placeholder="6.25"
@@ -210,9 +212,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               <span>Minimum payment</span>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.01"
-                inputMode="decimal"
                 value={minimumPayment}
                 onChange={(e) => setMinimumPayment(e.target.value)}
                 placeholder="275.00"
@@ -270,9 +272,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                 <span>Current balance owed</span>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min="0"
                   step="0.01"
-                  inputMode="decimal"
                   value={balance}
                   onChange={(e) => setBalance(e.target.value)}
                   placeholder="9480.00"
@@ -296,9 +298,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                 <span>Original principal</span>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min="0"
                   step="0.01"
-                  inputMode="decimal"
                   value={originalPrincipal}
                   onChange={(e) => setOriginalPrincipal(e.target.value)}
                 />

@@ -54,3 +54,22 @@ apiClient.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+/**
+ * Human-readable message from an API error.
+ *
+ * FastAPI's `detail` is usually a string, but an endpoint that needs to hand
+ * the client structured data alongside the message (the duplicate-receipt 409
+ * returns the existing transaction id) sends an object instead. Reading
+ * `detail` blindly then renders "[object Object]" at the user. Every call site
+ * used to do its own unchecked cast; this is the one place that has to know.
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (typeof detail === 'string' && detail) return detail
+  if (detail && typeof detail === 'object') {
+    const message = (detail as { message?: unknown }).message
+    if (typeof message === 'string' && message) return message
+  }
+  return fallback
+}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, Paperclip } from 'lucide-react'
+import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, Paperclip, RefreshCw } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { ReceiptPane } from '../../ai/ReceiptPane'
 import { ReceiptScanTab } from './ReceiptScanTab'
@@ -20,9 +20,11 @@ import { useAIStatus, useSuggestCategory } from '../../../api/ai'
 import { type AIJob } from '../../../api/aiJobs'
 import { useAppStore } from '../../../stores/appStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
-import { useVisualViewportHeight } from '../../../hooks/useVisualViewportHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
+import { Link } from 'react-router-dom'
+import { useReprocessAIJob } from '../../../api/aiJobs'
+import { Modal } from '../../common/Modal/Modal'
+import { isConfigFailure, scanFailureReason } from './scanFailure'
 import { today } from '../../../utils/dates'
 import { useToastUndo } from '../../../utils/toastUndo'
 import { fromCents, toCents } from '../../../utils/money'
@@ -90,14 +92,13 @@ export function TransactionEditor({
 
   const isMobile = useIsMobile()
   // Clamp the full-screen editor above the iOS keyboard so the footer stays reachable
-  const viewportHeight = useVisualViewportHeight(isMobile)
   const { formatMoney, formatDate } = useFormatters()
   // Android back / swipe-back cancels the editor instead of leaving the page
-  useHistoryDismissable(isMobile, onClose, 'txn-editor')
 
   const isEdit = !!transaction
   // Review mode: an AI-created transaction being verified against its receipt
   const isReview = !!aiJob && isEdit
+  const reprocess = useReprocessAIJob(budgetId)
 
   // No fixed account (budget-view add): the user picks one, defaulting to the
   // same sticky "last used" account the quick-add flow remembers.
@@ -490,15 +491,13 @@ export function TransactionEditor({
   ) : null
 
   return (
-    <div
+    <Modal
+      onClose={onClose}
       className="txn-editor-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+      historyKey={isMobile ? 'txn-editor' : undefined}
     >
       <form
         className={`txn-editor ${isReview ? 'txn-editor--review' : ''}`}
-        style={viewportHeight !== null ? { height: viewportHeight, maxHeight: viewportHeight } : undefined}
         role="dialog"
         aria-modal
         aria-labelledby="txn-editor-title"
@@ -520,7 +519,20 @@ export function TransactionEditor({
             {aiJob!.status === 'error' ? (
               <>
                 <AlertTriangle size={13} />
-                <span>Scan failed — enter the details from the image, then approve.</span>
+                {/* The specific reason, not just "it failed". A model without
+                    vision and a genuinely unreadable photo produce the same
+                    stub, and only one of them is fixable in Settings. */}
+                <span>
+                  {scanFailureReason(aiJob!.error)}
+                  {isConfigFailure(aiJob!.error) && (
+                    <>
+                      {' '}
+                      <Link to="/settings" className="txn-editor__ai-banner-link">
+                        Open Settings
+                      </Link>
+                    </>
+                  )}
+                </span>
               </>
             ) : (
               <>
@@ -532,6 +544,17 @@ export function TransactionEditor({
                     : ''}
                 </span>
               </>
+            )}
+            {aiJob!.status === 'error' && (
+              <button
+                type="button"
+                className="txn-editor__ai-banner-action"
+                onClick={() => reprocess.mutate(aiJob!.id)}
+                disabled={reprocess.isPending}
+              >
+                <RefreshCw size={12} />
+                {reprocess.isPending ? 'Retrying…' : 'Try again'}
+              </button>
             )}
             {suggestedSplit && suggestedSplit.length >= 2 && !isSplit && (
               <button
@@ -936,6 +959,6 @@ export function TransactionEditor({
           </>
         )}
       </form>
-    </div>
+    </Modal>
   )
 }

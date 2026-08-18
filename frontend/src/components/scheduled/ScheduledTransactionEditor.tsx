@@ -7,6 +7,7 @@ import type { ScheduledTransaction } from '../../types'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { GroupedCategoryOptions } from '../common/GroupedCategoryOptions/GroupedCategoryOptions'
 import './ScheduledTransactionEditor.css'
+import { confirmAsync } from '../../stores/confirmStore'
 
 const FREQUENCIES = [
   { value: 'daily', label: 'Daily' },
@@ -88,7 +89,12 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
 
   async function handleDelete() {
     if (!existing) return
-    if (!confirm('Delete this scheduled transaction?')) return
+    const ok = await confirmAsync({
+      title: 'Delete this scheduled transaction?',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     await del.mutateAsync(existing.id)
     onClose()
   }
@@ -128,7 +134,7 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
             </label>
             <label className="sched-editor__label">
               Amount
-              <input type="number" step="0.01" min="0" className="sched-editor__input" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+              <input type="number" inputMode="decimal" step="0.01" min="0" className="sched-editor__input" value={amount} onChange={(e) => setAmount(e.target.value)} required />
             </label>
           </div>
 

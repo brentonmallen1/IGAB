@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { confirmAsync } from '../stores/confirmStore'
 
 export interface Attachment {
   id: string
@@ -177,20 +178,25 @@ export async function uploadFilesToTransaction(
  * so the user should know images go down with the transaction.
  */
 export async function confirmDeleteTransaction(transactionId: string): Promise<boolean> {
-  let message = 'Delete this transaction?'
+  let detail: string | undefined
   try {
     const { data } = await apiClient.get<Attachment[]>(
       `/transactions/${transactionId}/attachments`
     )
     if (data.length === 1) {
-      message = 'Delete this transaction? The attached receipt image will be deleted with it.'
+      detail = 'The attached receipt image will be deleted with it.'
     } else if (data.length > 1) {
-      message = `Delete this transaction? The ${data.length} attached receipt images will be deleted with it.`
+      detail = `The ${data.length} attached receipt images will be deleted with it.`
     }
   } catch {
     // Count is best-effort; the plain confirmation still protects the delete.
   }
-  return confirm(message)
+  return confirmAsync({
+    title: 'Delete this transaction?',
+    message: detail,
+    confirmLabel: 'Delete',
+    destructive: true,
+  })
 }
 
 export function useCheckAttachments(transactionIds: string[]) {

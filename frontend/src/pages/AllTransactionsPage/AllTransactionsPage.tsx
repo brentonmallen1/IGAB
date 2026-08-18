@@ -1,7 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
 import { useAppStore } from '../../stores/appStore'
+import { useUIStore } from '../../stores/uiStore'
 import './AllTransactionsPage.css'
 
 /**
@@ -13,6 +14,24 @@ export function AllTransactionsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const [searchParams, setSearchParams] = useSearchParams()
   const highlightId = searchParams.get('highlight')
+  const seedQuery = searchParams.get('q')
+  const setTransactionSearch = useUIStore((s) => s.setTransactionSearch)
+
+  // Lets anything link straight to a filtered register — the AI badge points
+  // here with `is: unapproved` so "come back and review what arrived" is one
+  // tap. Consumed once, then stripped, so a later manual search isn't undone
+  // by a stale URL on refresh or back-navigation.
+  useEffect(() => {
+    if (seedQuery === null) return
+    setTransactionSearch(seedQuery)
+    setSearchParams(
+      (prev) => {
+        prev.delete('q')
+        return prev
+      },
+      { replace: true }
+    )
+  }, [seedQuery, setTransactionSearch, setSearchParams])
 
   const clearHighlight = useCallback(() => {
     if (highlightId) {

@@ -144,3 +144,32 @@
   color: var(--text-primary);
   background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
+
+/* The whole bar was desktop-density: ~26px buttons, a 26px-tall search field
+   and a 16px clear button, on the app's most-used mobile page. */
+@media (max-width: 768px) {
+  .budget-view-bar {
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .budget-view-bar__btn {
+    min-height: var(--tap-min);
+    padding: 4px var(--spacing-md);
+    font-size: var(--font-size-base);
+  }
+
+  .budget-view-bar__search {
+    height: var(--tap-min);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .budget-view-bar__search-clear {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
