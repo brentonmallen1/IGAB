@@ -1,7 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from igab.services.settings_service import DEFAULTS, SettingsService
 
 
@@ -84,3 +82,45 @@ class TestSeedFromEnv:
         svc = SettingsService(repo)
         await svc.seed_from_env()
         repo.set.assert_not_called()
+
+
+class TestEmptyStringSemantics:
+    """An explicit-but-empty DB row is how "vision override off" is stored.
+    Every reader must let it beat an env var, or the settings UI shows a
+    model the worker correctly ignores."""
+
+    def _repo_with_empty(self, key: str) -> MagicMock:
+        repo = MagicMock()
+        setting = MagicMock()
+        setting.key = key
+        setting.value = ""
+        repo.get = AsyncMock(return_value=setting)
+        repo.get_all = AsyncMock(return_value=[setting])
+        return repo
+
+    async def test_get_returns_explicit_empty_over_env(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_VISION_MODEL", "env-model")
+        svc = SettingsService(self._repo_with_empty("ollama_vision_model"))
+        assert await svc.get("ollama_vision_model") == ""
+
+    async def test_get_all_returns_explicit_empty_over_env(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_VISION_MODEL", "env-model")
+        svc = SettingsService(self._repo_with_empty("ollama_vision_model"))
+        result = await svc.get_all()
+        assert result["ollama_vision_model"] == ""
+
+    async def test_get_all_detailed_returns_explicit_empty_over_env(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_VISION_MODEL", "env-model")
+        svc = SettingsService(self._repo_with_empty("ollama_vision_model"))
+        detailed = await svc.get_all_detailed()
+        row = next(r for r in detailed if r["key"] == "ollama_vision_model")
+        assert row["value"] == ""
+        assert row["is_overridden"] is True
+
+    async def test_get_all_detailed_env_still_wins_when_no_db_row(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_VISION_MODEL", "env-model")
+        svc = SettingsService(make_repo(None))
+        detailed = await svc.get_all_detailed()
+        row = next(r for r in detailed if r["key"] == "ollama_vision_model")
+        assert row["value"] == "env-model"
+        assert row["is_overridden"] is False

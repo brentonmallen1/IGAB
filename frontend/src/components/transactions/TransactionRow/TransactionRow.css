@@ -1,6 +1,6 @@
 .transaction-row {
   display: grid;
-  grid-template-columns: 32px 28px 100px 1fr 1fr 1fr 90px 90px 60px;
+  grid-template-columns: 32px 54px 100px 1fr 1fr 1fr 90px 90px 60px;
   padding: 7px var(--spacing-md);
   border-bottom: 1px solid var(--border-subtle);
   font-size: var(--font-size-sm);
@@ -13,7 +13,7 @@
 
 /* All-accounts register: extra account column after the date */
 .transaction-table--all-accounts .transaction-row {
-  grid-template-columns: 32px 28px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
+  grid-template-columns: 32px 54px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
 }
 
 .transaction-row .txn-col--account {
@@ -81,6 +81,10 @@
   justify-content: center;
 }
 
+/* Track is 54px: three 16px icons — the everyday AI-receipt case of
+   eye + sparkles + attachment — fit at full size (52px), and the rare fourth
+   (a transfer-linked AI row) flex-shrinks each icon to its 12px glyph
+   minimum (4×12 + 3×2 = 54) instead of bleeding into the date column. */
 .txn-col--status {
   display: flex;
   align-items: center;

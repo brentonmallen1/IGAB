@@ -87,7 +87,7 @@ def attachments_dir(tmp_path, monkeypatch):
 @pytest.fixture
 def mock_extraction(monkeypatch):
     monkeypatch.setattr(
-        AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4"))
+        AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4", False))
     )
     monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=True))
     mock = AsyncMock(return_value=GOOD_EXTRACTION)
@@ -197,11 +197,34 @@ class TestReceiptFailures:
         self, db_session, attachments_dir, monkeypatch
     ):
         monkeypatch.setattr(
-            AIService, "check_vision_support", AsyncMock(return_value=(False, "llama3.2"))
+            AIService,
+            "check_vision_support",
+            AsyncMock(return_value=(False, "llama3.2", False)),
         )
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account)
-        with pytest.raises(NonRetryableJobError, match="does not support vision"):
+        with pytest.raises(NonRetryableJobError, match="does not support vision") as exc_info:
+            await process_one_job(db_session, job)
+        # The copy must name where the model came from — "set a vision model"
+        # is the wrong advice when the fix is changing the main model.
+        assert "main model 'llama3.2'" in str(exc_info.value)
+        assert "no vision override is set" in str(exc_info.value)
+        # And the failure recorder must persist the model even though the
+        # processing session's job.model assignment rolls back.
+        await record_job_failure(db_session, job, exc_info.value)
+        assert job.model == "llama3.2"
+
+    async def test_no_vision_error_names_the_override_when_one_is_set(
+        self, db_session, attachments_dir, monkeypatch
+    ):
+        monkeypatch.setattr(
+            AIService,
+            "check_vision_support",
+            AsyncMock(return_value=(False, "tiny-ocr", True)),
+        )
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        with pytest.raises(NonRetryableJobError, match="vision override 'tiny-ocr'"):
             await process_one_job(db_session, job)
 
     async def test_retryable_failure_requeues_with_backoff(
@@ -288,7 +311,7 @@ class TestReceiptGate:
         self, db_session, attachments_dir, monkeypatch
     ):
         monkeypatch.setattr(
-            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4"))
+            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4", False))
         )
         monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=False))
         extract = AsyncMock(return_value=GOOD_EXTRACTION)
@@ -312,7 +335,7 @@ class TestReceiptGate:
         self, db_session, attachments_dir, monkeypatch
     ):
         monkeypatch.setattr(
-            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4"))
+            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4", False))
         )
         monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=None))
         monkeypatch.setattr(
@@ -517,7 +540,7 @@ class TestRequestLogging:
 
     def _patch(self, monkeypatch, *, fail: bool = False):
         monkeypatch.setattr(
-            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4"))
+            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4", False))
         )
         monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=True))
 

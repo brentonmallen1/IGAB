@@ -58,7 +58,10 @@ class SettingsService:
         result: dict[str, str | None] = {}
         for key, default in DEFAULTS.items():
             env_val = os.getenv(key.upper())
-            result[key] = db_map.get(key) or env_val or default
+            db_val = db_map.get(key)
+            # Mirror get(): an explicit DB row wins even when empty — "" is how
+            # "vision override off" is stored, and it must beat an env var.
+            result[key] = db_val if db_val is not None else (env_val or default)
         return result
 
     async def get_all_detailed(self) -> list[dict]:
@@ -72,7 +75,10 @@ class SettingsService:
             result.append(
                 {
                     "key": key,
-                    "value": db_val or env_val or default,
+                    # Same resolution as get(): an explicit-but-empty DB row
+                    # wins over env. With `or` the UI would show an env
+                    # OLLAMA_VISION_MODEL the worker correctly ignores.
+                    "value": db_val if db_val is not None else (env_val or default),
                     "is_overridden": db_val is not None,
                     "default_value": default,
                 }

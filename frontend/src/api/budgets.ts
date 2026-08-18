@@ -329,6 +329,9 @@ export interface YnabPreviewResult {
 export interface YnabAccountTypeChoice {
   account_type: string
   on_budget: boolean
+  /** Leave this account (and all its transactions) out of the import —
+   * YNAB exports include archived accounts with no marker. */
+  skip?: boolean
 }
 
 /** Parse the export without importing — feeds the account-type mapping step */

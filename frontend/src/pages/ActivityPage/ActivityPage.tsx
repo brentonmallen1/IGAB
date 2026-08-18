@@ -5,6 +5,7 @@ import { useChanges, useUndoChange, invalidateAfterUndo, type Change } from '../
 import { useQueryClient } from '@tanstack/react-query'
 import { useFormatters } from '../../hooks/useFormatters'
 import toast from 'react-hot-toast'
+import { groupChanges } from './groupChanges'
 import './ActivityPage.css'
 
 const PAGE_SIZE = 50
@@ -12,12 +13,7 @@ const PAGE_SIZE = 50
 export function ActivityPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const qc = useQueryClient()
-  const { formatDate, formatTime } = useFormatters()
-  // formatDateTime not yet in useFormatters; combine date + time
-  const formatDateTime = (isoStr: string) => {
-    const d = new Date(isoStr)
-    return `${formatDate(isoStr)} ${formatTime(d.getHours(), d.getMinutes())}`
-  }
+  const { formatDateTime } = useFormatters()
   const [offset, setOffset] = useState(0)
 
   const { data, isLoading, error } = useChanges(budgetId, PAGE_SIZE, offset)
@@ -35,25 +31,7 @@ export function ActivityPage() {
   const total = data?.total ?? 0
   const hasMore = offset + changes.length < total
 
-  // Group changes by batch_id for display
-  const grouped: Array<{ batchId: string | null; changes: Change[] }> = []
-  let currentBatch: string | null = null
-  let currentGroup: Change[] = []
-
-  for (const change of changes) {
-    if (change.batch_id !== currentBatch) {
-      if (currentGroup.length > 0) {
-        grouped.push({ batchId: currentBatch, changes: currentGroup })
-      }
-      currentBatch = change.batch_id
-      currentGroup = [change]
-    } else {
-      currentGroup.push(change)
-    }
-  }
-  if (currentGroup.length > 0) {
-    grouped.push({ batchId: currentBatch, changes: currentGroup })
-  }
+  const grouped = groupChanges(changes)
 
   async function handleUndo(changeId: string) {
     try {

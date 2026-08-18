@@ -234,3 +234,36 @@ class TestJsonFromResponse:
 
         with pytest.raises(json.JSONDecodeError):
             _json_from_response("the total is $42")
+
+
+class TestReceiptModelResolution:
+    """The chain the worker uses for receipt scans: vision override ->
+    main model -> hardcoded default. The status endpoint reports the result
+    so the settings UI can say "receipts are scanned by X" without
+    re-implementing this."""
+
+    async def test_override_wins_and_is_flagged(self):
+        svc = make_service({"ollama_vision_model": "tiny-ocr"})
+        assert await svc._resolve_vision_model() == ("tiny-ocr", True)
+
+    async def test_empty_override_falls_back_to_main_model(self):
+        svc = make_service({"ollama_model": "granite4:latest", "ollama_vision_model": ""})
+        assert await svc._resolve_vision_model() == ("granite4:latest", False)
+
+    async def test_both_unset_falls_back_to_default(self):
+        svc = make_service({"ollama_model": "", "ollama_vision_model": ""})
+        assert await svc._resolve_vision_model() == ("llama3.2", False)
+
+    async def test_status_reports_the_resolved_receipt_model(self):
+        # ai_enabled defaults to "false", so check_availability takes the
+        # early return — no network involved.
+        svc = make_service({"ollama_model": "granite4:latest", "ollama_vision_model": ""})
+        status = await svc.check_availability()
+        assert status["receipt_model"] == "granite4:latest"
+        assert status["vision_model"] is None
+
+    async def test_status_receipt_model_prefers_the_override(self):
+        svc = make_service({"ollama_model": "granite4:latest", "ollama_vision_model": "tiny-ocr"})
+        status = await svc.check_availability()
+        assert status["receipt_model"] == "tiny-ocr"
+        assert status["vision_model"] == "tiny-ocr"

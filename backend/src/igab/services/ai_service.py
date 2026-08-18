@@ -97,15 +97,22 @@ class AIService:
         model = await self.settings.get("ollama_model") or "llama3.2"
         return OllamaClient(host, model)
 
+    async def _resolve_vision_model(self) -> tuple[str, bool]:
+        """The model receipt scans will use, and whether the vision override
+        supplied it (False = fell through to the main model / default).
+
+        This is the single owner of the fallback chain — the status endpoint
+        reports its result so the UI never re-implements the resolution."""
+        override = await self.settings.get("ollama_vision_model")
+        if override:
+            return override, True
+        return await self.settings.get("ollama_model") or "llama3.2", False
+
     async def _vision_client(self) -> OllamaClient:
         """Client for vision tasks: the vision-model override when set,
         otherwise the primary model."""
         host = await self.settings.get("ollama_host") or "http://localhost:11434"
-        model = (
-            await self.settings.get("ollama_vision_model")
-            or await self.settings.get("ollama_model")
-            or "llama3.2"
-        )
+        model, _ = await self._resolve_vision_model()
         return OllamaClient(host, model)
 
     async def _capabilities(self, client: OllamaClient) -> list[str] | None:
@@ -159,6 +166,9 @@ class AIService:
         host = await self.settings.get("ollama_host")
         model = await self.settings.get("ollama_model")
         vision_model = await self.settings.get("ollama_vision_model") or None
+        # Resolved through the real fallback chain so the settings UI can say
+        # "receipts are scanned by X" without re-implementing the resolution.
+        receipt_model, _ = await self._resolve_vision_model()
 
         if not enabled or not host:
             return {
@@ -167,6 +177,7 @@ class AIService:
                 "host": host,
                 "model": model,
                 "vision_model": vision_model,
+                "receipt_model": receipt_model,
             }
 
         client = await self._client()
@@ -177,6 +188,7 @@ class AIService:
             "host": host,
             "model": model,
             "vision_model": vision_model,
+            "receipt_model": receipt_model,
         }
 
     async def list_models(self) -> list[dict]:
@@ -206,14 +218,19 @@ class AIService:
             )
         return models
 
-    async def check_vision_support(self) -> tuple[bool | None, str]:
-        """(supported, model): True/False when the server reports
-        capabilities, None when it doesn't (unknown — let the job try)."""
+    async def check_vision_support(self) -> tuple[bool | None, str, bool]:
+        """(supported, model, from_override): True/False when the server
+        reports capabilities, None when it doesn't (unknown — let the job
+        try). from_override says whether the vision override supplied the
+        model — the failure copy must name where the model came from, since
+        "set a vision model" is the wrong advice when the fix is changing
+        the main model."""
+        model, from_override = await self._resolve_vision_model()
         client = await self._vision_client()
         caps = await self._capabilities(client)
         if caps is None:
-            return None, client.model
-        return "vision" in caps, client.model
+            return None, model, from_override
+        return "vision" in caps, model, from_override
 
     async def is_receipt_image(self, image_b64: str) -> bool | None:
         """Cheap gate before full extraction: is this even a receipt?

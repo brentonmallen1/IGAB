@@ -106,7 +106,7 @@ class TestSubmitReceipt:
         """
 
         async def no_vision(self):
-            return False, "text-only-model"
+            return False, "text-only-model", False
 
         monkeypatch.setattr(AIService, "check_vision_support", no_vision)
 

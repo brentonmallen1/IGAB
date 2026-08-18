@@ -13,17 +13,27 @@
   padding: var(--spacing-sm) 0 var(--spacing-xs);
 }
 
+/* A <label> wrapping the input, so a tap anywhere on the display raises the
+   keypad. The padding is the point: the input is only ~4ch wide while empty,
+   which is a poor target for the one control that opens the keyboard now that
+   focus is no longer automatic on touch. The radius shapes the press scrim
+   that base.css gives every label on touch. */
 .quick-add__amount {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 2px;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--border-radius-md);
   font-variant-numeric: tabular-nums;
+  cursor: text;
 }
 
 .quick-add__amount-sign {
   font-size: var(--font-size-xl);
   font-weight: 600;
   color: var(--text-muted);
+  user-select: none;
 }
 
 .quick-add__amount input {

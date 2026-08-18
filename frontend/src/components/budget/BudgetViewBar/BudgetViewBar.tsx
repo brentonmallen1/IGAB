@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ListFilter, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore } from '../../../stores/uiStore'
+import { targetStatus } from '../../../utils/targets'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
 import type { CategoryBalance, CategoryTarget } from '../../../types'
 import './BudgetViewBar.css'
@@ -36,16 +37,18 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
 
   const targetMap = new Map(targets.map((t) => [t.category_id, t]))
 
+  // Funding status via utils/targets — the same rules as the row pill and
+  // Fill Underfunded, so a chip's count always matches what the rows show.
   const counts = {
     overspent: categoryBalances.filter((b) => b.available < 0).length,
     underfunded: categoryBalances.filter((b) => {
       const t = targetMap.get(b.category_id)
-      return t != null && b.assigned < t.target_amount
+      return t != null && targetStatus(t, b.assigned, b.available) === 'underfunded'
     }).length,
     'money-available': categoryBalances.filter((b) => b.available > 0).length,
     overfunded: categoryBalances.filter((b) => {
       const t = targetMap.get(b.category_id)
-      return t != null && b.assigned > t.target_amount
+      return t != null && targetStatus(t, b.assigned, b.available) === 'overfunded'
     }).length,
   }
 

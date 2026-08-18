@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { sameOllamaModel, useAIStatus, useOllamaModels } from '../../api/ai'
 import { useSettings, useUpdateSetting } from '../../api/settings'
 import './AISettings.css'
 
@@ -22,6 +23,8 @@ function isJsonObject(value: string): boolean {
 export function AIAdvancedSettings() {
   const { data: settings } = useSettings()
   const updateSetting = useUpdateSetting()
+  const aiStatus = useAIStatus()
+  const { data: models } = useOllamaModels()
 
   const get = (key: string) => settings?.find((s) => s.key === key)?.value ?? ''
 
@@ -33,35 +36,64 @@ export function AIAdvancedSettings() {
   const [editVisionOptions, setEditVisionOptions] = useState('')
   const [editTimeout, setEditTimeout] = useState('')
 
-  useEffect(() => {
-    if (!settings) return
+  // Sync the vision pair whenever the SERVER value changes — initial load, a
+  // completed save, or a change made on another device — while local edits
+  // win in between (same pattern as Combobox). The old once-only effect left
+  // this state frozen at its first value, which could render the toggle OFF
+  // with a vision model silently set in the DB: the exact lie that let a
+  // non-vision model process receipts unnoticed.
+  const [lastServerVisionModel, setLastServerVisionModel] = useState<string | null>(null)
+  if (settings && visionModel !== lastServerVisionModel) {
+    setLastServerVisionModel(visionModel)
     setUseVisionOverride(!!visionModel)
     setEditVisionModel(visionModel)
+  }
+
+  useEffect(() => {
+    if (!settings) return
     setEditOptions(get('ollama_options') || '{}')
     setEditVisionOptions(get('ollama_vision_options') || '{}')
     setEditTimeout(get('ai_vision_timeout_s') || '300')
-    // Sync from server once loaded; local edits win afterwards
+    // Free-text editors sync from the server once loaded; local edits win
+    // afterwards (unlike the vision pair above, they are inputs, not state
+    // indicators).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings === undefined])
 
-  async function save(key: string, value: string) {
+  async function save(key: string, value: string): Promise<boolean> {
     try {
       await updateSetting.mutateAsync({ key, value })
       toast.success('Saved')
+      return true
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail
       toast.error(detail ?? 'Save failed')
+      return false
     }
   }
 
   async function toggleVisionOverride(enabled: boolean) {
     setUseVisionOverride(enabled)
     if (!enabled) {
+      const previous = editVisionModel
       setEditVisionModel('')
-      await save('ollama_vision_model', '')
+      if (!(await save('ollama_vision_model', ''))) {
+        // The DB still holds the old value — showing OFF would be a lie.
+        setUseVisionOverride(true)
+        setEditVisionModel(previous)
+      }
     }
   }
+
+  // What will actually scan receipts, resolved server-side through the real
+  // fallback chain (override → main model). Warn only when Ollama knows the
+  // model and it lacks vision — an unknown model (Ollama down, not pulled)
+  // is a different problem and must not read as "misconfigured".
+  const receiptModel = aiStatus.data?.receipt_model ?? null
+  const receiptModelInfo = models?.find((m) => sameOllamaModel(m.name, receiptModel))
+  const receiptModelLacksVision =
+    !!receiptModelInfo && !receiptModelInfo.capabilities.includes('vision')
 
   const optionsValid = isJsonObject(editOptions)
   const visionOptionsValid = isJsonObject(editVisionOptions)
@@ -85,6 +117,20 @@ export function AIAdvancedSettings() {
           <span />
         </label>
       </div>
+      {/* Always visible, not gated on the toggle: this line is the ground
+          truth for "which model reads my receipts", whatever the controls
+          above claim. */}
+      {receiptModel && (
+        <div className="ai-settings__receipt-model" data-testid="receipt-model-line">
+          Receipts are scanned by <strong>{receiptModel}</strong>
+          {receiptModelLacksVision && (
+            <span className="ai-settings__receipt-model-warning">
+              <AlertTriangle size={12} aria-hidden />
+              this model does not support vision
+            </span>
+          )}
+        </div>
+      )}
       {useVisionOverride && (
         <div className="settings-row">
           <div className="settings-row__label">Vision model</div>

@@ -16,6 +16,7 @@ import { useAccounts } from '../../../api/accounts'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useCurrentPosition } from '../../../hooks/useCurrentPosition'
+import { useIsTouch } from '../../../hooks/useMediaQuery'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { getCurrencySymbol } from '../../../utils/money'
 import {
@@ -47,6 +48,7 @@ export function QuickAddSheet() {
   const lastAccountId = useAppStore((s) => s.lastQuickAddAccountId)
   const setLastAccountId = useAppStore((s) => s.setLastQuickAddAccountId)
   const locationEnabled = useAppStore((s) => s.locationEnabled)
+  const isTouch = useIsTouch()
 
   // Opt-in: one-shot fix while the sheet is open; silent null on denial/timeout
   const coords = useCurrentPosition(open && locationEnabled)
@@ -395,7 +397,12 @@ export function QuickAddSheet() {
       >
         <div className="quick-add">
           <div className="quick-add__amount-block">
-            <div className={`quick-add__amount ${direction === 'outflow' ? 'quick-add__amount--out' : 'quick-add__amount--in'}`}>
+            {/* Autofocus only where there is no on-screen keyboard. On a phone
+                the numpad opens over the sheet and buries Scan receipt /
+                Describe it — the two things most likely to be wanted before an
+                amount is typed. A label, not a div, so the whole 0.00 display
+                raises the keypad now that focus isn't automatic. */}
+            <label className={`quick-add__amount ${direction === 'outflow' ? 'quick-add__amount--out' : 'quick-add__amount--in'}`}>
               <span className="quick-add__amount-sign">
                 {direction === 'outflow' ? '−' : '+'}
                 {currencySymbol}
@@ -405,12 +412,12 @@ export function QuickAddSheet() {
                 value={amount}
                 onValueChange={setAmount}
                 placeholder="0.00"
-                autoFocus
+                autoFocus={!isTouch}
                 enterKeyHint="done"
                 aria-label="Amount"
                 style={{ width: `${Math.max(4, amount.length + 1)}ch` }}
               />
-            </div>
+            </label>
             {/* The mobile decimal keypad has no operator keys — these chips
                 make receipt-summing ("12.50+3.99") possible on the phone.
                 pointerdown is prevented so the chip never takes focus and the

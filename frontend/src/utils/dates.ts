@@ -48,6 +48,37 @@ export function formatMonthWithOptions(monthStr: string, dateFormat: DateFormat)
   }
 }
 
+/**
+ * Format a full ISO datetime (e.g. "2026-08-17T13:53:41+00:00") as local
+ * date + time. Not formatDateWithOptions: that takes date-ONLY strings and
+ * appends "T00:00:00" — fed a datetime it produced "undefined NaN, NaN".
+ * Both halves come from the same local Date so an evening entry never shows
+ * tomorrow's UTC date beside its local time.
+ */
+export function formatDateTimeWithOptions(
+  isoStr: string,
+  dateFormat: DateFormat,
+  timeFormat: TimeFormat
+): string {
+  const d = new Date(isoStr)
+  if (isNaN(d.getTime())) return isoStr
+  const day = d.getDate()
+  const month = MONTH_NAMES_SHORT[d.getMonth()]
+  const year = d.getFullYear()
+  const time = formatTimeWithOptions(d.getHours(), d.getMinutes(), timeFormat)
+  switch (dateFormat) {
+    case 'mdy':
+      return `${month} ${day}, ${year} ${time}`
+    case 'dmy':
+      return `${day} ${month} ${year} ${time}`
+    case 'ymd':
+      return (
+        `${year}-${String(d.getMonth() + 1).padStart(2, '0')}-` +
+        `${String(day).padStart(2, '0')} ${time}`
+      )
+  }
+}
+
 /** Format time with configurable format */
 export function formatTimeWithOptions(hour: number, minute: number, timeFormat: TimeFormat): string {
   const minStr = minute.toString().padStart(2, '0')

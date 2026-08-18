@@ -2,6 +2,12 @@ import React, { memo, useCallback, useRef, useState } from 'react'
 import { EyeOff, Pencil, Plus, ReceiptText, Trash2 } from 'lucide-react'
 import { useSetAssignment } from '../../../api/budgets'
 import { useTarget } from '../../../api/targets'
+import {
+  targetMeasuresBalance,
+  targetNeededThisMonth,
+  targetProgress as computeTargetProgress,
+  targetStatus as computeTargetStatus,
+} from '../../../utils/targets'
 import { useDeleteCategory, useUpdateCategory } from '../../../api/categories'
 import { useUIStore } from '../../../stores/uiStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
@@ -188,22 +194,20 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
   const isTargetExpired = !!(target?.target_date && String(target.target_date) < today())
 
-  function getTargetStatus(): 'funded' | 'underfunded' | null {
-    if (!target || isTargetExpired) return null
-    const needed = Number(target.target_amount)
-    if (assigned >= needed) return 'funded'
-    return 'underfunded'
-  }
+  // Status and progress share one measure per target type (utils/targets) —
+  // they used to be computed independently, and a savings-balance category
+  // whose balance met the goal showed a full bar beside an "Underfunded"
+  // pill. Overfunded renders as funded here: the row only distinguishes
+  // "needs money" from "doesn't".
+  const targetStatus: 'funded' | 'underfunded' | null =
+    !target || isTargetExpired
+      ? null
+      : computeTargetStatus(target, assigned, available) === 'underfunded'
+        ? 'underfunded'
+        : 'funded'
 
-  const targetStatus = getTargetStatus()
-
-  const targetProgress = (() => {
-    if (!target || isTargetExpired) return null
-    const amount = Number(target.target_amount)
-    if (amount <= 0) return null
-    const numerator = target.target_type === 'savings_balance' ? available : assigned
-    return Math.min(Math.max(numerator / amount, 0), 1)
-  })()
+  const targetProgress =
+    !target || isTargetExpired ? null : computeTargetProgress(target, assigned, available)
 
   const monthlyNeeded = (() => {
     if (!target || target.target_type !== 'savings_balance' || !target.target_date) return null
@@ -484,8 +488,12 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
       {targetProgress !== null && targetStatus !== null && budgetRowMode === 'expanded' && (() => {
         const pct = Math.round(targetProgress * 100)
-        const isSavings = target!.target_type === 'savings_balance'
-        const amountRemaining = Math.max(0, Number(target!.target_amount) - (isSavings ? available : assigned))
+        const isBalanceGoal = targetMeasuresBalance(target!)
+        // Balance goals state the whole shortfall ("Save X more"); funding
+        // targets state what's left of this month's duty.
+        const amountRemaining = isBalanceGoal
+          ? Math.max(0, Number(target!.target_amount) - available)
+          : Math.max(0, targetNeededThisMonth(target!, available) - assigned)
         const pctInside = targetProgress > 0.22
 
         return (
@@ -509,7 +517,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                 <span className="target-pill-stat target-pill-stat--funded">Funded</span>
               ) : amountRemaining > 0 ? (
                 <span className="target-pill-stat">
-                  {isSavings ? `Save ${formatMoney(amountRemaining)} more` : `Need ${formatMoney(amountRemaining)} this month`}
+                  {isBalanceGoal ? `Save ${formatMoney(amountRemaining)} more` : `Need ${formatMoney(amountRemaining)} this month`}
                 </span>
               ) : null}
               {monthlyNeeded !== null && monthlyNeeded > 0 && (

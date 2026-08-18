@@ -6,6 +6,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Canonical result schema lives with the import endpoints — a local copy here
+# drifted the moment imports.py gained fields (imports.py has no module-level
+# api.v1 imports, so this cannot cycle).
+from igab.api.v1.imports import YNABImportResult
 from igab.db.models import Budget
 from igab.db.session import get_session
 from igab.dependencies import (
@@ -70,16 +74,6 @@ class BudgetResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class YNABImportResult(BaseModel):
-    accounts: int
-    category_groups: int
-    categories: int
-    transactions: int
-    skipped: int
-    assignments: int
-    errors: list[str]
-
-
 class YNABImportBudgetResponse(BaseModel):
     budget: BudgetResponse
     import_result: YNABImportResult
@@ -122,7 +116,7 @@ async def import_ynab_as_budget(
 
     # Validate the mapping and the zip BEFORE creating the budget so a bad
     # request doesn't leave an empty budget behind.
-    type_map = parse_account_types_form(account_types)
+    type_map, skip_accounts = parse_account_types_form(account_types)
     ynab_budget = await parse_uploaded_ynab_zip(file)
 
     budget_name = name.strip()
@@ -151,6 +145,7 @@ async def import_ynab_as_budget(
         transaction_service=txn_service,
         assignment_repo=assignment_repo,
         account_types=type_map,
+        skip_accounts=skip_accounts,
     )
     result = await importer.import_budget(ynab_budget)
 
@@ -163,6 +158,8 @@ async def import_ynab_as_budget(
             transactions=result.transactions_imported,
             skipped=result.transactions_skipped,
             assignments=result.assignments_imported,
+            accounts_skipped=result.accounts_skipped,
+            transactions_excluded=result.transactions_excluded,
             errors=result.errors,
         ),
     )
