@@ -48,7 +48,12 @@ class AIStatusResponse(BaseModel):
     available: bool
     host: str | None
     model: str | None
+    #: Raw ollama_vision_model setting (None when no override is set).
     vision_model: str | None
+    #: The model receipt scans will actually use — the vision override when
+    #: set, otherwise the main model. Resolved server-side so the UI never
+    #: re-implements the fallback chain.
+    receipt_model: str
 
 
 class OllamaModelInfo(BaseModel):

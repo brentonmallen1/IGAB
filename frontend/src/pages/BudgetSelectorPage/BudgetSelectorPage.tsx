@@ -134,7 +134,7 @@ export function BudgetSelectorPage() {
         Object.fromEntries(
           preview.accounts.map((a) => [
             a.name,
-            { account_type: a.suggested_type, on_budget: a.suggested_on_budget },
+            { account_type: a.suggested_type, on_budget: a.suggested_on_budget, skip: false },
           ])
         )
       )
@@ -163,6 +163,11 @@ export function BudgetSelectorPage() {
       ]
       if (r.assignments) parts.push(`${r.assignments.toLocaleString()} budget assignments`)
       if (r.skipped) parts.push(`${r.skipped.toLocaleString()} skipped`)
+      if (r.accounts_skipped) {
+        parts.push(
+          `${r.accounts_skipped} account${r.accounts_skipped !== 1 ? 's' : ''} left out as requested`
+        )
+      }
       toast.success(`Imported ${parts.join(', ')}`, { duration: 15000 })
       if (r.errors.length > 0) {
         toast.error(
@@ -351,39 +356,61 @@ export function BudgetSelectorPage() {
             {previewAccounts && (
               <div className="selector-field">
                 <label className="selector-field__label">
-                  Account types
+                  Accounts
                   <span className="ynab-mapping__hint">
-                    {' '}— off-budget accounts (loans, investments) stay out of your budget totals
+                    {' '}— off-budget accounts (loans, investments) stay out of your budget
+                    totals; uncheck an account to leave it and its transactions out entirely
+                    (YNAB exports include archived accounts)
                   </span>
                 </label>
                 <div className="ynab-mapping">
-                  {previewAccounts.map((a) => (
-                    <div key={a.name} className="ynab-mapping__row">
-                      <div className="ynab-mapping__name">
-                        {a.name}
-                        <span className="ynab-mapping__count">
-                          {a.transaction_count} txns
-                        </span>
-                      </div>
-                      <select
-                        className="selector-field__input ynab-mapping__type"
-                        value={accountChoices[a.name]?.account_type ?? a.suggested_type}
-                        onChange={(e) => updateChoice(a.name, { account_type: e.target.value })}
+                  {previewAccounts.map((a) => {
+                    const skipped = accountChoices[a.name]?.skip === true
+                    return (
+                      <div
+                        key={a.name}
+                        className={`ynab-mapping__row ${skipped ? 'ynab-mapping__row--skipped' : ''}`}
                       >
-                        {ACCOUNT_TYPE_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                      <label className="ynab-mapping__budget-toggle">
                         <input
                           type="checkbox"
-                          checked={accountChoices[a.name]?.on_budget ?? a.suggested_on_budget}
-                          onChange={(e) => updateChoice(a.name, { on_budget: e.target.checked })}
+                          className="ynab-mapping__include"
+                          checked={!skipped}
+                          onChange={(e) => updateChoice(a.name, { skip: !e.target.checked })}
+                          aria-label={`Import ${a.name}`}
+                          title={
+                            skipped
+                              ? 'Excluded — this account and its transactions will not be imported'
+                              : 'Uncheck to leave this account out of the import'
+                          }
                         />
-                        On budget
-                      </label>
-                    </div>
-                  ))}
+                        <div className="ynab-mapping__name">
+                          {a.name}
+                          <span className="ynab-mapping__count">
+                            {a.transaction_count} txns
+                          </span>
+                        </div>
+                        <select
+                          className="selector-field__input ynab-mapping__type"
+                          value={accountChoices[a.name]?.account_type ?? a.suggested_type}
+                          onChange={(e) => updateChoice(a.name, { account_type: e.target.value })}
+                          disabled={skipped}
+                        >
+                          {ACCOUNT_TYPE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        <label className="ynab-mapping__budget-toggle">
+                          <input
+                            type="checkbox"
+                            checked={accountChoices[a.name]?.on_budget ?? a.suggested_on_budget}
+                            onChange={(e) => updateChoice(a.name, { on_budget: e.target.checked })}
+                            disabled={skipped}
+                          />
+                          On budget
+                        </label>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}

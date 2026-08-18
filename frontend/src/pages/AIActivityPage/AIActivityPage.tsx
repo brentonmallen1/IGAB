@@ -31,6 +31,7 @@ import { AttachmentLightbox } from '../../components/attachments/Lightbox'
 import { useFormatters } from '../../hooks/useFormatters'
 import './AIActivityPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
+import { scanFailureReason } from '../../components/transactions/TransactionEditor/scanFailure'
 
 const PAGE_SIZE = 50
 
@@ -215,7 +216,11 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
               {errorOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               Error details
             </button>
-            {errorOpen && <pre className="ai-activity__error-text">{job.error}</pre>}
+            {/* Through scanFailureReason so the user reads the reason, not the
+                worker's exception class name ("NonRetryableJobError: …"). */}
+            {errorOpen && (
+              <pre className="ai-activity__error-text">{scanFailureReason(job.error)}</pre>
+            )}
           </div>
         )}
         {job.result?.extraction && (

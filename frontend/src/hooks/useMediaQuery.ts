@@ -15,3 +15,12 @@ export function useMediaQuery(query: string): boolean {
 export function useIsMobile(): boolean {
   return useMediaQuery('(max-width: 768px)')
 }
+
+/**
+ * True on devices with no hover — i.e. where focusing a field raises an
+ * on-screen keyboard. Matches the `@media (hover: none)` blocks in the CSS,
+ * so JS and styling agree on what "touch" means.
+ */
+export function useIsTouch(): boolean {
+  return useMediaQuery('(hover: none)')
+}

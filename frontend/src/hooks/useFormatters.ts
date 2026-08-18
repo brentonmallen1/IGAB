@@ -2,7 +2,12 @@ import { useCallback } from 'react'
 import { useAppStore } from '../stores/appStore'
 import { useFormatSettings } from '../contexts/FormatContext'
 import { formatMoneyWithOptions, formatAmountWithOptions, getCurrencySymbol } from '../utils/money'
-import { formatDateWithOptions, formatMonthWithOptions, formatTimeWithOptions } from '../utils/dates'
+import {
+  formatDateTimeWithOptions,
+  formatDateWithOptions,
+  formatMonthWithOptions,
+  formatTimeWithOptions,
+} from '../utils/dates'
 
 /** Privacy-mode mask: sign and digits hidden, so overspending can't be inferred. */
 const MASK = '••••'
@@ -40,5 +45,20 @@ export function useFormatters() {
     [settings.timeFormat]
   )
 
-  return { formatMoney, formatAmount, formatDate, formatMonth, formatTime, settings, privacyMode }
+  /** Full ISO datetime → local "Aug 17, 2026 1:53 PM" (per date/time format). */
+  const formatDateTime = useCallback(
+    (isoStr: string) => formatDateTimeWithOptions(isoStr, settings.dateFormat, settings.timeFormat),
+    [settings.dateFormat, settings.timeFormat]
+  )
+
+  return {
+    formatMoney,
+    formatAmount,
+    formatDate,
+    formatMonth,
+    formatTime,
+    formatDateTime,
+    settings,
+    privacyMode,
+  }
 }

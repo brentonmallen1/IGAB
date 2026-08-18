@@ -14,6 +14,7 @@ import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { BudgetViewBar } from '../BudgetViewBar/BudgetViewBar'
 import type { CategoryBalance, CategoryGroup } from '../../../types'
 import './BudgetTable.css'
+import { targetStatus } from '../../../utils/targets'
 
 export function BudgetTable() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -68,9 +69,17 @@ export function BudgetTable() {
     const target = targetMap.get(catId)
     switch (activeQuickFilter) {
       case 'overspent': return (balance?.available ?? 0) < 0
-      case 'underfunded': return target != null && (balance?.assigned ?? 0) < target.target_amount
+      case 'underfunded':
+        return (
+          target != null &&
+          targetStatus(target, balance?.assigned ?? 0, balance?.available ?? 0) === 'underfunded'
+        )
       case 'money-available': return (balance?.available ?? 0) > 0
-      case 'overfunded': return target != null && (balance?.assigned ?? 0) > target.target_amount
+      case 'overfunded':
+        return (
+          target != null &&
+          targetStatus(target, balance?.assigned ?? 0, balance?.available ?? 0) === 'overfunded'
+        )
     }
   }
 

@@ -15,6 +15,10 @@ export interface YnabImportResult {
   transactions: number
   skipped: number
   assignments: number
+  /** Accounts the user chose to leave out (closed/archived YNAB accounts). */
+  accounts_skipped: number
+  /** Rows belonging to those accounts — distinct from `skipped` (dedup/errors). */
+  transactions_excluded: number
   errors: string[]
 }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { CheckCircle, XCircle, Loader2, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAIStatus, useTestAIConnection, useOllamaModels } from '../../api/ai'
+import { sameOllamaModel, useAIStatus, useTestAIConnection, useOllamaModels } from '../../api/ai'
 import { useSettings, useUpdateSetting } from '../../api/settings'
 import { AIAdvancedSettings } from './AIAdvancedSettings'
 import { AIPromptSettings } from './AIPromptSettings'
@@ -201,10 +201,10 @@ export function AISettingsPanel() {
                 <div className="settings-row__label">Model</div>
                 <div className="settings-row__desc">
                   {ollamaModel || 'Select a model'}
-                  {models?.find((m) => m.name === ollamaModel)?.capabilities?.length ? (
+                  {models?.find((m) => sameOllamaModel(m.name, ollamaModel))?.capabilities?.length ? (
                     <span className="ai-panel__caps">
                       {models
-                        .find((m) => m.name === ollamaModel)
+                        .find((m) => sameOllamaModel(m.name, ollamaModel))
                         ?.capabilities.map((c) => (
                           <span key={c} className="ai-panel__cap">
                             {c}
@@ -228,7 +228,7 @@ export function AISettingsPanel() {
                 {models.map((m) => (
                   <button
                     key={m.name}
-                    className={`ai-panel__model ${m.name === ollamaModel ? 'ai-panel__model--selected' : ''}`}
+                    className={`ai-panel__model ${sameOllamaModel(m.name, ollamaModel) ? 'ai-panel__model--selected' : ''}`}
                     onClick={() => selectModel(m.name)}
                   >
                     <span className="ai-panel__model-name">{m.name}</span>

@@ -40,6 +40,13 @@ class NonRetryableJobError(Exception):
     """Permanent input problem (missing file, deleted account, no vision
     support). Goes straight to 'error' without burning retries."""
 
+    def __init__(self, message: str, *, model: str | None = None) -> None:
+        super().__init__(message)
+        # The model that produced the failure, when known. Assignments made to
+        # the job before the raise are lost with the session rollback, so
+        # record_job_failure re-persists this from the exception.
+        self.model = model
+
 
 def staging_dir(job_id: uuid.UUID) -> Path:
     return Path(app_settings.ATTACHMENTS_DIR) / "ai_staging" / str(job_id)
@@ -149,12 +156,24 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
     if account is None or str(account.budget_id) != str(job.budget_id):
         raise NonRetryableJobError("Account for this receipt no longer exists")
 
-    supported, model = await svcs["ai"].check_vision_support()
+    supported, model, from_override = await svcs["ai"].check_vision_support()
     job.model = model  # Record which model processed this job
     if supported is False:
-        raise NonRetryableJobError(
-            f"Model '{model}' does not support vision — set a vision model in Settings → AI"
-        )
+        # Name where the model came from: "set a vision model" is the wrong
+        # advice when the real fix is changing the main model.
+        if from_override:
+            msg = (
+                f"Receipt scanning used your vision override '{model}', which does"
+                " not support vision. Pick a vision-capable model in Settings → AI."
+            )
+        else:
+            msg = (
+                f"Receipt scanning used your main model '{model}' (no vision"
+                " override is set), which does not support vision. Pick a"
+                " vision-capable main model, or set a vision override, in"
+                " Settings → AI."
+            )
+        raise NonRetryableJobError(msg, model=model)
 
     client_today = (
         date.fromisoformat(payload["client_today"])
@@ -274,6 +293,11 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
     """Retry with backoff when the error is transient and attempts remain;
     otherwise terminal — for receipts, the $0 stub keeps the image reachable."""
     job.error = f"{type(exc).__name__}: {exc}"[:2000]
+    # The processing session rolled back, taking any job.model assignment with
+    # it — restore it here so failed jobs still say which model ran.
+    failed_model = getattr(exc, "model", None)
+    if failed_model:
+        job.model = failed_model
     if _is_retryable(exc) and job.attempts < job.max_attempts:
         job.status = "queued"
         delay = RETRY_BASE_DELAY_S * (2 ** (job.attempts - 1))

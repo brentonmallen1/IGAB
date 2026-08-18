@@ -62,6 +62,11 @@ class YNABImportResult(BaseModel):
     transactions: int
     skipped: int
     assignments: int
+    #: Accounts the user chose to leave out (closed/archived YNAB accounts).
+    accounts_skipped: int = 0
+    #: Register rows belonging to those accounts — deliberately excluded,
+    #: distinct from `skipped` (dedup/errors).
+    transactions_excluded: int = 0
     errors: list[str]
 
 
@@ -81,6 +86,10 @@ class YNABPreviewResult(BaseModel):
 class YNABAccountTypeChoice(BaseModel):
     account_type: AccountType
     on_budget: bool
+    #: Leave this account (and every one of its register rows) out of the
+    #: import entirely — YNAB exports carry archived accounts with no marker,
+    #: so excluding them is a user decision made in the preview step.
+    skip: bool = False
 
 
 # YNAB register exports carry no account-type info; suggest from the name so
@@ -105,11 +114,16 @@ def suggest_account_type(name: str) -> tuple[str, bool]:
     return "checking", True
 
 
-def parse_account_types_form(account_types: str | None) -> dict[str, tuple[str, bool]]:
+def parse_account_types_form(
+    account_types: str | None,
+) -> tuple[dict[str, tuple[str, bool]], set[str]]:
     """Decode the JSON `account_types` multipart form field:
-    {"Account Name": {"account_type": "loan", "on_budget": false}, ...}"""
+    {"Account Name": {"account_type": "loan", "on_budget": false, "skip": false}, ...}
+
+    Returns (type_map, skip_accounts): the type/on-budget mapping for accounts
+    being imported, and the set of account names to exclude entirely."""
     if not account_types:
-        return {}
+        return {}, set()
     try:
         raw = json.loads(account_types)
         parsed = {name: YNABAccountTypeChoice.model_validate(v) for name, v in raw.items()}
@@ -118,7 +132,13 @@ def parse_account_types_form(account_types: str | None) -> dict[str, tuple[str, 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid account_types mapping: {e}",
         ) from e
-    return {name: (choice.account_type.value, choice.on_budget) for name, choice in parsed.items()}
+    type_map = {
+        name: (choice.account_type.value, choice.on_budget)
+        for name, choice in parsed.items()
+        if not choice.skip
+    }
+    skip_accounts = {name for name, choice in parsed.items() if choice.skip}
+    return type_map, skip_accounts
 
 
 def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
@@ -191,7 +211,7 @@ async def import_ynab(
     assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
     txn_service: TransactionService = Depends(get_transaction_service),
 ) -> YNABImportResult:
-    type_map = parse_account_types_form(account_types)
+    type_map, skip_accounts = parse_account_types_form(account_types)
     ynab_budget = await parse_uploaded_ynab_zip(file)
 
     importer = YNABImporter(
@@ -205,6 +225,7 @@ async def import_ynab(
         transaction_service=txn_service,
         assignment_repo=assignment_repo,
         account_types=type_map,
+        skip_accounts=skip_accounts,
     )
 
     result = await importer.import_budget(ynab_budget)
@@ -216,6 +237,8 @@ async def import_ynab(
         transactions=result.transactions_imported,
         skipped=result.transactions_skipped,
         assignments=result.assignments_imported,
+        accounts_skipped=result.accounts_skipped,
+        transactions_excluded=result.transactions_excluded,
         errors=result.errors,
     )
 

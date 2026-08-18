@@ -193,3 +193,24 @@
 .ai-prompt-card__textarea {
   min-height: 140px;
 }
+
+/* Ground truth for "which model reads my receipts" — always visible under the
+   vision toggle, whatever the controls above claim. */
+.ai-settings__receipt-model {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  padding: var(--spacing-xs) 0;
+}
+
+.ai-settings__receipt-model strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ai-settings__receipt-model-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: var(--spacing-sm);
+  color: var(--color-warning);
+}

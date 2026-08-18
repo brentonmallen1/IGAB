@@ -337,9 +337,27 @@
 
 .ynab-mapping__row {
   display: grid;
-  grid-template-columns: 1fr 130px auto;
+  grid-template-columns: auto 1fr 130px auto;
   gap: var(--spacing-sm);
   align-items: center;
+}
+
+/* Include-checkbox: unchecking excludes the account from the import entirely.
+   The row stays visible but reads as inert — the decision must stay
+   reviewable, not vanish. */
+.ynab-mapping__include {
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.ynab-mapping__row--skipped .ynab-mapping__name,
+.ynab-mapping__row--skipped .ynab-mapping__type,
+.ynab-mapping__row--skipped .ynab-mapping__budget-toggle {
+  opacity: 0.45;
+}
+
+.ynab-mapping__row--skipped .ynab-mapping__name {
+  text-decoration: line-through;
 }
 
 .ynab-mapping__name {

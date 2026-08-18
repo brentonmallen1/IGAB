@@ -19,6 +19,12 @@ export function useSettings() {
     queryKey: ['settings'],
     queryFn: fetchSettings,
     staleTime: 60_000,
+    // app_settings is a global singleton shared by every device in the
+    // household, and the app-wide default is refetchOnWindowFocus: false —
+    // without these, a change made on the phone never appears on a desktop
+    // Settings page that is already open (and vice versa).
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -29,6 +35,10 @@ export function useUpdateSetting() {
       apiClient.put<AppSetting>(`/settings/${key}`, { value }).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['settings'] })
+      // /ai/status derives from settings (model, host, resolved receipt
+      // model) and caches for 5 minutes — a model change must show up in the
+      // "receipts are scanned by" line immediately, not five minutes later.
+      qc.invalidateQueries({ queryKey: ['ai-status'] })
     },
   })
 }
@@ -41,6 +51,7 @@ export function useResetSetting() {
       apiClient.delete<AppSetting>(`/settings/${key}`).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['settings'] })
+      qc.invalidateQueries({ queryKey: ['ai-status'] })
     },
   })
 }

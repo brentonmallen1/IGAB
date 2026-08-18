@@ -39,6 +39,10 @@ class ImportResult:
     transactions_imported: int = 0
     transactions_skipped: int = 0
     assignments_imported: int = 0
+    # User-chosen exclusions (closed/archived YNAB accounts) — separate from
+    # transactions_skipped, which means dedup hits and row errors.
+    accounts_skipped: int = 0
+    transactions_excluded: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -55,6 +59,7 @@ class YNABImporter:
         transaction_service: TransactionService,
         assignment_repo: BudgetAssignmentRepository,
         account_types: dict[str, tuple[str, bool]] | None = None,
+        skip_accounts: set[str] | None = None,
     ) -> None:
         self.session = session
         self.budget_id = budget_id
@@ -68,6 +73,10 @@ class YNABImporter:
         # account name → (account_type, on_budget) override; YNAB register
         # exports carry no type info, so callers may supply the mapping.
         self.account_types = account_types or {}
+        # Accounts to leave out entirely (matched case-insensitively, like
+        # _get_or_create_account). YNAB exports include archived accounts with
+        # no marker, so exclusion is a per-account user decision.
+        self.skip_accounts = {name.lower() for name in (skip_accounts or set())}
         # name → Account
         self._account_cache: dict[str, Account] = {}
         # group name → CategoryGroup
@@ -179,11 +188,27 @@ class YNABImporter:
         # legs (either sign) awaiting their opposite-sign partner.
         unpaired_legs: dict[tuple, list[dict]] = {}
 
-        payee_names = {txn.payee for txn in budget.transactions if txn.payee}
+        # Payees only from rows that will import — otherwise every payee that
+        # appears solely in a skipped account becomes an orphan payee row.
+        payee_names = {
+            txn.payee
+            for txn in budget.transactions
+            if txn.payee and txn.account_name.lower() not in self.skip_accounts
+        }
         payee_map = await self.payee_repo.find_or_create_batch(self.budget_id, list(payee_names))
 
+        skipped_account_names: set[str] = set()
         for txn in budget.transactions:
             try:
+                if txn.account_name.lower() in self.skip_accounts:
+                    # Neither the account nor any of its rows is created. A
+                    # kept account's transfer leg pointing here simply never
+                    # finds a partner and imports unlinked — the existing
+                    # missing-partner path — so kept balances stay correct.
+                    skipped_account_names.add(txn.account_name.lower())
+                    result.transactions_excluded += 1
+                    continue
+
                 account = await self._get_or_create_account(txn.account_name, result)
 
                 if txn.splits:
@@ -288,6 +313,8 @@ class YNABImporter:
             except Exception as e:
                 result.errors.append(f"Transaction {txn.date} {txn.payee}: {e}")
                 result.transactions_skipped += 1
+
+        result.accounts_skipped = len(skipped_account_names)
 
         # Make import_ids unique within the batch: two transactions with identical
         # (account, date, amount, payee) produce the same hash, so append ":N" for N>0.

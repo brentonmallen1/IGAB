@@ -92,9 +92,11 @@ function BottomSheetPanel({
   if (idRef.current === null) idRef.current = Symbol('bottom-sheet')
 
   // Evaluated when the trap activates, not at render: yield to content that
-  // autofocused its own field (the quick-add amount) — stealing that focus
-  // would close the keyboard the user is about to type into — but otherwise
-  // move focus into the sheet so screen readers announce it.
+  // autofocused its own field — stealing that focus would close the keyboard
+  // the user is about to type into — but otherwise move focus to the panel so
+  // screen readers announce the sheet. Which branch runs is not fixed per
+  // sheet: quick-add autofocuses its amount with a pointer and deliberately
+  // does not on touch, so both paths are live.
   const panelRef = useFocusTrap<HTMLDivElement>(undefined, {
     // Return type annotated to break the self-reference in inference.
     initialFocus: (): HTMLElement | false => {

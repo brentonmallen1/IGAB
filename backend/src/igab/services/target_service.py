@@ -76,7 +76,12 @@ class TargetService:
         assigned: Decimal,
         available: Decimal,
     ) -> str:
-        """Returns 'funded', 'underfunded', or 'overfunded'."""
+        """Returns 'funded', 'underfunded', or 'overfunded'.
+
+        Mirrored by frontend/src/utils/targets.ts, which drives the budget
+        row's pill, the quick filters, and the view-bar counts — change the
+        rules in both places or the UI stops predicting what Fill Underfunded
+        will do."""
         today = date.today()
         needed: Decimal
 

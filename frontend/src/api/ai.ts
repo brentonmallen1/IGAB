@@ -6,7 +6,26 @@ export interface AIStatus {
   available: boolean
   host: string | null
   model: string | null
+  /** Raw ollama_vision_model setting (null when no override is set). */
   vision_model: string | null
+  /** The model receipt scans will actually use — the vision override when
+   * set, otherwise the main model. Resolved server-side so the UI never
+   * re-implements the fallback chain. */
+  receipt_model: string
+}
+
+/**
+ * Ollama names models "name:tag" with ":latest" implied when untagged — an
+ * env-seeded "gemma4" and the tile's "gemma4:latest" are the same model.
+ * Without this the selected tile silently loses its highlight.
+ */
+export function sameOllamaModel(
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean {
+  if (!a || !b) return false
+  const norm = (m: string) => (m.endsWith(':latest') ? m.slice(0, -':latest'.length) : m)
+  return norm(a) === norm(b)
 }
 
 export function useAIStatus() {

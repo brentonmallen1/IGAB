@@ -157,3 +157,56 @@ async def test_budget_creation_rejects_bad_mapping_without_creating_budget(
     assert leftover.scalar_one_or_none() is None, (
         "a rejected import must not leave an empty budget behind"
     )
+
+
+async def test_import_skips_accounts_marked_skip(api_client, db_session):
+    """The archived-account escape hatch: a mapping entry with skip=true keeps
+    the account and every one of its rows out of the import entirely."""
+    services = make_services(db_session)
+    budget = await create_budget(db_session, api_client.test_user)
+
+    mapping = (
+        '{"Home Mortgage": {"account_type": "loan", "on_budget": false, "skip": true},'
+        ' "Vanguard Brokerage": {"account_type": "tracking", "on_budget": false},'
+        ' "Checking": {"account_type": "checking", "on_budget": true}}'
+    )
+    resp = await api_client.post(
+        f"/api/v1/{budget.id}/import/ynab",
+        files={"file": ("export.zip", _ynab_zip(), "application/zip")},
+        data={"account_types": mapping},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["transactions"] == 3
+    assert body["accounts"] == 2
+    assert body["accounts_skipped"] == 1
+    assert body["transactions_excluded"] == 1
+    assert body["skipped"] == 0
+
+    accounts = {a.name for a in await services.account_repo.get_all(budget.id)}
+    assert accounts == {"Checking", "Vanguard Brokerage"}
+    # The skipped mortgage held the -250,000 opening balance; nothing of it
+    # may leak into the budget's numbers.
+    month = await services.budgets.get_budget_summary(budget.id, date(2026, 7, 1))
+    assert month.to_be_assigned == Decimal("2000.00")
+
+
+async def test_budget_creation_flow_respects_skip(api_client, db_session):
+    """Same escape hatch on the create-budget-from-export endpoint the
+    BudgetSelectorPage actually uses."""
+    from igab.repositories.account_repo import AccountRepository
+
+    mapping = '{"Vanguard Brokerage": {"account_type": "tracking", "on_budget": false, "skip": true}}'
+    resp = await api_client.post(
+        "/api/v1/budgets/import-ynab",
+        files={"file": ("export.zip", _ynab_zip(), "application/zip")},
+        data={"name": "From YNAB no brokerage", "account_types": mapping},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["import_result"]["accounts_skipped"] == 1
+    assert body["import_result"]["transactions_excluded"] == 1
+
+    account_repo = AccountRepository(db_session)
+    accounts = {a.name for a in await account_repo.get_all(uuid.UUID(body["budget"]["id"]))}
+    assert accounts == {"Checking", "Home Mortgage"}

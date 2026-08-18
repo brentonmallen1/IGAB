@@ -17,7 +17,7 @@ from .invariants import assert_financial_invariants
 JAN5 = date(2026, 1, 5)
 
 
-def _importer(services, db_session, budget, account_types=None) -> YNABImporter:
+def _importer(services, db_session, budget, account_types=None, skip_accounts=None) -> YNABImporter:
     return YNABImporter(
         session=db_session,
         budget_id=budget.id,
@@ -29,6 +29,7 @@ def _importer(services, db_session, budget, account_types=None) -> YNABImporter:
         transaction_service=services.transactions,
         assignment_repo=services.assignment_repo,
         account_types=account_types,
+        skip_accounts=skip_accounts,
     )
 
 
@@ -335,3 +336,90 @@ async def test_split_and_identical_flat_row_coexist(db_session):
         "-100.00"
     )
     await assert_financial_invariants(db_session, budget.id)
+
+
+class TestSkipAccounts:
+    """YNAB exports include archived accounts with no marker — the user
+    excludes them per-account, and neither the account nor any of its rows
+    (nor payees that only it used) may reach the budget."""
+
+    async def test_skipped_account_and_its_rows_are_not_imported(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+
+        data = YNABBudget(
+            transactions=[
+                _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+                _txn("Old Card", "Ghost Shop", "-40.00", group="Everyday", category="Groceries"),
+                _txn("Old Card", "Ghost Shop", "-15.00", group="Everyday", category="Groceries"),
+            ]
+        )
+        result = await _importer(
+            services, db_session, budget, skip_accounts={"Old Card"}
+        ).import_budget(data)
+
+        assert result.transactions_imported == 1
+        assert result.accounts_imported == 1
+        assert result.accounts_skipped == 1
+        assert result.transactions_excluded == 2
+        assert result.transactions_skipped == 0, "exclusions are not error-skips"
+
+        accounts = {a.name for a in await services.account_repo.get_all(budget.id)}
+        assert accounts == {"Checking"}
+        rows = (
+            (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+        # A payee used only by the skipped account must not become an orphan row
+        payees = {p.name for p in await services.payee_repo.get_all(budget.id)}
+        assert "Ghost Shop" not in payees
+        assert "Employer" in payees
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_transfer_leg_to_skipped_account_imports_unlinked(self, db_session):
+        """The kept side of a transfer into a skipped account behaves exactly
+        like a transfer whose partner never appears: plain unlinked row, so
+        the kept account's balance stays correct."""
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+
+        result = await _importer(
+            services, db_session, budget, skip_accounts={"Savings"}
+        ).import_budget(_budget_with_transfer())
+
+        assert result.accounts_skipped == 1
+        assert result.transactions_excluded == 1
+        assert result.transactions_imported == 3
+
+        accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
+        assert set(accounts) == {"Checking"}
+        rows = (
+            (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+            .scalars()
+            .all()
+        )
+        leg = next(r for r in rows if r.amount == Decimal("-500.00"))
+        assert leg.transfer_id is None
+        assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal(
+            "1440.00"
+        )
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_skip_matches_case_insensitively(self, db_session):
+        """_get_or_create_account matches names case-insensitively; skipping
+        must use the same rule or a case difference resurrects the account."""
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+
+        data = YNABBudget(transactions=[_txn("Old Card", "Shop", "-5.00")])
+        result = await _importer(
+            services, db_session, budget, skip_accounts={"old card"}
+        ).import_budget(data)
+
+        assert result.transactions_excluded == 1
+        assert await services.account_repo.get_all(budget.id) == []
