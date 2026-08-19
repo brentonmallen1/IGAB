@@ -5,6 +5,11 @@ class OllamaClient:
     def __init__(self, host: str, model: str) -> None:
         self.host = host.rstrip("/")
         self.model = model
+        # Metadata of the last /api/generate response — thinking text and
+        # done_reason. Kept so a parse failure can be diagnosed: a thinking
+        # model may put its JSON in "thinking" and leave "response" empty,
+        # which otherwise looks like the model returned nothing.
+        self.last_meta: dict | None = None
 
     async def generate(
         self,
@@ -38,7 +43,9 @@ class OllamaClient:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{self.host}/api/generate", json=payload)
             resp.raise_for_status()
-            return resp.json()["response"]
+            body = resp.json()
+            self.last_meta = {key: body[key] for key in ("thinking", "done_reason") if key in body}
+            return body["response"]
 
     async def show(self, model: str | None = None) -> dict:
         """Call /api/show for model metadata. Returns {} when unavailable.

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { randomUUID } from '../utils/uuid'
 
 type EditableField = 'date' | 'payee' | 'category' | 'memo' | 'outflow' | 'inflow'
 
@@ -34,8 +35,8 @@ export const useTransactionEditStore = create<TransactionEditState>((set, get) =
 
   startSplitEditing: (transactionId, totalAmount, existingSplits) => {
     const splits: SplitDraft[] = existingSplits ?? [
-      { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
-      { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
+      { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+      { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
     ]
     set({ splitEditing: { transactionId, totalAmount, splits }, editingField: null })
   },
@@ -57,7 +58,7 @@ export const useTransactionEditStore = create<TransactionEditState>((set, get) =
     set({
       splitEditing: {
         ...splitEditing,
-        splits: [...splitEditing.splits, { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' }],
+        splits: [...splitEditing.splits, { tempId: randomUUID(), amount: '', categoryId: null, memo: '' }],
       },
     })
   },

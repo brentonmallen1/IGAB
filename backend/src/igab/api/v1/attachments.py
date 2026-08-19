@@ -115,8 +115,19 @@ async def get_attachment(
     return FileResponse(
         path=file_path,
         media_type="image/webp" if thumbnail else attachment.content_type,
-        filename=attachment.original_filename,
+        # The stored bytes are a WebP re-encode; serving them under the
+        # original .jpg/.HEIC name broke anything that trusts the extension.
+        filename=_download_name(attachment.original_filename, attachment.content_type),
     )
+
+
+def _download_name(original_filename: str, content_type: str) -> str:
+    """Original name with the extension corrected to the STORED format."""
+    ext = {"image/webp": ".webp", "application/pdf": ".pdf"}.get(content_type)
+    if not ext:
+        return original_filename
+    stem = original_filename.rsplit(".", 1)[0] if "." in original_filename else original_filename
+    return f"{stem}{ext}"
 
 
 @router.post("/attachments/{attachment_id}/rotate", response_model=AttachmentResponse)

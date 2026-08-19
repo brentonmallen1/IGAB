@@ -124,4 +124,21 @@
     padding-left: var(--spacing-md);
     padding-right: var(--spacing-md);
   }
+
+  /* The input autofocuses on mount; under 16px iOS zooms the whole viewport
+     to it — and the app's viewport tokens deliberately freeze while zoomed,
+     so the layout appeared to fall apart. */
+  .nl-entry__input {
+    font-size: 16px;
+    min-height: var(--tap-min);
+  }
+
+  .nl-entry__close {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+
+  .nl-entry__parse {
+    min-height: var(--tap-min);
+  }
 }

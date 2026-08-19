@@ -57,6 +57,10 @@ services:
     container_name: igab-frontend
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Vite dev proxy target for /api (see vite.config.ts) — the backend
+      # service, reachable by name on the compose network
+      API_PROXY_TARGET: http://api:8000
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:

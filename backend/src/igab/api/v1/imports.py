@@ -26,6 +26,7 @@ from igab.dependencies import (
 )
 from igab.domain.enums import AccountType
 from igab.domain.money import parse_csv_amount
+from igab.integrations.ynab.importer import ImportResult as YNABRunResult
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.account_repo import AccountRepository
@@ -164,6 +165,24 @@ def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
     )
 
 
+async def run_ynab_import(importer: YNABImporter, ynab_budget) -> YNABRunResult:
+    """Run the import, converting database-level failures into a readable 400.
+
+    Bulk inserts run outside the per-row error capture; without this an
+    IntegrityError surfaced as a generic 500 with the real reason visible
+    only in server logs."""
+    from sqlalchemy.exc import DBAPIError
+
+    try:
+        return await importer.import_budget(ynab_budget)
+    except DBAPIError as e:
+        reason = str(getattr(e, "orig", e) or e).strip().splitlines()[0][:300]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Import failed at the database: {reason}",
+        ) from e
+
+
 async def parse_uploaded_ynab_zip(file: UploadFile):
     import tempfile
     from pathlib import Path
@@ -228,7 +247,7 @@ async def import_ynab(
         skip_accounts=skip_accounts,
     )
 
-    result = await importer.import_budget(ynab_budget)
+    result = await run_ynab_import(importer, ynab_budget)
 
     return YNABImportResult(
         accounts=result.accounts_imported,

@@ -48,6 +48,27 @@ class NonRetryableJobError(Exception):
         self.model = model
 
 
+def _attach_ai_debug(exc: Exception, ai) -> None:
+    """Ride the model-call evidence on the exception itself. Everything
+    assigned to the job in the processing session is rolled back on failure,
+    and record_job_failure runs in a fresh session — the exception is the
+    only bridge across. Without this a failed extraction kept no prompt and
+    no response, making "structured output issue or something else?"
+    unanswerable."""
+    debug: dict = {}
+    if ai.last_request is not None:
+        debug["request"] = ai.last_request
+    if ai.last_response is not None:
+        debug["raw_response"] = ai.last_response.get("response")
+        for key in ("thinking", "done_reason"):
+            if ai.last_response.get(key):
+                debug[key] = ai.last_response[key]
+    if debug:
+        # setattr, not attribute syntax: the payload rides on arbitrary
+        # exception types and ty rejects the unresolved attribute.
+        setattr(exc, "ai_debug", debug)  # noqa: B010
+
+
 def staging_dir(job_id: uuid.UUID) -> Path:
     return Path(app_settings.ATTACHMENTS_DIR) / "ai_staging" / str(job_id)
 
@@ -63,9 +84,13 @@ def _is_retryable(exc: Exception) -> bool:
         return exc.response.status_code >= 500
     if isinstance(exc, httpx.TransportError):  # timeouts, connect errors, etc.
         return True
-    # Model output quality: bad JSON or an extraction that failed validation
-    # (zero total, garbage amount). Non-deterministic — worth another attempt.
+    # Model output quality: bad JSON, an extraction that failed validation
+    # (zero total, garbage amount), or an Ollama 200 whose body lacked the
+    # expected keys (KeyError/TypeError). All non-deterministic — worth
+    # another attempt.
     if isinstance(exc, (json.JSONDecodeError, ValueError, InvariantViolation)):
+        return True
+    if isinstance(exc, (KeyError, TypeError)):
         return True
     return False
 
@@ -195,19 +220,26 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
 
     try:
         raw = await svcs["ai"].extract_receipt(job.budget_id, image_b64, client_today)
+    except Exception as exc:
+        _attach_ai_debug(exc, svcs["ai"])
+        raise
     finally:
-        # Persist the exact prompt/flags for debugging — also when the call
-        # fails, so a bad extraction can be replayed outside the app.
+        # Success path only — on failure this in-session write is rolled back
+        # and record_job_failure re-persists the payload from the exception.
         if svcs["ai"].last_request is not None:
             job.result = {"request": svcs["ai"].last_request}
 
     categories = await svcs["transactions"].category_repo.get_all_with_group_names(job.budget_id)
-    draft = parse_extraction(
-        raw,
-        kind="receipt",
-        client_today=client_today,
-        category_names=[(cat.name, group) for cat, group in categories],
-    )
+    try:
+        draft = parse_extraction(
+            raw,
+            kind="receipt",
+            client_today=client_today,
+            category_names=[(cat.name, group) for cat, group in categories],
+        )
+    except Exception as exc:
+        _attach_ai_debug(exc, svcs["ai"])
+        raise
 
     txn: Transaction | None = None
     if job.transaction_id is not None:
@@ -237,6 +269,13 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
     result = _draft_result_json(draft)
     if svcs["ai"].last_request is not None:
         result["request"] = svcs["ai"].last_request
+    # Raw response on success too: "extraction" is the parsed object, and a
+    # thinking transcript exists only here.
+    if svcs["ai"].last_response is not None:
+        result["raw_response"] = svcs["ai"].last_response.get("response")
+        for key in ("thinking", "done_reason"):
+            if svcs["ai"].last_response.get(key):
+                result[key] = svcs["ai"].last_response[key]
     job.result = result
     job.transaction_id = txn.id
     job.status = "done"
@@ -298,6 +337,11 @@ async def record_job_failure(session: AsyncSession, job: AIJob, exc: Exception) 
     failed_model = getattr(exc, "model", None)
     if failed_model:
         job.model = failed_model
+    # Same rollback story for the model-call evidence: re-persist the prompt
+    # and raw response the exception carried out of the dead session.
+    ai_debug = getattr(exc, "ai_debug", None)
+    if ai_debug:
+        job.result = ai_debug
     if _is_retryable(exc) and job.attempts < job.max_attempts:
         job.status = "queued"
         delay = RETRY_BASE_DELAY_S * (2 ** (job.attempts - 1))

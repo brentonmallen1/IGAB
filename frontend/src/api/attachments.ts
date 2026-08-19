@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { downscaleForUpload } from '../utils/imageUpload'
 import { confirmAsync } from '../stores/confirmStore'
 
 export interface Attachment {
@@ -118,7 +119,11 @@ export function useUploadAttachment(transactionId: string) {
   return useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData()
-      formData.append('file', file)
+      // Downscaled at the API layer so every entry point (panel, drag-drop,
+      // camera) benefits — a 12MP original is pointless over cellular when
+      // the server stores a 2048px re-encode anyway. Falls back to the
+      // original on any decode uncertainty.
+      formData.append('file', await downscaleForUpload(file))
       const { data } = await apiClient.post<Attachment>(
         `/transactions/${transactionId}/attachments`,
         formData,
@@ -160,7 +165,8 @@ export async function uploadFilesToTransaction(
   for (const file of files) {
     try {
       const formData = new FormData()
-      formData.append('file', file)
+      // Same API-layer downscale as useUploadAttachment — see there.
+      formData.append('file', await downscaleForUpload(file))
       await apiClient.post(`/transactions/${transactionId}/attachments`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })

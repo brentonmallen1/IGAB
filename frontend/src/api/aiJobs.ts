@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { downscaleForUpload } from '../utils/imageUpload'
 import { useAIStatus } from './ai'
 
 export type AIJobStatus = 'queued' | 'processing' | 'done' | 'error'
@@ -32,6 +33,13 @@ export interface AIJobResult {
   draft?: AIJobDraft
   suggested_split?: AIJobSplitLine[] | null
   request?: AIJobRequest
+  /** Exactly what the model returned, pre-parse — present on success AND on
+   * failure, so a structured-output problem is distinguishable from
+   * everything else. */
+  raw_response?: string | null
+  /** Thinking transcript, when the model produced one. */
+  thinking?: string
+  done_reason?: string
 }
 
 export interface AIJob {
@@ -85,8 +93,7 @@ function localToday(): string {
 
 export function useAIJobs(
   budgetId: string | null,
-  opts: { status?: AIJobStatus; kind?: AIJobKind; limit?: number; offset?: number } = {},
-  hasActiveJobs = false
+  opts: { status?: AIJobStatus; kind?: AIJobKind; limit?: number; offset?: number } = {}
 ) {
   return useQuery({
     queryKey: ['ai-jobs', budgetId, opts],
@@ -102,8 +109,19 @@ export function useAIJobs(
       return data
     },
     enabled: !!budgetId,
-    // Live-refresh the log while work is in flight
-    refetchInterval: hasActiveJobs ? 4_000 : false,
+    // Poll while THIS list shows in-flight work. Deriving from the list's own
+    // data (not the separate counts query, as before) matters: the counts
+    // query flips active→0 the instant a job finishes, and react-query
+    // CANCELS a pending tick when the interval turns off — the list froze on
+    // the pre-completion snapshot forever. Self-derived, the interval turns
+    // off only after the fetch that rendered the terminal state.
+    refetchInterval: (query) =>
+      query.state.data?.jobs.some((j) => j.status === 'queued' || j.status === 'processing')
+        ? 4_000
+        : false,
+    // Catch up when the PWA is foregrounded — "walk away, come back" is the
+    // designed receipt flow (the app-wide default is false).
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -152,6 +170,7 @@ export function useAIJobCounts(budgetId: string | null) {
     enabled: !!budgetId && aiStatus.data?.enabled === true,
     refetchInterval: (query) => ((query.state.data?.active ?? 0) > 0 ? 4_000 : 30_000),
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -160,7 +179,10 @@ export function useSubmitReceipt(budgetId: string) {
   return useMutation({
     mutationFn: async ({ file, accountId }: { file: File; accountId: string }) => {
       const formData = new FormData()
-      formData.append('file', file)
+      // API-layer downscale: covers ReceiptScanTab too, which used to send
+      // the raw camera file. Re-running on an already-downscaled file is a
+      // no-op (size gate in shouldDownscale).
+      formData.append('file', await downscaleForUpload(file))
       formData.append('account_id', accountId)
       formData.append('client_today', localToday())
       const { data } = await apiClient.post<AIJob>(`/${budgetId}/ai/receipts`, formData, {

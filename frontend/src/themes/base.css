@@ -307,7 +307,36 @@ a {
 
 @media (max-width: 768px) {
   :root {
-    --nav-h: calc(var(--bottom-nav-height) + var(--safe-bottom));
+    /* Deliberately NOT + var(--safe-bottom): the user wants the bar flush
+       with the physical screen edge; the iOS home indicator draws over the
+       nav background. Sheets/editors keep their own safe-bottom padding. */
+    --nav-h: var(--bottom-nav-height);
+  }
+
+  /* The DOCUMENT is never the scroller on mobile: the app shell is
+     position:fixed and owns geometry, and full-bleed pages outside it
+     (login, budget selector) are their own scroll containers. Without this,
+     iOS pans/rubber-bands the whole webview for any drag that starts outside
+     a scrollable region — header and bottom nav visibly bouncing unless the
+     gesture landed exactly inside a list. overscroll-behavior alone is not
+     honored for the root scroller by WebKit in standalone PWAs. */
+  html,
+  body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
+/* iOS zooms the viewport to any focused control under 16px — and the app's
+   viewport tokens deliberately freeze while zoomed, so one undersized input
+   (the NL entry was one) made the whole layout look broken. Floor every
+   focusable text control on touch phones instead of patching per component.
+   max() keeps deliberately larger inputs (the 34px quick-add amount) alone. */
+@media (hover: none) and (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
   }
 }
 

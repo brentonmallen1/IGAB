@@ -423,3 +423,73 @@ class TestSkipAccounts:
 
         assert result.transactions_excluded == 1
         assert await services.account_repo.get_all(budget.id) == []
+
+
+class TestBulkChunkBoundaries:
+    """Imports >1000 rows split into multiple INSERT statements. Postgres
+    checks the transfer_id self-FK at end of statement, so a linked pair
+    straddling a chunk boundary used to fail with ForeignKeyViolation —
+    the first real-world multi-account export to exceed 1000 rows died with
+    "Key (transfer_id)=... is not present in table transactions"."""
+
+    def _big_budget_with_boundary_transfer(self, chunk: int) -> YNABBudget:
+        # Filler up to one row before the boundary, then the transfer pair's
+        # legs land at positions chunk-1 and chunk+1 — different statements.
+        txns = [
+            _txn("Checking", f"Shop {i}", "-1.00", group="Everyday", category="Groceries")
+            for i in range(chunk - 1)
+        ]
+        txns.append(_txn("Checking", "Transfer : Savings", "-500.00"))
+        txns.append(_txn("Checking", "Shop x", "-2.00", group="Everyday", category="Groceries"))
+        txns.append(_txn("Savings", "Transfer : Checking", "500.00"))
+        return YNABBudget(transactions=txns)
+
+    async def test_transfer_pair_straddling_a_chunk_boundary_links(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+
+        chunk = services.transaction_repo._BULK_CHUNK
+        data = self._big_budget_with_boundary_transfer(chunk)
+        result = await _importer(services, db_session, budget).import_budget(data)
+
+        assert result.errors == []
+        assert result.transactions_imported == len(data.transactions)
+
+        rows = (
+            (
+                await db_session.execute(
+                    select(Transaction).where(
+                        Transaction.budget_id == budget.id,
+                        Transaction.amount.in_([Decimal("-500.00"), Decimal("500.00")]),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        out_leg = next(r for r in rows if r.amount == Decimal("-500.00"))
+        in_leg = next(r for r in rows if r.amount == Decimal("500.00"))
+        assert out_leg.transfer_id == in_leg.id
+        assert in_leg.transfer_id == out_leg.id
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_reimport_of_boundary_straddling_export_is_idempotent(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+
+        chunk = services.transaction_repo._BULK_CHUNK
+        data = self._big_budget_with_boundary_transfer(chunk)
+        await _importer(services, db_session, budget).import_budget(data)
+        again = await _importer(services, db_session, budget).import_budget(data)
+
+        assert again.transactions_imported == 0
+        assert again.transactions_skipped == len(data.transactions)
+        count = (
+            await db_session.execute(
+                select(Transaction).where(Transaction.budget_id == budget.id)
+            )
+        ).scalars().all()
+        assert len(count) == len(data.transactions)
+        await assert_financial_invariants(db_session, budget.id)

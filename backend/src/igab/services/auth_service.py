@@ -82,6 +82,29 @@ class AuthService:
             raise AuthenticationError("User not found")
         return user
 
+    async def sync_admin(self, email: str, password: str) -> str | None:
+        """Create the admin user, or re-hash its password to match `password`.
+
+        Returns 'created', 'updated', or None (already in sync). ADMIN_PASSWORD
+        is the app's ONLY credential source — there is no in-app
+        change-password flow — so boot treats the env value as the truth.
+        Create-if-missing-then-ignore silently locked the admin out the first
+        time anyone edited the env var."""
+        user = await self.user_repo.get_by_email(email)
+        if user is None:
+            await self.create_user(email=email, password=password, display_name="Admin")
+            return "created"
+        try:
+            in_sync = verify_password(password, user.password_hash)
+        except ValueError:
+            # Malformed stored hash — unrecoverable by login; re-hash is the
+            # only way back in.
+            in_sync = False
+        if in_sync:
+            return None
+        user.password_hash = hash_password(password)
+        return "updated"
+
     async def create_user(self, email: str, password: str, display_name: str | None = None) -> User:
         from igab.domain.exceptions import DuplicateError
 

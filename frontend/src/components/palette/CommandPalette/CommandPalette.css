@@ -128,3 +128,49 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* Desktop: dismissal is Escape/backdrop; the button would be noise. */
+.palette__close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* Full-width top sheet under the notch. The input sits at the top of the
+   screen — clear of the keyboard — and the list's existing --app-h-based
+   max-height already shrinks when the keyboard is up. */
+@media (max-width: 768px) {
+  .palette-overlay {
+    padding-top: 0;
+    align-items: stretch;
+  }
+
+  .palette {
+    width: 100%;
+    max-width: none;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    padding-top: var(--safe-top);
+    max-height: var(--app-h);
+  }
+
+  .palette [cmdk-input] {
+    font-size: 16px; /* prevents iOS focus-zoom */
+    min-height: var(--tap-min);
+  }
+
+  .palette [cmdk-item] {
+    min-height: var(--tap-min);
+  }
+
+  .palette__close {
+    display: flex;
+  }
+}

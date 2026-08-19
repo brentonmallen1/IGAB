@@ -309,6 +309,17 @@
     min-width: var(--tap-min);
     min-height: var(--tap-min);
   }
+
+  /* The row is a plain div (role=row), so base.css's touch hardening for
+     buttons/links doesn't reach it. Without these, a long-press could be
+     hijacked into iOS text selection — which swallows the synthetic click
+     and left useLongPress's suppression flag latched. */
+  .transaction-row {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
 }
 
 /* Three-line card: payee + amount / category / date · memo · status.

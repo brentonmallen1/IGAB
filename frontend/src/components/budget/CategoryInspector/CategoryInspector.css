@@ -391,6 +391,27 @@
   font-style: italic;
 }
 
+/* ─── Hide / delete footer ──────────────────────────────────────────────── */
+
+/* Anchored to the bottom of the panel: destructive actions sit away from the
+   everyday editing sections above */
+.category-inspector__manage {
+  margin-top: auto;
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.category-inspector__manage-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: 6px 10px;
+}
+
 /* ─── Multi-select notice ───────────────────────────────────────────────── */
 
 .inspector-multi-notice {

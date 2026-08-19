@@ -21,6 +21,7 @@ from igab.services.transaction_service import TransactionService
 
 _TRANSFER_PREFIX = "Transfer : "
 _YNAB_INFLOW_GROUP = "Inflow"
+_MAX_ERRORS = 50
 
 
 def _generate_import_id(account_name: str, txn_date: date, amount: Decimal, payee: str) -> str:
@@ -311,7 +312,13 @@ class YNABImporter:
                         waiting.append(row)
 
             except Exception as e:
-                result.errors.append(f"Transaction {txn.date} {txn.payee}: {e}")
+                # One flush failure poisons the session, so every later row
+                # raises the same message — cap the list instead of returning
+                # thousands of identical entries.
+                if len(result.errors) < _MAX_ERRORS:
+                    result.errors.append(f"Transaction {txn.date} {txn.payee}: {e}")
+                elif len(result.errors) == _MAX_ERRORS:
+                    result.errors.append("… more rows failed; see server logs")
                 result.transactions_skipped += 1
 
         result.accounts_skipped = len(skipped_account_names)
@@ -345,9 +352,18 @@ class YNABImporter:
         result.transactions_skipped += len(rows) - len(new_rows)
 
         new_ids = {r["id"] for r in new_rows}
+        # Links are applied AFTER insert (bulk_link_transfers), never in the
+        # insert rows themselves: bulk_create chunks into one statement per
+        # 1000 rows and Postgres checks the transfer_id self-FK at end of
+        # statement, so a pair straddling a chunk boundary blew up with
+        # "Key (transfer_id)=... is not present in table transactions" on any
+        # import over 1000 rows. Partner rows that already exist from a prior
+        # import are dropped, as before.
+        links: list[tuple[uuid.UUID, uuid.UUID]] = []
         for row in new_rows:
-            if row["transfer_id"] is not None and row["transfer_id"] not in new_ids:
-                row["transfer_id"] = None
+            if row["transfer_id"] is not None and row["transfer_id"] in new_ids:
+                links.append((row["id"], row["transfer_id"]))
+            row["transfer_id"] = None
 
         # Children insert only when their parent does (fresh parent uuid —
         # a child can never attach to a row from a previous import).
@@ -362,6 +378,7 @@ class YNABImporter:
         # Parents must hit the table before their children (FK).
         inserted = await self.transaction_repo.bulk_create(new_rows)
         await self.transaction_repo.bulk_create(new_children)
+        await self.transaction_repo.bulk_link_transfers(links)
         result.transactions_imported += inserted
 
     async def _import_assignments(self, budget: YNABBudget, result: ImportResult) -> None:

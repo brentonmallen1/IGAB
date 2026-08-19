@@ -48,26 +48,67 @@
 }
 
 .more-sheet__themes {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--spacing-sm);
   padding: 0 var(--spacing-md) var(--spacing-sm);
 }
 
+/* Each tile carries data-theme, so every custom property below resolves in
+   THAT theme's palette — the tile is a live preview, not a labeled button. */
 .more-sheet__theme {
   display: flex;
   align-items: center;
+  gap: var(--spacing-sm);
   min-height: var(--tap-min);
-  padding: 8px var(--spacing-md);
+  padding: 8px var(--spacing-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-md);
   background: var(--bg-primary);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: var(--font-size-sm);
+  text-align: left;
 }
 
 .more-sheet__theme--active {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
   font-weight: 600;
+}
+
+.more-sheet__theme-swatches {
+  display: inline-flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.more-sheet__theme-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.more-sheet__theme-swatch--accent {
+  background: var(--color-accent);
+}
+
+.more-sheet__theme-swatch--positive {
+  background: var(--color-positive);
+}
+
+.more-sheet__theme-swatch--negative {
+  background: var(--color-negative);
+}
+
+.more-sheet__theme-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.more-sheet__theme-check {
+  flex-shrink: 0;
+  color: var(--color-accent);
 }

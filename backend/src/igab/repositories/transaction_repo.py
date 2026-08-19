@@ -478,10 +478,16 @@ class TransactionRepository(BaseRepository[Transaction]):
             out.setdefault(row["category_id"], {})[month] = row["total"]
         return out
 
-    _BULK_CHUNK = 1000  # ~12k params/chunk, well under asyncpg's 65535 limit
+    _BULK_CHUNK = 1000  # ~15k params/chunk, well under asyncpg's 32767 limit
 
     async def bulk_create(self, transactions: list[dict]) -> int:
-        """Bulk insert transactions in chunks. Returns count inserted."""
+        """Bulk insert transactions in chunks. Returns count inserted.
+
+        Each chunk is its own INSERT statement, and Postgres validates the
+        transfer_id self-FK at end of statement — rows must not reference ids
+        in a LATER chunk. Callers linking rows to each other (the YNAB
+        importer) insert with transfer_id NULL and link afterwards via
+        bulk_link_transfers."""
         if not transactions:
             return 0
         for i in range(0, len(transactions), self._BULK_CHUNK):
@@ -489,6 +495,22 @@ class TransactionRepository(BaseRepository[Transaction]):
             await self.session.execute(insert(Transaction).values(chunk))
         await self.session.flush()
         return len(transactions)
+
+    async def bulk_link_transfers(self, links: list[tuple[uuid.UUID, uuid.UUID]]) -> None:
+        """Set transfer_id on already-inserted rows: (row_id, partner_id) pairs.
+
+        Exists because a linked pair straddling a bulk_create chunk boundary
+        used to violate the self-FK — the first chunk's statement referenced a
+        partner row the next chunk hadn't inserted yet."""
+        if not links:
+            return
+        for i in range(0, len(links), self._BULK_CHUNK):
+            chunk = links[i : i + self._BULK_CHUNK]
+            await self.session.execute(
+                update(Transaction),
+                [{"id": row_id, "transfer_id": partner_id} for row_id, partner_id in chunk],
+            )
+        await self.session.flush()
 
     async def bulk_create_from_df(self, df: "pl.DataFrame") -> int:
         """Bulk insert transactions from a Polars DataFrame."""
@@ -631,20 +653,26 @@ class TransactionRepository(BaseRepository[Transaction]):
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
+    # One bind parameter per id — stay far from asyncpg's 32767 ceiling, which
+    # a decade-long multi-account YNAB export can genuinely reach.
+    _IMPORT_ID_CHUNK = 10_000
+
     async def get_existing_import_ids(
         self, budget_id: uuid.UUID, import_ids: list[str]
     ) -> set[str]:
         """Return the subset of import_ids that already exist in the database."""
-        if not import_ids:
-            return set()
-        result = await self.session.execute(
-            select(Transaction.import_id).where(
-                Transaction.budget_id == budget_id,
-                Transaction.import_id.in_(import_ids),
-                Transaction.is_deleted == False,  # noqa: E712
+        found: set[str] = set()
+        for i in range(0, len(import_ids), self._IMPORT_ID_CHUNK):
+            chunk = import_ids[i : i + self._IMPORT_ID_CHUNK]
+            result = await self.session.execute(
+                select(Transaction.import_id).where(
+                    Transaction.budget_id == budget_id,
+                    Transaction.import_id.in_(chunk),
+                    Transaction.is_deleted == False,  # noqa: E712
+                )
             )
-        )
-        return {row[0] for row in result.all() if row[0]}
+            found.update(row[0] for row in result.all() if row[0])
+        return found
 
     async def find_existing_match_candidates(
         self,

@@ -89,9 +89,13 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
   }
 
   function handleClear() {
+    // Deliberately NOT refocusing the input: X means "done searching". The
+    // old refocus made clearing act like clicking into the field — the
+    // suggestions panel popped open (and on mobile the keyboard re-raised),
+    // which read as the search refusing to close.
     setLocalValue('')
     propagate('', true)
-    inputRef.current?.focus()
+    setShowSuggestions(false)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -147,7 +151,7 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
         spellCheck={false}
       />
       {localValue && (
-        <button className="txn-search__clear" onClick={handleClear}>
+        <button className="txn-search__clear" onClick={handleClear} aria-label="Clear search">
           <X size={12} />
         </button>
       )}

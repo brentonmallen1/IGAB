@@ -1,7 +1,14 @@
 .login-page {
-  min-height: 100dvh;
+  /* Own scroll container — the document is overflow:hidden on mobile (see
+     base.css), so any page outside the app shell must scroll itself. */
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   display: flex;
-  align-items: center;
+  /* 'safe': centered content clips its top edge inside a scroll container
+     when it outgrows the viewport (small phone + keyboard). */
+  align-items: safe center;
   justify-content: center;
   background-color: var(--bg-secondary);
 }

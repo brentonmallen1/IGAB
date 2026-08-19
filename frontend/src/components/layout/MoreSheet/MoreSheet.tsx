@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles, Eye, EyeOff } from 'lucide-react'
+import { Check, Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles, Eye, EyeOff } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { THEMES } from '../../../stores/appStore'
 import { useUpdateStatus } from '../../../api/system'
@@ -83,14 +83,26 @@ export function MoreSheet() {
           <Palette size={14} />
           <span>Theme</span>
         </div>
+        {/* Uniform two-column grid of self-previewing tiles. data-theme on
+            the tile re-scopes the theme's own custom properties inside it, so
+            each tile paints itself in its theme's real colors — replacing the
+            ragged pile of variable-width text pills. */}
         <div className="more-sheet__themes">
           {THEMES.map((t) => (
             <button
               key={t.value}
+              data-theme={t.value}
               className={`more-sheet__theme ${theme === t.value ? 'more-sheet__theme--active' : ''}`}
               onClick={() => setTheme(t.value)}
+              aria-pressed={theme === t.value}
             >
-              {t.label}
+              <span className="more-sheet__theme-swatches" aria-hidden>
+                <span className="more-sheet__theme-swatch more-sheet__theme-swatch--accent" />
+                <span className="more-sheet__theme-swatch more-sheet__theme-swatch--positive" />
+                <span className="more-sheet__theme-swatch more-sheet__theme-swatch--negative" />
+              </span>
+              <span className="more-sheet__theme-name">{t.label}</span>
+              {theme === t.value && <Check size={14} className="more-sheet__theme-check" />}
             </button>
           ))}
         </div>

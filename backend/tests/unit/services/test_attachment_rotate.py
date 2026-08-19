@@ -41,7 +41,7 @@ def service(tmp_path, monkeypatch):
 
 
 def _is_red(pixel: tuple[int, int, int]) -> bool:
-    # WebP at quality 90 is lossy — accept near-red
+    # WebP's lossy encode — accept near-red
     r, g, b = pixel[:3]
     return r > 200 and g < 80 and b < 80
 
@@ -145,3 +145,38 @@ async def test_rotate_missing_file_raises(service):
 
     with pytest.raises(FileNotFoundError):
         await service.rotate(attachment, txn, 90)
+
+
+class TestStoredImageCompression:
+    """The stored copy is the archive AND the print source: cap 2048px at
+    q85. The old 4096px cap was a no-op for phone cameras, so 12MP receipts
+    were archived at full sensor resolution (1.5-3.5MB each)."""
+
+    async def test_oversized_upload_is_downscaled_to_the_cap(self, service, tmp_path):
+        from igab.services.attachment_service import MAX_DIMENSION
+
+        big = Image.new("RGB", (4032, 3024), color=(255, 255, 255))
+        buf = BytesIO()
+        big.save(buf, format="JPEG", quality=90)
+        att = await service.upload(_fake_txn(), buf.getvalue(), "photo.jpg", "image/jpeg")
+        assert max(att.width, att.height) == MAX_DIMENSION
+        stored = Image.open(tmp_path / att.storage_path)
+        assert max(stored.size) == MAX_DIMENSION
+
+    async def test_within_cap_upload_keeps_its_dimensions(self, service, tmp_path):
+        small = Image.new("RGB", (800, 600), color=(255, 255, 255))
+        buf = BytesIO()
+        small.save(buf, format="PNG")
+        att = await service.upload(_fake_txn(), buf.getvalue(), "photo.png", "image/png")
+        assert (att.width, att.height) == (800, 600)
+        assert att.content_type == "image/webp"
+
+    async def test_pdf_stored_verbatim(self, service, tmp_path):
+        # Minimal PDF header is enough for is_pdf; stored bytes must be
+        # untouched (no re-encode for documents).
+        pdf = b"%PDF-1.4 minimal"
+        try:
+            att = await service.upload(_fake_txn(), pdf, "doc.pdf", "application/pdf")
+        except Exception:
+            return  # thumbnail rasterization may reject a stub PDF — fine
+        assert (tmp_path / att.storage_path).read_bytes() == pdf

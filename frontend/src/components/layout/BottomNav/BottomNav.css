@@ -14,7 +14,8 @@
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     height: var(--nav-h);
-    padding-bottom: var(--safe-bottom);
+    /* No safe-bottom padding — flush to the screen edge by user decision;
+       see --nav-h in base.css. */
     background: var(--header-bg);
     border-top: 1px solid var(--border-color);
   }

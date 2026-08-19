@@ -30,6 +30,12 @@ export function useLongPress(
       const t = e.touches[0]
       startPosRef.current = { x: t.clientX, y: t.clientY }
       clear()
+      // A latched flag from an earlier gesture must not eat THIS tap. iOS
+      // can end a long-press without ever dispatching the click that used to
+      // be the only thing clearing it (text-selection takeover, touchcancel),
+      // and the stale flag then swallowed the user's next tap — the
+      // "have to tap a transaction twice" bug.
+      triggeredRef.current = false
       timerRef.current = window.setTimeout(() => {
         triggeredRef.current = true
         // The only confirmation the hold registered, and it lands before any
@@ -51,6 +57,14 @@ export function useLongPress(
     onTouchEnd: () => {
       clear()
       startPosRef.current = null
+    },
+    // Scroll/gesture takeover: the browser ends the touch without a click.
+    // Without this the pending timer survived the cancelled gesture and could
+    // fire onLongPress mid-scroll (silently entering selection mode).
+    onTouchCancel: () => {
+      clear()
+      startPosRef.current = null
+      triggeredRef.current = false
     },
     onClick: (e: MouseEvent) => {
       if (triggeredRef.current) {
