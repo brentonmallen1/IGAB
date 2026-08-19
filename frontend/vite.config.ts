@@ -43,6 +43,15 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    // Same-origin /api in dev, mirroring production nginx: phones and other
+    // LAN devices hit the Vite origin and get proxied to the backend, instead
+    // of a baked-in localhost URL that only resolves on the dev machine.
+    proxy: {
+      '/api': {
+        target: process.env.API_PROXY_TARGET ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     // jsdom for component tests; pure-function suites run there unchanged

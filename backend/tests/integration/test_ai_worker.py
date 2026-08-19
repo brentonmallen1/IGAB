@@ -8,6 +8,8 @@ from decimal import Decimal
 from io import BytesIO
 from unittest.mock import AsyncMock
 
+import json
+
 import httpx
 import pytest
 from PIL import Image
@@ -569,21 +571,59 @@ class TestRequestLogging:
         assert job.result["request"]["prompt"] == "PROMPT"
         assert job.result["extraction"]["payee"] == "Whole Foods"
 
-    async def test_failed_call_still_persists_request(
+    async def test_failed_call_persists_request_via_the_exception(
         self, db_session, attachments_dir, monkeypatch
     ):
+        """On failure the processing session ROLLS BACK — any job.result set
+        inside it dies. The evidence must ride on the exception, and
+        record_job_failure (which runs in a fresh session in production)
+        must re-persist it. The old test asserted the in-memory object and
+        missed exactly this."""
         self._patch(monkeypatch, fail=True)
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account)
-        with pytest.raises(httpx.ConnectError):
+        with pytest.raises(httpx.ConnectError) as exc_info:
             await process_one_job(db_session, job)
-        assert job.result == {"request": {
-            "prompt": "PROMPT",
-            "system": "SYSTEM",
-            "model": "gemma4",
-            "think": True,
-            "format": None,
-        }}
+
+        debug = exc_info.value.ai_debug
+        assert debug["request"]["prompt"] == "PROMPT"
+
+        job.result = None  # simulate the rollback wiping the in-session write
+        await record_job_failure(db_session, job, exc_info.value)
+        assert job.result["request"]["prompt"] == "PROMPT"
+
+    async def test_parse_failure_captures_the_raw_response(
+        self, db_session, attachments_dir, monkeypatch
+    ):
+        """The user's ask: when the model returns junk, the activity log must
+        show what the model actually said — that's how a structured-output
+        problem is told apart from everything else. Runs the REAL
+        extract_receipt with only the Ollama transport mocked."""
+        from unittest.mock import AsyncMock as AM
+
+        from igab.integrations.ollama.client import OllamaClient
+
+        monkeypatch.setattr(
+            AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4", False))
+        )
+        monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=True))
+        monkeypatch.setattr(OllamaClient, "generate", AM(return_value="NOT JSON {"))
+        monkeypatch.setattr(OllamaClient, "capabilities", AM(return_value=["vision"]))
+
+        budget, account = await _setup(db_session, attachments_dir)
+        job = await _make_job(db_session, attachments_dir, budget, account)
+        with pytest.raises(json.JSONDecodeError) as exc_info:
+            await process_one_job(db_session, job)
+
+        debug = exc_info.value.ai_debug
+        assert debug["raw_response"] == "NOT JSON {"
+        assert debug["request"]["model"] == "llama3.2"  # settings default in tests
+
+        job.result = None
+        await record_job_failure(db_session, job, exc_info.value)
+        assert job.result["raw_response"] == "NOT JSON {"
+        # JSON errors are retryable: first failure requeues with backoff
+        assert job.status == "queued"
 
 
 class TestStartupRecovery:

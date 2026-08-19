@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { FolderInput, Trash2 } from 'lucide-react'
+import { EyeOff, FolderInput, Trash2 } from 'lucide-react'
 import { BudgetTable } from '../../components/budget/BudgetTable/BudgetTable'
 import { CategoryInspector } from '../../components/budget/CategoryInspector/CategoryInspector'
 import { CategoryMobileActions } from '../../components/budget/CategoryInspector/CategoryMobileActions'
@@ -76,6 +76,19 @@ export function BudgetPage() {
   async function handleMoveToGroup(groupId: string) {
     const ids = Array.from(selectedCategoryIds)
     await Promise.all(ids.map((id) => updateCategory.mutateAsync({ id, category_group_id: groupId })))
+    clearCategorySelection()
+  }
+
+  async function handleHideSelected() {
+    const count = selectedCategoryIds.size
+    const ok = await confirmAsync({
+      title: `Hide ${count} categor${count !== 1 ? 'ies' : 'y'}?`,
+      message: 'Hidden categories keep their history and can be unhidden later.',
+      confirmLabel: 'Hide',
+    })
+    if (!ok) return
+    const ids = Array.from(selectedCategoryIds)
+    await Promise.all(ids.map((id) => updateCategory.mutateAsync({ id, is_hidden: true })))
     clearCategorySelection()
   }
 
@@ -174,6 +187,13 @@ export function BudgetPage() {
             <FolderInput size={14} />
             Move to Group
           </button>
+          <FloatingSelectionBar.Button
+            onClick={handleHideSelected}
+            title={`Hide ${selectedCount} categories`}
+          >
+            <EyeOff size={14} />
+            Hide
+          </FloatingSelectionBar.Button>
           <FloatingSelectionBar.Button
             onClick={handleDeleteSelected}
             title={`Delete ${selectedCount} categories`}

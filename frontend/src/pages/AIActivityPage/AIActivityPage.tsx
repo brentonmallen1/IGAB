@@ -20,7 +20,6 @@ import toast from 'react-hot-toast'
 import { useAppStore } from '../../stores/appStore'
 import {
   useAIJobs,
-  useAIJobCounts,
   useDeleteAIJob,
   useReprocessAIJob,
   type AIJob,
@@ -103,6 +102,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
   const [errorOpen, setErrorOpen] = useState(false)
   const [responseOpen, setResponseOpen] = useState(false)
   const [promptOpen, setPromptOpen] = useState(false)
+  const [rawOpen, setRawOpen] = useState(false)
   const [viewerOpen, setViewerOpen] = useState(false)
 
   // The job log stores only the attachment id + original upload metadata; the
@@ -187,7 +187,10 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
           <span className="ai-activity__time">
             {new Date(job.created_at).toLocaleString()}
           </span>
-          {job.attempts > 1 && (
+          {/* From the first attempt, not only retries: a job that failed once
+              and is waiting out its backoff looked idle, which read as
+              "it doesn't retry". */}
+          {job.attempts >= 1 && job.status !== 'done' && (
             <span className="ai-activity__attempts">
               attempt {job.attempts}/{job.max_attempts}
             </span>
@@ -239,6 +242,31 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             {responseOpen && (
               <pre className="ai-activity__response-text">
                 {JSON.stringify(job.result.extraction, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
+        {/* Pre-parse model output — rendered on errors too, which is the
+            point: "is this a structured-output issue or something else". */}
+        {typeof job.result?.raw_response === 'string' && job.result.raw_response !== '' && (
+          <div className="ai-activity__response">
+            <button
+              className="ai-activity__response-toggle"
+              onClick={() => setRawOpen((v) => !v)}
+            >
+              {rawOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              Raw response
+            </button>
+            <CopyButton text={job.result.raw_response} title="Copy the model's raw output" />
+            {rawOpen && (
+              <pre className="ai-activity__response-text">
+                {[
+                  job.result.done_reason ? `done_reason: ${job.result.done_reason}` : null,
+                  job.result.raw_response,
+                  job.result.thinking ? `\n--- thinking ---\n${job.result.thinking}` : null,
+                ]
+                  .filter((l) => l !== null)
+                  .join('\n')}
               </pre>
             )}
           </div>
@@ -318,13 +346,11 @@ export function AIActivityPage() {
   const [statusFilter, setStatusFilter] = useState<AIJobStatus | ''>('')
   const [offset, setOffset] = useState(0)
 
-  const { data: counts } = useAIJobCounts(budgetId)
-  const activeCount = counts?.active ?? 0
-  const { data, isLoading } = useAIJobs(
-    budgetId,
-    { status: statusFilter || undefined, limit: PAGE_SIZE, offset },
-    activeCount > 0
-  )
+  const { data, isLoading } = useAIJobs(budgetId, {
+    status: statusFilter || undefined,
+    limit: PAGE_SIZE,
+    offset,
+  })
 
   const jobs = useMemo(() => data?.jobs ?? [], [data])
   const total = data?.total_count ?? 0

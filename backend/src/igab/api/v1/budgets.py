@@ -112,7 +112,11 @@ async def import_ynab_as_budget(
     assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
     txn_service: TransactionService = Depends(get_transaction_service),
 ) -> YNABImportBudgetResponse:
-    from igab.api.v1.imports import parse_account_types_form, parse_uploaded_ynab_zip
+    from igab.api.v1.imports import (
+        parse_account_types_form,
+        parse_uploaded_ynab_zip,
+        run_ynab_import,
+    )
 
     # Validate the mapping and the zip BEFORE creating the budget so a bad
     # request doesn't leave an empty budget behind.
@@ -147,7 +151,9 @@ async def import_ynab_as_budget(
         account_types=type_map,
         skip_accounts=skip_accounts,
     )
-    result = await importer.import_budget(ynab_budget)
+    # On failure this raises a 400; get_session rolls back, discarding the
+    # budget created above along with every partial row.
+    result = await run_ynab_import(importer, ynab_budget)
 
     return YNABImportBudgetResponse(
         budget=BudgetResponse.model_validate(budget),

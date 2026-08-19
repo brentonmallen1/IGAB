@@ -1,8 +1,9 @@
-import { ChevronRight, X } from 'lucide-react'
+import { ChevronRight, Eye, EyeOff, Trash2, X } from 'lucide-react'
 import { useUIStore } from '../../../stores/uiStore'
 import { useAppStore } from '../../../stores/appStore'
 import { useBudgetMonth } from '../../../api/budgets'
-import { useCategories } from '../../../api/categories'
+import { useCategories, useDeleteCategory, useUpdateCategory } from '../../../api/categories'
+import { confirmAsync } from '../../../stores/confirmStore'
 import { addMonths } from '../../../utils/dates'
 import { AvailableBreakdown } from './AvailableBreakdown'
 import { TargetSection } from './TargetSection'
@@ -34,6 +35,8 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const { data: prevBudgetMonth } = useBudgetMonth(budgetId, addMonths(month, -1))
   const { data: categories } = useCategories(budgetId)
+  const updateCategory = useUpdateCategory(budgetId)
+  const deleteCategory = useDeleteCategory(budgetId)
 
   const selectedIds = Array.from(selectedCategoryIds)
   const count = selectedIds.length
@@ -50,6 +53,35 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
 
   const isSingle = count === 1
   const singleCategory = isSingle ? selectedCategories[0] : null
+
+  const allHidden = count > 0 && selectedCategories.length === count && selectedCategories.every((c) => c.is_hidden)
+
+  async function handleHideSelected() {
+    if (!allHidden && count > 1) {
+      const ok = await confirmAsync({
+        title: `Hide ${count} categories?`,
+        message: 'Hidden categories keep their history and can be unhidden later.',
+        confirmLabel: 'Hide',
+      })
+      if (!ok) return
+    }
+    await Promise.all(selectedIds.map((id) => updateCategory.mutateAsync({ id, is_hidden: !allHidden })))
+    clearCategorySelection()
+  }
+
+  async function handleDeleteSelected() {
+    const ok = await confirmAsync({
+      title: isSingle
+        ? `Delete ${singleCategory?.name ?? 'category'}?`
+        : `Delete ${count} categories?`,
+      message: 'Transactions will lose their category.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    await Promise.all(selectedIds.map((id) => deleteCategory.mutateAsync(id)))
+    clearCategorySelection()
+  }
 
   const headerTitle = count === 0
     ? formatMonthLabel(month)
@@ -127,6 +159,23 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
 
                 {isSingle && singleCategory && (
                   <TagsSection category={singleCategory} budgetId={budgetId} />
+                )}
+
+                {/* Mobile sheet gets these from CategoryMobileActions instead */}
+                {!forceOpen && (
+                  <div className="category-inspector__manage">
+                    <button className="inspector-btn category-inspector__manage-btn" onClick={handleHideSelected}>
+                      {allHidden ? <Eye size={13} /> : <EyeOff size={13} />}
+                      {allHidden ? 'Unhide' : 'Hide'}
+                    </button>
+                    <button
+                      className="inspector-btn inspector-btn--danger category-inspector__manage-btn"
+                      onClick={handleDeleteSelected}
+                    >
+                      <Trash2 size={13} />
+                      Delete
+                    </button>
+                  </div>
                 )}
               </>
             )}

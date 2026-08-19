@@ -37,6 +37,7 @@ import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
+import { randomUUID } from '../../../utils/uuid'
 import './TransactionEditor.css'
 
 /** Prefill for create mode — the shared shape every AI entry path (NL text,
@@ -154,8 +155,8 @@ export function TransactionEditor({
   const [showAttachments, setShowAttachments] = useState(false)
   const [isSplit, setIsSplit] = useState(false)
   const [splits, setSplits] = useState<SplitDraft[]>([
-    { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
-    { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' },
+    { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+    { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
   ])
 
   // Tab state: "manual" or "receipt" in add mode
@@ -269,7 +270,7 @@ export function TransactionEditor({
           (c) => c.name.toLowerCase() === line.category.toLowerCase()
         )
         return {
-          tempId: crypto.randomUUID(),
+          tempId: randomUUID(),
           amount: Math.abs(parseFloat(line.amount)).toFixed(2),
           categoryId: cat?.id ?? null,
           memo: '',
@@ -284,7 +285,7 @@ export function TransactionEditor({
   }
 
   function addSplit() {
-    setSplits((prev) => [...prev, { tempId: crypto.randomUUID(), amount: '', categoryId: null, memo: '' }])
+    setSplits((prev) => [...prev, { tempId: randomUUID(), amount: '', categoryId: null, memo: '' }])
   }
 
   function removeSplit(tempId: string) {

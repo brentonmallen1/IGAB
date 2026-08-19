@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -10,6 +11,8 @@ from igab.db.session import engine, init_db
 from igab.domain.exceptions import IGABError, NotFoundError
 from igab.tasks.ai_worker import ai_worker
 from igab.tasks.scheduler import start_scheduler, stop_scheduler
+
+logger = logging.getLogger(__name__)
 
 # Known-insecure sentinel values shipped in config.py defaults and .env.example.
 # Booting with any of these means the operator never configured security, so an
@@ -36,8 +39,9 @@ def _validate_security_config() -> None:
         )
     if not settings.ADMIN_PASSWORD or settings.ADMIN_PASSWORD in _INSECURE_ADMIN_PASSWORDS:
         raise RuntimeError(
-            "ADMIN_PASSWORD is unset or still a shipped example value. Set a "
-            "strong ADMIN_PASSWORD before starting IGAB."
+            "ADMIN_PASSWORD is unset or still the shipped example value "
+            "('changeme'). Set it to any other value (a strong one — this is "
+            "the admin login) before starting IGAB."
         )
 
 
@@ -71,25 +75,28 @@ async def _seed_settings() -> None:
 
 
 async def _bootstrap_admin() -> None:
-    """Create the admin user if it doesn't exist yet."""
+    """Create the admin user, or re-sync its password to ADMIN_PASSWORD.
+
+    The env var is the ONLY credential source — there is no in-app
+    change-password flow — so boot must treat it as the truth. This used to
+    create-if-missing and then ignore the env forever, which meant editing
+    ADMIN_PASSWORD silently locked the admin out: the new value was never
+    hashed into the row, and login kept checking against the old hash.
+    Only the ADMIN_EMAIL user is touched; other users are unaffected."""
     from igab.db.session import AsyncSessionLocal
     from igab.repositories.user_repo import UserRepository
     from igab.services.auth_service import AuthService
 
     async with AsyncSessionLocal() as session:
-        repo = UserRepository(session)
-        auth = AuthService(repo)
-        existing = await repo.get_by_email(settings.ADMIN_EMAIL)
-        if existing is None:
-            try:
-                await auth.create_user(
-                    email=settings.ADMIN_EMAIL,
-                    password=settings.ADMIN_PASSWORD,
-                    display_name="Admin",
-                )
-                await session.commit()
-            except Exception:
-                await session.rollback()
+        auth = AuthService(UserRepository(session))
+        try:
+            outcome = await auth.sync_admin(settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD)
+            await session.commit()
+            if outcome == "updated":
+                logger.info("admin password re-synced from ADMIN_PASSWORD")
+        except Exception:
+            logger.exception("admin bootstrap failed")
+            await session.rollback()
 
 
 app = FastAPI(

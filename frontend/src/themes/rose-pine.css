@@ -76,6 +76,169 @@
   --color-info-text: var(--color-info);
 }
 
+/* Rosé Pine Dawn — the official light variant; light counterpart of the main
+   Rosé Pine palette */
+[data-theme="rose-pine-dawn"] {
+  --bg-primary: #faf4ed;
+  --bg-secondary: #fffaf3;
+  --bg-tertiary: #f2e9e1;
+  --bg-elevated: #fffaf3;
+  --bg-hover: #f2e9e1;
+
+  --text-primary: #575279;
+  --text-secondary: #797593;
+  --text-muted: #9893a5;
+  --text-inverse: #faf4ed;
+
+  --color-accent: #907aa9;
+  --color-accent-hover: #d7827e;
+  --accent-color: var(--color-accent);
+  --color-positive: #286983;
+  --color-negative: #b4637a;
+  --color-warning: #ea9d34;
+  --color-info: #56949f;
+
+  --border-color: #dfdad9;
+  --border-subtle: #f2e9e1;
+  --input-bg: #fffaf3;
+  --input-border: #cecacd;
+  --input-focus-ring: #907aa9;
+
+  --row-hover-bg: rgba(144, 122, 169, 0.06);
+  --row-selected-bg: rgba(144, 122, 169, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(87, 82, 121, 0.1);
+  --shadow-md: 0 4px 12px rgba(87, 82, 121, 0.15);
+  --shadow-lg: 0 8px 24px rgba(87, 82, 121, 0.2);
+
+  /* Dark sidebar, like the app's other light themes — borrowed from the Moon
+     surface so it still reads as Rosé Pine */
+  --sidebar-bg: #2a273f;
+  --header-bg: #fffaf3;
+  --card-bg: #fffaf3;
+  --card-border: #dfdad9;
+
+  /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
+  --sidebar-text-primary: #e0def4;
+  --sidebar-text-secondary: #908caa;
+  --sidebar-text-muted: #6e6a86;
+
+  /* Tag color slots — Rosé Pine Dawn */
+  --tag-red: #b4637a;
+  --tag-orange: #d7827e;
+  --tag-yellow: #ea9d34;
+  --tag-green: #286983;
+  --tag-teal: #56949f;
+  --tag-blue: #286983;
+  --tag-purple: #907aa9;
+  --tag-pink: #b4637a;
+
+  /* Chart palette — Dawn accents are already dark enough for a light surface;
+     pine fills slots 1/6 and love slots 5/8 at separated lightness steps to
+     match the structure of the dark variants. */
+  --chart-1: #286983;
+  --chart-2: #c06862;
+  --chart-3: #56949f;
+  --chart-4: #b57614;
+  --chart-5: #b4637a;
+  --chart-6: #1d5468;
+  --chart-7: #907aa9;
+  --chart-8: #94445c;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* Rosé Pine Moon Dawn — light counterpart of the Moon palette. Not an official
+   Rosé Pine theme: it is Dawn shifted the way Moon shifts the main dark
+   variant — the warm cream base goes cool lavender, and text contrast steps up
+   so the two light themes are clearly distinct side by side. */
+[data-theme="rose-pine-moon-dawn"] {
+  --bg-primary: #f1eef6;
+  --bg-secondary: #f9f7fc;
+  --bg-tertiary: #e6e1ef;
+  --bg-elevated: #f9f7fc;
+  --bg-hover: #e6e1ef;
+
+  --text-primary: #433f5e;
+  --text-secondary: #615c7d;
+  --text-muted: #8d87a2;
+  --text-inverse: #f1eef6;
+
+  --color-accent: #907aa9;
+  --color-accent-hover: #c96a66;
+  --accent-color: var(--color-accent);
+  --color-positive: #2b7091;
+  --color-negative: #ad5a72;
+  --color-warning: #d68b21;
+  --color-info: #4f8d99;
+
+  --border-color: #d9d3e3;
+  --border-subtle: #e6e1ef;
+  --input-bg: #f9f7fc;
+  --input-border: #c6bfd6;
+  --input-focus-ring: #907aa9;
+
+  --row-hover-bg: rgba(144, 122, 169, 0.07);
+  --row-selected-bg: rgba(144, 122, 169, 0.14);
+
+  --shadow-sm: 0 1px 3px rgba(67, 63, 94, 0.1);
+  --shadow-md: 0 4px 12px rgba(67, 63, 94, 0.15);
+  --shadow-lg: 0 8px 24px rgba(67, 63, 94, 0.2);
+
+  /* Dark sidebar, like the app's other light themes — the Moon surface keeps
+     the family link to the paired dark variant */
+  --sidebar-bg: #2a273f;
+  --header-bg: #f9f7fc;
+  --card-bg: #f9f7fc;
+  --card-border: #d9d3e3;
+
+  /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
+  --sidebar-text-primary: #e0def4;
+  --sidebar-text-secondary: #908caa;
+  --sidebar-text-muted: #6e6a86;
+
+  /* Tag color slots — Moon accents darkened for the light surface */
+  --tag-red: #ad5a72;
+  --tag-orange: #c96a66;
+  --tag-yellow: #d68b21;
+  --tag-green: #2b7091;
+  --tag-teal: #4f8d99;
+  --tag-blue: #2b7091;
+  --tag-purple: #907aa9;
+  --tag-pink: #ad5a72;
+
+  /* Chart palette — cooler/darker steps of the Dawn slots so the two light
+     variants stay distinguishable; pine fills 1/6, love 5/8. */
+  --chart-1: #2b7091;
+  --chart-2: #b56561;
+  --chart-3: #4f8d99;
+  --chart-4: #a86e12;
+  --chart-5: #ad5a72;
+  --chart-6: #1e576f;
+  --chart-7: #8a72a6;
+  --chart-8: #8e415a;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
 /* Rosé Pine Moon */
 [data-theme="rose-pine-moon"] {
   --bg-primary: #232136;

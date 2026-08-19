@@ -15,8 +15,14 @@ from igab.repositories.attachment_repo import AttachmentRepository
 # decode it even though the API accepts the content type.
 register_heif_opener()
 
-WEBP_QUALITY = 90
-MAX_DIMENSION = 4096
+# 2048px / q85 / method=6: a receipt or document stays crisp for viewing and
+# printing while a 12MP phone photo lands in the 150-400KB range instead of
+# 1.5-3.5MB (the old 4096px cap was a no-op for phone cameras — a 4032px
+# frame stored at full sensor resolution). The AI model copy is capped
+# separately (ai_service.MODEL_IMAGE_MAX_DIM).
+WEBP_QUALITY = 85
+WEBP_METHOD = 6  # slowest/smallest encode — fine for one file per upload
+MAX_DIMENSION = 2048
 THUMBNAIL_SIZE = (400, 400)
 
 
@@ -74,7 +80,7 @@ class AttachmentService:
         storage_path = self._build_storage_path(txn, filename)
         storage_path.parent.mkdir(parents=True, exist_ok=True)
 
-        img.save(storage_path, "WEBP", quality=WEBP_QUALITY)
+        img.save(storage_path, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
         file_size = storage_path.stat().st_size
 
         thumb = img.copy()
@@ -167,7 +173,7 @@ class AttachmentService:
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         rotated = img.transpose(transpose)
-        rotated.save(file_path, "WEBP", quality=WEBP_QUALITY)
+        rotated.save(file_path, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
 
         thumb = rotated.copy()
         thumb.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)

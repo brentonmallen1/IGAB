@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useRef, useState } from 'react'
-import { EyeOff, Pencil, Plus, ReceiptText, Trash2 } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 import { useSetAssignment } from '../../../api/budgets'
 import { useTarget } from '../../../api/targets'
 import {
@@ -8,7 +8,7 @@ import {
   targetProgress as computeTargetProgress,
   targetStatus as computeTargetStatus,
 } from '../../../utils/targets'
-import { useDeleteCategory, useUpdateCategory } from '../../../api/categories'
+import { useUpdateCategory } from '../../../api/categories'
 import { useUIStore } from '../../../stores/uiStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useLongPress } from '../../../hooks/useLongPress'
@@ -42,7 +42,6 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [subtitleValue, setSubtitleValue] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [movePopoverPos, setMovePopoverPos] = useState<{ x: number; y: number } | null>(null)
   const [moveSheetOpen, setMoveSheetOpen] = useState(false)
   const [showAddTxn, setShowAddTxn] = useState(false)
@@ -57,7 +56,6 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
 
   const setAssignment = useSetAssignment(budgetId)
   const updateCategory = useUpdateCategory(budgetId)
-  const deleteCategory = useDeleteCategory(budgetId)
   const { data: target } = useTarget(category.id)
 
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
@@ -155,14 +153,6 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
   function handleRenameKey(e: React.KeyboardEvent) {
     if (e.key === 'Enter') { e.preventDefault(); commitRename() }
     if (e.key === 'Escape') setIsRenaming(false)
-  }
-
-  function handleHide() {
-    updateCategory.mutate({ id: category.id, is_hidden: true })
-  }
-
-  function handleDelete() {
-    deleteCategory.mutate(category.id)
   }
 
   function handleCheckboxChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -334,15 +324,7 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                     onClick={() => setShowTargetEditor(true)}
                   />
                 )
-              ) : (
-                <button
-                  className="category-row__target-btn"
-                  onClick={() => setShowTargetEditor(true)}
-                  title="Set target"
-                >
-                  +target
-                </button>
-              )}
+              ) : null}
               <div className="category-row__actions" role="group" aria-label={`${category.name} actions`}>
                 <button
                   className="category-row__action-btn"
@@ -350,51 +332,11 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
                   title="Add transaction"
                   aria-label={`Add transaction to ${category.name}`}
                 >
-                  <Plus size={11} />
-                </button>
-                <button
-                  className="category-row__action-btn"
-                  onClick={() => setShowTxnList(true)}
-                  title="View transactions"
-                  aria-label={`View transactions for ${category.name}`}
-                >
-                  <ReceiptText size={11} />
+                  <Plus size={13} />
                 </button>
                 <button className="category-row__action-btn" onClick={startRename} title="Rename" aria-label={`Rename ${category.name}`}>
-                  <Pencil size={11} />
+                  <Pencil size={13} />
                 </button>
-                <button className="category-row__action-btn" onClick={handleHide} title="Hide category" aria-label={`Hide ${category.name}`}>
-                  <EyeOff size={11} />
-                </button>
-                {confirmDelete ? (
-                  <>
-                    <button
-                      className="category-row__action-btn category-row__action-btn--confirm"
-                      onClick={handleDelete}
-                      title="Confirm delete"
-                      aria-label={`Confirm delete ${category.name}`}
-                    >
-                      ✓
-                    </button>
-                    <button
-                      className="category-row__action-btn"
-                      onClick={() => setConfirmDelete(false)}
-                      title="Cancel"
-                      aria-label="Cancel delete"
-                    >
-                      ✗
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className="category-row__action-btn category-row__action-btn--danger"
-                    onClick={() => setConfirmDelete(true)}
-                    title="Delete category"
-                    aria-label={`Delete ${category.name}`}
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                )}
               </div>
             </>
           )}
@@ -428,11 +370,21 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
         </div>
 
         <div className="category-row__activity tabular">
-          {activity === 0 ? (
-            <span className="category-row__zero">—</span>
-          ) : (
-            <span className={activity < 0 ? 'negative' : 'positive'}>{formatMoney(activity)}</span>
-          )}
+          <button
+            className="category-row__activity-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowTxnList(true)
+            }}
+            title="View transactions"
+            aria-label={`View transactions for ${category.name}`}
+          >
+            {activity === 0 ? (
+              <span className="category-row__zero">—</span>
+            ) : (
+              <span className={activity < 0 ? 'negative' : 'positive'}>{formatMoney(activity)}</span>
+            )}
+          </button>
         </div>
 
         <div

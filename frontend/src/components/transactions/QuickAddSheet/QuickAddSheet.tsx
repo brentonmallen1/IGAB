@@ -28,7 +28,6 @@ import {
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today, yesterday } from '../../../utils/dates'
 import { hapticTick } from '../../../utils/haptics'
-import { downscaleForUpload } from '../../../utils/imageUpload'
 import './QuickAddSheet.css'
 import { apiErrorMessage } from '../../../api/client'
 
@@ -236,8 +235,8 @@ export function QuickAddSheet() {
     for (const [i, original] of accepted.entries()) {
       setScanDone(i)
       try {
-        const file = await downscaleForUpload(original)
-        await submitReceipt.mutateAsync({ file, accountId })
+        // Downscale happens inside useSubmitReceipt now, for every caller.
+        await submitReceipt.mutateAsync({ file: original, accountId })
         queued += 1
       } catch (err: unknown) {
         const response = (err as { response?: { status?: number } })?.response

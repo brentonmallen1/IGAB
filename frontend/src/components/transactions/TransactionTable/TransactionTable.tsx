@@ -141,6 +141,14 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     }))
   )
 
+  // Selection is register-scoped state living in a global store — leaving
+  // the page must end selection mode. A stale selection surviving navigation
+  // made the next visit's first tap a deselect instead of an edit ("tap
+  // twice to open a transaction" on mobile).
+  useEffect(() => {
+    return () => useUIStore.getState().clearTransactionSelection()
+  }, [])
+
   useEffect(() => {
     if (selectedTransactionIds.size !== 1) {
       setShowAttachmentPanel(false)

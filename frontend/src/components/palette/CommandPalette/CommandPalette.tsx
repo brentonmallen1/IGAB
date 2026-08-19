@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Landmark, Palette as PaletteIcon, Receipt, Search, User, Bookmark } from 'lucide-react'
+import { Landmark, Palette as PaletteIcon, Receipt, Search, User, Bookmark, X } from 'lucide-react'
 import { apiClient } from '../../../api/client'
 import { useAccounts } from '../../../api/accounts'
 import { usePayees } from '../../../api/payees'
@@ -10,6 +10,7 @@ import { useBudgetViews } from '../../../api/budgetViews'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
+import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { useShortcut } from '../../../hooks/useShortcut'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
@@ -20,8 +21,9 @@ import './CommandPalette.css'
 
 /**
  * ⌘K command palette: navigation, budget actions, theme switching, and live
- * payee/transaction search. Desktop-only — mobile has the bottom nav and
- * quick-add sheet.
+ * payee/transaction search. On mobile it opens from the header's magnifier as
+ * a full-width top sheet — it is the only global search affordance on phones
+ * (the button used to flip state that nothing consumed: a dead control).
  */
 export function CommandPalette() {
   const { formatMoney, formatDate } = useFormatters()
@@ -48,6 +50,10 @@ export function CommandPalette() {
   const [debounced, setDebounced] = useState('')
 
   useShortcut('mod+k', () => togglePalette(), { allowInInputs: true, enabled: !isMobile })
+
+  // Android back / iOS edge-swipe dismisses the palette instead of leaving
+  // the page — same pattern as every mobile sheet.
+  useHistoryDismissable(open && isMobile, closePalette, 'palette')
 
   useEffect(() => {
     if (!open) {
@@ -88,7 +94,7 @@ export function CommandPalette() {
 
   const payeeNameById = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
 
-  if (isMobile || !open) return null
+  if (!open) return null
 
   const ctx: CommandCtx = {
     navigate: (to) => navigate(to),
@@ -126,7 +132,18 @@ export function CommandPalette() {
             onValueChange={setQuery}
             placeholder="Search commands, payees, transactions…"
             autoFocus
+            enterKeyHint="go"
           />
+          {/* Mobile-only (CSS): the backdrop is a sliver on a full-width
+              sheet, and a standalone PWA has no browser back button. */}
+          <button
+            type="button"
+            className="palette__close"
+            onClick={closePalette}
+            aria-label="Close search"
+          >
+            <X size={18} />
+          </button>
         </div>
         <Command.List>
           <Command.Empty>No results.</Command.Empty>

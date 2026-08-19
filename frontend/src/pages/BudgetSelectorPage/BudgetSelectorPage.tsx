@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { LogOut, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, LogOut, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import {
   useBudgets,
   useCreateBudget,
@@ -32,6 +32,46 @@ const ACCOUNT_TYPE_OPTIONS = [
   { value: 'tracking', label: 'Tracking' },
 ]
 
+/**
+ * A selector card whose header toggles its body. The Create / Import /
+ * Sample forms used to sit in a cramped second column; collapsed sections
+ * under the budget list give each form the page's full width — which is what
+ * makes the YNAB account-mapping rows readable.
+ */
+function SelectorSection({
+  title,
+  subtitle,
+  open,
+  onToggle,
+  children,
+  className = '',
+}: {
+  title: string
+  subtitle: string
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`selector-card ${className}`}>
+      <button
+        type="button"
+        className="selector-card__header selector-card__header--toggle"
+        onClick={onToggle}
+        aria-expanded={open}
+      >
+        <div>
+          <div className="selector-card__title">{title}</div>
+          <div className="selector-card__subtitle">{subtitle}</div>
+        </div>
+        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      </button>
+      {open && children}
+    </div>
+  )
+}
+
 export function BudgetSelectorPage() {
   const navigate = useNavigate()
   const setCurrentBudgetId = useAppStore((s) => s.setCurrentBudgetId)
@@ -56,6 +96,14 @@ export function BudgetSelectorPage() {
   // Create form
   const [createName, setCreateName] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
+
+  // Collapsible action sections — independent, all closed by default. null =
+  // "no explicit choice yet": Create auto-opens for a brand-new user with
+  // zero budgets so the empty state has an obvious path.
+  const [createToggled, setCreateToggled] = useState<boolean | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [sampleOpen, setSampleOpen] = useState(false)
+  const createOpen = createToggled ?? (!isLoading && budgets.length === 0)
 
   // YNAB import form — two steps: preview (parse accounts) → mapped import
   const [importName, setImportName] = useState('')
@@ -283,14 +331,15 @@ export function BudgetSelectorPage() {
           )}
         </div>
 
-        <div className="budget-selector__aside">
+        <div className="budget-selector__actions">
 
         {/* Create new budget */}
-        <div className="selector-card">
-          <div className="selector-card__header">
-            <div className="selector-card__title">Create New Budget</div>
-            <div className="selector-card__subtitle">Start fresh with an empty budget</div>
-          </div>
+        <SelectorSection
+          title="Create New Budget"
+          subtitle="Start fresh with an empty budget"
+          open={createOpen}
+          onToggle={() => setCreateToggled(!createOpen)}
+        >
           <form className="selector-card__body" onSubmit={handleCreate}>
             <div className="selector-field">
               <label className="selector-field__label">Budget name</label>
@@ -316,16 +365,15 @@ export function BudgetSelectorPage() {
               )}
             </div>
           </form>
-        </div>
+        </SelectorSection>
 
         {/* Import from YNAB */}
-        <div className="selector-card">
-          <div className="selector-card__header">
-            <div className="selector-card__title">Import from YNAB</div>
-            <div className="selector-card__subtitle">
-              Migrate an existing YNAB budget — creates a new budget from your export ZIP
-            </div>
-          </div>
+        <SelectorSection
+          title="Import from YNAB"
+          subtitle="Migrate an existing YNAB budget — creates a new budget from your export ZIP"
+          open={importOpen}
+          onToggle={() => setImportOpen((v) => !v)}
+        >
           <form
             className="selector-card__body"
             onSubmit={previewAccounts ? handleImport : handlePreview}
@@ -434,16 +482,16 @@ export function BudgetSelectorPage() {
               )}
             </div>
           </form>
-        </div>
+        </SelectorSection>
 
-        {/* Sample budget — always visible, secondary styling */}
-        <div className="selector-card selector-card--secondary">
-          <div className="selector-card__header">
-            <div className="selector-card__title">Try a Sample Budget</div>
-            <div className="selector-card__subtitle">
-              Explore IGAB with 12 months of realistic demo data
-            </div>
-          </div>
+        {/* Sample budget */}
+        <SelectorSection
+          title="Try a Sample Budget"
+          subtitle="Explore IGAB with 12 months of realistic demo data"
+          open={sampleOpen}
+          onToggle={() => setSampleOpen((v) => !v)}
+          className="selector-card--secondary"
+        >
           <div className="selector-card__body">
             <div className="selector-card__footer">
               <button
@@ -459,7 +507,7 @@ export function BudgetSelectorPage() {
               )}
             </div>
           </div>
-        </div>
+        </SelectorSection>
 
         </div>
 

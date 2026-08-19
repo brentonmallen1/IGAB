@@ -258,22 +258,6 @@
   font-style: italic;
 }
 
-.category-row__target-btn {
-  background: none;
-  border: none;
-  font-size: var(--font-size-2xs);
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 1px 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-
-.category-row:hover .category-row__target-btn {
-  opacity: 1;
-}
-
 .category-row__actions {
   display: flex;
   align-items: center;
@@ -292,8 +276,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
@@ -303,18 +287,6 @@
 .category-row__action-btn:hover {
   background-color: var(--bg-hover);
   color: var(--text-primary);
-}
-
-.category-row__action-btn--danger:hover {
-  color: var(--color-negative);
-}
-
-.category-row__action-btn--confirm {
-  color: var(--color-positive);
-}
-
-.category-row__action-btn--confirm:hover {
-  color: var(--color-positive);
 }
 
 /* Overspent category */
@@ -426,9 +398,6 @@
 /* On touch devices, always show actions since hover never fires */
 @media (hover: none) {
   .category-row__actions {
-    opacity: 1;
-  }
-  .category-row__target-btn {
     opacity: 1;
   }
 }
@@ -544,9 +513,14 @@
   }
 
   /* Hover-only affordances have no mobile home on the row itself */
-  .category-row__actions,
-  .category-row__target-btn {
+  .category-row__actions {
     display: none;
+  }
+
+  /* Keep the amount visually small but give the tap a comfortable target */
+  .category-row__activity-btn {
+    padding: 10px 0;
+    margin: -8px 0;
   }
 
   /* Keep LED visually small but expand hit area */
@@ -583,6 +557,21 @@
 }
 
 .category-row__available--clickable:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Activity amount doubles as the "view transactions" affordance */
+.category-row__activity-btn {
+  font: inherit;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 0;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+}
+
+.category-row__activity-btn:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }

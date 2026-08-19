@@ -91,6 +91,10 @@ class AIService:
         # before the model is invoked so callers can persist it for
         # debugging even when the call itself fails.
         self.last_request: dict | None = None
+        # The raw text of the last model response (plus thinking, when the
+        # model produced any), captured BEFORE parsing — a JSON-parse failure
+        # must leave evidence of what the model actually said.
+        self.last_response: dict | None = None
 
     async def _client(self) -> OllamaClient:
         host = await self.settings.get("ollama_host") or "http://localhost:11434"
@@ -155,6 +159,18 @@ class AIService:
             if isinstance(parsed, dict):
                 options.update(parsed)
         return options
+
+    # Thinking transcripts can be enormous; cap what we keep for the log.
+    _RESPONSE_KEEP_CHARS = 100_000
+
+    def _record_response(self, raw: str, client: OllamaClient) -> None:
+        self.last_response = {
+            "response": raw[: self._RESPONSE_KEEP_CHARS],
+            **{
+                k: (v[: self._RESPONSE_KEEP_CHARS] if isinstance(v, str) else v)
+                for k, v in (client.last_meta or {}).items()
+            },
+        }
 
     async def _prompt(self, key: str, values: dict[str, str]) -> str:
         template = await self.settings.get(key) or DEFAULT_PROMPTS[key]
@@ -281,6 +297,7 @@ class AIService:
             "think": think,
             "format": None if think else "json",
         }
+        self.last_response = None
         raw = await client.generate(
             prompt,
             system=system,
@@ -293,6 +310,7 @@ class AIService:
             options=await self._merged_options(vision=True, task_defaults={"temperature": 0}),
             timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
         )
+        self._record_response(raw, client)
         return _json_from_response(raw)
 
     async def parse_nl_transaction(
@@ -316,6 +334,7 @@ class AIService:
             "think": think,
             "format": None if think else "json",
         }
+        self.last_response = None
         raw = await client.generate(
             prompt,
             system=system,
@@ -324,6 +343,7 @@ class AIService:
             think=think,
             options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
         )
+        self._record_response(raw, client)
         return _json_from_response(raw)
 
     async def suggest_category(
