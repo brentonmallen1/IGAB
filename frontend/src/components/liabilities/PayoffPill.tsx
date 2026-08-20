@@ -16,7 +16,7 @@ interface Props {
  * never retire the liability. A live number is never fabricated.
  */
 export function PayoffPill({ liability }: Props) {
-  const { formatMonth } = useFormatters()
+  const { formatMonth, formatMoney } = useFormatters()
 
   if (Number(liability.current_balance) === 0) {
     return (
@@ -29,16 +29,43 @@ export function PayoffPill({ liability }: Props) {
 
   const liveNever = liability.has_live_projection && liability.live_never_pays_off
   const baselineNever = liability.baseline_never_pays_off
-  if (liveNever || (baselineNever && !liability.has_live_projection)) {
+  const interestNow = formatMoney(Number(liability.monthly_interest_now))
+  const minimum = formatMoney(Number(liability.minimum_payment))
+
+  // The warning must say WHICH payments fall short — "won't pay this off"
+  // alone reads as "won't pay it off early".
+  if (liveNever) {
+    const avg =
+      liability.average_recent_payment !== null
+        ? formatMoney(Number(liability.average_recent_payment))
+        : null
     return (
       <div className="payoff-pill payoff-pill--warning">
         <AlertTriangle size={18} />
         <div>
-          <div className="payoff-pill__main">Current payments won't pay this off</div>
+          <div className="payoff-pill__main">Your recent payments won't pay this off</div>
           <div className="payoff-pill__sub">
-            {liveNever && !baselineNever && liability.baseline_payoff_date
-              ? `At the contractual payment: ${formatMonth(liability.baseline_payoff_date)}`
-              : 'Interest outpaces the payment — increase your payment'}
+            {avg
+              ? `Recent payments average ${avg}/mo — below this month's ~${interestNow} interest`
+              : `Recent payments fall below this month's ~${interestNow} interest`}
+            {!baselineNever && liability.baseline_payoff_date
+              ? ` · at the ${minimum} minimum: ${formatMonth(liability.baseline_payoff_date)}`
+              : ''}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (baselineNever && !liability.has_live_projection) {
+    return (
+      <div className="payoff-pill payoff-pill--warning">
+        <AlertTriangle size={18} />
+        <div>
+          <div className="payoff-pill__main">Won't pay off at the minimum payment</div>
+          <div className="payoff-pill__sub">
+            The {minimum} minimum doesn't cover this month's ~{interestNow} interest — your
+            actual payments decide the real date
           </div>
         </div>
       </div>
@@ -56,9 +83,11 @@ export function PayoffPill({ liability }: Props) {
             Paid off around <strong>{formatMonth(liability.live_payoff_date)}</strong>
           </div>
           <div className="payoff-pill__sub">
-            {differs && liability.baseline_payoff_date
-              ? `Contractual: ${formatMonth(liability.baseline_payoff_date)}`
-              : 'Based on your recent payments'}
+            {baselineNever
+              ? `The ${minimum} minimum alone wouldn't cover interest — this date reflects what you actually pay`
+              : differs && liability.baseline_payoff_date
+                ? `At the ${minimum} minimum: ${formatMonth(liability.baseline_payoff_date)}`
+                : 'Based on your recent payments'}
           </div>
         </div>
       </div>

@@ -117,6 +117,50 @@
   border-color: var(--border-subtle);
 }
 
+.liability-page__hint--warning {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--color-warning, var(--color-negative)) 45%, transparent);
+  background: color-mix(in srgb, var(--color-warning, var(--color-negative)) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.liability-page__hint--success {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--color-positive, var(--color-accent)) 45%, transparent);
+  background: color-mix(in srgb, var(--color-positive, var(--color-accent)) 8%, transparent);
+  color: var(--text-primary);
+}
+
+/* Loan progress (origination → today) */
+.liability-page__progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+}
+
+.liability-page__progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.liability-page__progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.liability-page__progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
 .liability-page__hint-dismiss {
   font-size: var(--font-size-xs);
   color: var(--text-muted);

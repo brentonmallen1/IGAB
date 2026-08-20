@@ -17,12 +17,19 @@ class LiabilityCreate(BaseModel):
     liability_type: LiabilityType
     interest_rate: Decimal  # annual percent, e.g. 6.25
     minimum_payment: Money
-    compounding: str = "monthly"
-    # Managed (linked account) XOR unmanaged (manual balance) — not both
+    # Managed (linked account) XOR unmanaged (manual balance) — not both.
+    # Compounding is not accepted: all amortization math is monthly by design
+    # (see services/amortization.py).
     linked_account_id: uuid.UUID | None = None
     manual_balance: Money | None = None
     origination_date: datetime.date | None = None
     original_principal: Money | None = None
+    # Promotional financing: 0% until promo_end_date, interest_rate after.
+    # promo_deferred_interest = retailer deals that charge interest
+    # RETROACTIVELY when the balance isn't cleared by the deadline.
+    promo_end_date: datetime.date | None = None
+    promo_deferred_interest: bool = False
+    term_months: int | None = None
 
 
 class LiabilityUpdate(BaseModel):
@@ -30,11 +37,13 @@ class LiabilityUpdate(BaseModel):
     liability_type: LiabilityType | None = None
     interest_rate: Decimal | None = None
     minimum_payment: Money | None = None
-    compounding: str | None = None
     linked_account_id: uuid.UUID | None = None
     manual_balance: Money | None = None
     origination_date: datetime.date | None = None
     original_principal: Money | None = None
+    promo_end_date: datetime.date | None = None
+    promo_deferred_interest: bool | None = None
+    term_months: int | None = None
 
 
 class LiabilityOut(BaseModel):
@@ -46,11 +55,28 @@ class LiabilityOut(BaseModel):
     linked_account_id: uuid.UUID | None
     linked_category_id: uuid.UUID | None
     current_balance: Decimal  # owed, positive
+    # 'ledger' | 'manual' | 'manual_fallback' — manual_fallback means the
+    # linked account's register is empty and the pre-link manual balance is
+    # standing in; the UI prompts for an opening balance in that state
+    balance_source: Literal["ledger", "manual", "manual_fallback"]
     interest_rate: Decimal
     minimum_payment: Decimal
-    compounding: str
     origination_date: datetime.date | None
     original_principal: Decimal | None
+    # This month's interest at the current balance — the concrete number the
+    # payoff copy compares payments against
+    monthly_interest_now: Decimal
+    # Average of recent positive payments (None until 2+ months of history)
+    average_recent_payment: Decimal | None
+    # Contractual term implied by origination + principal + minimum payment.
+    # implied_never_pays_off=True flags the P&I-vs-escrow data-entry trap:
+    # the entered minimum wouldn't have amortized the original loan at all.
+    implied_term_months: int | None
+    implied_never_pays_off: bool | None
+    promo_end_date: datetime.date | None
+    promo_deferred_interest: bool
+    term_months: int | None
+    promo_projection: "PromoProjectionOut | None"
     baseline_payoff_date: datetime.date | None
     baseline_never_pays_off: bool
     live_payoff_date: datetime.date | None
@@ -58,6 +84,18 @@ class LiabilityOut(BaseModel):
     has_live_projection: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
+
+
+class PromoProjectionOut(BaseModel):
+    """Where the balance stands when the promo window closes."""
+
+    months_until_promo_end: int
+    balance_at_promo_end_minimum: Decimal
+    balance_at_promo_end_live: Decimal | None
+    clears_before_promo: bool
+    # Estimate of retroactive interest if the deadline is missed (deferred-
+    # interest promos only) — retailer accrual rules vary
+    deferred_interest_estimate: Decimal | None
 
 
 class LiabilityBalanceSnapshotCreate(BaseModel):

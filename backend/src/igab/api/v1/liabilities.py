@@ -15,6 +15,7 @@ from igab.api.v1.schemas.liability import (
     LiabilityOut,
     LiabilityUpdate,
     LinkLiabilityRequest,
+    PromoProjectionOut,
 )
 from igab.db.models import Liability
 from igab.dependencies import (
@@ -28,7 +29,7 @@ from igab.dependencies import (
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
-from igab.services.amortization import AmortizationResult, amortization_schedule
+from igab.services.amortization import AmortizationResult, amortization_schedule, quantize_cents
 from igab.services.liability_service import LiabilityService
 from igab.utils.clock import today_utc
 
@@ -72,6 +73,24 @@ async def _liability_out(
 ) -> LiabilityOut:
     status_ = await liability_service.get_status(liability)
     linked_category = await category_repo.get_by_linked_liability(liability.id)
+
+    # The term the contract implies, replayed from origination. If the
+    # minimum payment can't amortize the ORIGINAL principal, the entered
+    # payment is almost certainly escrow-inclusive vs P&I (or vice versa) —
+    # surfaced so the UI can say so instead of a bare "won't pay off".
+    implied_term_months: int | None = None
+    implied_never_pays_off: bool | None = None
+    if liability.origination_date is not None and liability.original_principal is not None:
+        implied = amortization_schedule(
+            liability.original_principal,
+            liability.interest_rate,
+            liability.minimum_payment,
+            liability.origination_date,
+        )
+        implied_never_pays_off = implied.never_pays_off
+        if not implied.never_pays_off:
+            implied_term_months = len(implied.schedule)
+
     return LiabilityOut(
         id=liability.id,
         budget_id=liability.budget_id,
@@ -81,11 +100,31 @@ async def _liability_out(
         linked_account_id=liability.linked_account_id,
         linked_category_id=linked_category.id if linked_category else None,
         current_balance=status_.current_balance,
+        balance_source=status_.balance_source,
         interest_rate=liability.interest_rate,
         minimum_payment=liability.minimum_payment,
-        compounding=liability.compounding,
         origination_date=liability.origination_date,
         original_principal=liability.original_principal,
+        monthly_interest_now=quantize_cents(
+            status_.current_balance * liability.interest_rate / Decimal("1200")
+        ),
+        average_recent_payment=status_.live.average_payment if status_.live else None,
+        implied_term_months=implied_term_months,
+        implied_never_pays_off=implied_never_pays_off,
+        promo_end_date=liability.promo_end_date,
+        promo_deferred_interest=liability.promo_deferred_interest,
+        term_months=liability.term_months,
+        promo_projection=(
+            PromoProjectionOut(
+                months_until_promo_end=status_.promo.months_until_promo_end,
+                balance_at_promo_end_minimum=status_.promo.balance_at_promo_end_minimum,
+                balance_at_promo_end_live=status_.promo.balance_at_promo_end_live,
+                clears_before_promo=status_.promo.clears_before_promo,
+                deferred_interest_estimate=status_.promo.deferred_interest_estimate,
+            )
+            if status_.promo is not None
+            else None
+        ),
         baseline_payoff_date=status_.baseline.payoff_date,
         baseline_never_pays_off=status_.baseline.never_pays_off,
         live_payoff_date=status_.live.payoff_date if status_.live else None,
@@ -138,9 +177,11 @@ async def create_liability(
         manual_balance=body.manual_balance,
         interest_rate=body.interest_rate,
         minimum_payment=body.minimum_payment,
-        compounding=body.compounding,
         origination_date=body.origination_date,
         original_principal=body.original_principal,
+        promo_end_date=body.promo_end_date,
+        promo_deferred_interest=body.promo_deferred_interest,
+        term_months=body.term_months,
     )
     if liability.linked_account_id is None and body.manual_balance is not None:
         # Seed the snapshot trail so history starts at creation
