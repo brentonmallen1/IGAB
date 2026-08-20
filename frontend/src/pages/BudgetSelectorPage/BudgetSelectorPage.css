@@ -136,6 +136,32 @@
   border-radius: 999px;
 }
 
+/* A budget someone else owns and shared here — quiet identity, not a state */
+.budget-card__shared {
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.budget-card--deleting {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.budget-card__deleting {
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
 .budget-card__actions {
   display: flex;
   align-items: center;
@@ -414,4 +440,11 @@
   color: var(--text-secondary);
   white-space: nowrap;
   cursor: pointer;
+}
+
+
+.budget-selector__whoami {
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
 }
