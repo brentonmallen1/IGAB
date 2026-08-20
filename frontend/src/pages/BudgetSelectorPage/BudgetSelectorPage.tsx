@@ -274,7 +274,12 @@ export function BudgetSelectorPage() {
 
         {/* Existing budgets — the focal point */}
         <div className="budget-selector__main">
-          <div className="section-label budget-selector__section-title">Your Budgets</div>
+          <div className="section-label budget-selector__section-title">
+            Your Budgets
+            {budgets.length > 1 && (
+              <span className="budget-selector__count">{budgets.length}</span>
+            )}
+          </div>
           {isLoading ? (
             <div className="budget-selector__empty">Loading…</div>
           ) : budgets.length === 0 ? (
@@ -373,6 +378,8 @@ export function BudgetSelectorPage() {
         </div>
 
         <div className="budget-selector__actions">
+
+        <div className="section-label budget-selector__section-title">Add a Budget</div>
 
         {/* Create new budget */}
         <SelectorSection
