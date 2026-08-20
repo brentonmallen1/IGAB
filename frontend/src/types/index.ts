@@ -2,6 +2,7 @@ export interface User {
   id: string
   email: string
   display_name: string | null
+  is_admin: boolean
 }
 
 export type NumberFormat = 'comma_dot' | 'dot_comma' | 'space_comma'
@@ -11,6 +12,8 @@ export type TimeFormat = '12h' | '24h'
 export interface Budget {
   id: string
   name: string
+  /** The caller's role in this budget — drives sharing affordances. */
+  role?: 'owner' | 'member' | null
   currency_code: string
   number_format: NumberFormat
   date_format: DateFormat

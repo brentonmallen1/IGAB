@@ -46,6 +46,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Gates user management and global-surface writes (settings, backups).
+    # sync_admin keeps the ADMIN_EMAIL user flagged at every boot.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -89,6 +92,35 @@ class Budget(Base):
     )
     payees: Mapped[list["Payee"]] = relationship(back_populates="budget", passive_deletes=True)
     views: Mapped[list["BudgetView"]] = relationship(back_populates="budget", passive_deletes=True)
+
+
+class BudgetMember(Base):
+    """Who can use a budget, and at what level.
+
+    Authorization source of truth: every *Access guard in dependencies.py
+    resolves through this table. Budget.user_id remains the creator-of-record
+    (it anchors uq_budget_user_name and cascade semantics) but grants no
+    access by itself — creation inserts an 'owner' row here.
+
+    Roles: 'owner' (delete budget, manage members) and 'member' (full
+    day-to-day use). A budget always has at least one owner — the API refuses
+    to remove the last one.
+    """
+
+    __tablename__ = "budget_members"
+    __table_args__ = (Index("ix_budget_members_user", "user_id"),)
+
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    # 'owner' | 'member'
+    role: Mapped[str] = mapped_column(String(10), default="member", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 # ─── Accounts ─────────────────────────────────────────────────────────────────
@@ -487,6 +519,11 @@ class ChangeLog(Base):
     batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # manual | import | ai | system
     source: Mapped[str] = mapped_column(String(20), default="manual", nullable=False)
+    # Who made the change — NULL for system/AI/scheduler actors. SET NULL on
+    # user deletion so history outlives accounts.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
     undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

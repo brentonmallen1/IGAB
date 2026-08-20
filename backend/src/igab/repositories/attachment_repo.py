@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import delete, select, update
 
-from igab.db.models import Budget, Transaction, TransactionAttachment
+from igab.db.models import BudgetMember, Transaction, TransactionAttachment
 from igab.repositories.base import BaseRepository
 
 
@@ -74,19 +74,26 @@ class AttachmentRepository(BaseRepository[TransactionAttachment]):
     ) -> set[uuid.UUID]:
         """Return the subset of `transaction_ids` that have attachments.
 
-        Scoped to `user_id`: transactions belonging to another user's budget are
-        excluded, so this cannot be used to probe attachment existence for
-        arbitrary transaction ids.
+        Scoped to `user_id`: transactions in budgets the user is not a member
+        of are excluded, so this cannot be used to probe attachment existence
+        for arbitrary transaction ids.
         """
         if not transaction_ids:
             return set()
+        membership = (
+            select(BudgetMember.budget_id)
+            .where(
+                BudgetMember.budget_id == Transaction.budget_id,
+                BudgetMember.user_id == user_id,
+            )
+            .exists()
+        )
         result = await self.session.execute(
             select(TransactionAttachment.transaction_id)
             .join(Transaction, TransactionAttachment.transaction_id == Transaction.id)
-            .join(Budget, Transaction.budget_id == Budget.id)
             .where(
                 TransactionAttachment.transaction_id.in_(transaction_ids),
-                Budget.user_id == user_id,
+                membership,
             )
             .distinct()
         )

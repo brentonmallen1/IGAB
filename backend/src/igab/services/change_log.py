@@ -161,6 +161,10 @@ class ChangeRecorder:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self._batch_id: uuid.UUID | None = None
+        # Who is acting. Stamped by the request-layer dependency factories
+        # (where CurrentUser is in scope); worker/scheduler recorders leave it
+        # None, which renders as the source ('AI', 'system') in the UI.
+        self.actor_user_id: uuid.UUID | None = None
 
     @contextmanager
     def batch(self):
@@ -195,6 +199,7 @@ class ChangeRecorder:
             after=after,
             batch_id=batch_id if batch_id is not None else self._batch_id,
             source=source,
+            user_id=self.actor_user_id,
         )
         self.session.add(row)
         return row

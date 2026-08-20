@@ -66,7 +66,10 @@ async def api_client(db_session):
 
     from .factories import create_user
 
-    user = await create_user(db_session)
+    # Admin, mirroring the env-bootstrapped primary user — settings writes and
+    # backup endpoints are admin-gated. Authz tests create explicit non-admin
+    # users when they need the other side.
+    user = await create_user(db_session, is_admin=True)
 
     async def _session_override():
         yield db_session

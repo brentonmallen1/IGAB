@@ -192,3 +192,15 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
+
+
+.change-card__actor {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-left: auto;
+  padding-right: var(--spacing-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 10em;
+}

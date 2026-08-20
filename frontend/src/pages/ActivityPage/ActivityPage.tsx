@@ -137,6 +137,12 @@ function ChangeCard({ change, formatDateTime, onUndo, isUndoing }: ChangeCardPro
           <span className="change-card__action">
             {actionLabel} {entityLabel}
           </span>
+          {/* Who did it — matters once a budget is shared. System/AI changes
+              carry no user; show the source instead. */}
+          <span className="change-card__actor">
+            {change.user_display_name ??
+              (change.source === 'ai' ? 'AI' : change.source === 'manual' ? '' : change.source)}
+          </span>
           <span className="change-card__time">{formatDateTime(change.created_at)}</span>
         </div>
         {summary && <div className="change-card__summary">{summary}</div>}

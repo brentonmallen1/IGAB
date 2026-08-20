@@ -16,6 +16,9 @@ class ChangeOut(BaseModel):
     source: str
     undone_at: datetime.datetime | None
     created_at: datetime.datetime
+    #: Actor — None for system/AI changes (render the source instead).
+    user_id: uuid.UUID | None = None
+    user_display_name: str | None = None
 
     model_config = {"from_attributes": True}
 

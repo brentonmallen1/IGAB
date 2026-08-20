@@ -46,7 +46,7 @@ async def process_auto_simplefin_sync() -> None:
     """Hourly job: sync any SimpleFIN connections whose daily_sync_time matches the current hour."""
     from sqlalchemy import select
 
-    from igab.db.models import Budget, SimpleFINConnection
+    from igab.db.models import Budget, BudgetMember, SimpleFINConnection
     from igab.db.session import AsyncSessionLocal
     from igab.repositories.account_repo import AccountRepository
     from igab.repositories.category_repo import CategoryRepository
@@ -76,8 +76,17 @@ async def process_auto_simplefin_sync() -> None:
                 if conn.daily_sync_time.hour != current_hour:
                     continue
 
-                # Find all budgets for this user
-                budgets_result = await session.execute(select(Budget))
+                # Budgets the connection's OWNER is a member of — the query
+                # used to be an unfiltered select(Budget) that synced every
+                # connection into every budget in the database, which becomes
+                # a cross-user data leak the moment a second user exists.
+                budgets_result = await session.execute(
+                    select(Budget).join(
+                        BudgetMember,
+                        (BudgetMember.budget_id == Budget.id)
+                        & (BudgetMember.user_id == conn.user_id),
+                    )
+                )
                 budgets = list(budgets_result.scalars().all())
 
                 txn_repo = TransactionRepository(session)

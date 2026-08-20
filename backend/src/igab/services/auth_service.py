@@ -14,7 +14,12 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except ValueError:
+        # A malformed stored hash must read as "wrong password", never a 500 —
+        # login and change-password both funnel through here.
+        return False
 
 
 def create_access_token(user_id: str) -> str:
@@ -82,6 +87,18 @@ class AuthService:
             raise AuthenticationError("User not found")
         return user
 
+    async def change_password(self, user: "User", current_password: str, new_password: str) -> None:
+        """Self-service password change. The env-managed admin is refused here
+        at the API layer (ADMIN_PASSWORD re-syncs at boot and would silently
+        revert an in-app change) — this method just verifies and re-hashes.
+
+        Tokens are deliberately NOT rotated: they are non-rotating by design
+        (config.py) and a household password change is not a compromise
+        response — rotate SECRET_KEY for that."""
+        if not verify_password(current_password, user.password_hash):
+            raise AuthenticationError("Current password is incorrect")
+        user.password_hash = hash_password(new_password)
+
     async def sync_admin(self, email: str, password: str) -> str | None:
         """Create the admin user, or re-hash its password to match `password`.
 
@@ -92,15 +109,16 @@ class AuthService:
         time anyone edited the env var."""
         user = await self.user_repo.get_by_email(email)
         if user is None:
-            await self.create_user(email=email, password=password, display_name="Admin")
+            created = await self.create_user(email=email, password=password, display_name="Admin")
+            created.is_admin = True
             return "created"
-        try:
-            in_sync = verify_password(password, user.password_hash)
-        except ValueError:
-            # Malformed stored hash — unrecoverable by login; re-hash is the
-            # only way back in.
-            in_sync = False
-        if in_sync:
+        # The env-bootstrapped account is always an admin; a migration or
+        # manual edit must not be able to strand the instance adminless.
+        if not user.is_admin:
+            user.is_admin = True
+        # verify_password treats a malformed stored hash as a mismatch, so a
+        # corrupt row self-heals here by re-hashing from the env value.
+        if verify_password(password, user.password_hash):
             return None
         user.password_hash = hash_password(password)
         return "updated"

@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import func, select
 
-from igab.db.models import ChangeLog
+from igab.db.models import ChangeLog, User
 from igab.repositories.base import BaseRepository
 
 
@@ -11,15 +11,19 @@ class ChangeLogRepository(BaseRepository[ChangeLog]):
 
     async def list_for_budget(
         self, budget_id: uuid.UUID, limit: int = 50, offset: int = 0
-    ) -> list[ChangeLog]:
+    ) -> list[tuple[ChangeLog, str | None]]:
+        """Rows newest-first, each with the actor's display label (display
+        name falling back to email; None for system/AI changes)."""
+        actor_label = func.coalesce(User.display_name, User.email)
         result = await self.session.execute(
-            select(ChangeLog)
+            select(ChangeLog, actor_label)
+            .outerjoin(User, ChangeLog.user_id == User.id)
             .where(ChangeLog.budget_id == budget_id)
             .order_by(ChangeLog.seq.desc())
             .limit(limit)
             .offset(offset)
         )
-        return list(result.scalars().all())
+        return [(row[0], row[1]) for row in result.all()]
 
     async def count_for_budget(self, budget_id: uuid.UUID) -> int:
         result = await self.session.execute(

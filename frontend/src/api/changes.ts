@@ -20,6 +20,9 @@ export interface Change {
   source: 'manual' | 'import' | 'ai' | 'system'
   undone_at: string | null
   created_at: string
+  /** Actor — null for system/AI changes. */
+  user_id: string | null
+  user_display_name: string | null
 }
 
 interface ChangesResponse {

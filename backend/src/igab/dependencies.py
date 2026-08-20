@@ -161,8 +161,10 @@ def get_snapshot_repo(session: SessionDep) -> SnapshotRepository:
     return SnapshotRepository(session)
 
 
-def get_change_recorder(session: SessionDep) -> ChangeRecorder:
-    return ChangeRecorder(session)
+def get_change_recorder(session: SessionDep, current_user: "CurrentUser") -> ChangeRecorder:
+    recorder = ChangeRecorder(session)
+    recorder.actor_user_id = current_user.id
+    return recorder
 
 
 def get_change_log_repo(session: SessionDep) -> ChangeLogRepository:
@@ -180,9 +182,10 @@ def get_budget_service(
     assignment_repo: Annotated[BudgetAssignmentRepository, Depends(get_assignment_repo)],
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     snapshot_repo: Annotated[SnapshotRepository, Depends(get_snapshot_repo)],
+    current_user: "CurrentUser",
     move_repo=Depends(get_budget_move_repo),
 ) -> BudgetService:
-    return BudgetService(
+    service = BudgetService(
         account_repo,
         category_repo,
         category_group_repo,
@@ -191,6 +194,12 @@ def get_budget_service(
         move_repo=move_repo,
         snapshot_repo=snapshot_repo,
     )
+    # Attribute the request's change-log rows to the caller. The service
+    # constructs its own recorder internally, so stamp it here — the one
+    # layer where CurrentUser exists. (Worker/scheduler code builds services
+    # directly, never through this factory, and stays actor-less.)
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_liability_repo(session: SessionDep) -> LiabilityRepository:
@@ -234,8 +243,9 @@ def get_transaction_service(
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
     attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
     match_repo: Annotated[TransactionMatchRepository, Depends(get_transaction_match_repo)],
+    current_user: "CurrentUser",
 ) -> TransactionService:
-    return TransactionService(
+    service = TransactionService(
         session,
         transaction_repo,
         account_repo,
@@ -244,6 +254,9 @@ def get_transaction_service(
         attachment_repo=attachment_repo,
         match_repo=match_repo,
     )
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_transaction_matching_service(
@@ -302,10 +315,26 @@ async def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-# ─── Resource-ownership scoping ───────────────────────────────────────────────
+# ─── Resource-membership scoping ──────────────────────────────────────────────
 # Every budget/account/transaction-scoped endpoint must verify the resource
-# belongs to the authenticated user. 404 (not 403) so foreign ids don't leak
-# existence. binds budget_id/account_id/transaction_id from path or query.
+# belongs to a budget the authenticated user is a MEMBER of (budget_members —
+# the authorization source of truth; Budget.user_id is only creator-of-record).
+# 404 (not 403) so foreign ids don't leak existence. Binds budget_id/
+# account_id/transaction_id from path or query.
+
+
+def _is_member(budget_id_col, user_id: uuid.UUID):
+    """Correlated EXISTS predicate: `user_id` is a member of the budget the
+    given column refers to. Composes into any guard query without a join."""
+    from sqlalchemy import select
+
+    from igab.db.models import BudgetMember
+
+    return (
+        select(BudgetMember.budget_id)
+        .where(BudgetMember.budget_id == budget_id_col, BudgetMember.user_id == user_id)
+        .exists()
+    )
 
 
 async def require_budget_access(
@@ -313,12 +342,59 @@ async def require_budget_access(
     current_user: CurrentUser,
     session: SessionDep,
 ) -> uuid.UUID:
-    from igab.db.models import Budget
+    from sqlalchemy import select
 
-    budget = await session.get(Budget, budget_id)
-    if budget is None or budget.user_id != current_user.id:
+    from igab.db.models import BudgetMember
+
+    # A membership row implies the budget exists (FK) — one query does both.
+    result = await session.execute(
+        select(BudgetMember.budget_id).where(
+            BudgetMember.budget_id == budget_id,
+            BudgetMember.user_id == current_user.id,
+        )
+    )
+    if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
     return budget_id
+
+
+async def require_budget_owner(
+    budget_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> uuid.UUID:
+    """Owner-gated operations: delete budget, manage members. Non-members get
+    the usual 404; members without the owner role get 403 — they already know
+    the budget exists, so the clearer error wins."""
+    from sqlalchemy import select
+
+    from igab.db.models import BudgetMember
+
+    result = await session.execute(
+        select(BudgetMember.role).where(
+            BudgetMember.budget_id == budget_id,
+            BudgetMember.user_id == current_user.id,
+        )
+    )
+    role = result.scalar_one_or_none()
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    if role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the budget owner can do this",
+        )
+    return budget_id
+
+
+async def get_admin_user(current_user: CurrentUser) -> "User":
+    """Admin-gated global surfaces (user management, settings writes, backups).
+    403, not 404 — admin-ness is not a secret."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required"
+        )
+    return current_user
 
 
 async def require_account_access(
@@ -328,12 +404,12 @@ async def require_account_access(
 ) -> uuid.UUID:
     from sqlalchemy import select
 
-    from igab.db.models import Account, Budget
+    from igab.db.models import Account
 
     result = await session.execute(
-        select(Account.id)
-        .join(Budget, Account.budget_id == Budget.id)
-        .where(Account.id == account_id, Budget.user_id == current_user.id)
+        select(Account.id).where(
+            Account.id == account_id, _is_member(Account.budget_id, current_user.id)
+        )
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
@@ -347,12 +423,12 @@ async def require_transaction_access(
 ) -> uuid.UUID:
     from sqlalchemy import select
 
-    from igab.db.models import Budget, Transaction
+    from igab.db.models import Transaction
 
     result = await session.execute(
-        select(Transaction.id)
-        .join(Budget, Transaction.budget_id == Budget.id)
-        .where(Transaction.id == transaction_id, Budget.user_id == current_user.id)
+        select(Transaction.id).where(
+            Transaction.id == transaction_id, _is_member(Transaction.budget_id, current_user.id)
+        )
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
@@ -386,13 +462,15 @@ async def require_attachment_access(
 ) -> uuid.UUID:
     from sqlalchemy import select
 
-    from igab.db.models import Budget, Transaction, TransactionAttachment
+    from igab.db.models import Transaction, TransactionAttachment
 
     result = await session.execute(
         select(TransactionAttachment.id)
         .join(Transaction, TransactionAttachment.transaction_id == Transaction.id)
-        .join(Budget, Transaction.budget_id == Budget.id)
-        .where(TransactionAttachment.id == attachment_id, Budget.user_id == current_user.id)
+        .where(
+            TransactionAttachment.id == attachment_id,
+            _is_member(Transaction.budget_id, current_user.id),
+        )
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
@@ -402,15 +480,11 @@ async def require_attachment_access(
 async def _require_budget_child(
     session: AsyncSession, model, id_value: uuid.UUID, user_id: uuid.UUID, label: str
 ) -> uuid.UUID:
-    """Ownership check for models carrying a budget_id column."""
+    """Membership check for models carrying a budget_id column."""
     from sqlalchemy import select
 
-    from igab.db.models import Budget
-
     result = await session.execute(
-        select(model.id)
-        .join(Budget, model.budget_id == Budget.id)
-        .where(model.id == id_value, Budget.user_id == user_id)
+        select(model.id).where(model.id == id_value, _is_member(model.budget_id, user_id))
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{label} not found")
@@ -468,13 +542,12 @@ async def require_match_access(
 ) -> uuid.UUID:
     from sqlalchemy import select
 
-    from igab.db.models import Budget, Transaction, TransactionMatch
+    from igab.db.models import Transaction, TransactionMatch
 
     result = await session.execute(
         select(TransactionMatch.id)
         .join(Transaction, TransactionMatch.synced_transaction_id == Transaction.id)
-        .join(Budget, Transaction.budget_id == Budget.id)
-        .where(TransactionMatch.id == match_id, Budget.user_id == current_user.id)
+        .where(TransactionMatch.id == match_id, _is_member(Transaction.budget_id, current_user.id))
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
@@ -490,6 +563,8 @@ async def require_tag_access(
 
 
 BudgetAccess = Annotated[uuid.UUID, Depends(require_budget_access)]
+BudgetOwnerAccess = Annotated[uuid.UUID, Depends(require_budget_owner)]
+AdminUser = Annotated["User", Depends(get_admin_user)]
 AccountAccess = Annotated[uuid.UUID, Depends(require_account_access)]
 TransactionAccess = Annotated[uuid.UUID, Depends(require_transaction_access)]
 ConnectionAccess = Annotated[uuid.UUID, Depends(require_connection_access)]
