@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { RefreshCw, CloudOff, Plus, Pencil, Trash2, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts, useDeleteAccount } from '../../api/accounts'
+import { useAccountTypes } from '../../api/accountTypes'
+import { accountTypeLabel } from '../../constants/accountTypes'
+import {
+  orderedOnBudgetKeys,
+  partitionAccounts,
+} from '../../components/layout/Sidebar/sidebarGroups'
 import {
   useSimpleFINConnections,
   useSyncSimpleFIN,
@@ -11,30 +17,13 @@ import {
 import { SyncStatusIcon, getSyncState } from '../../components/simplefin/SyncStatusIcon'
 import { AddAccountModal } from '../../components/accounts/AddAccountModal'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
+import { AccountTypesPanel } from '../../components/accounts/AccountTypesPanel'
 import { useAppStore } from '../../stores/appStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 
-const ACCOUNT_TYPE_ORDER = ['checking', 'savings', 'credit_card', 'loan'] as const
-const ACCOUNT_TYPE_LABELS: Record<string, string> = {
-  checking: 'Checking',
-  savings: 'Savings',
-  credit_card: 'Credit Cards',
-  loan: 'Loans',
-  tracking: 'Tracking',
-}
-
-function groupAccounts(accounts: Account[]): Map<string, Account[]> {
-  const groups = new Map<string, Account[]>()
-  for (const acc of accounts) {
-    const key = acc.on_budget ? acc.account_type : 'tracking'
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(acc)
-  }
-  return groups
-}
 
 function formatSyncAge(lastSyncAt: string | null): string {
   if (!lastSyncAt) return 'Never synced'
@@ -152,6 +141,7 @@ export function AccountsOverviewPage() {
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
 
   const { data: accounts } = useAccounts(budgetId, { includeClosed: showClosed })
+  const { data: typeRows } = useAccountTypes(budgetId)
   const deleteAccount = useDeleteAccount(budgetId ?? '')
 
   const { data: connections = [] } = useSimpleFINConnections()
@@ -244,8 +234,18 @@ export function AccountsOverviewPage() {
     return <div className="accounts-overview__empty">No budget selected.</div>
   }
 
-  const grouped = accounts ? groupAccounts(accounts) : new Map<string, Account[]>()
-  const allTypes = [...ACCOUNT_TYPE_ORDER, 'tracking'] as string[]
+  const { onBudgetByType, offBudgetAssets, offBudgetLiabilityAccounts } = partitionAccounts(
+    accounts ?? []
+  )
+  const groups: { key: string; label: string; accounts: Account[] }[] = [
+    ...orderedOnBudgetKeys(onBudgetByType).map((key) => ({
+      key,
+      label: accountTypeLabel(key, typeRows),
+      accounts: onBudgetByType.get(key) ?? [],
+    })),
+    { key: '__assets', label: 'Tracking — Assets', accounts: offBudgetAssets },
+    { key: '__liabilities', label: 'Tracking — Liabilities', accounts: offBudgetLiabilityAccounts },
+  ]
   const hasClosedAccounts = accounts?.some((a) => a.is_closed) ?? false
 
   const hasSyncConnection = !!primaryConnection
@@ -296,12 +296,11 @@ export function AccountsOverviewPage() {
       </div>
 
       <div className="accounts-overview__groups">
-        {allTypes.map((type) => {
-          const typeAccounts = grouped.get(type) ?? []
+        {groups.map(({ key, label, accounts: typeAccounts }) => {
           if (typeAccounts.length === 0) return null
           return (
-            <div key={type} className="accounts-overview__group">
-              <div className="accounts-overview__group-label">{ACCOUNT_TYPE_LABELS[type] ?? type}</div>
+            <div key={key} className="accounts-overview__group">
+              <div className="accounts-overview__group-label">{label}</div>
               <div className="accounts-overview__group-rows">
                 {typeAccounts.map((acc) => (
                   <AccountRow
@@ -327,6 +326,8 @@ export function AccountsOverviewPage() {
           </div>
         )}
       </div>
+
+      <AccountTypesPanel budgetId={budgetId} />
 
       {isAddOpen && <AddAccountModal onClose={() => setIsAddOpen(false)} />}
       {editingAccountId && (

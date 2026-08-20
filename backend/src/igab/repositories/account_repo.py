@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import func, select, update
 
-from igab.db.models import Account, Transaction
+from igab.db.models import Account, Category, Transaction
 from igab.repositories.base import BaseRepository
 
 
@@ -88,6 +88,11 @@ class AccountRepository(BaseRepository[Account]):
             update(Transaction)
             .where(Transaction.account_id == id, Transaction.is_deleted == False)  # noqa: E712
             .values(is_deleted=True)
+        )
+        # The FK's ON DELETE SET NULL only fires on hard deletes; a soft-deleted
+        # account must not leave its CC-payment category pointing at it.
+        await self.session.execute(
+            update(Category).where(Category.linked_account_id == id).values(linked_account_id=None)
         )
         await super().soft_delete(id)
 
