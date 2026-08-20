@@ -8,7 +8,14 @@ from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, upd
 
 from igab.db.models import Payee, Transaction, TransactionAttachment
 from igab.repositories.base import BaseRepository
-from igab.repositories.txn_filters import CASH_FLOW_ROW, LEAF, NOT_DELETED, PARENT_ROW, POSTED
+from igab.repositories.txn_filters import (
+    CASH_FLOW_ROW,
+    LEAF,
+    NOT_DELETED,
+    ON_BUDGET_ACCOUNT,
+    PARENT_ROW,
+    POSTED,
+)
 
 if TYPE_CHECKING:
     import polars as pl
@@ -232,10 +239,13 @@ class TransactionRepository(BaseRepository[Transaction]):
             priority_rank = case(
                 (Transaction.cleared == "pending", 0),
                 (
+                    # Rows genuinely missing a category — off-budget accounts
+                    # don't use categories, so their rows never rank here
                     and_(
                         Transaction.category_id.is_(None),
                         Transaction.transfer_id.is_(None),
                         Transaction.is_split == False,  # noqa: E712
+                        ON_BUDGET_ACCOUNT,
                     ),
                     1,
                 ),
@@ -306,10 +316,14 @@ class TransactionRepository(BaseRepository[Transaction]):
         return result.scalar_one() or 0
 
     async def _count_pending_review(self, base_where) -> dict:
+        # Off-budget accounts don't use categories: their plain rows (market
+        # adjustments, payroll contributions) are net-worth movement, not
+        # spending waiting to be filed. Approval still applies everywhere.
         needs_category = and_(
             Transaction.category_id.is_(None),
             Transaction.is_split == False,  # noqa: E712
             Transaction.transfer_id.is_(None),
+            ON_BUDGET_ACCOUNT,
         )
         unapproved = Transaction.approved == False  # noqa: E712
         not_pending = Transaction.cleared != "pending"

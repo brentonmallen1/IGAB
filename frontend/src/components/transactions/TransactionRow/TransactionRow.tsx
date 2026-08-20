@@ -44,6 +44,8 @@ interface Props {
   accountLabel?: string
   /** CSS color value (e.g. `var(--chart-3)`) for the account's identity dot */
   accountColor?: string
+  /** Off-budget accounts don't use categories: no yellow chip, no editor */
+  accountOnBudget?: boolean
 }
 
 const APPROVE_MENU_ITEMS: ContextMenuItem[] = [
@@ -105,6 +107,7 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
   if (prev.hasAttachment !== next.hasAttachment) return false
   if (prev.accountLabel !== next.accountLabel) return false
   if (prev.accountColor !== next.accountColor) return false
+  if (prev.accountOnBudget !== next.accountOnBudget) return false
   return true
 }
 
@@ -125,6 +128,7 @@ export const TransactionRow = memo(function TransactionRow({
   highlighted,
   accountLabel,
   accountColor,
+  accountOnBudget = true,
 }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId!)
   const { formatMoney, formatDate } = useFormatters()
@@ -475,7 +479,7 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--category txn-text-clip"
         onClick={() => {
-          if (isMobile || isReconciled) return
+          if (isMobile || isReconciled || !accountOnBudget) return
           if (txn.is_split) onStartSplit(txn)
           else startEditing(txn.id, 'category')
         }}
@@ -492,11 +496,21 @@ export const TransactionRow = memo(function TransactionRow({
             autoFocus
             onBlurClose={stopEditing}
           />
-        ) : categoryName === null ? (
-          <span className="txn-needs-category">Needs Category</span>
-        ) : (
+        ) : categoryName !== null ? (
           <span className={`txn-cell-text ${txn.is_split ? 'txn-split-label' : ''}`}>
             {categoryName}
+          </span>
+        ) : txn.transfer_id !== null ? (
+          // A category-less transfer leg is internal money movement, not a
+          // gap — the categorized side of a spending transfer lives on the
+          // on-budget leg
+          <span className="txn-cell-text">Transfer</span>
+        ) : accountOnBudget ? (
+          <span className="txn-needs-category">Needs Category</span>
+        ) : (
+          // Off-budget accounts don't use categories at all
+          <span className="txn-cell-text" title="Tracking accounts don't use categories">
+            —
           </span>
         )}
       </div>
