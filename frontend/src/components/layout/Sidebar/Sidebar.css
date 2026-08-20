@@ -179,6 +179,31 @@
   border-radius: 0;
   transition: background-color var(--transition-fast), color var(--transition-fast);
   text-align: left;
+  /* rows render as <button> or, when they contain a nested action, as
+     <div role="button"> — keep both interactive */
+  cursor: pointer;
+}
+
+/* Shortcut from a managed-liability row to its account register */
+.sidebar__register-btn {
+  display: none;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--sidebar-text-secondary);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+}
+
+.sidebar__account:hover .sidebar__register-btn,
+.sidebar__register-btn:focus-visible {
+  display: inline-flex;
+}
+
+.sidebar__register-btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--sidebar-bg) 50%, white 50%);
 }
 
 .sidebar__account:hover {
@@ -395,4 +420,22 @@
   .sidebar {
     display: none;
   }
+}
+
+
+/* Identity line above Sign out — informational, not interactive */
+.sidebar__whoami {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  min-width: 0;
+}
+
+.sidebar__whoami-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -1,40 +1,47 @@
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, Sparkles, History } from 'lucide-react'
+import { UserCircle2, LayoutDashboard, List, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, Sparkles, History } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
+import { useAccountTypes } from '../../../api/accountTypes'
+import { accountTypeLabel } from '../../../constants/accountTypes'
+import {
+  assetsTotal as sumAssets,
+  buildLiabilityRows,
+  liabilityHeaderTotal,
+  orderedOnBudgetKeys,
+  partitionAccounts,
+} from './sidebarGroups'
 import { useBudgets } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
 import { useSimpleFINConnections, useSyncSimpleFIN, useSimpleFINRateLimitStatus } from '../../../api/simplefin'
 import { useUpdateStatus } from '../../../api/system'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
 import { AddAccountModal } from '../../accounts/AddAccountModal'
-import { useLogout } from '../../../api/auth'
+import { useCurrentUser, useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Account } from '../../../types'
 import './Sidebar.css'
 
-function accountTypeLabel(type: string): string {
+// Group headers pluralize the built-in labels; custom types fall back to the
+// registry-aware label helper.
+function groupLabel(type: string, registry?: { key: string; label: string }[]): string {
   switch (type) {
     case 'checking': return 'Checking'
     case 'savings': return 'Savings'
+    case 'cash': return 'Cash'
     case 'credit_card': return 'Credit Cards'
     case 'loan': return 'Loans'
+    case 'investment': return 'Investments'
+    case 'other_asset': return 'Other Assets'
+    case 'other_liability': return 'Other Liabilities'
     case 'tracking': return 'Tracking'
-    default: return 'Other'
+    default: return accountTypeLabel(type, registry)
   }
 }
 
-function groupAccounts(accounts: Account[]): Map<string, Account[]> {
-  const groups = new Map<string, Account[]>()
-  for (const acc of accounts) {
-    const key = acc.on_budget ? acc.account_type : 'tracking'
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(acc)
-  }
-  return groups
-}
 
 
 export function Sidebar() {
@@ -44,6 +51,7 @@ export function Sidebar() {
   const navigate = useNavigate()
   const { formatMoney } = useFormatters()
   const { data: accounts } = useAccounts(budgetId)
+  const { data: typeRows } = useAccountTypes(budgetId)
   const { data: budgets = [] } = useBudgets()
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const updateAvailable = useUpdateStatus().data?.update_available === true
@@ -55,6 +63,9 @@ export function Sidebar() {
   const openLiabilityEditor = useUIStore((s) => s.openLiabilityEditor)
 
   const logout = useLogout()
+  const { data: me } = useCurrentUser()
+  // Assets "+" opens the add-account modal preset to an off-budget investment
+  const [assetModalOpen, setAssetModalOpen] = useState(false)
 
   const { data: connections = [] } = useSimpleFINConnections()
   const primaryConnection = connections[0] ?? null
@@ -91,18 +102,20 @@ export function Sidebar() {
     navigate('/budgets')
   }
 
-  const grouped = accounts ? groupAccounts(accounts) : new Map()
-  const onBudgetTypes = ['checking', 'savings', 'credit_card', 'loan']
+  const { onBudgetByType, offBudgetAssets, offBudgetLiabilityAccounts } = partitionAccounts(
+    accounts ?? []
+  )
+  const onBudgetTypes = orderedOnBudgetKeys(onBudgetByType)
   const onBudgetTotal = accounts
     ?.filter((a) => a.on_budget)
     .reduce((sum, a) => sum + Number(a.balance), 0) ?? 0
 
-  // Tracking accounts grouped by classification
-  const trackingAccounts = accounts?.filter((a) => !a.on_budget) ?? []
-  const assetAccounts = trackingAccounts.filter((a) => a.classification === 'asset')
-  const liabilityAccounts = trackingAccounts.filter((a) => a.classification === 'liability')
-  const assetsTotal = assetAccounts.reduce((sum, a) => sum + Number(a.balance), 0)
-  const liabilityAccountsTotal = liabilityAccounts.reduce((sum, a) => sum + Number(a.balance), 0)
+  const assetsTotal = sumAssets(offBudgetAssets)
+  // Every debt exactly once: liability-classified accounts (tracker balance
+  // when linked), managed liabilities whose account lives elsewhere, and
+  // unmanaged liabilities. The header total is the sum of what's listed.
+  const liabilityRows = buildLiabilityRows(offBudgetLiabilityAccounts, liabilities)
+  const liabilitiesTotal = liabilityHeaderTotal(liabilityRows)
 
   function handleAccountClick(account: Account) {
     setSelectedAccount(account.id)
@@ -171,6 +184,17 @@ export function Sidebar() {
             />
           )}
         </NavLink>
+        {me && (
+          <div
+            className="sidebar__whoami"
+            title={`Signed in as ${me.display_name || me.email}`}
+          >
+            <UserCircle2 size={16} />
+            {!collapsed && (
+              <span className="sidebar__whoami-name">{me.display_name || me.email}</span>
+            )}
+          </div>
+        )}
         <button className="sidebar__nav-item sidebar__nav-item--logout" onClick={logout} title="Sign out" aria-label="Sign out">
           <LogOut size={16} />
           {!collapsed && <span>Sign out</span>}
@@ -207,11 +231,11 @@ export function Sidebar() {
       </div>}
 
       {!collapsed && onBudgetTypes.map((type) => {
-        const typeAccounts: Account[] = grouped.get(type) ?? []
+        const typeAccounts: Account[] = onBudgetByType.get(type) ?? []
         if (typeAccounts.length === 0) return null
         return (
           <div key={type} className="sidebar__account-group">
-            <div className="sidebar__account-type">{accountTypeLabel(type)}</div>
+            <div className="sidebar__account-type">{groupLabel(type, typeRows)}</div>
             {typeAccounts.map((acc) => (
               <button
                 key={acc.id}
@@ -245,7 +269,7 @@ export function Sidebar() {
         )
       })}
 
-      {!collapsed && (assetAccounts.length > 0 || budgetId) && (
+      {!collapsed && (offBudgetAssets.length > 0 || budgetId) && (
         <>
           <div className="sidebar__section-header">
             <span>Assets</span>
@@ -253,7 +277,7 @@ export function Sidebar() {
               <span className="sidebar__total tabular">{formatMoney(assetsTotal)}</span>
               <button
                 className="sidebar__add-account"
-                onClick={openAddAccountModal}
+                onClick={() => setAssetModalOpen(true)}
                 aria-label="Add asset"
                 title="Add asset"
               >
@@ -261,7 +285,7 @@ export function Sidebar() {
               </button>
             </span>
           </div>
-          {assetAccounts.map((acc) => (
+          {offBudgetAssets.map((acc) => (
             <button
               key={acc.id}
               className="sidebar__account"
@@ -276,7 +300,7 @@ export function Sidebar() {
         </>
       )}
 
-      {!collapsed && (liabilityAccounts.length > 0 || liabilities.length > 0) && (
+      {!collapsed && liabilityRows.length > 0 && (
         <>
           <div className="sidebar__section-header">
             <button
@@ -288,7 +312,7 @@ export function Sidebar() {
             </button>
             <span className="sidebar__section-header-actions">
               <span className="sidebar__total tabular negative">
-                {formatMoney(liabilityAccountsTotal - liabilities.filter(l => !l.linked_account_id).reduce((sum, l) => sum + Number(l.current_balance), 0))}
+                {formatMoney(liabilitiesTotal)}
               </span>
               <button
                 className="sidebar__add-liability"
@@ -300,49 +324,65 @@ export function Sidebar() {
               </button>
             </span>
           </div>
-          {liabilityAccounts.map((acc) => {
-            const tracker = liabilities.find(l => l.linked_account_id === acc.id)
-            return (
-              <button
-                key={acc.id}
-                className="sidebar__account"
-                onClick={() => tracker ? navigate(`/liabilities/${tracker.id}`) : handleAccountClick(acc)}
-              >
-                <span className="sidebar__account-name">
-                  {tracker && (
-                    <span className="sidebar__liability-icon sidebar__liability-icon--managed" title="Payoff tracking enabled">
-                      <Link2 size={12} />
-                    </span>
-                  )}
-                  {acc.name}
-                </span>
-                <span className="sidebar__account-balance tabular negative">
-                  {formatMoney(Number(acc.balance))}
-                </span>
-              </button>
-            )
-          })}
-          {/* Unmanaged liabilities (no linked account) */}
-          {liabilities.filter(l => !l.linked_account_id).map((liability) => (
-            <button
-              key={liability.id}
+          {liabilityRows.map((row) => (
+            <div
+              key={row.key}
               className="sidebar__account"
-              onClick={() => navigate(`/liabilities/${liability.id}`)}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                const target = row.target
+                if (target.kind === 'liability') {
+                  navigate(`/liabilities/${target.liabilityId}`)
+                } else {
+                  const acc = offBudgetLiabilityAccounts.find((a) => a.id === target.accountId)
+                  if (acc) handleAccountClick(acc)
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.currentTarget.click()
+                }
+              }}
             >
               <span className="sidebar__account-name">
-                <span className="sidebar__liability-icon" title="Manually tracked">
-                  <PenLine size={12} />
+                {row.icon === 'managed' && (
+                  <span className="sidebar__liability-icon sidebar__liability-icon--managed" title="Payoff tracking enabled">
+                    <Link2 size={12} />
+                  </span>
+                )}
+                {row.icon === 'manual' && (
+                  <span className="sidebar__liability-icon" title="Manually tracked">
+                    <PenLine size={12} />
+                  </span>
+                )}
+                {row.name}
+              </span>
+              <span className="sidebar__account-right">
+                {row.registerAccountId && (
+                  <button
+                    className="sidebar__register-btn"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedAccount(row.registerAccountId!)
+                      navigate(`/accounts/${row.registerAccountId}`)
+                    }}
+                    aria-label={`Open ${row.name} register`}
+                    title="Open account register"
+                  >
+                    <List size={12} />
+                  </button>
+                )}
+                <span className="sidebar__account-balance tabular negative">
+                  {formatMoney(row.balance)}
                 </span>
-                {liability.name}
               </span>
-              <span className="sidebar__account-balance tabular negative">
-                {formatMoney(-Number(liability.current_balance))}
-              </span>
-            </button>
+            </div>
           ))}
         </>
       )}
-      {!collapsed && liabilityAccounts.length === 0 && liabilities.length === 0 && budgetId && (
+      {!collapsed && liabilityRows.length === 0 && budgetId && (
         <div className="sidebar__section-header">
           <button
             className="sidebar__section-header-link"
@@ -365,23 +405,25 @@ export function Sidebar() {
       {collapsed && accounts && accounts.length > 0 && (
         <div className="sidebar__accounts-mini">
           <div className="sidebar__accounts-mini-divider" />
-          {[...onBudgetTypes, 'tracking'].flatMap((type) =>
-            (grouped.get(type) ?? []).map((acc: Account) => (
-              <button
-                key={acc.id}
-                className="sidebar__account-mini"
-                onClick={() => handleAccountClick(acc)}
-                title={`${acc.name}\n${formatMoney(Number(acc.balance))}`}
-              >
-                <span className="sidebar__account-mini-letter">
-                  {acc.name.charAt(0).toUpperCase()}
-                </span>
-                {acc.uncategorized_count > 0 && (
-                  <span className="sidebar__account-mini-dot" />
-                )}
-              </button>
-            ))
-          )}
+          {[
+            ...onBudgetTypes.flatMap((type) => onBudgetByType.get(type) ?? []),
+            ...offBudgetAssets,
+            ...offBudgetLiabilityAccounts,
+          ].map((acc: Account) => (
+            <button
+              key={acc.id}
+              className="sidebar__account-mini"
+              onClick={() => handleAccountClick(acc)}
+              title={`${acc.name}\n${formatMoney(Number(acc.balance))}`}
+            >
+              <span className="sidebar__account-mini-letter">
+                {acc.name.charAt(0).toUpperCase()}
+              </span>
+              {acc.uncategorized_count > 0 && (
+                <span className="sidebar__account-mini-dot" />
+              )}
+            </button>
+          ))}
         </div>
       )}
 
@@ -393,6 +435,12 @@ export function Sidebar() {
       )}
 
       {isAddAccountModalOpen && <AddAccountModal onClose={closeAddAccountModal} />}
+      {assetModalOpen && (
+        <AddAccountModal
+          initialTypeKey="investment"
+          onClose={() => setAssetModalOpen(false)}
+        />
+      )}
     </aside>
   )
 }
