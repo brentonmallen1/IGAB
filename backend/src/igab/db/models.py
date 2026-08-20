@@ -180,10 +180,10 @@ class Payee(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     default_category_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), index=True
     )
     transfer_account_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), index=True
     )
     mapping_samples: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Regex applied to incoming raw payee names; a match assigns the transaction
@@ -244,7 +244,7 @@ class Category(Base):
         UUID(as_uuid=True), ForeignKey("category_groups.id", ondelete="CASCADE"), nullable=False
     )
     budget_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     # Display-only annotation shown after the name (e.g. a funding reminder
@@ -256,13 +256,13 @@ class Category(Base):
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # For CC payment categories — links to the credit card account
     linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), index=True
     )
     # For liability payment categories — this category's outflows feed the
     # liability's payment history. Mutually exclusive with linked_account_id
     # (service-layer enforced, not a DB constraint).
     linked_liability_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("liabilities.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("liabilities.id", ondelete="SET NULL"), index=True
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -340,11 +340,14 @@ class Transaction(Base):
             "budget_id",
             postgresql_where=text("latitude IS NOT NULL"),
         ),
+        # Serves the register's per-account date-ordered scans; its leading
+        # account_id also covers the FK's referential-integrity checks
+        Index("ix_transactions_account_date", "account_id", "date"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
@@ -359,10 +362,10 @@ class Transaction(Base):
     bank_posted_date: Mapped[_PyDate | None] = mapped_column(Date, nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
     payee_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("payees.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("payees.id", ondelete="SET NULL"), index=True
     )
     category_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), index=True
     )
     memo: Mapped[str | None] = mapped_column(Text)
     cleared: Mapped[str] = mapped_column(String(20), default="uncleared", nullable=False)
@@ -374,11 +377,11 @@ class Transaction(Base):
     longitude: Mapped[float | None] = mapped_column(Float(53), nullable=True)
     # Paired transfer link
     transfer_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), index=True
     )
     # Split parent
     parent_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE")
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), index=True
     )
     is_split: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Import deduplication (CSV/YNAB file imports)
@@ -394,7 +397,7 @@ class Transaction(Base):
     scheduled_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # SimpleFIN match link
     linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), index=True
     )
     link_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
     has_sync_source: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -443,7 +446,7 @@ class BudgetAssignment(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     category_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False
@@ -467,14 +470,14 @@ class BudgetMove(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     month: Mapped[date] = mapped_column(Date, nullable=False)
     from_category_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), index=True
     )
     to_category_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), index=True
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -522,7 +525,7 @@ class ChangeLog(Base):
     # Who made the change — NULL for system/AI/scheduler actors. SET NULL on
     # user deletion so history outlives accounts.
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
@@ -588,17 +591,20 @@ class ScheduledTransaction(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     account_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
     payee_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("payees.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("payees.id", ondelete="SET NULL"), index=True
     )
     category_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), index=True
     )
     memo: Mapped[str | None] = mapped_column(Text)
     frequency: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -608,7 +614,7 @@ class ScheduledTransaction(Base):
     auto_create: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     days_before_reminder: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     transfer_account_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), index=True
     )
     last_created_date: Mapped[date | None] = mapped_column(Date)
     next_occurrence_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -629,7 +635,10 @@ class ReconciliationSnapshot(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     account_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     reconciled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -638,7 +647,7 @@ class ReconciliationSnapshot(Base):
     cleared_balance: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
     adjustment_amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), default=0)
     adjustment_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), index=True
     )
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
@@ -682,7 +691,10 @@ class BudgetViewCategory(Base):
         UUID(as_uuid=True), ForeignKey("budget_views.id", ondelete="CASCADE"), nullable=False
     )
     category_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     view: Mapped["BudgetView"] = relationship(back_populates="category_selections")
@@ -710,7 +722,7 @@ class SimpleFINConnection(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     access_url_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -741,7 +753,7 @@ class ImportBatch(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     source: Mapped[str] = mapped_column(String(20), nullable=False)
     source_file_name: Mapped[str | None] = mapped_column(String(255))
@@ -762,10 +774,16 @@ class TransactionMatch(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     synced_transaction_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("transactions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     manual_transaction_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("transactions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     confidence_score: Mapped[Decimal] = mapped_column(Numeric(3, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
@@ -785,7 +803,10 @@ class TransactionAttachment(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     transaction_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("transactions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -861,10 +882,12 @@ class AIJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     transaction_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL")
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), index=True
     )
     attachment_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("transaction_attachments.id", ondelete="SET NULL")
+        UUID(as_uuid=True),
+        ForeignKey("transaction_attachments.id", ondelete="SET NULL"),
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -895,6 +918,8 @@ category_tags = Table(
         ForeignKey("tags.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    # The composite PK only covers the leading category_id
+    Index("ix_category_tags_tag_id", "tag_id"),
 )
 
 payee_tags = Table(
@@ -912,6 +937,7 @@ payee_tags = Table(
         ForeignKey("tags.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    Index("ix_payee_tags_tag_id", "tag_id"),
 )
 
 
