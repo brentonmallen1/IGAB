@@ -67,6 +67,10 @@
   flex-direction: column;
   gap: var(--spacing-md);
   min-width: 0;
+  /* The action cards look like budget cards — a labeled hairline marks where
+     "yours" ends and "new" begins, with air on both sides of the rule */
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--spacing-xl);
 }
 
 /* Budget list */
@@ -75,9 +79,18 @@
   margin-bottom: var(--spacing-sm);
 }
 
+.budget-selector__count {
+  margin-left: var(--spacing-sm);
+  font-weight: normal;
+  color: var(--text-muted);
+}
+
 .budget-list {
-  display: flex;
-  flex-direction: column;
+  /* Dense rows that wrap into two columns when the container allows — a
+     household with a dozen budgets scans them at half the height. min() keeps
+     a narrow phone viewport from overflowing. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: var(--spacing-sm);
 }
 
