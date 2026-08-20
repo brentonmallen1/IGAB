@@ -6,6 +6,8 @@ import {
   Link as LinkIcon,
   Lock,
   Pencil,
+  Telescope,
+  Wallet,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
@@ -118,6 +120,23 @@ export function AccountPage() {
           <div className="account-page__identity">
             <h1 className="account-page__name">{account.name}</h1>
             <div className="account-page__status-row">
+              {account.on_budget ? (
+                <span
+                  className="account-page__status-badge"
+                  title="On budget — spending here comes out of your envelope categories"
+                >
+                  <Wallet size={12} />
+                  On budget
+                </span>
+              ) : (
+                <span
+                  className="account-page__status-badge"
+                  title="Tracking — counted in net worth only; transactions here don't need categories"
+                >
+                  <Telescope size={12} />
+                  Tracking
+                </span>
+              )}
               {isConnected && (
                 <span className="account-page__status-badge account-page__status-badge--connected">
                   <LinkIcon size={12} />
