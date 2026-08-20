@@ -11,7 +11,7 @@ import sys
 
 from sqlalchemy import select
 
-from igab.db.models import Budget, User
+from igab.db.models import Budget, BudgetMember, User
 from igab.db.session import AsyncSessionLocal
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -36,6 +36,9 @@ async def create_sample_budget_for_user(
     budget = Budget(user_id=user.id, name=name)
     session.add(budget)
     await session.flush()
+    # Membership is the authorization source of truth (see _grant_owner in
+    # api/v1/budgets.py) — without this row the budget is invisible to its owner.
+    session.add(BudgetMember(budget_id=budget.id, user_id=user.id, role="owner"))
     await session.refresh(budget)
     await seed_system_tags(session, budget.id)
     await ensure_account_types_seeded(session, budget.id)

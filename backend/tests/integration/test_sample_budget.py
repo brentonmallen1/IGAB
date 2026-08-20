@@ -10,7 +10,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
-from igab.db.models import Budget, ScheduledTransaction, Transaction
+from igab.db.models import Budget, BudgetMember, ScheduledTransaction, Transaction
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -274,3 +274,32 @@ async def test_endpoint_result_is_demo_ready_today(api_client, db_session):
 
     result = await db_session.execute(select(Budget).where(Budget.id == budget_id))
     assert result.scalar_one().name == "Tour"
+
+
+async def test_cli_helper_grants_owner_membership(db_session):
+    """`just sample-budget` must leave the budget reachable by its owner.
+
+    Authorization resolves through budget_members only, so a budget created
+    without an owner row is invisible to the very user it was generated for.
+    """
+    from igab.sample_budget.__main__ import create_sample_budget_for_user
+
+    user = await create_user(db_session)
+    await create_sample_budget_for_user(user, "CLI Demo", db_session)
+
+    # The membership-scoped listing is exactly what the budget selector runs.
+    result = await db_session.execute(
+        select(Budget)
+        .join(BudgetMember, BudgetMember.budget_id == Budget.id)
+        .where(BudgetMember.user_id == user.id)
+    )
+    budgets = result.scalars().all()
+    assert [b.name for b in budgets] == ["CLI Demo"]
+
+    role = await db_session.execute(
+        select(BudgetMember.role).where(
+            BudgetMember.budget_id == budgets[0].id,
+            BudgetMember.user_id == user.id,
+        )
+    )
+    assert role.scalar_one() == "owner"
