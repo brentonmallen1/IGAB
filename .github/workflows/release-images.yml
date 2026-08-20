@@ -6,7 +6,9 @@
 #   ghcr.io/<owner>/igab-backup  — pg_dump/attachments backup agent (+ age)
 #   ghcr.io/<owner>/igab-aio     — All-in-One: Postgres + API + nginx + backups
 #
-# Tag a release with `git tag v2026.08.4 && git push origin v2026.08.4`.
+# Cut a release with `just release 2026.08.4` (creates the GitHub release,
+# which creates the tag). A bare `git tag … && git push origin …` also works —
+# the release job below backfills the GitHub release the tag path skips.
 # Each image gets :2026.08.4, :2026.08, and :latest tags.
 #
 # Each platform builds natively (amd64 on ubuntu-latest, arm64 on
@@ -26,6 +28,23 @@ permissions:
   packages: write
 
 jobs:
+  # Tags pushed directly (skipping `just release`) built images but never got
+  # a GitHub release — the releases page silently stopped at the last manual
+  # one. Create the release here whenever the tag doesn't have one yet.
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Ensure a GitHub release exists for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+                 --verify-tag --generate-notes --latest
+
   build:
     runs-on: ${{ matrix.runner }}
     strategy:
