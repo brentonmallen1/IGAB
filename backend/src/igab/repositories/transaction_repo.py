@@ -378,6 +378,16 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
 
+    async def count_for_account(self, account_id: uuid.UUID) -> int:
+        """Live rows on the account — zero means the register is empty."""
+        result = await self.session.execute(
+            select(func.count()).where(
+                Transaction.account_id == account_id,
+                NOT_DELETED,
+            )
+        )
+        return result.scalar_one()
+
     async def sum_by_account_by_month(
         self,
         account_id: uuid.UUID,

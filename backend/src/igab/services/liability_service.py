@@ -18,6 +18,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from igab.db.models import Liability
 from igab.repositories.account_repo import AccountRepository
@@ -27,9 +28,12 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.amortization import (
     AmortizationResult,
     LiveProjection,
+    PromoOutlook,
     add_months,
     amortization_schedule,
+    amortization_schedule_with_promo,
     project_payoff,
+    promo_outlook,
     quantize_cents,
 )
 from igab.utils.clock import today_utc
@@ -37,6 +41,8 @@ from igab.utils.clock import today_utc
 ZERO = Decimal("0")
 
 PAYMENT_LOOKBACK_MONTHS = 6
+
+BalanceSource = Literal["ledger", "manual", "manual_fallback"]
 
 
 def _month_start(d: date) -> date:
@@ -52,9 +58,12 @@ class LiabilityStatus:
     liability: Liability
     mode: str  # 'managed' | 'unmanaged'
     current_balance: Decimal  # owed, positive
+    # Where current_balance came from
+    balance_source: BalanceSource
     baseline: AmortizationResult  # contractual schedule at minimum_payment
     live: LiveProjection | None  # None: not enough payment history
     recent_payments: list[Decimal]
+    promo: PromoOutlook | None = None  # set when the liability has a promo window
 
 
 class LiabilityService:
@@ -76,10 +85,27 @@ class LiabilityService:
 
     async def get_balance(self, liability: Liability) -> Decimal:
         """Amount currently owed, positive; zero when fully paid."""
+        balance, _ = await self.get_balance_with_source(liability)
+        return balance
+
+    async def get_balance_with_source(self, liability: Liability) -> tuple[Decimal, BalanceSource]:
+        """(amount owed, where it came from).
+
+        Managed liabilities read their linked account's ledger — except when
+        that register is EMPTY and a manual balance survives from before
+        linking: a mortgage freshly linked to a transaction-less account must
+        not report $0 owed ("Paid off") until the user seeds the register.
+        """
         if liability.linked_account_id is not None:
+            if liability.manual_balance is not None:
+                txn_count = await self.transaction_repo.count_for_account(
+                    liability.linked_account_id
+                )
+                if txn_count == 0:
+                    return max(ZERO, quantize_cents(liability.manual_balance)), "manual_fallback"
             account_balance = await self.account_repo.get_balance(liability.linked_account_id)
-            return max(ZERO, quantize_cents(-account_balance))
-        return max(ZERO, quantize_cents(liability.manual_balance or ZERO))
+            return max(ZERO, quantize_cents(-account_balance)), "ledger"
+        return max(ZERO, quantize_cents(liability.manual_balance or ZERO)), "manual"
 
     async def get_recent_monthly_payments(
         self,
@@ -131,19 +157,46 @@ class LiabilityService:
 
     async def get_status(self, liability: Liability, as_of: date | None = None) -> LiabilityStatus:
         as_of = as_of or today_utc()
-        balance = await self.get_balance(liability)
-        baseline = amortization_schedule(
-            balance, liability.interest_rate, liability.minimum_payment, as_of
-        )
+        balance, balance_source = await self.get_balance_with_source(liability)
+        if liability.promo_end_date is not None:
+            baseline = amortization_schedule_with_promo(
+                balance,
+                liability.interest_rate,
+                liability.minimum_payment,
+                as_of,
+                liability.promo_end_date,
+            )
+        else:
+            baseline = amortization_schedule(
+                balance, liability.interest_rate, liability.minimum_payment, as_of
+            )
         payments = await self.get_recent_monthly_payments(liability, as_of=as_of)
+        # Live projection stays at the contract rate even during a promo —
+        # a conservative date beats an optimistic one that assumes the
+        # balance clears before interest starts.
         live = project_payoff(balance, liability.interest_rate, payments, as_of)
+        promo: PromoOutlook | None = None
+        if liability.promo_end_date is not None and balance > ZERO:
+            promo = promo_outlook(
+                balance,
+                liability.interest_rate,
+                liability.minimum_payment,
+                live.average_payment if live else None,
+                as_of,
+                liability.promo_end_date,
+                liability.promo_deferred_interest,
+                liability.origination_date,
+                liability.original_principal,
+            )
         return LiabilityStatus(
             liability=liability,
             mode=self.mode(liability),
             current_balance=balance,
+            balance_source=balance_source,
             baseline=baseline,
             live=live,
             recent_payments=payments,
+            promo=promo,
         )
 
     async def get_balance_history(

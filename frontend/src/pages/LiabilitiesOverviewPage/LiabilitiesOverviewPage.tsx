@@ -135,7 +135,10 @@ export function LiabilitiesOverviewPage() {
                     'Paid off'
                   ) : neverPays ? (
                     <>
-                      <AlertTriangle size={12} /> Won't pay off at current rate
+                      <AlertTriangle size={12} />{' '}
+                      {liability.has_live_projection
+                        ? "Recent payments won't pay this off"
+                        : "Minimum payment won't pay this off"}
                     </>
                   ) : payoffDate ? (
                     `Paid off ${formatMonth(payoffDate)}`
@@ -143,6 +146,14 @@ export function LiabilitiesOverviewPage() {
                     'Payoff date unknown'
                   )}
                 </div>
+                {liability.promo_projection &&
+                  !liability.promo_projection.clears_before_promo &&
+                  liability.promo_end_date && (
+                    <div className="liability-card__payoff liability-card__payoff--warning">
+                      <AlertTriangle size={12} /> Promo ends{' '}
+                      {formatMonth(liability.promo_end_date)}
+                    </div>
+                  )}
               </button>
             )
           })}

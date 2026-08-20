@@ -9,6 +9,7 @@ import {
   useLiabilities,
   useLinkCategoryLiability,
 } from '../../api/liabilities'
+import { useCreateTransaction } from '../../api/transactions'
 import { AmortizationTable } from '../../components/liabilities/AmortizationTable'
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { PaydownChart } from '../../components/liabilities/PaydownChart'
@@ -32,7 +33,7 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 export function LiabilityPage() {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonth } = useFormatters()
   const { liabilityId } = useParams<{ liabilityId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const navigate = useNavigate()
@@ -55,6 +56,7 @@ export function LiabilityPage() {
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const createSnapshot = useCreateLiabilitySnapshot(budgetId)
   const linkCategory = useLinkCategoryLiability(budgetId)
+  const createTransaction = useCreateTransaction(budgetId ?? '')
 
   // Debounce the what-if input so typing doesn't spam the API
   useEffect(() => {
@@ -110,6 +112,23 @@ export function LiabilityPage() {
     setShowBalanceForm(false)
     setNewBalance('')
     setBalanceDate('')
+  }
+
+  async function handleSeedOpeningBalance() {
+    if (!liability?.linked_account_id) return
+    try {
+      await createTransaction.mutateAsync({
+        account_id: liability.linked_account_id,
+        date: liability.origination_date ?? new Date().toISOString().slice(0, 10),
+        amount: -Number(liability.current_balance),
+        payee_name: 'Starting Balance',
+        memo: `Opening balance for ${liability.name}`,
+        cleared: 'cleared',
+      })
+      toast.success('Opening balance added — payments now track from the register')
+    } catch {
+      toast.error('Failed to add the opening balance')
+    }
   }
 
   async function handleLinkCategory(categoryId: string | null) {
@@ -172,6 +191,64 @@ export function LiabilityPage() {
         <PayoffPill liability={liability} />
       </div>
 
+      {liability.balance_source === 'manual_fallback' && (
+        <div className="liability-page__hint liability-page__hint--warning">
+          <span>
+            The linked account's register is empty, so the balance shown is your last manual
+            entry. Add an opening balance so payments and payoff dates track from real
+            transactions.
+          </span>
+          <button
+            className="liability-page__action"
+            onClick={handleSeedOpeningBalance}
+            disabled={createTransaction.isPending}
+          >
+            {createTransaction.isPending
+              ? 'Adding…'
+              : `Add ${formatMoney(-Number(liability.current_balance))} opening balance`}
+          </button>
+        </div>
+      )}
+
+      {liability.promo_projection && liability.promo_end_date && (
+        liability.promo_projection.clears_before_promo ? (
+          <div className="liability-page__hint liability-page__hint--success">
+            <span>
+              On pace to clear this before the promo ends ({formatMonth(liability.promo_end_date)})
+              {liability.promo_deferred_interest ? ' — no deferred interest' : ''}.
+            </span>
+          </div>
+        ) : (
+          <div className="liability-page__hint liability-page__hint--warning">
+            <span>
+              Promo ends {formatMonth(liability.promo_end_date)}. At your current pace, about{' '}
+              {formatMoney(
+                Number(
+                  liability.promo_projection.balance_at_promo_end_live ??
+                    liability.promo_projection.balance_at_promo_end_minimum
+                )
+              )}{' '}
+              would remain
+              {liability.promo_projection.deferred_interest_estimate !== null
+                ? ` and ~${formatMoney(Number(liability.promo_projection.deferred_interest_estimate))} of deferred interest could be charged retroactively`
+                : ` and the ${Number(liability.interest_rate)}% rate starts`}
+              .
+            </span>
+          </div>
+        )
+      )}
+
+      {liability.implied_never_pays_off === true && (
+        <div className="liability-page__hint liability-page__hint--warning">
+          <span>
+            The {formatMoney(Number(liability.minimum_payment))} minimum payment couldn't have
+            amortized the original {formatMoney(Number(liability.original_principal ?? 0))} loan
+            at {Number(liability.interest_rate)}% — if your real payment includes escrow or
+            insurance, enter just the principal + interest portion for accurate projections.
+          </span>
+        </div>
+      )}
+
       <div className="liability-page__metrics">
         <MetricCard
           label="Current Balance"
@@ -188,7 +265,11 @@ export function LiabilityPage() {
                 : formatMoney(Number(amortization.baseline_total_interest))
               : '…'
           }
-          sub={amortization?.baseline_never_pays_off ? 'Never pays off at minimum' : 'At minimum payment'}
+          sub={
+            amortization?.baseline_never_pays_off
+              ? "Minimum doesn't cover interest"
+              : 'At minimum payment'
+          }
         />
         <MetricCard
           label="Months Remaining"
@@ -196,6 +277,49 @@ export function LiabilityPage() {
           sub="At minimum payment"
         />
       </div>
+
+      {liability.origination_date !== null &&
+        liability.original_principal !== null &&
+        Number(liability.original_principal) > 0 && (
+          <div className="liability-page__progress">
+            <div className="liability-page__progress-labels">
+              <span>
+                Originated {formatMonth(liability.origination_date)}
+                {(liability.term_months ?? liability.implied_term_months) !== null
+                  ? ` · ~${Math.round(
+                      (liability.term_months ?? liability.implied_term_months)! / 12
+                    )}-year loan`
+                  : ''}
+              </span>
+              <span>
+                {formatMoney(
+                  Math.max(
+                    0,
+                    Number(liability.original_principal) - Number(liability.current_balance)
+                  )
+                )}{' '}
+                of {formatMoney(Number(liability.original_principal))} paid down
+              </span>
+            </div>
+            <div className="liability-page__progress-track">
+              <div
+                className="liability-page__progress-fill"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      (1 -
+                        Number(liability.current_balance) /
+                          Number(liability.original_principal)) *
+                        100
+                    )
+                  )}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
 
       {liability.mode === 'unmanaged' && !linkedCategory && (
         <div className="liability-page__hint">

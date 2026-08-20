@@ -69,6 +69,12 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [originalPrincipal, setOriginalPrincipal] = useState(
     liability?.original_principal != null ? String(liability.original_principal) : ''
   )
+  const [termMonths, setTermMonths] = useState(
+    liability?.term_months != null ? String(liability.term_months) : ''
+  )
+  const [promoEnabled, setPromoEnabled] = useState(liability?.promo_end_date != null)
+  const [promoEndDate, setPromoEndDate] = useState(liability?.promo_end_date ?? '')
+  const [promoDeferred, setPromoDeferred] = useState(liability?.promo_deferred_interest ?? false)
   const [error, setError] = useState<string | null>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
@@ -98,6 +104,10 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
     }
     setError(null)
 
+    if (promoEnabled && !promoEndDate) {
+      return setError('Enter the promo end date (or turn promotional financing off)')
+    }
+
     const shared = {
       name: name.trim(),
       liability_type: liabilityType,
@@ -105,6 +115,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       minimum_payment: paymentNum,
       origination_date: originationDate || null,
       original_principal: originalPrincipal ? parseFloat(originalPrincipal) : null,
+      term_months: termMonths ? parseInt(termMonths, 10) : null,
+      promo_end_date: promoEnabled ? promoEndDate : null,
+      promo_deferred_interest: promoEnabled ? promoDeferred : false,
     }
 
     try {
@@ -284,7 +297,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
           </fieldset>
 
           <details className="liability-modal__optional">
-            <summary>Optional details</summary>
+            <summary>Loan details — enables progress &amp; term insights</summary>
             <div className="liability-modal__row">
               <label className="liability-modal__field">
                 <span>Origination date</span>
@@ -305,7 +318,54 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                   onChange={(e) => setOriginalPrincipal(e.target.value)}
                 />
               </label>
+              <label className="liability-modal__field">
+                <span>Term (months)</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  step="1"
+                  value={termMonths}
+                  onChange={(e) => setTermMonths(e.target.value)}
+                  placeholder="360"
+                />
+              </label>
             </div>
+
+            <label className="liability-modal__promo-toggle">
+              <input
+                type="checkbox"
+                checked={promoEnabled}
+                onChange={(e) => setPromoEnabled(e.target.checked)}
+              />
+              <span>
+                <strong>Promotional financing</strong>
+                <small>0% interest until a deadline — the rate above applies after it</small>
+              </span>
+            </label>
+            {promoEnabled && (
+              <div className="liability-modal__row">
+                <label className="liability-modal__field">
+                  <span>Promo ends</span>
+                  <input
+                    type="date"
+                    value={promoEndDate}
+                    onChange={(e) => setPromoEndDate(e.target.value)}
+                  />
+                </label>
+                <label className="liability-modal__promo-toggle liability-modal__promo-toggle--sub">
+                  <input
+                    type="checkbox"
+                    checked={promoDeferred}
+                    onChange={(e) => setPromoDeferred(e.target.checked)}
+                  />
+                  <span>
+                    <strong>Deferred interest</strong>
+                    <small>Missing the deadline charges interest retroactively</small>
+                  </span>
+                </label>
+              </div>
+            )}
           </details>
 
           {error && <div className="liability-modal__error">{error}</div>}

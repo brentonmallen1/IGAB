@@ -1048,6 +1048,13 @@ class Liability(Base):
     compounding: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
     origination_date: Mapped[_PyDate | None] = mapped_column(Date)
     original_principal: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    # Promotional financing ("0% until X"): interest_rate applies only after
+    # promo_end_date. promo_deferred_interest marks retailer deals that charge
+    # interest RETROACTIVELY when the balance isn't cleared by the deadline.
+    promo_end_date: Mapped[_PyDate | None] = mapped_column(Date)
+    promo_deferred_interest: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Explicit contractual term, when known (overrides the implied estimate)
+    term_months: Mapped[int | None] = mapped_column(Integer)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

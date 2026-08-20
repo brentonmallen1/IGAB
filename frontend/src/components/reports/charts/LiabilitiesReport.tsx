@@ -17,7 +17,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { MetricCard } from '../MetricCard'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './LiabilitiesReport.css'
 
@@ -130,6 +130,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
             Click a row for the full deep-dive: amortization schedule, paydown chart, payoff pill,
             and what-if extra payments.
           </p>
+          <ReportScopeNote scope="liabilities" />
         </ReportInfoButton>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
           {presentTypes.length > 1 &&
@@ -271,7 +272,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                       <td>
                         {item.never_pays_off ? (
                           <span className="liabilities-report__warning">
-                            <AlertTriangle size={12} /> Won't pay off
+                            <AlertTriangle size={12} /> Won't pay off at current pace
                           </span>
                         ) : item.live_payoff_date ? (
                           formatMonth(item.live_payoff_date)

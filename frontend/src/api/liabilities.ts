@@ -19,11 +19,29 @@ export interface Liability {
   linked_account_id: string | null
   linked_category_id: string | null
   current_balance: number
+  /** 'manual_fallback' = linked account's register is empty; the pre-link
+   * manual balance stands in until an opening balance is added */
+  balance_source: 'ledger' | 'manual' | 'manual_fallback'
   interest_rate: number
   minimum_payment: number
-  compounding: string
   origination_date: string | null
   original_principal: number | null
+  /** This month's interest at the current balance */
+  monthly_interest_now: number
+  /** Average of recent positive payments; null until 2+ months of history */
+  average_recent_payment: number | null
+  /** Contractual term implied by origination + principal + minimum payment */
+  implied_term_months: number | null
+  /** True = the entered minimum couldn't have amortized the original loan
+   * (usually the P&I-vs-escrow data-entry trap) */
+  implied_never_pays_off: boolean | null
+  /** Promotional financing: 0% until this date, interest_rate after */
+  promo_end_date: string | null
+  /** Deal charges interest retroactively if not cleared by the deadline */
+  promo_deferred_interest: boolean
+  /** Explicitly known contractual term (overrides the implied estimate) */
+  term_months: number | null
+  promo_projection: PromoProjection | null
   baseline_payoff_date: string | null
   baseline_never_pays_off: boolean
   live_payoff_date: string | null
@@ -33,16 +51,27 @@ export interface Liability {
   updated_at: string
 }
 
+export interface PromoProjection {
+  months_until_promo_end: number
+  balance_at_promo_end_minimum: number
+  balance_at_promo_end_live: number | null
+  clears_before_promo: boolean
+  /** Estimate of retroactive interest if the deadline is missed */
+  deferred_interest_estimate: number | null
+}
+
 export interface LiabilityCreate {
   name: string
   liability_type: LiabilityType
   interest_rate: number
   minimum_payment: number
-  compounding?: string
   linked_account_id?: string | null
   manual_balance?: number | null
   origination_date?: string | null
   original_principal?: number | null
+  promo_end_date?: string | null
+  promo_deferred_interest?: boolean
+  term_months?: number | null
 }
 
 export interface AmortizationMonth {
