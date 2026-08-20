@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import (
     Account,
     Budget,
+    BudgetMember,
     BudgetAssignment,
     Category,
     CategoryGroup,
@@ -53,10 +54,13 @@ def _name(prefix: str) -> str:
     return f"{prefix} {next(_seq)}"
 
 
-async def create_user(session: AsyncSession, email: str | None = None) -> User:
+async def create_user(
+    session: AsyncSession, email: str | None = None, *, is_admin: bool = False
+) -> User:
     user = User(
         email=email or f"user{next(_seq)}@test.local",
         password_hash="x" * 60,  # never verified in integration tests
+        is_admin=is_admin,
     )
     session.add(user)
     await session.flush()
@@ -67,7 +71,20 @@ async def create_budget(session: AsyncSession, user: User, name: str | None = No
     budget = Budget(user_id=user.id, name=name or _name("Budget"))
     session.add(budget)
     await session.flush()
+    # Membership is the authorization source of truth; the creator is always
+    # an owner (mirrors what the API and the migration backfill both do).
+    session.add(BudgetMember(budget_id=budget.id, user_id=user.id, role="owner"))
+    await session.flush()
     return budget
+
+
+async def add_budget_member(
+    session: AsyncSession, budget: Budget, user: User, role: str = "member"
+) -> BudgetMember:
+    member = BudgetMember(budget_id=budget.id, user_id=user.id, role=role)
+    session.add(member)
+    await session.flush()
+    return member
 
 
 async def create_account(

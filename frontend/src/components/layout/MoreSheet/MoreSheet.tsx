@@ -1,9 +1,9 @@
 import { useNavigate } from 'react-router-dom'
-import { Check, Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles, Eye, EyeOff } from 'lucide-react'
+import { UserCircle2, Check, Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles, Eye, EyeOff } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { THEMES } from '../../../stores/appStore'
 import { useUpdateStatus } from '../../../api/system'
-import { useLogout } from '../../../api/auth'
+import { useCurrentUser, useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import './MoreSheet.css'
@@ -19,6 +19,7 @@ export function MoreSheet() {
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const navigate = useNavigate()
   const logout = useLogout()
+  const { data: me } = useCurrentUser()
   const updateAvailable = useUpdateStatus().data?.update_available === true
 
   function go(path: string) {
@@ -29,6 +30,12 @@ export function MoreSheet() {
   return (
     <BottomSheet open={open} onClose={closeMoreSheet} historyKey="more">
       <div className="more-sheet">
+        {me && (
+          <div className="more-sheet__whoami">
+            <UserCircle2 size={16} />
+            <span>{me.display_name || me.email}</span>
+          </div>
+        )}
         <button className="more-sheet__item press-scale" onClick={() => go('/payees')}>
           <Users size={18} />
           <span>Payees</span>

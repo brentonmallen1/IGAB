@@ -112,3 +112,15 @@
   flex-shrink: 0;
   color: var(--color-accent);
 }
+
+
+.more-sheet__whoami {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--spacing-xs);
+}

@@ -28,7 +28,10 @@ async def list_changes(
     changes = await change_repo.list_for_budget(budget_id, limit=limit, offset=offset)
     total = await change_repo.count_for_budget(budget_id)
     return ChangeListResponse(
-        changes=[ChangeOut.model_validate(c) for c in changes],
+        changes=[
+            ChangeOut.model_validate(c).model_copy(update={"user_display_name": label})
+            for c, label in changes
+        ],
         total=total,
     )
 

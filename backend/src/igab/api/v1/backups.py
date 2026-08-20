@@ -11,7 +11,7 @@ from igab.api.v1.schemas.backups import (
     JobStarted,
     RestoreRequest,
 )
-from igab.dependencies import CurrentUser, bearer_scheme
+from igab.dependencies import AdminUser, bearer_scheme
 from igab.domain.exceptions import AuthenticationError
 from igab.services import backup_service
 from igab.services.auth_service import decode_token
@@ -25,7 +25,10 @@ async def _verify_token_only(
     """Signature/expiry check without a DB round-trip.
 
     The status endpoint must keep answering while a restore has the
-    database torn down, so it cannot use the normal user lookup.
+    database torn down, so it cannot use the normal user lookup. Known
+    tradeoff: a deactivated user's unexpired token can still read backup
+    status — read-only and low-sensitivity, accepted so restore progress
+    stays observable.
     """
     try:
         decode_token(credentials.credentials)
@@ -58,7 +61,7 @@ def _require_idle() -> None:
 
 
 @router.get("/backups", response_model=BackupsOverview)
-async def list_backups(current_user: CurrentUser) -> BackupsOverview:
+async def list_backups(current_user: AdminUser) -> BackupsOverview:
     online, last_seen = backup_service.agent_status()
     job = backup_service.read_job_status()
     return BackupsOverview(
@@ -85,7 +88,7 @@ async def backup_status(
 
 
 @router.post("/backups/run", response_model=JobStarted)
-async def run_backup(current_user: CurrentUser) -> JobStarted:
+async def run_backup(current_user: AdminUser) -> JobStarted:
     """Ask the agent to run a backup cycle now."""
     _require_agent()
     _require_idle()
@@ -93,7 +96,7 @@ async def run_backup(current_user: CurrentUser) -> JobStarted:
 
 
 @router.post("/backups/restore", response_model=JobStarted)
-async def restore_backup(body: RestoreRequest, current_user: CurrentUser) -> JobStarted:
+async def restore_backup(body: RestoreRequest, current_user: AdminUser) -> JobStarted:
     """Restore the database from a backup — REPLACES all current data.
 
     The app enters maintenance mode and restarts itself when the agent

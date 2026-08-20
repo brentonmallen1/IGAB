@@ -10,10 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # drifted the moment imports.py gained fields (imports.py has no module-level
 # api.v1 imports, so this cannot cycle).
 from igab.api.v1.imports import YNABImportResult
-from igab.db.models import Budget
+from igab.db.models import Budget, BudgetMember
 from igab.db.session import get_session
 from igab.dependencies import (
     BudgetAccess,
+    BudgetOwnerAccess,
     CurrentUser,
     get_account_repo,
     get_assignment_repo,
@@ -70,8 +71,19 @@ class BudgetResponse(BaseModel):
     number_format: str
     date_format: str
     time_format: str
+    #: The CALLER's role in this budget ('owner' | 'member') — lets the UI
+    #: show sharing affordances and "shared with you" hints. None only in
+    #: nested contexts that predate membership (e.g. import responses).
+    role: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+def _grant_owner(session: "AsyncSession", budget_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    """Every budget-creation path must call this: membership is the
+    authorization source of truth, and a budget without an owner row would be
+    invisible even to its creator."""
+    session.add(BudgetMember(budget_id=budget_id, user_id=user_id, role="owner"))
 
 
 class YNABImportBudgetResponse(BaseModel):
@@ -136,6 +148,7 @@ async def import_ynab_as_budget(
     budget = Budget(user_id=current_user.id, name=budget_name, currency_code="USD")
     session.add(budget)
     await session.flush()
+    _grant_owner(session, budget.id, current_user.id)
     await session.refresh(budget)
 
     importer = YNABImporter(
@@ -235,6 +248,7 @@ async def create_sample_budget(
     budget = Budget(user_id=current_user.id, name=name, currency_code="USD")
     session.add(budget)
     await session.flush()
+    _grant_owner(session, budget.id, current_user.id)
     await session.refresh(budget)
     await seed_system_tags(session, budget.id)
 
@@ -266,9 +280,16 @@ async def list_budgets(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[BudgetResponse]:
-    result = await session.execute(select(Budget).where(Budget.user_id == current_user.id))
-    budgets = result.scalars().all()
-    return [BudgetResponse.model_validate(b) for b in budgets]
+    result = await session.execute(
+        select(Budget, BudgetMember.role)
+        .join(BudgetMember, BudgetMember.budget_id == Budget.id)
+        .where(BudgetMember.user_id == current_user.id)
+        .order_by(Budget.created_at)
+    )
+    return [
+        BudgetResponse.model_validate(b).model_copy(update={"role": role})
+        for b, role in result.all()
+    ]
 
 
 @router.post("/budgets", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
@@ -284,6 +305,7 @@ async def create_budget(
     )
     session.add(budget)
     await session.flush()
+    _grant_owner(session, budget.id, current_user.id)
     await session.refresh(budget)
 
     # Create default system category groups
@@ -314,13 +336,15 @@ async def get_budget(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BudgetResponse:
+    # BudgetAccess already proved membership — no owner re-check (members see
+    # shared budgets; the old Budget.user_id filter would 404 them here).
     result = await session.execute(
-        select(Budget).where(Budget.id == budget_id, Budget.user_id == current_user.id)
+        select(Budget, BudgetMember.role)
+        .join(BudgetMember, BudgetMember.budget_id == Budget.id)
+        .where(Budget.id == budget_id, BudgetMember.user_id == current_user.id)
     )
-    budget = result.scalar_one_or_none()
-    if budget is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
-    return BudgetResponse.model_validate(budget)
+    budget, role = result.one()
+    return BudgetResponse.model_validate(budget).model_copy(update={"role": role})
 
 
 @router.patch("/budgets/{budget_id}", response_model=BudgetResponse)
@@ -330,10 +354,8 @@ async def update_budget(
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BudgetResponse:
-    result = await session.execute(
-        select(Budget).where(Budget.id == budget_id, Budget.user_id == current_user.id)
-    )
-    budget = result.scalar_one_or_none()
+    # Member-level operation; BudgetAccess already authorized.
+    budget = await session.get(Budget, budget_id)
     if budget is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
     if body.name:
@@ -352,14 +374,12 @@ async def update_budget(
 
 @router.delete("/budgets/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_budget(
-    budget_id: BudgetAccess,
+    budget_id: BudgetOwnerAccess,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
-    result = await session.execute(
-        select(Budget).where(Budget.id == budget_id, Budget.user_id == current_user.id)
-    )
-    budget = result.scalar_one_or_none()
+    """Owner-only: deleting a budget destroys every member's view of it."""
+    budget = await session.get(Budget, budget_id)
     if budget is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
     await session.delete(budget)

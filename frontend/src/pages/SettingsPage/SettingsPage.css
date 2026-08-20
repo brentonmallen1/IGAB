@@ -402,3 +402,24 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+/* Change-password form (Account section) */
+.settings-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-width: 360px;
+  width: 100%;
+}
+
+.settings-password-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.settings-password-error {
+  font-size: var(--font-size-xs);
+  color: var(--color-negative);
+}

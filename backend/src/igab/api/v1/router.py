@@ -7,6 +7,7 @@ from igab.api.v1 import (
     attachments,
     auth,
     backups,
+    budget_members,
     budget_views,
     budgets,
     categories,
@@ -21,11 +22,14 @@ from igab.api.v1 import (
     system,
     tags,
     transactions,
+    users,
 )
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(users.router, tags=["users"])
+api_router.include_router(budget_members.router, tags=["budget-members"])
 api_router.include_router(budgets.router, tags=["budgets"])
 api_router.include_router(accounts.router, tags=["accounts"])
 api_router.include_router(categories.router, tags=["categories"])

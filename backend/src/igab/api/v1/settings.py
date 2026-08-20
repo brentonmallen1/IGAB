@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from igab.api.v1.schemas.settings import SettingResponse, SettingUpdate
-from igab.dependencies import CurrentUser, get_settings_service
+from igab.dependencies import AdminUser, CurrentUser, get_settings_service
 from igab.services.ai_prompts import DEFAULT_PROMPTS
 from igab.services.ai_service import invalidate_capabilities
 from igab.services.settings_service import SettingsService
@@ -99,11 +99,14 @@ async def get_settings(
     return [SettingResponse(**item) for item in detailed]
 
 
+# Writes are admin-gated: app_settings is a household-global singleton
+# (AI config, backup schedule) — a member mis-tap must not reconfigure the
+# server. Reads stay open: every client needs the values.
 @router.put("/settings/{key}", response_model=SettingResponse)
 async def update_setting(
     key: str,
     body: SettingUpdate,
-    current_user: CurrentUser,
+    current_user: AdminUser,
     svc: Annotated[SettingsService, Depends(get_settings_service)],
 ) -> SettingResponse:
     if key not in EDITABLE_KEYS:
@@ -121,7 +124,7 @@ async def update_setting(
 @router.delete("/settings/{key}", response_model=SettingResponse)
 async def reset_setting(
     key: str,
-    current_user: CurrentUser,
+    current_user: AdminUser,
     svc: Annotated[SettingsService, Depends(get_settings_service)],
 ) -> SettingResponse:
     """Remove the stored override; the setting reverts to its env/default value."""

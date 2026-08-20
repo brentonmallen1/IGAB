@@ -19,6 +19,8 @@ function change(id: string, batchId: string | null): Change {
     source: 'ai',
     undone_at: null,
     created_at: '2026-08-17T13:53:41+00:00',
+    user_id: null,
+    user_display_name: null,
   }
 }
 
