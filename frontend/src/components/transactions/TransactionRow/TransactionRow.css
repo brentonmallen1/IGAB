@@ -35,16 +35,21 @@
   opacity: 0.85;
 }
 
-.transaction-row:hover {
-  background-color: var(--row-hover-bg);
+/* Hover affordances are desktop-only: iOS emulates :hover on tap (sticky
+   until the next tap), which made individual cells light up as if they were
+   their own controls — on touch the whole row is ONE tap target. */
+@media (hover: hover) {
+  .transaction-row:hover {
+    background-color: var(--row-hover-bg);
+  }
+
+  .transaction-row--selected:hover {
+    background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
 }
 
 .transaction-row--selected {
   background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-
-.transaction-row--selected:hover {
-  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
 .transaction-row--highlighted {
@@ -236,16 +241,23 @@
 }
 
 .txn-cell-text {
-  cursor: pointer;
   padding: 2px 4px;
   border-radius: var(--border-radius-sm);
   display: block;
   min-height: 22px;
-  transition: background-color var(--transition-fast);
 }
 
-.txn-cell-text:hover {
-  background-color: var(--row-hover-bg);
+/* Inline cell editing is desktop-only, so the per-cell pointer/hover
+   affordance is too — on touch these cells are not individual controls */
+@media (hover: hover) {
+  .txn-cell-text {
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+  }
+
+  .txn-cell-text:hover {
+    background-color: var(--row-hover-bg);
+  }
 }
 
 .txn-needs-category {
@@ -276,9 +288,14 @@
   transition: opacity var(--transition-fast);
 }
 
-.transaction-row:hover .txn-checkbox,
 .transaction-row--selected .txn-checkbox {
   opacity: 1;
+}
+
+@media (hover: hover) {
+  .transaction-row:hover .txn-checkbox {
+    opacity: 1;
+  }
 }
 
 .txn-more-btn {
@@ -292,8 +309,10 @@
   margin-left: 2px;
 }
 
-.transaction-row:hover .txn-more-btn {
-  display: flex;
+@media (hover: hover) {
+  .transaction-row:hover .txn-more-btn {
+    display: flex;
+  }
 }
 
 .txn-more-btn:hover {
@@ -319,6 +338,13 @@
     -webkit-touch-callout: none;
     user-select: none;
     -webkit-user-select: none;
+  }
+
+  /* One unified press state for the one tap target: the whole row responds
+     while pressed (tap opens the editor), no per-cell highlights. Reconciled
+     rows don't open the editor, so they don't pretend to. */
+  .transaction-row:not(.reconciled):active {
+    background-color: var(--row-hover-bg);
   }
 }
 
