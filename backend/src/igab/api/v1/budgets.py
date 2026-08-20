@@ -1,5 +1,5 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -188,6 +188,9 @@ async def import_ynab_as_budget(
 
 class SampleBudgetRequest(BaseModel):
     name: str | None = None
+    # 'starter' = the quick 5-account demo; 'full' = a complex dual-income
+    # household (~16 accounts, 2½ years) whose starter is a strict subset
+    tier: Literal["starter", "full"] = "starter"
 
 
 class SampleBudgetCounts(BaseModel):
@@ -230,14 +233,16 @@ async def create_sample_budget(
     reconciliation_repo: ReconciliationRepository = Depends(get_reconciliation_repo),
     liability_repo: LiabilityRepository = Depends(get_liability_repo),
 ) -> SampleBudgetResponse:
-    """Create a budget pre-filled with 12 months of curated demo data.
+    """Create a budget pre-filled with curated demo data.
 
-    A one-click throwaway: on a name collision the name is auto-suffixed
-    ("Sample Budget 2", …) instead of erroring.
+    Tier 'starter' is the quick 13-month demo; 'full' materializes the
+    complex-household superset (~2½ years). A one-click throwaway: on a name
+    collision the name is auto-suffixed ("Sample Budget 2", …).
     """
     from igab.repositories.tag_repo import seed_system_tags
     from igab.sample_budget.generator import SampleBudgetGenerator
 
+    tier = body.tier if body else "starter"
     base_name = (body.name.strip() if body and body.name else "") or "Sample Budget"
     existing = await session.execute(select(Budget.name).where(Budget.user_id == current_user.id))
     taken = {name.lower() for (name,) in existing}
@@ -269,6 +274,7 @@ async def create_sample_budget(
         scheduled_repo=scheduled_repo,
         reconciliation_repo=reconciliation_repo,
         liability_repo=liability_repo,
+        tier=tier,
     )
     counts = await generator.generate()
 

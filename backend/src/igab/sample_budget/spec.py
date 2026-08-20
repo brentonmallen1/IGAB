@@ -4,12 +4,20 @@ Pure data, no I/O. Every date is relative to a generation anchor so the
 sample always ends "today" regardless of when it is created, and every
 amount variation comes from cycled lists — no randomness, so two runs with
 the same anchor produce identical data.
+
+Tiers: one spec serves both the light "starter" demo and the "full" complex
+household. Every element carries the tiers it belongs to; the starter is a
+strict subset of the full data (elements default to both tiers, full-only
+elements are tagged ("full",)), so the starter's curated invariants never
+drift from the richer dataset.
 """
 
 import calendar
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+
+BOTH_TIERS = ("starter", "full")
 
 
 def shift_months(anchor: date, months_ago: int) -> tuple[int, int]:
@@ -38,11 +46,12 @@ class RelDate:
 @dataclass(frozen=True)
 class AccountSpec:
     name: str
-    account_type: str
+    account_type: str  # registry key; classification derives from the type row
     on_budget: bool = True
-    classification: str | None = None  # 'asset' or 'liability' for tracking accounts
     opening_balance: Decimal = Decimal("0")
     sort_order: int = 0
+    is_closed: bool = False
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -70,6 +79,8 @@ class CategorySpec:
     # Present ⇒ this category's current month is assigned exactly this much
     # BELOW its spending to date, guaranteeing one intentional overspend.
     overspend_this_month: Decimal | None = None
+    is_hidden: bool = False
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -77,6 +88,7 @@ class GroupSpec:
     name: str
     categories: tuple[CategorySpec, ...]
     is_system: bool = False
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -84,6 +96,7 @@ class PayeeSpec:
     name: str
     default_category: str | None = None
     tags: tuple[str, ...] = ()
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -110,6 +123,7 @@ class MonthlyTxn:
     amounts: tuple[Decimal, ...] = ()
     memo: str | None = None
     splits: tuple[tuple[SplitLine, ...], ...] = ()
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -123,6 +137,7 @@ class WeeklyTxn:
     weekdays: tuple[int, ...]
     amounts: tuple[Decimal, ...]
     memo: str | None = None
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -134,6 +149,7 @@ class OneOffTxn:
     category: str | None = None
     memo: str | None = None
     splits: tuple[SplitLine, ...] = ()
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -148,6 +164,7 @@ class TransferSpec:
     amount: Decimal
     category: str | None = None
     memo: str | None = None
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -164,6 +181,7 @@ class ScheduledSpec:
     # For yearly schedules: how many months ago the last occurrence happened
     # (anchors the cycle so next_occurrence lands mid-window, not a year out).
     last_occurrence_months_ago: int = 0
+    tiers: tuple[str, ...] = BOTH_TIERS
 
 
 @dataclass(frozen=True)
@@ -189,6 +207,21 @@ class LiabilitySpec:
     linked_account: str | None = None
     balance: Decimal | None = None
     snapshots: tuple[LiabilitySnapshotSpec, ...] = ()
+    origination: RelDate | None = None
+    original_principal: Decimal | None = None
+    term_months: int | None = None
+    # Promotional financing: 0% until promo_end (negative months_ago = future)
+    promo_end: RelDate | None = None
+    promo_deferred_interest: bool = False
+    tiers: tuple[str, ...] = BOTH_TIERS
+
+
+@dataclass(frozen=True)
+class TierConfig:
+    """Per-tier window and TBA target overriding the spec defaults."""
+
+    months_of_history: int
+    tba_target: Decimal
 
 
 @dataclass(frozen=True)
@@ -206,6 +239,8 @@ class SampleBudgetSpec:
     custom_tags: tuple[tuple[str, str], ...] = ()
     months_of_history: int = 12
     tba_target: Decimal = Decimal("150")
+    # Per-tier overrides of months_of_history / tba_target
+    tier_overrides: tuple[tuple[str, TierConfig], ...] = ()
     # Openings and other budget inflows are categorized here (system group)
     income_group: str = "Income"
     opening_income_category: str = "Other Income"

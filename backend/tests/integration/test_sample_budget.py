@@ -71,7 +71,7 @@ async def test_generation_covers_every_entity_kind(db_session):
     accounts = await AccountRepository(db_session).get_all(budget.id)
     types = {a.account_type for a in accounts}
     assert counts.accounts == 5
-    assert {"checking", "savings", "credit_card", "loan", "tracking"} <= types
+    assert {"checking", "savings", "credit_card", "loan", "investment"} <= types
 
     txns = await _transactions(db_session, budget.id)
     assert counts.transactions == len(txns)

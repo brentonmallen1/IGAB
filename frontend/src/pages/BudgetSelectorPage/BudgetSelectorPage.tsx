@@ -10,6 +10,7 @@ import {
   usePreviewYnabImport,
   useRenameBudget,
   useDeleteBudget,
+  type SampleTier,
   type YnabAccountPreview,
   type YnabAccountTypeChoice,
 } from '../../api/budgets'
@@ -89,6 +90,7 @@ export function BudgetSelectorPage() {
   const renameBudget = useRenameBudget()
   const deleteBudget = useDeleteBudget()
   const [sampleError, setSampleError] = useState<string | null>(null)
+  const [sampleTier, setSampleTier] = useState<SampleTier>('starter')
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -176,7 +178,7 @@ export function BudgetSelectorPage() {
   async function handleCreateSample() {
     setSampleError(null)
     try {
-      const result = await createSample.mutateAsync()
+      const result = await createSample.mutateAsync(sampleTier)
       setCurrentBudgetId(result.budget.id)
       navigate('/budget')
     } catch (err: unknown) {
@@ -544,12 +546,45 @@ export function BudgetSelectorPage() {
         {/* Sample budget */}
         <SelectorSection
           title="Try a Sample Budget"
-          subtitle="Explore IGAB with 12 months of realistic demo data"
+          subtitle="Explore IGAB with realistic, ready-made demo data"
           open={sampleOpen}
           onToggle={() => setSampleOpen((v) => !v)}
           className="selector-card--secondary"
         >
           <div className="selector-card__body">
+            <div className="sample-tier">
+              <label
+                className={`sample-tier__option ${sampleTier === 'starter' ? 'sample-tier__option--active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="sample-tier"
+                  checked={sampleTier === 'starter'}
+                  onChange={() => setSampleTier('starter')}
+                />
+                <span>
+                  <strong>Quick demo</strong>
+                  <small>5 accounts · about a year of history</small>
+                </span>
+              </label>
+              <label
+                className={`sample-tier__option ${sampleTier === 'full' ? 'sample-tier__option--active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="sample-tier"
+                  checked={sampleTier === 'full'}
+                  onChange={() => setSampleTier('full')}
+                />
+                <span>
+                  <strong>Full household</strong>
+                  <small>
+                    16 accounts, 2½ years, thousands of transactions — mortgage, investments,
+                    hidden categories, a 0%-promo loan
+                  </small>
+                </span>
+              </label>
+            </div>
             <div className="selector-card__footer">
               <button
                 type="button"

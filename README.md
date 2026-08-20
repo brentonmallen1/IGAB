@@ -172,22 +172,31 @@ automatically on first run.
 ### Explore with a Sample Budget
 
 Want to see how IGAB works before entering your own data? Generate a realistic
-sample budget with a year of transactions, categories, and scheduled items:
+sample budget (also available from the budget selector's "Try a Sample Budget"
+section):
 
 ```sh
 # Make sure the database is running
 just dev-db
 
-# Generate a sample budget for your admin user
+# Quick demo: 5 accounts, about a year of history
 just sample-budget your@email.com "Demo Budget"
+
+# Full household: 16 accounts, 2½ years, thousands of transactions
+just sample-budget your@email.com "Big Demo" full
 ```
 
-This creates a complete budget with:
+The quick demo creates a complete budget with:
 - Realistic category groups and categories with targets
-- Multiple accounts (checking, savings, credit cards)
+- Multiple accounts (checking, savings, credit cards, a loan, a brokerage)
 - A year of transaction history with varied payees
 - Scheduled recurring transactions
 - Sample reconciliations
+
+The full household layers on a mortgage with payoff tracking, retirement and
+HSA accounts, sinking-fund categories, hidden categories with history, a
+0%-promo deferred-interest loan, and authentically messy bank-feed payees —
+calibrated to the shape of a real multi-year budget.
 
 Perfect for exploring reports, testing the mobile interface, or just getting
 a feel for the workflow before importing your real data.
