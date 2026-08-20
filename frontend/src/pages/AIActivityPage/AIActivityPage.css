@@ -181,6 +181,14 @@
   color: var(--text-muted);
 }
 
+/* Raw typed/dictated input for text entries — the source the draft came from */
+.ai-activity__source {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
 .ai-activity__error-toggle {
   display: inline-flex;
   align-items: center;

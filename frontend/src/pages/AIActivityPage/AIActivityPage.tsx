@@ -178,6 +178,13 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             </span>
           )}
         </div>
+        {/* The raw typed/dictated words — the text entry's "receipt image".
+            Skipped when the title already is the text (failed parses). */}
+        {job.payload.text && job.payload.text !== title && (
+          <div className="ai-activity__source" title="What you typed or dictated">
+            “{job.payload.text}”
+          </div>
+        )}
         <div className="ai-activity__meta">
           <StatusChip status={job.status} />
           <span className="ai-activity__kind">

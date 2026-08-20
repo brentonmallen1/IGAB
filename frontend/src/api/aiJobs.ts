@@ -233,6 +233,7 @@ export function useDeleteAIJob(budgetId: string) {
 }
 
 export function useParseNLTransaction(budgetId: string) {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (text: string) =>
       apiClient
@@ -241,6 +242,12 @@ export function useParseNLTransaction(budgetId: string) {
           client_today: localToday(),
         })
         .then((r) => r.data),
+    // The endpoint writes an ai_jobs audit row whether the parse succeeds or
+    // fails — the AI Activity log should show it either way.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['ai-jobs'] })
+      qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
+    },
   })
 }
 
