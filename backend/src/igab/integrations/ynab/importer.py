@@ -17,6 +17,7 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.transaction_service import TransactionService
 
 _TRANSFER_PREFIX = "Transfer : "
@@ -105,11 +106,14 @@ class YNABImporter:
         account = row.scalar_one_or_none()
         if account is None:
             account_type, on_budget = self.account_types.get(name, ("checking", True))
+            # Through the shared derivation so account_type_id/classification
+            # are always set — imported accounts must not fall out of the
+            # sidebar or net worth for lack of a classification.
+            type_row = await resolve_type(self.session, self.budget_id, account_type)
             account = await self.account_repo.create(
                 budget_id=self.budget_id,
                 name=name,
-                account_type=account_type,
-                on_budget=on_budget,
+                **apply_type(type_row, on_budget),
             )
             result.accounts_imported += 1
 

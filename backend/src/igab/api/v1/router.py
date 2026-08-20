@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from igab.api.v1 import (
+    account_types,
     accounts,
     ai,
     ai_jobs,
@@ -32,6 +33,7 @@ api_router.include_router(users.router, tags=["users"])
 api_router.include_router(budget_members.router, tags=["budget-members"])
 api_router.include_router(budgets.router, tags=["budgets"])
 api_router.include_router(accounts.router, tags=["accounts"])
+api_router.include_router(account_types.router, tags=["account-types"])
 api_router.include_router(categories.router, tags=["categories"])
 api_router.include_router(changes.router, tags=["changes"])
 api_router.include_router(transactions.router, tags=["transactions"])

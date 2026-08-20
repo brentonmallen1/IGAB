@@ -190,7 +190,7 @@ async def test_month_reconciles_with_income_vs_expense(api_client, db_session):
     services, budget, checking, savings, groceries, _ = await _setup(api_client, db_session)
     reports = ReportService(db_session)
     offbudget = await create_account(
-        db_session, budget, "Brokerage", account_type="tracking", on_budget=False
+        db_session, budget, "Brokerage", account_type="investment", on_budget=False
     )
     payee = await create_payee(db_session, budget, "Employer")
 

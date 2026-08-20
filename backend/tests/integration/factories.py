@@ -42,6 +42,11 @@ from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.account_type_service import (
+    apply_type,
+    ensure_account_types_seeded,
+    resolve_type,
+)
 from igab.services.budget_service import BudgetService
 from igab.services.reconciliation_service import ReconciliationService
 from igab.services.transaction_matching_service import TransactionMatchingService
@@ -75,6 +80,8 @@ async def create_budget(session: AsyncSession, user: User, name: str | None = No
     # an owner (mirrors what the API and the migration backfill both do).
     session.add(BudgetMember(budget_id=budget.id, user_id=user.id, role="owner"))
     await session.flush()
+    # Accounts can't exist without their budget's type registry
+    await ensure_account_types_seeded(session, budget.id)
     return budget
 
 
@@ -96,12 +103,12 @@ async def create_account(
     on_budget: bool = True,
     simplefin_account_id: str | None = None,
 ) -> Account:
+    type_row = await resolve_type(session, budget.id, account_type)
     account = Account(
         budget_id=budget.id,
         name=name or _name("Account"),
-        account_type=account_type,
-        on_budget=on_budget,
         simplefin_account_id=simplefin_account_id,
+        **apply_type(type_row, on_budget),
     )
     session.add(account)
     await session.flush()

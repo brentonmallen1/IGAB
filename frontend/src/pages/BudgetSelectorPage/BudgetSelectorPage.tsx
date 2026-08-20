@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ChevronDown, ChevronUp, LogOut, MoreHorizontal, Pencil, Trash2, Users } from 'lucide-react'
+import { ChevronDown, ChevronUp, HelpCircle, LogOut, MoreHorizontal, Pencil, Trash2, Users } from 'lucide-react'
 import {
   useBudgets,
   useCreateBudget,
@@ -20,6 +20,8 @@ import './BudgetSelectorPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import { SharingModal } from '../../components/budgets/SharingModal'
 import { useCurrentUser } from '../../api/auth'
+import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
+import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
@@ -27,13 +29,9 @@ const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'delete', label: 'Delete', icon: Trash2, danger: true },
 ]
 
-const ACCOUNT_TYPE_OPTIONS = [
-  { value: 'checking', label: 'Checking' },
-  { value: 'savings', label: 'Savings' },
-  { value: 'credit_card', label: 'Credit Card' },
-  { value: 'loan', label: 'Loan' },
-  { value: 'tracking', label: 'Tracking' },
-]
+// The budget (and its type registry) doesn't exist yet at mapping time, so
+// the choices are the built-ins; custom types can be created after import.
+const ACCOUNT_TYPE_OPTIONS = BUILTIN_ACCOUNT_TYPES
 
 /**
  * A selector card whose header toggles its body. The Create / Import /
@@ -117,6 +115,7 @@ export function BudgetSelectorPage() {
   const previewYnab = usePreviewYnabImport()
   const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
   const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
+  const [showTypeInfo, setShowTypeInfo] = useState(false)
 
   function updateChoice(name: string, patch: Partial<YnabAccountTypeChoice>) {
     setAccountChoices((prev) => ({ ...prev, [name]: { ...prev[name], ...patch } }))
@@ -445,10 +444,18 @@ export function BudgetSelectorPage() {
               <div className="selector-field">
                 <label className="selector-field__label">
                   Accounts
+                  <button
+                    type="button"
+                    className="ynab-mapping__type-help"
+                    onClick={() => setShowTypeInfo(true)}
+                  >
+                    <HelpCircle size={12} /> What do these types mean?
+                  </button>
                   <span className="ynab-mapping__hint">
                     {' '}— off-budget accounts (loans, investments) stay out of your budget
                     totals; uncheck an account to leave it and its transactions out entirely
-                    (YNAB exports include archived accounts)
+                    (YNAB exports include archived accounts). Need something more specific
+                    than these types? You can create custom account types after the import.
                   </span>
                 </label>
                 <div className="ynab-mapping">
@@ -480,11 +487,21 @@ export function BudgetSelectorPage() {
                         <select
                           className="selector-field__input ynab-mapping__type"
                           value={accountChoices[a.name]?.account_type ?? a.suggested_type}
-                          onChange={(e) => updateChoice(a.name, { account_type: e.target.value })}
+                          onChange={(e) => {
+                            // Picking a type resets the on-budget checkbox to
+                            // that type's default; still user-overridable.
+                            const picked = ACCOUNT_TYPE_OPTIONS.find(
+                              (o) => o.key === e.target.value
+                            )
+                            updateChoice(a.name, {
+                              account_type: e.target.value,
+                              on_budget: picked?.default_on_budget ?? true,
+                            })
+                          }}
                           disabled={skipped}
                         >
                           {ACCOUNT_TYPE_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
+                            <option key={o.key} value={o.key}>{o.label}</option>
                           ))}
                         </select>
                         <label className="ynab-mapping__budget-toggle">
@@ -552,6 +569,7 @@ export function BudgetSelectorPage() {
         </div>
 
       </div>
+      {showTypeInfo && <AccountTypeInfoModal onClose={() => setShowTypeInfo(false)} />}
     </div>
   )
 }

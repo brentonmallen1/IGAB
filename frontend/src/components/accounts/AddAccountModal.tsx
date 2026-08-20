@@ -1,37 +1,48 @@
 import { useEffect, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { HelpCircle, X } from 'lucide-react'
 import { useCreateAccount } from '../../api/accounts'
+import { useAccountTypes } from '../../api/accountTypes'
+import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
+import { AccountTypeInfoModal } from './AccountTypeInfoModal'
 import { useAppStore } from '../../stores/appStore'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
-import type { AccountType } from '../../types'
 import './AccountSettingsModal.css'
-
-const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
-  { value: 'checking', label: 'Checking' },
-  { value: 'savings', label: 'Savings' },
-  { value: 'credit_card', label: 'Credit Card' },
-  { value: 'loan', label: 'Loan' },
-  { value: 'tracking', label: 'Tracking' },
-]
 
 interface Props {
   onClose: () => void
+  /** Preselect a type (e.g. the sidebar's Assets + opens with 'investment') */
+  initialTypeKey?: string
 }
 
-export function AddAccountModal({ onClose }: Props) {
+export function AddAccountModal({ onClose, initialTypeKey }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const createAccount = useCreateAccount(budgetId ?? '')
+  // Registry-driven: built-ins plus this budget's custom types. The constant
+  // fallback only covers the frame before the registry query resolves.
+  const { data: typeRows } = useAccountTypes(budgetId)
+  const typeOptions = typeRows ?? BUILTIN_ACCOUNT_TYPES
   const [name, setName] = useState('')
-  const [accountType, setAccountType] = useState<AccountType>('checking')
-  const [onBudget, setOnBudget] = useState(true)
+  const [accountType, setAccountType] = useState(initialTypeKey ?? 'checking')
+  const [onBudget, setOnBudget] = useState(
+    () => typeOptions.find((t) => t.key === (initialTypeKey ?? 'checking'))?.default_on_budget ?? true
+  )
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [showTypeInfo, setShowTypeInfo] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   useEffect(() => {
     nameRef.current?.focus()
   }, [])
+
+  function handleTypeChange(key: string) {
+    setAccountType(key)
+    // Picking a type resets the checkbox to that type's default; the user can
+    // still override it before saving.
+    const picked = typeOptions.find((t) => t.key === key)
+    if (picked) setOnBudget(picked.default_on_budget)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -41,7 +52,7 @@ export function AddAccountModal({ onClose }: Props) {
       await createAccount.mutateAsync({
         name: name.trim(),
         account_type: accountType,
-        on_budget: accountType === 'tracking' ? false : onBudget,
+        on_budget: onBudget,
         note: note.trim() || undefined,
       })
       onClose()
@@ -75,29 +86,38 @@ export function AddAccountModal({ onClose }: Props) {
                 />
               </div>
               <div className="acct-modal__field">
-                <label className="acct-modal__label">Type</label>
+                <label className="acct-modal__label">
+                  Type
+                  <button
+                    type="button"
+                    className="acct-modal__type-help"
+                    onClick={() => setShowTypeInfo(true)}
+                    aria-label="What do account types mean?"
+                    title="What do account types mean?"
+                  >
+                    <HelpCircle size={12} />
+                  </button>
+                </label>
                 <select
                   className="acct-modal__input"
                   value={accountType}
-                  onChange={(e) => setAccountType(e.target.value as AccountType)}
+                  onChange={(e) => handleTypeChange(e.target.value)}
                 >
-                  {ACCOUNT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
+                  {typeOptions.map((t) => (
+                    <option key={t.key} value={t.key}>
                       {t.label}
                     </option>
                   ))}
                 </select>
               </div>
-              {accountType !== 'tracking' && (
-                <div className="acct-modal__field acct-modal__field--row">
-                  <label className="acct-modal__label">On Budget</label>
-                  <input
-                    type="checkbox"
-                    checked={onBudget}
-                    onChange={(e) => setOnBudget(e.target.checked)}
-                  />
-                </div>
-              )}
+              <div className="acct-modal__field acct-modal__field--row">
+                <label className="acct-modal__label">On Budget</label>
+                <input
+                  type="checkbox"
+                  checked={onBudget}
+                  onChange={(e) => setOnBudget(e.target.checked)}
+                />
+              </div>
               <div className="acct-modal__field">
                 <label className="acct-modal__label">Note</label>
                 <input
@@ -125,6 +145,9 @@ export function AddAccountModal({ onClose }: Props) {
           </div>
         </form>
       </div>
+      {showTypeInfo && (
+        <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
+      )}
     </div>
   )
 }

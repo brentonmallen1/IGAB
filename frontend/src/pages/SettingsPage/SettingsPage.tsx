@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { useAppStore, THEMES, FONT_SCALES, type Theme, type FontScale } from '../../stores/appStore'
 import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '../../api/accounts'
 import { useBudgets, useUpdateBudget } from '../../api/budgets'
@@ -11,6 +12,8 @@ import {
 } from '../../api/simplefin'
 import { SimpleFINSetup } from '../../components/simplefin/SimpleFINSetup'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
+import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
+import { HelpCircle } from 'lucide-react'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
@@ -20,7 +23,13 @@ import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useUIStore } from '../../stores/uiStore'
-import type { AccountType, NumberFormat, DateFormat, TimeFormat } from '../../types'
+import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
+import { UsersPanel } from '../../components/settings/UsersPanel/UsersPanel'
+import { apiErrorMessage } from '../../api/client'
+import { useUsers } from '../../api/users'
+import type { NumberFormat, DateFormat, TimeFormat } from '../../types'
+import { useAccountTypes } from '../../api/accountTypes'
+import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import './SettingsPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 
@@ -62,14 +71,6 @@ const CURRENCIES: { value: string; label: string; symbol: string }[] = [
 ]
 
 
-const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
-  { value: 'checking', label: 'Checking' },
-  { value: 'savings', label: 'Savings' },
-  { value: 'credit_card', label: 'Credit Card' },
-  { value: 'loan', label: 'Loan' },
-  { value: 'tracking', label: 'Tracking' },
-]
-
 export function SettingsPage() {
   const { formatMoney } = useFormatters()
   const theme = useAppStore((s) => s.theme)
@@ -84,6 +85,8 @@ export function SettingsPage() {
 
   const { data: budgets } = useBudgets()
   const { data: accounts } = useAccounts(budgetId)
+  const { data: typeRows } = useAccountTypes(budgetId)
+  const typeOptions = typeRows ?? BUILTIN_ACCOUNT_TYPES
   const createAccount = useCreateAccount(budgetId ?? '')
   const updateAccount = useUpdateAccount(budgetId ?? '')
   const deleteAccount = useDeleteAccount(budgetId ?? '')
@@ -115,7 +118,8 @@ export function SettingsPage() {
   }
 
   const [newAccName, setNewAccName] = useState('')
-  const [newAccType, setNewAccType] = useState<AccountType>('checking')
+  const [newAccType, setNewAccType] = useState('checking')
+  const [showTypeInfo, setShowTypeInfo] = useState(false)
 
   async function handleAddAccount(e: React.FormEvent) {
     e.preventDefault()
@@ -124,11 +128,8 @@ export function SettingsPage() {
     setNewAccName('')
   }
 
-  function handleLogout() {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    window.location.href = '/login'
-  }
+  const handleLogout = useLogout()
+  const { data: me } = useCurrentUser()
 
   const currentBudget = budgets?.find((b) => b.id === budgetId)
 
@@ -146,7 +147,8 @@ export function SettingsPage() {
     { id: 'updates', label: 'Updates' },
     { id: 'simplefin', label: 'SimpleFIN' },
     { id: 'ai', label: 'AI' },
-    { id: 'session', label: 'Session' },
+    { id: 'account', label: 'Account' },
+    ...(me?.is_admin ? [{ id: 'users', label: 'Users' }] : []),
   ]
 
   // Deep links (e.g. /settings#integrity from the command palette) scroll to
@@ -186,7 +188,10 @@ export function SettingsPage() {
     })
 
     return () => observer.disconnect()
-  }, [budgetId]) // Re-run if budgetId changes (sections list changes)
+    // Re-run when the section list changes: budgetId gates three sections and
+    // is_admin gates Users (which arrives only after /auth/me resolves).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetId, me?.is_admin])
 
   function scrollToSection(id: string) {
     const el = document.getElementById(id)
@@ -473,14 +478,23 @@ export function SettingsPage() {
                 <select
                   className="settings-input"
                   value={newAccType}
-                  onChange={(e) => setNewAccType(e.target.value as AccountType)}
+                  onChange={(e) => setNewAccType(e.target.value)}
                 >
-                  {ACCOUNT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
+                  {typeOptions.map((t) => (
+                    <option key={t.key} value={t.key}>
                       {t.label}
                     </option>
                   ))}
                 </select>
+                <button
+                  type="button"
+                  className="settings-btn"
+                  onClick={() => setShowTypeInfo(true)}
+                  aria-label="What do account types mean?"
+                  title="What do account types mean?"
+                >
+                  <HelpCircle size={14} />
+                </button>
               </div>
               <button type="submit" className="settings-btn settings-btn--primary" style={{ alignSelf: 'flex-start' }}>
                 Add Account
@@ -647,12 +661,22 @@ export function SettingsPage() {
       {/* AI Settings */}
       <AISettingsPanel />
 
-      {/* Session */}
-      <div className="settings-section" id="session">
+      {/* Account */}
+      <div className="settings-section" id="account">
         <div className="settings-section__header">
-          <div className="settings-section__title">Session</div>
+          <div className="settings-section__title">Account</div>
         </div>
         <div className="settings-section__body">
+          <div className="settings-row">
+            <div>
+              <div className="settings-row__label">Signed in as</div>
+              <div className="settings-row__desc">
+                {me ? (me.display_name ? `${me.display_name} — ${me.email}` : me.email) : '…'}
+                {me?.is_admin ? ' (admin)' : ''}
+              </div>
+            </div>
+          </div>
+          <ChangePasswordRow />
           <div className="settings-row">
             <div className="settings-row__label">Sign out</div>
             <button className="settings-btn settings-btn--secondary" onClick={handleLogout}>
@@ -662,10 +686,127 @@ export function SettingsPage() {
         </div>
       </div>
 
+      {/* Users — admin only */}
+      {me?.is_admin && (
+        <div className="settings-section" id="users">
+          <div className="settings-section__header">
+            <div className="settings-section__title">Users</div>
+          </div>
+          <div className="settings-section__body">
+            <UsersPanel />
+          </div>
+        </div>
+      )}
+
       {isAccountEditorOpen && editingAccountId && (
         <AccountSettingsModal accountId={editingAccountId} onClose={closeAccountEditor} />
       )}
+      {showTypeInfo && (
+        <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
+      )}
       </div>
+    </div>
+  )
+}
+
+
+/**
+ * Self-service password change. The env-managed admin gets an explanatory
+ * note instead of a form — ADMIN_PASSWORD owns that credential and the boot
+ * sync would silently revert an in-app change.
+ */
+function ChangePasswordRow() {
+  const { data: me } = useCurrentUser()
+  const { data: users } = useUsers()
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const isEnvAdmin = users?.find((u) => u.id === me?.id)?.is_env_admin ?? false
+
+  if (isEnvAdmin) {
+    return (
+      <div className="settings-row">
+        <div>
+          <div className="settings-row__label">Password</div>
+          <div className="settings-row__desc">
+            This admin credential is managed by the ADMIN_PASSWORD environment variable — change
+            it in .env and restart the server.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (next !== confirm) {
+      setError('New passwords do not match')
+      return
+    }
+    setSaving(true)
+    try {
+      await changePassword(current, next)
+      toast.success('Password changed')
+      setCurrent('')
+      setNext('')
+      setConfirm('')
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, 'Could not change the password'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="settings-row settings-row--stacked">
+      <div>
+        <div className="settings-row__label">Change password</div>
+      </div>
+      <form className="settings-password-form" onSubmit={handleSubmit}>
+        <input
+          className="settings-input"
+          type="password"
+          placeholder="Current password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          required
+          autoComplete="current-password"
+        />
+        <input
+          className="settings-input"
+          type="password"
+          placeholder="New password (min 8)"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+          minLength={8}
+          required
+          autoComplete="new-password"
+        />
+        <input
+          className="settings-input"
+          type="password"
+          placeholder="Repeat new password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          minLength={8}
+          required
+          autoComplete="new-password"
+        />
+        <div className="settings-password-actions">
+          {error && <span className="settings-password-error">{error}</span>}
+          <button
+            type="submit"
+            className="settings-btn settings-btn--primary"
+            disabled={saving || !current || next.length < 8 || confirm.length < 8}
+          >
+            {saving ? 'Saving…' : 'Change password'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

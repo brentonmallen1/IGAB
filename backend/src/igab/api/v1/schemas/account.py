@@ -2,25 +2,27 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from igab.domain.enums import AccountClassification, AccountType
+# The registry key of an account type — built-in or user-defined. Existence is
+# validated per budget at the endpoint (account_type_service.resolve_type);
+# the pattern only rejects shapes that could never be a key.
+AccountTypeKey = Field(pattern=r"^[a-z0-9_]{1,30}$")
 
 
 class AccountCreate(BaseModel):
     name: str
-    account_type: AccountType
-    on_budget: bool = True
-    classification: AccountClassification | None = None
+    account_type: str = AccountTypeKey
+    # None = use the type's default_on_budget
+    on_budget: bool | None = None
     note: str | None = None
     sort_order: int = 0
 
 
 class AccountUpdate(BaseModel):
     name: str | None = None
-    account_type: str | None = None
+    account_type: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,30}$")
     on_budget: bool | None = None
-    classification: AccountClassification | None = None
     is_closed: bool | None = None
     note: str | None = None
     sort_order: int | None = None

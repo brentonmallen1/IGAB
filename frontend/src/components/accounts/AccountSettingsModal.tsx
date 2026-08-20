@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { HelpCircle, X } from 'lucide-react'
 import { useAccounts, useUpdateAccount, useScanDuplicates } from '../../api/accounts'
 import {
   useLinkSimpleFINAccount,
@@ -11,17 +11,11 @@ import {
 import { formatSyncAge } from '../simplefin/SyncStatusIcon'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useAppStore } from '../../stores/appStore'
-import type { AccountType } from '../../types'
+import { useAccountTypes } from '../../api/accountTypes'
+import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
+import { AccountTypeInfoModal } from './AccountTypeInfoModal'
 import './AccountSettingsModal.css'
 import { confirmAsync } from '../../stores/confirmStore'
-
-const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
-  { value: 'checking', label: 'Checking' },
-  { value: 'savings', label: 'Savings' },
-  { value: 'credit_card', label: 'Credit Card' },
-  { value: 'loan', label: 'Loan' },
-  { value: 'tracking', label: 'Tracking' },
-]
 
 interface Props {
   accountId: string
@@ -48,14 +42,16 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const [scanResult, setScanResult] = useState<number | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
+  const { data: typeRows } = useAccountTypes(budgetId)
+  const typeOptions = typeRows ?? BUILTIN_ACCOUNT_TYPES
+
   const [name, setName] = useState(account?.name ?? '')
-  const [accountType, setAccountType] = useState<AccountType>(
-    (account?.account_type as AccountType) ?? 'checking',
-  )
+  const [accountType, setAccountType] = useState(account?.account_type ?? 'checking')
   const [onBudget, setOnBudget] = useState(account?.on_budget ?? true)
   const [note, setNote] = useState(account?.note ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [closeError, setCloseError] = useState<string | null>(null)
+  const [showTypeInfo, setShowTypeInfo] = useState(false)
 
   const nameRef = useRef<HTMLInputElement>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
@@ -63,7 +59,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   useEffect(() => {
     if (account) {
       setName(account.name)
-      setAccountType(account.account_type as AccountType)
+      setAccountType(account.account_type)
       setOnBudget(account.on_budget)
       setNote(account.note ?? '')
     }
@@ -82,7 +78,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
         id: accountId,
         name: name.trim(),
         account_type: accountType,
-        on_budget: accountType === 'tracking' ? false : onBudget,
+        on_budget: onBudget,
         note: note.trim() || null,
       })
       onClose()
@@ -159,29 +155,38 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                 />
               </div>
               <div className="acct-modal__field">
-                <label className="acct-modal__label">Type</label>
+                <label className="acct-modal__label">
+                  Type
+                  <button
+                    type="button"
+                    className="acct-modal__type-help"
+                    onClick={() => setShowTypeInfo(true)}
+                    aria-label="What do account types mean?"
+                    title="What do account types mean?"
+                  >
+                    <HelpCircle size={12} />
+                  </button>
+                </label>
                 <select
                   className="acct-modal__input"
                   value={accountType}
-                  onChange={(e) => setAccountType(e.target.value as AccountType)}
+                  onChange={(e) => setAccountType(e.target.value)}
                 >
-                  {ACCOUNT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
+                  {typeOptions.map((t) => (
+                    <option key={t.key} value={t.key}>
                       {t.label}
                     </option>
                   ))}
                 </select>
               </div>
-              {accountType !== 'tracking' && (
-                <div className="acct-modal__field acct-modal__field--row">
-                  <label className="acct-modal__label">On Budget</label>
-                  <input
-                    type="checkbox"
-                    checked={onBudget}
-                    onChange={(e) => setOnBudget(e.target.checked)}
-                  />
-                </div>
-              )}
+              <div className="acct-modal__field acct-modal__field--row">
+                <label className="acct-modal__label">On Budget</label>
+                <input
+                  type="checkbox"
+                  checked={onBudget}
+                  onChange={(e) => setOnBudget(e.target.checked)}
+                />
+              </div>
               <div className="acct-modal__field">
                 <label className="acct-modal__label">Note</label>
                 <input
@@ -324,6 +329,9 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
           </div>
         </form>
       </div>
+      {showTypeInfo && (
+        <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
+      )}
     </div>
   )
 }

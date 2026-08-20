@@ -6,39 +6,27 @@ from datetime import date
 from decimal import Decimal
 
 import polars as pl
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel, ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel, Field, ValidationError
 
 from igab.db.models import ChangeLog, new_uuid
-from igab.db.session import get_session
 from igab.dependencies import (
     AccountAccess,
     BudgetAccess,
     CurrentUser,
     get_account_repo,
-    get_assignment_repo,
-    get_category_group_repo,
-    get_category_repo,
     get_payee_repo,
     get_transaction_repo,
-    get_transaction_service,
 )
-from igab.domain.enums import AccountType
+from igab.domain.account_types import BUILTIN_ACCOUNT_TYPE_KEYS
 from igab.domain.money import parse_csv_amount
 from igab.integrations.ynab.importer import ImportResult as YNABRunResult
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.account_repo import AccountRepository
-from igab.repositories.category_repo import (
-    BudgetAssignmentRepository,
-    CategoryGroupRepository,
-    CategoryRepository,
-)
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import snapshot
-from igab.services.transaction_service import TransactionService
 
 router = APIRouter()
 
@@ -85,7 +73,9 @@ class YNABPreviewResult(BaseModel):
 
 
 class YNABAccountTypeChoice(BaseModel):
-    account_type: AccountType
+    # Built-in registry keys only: the budget doesn't exist yet when the
+    # mapping is chosen, so no custom types can — create those afterwards.
+    account_type: str = Field(pattern=r"^[a-z0-9_]{1,30}$")
     on_budget: bool
     #: Leave this account (and every one of its register rows) out of the
     #: import entirely — YNAB exports carry archived accounts with no marker,
@@ -93,17 +83,38 @@ class YNABAccountTypeChoice(BaseModel):
     skip: bool = False
 
 
-# YNAB register exports carry no account-type info; suggest from the name so
-# tracking/loan accounts don't silently land on-budget and pollute TBA.
+# YNAB register exports carry no account-type info — only names — so the
+# mapping step suggests from name keywords and the user confirms per account.
+# Where YNAB's own taxonomy lands in IGAB:
+#   Checking → checking · Savings/Money Market → savings · Cash → cash
+#   Credit Card / Line of Credit → credit_card
+#   Mortgage / Auto / Student / Personal loans → loan (off budget; add a
+#     Liability record for payoff tracking)
+#   Asset tracking (brokerage, 401k, IRA, HSA, ESPP) → investment
+#   Other tracking assets (crypto, treasury, wallets) → other_asset
+#   Liability tracking → other_liability
 _TYPE_HINTS: list[tuple[tuple[str, ...], str, bool]] = [
     (("mortgage", "loan", "student"), "loan", False),
     (("credit", "card", "visa", "amex", "mastercard", "discover"), "credit_card", True),
     (
-        ("invest", "brokerage", "401k", "401(k)", "ira", "hsa", "retirement"),
-        "tracking",
+        (
+            "invest",
+            "brokerage",
+            "401k",
+            "401(k)",
+            "403b",
+            "ira",
+            "roth",
+            "hsa",
+            "retirement",
+            "espp",
+        ),
+        "investment",
         False,
     ),
-    (("saving", "emergency"), "savings", True),
+    (("crypto", "treasury", "wallet"), "other_asset", False),
+    (("saving", "emergency", "money market"), "savings", True),
+    (("cash",), "cash", True),
 ]
 
 
@@ -133,8 +144,17 @@ def parse_account_types_form(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid account_types mapping: {e}",
         ) from e
+    unknown = {c.account_type for c in parsed.values() if not c.skip} - BUILTIN_ACCOUNT_TYPE_KEYS
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Unknown account type(s): {', '.join(sorted(unknown))}. "
+                f"Valid types: {', '.join(sorted(BUILTIN_ACCOUNT_TYPE_KEYS))}"
+            ),
+        )
     type_map = {
-        name: (choice.account_type.value, choice.on_budget)
+        name: (choice.account_type, choice.on_budget)
         for name, choice in parsed.items()
         if not choice.skip
     }
@@ -201,65 +221,6 @@ async def parse_uploaded_ynab_zip(file: UploadFile):
             ) from e
     finally:
         tmp_path.unlink(missing_ok=True)
-
-
-@router.post("/{budget_id}/import/ynab/preview", response_model=YNABPreviewResult)
-async def preview_ynab(
-    budget_id: BudgetAccess,
-    current_user: CurrentUser,
-    file: UploadFile = File(...),
-) -> YNABPreviewResult:
-    """Parse the export without importing: account list for the type-mapping
-    step, with name-based type suggestions."""
-    ynab_budget = await parse_uploaded_ynab_zip(file)
-    return build_ynab_preview(ynab_budget)
-
-
-@router.post("/{budget_id}/import/ynab", response_model=YNABImportResult)
-async def import_ynab(
-    budget_id: BudgetAccess,
-    current_user: CurrentUser,
-    file: UploadFile = File(...),
-    account_types: str | None = Form(None),
-    session: AsyncSession = Depends(get_session),
-    account_repo: AccountRepository = Depends(get_account_repo),
-    category_group_repo: CategoryGroupRepository = Depends(get_category_group_repo),
-    category_repo: CategoryRepository = Depends(get_category_repo),
-    payee_repo: PayeeRepository = Depends(get_payee_repo),
-    transaction_repo: TransactionRepository = Depends(get_transaction_repo),
-    assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
-    txn_service: TransactionService = Depends(get_transaction_service),
-) -> YNABImportResult:
-    type_map, skip_accounts = parse_account_types_form(account_types)
-    ynab_budget = await parse_uploaded_ynab_zip(file)
-
-    importer = YNABImporter(
-        session=session,
-        budget_id=budget_id,
-        account_repo=account_repo,
-        category_group_repo=category_group_repo,
-        category_repo=category_repo,
-        payee_repo=payee_repo,
-        transaction_repo=transaction_repo,
-        transaction_service=txn_service,
-        assignment_repo=assignment_repo,
-        account_types=type_map,
-        skip_accounts=skip_accounts,
-    )
-
-    result = await run_ynab_import(importer, ynab_budget)
-
-    return YNABImportResult(
-        accounts=result.accounts_imported,
-        category_groups=result.category_groups_imported,
-        categories=result.categories_imported,
-        transactions=result.transactions_imported,
-        skipped=result.transactions_skipped,
-        assignments=result.assignments_imported,
-        accounts_skipped=result.accounts_skipped,
-        transactions_excluded=result.transactions_excluded,
-        errors=result.errors,
-    )
 
 
 @router.post("/{budget_id}/import/csv", response_model=ImportResult)

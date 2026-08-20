@@ -1,12 +1,8 @@
 from enum import StrEnum
 
-
-class AccountType(StrEnum):
-    CHECKING = "checking"
-    SAVINGS = "savings"
-    CREDIT_CARD = "credit_card"
-    LOAN = "loan"
-    TRACKING = "tracking"
+# Account types are no longer a static enum: each budget carries an
+# account_types registry row per type (built-ins seeded from
+# igab.domain.account_types, plus user-defined custom types).
 
 
 class ClearedStatus(StrEnum):
