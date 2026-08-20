@@ -18,6 +18,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './LiabilitiesReport.css'
 
@@ -44,6 +45,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
   const [modeFilter, setModeFilter] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('balance')
   const [sortDesc, setSortDesc] = useState(true)
+  const [logScale, setLogScale] = useState(false)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const { data, isLoading, isError, refetch } = useLiabilitiesReport(
@@ -154,6 +156,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
               {m === 'managed' ? 'From accounts' : 'Manual'}
             </button>
           ))}
+          <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
           <ReportExportButton
             reportId="liabilities"
             getRows={() =>
@@ -199,7 +202,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 <AreaChart data={chartPoints} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} minTickGap={40} />
-                  <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={85} />
+                  <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={85} {...logAxisProps(logScale)} />
                   <Tooltip
                     content={<ChartTooltip showTotal />}
                     offset={16}
@@ -211,10 +214,13 @@ export function LiabilitiesReport({ budgetId }: Props) {
                       key={item.liability_id}
                       type="monotone"
                       dataKey={item.name}
-                      stackId="liability"
+                      // Stacked areas lie on a log axis — log mode overlays
+                      // each liability as its own line instead
+                      stackId={logScale ? undefined : 'liability'}
                       stroke={chartColor(idx)}
+                      strokeWidth={logScale ? 2 : 1}
                       fill={chartColor(idx)}
-                      fillOpacity={0.35}
+                      fillOpacity={logScale ? 0 : 0.35}
                     />
                   ))}
                 </AreaChart>
