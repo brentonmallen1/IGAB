@@ -47,33 +47,82 @@
   margin-top: var(--spacing-sm);
 }
 
-.more-sheet__themes {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+.more-sheet__theme-controls {
+  display: flex;
   gap: var(--spacing-sm);
   padding: 0 var(--spacing-md) var(--spacing-sm);
 }
 
-/* Each tile carries data-theme, so every custom property below resolves in
-   THAT theme's palette — the tile is a live preview, not a labeled button. */
-.more-sheet__theme {
+/* Segmented light/dark toggle */
+.more-sheet__mode {
+  display: flex;
+  flex-shrink: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.more-sheet__mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--tap-min);
+  padding: 0 var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+}
+
+.more-sheet__mode-btn + .more-sheet__mode-btn {
+  border-left: 1px solid var(--border-color);
+}
+
+.more-sheet__mode-btn--active {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  font-weight: 600;
+}
+
+.more-sheet__mode-btn:disabled {
+  opacity: 0.45;
+}
+
+/* Style dropdown with a live swatch preview of the active theme */
+.more-sheet__palette {
+  position: relative;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   min-height: var(--tap-min);
-  padding: 8px var(--spacing-sm);
+  padding: 0 var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-md);
   background: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  text-align: left;
 }
 
-.more-sheet__theme--active {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent);
+.more-sheet__palette-select {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: var(--tap-min);
+  padding-right: var(--spacing-lg);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
   font-weight: 600;
+}
+
+.more-sheet__palette-chevron {
+  position: absolute;
+  right: var(--spacing-md);
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .more-sheet__theme-swatches {
@@ -100,18 +149,6 @@
   background: var(--color-negative);
 }
 
-.more-sheet__theme-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.more-sheet__theme-check {
-  flex-shrink: 0;
-  color: var(--color-accent);
-}
 
 
 .more-sheet__whoami {

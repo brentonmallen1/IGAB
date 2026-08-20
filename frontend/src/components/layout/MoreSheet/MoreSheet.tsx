@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserCircle2, Check, Users, CalendarClock, Upload, Settings, ChevronLeft, LogOut, Palette, Landmark, Sparkles, Eye, EyeOff } from 'lucide-react'
+import { UserCircle2, Users, CalendarClock, Upload, Settings, ChevronDown, ChevronLeft, LogOut, Moon, Palette, Landmark, Sparkles, Sun, Eye, EyeOff } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
-import { THEMES } from '../../../stores/appStore'
+import { PALETTES, getPaletteForTheme, isLightTheme } from '../../../stores/appStore'
 import { useUpdateStatus } from '../../../api/system'
 import { useCurrentUser, useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
@@ -15,6 +16,32 @@ export function MoreSheet() {
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
+
+  // Every theme is a palette family with a dark and a light look, so the
+  // picker decomposes the same way: one mode toggle, one dropdown of styles.
+  const palette = getPaletteForTheme(theme)
+  const singleLook = palette.dark === palette.light
+  const [mode, setMode] = useState<'dark' | 'light'>(() =>
+    !singleLook && isLightTheme(theme) ? 'light' : 'dark'
+  )
+  // Theme can change elsewhere (Settings, command palette) — follow it, but
+  // hold the last real preference while a single-look style is active so
+  // switching away from it lands back where the user was
+  useEffect(() => {
+    const p = getPaletteForTheme(theme)
+    if (p.dark !== p.light) setMode(isLightTheme(theme) ? 'light' : 'dark')
+  }, [theme])
+
+  function pickMode(next: 'dark' | 'light') {
+    setMode(next)
+    setTheme(palette[next])
+  }
+
+  function pickPalette(id: string) {
+    const next = PALETTES.find((p) => p.id === id)
+    if (next) setTheme(next[mode])
+  }
+
   const privacyMode = useAppStore((s) => s.privacyMode)
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const navigate = useNavigate()
@@ -90,28 +117,50 @@ export function MoreSheet() {
           <Palette size={14} />
           <span>Theme</span>
         </div>
-        {/* Uniform two-column grid of self-previewing tiles. data-theme on
-            the tile re-scopes the theme's own custom properties inside it, so
-            each tile paints itself in its theme's real colors — replacing the
-            ragged pile of variable-width text pills. */}
-        <div className="more-sheet__themes">
-          {THEMES.map((t) => (
+        {/* One mode toggle + one style dropdown instead of a wall of tiles —
+            the swatches preview the active theme's real colors, and a
+            single-look style (both slots equal) disables the toggle. */}
+        <div className="more-sheet__theme-controls">
+          <div className="more-sheet__mode" role="group" aria-label="Light or dark mode">
             <button
-              key={t.value}
-              data-theme={t.value}
-              className={`more-sheet__theme ${theme === t.value ? 'more-sheet__theme--active' : ''}`}
-              onClick={() => setTheme(t.value)}
-              aria-pressed={theme === t.value}
+              className={`more-sheet__mode-btn ${mode === 'dark' && !singleLook ? 'more-sheet__mode-btn--active' : ''}`}
+              onClick={() => pickMode('dark')}
+              disabled={singleLook}
+              aria-pressed={mode === 'dark' && !singleLook}
             >
-              <span className="more-sheet__theme-swatches" aria-hidden>
-                <span className="more-sheet__theme-swatch more-sheet__theme-swatch--accent" />
-                <span className="more-sheet__theme-swatch more-sheet__theme-swatch--positive" />
-                <span className="more-sheet__theme-swatch more-sheet__theme-swatch--negative" />
-              </span>
-              <span className="more-sheet__theme-name">{t.label}</span>
-              {theme === t.value && <Check size={14} className="more-sheet__theme-check" />}
+              <Moon size={14} />
+              <span>Dark</span>
             </button>
-          ))}
+            <button
+              className={`more-sheet__mode-btn ${mode === 'light' && !singleLook ? 'more-sheet__mode-btn--active' : ''}`}
+              onClick={() => pickMode('light')}
+              disabled={singleLook}
+              aria-pressed={mode === 'light' && !singleLook}
+            >
+              <Sun size={14} />
+              <span>Light</span>
+            </button>
+          </div>
+          <label className="more-sheet__palette" data-theme={theme}>
+            <span className="more-sheet__theme-swatches" aria-hidden>
+              <span className="more-sheet__theme-swatch more-sheet__theme-swatch--accent" />
+              <span className="more-sheet__theme-swatch more-sheet__theme-swatch--positive" />
+              <span className="more-sheet__theme-swatch more-sheet__theme-swatch--negative" />
+            </span>
+            <select
+              className="more-sheet__palette-select"
+              value={palette.id}
+              onChange={(e) => pickPalette(e.target.value)}
+              aria-label="Theme style"
+            >
+              {PALETTES.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="more-sheet__palette-chevron" aria-hidden />
+          </label>
         </div>
       </div>
     </BottomSheet>
