@@ -11,6 +11,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -19,6 +20,7 @@ export function BurnRateReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
+  const [logScale, setLogScale] = useState(false)
   const { data, isLoading, isError, refetch } = useBurnRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -55,6 +57,7 @@ export function BurnRateReport({ budgetId }: Props) {
               {m}mo
             </button>
           ))}
+          <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
           <ReportExportButton
             reportId="burn-rate"
             getRows={() =>
@@ -84,7 +87,7 @@ export function BurnRateReport({ budgetId }: Props) {
           <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
             <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
+            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} {...logAxisProps(logScale)} />
             <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
             <Legend />
             <Line type="monotone" dataKey="30-Day" stroke={COLOR_NEGATIVE} strokeWidth={2} dot={{ r: 3 }} />

@@ -13,6 +13,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
 import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -67,6 +68,7 @@ export function ParetoReport({ budgetId }: Props) {
   const groupBy = filters.groupBy
   const captureRef = useRef<HTMLDivElement>(null)
   const [hideSavings, setHideSavings] = useState(false)
+  const [logScale, setLogScale] = useState(false)
 
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
@@ -179,6 +181,7 @@ export function ParetoReport({ budgetId }: Props) {
           </label>
         )}
         <div className="flex-row ms-auto">
+          <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
           <ReportExportButton
             reportId="pareto"
             getRows={() =>
@@ -221,7 +224,7 @@ export function ParetoReport({ budgetId }: Props) {
             <ComposedChart data={chartData} margin={{ top: 8, right: 50, left: 0, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} angle={-40} textAnchor="end" interval={0} height={70} />
-              <YAxis yAxisId="left" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
+              <YAxis yAxisId="left" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} {...logAxisProps(logScale)} />
               <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={50} />
               <Tooltip content={<ParetoTooltip chartData={chartData} formatMoney={formatMoney} />} offset={16} isAnimationActive={false} />
               <Legend verticalAlign="top" />

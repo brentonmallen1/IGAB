@@ -11,6 +11,7 @@ import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -22,6 +23,7 @@ export function PayeeReport({ budgetId }: Props) {
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading, isError, refetch } = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
   const [view, setView] = useState<'top' | 'recurring'>('top')
+  const [logScale, setLogScale] = useState(false)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
@@ -84,6 +86,7 @@ export function PayeeReport({ budgetId }: Props) {
           >
             Recurring ({recurring.length})
           </button>
+          <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
           <ReportExportButton
             reportId="payees"
             getRows={() =>
@@ -117,7 +120,7 @@ export function PayeeReport({ budgetId }: Props) {
           <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 34)}>
             <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 80, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" horizontal={false} />
-              <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <XAxis type="number" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} {...logAxisProps(logScale)} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={140} />
               <Tooltip
                 formatter={(v: unknown, name: unknown) =>
