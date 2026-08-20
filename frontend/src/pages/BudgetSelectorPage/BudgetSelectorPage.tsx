@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ChevronDown, ChevronUp, LogOut, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, LogOut, MoreHorizontal, Pencil, Trash2, Users } from 'lucide-react'
 import {
   useBudgets,
   useCreateBudget,
@@ -18,9 +18,12 @@ import { useAppStore } from '../../stores/appStore'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
 import './BudgetSelectorPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
+import { SharingModal } from '../../components/budgets/SharingModal'
+import { useCurrentUser } from '../../api/auth'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
+  { id: 'sharing', label: 'Sharing', icon: Users },
   { id: 'delete', label: 'Delete', icon: Trash2, danger: true },
 ]
 
@@ -79,6 +82,7 @@ export function BudgetSelectorPage() {
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
 
   const logout = useLogout()
+  const { data: me } = useCurrentUser()
 
   const { data: budgets = [], isLoading } = useBudgets()
   const createBudget = useCreateBudget()
@@ -91,6 +95,7 @@ export function BudgetSelectorPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [menuBudget, setMenuBudget] = useState<{ id: string; name: string } | null>(null)
+  const [sharingBudget, setSharingBudget] = useState<{ id: string; name: string } | null>(null)
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
 
   // Create form
@@ -134,6 +139,10 @@ export function BudgetSelectorPage() {
     setRenamingId(null)
   }
 
+  // The row being deleted right now — cascading over every transaction can
+  // take a while on a large budget, so the row needs a visible pending state.
+  const deletingId = deleteBudget.isPending ? deleteBudget.variables : null
+
   async function handleDelete(id: string, name: string) {
     const ok = await confirmAsync({
       title: `Delete budget "${name}"?`,
@@ -142,8 +151,15 @@ export function BudgetSelectorPage() {
       destructive: true,
     })
     if (!ok) return
-    await deleteBudget.mutateAsync(id)
-    if (currentBudgetId === id) clearCurrentBudget()
+    const toastId = toast.loading(`Deleting "${name}"…`)
+    try {
+      await deleteBudget.mutateAsync(id)
+      toast.success(`Deleted "${name}"`, { id: toastId })
+      if (currentBudgetId === id) clearCurrentBudget()
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast.error(detail ?? 'Failed to delete budget', { id: toastId })
+    }
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -242,6 +258,11 @@ export function BudgetSelectorPage() {
       <div className="budget-selector__header">
         <div className="budget-selector__logo">IGAB</div>
         <div className="budget-selector__tagline">I've Got A Budget</div>
+        {me && (
+          <div className="budget-selector__whoami">
+            Signed in as {me.display_name || me.email}
+          </div>
+        )}
         <button className="budget-selector__logout" onClick={logout} title="Sign out">
           <LogOut size={15} />
           <span>Sign out</span>
@@ -280,12 +301,14 @@ export function BudgetSelectorPage() {
                 ) : (
                   <div
                     key={b.id}
-                    className="budget-card budget-card--clickable"
+                    className={`budget-card budget-card--clickable ${
+                      b.id === deletingId ? 'budget-card--deleting' : ''
+                    }`}
                     role="button"
                     tabIndex={0}
-                    onClick={() => openBudget(b.id)}
+                    onClick={() => b.id !== deletingId && openBudget(b.id)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
+                      if ((e.key === 'Enter' || e.key === ' ') && b.id !== deletingId) {
                         e.preventDefault()
                         openBudget(b.id)
                       }
@@ -295,21 +318,30 @@ export function BudgetSelectorPage() {
                       <div className="budget-card__name">{b.name}</div>
                       <div className="budget-card__meta">{b.currency_code}</div>
                     </div>
+                    {b.role === 'member' && (
+                      <span className="budget-card__shared" title="Shared with you by its owner">
+                        Shared
+                      </span>
+                    )}
                     {b.id === currentBudgetId && (
                       <span className="budget-card__current">Current</span>
                     )}
-                    <button
-                      className="budget-card__menu-btn"
-                      aria-label={`More actions for ${b.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        const rect = e.currentTarget.getBoundingClientRect()
-                        setMenuPos({ x: rect.right - 140, y: rect.bottom + 4 })
-                        setMenuBudget({ id: b.id, name: b.name })
-                      }}
-                    >
-                      <MoreHorizontal size={16} />
-                    </button>
+                    {b.id === deletingId ? (
+                      <span className="budget-card__deleting">Deleting…</span>
+                    ) : (
+                      <button
+                        className="budget-card__menu-btn"
+                        aria-label={`More actions for ${b.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          setMenuPos({ x: rect.right - 140, y: rect.bottom + 4 })
+                          setMenuBudget({ id: b.id, name: b.name })
+                        }}
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+                    )}
                   </div>
                 )
               )}
@@ -325,8 +357,16 @@ export function BudgetSelectorPage() {
                 setMenuBudget(null)
                 if (!b) return
                 if (id === 'rename') startRename(b.id, b.name)
+                if (id === 'sharing') setSharingBudget(b)
                 if (id === 'delete') handleDelete(b.id, b.name)
               }}
+            />
+          )}
+          {sharingBudget && (
+            <SharingModal
+              budgetId={sharingBudget.id}
+              budgetName={sharingBudget.name}
+              onClose={() => setSharingBudget(null)}
             />
           )}
         </div>

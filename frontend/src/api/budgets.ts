@@ -203,14 +203,25 @@ export function useMoveHistory(budgetId: string, month: string, enabled: boolean
   })
 }
 
+/** Seed the cached budgets list with a just-created budget, then refetch.
+ * Seeding closes the race where the caller navigates into the new budget
+ * while the list refetch is still in flight — MainLayout would read the
+ * stale cached list, judge the new id "stale", and bounce back to the
+ * selector. Returning the invalidation promise makes mutateAsync wait for
+ * the refetch, so navigation always happens against fresh data. */
+function seedBudgetsCache(qc: ReturnType<typeof useQueryClient>, budget: Budget) {
+  qc.setQueryData<Budget[]>(['budgets'], (old) =>
+    old ? [...old.filter((b) => b.id !== budget.id), budget] : old
+  )
+  return qc.invalidateQueries({ queryKey: ['budgets'] })
+}
+
 export function useCreateBudget() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { name: string; currency_code?: string }) =>
       apiClient.post<Budget>('/budgets', data).then((r) => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budgets'] })
-    },
+    onSuccess: (budget) => seedBudgetsCache(qc, budget),
   })
 }
 
@@ -225,9 +236,7 @@ export function useCreateSampleBudget() {
   return useMutation({
     mutationFn: () =>
       apiClient.post<SampleBudgetResult>('/budgets/create-sample', {}).then((r) => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budgets'] })
-    },
+    onSuccess: (result) => seedBudgetsCache(qc, result.budget),
   })
 }
 
@@ -261,7 +270,10 @@ export function useDeleteBudget() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/budgets/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
+    onSuccess: (_, id) => {
+      qc.setQueryData<Budget[]>(['budgets'], (old) => old?.filter((b) => b.id !== id))
+      return qc.invalidateQueries({ queryKey: ['budgets'] })
+    },
   })
 }
 
@@ -373,8 +385,6 @@ export function useImportYnabAsBudget() {
         })
         .then((r) => r.data)
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budgets'] })
-    },
+    onSuccess: (result) => seedBudgetsCache(qc, result.budget),
   })
 }
