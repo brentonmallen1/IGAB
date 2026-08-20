@@ -277,15 +277,35 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     })
   }, [transactions, transactionSortColumn, transactionSortDirection, payeeMap, categoryMap, accountMap])
 
+  // Off-budget accounts don't use categories — their rows never land in the
+  // "Needs Category" section or wear the yellow chip
+  const onBudgetAccountIds = useMemo(
+    () => new Set(accounts.filter((a) => a.on_budget).map((a) => a.id)),
+    [accounts]
+  )
+
   // Partition into sections
   const pendingTxns = useMemo(() => sorted.filter((t) => t.cleared === 'pending'), [sorted])
   const uncategorizedTxns = useMemo(
-    () => sorted.filter((t) => t.cleared !== 'pending' && !t.category_id && !t.transfer_id && !t.is_split),
-    [sorted]
+    () =>
+      sorted.filter(
+        (t) =>
+          t.cleared !== 'pending' &&
+          !t.category_id &&
+          !t.transfer_id &&
+          !t.is_split &&
+          onBudgetAccountIds.has(t.account_id)
+      ),
+    [sorted, onBudgetAccountIds]
   )
   const regularTxns = useMemo(
-    () => sorted.filter((t) => t.cleared !== 'pending' && (t.category_id || t.transfer_id || t.is_split)),
-    [sorted]
+    () =>
+      sorted.filter(
+        (t) =>
+          t.cleared !== 'pending' &&
+          (t.category_id || t.transfer_id || t.is_split || !onBudgetAccountIds.has(t.account_id))
+      ),
+    [sorted, onBudgetAccountIds]
   )
 
   // Build map: txn_id → TransactionMatch for pending duplicate pairs
@@ -536,6 +556,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           payees={payees}
           categories={categories}
           categoryGroups={categoryGroups}
+          accountOnBudget={onBudgetAccountIds.has(txn.account_id)}
           isSelected={selectedTransactionIds.has(txn.id)}
           orderedIds={allOrderedIds}
           onSelect={handleSelect}

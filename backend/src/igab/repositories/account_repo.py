@@ -51,6 +51,13 @@ class AccountRepository(BaseRepository[Account]):
         from sqlalchemy import or_
         from sqlalchemy.orm import aliased
 
+        # Off-budget accounts don't use categories at all — the categorized
+        # side of a spending transfer lives on the on-budget leg, and plain
+        # rows here are net-worth movement, not unfiled spending.
+        account = await self.get(account_id)
+        if account is None or not account.on_budget:
+            return 0
+
         partner = aliased(Transaction)
         partner_account = aliased(Account)
         result = await self.session.execute(
