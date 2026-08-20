@@ -1,0 +1,128 @@
+.nl-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.nl-form__row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.nl-form__input {
+  flex: 1;
+  min-width: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  padding: 8px 10px;
+}
+
+.nl-form__input:focus {
+  outline: none;
+  border-color: var(--input-focus-ring);
+}
+
+/* Interim dictation shows greyed until finalized */
+.nl-form__input--interim {
+  color: var(--text-muted);
+}
+
+.nl-form__mic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background: transparent;
+  flex-shrink: 0;
+}
+
+/* Recording state keeps the same mic glyph — accent + pulse says "live",
+   where the old crossed-out-mic swap read as "broken". */
+.nl-form__mic--listening {
+  color: var(--bg-primary);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  animation: nl-mic-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes nl-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 12%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nl-form__mic--listening { animation: none; }
+}
+
+.nl-form__parse {
+  padding: 8px 14px;
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border: none;
+  flex-shrink: 0;
+}
+
+.nl-form__parse:disabled {
+  opacity: 0.5;
+}
+
+.nl-form__hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* AI not configured — mirrors the receipt tab's explanatory empty state */
+.nl-form__unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl) var(--spacing-lg);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.nl-form__unavailable p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.nl-form__link {
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.nl-form__link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  /* The input often autofocuses; under 16px iOS zooms the whole viewport to
+     it — and the app's viewport tokens deliberately freeze while zoomed. */
+  .nl-form__input {
+    font-size: 16px;
+    min-height: var(--tap-min);
+  }
+
+  .nl-form__parse {
+    min-height: var(--tap-min);
+  }
+
+  .nl-form__mic {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+}
