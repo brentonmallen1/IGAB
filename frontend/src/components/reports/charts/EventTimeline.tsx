@@ -5,7 +5,7 @@ import { usePayees } from '../../../api/payees'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './EventTimeline.css'
 
@@ -57,6 +57,7 @@ export function TimelineReport({ budgetId }: Props) {
         <ReportInfoButton title="Event Timeline">
           <p>Your largest transactions displayed chronologically. The <strong>dot size</strong> reflects the transaction's magnitude relative to the largest in the set — bigger dot = larger amount.</p>
           <p><strong>Red dots</strong> are expenses; <strong>green dots</strong> are income. Transactions alternate left/right for readability. Hover any dot for full details.</p>
+          <ReportScopeNote scope="on-budget-filterable" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
           Largest transactions — size indicates relative magnitude.

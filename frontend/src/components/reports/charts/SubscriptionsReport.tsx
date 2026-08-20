@@ -15,7 +15,7 @@ import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { chartColor } from './chartColors'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 
@@ -78,6 +78,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
             <strong>Per Charge</strong> is the typical amount of a single charge.{' '}
             <strong>Annual</strong> projects the yearly cost from the effective monthly total.
           </p>
+          <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
         <div className="flex-row">
           {MONTH_OPTIONS.map((m) => (

@@ -5,7 +5,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { abbreviateValue, buildCellMap, intensityPct, maxCellValue } from './seasonalityScale'
 import { monthWindow } from '../../../utils/dateWindow'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SeasonalityHeatmap.css'
 
@@ -53,6 +53,7 @@ export function SeasonalityReport({ budgetId }: Props) {
         <ReportInfoButton title="Seasonality Heatmap">
           <p>Each cell shows spending for a <strong>category × month</strong> combination. Color intensity goes from <strong>cool blue</strong> (low spend) to <strong>red</strong> (peak spend).</p>
           <p>Look for recurring red columns — these are months where that category consistently spikes (holidays, annual subscriptions, seasonal utilities). Hover any cell for the exact amount.</p>
+          <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Monthly spending intensity per category</p>
         <div className="flex-row ms-auto">

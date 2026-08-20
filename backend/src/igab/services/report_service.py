@@ -18,12 +18,20 @@ from igab.db.models import (
     Payee,
     Transaction,
 )
+from igab.repositories.txn_filters import (
+    CASH_FLOW_ROW,
+    LEAF,
+    NOT_DELETED,
+    ON_BUDGET_ACCOUNT,
+    PARENT_ROW,
+    POSTED,
+)
 
 # CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
 # transfers to off-budget accounts count as real income/expense; internal
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
-from igab.repositories.txn_filters import CASH_FLOW_ROW, LEAF, NOT_DELETED, PARENT_ROW, POSTED
+from igab.services.amortization import add_months
 
 
 class ReportService:
@@ -64,6 +72,8 @@ class ReportService:
             q = q.where(Transaction.category_id.in_(category_ids))
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
+        else:
+            q = q.where(ON_BUDGET_ACCOUNT)
         result = await self.session.execute(q)
         rows = result.all()
 
@@ -112,6 +122,7 @@ class ReportService:
             Transaction.date <= today,
             PARENT_ROW,
             CASH_FLOW_ROW,
+            ON_BUDGET_ACCOUNT,
         )
         rows = (await self.session.execute(q)).all()
 
@@ -247,11 +258,10 @@ class ReportService:
         end_date: date,
     ) -> dict:
         today = date.today()
-        prev_start = (
-            start_date.replace(month=start_date.month - 1)
-            if start_date.month > 1
-            else start_date.replace(year=start_date.year - 1, month=12)
-        )
+        # Day-clamped month shift: a naive .replace(month=month-1) explodes
+        # whenever start_date's day doesn't exist in the previous month
+        # (July 31 → "June 31").
+        prev_start = add_months(start_date, -1)
         prev_end = start_date - timedelta(days=1)
 
         # All posted rows for the budget: parent rows feed money flows
@@ -321,29 +331,28 @@ class ReportService:
 
         on_budget_ids = {aid for aid, a in accounts.items() if a.on_budget}
         df = df.with_columns(
-            pl.col("account_id").is_in(list(on_budget_ids)).alias("on_budget"),
-            # Cash-flow rows: non-transfers plus CATEGORIZED transfer legs
-            # (spending transfers to off-budget accounts)
-            (~pl.col("is_transfer") | (pl.col("category_id") != "")).alias("cash_flow"),
+            # Budget cash flow: ON-BUDGET rows that are non-transfers or
+            # CATEGORIZED transfer legs (spending transfers to off-budget
+            # accounts). Plain activity inside tracking accounts (dividends,
+            # market adjustments) moves net worth, never income/expense.
+            (
+                pl.col("account_id").is_in(list(on_budget_ids))
+                & (~pl.col("is_transfer") | (pl.col("category_id") != ""))
+            ).alias("cash_flow"),
         )
 
         # Parent rows carry the account-level amounts (split children would
         # double-count); leaf rows carry the categories.
         pdf = df.filter(pl.col("is_parent_row"))
 
-        # Net worth = sum of all on_budget account transactions (transfers cancel each other)
-        net_worth = Decimal(
-            str(pdf.filter(pl.col("on_budget")).select(pl.col("amount").sum()).item() or 0)
-        )
+        # Net worth spans EVERY account — matching net_worth_history, which
+        # this card must never disagree with. Assets minus liabilities reduces
+        # to the plain sum of all ledgers (transfers cancel), minus unmanaged.
+        net_worth = Decimal(str(pdf.select(pl.col("amount").sum()).item() or 0))
 
         # Previous net worth: sum up to start_date
         net_worth_prev = Decimal(
-            str(
-                pdf.filter(pl.col("on_budget") & (pl.col("date") < start_date))
-                .select(pl.col("amount").sum())
-                .item()
-                or 0
-            )
+            str(pdf.filter(pl.col("date") < start_date).select(pl.col("amount").sum()).item() or 0)
         )
 
         # Unmanaged liabilities reduce net worth here exactly as they do in
@@ -523,14 +532,17 @@ class ReportService:
         budget_id: uuid.UUID,
         months: int = 12,
     ) -> list[dict]:
-        acct_q = select(Account.id, Account.name, Account.account_type, Account.on_budget).where(
+        # EVERY account counts toward net worth — off-budget assets (brokerage,
+        # HSA, property) and off-budget loans included. on_budget scopes the
+        # envelope math, never the balance sheet. Closed accounts stay too:
+        # their history is real and their balance flattens after closing.
+        acct_q = select(
+            Account.id, Account.name, Account.account_type, Account.classification
+        ).where(
             Account.budget_id == budget_id,
             Account.is_deleted == False,  # noqa: E712
-            Account.on_budget == True,  # noqa: E712
         )
         accounts = (await self.session.execute(acct_q)).all()
-        if not accounts:
-            return []
 
         unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
         account_map = {str(a.id): a for a in accounts}
@@ -540,7 +552,6 @@ class ReportService:
             NOT_DELETED,
             POSTED,
             PARENT_ROW,
-            Transaction.account_id.in_([a.id for a in accounts]),
         )
         txns = (await self.session.execute(q)).all()
 
@@ -575,6 +586,9 @@ class ReportService:
                 "account_id": [str(r.account_id) for r in txns],
                 "account_name": [account_map[str(r.account_id)].name for r in txns],
                 "account_type": [account_map[str(r.account_id)].account_type for r in txns],
+                "classification": [
+                    account_map[str(r.account_id)].classification or "asset" for r in txns
+                ],
             },
             schema_overrides={"date": pl.Date, "amount": pl.Float64},
         )
@@ -585,14 +599,18 @@ class ReportService:
             month_end = _last_day(month_start)
             month_df = df.filter(pl.col("date") <= month_end)
 
-            acct_balances = month_df.group_by(["account_id", "account_name", "account_type"]).agg(
-                pl.col("amount").sum().alias("balance")
-            )
+            acct_balances = month_df.group_by(
+                ["account_id", "account_name", "account_type", "classification"]
+            ).agg(pl.col("amount").sum().alias("balance"))
 
             snapshots = []
             total_assets = Decimal("0")
-            total_liabilities = Decimal("0")
+            liability_balances = Decimal("0")
 
+            # Sign-preserving identity math, keyed on classification: an
+            # overdrawn checking account NETS ASSETS DOWN (the old bucketing
+            # counted it in neither pile) and an overpaid credit card nets
+            # liabilities down. net_worth == assets - liabilities always.
             for row in acct_balances.iter_rows(named=True):
                 bal = Decimal(str(round(row["balance"], 4)))
                 snapshots.append(
@@ -600,24 +618,21 @@ class ReportService:
                         "account_id": row["account_id"],
                         "account_name": row["account_name"],
                         "account_type": row["account_type"],
+                        "classification": row["classification"],
                         "balance": bal,
                     }
                 )
-                if row["account_type"] in ("checking", "savings", "tracking"):
-                    if bal > 0:
-                        total_assets += bal
-                elif row["account_type"] in ("credit_card", "loan"):
-                    if bal < 0:
-                        total_liabilities += abs(bal)
-                    else:
-                        total_assets += bal
+                if row["classification"] == "liability":
+                    liability_balances += bal
+                else:
+                    total_assets += bal
 
             # Unmanaged debts join the liability side: current total for the
             # current month, snapshot step-function for history.
             unmanaged = (
                 unmanaged_now if i == 0 else self._unmanaged_total_at(unmanaged_series, month_end)
             )
-            total_liabilities += unmanaged
+            total_liabilities = -liability_balances + unmanaged
 
             results.append(
                 {
@@ -640,20 +655,17 @@ class ReportService:
         months: int = 12,
     ) -> list[dict]:
         history = await self.net_worth_history(budget_id, months)
+        # Series per type key actually present (custom types included) —
+        # every point carries every key so the chart's series stay aligned.
+        all_types = sorted(
+            {snap["account_type"] for point in history for snap in point["accounts"]}
+        )
         results = []
         for point in history:
-            by_type: dict[str, Decimal] = {
-                "checking": Decimal("0"),
-                "savings": Decimal("0"),
-                "credit_card": Decimal("0"),
-                "loan": Decimal("0"),
-                "tracking": Decimal("0"),
-            }
+            by_type: dict[str, Decimal] = {t: Decimal("0") for t in all_types}
             for snap in point["accounts"]:
-                t = snap["account_type"]
-                if t in by_type:
-                    by_type[t] = by_type[t] + snap["balance"]
-            results.append({"date": point["date"], **by_type})
+                by_type[snap["account_type"]] += snap["balance"]
+            results.append({"date": point["date"], "balances": by_type})
         return results
 
     # ─── Burn Rate ────────────────────────────────────────────────────────────
@@ -676,6 +688,7 @@ class ReportService:
             Transaction.date <= today,
             PARENT_ROW,
             CASH_FLOW_ROW,
+            ON_BUDGET_ACCOUNT,
         )
         txns = (await self.session.execute(q)).all()
 
@@ -764,6 +777,8 @@ class ReportService:
         )
         if account_ids:
             income_q = income_q.where(Transaction.account_id.in_(account_ids))
+        else:
+            income_q = income_q.where(ON_BUDGET_ACCOUNT)
         total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
 
         if not rows:
@@ -887,6 +902,8 @@ class ReportService:
         )
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
+        else:
+            q = q.where(ON_BUDGET_ACCOUNT)
         rows = (await self.session.execute(q)).all()
 
         if not rows:
@@ -1484,6 +1501,8 @@ class ReportService:
             q = q.where(Transaction.category_id.in_(category_ids))
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
+        else:
+            q = q.where(ON_BUDGET_ACCOUNT)
         if exclude_cat_ids:
             q = q.where(Transaction.category_id.notin_(exclude_cat_ids))
         rows = (await self.session.execute(q)).all()
@@ -1646,6 +1665,8 @@ class ReportService:
             q = q.where(Transaction.payee_id.in_(payee_ids))
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
+        else:
+            q = q.where(ON_BUDGET_ACCOUNT)
         rows = (await self.session.execute(q)).all()
 
         if not rows:
@@ -1755,6 +1776,8 @@ class ReportService:
             q = q.where(Transaction.category_id.in_(category_ids))
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
+        else:
+            q = q.where(ON_BUDGET_ACCOUNT)
         rows = (await self.session.execute(q)).all()
 
         if not rows:
@@ -1842,6 +1865,8 @@ class ReportService:
             q = q.where(Transaction.category_id.in_(category_ids))
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
+        else:
+            q = q.where(ON_BUDGET_ACCOUNT)
         q = q.order_by(Transaction.amount).limit(limit)  # most negative first
         rows = (await self.session.execute(q)).all()
 
@@ -1917,6 +1942,7 @@ class ReportService:
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
                 LEAF,
+                ON_BUDGET_ACCOUNT,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -2349,6 +2375,7 @@ class ReportService:
                 POSTED,
                 LEAF,
                 CASH_FLOW_ROW,
+                ON_BUDGET_ACCOUNT,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
             )

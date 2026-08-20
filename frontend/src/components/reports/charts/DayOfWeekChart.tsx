@@ -10,7 +10,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -79,6 +79,7 @@ export function DayPatternsReport({ budgetId }: Props) {
             <p>Total spending aggregated by day of week across all transactions in the selected period. The <strong>peak day is highlighted</strong> in a different color.</p>
             <p>High weekday spending often signals structured habits (groceries, work lunches). High weekend spending can indicate impulse or leisure spending. Use this to identify which days need more discipline.</p>
             <p>Click a bar to see that weekday's transactions.</p>
+            <ReportScopeNote scope="on-budget-filterable" />
           </ReportInfoButton>
           <div className="ms-auto">
             <ReportExportButton
@@ -168,6 +169,7 @@ export function DayPatternsReport({ budgetId }: Props) {
             <p>
               <strong>Note:</strong> Subscriptions and scheduled bills are excluded to isolate discretionary spending patterns.
             </p>
+            <ReportScopeNote scope="on-budget" />
           </ReportInfoButton>
           <div className="report-section__controls" style={{ gap: 4, marginLeft: 'var(--spacing-md)' }}>
             {WINDOW_OPTIONS.map((w) => (

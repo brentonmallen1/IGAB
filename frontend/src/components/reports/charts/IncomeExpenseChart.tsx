@@ -12,7 +12,7 @@ import { monthWindow } from '../../../utils/dateWindow'
 import { DrillDownTable } from '../DrillDownTable'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './IncomeExpenseChart.css'
 
@@ -67,6 +67,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
         <ReportInfoButton title="Income vs Expenses">
           <p>Monthly <strong>income</strong> (green) vs <strong>expenses</strong> (red) as bars, with the <strong>net cash flow</strong> (blue line) overlaid.</p>
           <p>Months where the blue line is above zero mean you spent less than you earned — a positive sign. Dipping below zero means you ran a deficit that month.</p>
+          <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
           {([3, 6, 12, 24] as const).map((m) => (

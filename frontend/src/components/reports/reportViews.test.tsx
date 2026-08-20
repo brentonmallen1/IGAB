@@ -31,6 +31,7 @@ vi.mock('../../api/reports', async (importOriginal) => {
 })
 vi.mock('../../api/payees', () => ({ usePayees: () => ({ data: undefined }) }))
 vi.mock('../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }) }))
+vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 
 import { OverviewReport } from './OverviewReport'
 import { AccountCompositionReport } from './charts/AccountCompositionChart'

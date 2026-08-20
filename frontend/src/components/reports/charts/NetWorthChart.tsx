@@ -10,7 +10,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { MetricCard } from '../MetricCard'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -40,8 +40,9 @@ export function NetWorthReport({ budgetId }: Props) {
       <div className="report-section__header">
         <h2 className="report-section__title">Net Worth Over Time</h2>
         <ReportInfoButton title="Net Worth Over Time">
-          <p><strong>Net worth</strong> = total assets minus total liabilities across all on-budget accounts.</p>
+          <p><strong>Net worth</strong> = total assets minus total liabilities across <strong>all accounts</strong> — on-budget, tracking, and loans — plus any manually tracked debts.</p>
           <p>The stacked area shows how <strong>assets</strong> and <strong>liabilities</strong> compose your net worth each month. A growing gap between them means you're building wealth.</p>
+          <ReportScopeNote scope="all-accounts" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
           {([6, 12, 24] as const).map((m) => (
@@ -76,6 +77,12 @@ export function NetWorthReport({ budgetId }: Props) {
           <MetricCard label="Total Assets" value={formatMoney(Number(latest.total_assets))} />
           <MetricCard label="Total Liabilities" value={formatMoney(Number(latest.total_liabilities))} />
         </div>
+      )}
+      {Number(data?.unmanaged_liability_total ?? 0) > 0 && (
+        <p className="report-section__subtitle">
+          Liabilities include {formatMoney(Number(data!.unmanaged_liability_total))} of manually
+          tracked debt (no linked account).
+        </p>
       )}
 
       {chartData.length === 0 ? (
