@@ -230,12 +230,16 @@ export interface SampleBudgetResult {
   counts: Record<string, number>
 }
 
-/** One-click demo budget with 12 months of curated sample data */
+export type SampleTier = 'starter' | 'full'
+
+/** One-click demo budget. 'starter' = the quick 5-account demo; 'full' = a
+ * complex dual-income household (~16 accounts, 2½ years) that the starter is
+ * a strict subset of. */
 export function useCreateSampleBudget() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () =>
-      apiClient.post<SampleBudgetResult>('/budgets/create-sample', {}).then((r) => r.data),
+    mutationFn: (tier: SampleTier = 'starter') =>
+      apiClient.post<SampleBudgetResult>('/budgets/create-sample', { tier }).then((r) => r.data),
     onSuccess: (result) => seedBudgetsCache(qc, result.budget),
   })
 }

@@ -17,7 +17,7 @@ financial shape is guaranteed, not hoped for:
 
 import calendar
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_DOWN, Decimal
 
@@ -46,8 +46,11 @@ from igab.sample_budget.spec import (
 )
 from igab.utils.clock import today_utc
 
-# One bulk_create chunk — transfer/split cross-references must stay together
-MAX_TRANSACTION_ROWS = 1000
+# Sanity ceilings per tier — a spec edit that blows past these is a mistake,
+# not ambition. (Insert-safety no longer depends on a single chunk: transfer
+# links are applied after the bulk insert, the importer's pattern.)
+TIER_ROW_CAPS = {"starter": 1000, "full": 6000}
+MAX_TRANSACTION_ROWS = 1000  # fallback cap for unknown tiers
 
 # Rows in the last N days before the anchor look freshly entered
 UNCLEARED_DAYS = 5
@@ -89,9 +92,11 @@ class SampleBudgetGenerator:
         reconciliation_repo: ReconciliationRepository,
         liability_repo: LiabilityRepository,
         spec: SampleBudgetSpec = SAMPLE_BUDGET,
+        tier: str = "starter",
     ) -> None:
         self.session = session
         self.budget_id = budget_id
+        self.tier = tier
         self.account_repo = account_repo
         self.category_group_repo = category_group_repo
         self.category_repo = category_repo
@@ -103,7 +108,7 @@ class SampleBudgetGenerator:
         self.scheduled_repo = scheduled_repo
         self.reconciliation_repo = reconciliation_repo
         self.liability_repo = liability_repo
-        self.spec = spec
+        self.spec = _filter_spec(spec, tier)
 
         self._accounts: dict[str, Account] = {}
         self._categories: dict[str, Category] = {}
@@ -121,12 +126,22 @@ class SampleBudgetGenerator:
         await self._create_liabilities(anchor, result)
 
         inserted, projected = self._build_transaction_rows(anchor)
-        if len(inserted) > MAX_TRANSACTION_ROWS:
+        cap = TIER_ROW_CAPS.get(self.tier, MAX_TRANSACTION_ROWS)
+        if len(inserted) > cap:
             raise ValueError(
-                f"sample data produced {len(inserted)} transactions; the bulk "
-                f"insert supports at most {MAX_TRANSACTION_ROWS} cross-referenced rows"
+                f"sample data produced {len(inserted)} transactions; the "
+                f"'{self.tier}' tier caps at {cap} rows"
             )
+        # Insert with transfer links stripped, then link pairs afterwards — a
+        # linked pair straddling a bulk_create chunk boundary would violate
+        # the self-FK mid-statement.
+        links = [
+            (row["id"], row["transfer_id"]) for row in inserted if row["transfer_id"] is not None
+        ]
+        for row in inserted:
+            row["transfer_id"] = None
         await self.transaction_repo.bulk_create(inserted)
+        await self.transaction_repo.bulk_link_transfers(links)
         result.transactions = len(inserted)
 
         result.assignments = await self._create_assignments(anchor, inserted, projected)
@@ -139,21 +154,16 @@ class SampleBudgetGenerator:
     # ─── Entities ─────────────────────────────────────────────────────────────
 
     async def _create_accounts(self, result: SampleResult) -> None:
+        from igab.services.account_type_service import apply_type, resolve_type
+
         for acct in self.spec.accounts:
-            # Auto-classify tracking accounts if not explicitly set
-            classification = acct.classification
-            if not acct.on_budget and classification is None:
-                if acct.account_type in ("loan", "credit_card"):
-                    classification = "liability"
-                else:
-                    classification = "asset"
+            type_row = await resolve_type(self.session, self.budget_id, acct.account_type)
             self._accounts[acct.name] = await self.account_repo.create(
                 budget_id=self.budget_id,
                 name=acct.name,
-                account_type=acct.account_type,
-                on_budget=acct.on_budget,
-                classification=classification if not acct.on_budget else None,
                 sort_order=acct.sort_order,
+                is_closed=acct.is_closed,
+                **apply_type(type_row, acct.on_budget),
             )
             result.accounts += 1
 
@@ -178,6 +188,7 @@ class SampleBudgetGenerator:
                     name=cat_spec.name,
                     sort_order=ci,
                     linked_account_id=linked,
+                    is_hidden=cat_spec.is_hidden,
                 )
                 self._categories[cat_spec.name] = category
                 result.categories += 1
@@ -252,6 +263,11 @@ class SampleBudgetGenerator:
                 minimum_payment=spec.minimum_payment,
                 linked_account_id=linked_account_id,
                 manual_balance=spec.balance,
+                origination_date=spec.origination.resolve(anchor) if spec.origination else None,
+                original_principal=spec.original_principal,
+                term_months=spec.term_months,
+                promo_end_date=spec.promo_end.resolve(anchor) if spec.promo_end else None,
+                promo_deferred_interest=spec.promo_deferred_interest,
             )
             result.liabilities += 1
 
@@ -269,6 +285,13 @@ class SampleBudgetGenerator:
         if d > anchor - timedelta(days=UNCLEARED_DAYS):
             return "uncleared"
         recon_cutoff = date(*shift_months(anchor, 1), 1)
+        if self.tier == "full":
+            # Real multi-year budgets end up almost entirely reconciled —
+            # everything older than two months, on every account, plus the
+            # primary checking through last month (matching the starter rule).
+            deep_cutoff = date(*shift_months(anchor, 2), 1)
+            if d < deep_cutoff:
+                return "reconciled"
         if account_name == self.spec.accounts[0].name and d < recon_cutoff:
             return "reconciled"
         return "cleared"
@@ -525,7 +548,8 @@ class SampleBudgetGenerator:
         # Sweep the surplus so TBA lands exactly on target. Uses the same
         # balance simulation as BudgetService: TBA = on-budget balances −
         # Σ non-system category available (computed on INSERTED rows only).
-        on_budget_names = {a.name for a in spec.accounts if a.on_budget}
+        # Mirror BudgetService.get_on_budget: closed accounts don't fund TBA
+        on_budget_names = {a.name for a in spec.accounts if a.on_budget and not a.is_closed}
         on_budget_ids = {self._accounts[n].id for n in on_budget_names}
         balances = sum(
             (
@@ -606,31 +630,69 @@ class SampleBudgetGenerator:
     # ─── Reconciliation ───────────────────────────────────────────────────────
 
     async def _create_reconciliation(self, inserted: list[dict]) -> int:
-        checking = self._accounts[self.spec.accounts[0].name]
-        reconciled_total = sum(
-            (
-                r["amount"]
-                for r in inserted
-                if r["account_id"] == checking.id
-                and r["cleared"] == "reconciled"
-                and r["parent_transaction_id"] is None
-            ),
-            _ZERO,
+        # Starter reconciles only the primary checking; the full tier stamps
+        # every account that has reconciled rows (matching _cleared_for).
+        names = (
+            [a.name for a in self.spec.accounts]
+            if self.tier == "full"
+            else [self.spec.accounts[0].name]
         )
-        if reconciled_total == 0:
-            return 0
-        await self.reconciliation_repo.create(
-            account_id=checking.id,
-            statement_balance=reconciled_total,
-            cleared_balance=reconciled_total,
-            note="Sample statement reconciliation",
-        )
-        await self.account_repo.update(
-            checking.id,
-            last_reconciled_at=datetime.now(tz=UTC),
-            last_reconciled_balance=reconciled_total,
-        )
-        return 1
+        count = 0
+        for name in names:
+            account = self._accounts[name]
+            reconciled_total = sum(
+                (
+                    r["amount"]
+                    for r in inserted
+                    if r["account_id"] == account.id
+                    and r["cleared"] == "reconciled"
+                    and r["parent_transaction_id"] is None
+                ),
+                _ZERO,
+            )
+            if reconciled_total == 0:
+                continue
+            await self.reconciliation_repo.create(
+                account_id=account.id,
+                statement_balance=reconciled_total,
+                cleared_balance=reconciled_total,
+                note="Sample statement reconciliation",
+            )
+            await self.account_repo.update(
+                account.id,
+                last_reconciled_at=datetime.now(tz=UTC),
+                last_reconciled_balance=reconciled_total,
+            )
+            count += 1
+        return count
+
+
+def _filter_spec(spec: SampleBudgetSpec, tier: str) -> SampleBudgetSpec:
+    """The spec as one tier sees it: elements filtered by their `tiers` tag,
+    window/target overridden per tier. The generator then runs unchanged —
+    the starter output is byte-identical to the pre-tiering data."""
+
+    def keep(items):
+        return tuple(item for item in items if tier in item.tiers)
+
+    groups = tuple(
+        replace(g, categories=keep(g.categories)) for g in spec.groups if tier in g.tiers
+    )
+    overrides = dict(spec.tier_overrides).get(tier)
+    return replace(
+        spec,
+        accounts=keep(spec.accounts),
+        groups=groups,
+        payees=keep(spec.payees),
+        monthly=keep(spec.monthly),
+        weekly=keep(spec.weekly),
+        one_offs=keep(spec.one_offs),
+        transfers=keep(spec.transfers),
+        scheduled=keep(spec.scheduled),
+        liabilities=keep(spec.liabilities),
+        months_of_history=(overrides.months_of_history if overrides else spec.months_of_history),
+        tba_target=overrides.tba_target if overrides else spec.tba_target,
+    )
 
 
 def _next_occurrence(s: ScheduledSpec, anchor: date) -> date:

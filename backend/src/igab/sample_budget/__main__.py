@@ -27,14 +27,18 @@ from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.sample_budget.generator import SampleBudgetGenerator, SampleResult
+from igab.services.account_type_service import ensure_account_types_seeded
 
 
-async def create_sample_budget_for_user(user: User, name: str, session) -> SampleResult:
+async def create_sample_budget_for_user(
+    user: User, name: str, session, tier: str = "starter"
+) -> SampleResult:
     budget = Budget(user_id=user.id, name=name)
     session.add(budget)
     await session.flush()
     await session.refresh(budget)
     await seed_system_tags(session, budget.id)
+    await ensure_account_types_seeded(session, budget.id)
 
     generator = SampleBudgetGenerator(
         session,
@@ -50,6 +54,7 @@ async def create_sample_budget_for_user(user: User, name: str, session) -> Sampl
         scheduled_repo=ScheduledTransactionRepository(session),
         reconciliation_repo=ReconciliationRepository(session),
         liability_repo=LiabilityRepository(session),
+        tier=tier,
     )
     return await generator.generate()
 
@@ -58,6 +63,12 @@ async def _main() -> int:
     parser = argparse.ArgumentParser(description="Generate a sample budget")
     parser.add_argument("--email", required=True, help="Email of the owning user")
     parser.add_argument("--name", default="Sample Budget", help="Name for the new budget")
+    parser.add_argument(
+        "--tier",
+        choices=("starter", "full"),
+        default="starter",
+        help="starter = quick demo; full = complex household superset",
+    )
     args = parser.parse_args()
 
     async with AsyncSessionLocal() as session:
@@ -74,7 +85,7 @@ async def _main() -> int:
             print(f"Budget '{args.name}' already exists — pick another --name", file=sys.stderr)
             return 1
 
-        counts = await create_sample_budget_for_user(user, args.name, session)
+        counts = await create_sample_budget_for_user(user, args.name, session, tier=args.tier)
         await session.commit()
 
     print(f"Created '{args.name}':")

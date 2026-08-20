@@ -103,12 +103,12 @@ test-backend-integration:
     docker compose exec api uv run pytest tests/integration
 
 # Generate a sample budget for a user (db service must be up)
-sample-budget email name="Sample Budget":
+sample-budget email name="Sample Budget" tier="starter":
     #!/usr/bin/env bash
     set -a && source .env && set +a
     unset CORS_ORIGINS
     cd backend && PYTHONPATH=src DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT:-5432}/${DB_NAME}" \
-        uv run python -m igab.sample_budget --email {{email}} --name "{{name}}"
+        uv run python -m igab.sample_budget --email {{email}} --name "{{name}}" --tier {{tier}}
 
 # Run backend tests locally against localhost Postgres (db service must be up)
 test-backend-local *ARGS:
