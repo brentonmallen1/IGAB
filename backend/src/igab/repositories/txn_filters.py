@@ -14,9 +14,9 @@ amounts are provisional (auth holds change at posting), so money moves exactly
 once — when the transaction posts. This mirrors AccountRepository.get_balance.
 """
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
-from igab.db.models import Transaction
+from igab.db.models import Account, Transaction
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -27,3 +27,11 @@ NON_TRANSFER = Transaction.transfer_id.is_(None)
 # transfers to off-budget accounts). Uncategorized transfer legs are internal
 # money movement and never income/expense.
 CASH_FLOW_ROW = or_(Transaction.transfer_id.is_(None), Transaction.category_id.isnot(None))
+# Budget cash flow happens on on-budget accounts: plain activity inside
+# tracking accounts (dividends, market adjustments, loan interest) moves net
+# worth, not budget income/expense. Categorized spending-transfer legs already
+# live on the on-budget side (service-enforced), so they pass. Reports that
+# take an explicit account filter let the user's selection override this.
+ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
+    select(Account.id).where(Account.on_budget == True)  # noqa: E712
+)

@@ -9,7 +9,7 @@ import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { TOOLTIP_STYLE } from './chartColors'
 
 interface Props {
@@ -75,6 +75,7 @@ export function CashProjectionReport({ budgetId }: Props) {
             The <strong>dashed line</strong> shows what would happen with only scheduled and
             subscription charges — no random daily spending.
           </p>
+          <ReportScopeNote scope="cash-projection" />
         </ReportInfoButton>
         <div className="flex-row">
           {HORIZON_OPTIONS.map((h) => (

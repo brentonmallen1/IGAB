@@ -218,7 +218,9 @@ class TestDashboardMetrics:
         assert result["net_worth"] == D("0")
         assert result["top_categories"] == []
 
-    async def test_net_worth_sums_on_budget_accounts(self):
+    async def test_net_worth_sums_all_accounts(self):
+        """Net worth spans every account (matching net_worth_history); the
+        off-budget flag scopes envelope math, never the balance sheet."""
         today = date.today()
         start = today.replace(day=1)
         end = today
@@ -239,7 +241,30 @@ class TestDashboardMetrics:
         )
         svc = ReportService(session)
         result = await svc.dashboard_metrics(BUDGET, start, end)
-        assert result["net_worth"] == D("2000.0")
+        assert result["net_worth"] == D("2500.0")
+
+    async def test_off_budget_cash_flow_excluded_from_income(self):
+        """A brokerage 'market adjustment' is net-worth movement, never income."""
+        today = date.today()
+        start = today.replace(day=1)
+
+        txns = [
+            self._make_txn(today, D("1000.00"), ACCT_1),  # paycheck, on-budget
+            self._make_txn(today, D("800.00"), ACCT_2),   # off-budget market gain
+        ]
+        accounts = [
+            self._make_account(ACCT_1, on_budget=True),
+            self._make_account(ACCT_2, on_budget=False),
+        ]
+
+        session = make_session(
+            mock_result(txns), mock_result(accounts), mock_result([]),
+            mock_result([]),  # unmanaged debts
+        )
+        svc = ReportService(session)
+        result = await svc.dashboard_metrics(BUDGET, start, today)
+        assert result["income_this_month"] == D("1000.0")
+        assert result["net_worth"] == D("1800.0")
 
     async def test_savings_rate(self):
         today = date.today()
@@ -684,8 +709,10 @@ class TestBurnRate:
 # ─── net_worth_history ────────────────────────────────────────────────────────
 
 class TestNetWorthHistory:
-    def _account(self, acct_id, acct_type, name="Account"):
-        return row(id=acct_id, name=name, account_type=acct_type, on_budget=True)
+    def _account(self, acct_id, acct_type, name="Account", classification="asset"):
+        if acct_type in ("credit_card", "loan", "other_liability"):
+            classification = "liability"
+        return row(id=acct_id, name=name, account_type=acct_type, classification=classification)
 
     def _txn(self, txn_date, amount, acct_id):
         return row(date=txn_date, amount=amount, account_id=acct_id)
@@ -745,10 +772,85 @@ class TestNetWorthHistory:
         assert result[0]["total_liabilities"] == D("2000.00")
         assert result[0]["net_worth"] == D("8000.00")
 
-    async def test_no_accounts_returns_empty(self):
-        svc = ReportService(make_session(mock_result([])))
+    async def test_empty_budget_returns_zero_points(self):
+        svc = ReportService(make_session(mock_result([]), mock_result([]), mock_result([])))
         result = await svc.net_worth_history(BUDGET, months=3)
-        assert result == []
+        assert len(result) == 3
+        assert all(p["net_worth"] == D("0") for p in result)
+
+    async def test_off_budget_accounts_are_included(self):
+        """The balance sheet spans every account — a brokerage and an
+        off-budget mortgage must both move net worth."""
+        brokerage = uuid.uuid4()
+        mortgage = uuid.uuid4()
+        accounts = [
+            self._account(ACCT_1, "checking", "Checking"),
+            self._account(brokerage, "investment", "Brokerage"),
+            self._account(mortgage, "loan", "Mortgage"),
+        ]
+        txns = [
+            self._txn(date(2026, 1, 1), D("1000.00"), ACCT_1),
+            self._txn(date(2026, 1, 1), D("12000.00"), brokerage),
+            self._txn(date(2026, 1, 1), D("-250000.00"), mortgage),
+        ]
+
+        with patch("igab.services.report_service.date") as mock_date:
+            mock_date.today.return_value = date(2026, 1, 31)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            svc = ReportService(
+                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+            )
+            result = await svc.net_worth_history(BUDGET, months=1)
+
+        assert result[0]["total_assets"] == D("13000.00")
+        assert result[0]["total_liabilities"] == D("250000.00")
+        assert result[0]["net_worth"] == D("-237000.00")
+
+    async def test_overdrawn_checking_nets_assets_down(self):
+        """The old type-bucketing counted a negative checking balance in
+        NEITHER pile; classification math keeps the identity exact."""
+        accounts = [
+            self._account(ACCT_1, "checking", "Checking"),
+            self._account(ACCT_2, "savings", "Savings"),
+        ]
+        txns = [
+            self._txn(date(2026, 1, 1), D("-300.00"), ACCT_1),
+            self._txn(date(2026, 1, 1), D("1000.00"), ACCT_2),
+        ]
+
+        with patch("igab.services.report_service.date") as mock_date:
+            mock_date.today.return_value = date(2026, 1, 31)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            svc = ReportService(
+                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+            )
+            result = await svc.net_worth_history(BUDGET, months=1)
+
+        assert result[0]["total_assets"] == D("700.00")
+        assert result[0]["total_liabilities"] == D("0")
+        assert result[0]["net_worth"] == D("700.00")
+
+    async def test_overpaid_credit_card_nets_liabilities_down(self):
+        accounts = [
+            self._account(ACCT_1, "credit_card", "Visa"),
+            self._account(ACCT_2, "loan", "Car"),
+        ]
+        txns = [
+            self._txn(date(2026, 1, 1), D("50.00"), ACCT_1),  # credit on the card
+            self._txn(date(2026, 1, 1), D("-1050.00"), ACCT_2),
+        ]
+
+        with patch("igab.services.report_service.date") as mock_date:
+            mock_date.today.return_value = date(2026, 1, 31)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            svc = ReportService(
+                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+            )
+            result = await svc.net_worth_history(BUDGET, months=1)
+
+        assert result[0]["total_assets"] == D("0")
+        assert result[0]["total_liabilities"] == D("1000.00")
+        assert result[0]["net_worth"] == D("-1000.00")
 
     async def test_cumulative_balance_at_month_end(self):
         """Balance at each month snapshot is cumulative (all txns up to that date)."""
@@ -895,6 +997,9 @@ class TestAccountComposition:
                      "account_id": str(ACCT_2), "account_name": "Savings"},
                     {"account_type": "credit_card", "balance": D("-2000"),
                      "account_id": str(uuid.uuid4()), "account_name": "Visa"},
+                    # Custom types must appear as their own series
+                    {"account_type": "pension", "balance": D("9000"),
+                     "account_id": str(uuid.uuid4()), "account_name": "Work Pension"},
                 ],
             }
         ]
@@ -903,8 +1008,10 @@ class TestAccountComposition:
 
         result = await svc.account_composition(BUDGET, months=1)
         assert len(result) == 1
-        r = result[0]
-        assert r["checking"] == D("6000")
-        assert r["savings"] == D("4000")
-        assert r["credit_card"] == D("-2000")
-        assert r["loan"] == D("0")
+        balances = result[0]["balances"]
+        assert balances["checking"] == D("6000")
+        assert balances["savings"] == D("4000")
+        assert balances["credit_card"] == D("-2000")
+        assert balances["pension"] == D("9000")
+        # Absent types stay absent — the series set is exactly what exists
+        assert "loan" not in balances

@@ -6,7 +6,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { abbreviateValue } from './seasonalityScale'
 import { monthWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import type { PlanRealityCell } from '../../../types'
 import './PlanVsRealityReport.css'
@@ -70,6 +70,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
           <p>Each cell compares what you <strong>assigned</strong> to a category in a month against what you actually <strong>spent</strong> that month. Red cells mean spending exceeded the month's plan; the deeper the red, the bigger the overrun.</p>
           <p>Unlike the envelope view, this deliberately <strong>ignores carryover</strong> — a category coasting on last month's surplus is still over-plan if nothing was assigned this month. It measures planning discipline, not envelope health.</p>
           <p>A category over plan in <strong>3 of the last 6 months</strong> is flagged as chronic — a sign its budget doesn't match how you actually spend. Click a cell to see that month's transactions.</p>
+          <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Assigned vs spent per month — carryover ignored</p>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>

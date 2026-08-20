@@ -10,7 +10,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -107,6 +107,7 @@ export function BudgetActualReport({ budgetId }: Props) {
           <p>Compares how much you <strong>assigned</strong> to each category versus how much you actually <strong>spent</strong> in the selected date range.</p>
           <p><strong>Green bars</strong> = under budget. <strong>Red bars</strong> = over budget (spent more than assigned).</p>
           <p>Use the <em>Overspent only</em> filter to focus on problem categories, and <em>Sort by overspent</em> to rank the biggest overruns first.</p>
+          <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
           <label className="report-toggle">

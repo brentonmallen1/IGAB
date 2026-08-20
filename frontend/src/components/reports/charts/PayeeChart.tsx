@@ -10,7 +10,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -64,6 +64,7 @@ export function PayeeReport({ budgetId }: Props) {
         <ReportInfoButton title="Payee Analysis">
           <p>Ranks your top payees by total spending in the selected period. <strong>Highlighted bars</strong> indicate recurring payees (appeared in 3+ different months).</p>
           <p>Use <em>Recurring</em> mode to focus only on fixed or habitual expenses — subscriptions, utilities, regular vendors. These are the easiest targets for cutting predictable spending.</p>
+          <ReportScopeNote scope="on-budget-filterable" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
           Top payees by spending. Recurring = appeared in 3+ months.

@@ -15,7 +15,7 @@ import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { chartColor } from './chartColors'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 
@@ -76,6 +76,7 @@ export function SavingsReport({ budgetId }: Props) {
           <p>
             To track a category, go to Settings → Categories and add the Savings tag.
           </p>
+          <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <div className="flex-row">
           {MONTH_OPTIONS.map((m) => (

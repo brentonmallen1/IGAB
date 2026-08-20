@@ -82,3 +82,11 @@
 .report-info__body strong {
   color: var(--text-primary);
 }
+
+/* The standard "which accounts does this count" line */
+.report-info__scope {
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-color);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

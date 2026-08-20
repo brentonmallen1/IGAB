@@ -10,7 +10,7 @@ import { previousWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, COLOR_NEGATIVE, COLOR_POSITIVE } from './chartColors'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import type { CategoryPayee } from '../../../types'
 import {
@@ -281,6 +281,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
           <p>Shows how <strong>income flows into category groups</strong>. Band width = dollar amount.</p>
           <p><strong>Spent</strong>: actual transactions — drill down to payees. <strong>Budgeted</strong>: budget assignments — drill down to categories only. Assignments aren't tied to accounts, so in Budgeted mode the account filter applies to the income total only.</p>
           <p><strong>Compare</strong> overlays the change versus the preceding period of equal length on every node. In Spent mode, clicking a payee node (or a category node at the payee level) lists the transactions behind it below the chart.</p>
+          <ReportScopeNote scope="on-budget-filterable" />
         </ReportInfoButton>
         <div className="report-toggle-group">
           <button

@@ -12,7 +12,7 @@ import { MetricCard } from '../MetricCard'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
 import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -166,6 +166,7 @@ export function ParetoReport({ budgetId }: Props) {
           <p><strong>Bars</strong> show individual amounts (colored by category group). The <strong>orange line</strong> is the running cumulative percentage. The <strong>red dashed line</strong> marks 80%.</p>
           <p>Switch the <strong>Group by</strong> filter in the toolbar to see the pattern at the category group, category, or payee level.</p>
           <p>Click a bar or a table row to see the transactions behind it.</p>
+          <ReportScopeNote scope="on-budget-filterable" />
         </ReportInfoButton>
         {groupBy !== 'payee' && (
           <label className="report-toggle">
@@ -177,7 +178,7 @@ export function ParetoReport({ budgetId }: Props) {
             Hide tagged as savings
           </label>
         )}
-        <div className="ms-auto">
+        <div className="flex-row ms-auto">
           <ReportExportButton
             reportId="pareto"
             getRows={() =>

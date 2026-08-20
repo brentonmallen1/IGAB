@@ -12,7 +12,7 @@ import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from
 import { monthsAgoStartISO } from '../../../utils/dateWindow'
 import { today } from '../../../utils/dates'
 import { DrillDownTable } from '../DrillDownTable'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -56,6 +56,7 @@ export function VolatilityReport({ budgetId }: Props) {
           <p>The <strong>bar</strong> shows the mean monthly spend. The <strong>error bars</strong> extend from the historical minimum to maximum, showing the full range of variation.</p>
           <p>Categories with large error bars (wide range) are <strong>unpredictable</strong> — they spike and drop month to month. These are candidates for a bigger buffer or a closer look at what drives the spikes.</p>
           <p>Only categories with at least 2 months of data are shown.</p>
+          <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
           Mean monthly spending with min/max range. High variation = unstable spending.

@@ -5,7 +5,7 @@ import { useAnomaliesReport } from '../../../api/reports'
 import { useReportStore } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 
 interface Props {
@@ -94,6 +94,7 @@ export function AnomaliesReport({ budgetId }: Props) {
             <strong>Sensitivity</strong> controls the threshold: Strict shows only extreme
             outliers, Sensitive shows more subtle changes.
           </p>
+          <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <div className="flex-row">
           {MONTH_OPTIONS.map((m) => (

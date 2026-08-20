@@ -62,6 +62,8 @@ class AccountSnapshot(BaseModel):
     account_id: uuid.UUID
     account_name: str
     account_type: str
+    # 'asset' | 'liability' — drives which side of net worth the balance joins
+    classification: str | None = None
     balance: Decimal
 
 
@@ -86,11 +88,9 @@ class NetWorthResponse(BaseModel):
 
 class AccountCompositionPoint(BaseModel):
     date: date
-    checking: Decimal
-    savings: Decimal
-    credit_card: Decimal
-    loan: Decimal
-    tracking: Decimal
+    # Balance per account-type key present in the budget (custom types
+    # included) — the type set is per-budget, so it can't be a fixed schema
+    balances: dict[str, Decimal]
 
 
 class AccountCompositionResponse(BaseModel):

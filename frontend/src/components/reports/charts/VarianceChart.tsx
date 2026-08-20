@@ -10,7 +10,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
-import { ReportInfoButton } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -43,6 +43,7 @@ export function VarianceReport({ budgetId }: Props) {
         <ReportInfoButton title="Cumulative Budget Variance">
           <p>Tracks the <strong>running total of assigned minus spent</strong> across all months. Positive = you've been consistently under budget; negative = you've been consistently over.</p>
           <p>The <strong>bars</strong> show the monthly assigned vs spent gap. The <strong>line</strong> is the cumulative drift — if it slopes down, your budget is eroding month by month.</p>
+          <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Running budget drift over time</p>
         <div className="flex-row ms-auto">

@@ -302,7 +302,13 @@ export interface NetWorthPoint {
   total_liabilities: number
   net_worth: number
   unmanaged_liability_total: number
-  accounts: { account_id: string; account_name: string; account_type: string; balance: number }[]
+  accounts: {
+    account_id: string
+    account_name: string
+    account_type: string
+    classification: string | null
+    balance: number
+  }[]
 }
 
 export interface NetWorthReport {
@@ -338,11 +344,8 @@ export interface LiabilitiesReport {
 
 export interface AccountCompositionPoint {
   date: string
-  checking: number
-  savings: number
-  credit_card: number
-  loan: number
-  tracking: number
+  // Balance per account-type key present in the budget (custom types included)
+  balances: Record<string, number>
 }
 
 export interface AccountCompositionReport {
