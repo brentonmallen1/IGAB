@@ -38,29 +38,89 @@ function getSpeechRecognition(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }
 
+/* Chrome's recognizer is Google-hosted and refuses insecure origins — but
+ * only AFTER it has opened the microphone, leaving the capture indicator lit
+ * against a dead session. On http:// the feature is structurally broken in
+ * every configuration we care about, so don't offer the mic at all. */
+function speechAvailable(): boolean {
+  return getSpeechRecognition() !== null && window.isSecureContext
+}
+
+/** A session may not last longer than this. Sessions are single-utterance
+ * (continuous=false) and end themselves in seconds — the watchdog only fires
+ * when the browser's session is wedged and has stopped emitting events. */
+const SESSION_MAX_MS = 45_000
+
 /**
  * On-device dictation via the browser's Web Speech API (Siri on iOS Safari,
  * Google on Android Chrome). The transcript is never auto-submitted — it
  * lands in an editable input and the user confirms before parsing.
+ *
+ * Every session runs inside guaranteed-teardown semantics: whatever ends it —
+ * user stop, error, wedged session (watchdog), tab hidden, unmount — the
+ * recognition object is detached and aborted, and our state resets. Cleanup
+ * never depends on the browser firing `onend`, because in the failure mode
+ * that matters most (service refusal mid-capture) Chrome doesn't.
  */
 export function useSpeechRecognition() {
-  const [supported] = useState(() => getSpeechRecognition() !== null)
+  const [supported] = useState(speechAvailable)
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [interim, setInterim] = useState('')
   const [error, setError] = useState<string | null>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const watchdogRef = useRef<number | null>(null)
 
-  useEffect(() => {
-    return () => recognitionRef.current?.abort()
+  // Idempotent hard-kill: detach handlers first so nothing the dying session
+  // still emits can touch state, then abort AND stop (belt and braces — a
+  // wedged session has ignored one of them before).
+  const teardown = useCallback(() => {
+    if (watchdogRef.current !== null) {
+      window.clearTimeout(watchdogRef.current)
+      watchdogRef.current = null
+    }
+    const recognition = recognitionRef.current
+    recognitionRef.current = null
+    if (recognition) {
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      try {
+        recognition.abort()
+      } catch {
+        /* already dead */
+      }
+      try {
+        recognition.stop()
+      } catch {
+        /* already dead */
+      }
+    }
+    setListening(false)
+    setInterim('')
   }, [])
+
+  // A backgrounded tab must not keep capturing — kill any live session the
+  // moment the page hides, and always on unmount.
+  useEffect(() => {
+    function onHidden() {
+      if (document.visibilityState === 'hidden') teardown()
+    }
+    document.addEventListener('visibilitychange', onHidden)
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden)
+      teardown()
+    }
+  }, [teardown])
 
   const start = useCallback(() => {
     const Ctor = getSpeechRecognition()
-    if (!Ctor || recognitionRef.current) return
+    if (!Ctor || !window.isSecureContext) return
+    // A stale session (shouldn't exist, but never trust it) dies before a new
+    // one starts — at most one capture, ever.
+    teardown()
     setError(null)
     setTranscript('')
-    setInterim('')
 
     const recognition = new Ctor()
     recognition.lang = navigator.language || 'en-US'
@@ -79,31 +139,41 @@ export function useSpeechRecognition() {
       setInterim(interimText)
     }
     recognition.onerror = (event) => {
-      // 'no-speech' on a quick tap isn't worth surfacing; permission
-      // problems are — the caller hides the mic for the session.
+      // 'no-speech' on a quick tap isn't worth surfacing; permission and
+      // service problems are — the caller maps the code to specific copy.
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
         setError(event.error)
       }
+      // ANY error ends the session, benign or not. Cleanup here, not in
+      // onend — Chrome doesn't reliably fire onend after a service error.
+      teardown()
     }
-    recognition.onend = () => {
-      setListening(false)
-      setInterim('')
-      recognitionRef.current = null
-    }
+    recognition.onend = () => teardown()
 
     recognitionRef.current = recognition
+    watchdogRef.current = window.setTimeout(teardown, SESSION_MAX_MS)
     setListening(true)
     try {
       recognition.start()
     } catch {
-      setListening(false)
-      recognitionRef.current = null
+      teardown()
     }
-  }, [])
+  }, [teardown])
 
   const stop = useCallback(() => {
-    recognitionRef.current?.stop()
-  }, [])
+    // stop() (not abort) lets in-flight audio finalize into a result — but
+    // arm the safety net: if no onend arrives shortly, teardown anyway.
+    const recognition = recognitionRef.current
+    if (!recognition) return
+    try {
+      recognition.stop()
+    } catch {
+      teardown()
+      return
+    }
+    if (watchdogRef.current !== null) window.clearTimeout(watchdogRef.current)
+    watchdogRef.current = window.setTimeout(teardown, 3_000)
+  }, [teardown])
 
   return { supported, listening, transcript, interim, error, start, stop, setTranscript }
 }
