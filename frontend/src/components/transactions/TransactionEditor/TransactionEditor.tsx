@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, Paperclip, RefreshCw } from 'lucide-react'
+import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
+import { NLEntryForm } from '../../ai/NLEntryForm'
 import { ReceiptPane } from '../../ai/ReceiptPane'
 import { ReceiptScanTab } from './ReceiptScanTab'
 import {
@@ -159,9 +160,14 @@ export function TransactionEditor({
     { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
   ])
 
-  // Tab state: "manual" or "receipt" in add mode
-  const [activeTab, setActiveTab] = useState<'manual' | 'receipt'>('manual')
+  // Tab state: entry method in add mode
+  const [activeTab, setActiveTab] = useState<'manual' | 'describe' | 'receipt'>('manual')
   const showTabs = !isEdit
+
+  // AI provenance: set by an initialDraft (mobile quick entry) or by the
+  // Describe tab; links the created transaction back to its ai_jobs row.
+  const [aiJobId, setAiJobId] = useState<string | undefined>(initialDraft?.aiJobId)
+  const [aiDrafted, setAiDrafted] = useState(!!initialDraft?.aiJobId)
 
   // Review handoff: when an AI job completes, we render a nested TransactionEditor
   const [reviewJob, setReviewJob] = useState<AIJob | null>(null)
@@ -255,6 +261,22 @@ export function TransactionEditor({
     const cleaned = v.replace(/[^0-9.,+\-*/() ]/g, '')
     setInflow(cleaned)
     if (cleaned) setOutflow('')
+  }
+
+  // Describe tab handoff: the parsed draft fills the manual form for review —
+  // the user lands on familiar fields with everything editable.
+  function applyNLDraft(d: EditorDraft) {
+    if (d.date) setDate(d.date)
+    setPayeeQuery(d.payeeName ?? '')
+    setSelectedPayeeId(null)
+    payeeInitialized.current = true
+    setCategoryId(d.categoryId ?? '')
+    setMemo(d.memo ?? '')
+    setOutflow(d.outflow ?? '')
+    setInflow(d.inflow ?? '')
+    setAiJobId(d.aiJobId)
+    setAiDrafted(true)
+    setActiveTab('manual')
   }
 
   // AI-suggested split from receipt line items — offered, never auto-applied.
@@ -352,7 +374,7 @@ export function TransactionEditor({
           approved: true,
           payee_id: selectedPayeeId || undefined,
           payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
-          ai_job_id: initialDraft?.aiJobId,
+          ai_job_id: aiJobId,
           splits: splitList,
         })
         if (!fixedAccountId) setLastPickedAccountId(accountId)
@@ -397,7 +419,7 @@ export function TransactionEditor({
     if (isEdit) {
       await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
     } else {
-      await createTxn.mutateAsync({ ...payload, ai_job_id: initialDraft?.aiJobId })
+      await createTxn.mutateAsync({ ...payload, ai_job_id: aiJobId })
       if (!fixedAccountId) setLastPickedAccountId(accountId)
     }
     onClose()
@@ -570,6 +592,15 @@ export function TransactionEditor({
           </div>
         )}
 
+        {/* AI-draft provenance in add mode: the manual form was prefilled
+            from a description — say so, since the hop is otherwise silent */}
+        {!isEdit && aiDrafted && activeTab === 'manual' && (
+          <div className="txn-editor__ai-banner">
+            <Sparkles size={13} />
+            <span>AI drafted this from your description — check it over, then add.</span>
+          </div>
+        )}
+
         {showTabs && (
           <div className="txn-editor__tabs" role="tablist" aria-label="Entry method">
             <button
@@ -584,13 +615,40 @@ export function TransactionEditor({
             <button
               type="button"
               role="tab"
+              aria-selected={activeTab === 'describe'}
+              className={`txn-editor__tab ${activeTab === 'describe' ? 'txn-editor__tab--active' : ''}`}
+              onClick={() => setActiveTab('describe')}
+            >
+              <MessageSquareText size={13} />
+              Describe it
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={activeTab === 'receipt'}
               className={`txn-editor__tab ${activeTab === 'receipt' ? 'txn-editor__tab--active' : ''}`}
               onClick={() => setActiveTab('receipt')}
             >
-              <Sparkles size={13} />
+              <ReceiptText size={13} />
               From receipt
             </button>
+          </div>
+        )}
+
+        {/* Describe tab content: parse free text into a draft, then hop to
+            the manual tab with the fields filled in */}
+        {showTabs && activeTab === 'describe' && (
+          <div className="txn-editor__main">
+            <div className="txn-editor__body">
+              {accountField}
+              <div className="txn-editor__describe">
+                <p className="txn-editor__describe-intro">
+                  Type or dictate a transaction — AI drafts it into the form
+                  for you to review.
+                </p>
+                <NLEntryForm budgetId={budgetId} onDraft={applyNLDraft} onNavigate={onClose} />
+              </div>
+            </div>
           </div>
         )}
 
@@ -611,7 +669,7 @@ export function TransactionEditor({
               />
             </div>
           </div>
-        ) : (
+        ) : showTabs && activeTab === 'describe' ? null : (
           /* Manual entry tab content (default) */
           <>
         <div className="txn-editor__main">

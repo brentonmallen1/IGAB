@@ -42,82 +42,6 @@
   color: var(--text-primary);
 }
 
-.nl-entry__row {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.nl-entry__input {
-  flex: 1;
-  min-width: 0;
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  padding: 8px 10px;
-}
-
-.nl-entry__input:focus {
-  outline: none;
-  border-color: var(--input-focus-ring);
-}
-
-/* Interim dictation shows greyed until finalized */
-.nl-entry__input--interim {
-  color: var(--text-muted);
-}
-
-.nl-entry__mic {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--border-radius-sm);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  background: transparent;
-  flex-shrink: 0;
-}
-
-.nl-entry__mic--listening {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
-  animation: nl-mic-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes nl-mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent); }
-  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 12%, transparent); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .nl-entry__mic--listening { animation: none; }
-}
-
-.nl-entry__parse {
-  padding: 8px 14px;
-  border-radius: var(--border-radius-sm);
-  background: var(--color-accent);
-  color: var(--bg-primary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  border: none;
-  flex-shrink: 0;
-}
-
-.nl-entry__parse:disabled {
-  opacity: 0.5;
-}
-
-.nl-entry__hint {
-  margin: 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
 @media (max-width: 768px) {
   .nl-entry-overlay {
     padding-top: 15vh;
@@ -125,20 +49,8 @@
     padding-right: var(--spacing-md);
   }
 
-  /* The input autofocuses on mount; under 16px iOS zooms the whole viewport
-     to it — and the app's viewport tokens deliberately freeze while zoomed,
-     so the layout appeared to fall apart. */
-  .nl-entry__input {
-    font-size: 16px;
-    min-height: var(--tap-min);
-  }
-
   .nl-entry__close {
     min-width: var(--tap-min);
-    min-height: var(--tap-min);
-  }
-
-  .nl-entry__parse {
     min-height: var(--tap-min);
   }
 }

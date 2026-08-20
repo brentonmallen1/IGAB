@@ -136,6 +136,20 @@
   border-bottom-color: var(--color-accent);
 }
 
+/* Describe tab: one input, generous air — the form appears after parsing */
+.txn-editor__describe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) 0 var(--spacing-lg);
+}
+
+.txn-editor__describe-intro {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
 .txn-editor__ai-banner {
   display: flex;
   align-items: center;
@@ -542,6 +556,13 @@
 
 /* Full-screen editor on phones */
 @media (max-width: 768px) {
+  /* Three entry-method tabs on a phone: trim padding so all fit on one row */
+  .txn-editor__tab {
+    padding-left: var(--spacing-xs);
+    padding-right: var(--spacing-xs);
+    white-space: nowrap;
+  }
+
   /* Review mode stacks: receipt above the form, capped so fields stay usable */
   .txn-editor--review .txn-editor__main {
     flex-direction: column;

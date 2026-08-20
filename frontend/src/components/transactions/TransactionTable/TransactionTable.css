@@ -45,24 +45,6 @@
   opacity: 0.85;
 }
 
-/* AI natural-language entry — outlined so the accent Add button stays primary */
-.transaction-table__nl-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-xs);
-  min-width: 30px;
-  border: 1px solid var(--color-accent);
-  color: var(--color-accent);
-  background: transparent;
-  border-radius: var(--border-radius-sm);
-  transition: background-color var(--transition-fast);
-}
-
-.transaction-table__nl-btn:hover {
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-
 .transaction-table__header {
   display: grid;
   grid-template-columns: 32px 54px 100px 1fr 1fr 1fr 90px 90px 60px;

@@ -1,13 +1,11 @@
 import { useMemo, useRef, useEffect, useLayoutEffect, useState, useCallback, memo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Plus, ChevronUp, ChevronDown, Info, Link2, GitMerge, Sparkles, X } from 'lucide-react'
+import { Plus, ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
 import { useInfiniteTransactions, useInfiniteBudgetTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction, useCreateTransaction, useBulkApprove, useMergeTransactions, usePendingReviewCountForAccount, usePendingReviewCount } from '../../../api/transactions'
 import { useCheckAttachments } from '../../../api/attachments'
 import { useAIJobForTransaction } from '../../../api/aiJobs'
-import { useAIStatus } from '../../../api/ai'
-import { NLQuickEntry } from '../../ai/NLQuickEntry'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { useUIStore } from '../../../stores/uiStore'
@@ -231,8 +229,6 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     budgetId,
     editingTxn?.created_via?.startsWith('ai') ? editingTxn.id : null
   )
-  const aiAvailable = useAIStatus().data?.available === true
-  const [nlEntryOpen, setNlEntryOpen] = useState(false)
 
   // Load more pages only while important transactions aren't fully loaded yet.
   // Backend sorts pending → needs-category → uncleared → rest, so these always arrive first.
@@ -785,15 +781,6 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           value={transactionSearchQuery}
           onChange={setTransactionSearch}
         />
-        {aiAvailable && (
-          <button
-            className="transaction-table__nl-btn"
-            onClick={() => setNlEntryOpen(true)}
-            title="Describe a transaction in plain words — AI drafts it for you"
-          >
-            <Sparkles size={14} />
-          </button>
-        )}
         <button className="transaction-table__add-btn" onClick={() => openTransactionEditor()}>
           <Plus size={14} />
           Add Transaction
@@ -805,14 +792,6 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         accountMapSize={allAccounts ? accountMap.size : 0}
         onChange={setTransactionSearch}
       />
-
-      {nlEntryOpen && (
-        <NLQuickEntry
-          budgetId={budgetId}
-          accountId={accountId}
-          onClose={() => setNlEntryOpen(false)}
-        />
-      )}
 
       {/* Selection bar */}
       {someSelected && (
