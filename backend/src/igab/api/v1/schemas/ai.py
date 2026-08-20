@@ -54,6 +54,10 @@ class AIStatusResponse(BaseModel):
     #: set, otherwise the main model. Resolved server-side so the UI never
     #: re-implements the fallback chain.
     receipt_model: str
+    #: Whether that model supports vision, from the same /api/show probe the
+    #: worker gates receipt scans on. None = unknown (Ollama unreachable, or
+    #: too old to report capabilities) — never render that as "unsupported".
+    receipt_model_vision: bool | None = None
 
 
 class OllamaModelInfo(BaseModel):

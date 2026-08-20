@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { sameOllamaModel, useAIStatus, useOllamaModels } from '../../api/ai'
+import { useAIStatus } from '../../api/ai'
 import { useSettings, useUpdateSetting } from '../../api/settings'
 import './AISettings.css'
 
@@ -24,7 +24,6 @@ export function AIAdvancedSettings() {
   const { data: settings } = useSettings()
   const updateSetting = useUpdateSetting()
   const aiStatus = useAIStatus()
-  const { data: models } = useOllamaModels()
 
   const get = (key: string) => settings?.find((s) => s.key === key)?.value ?? ''
 
@@ -87,13 +86,14 @@ export function AIAdvancedSettings() {
   }
 
   // What will actually scan receipts, resolved server-side through the real
-  // fallback chain (override → main model). Warn only when Ollama knows the
-  // model and it lacks vision — an unknown model (Ollama down, not pulled)
-  // is a different problem and must not read as "misconfigured".
+  // fallback chain (override → main model), with the vision verdict from the
+  // same /api/show probe the worker gates on. It must come from there and not
+  // from the model list: /api/tags under-reports capabilities (gemma4 lists
+  // no "vision" there, and /api/show says otherwise), which had this line
+  // calling a working vision model unsupported. null = unknown (Ollama down,
+  // older server) — a different problem, and never rendered as misconfigured.
   const receiptModel = aiStatus.data?.receipt_model ?? null
-  const receiptModelInfo = models?.find((m) => sameOllamaModel(m.name, receiptModel))
-  const receiptModelLacksVision =
-    !!receiptModelInfo && !receiptModelInfo.capabilities.includes('vision')
+  const receiptModelLacksVision = aiStatus.data?.receipt_model_vision === false
 
   const optionsValid = isJsonObject(editOptions)
   const visionOptionsValid = isJsonObject(editVisionOptions)

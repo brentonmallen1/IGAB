@@ -4,11 +4,14 @@ These are the model-agnostic mechanisms that replace per-model code paths —
 any model's quirks flow through settings, not through the codebase.
 """
 
+import json
 import uuid
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+import respx
 
 import igab.services.ai_service as ai_service_module
 from igab.integrations.ollama.client import OllamaClient
@@ -267,3 +270,126 @@ class TestReceiptModelResolution:
         status = await svc.check_availability()
         assert status["receipt_model"] == "tiny-ocr"
         assert status["vision_model"] == "tiny-ocr"
+
+
+HOST = "http://ollama.test:11434"
+
+# What /api/show reports, keyed by model — the authoritative answer. Real
+# capture: /api/tags lists gemma4:latest WITHOUT "vision" while /api/show for
+# the very same tag reports it.
+SHOW_CAPS = {
+    "gemma4:latest": ["completion", "vision", "tools", "thinking"],
+    "phi4-mini:latest": ["completion", "tools"],
+}
+
+
+def show_route(request: httpx.Request) -> httpx.Response:
+    model = json.loads(request.content)["model"]
+    return httpx.Response(200, json={"capabilities": SHOW_CAPS[model]})
+
+
+def tags_response(models: list[dict]) -> httpx.Response:
+    return httpx.Response(200, json={"models": models})
+
+
+class TestModelCapabilities:
+    """/api/tags under-reports capabilities; /api/show decides.
+
+    The settings page believed the tags list and told the user their working
+    gemma4 receipt model "does not support vision" — while the worker, which
+    gates on /api/show, was scanning receipts with it just fine.
+    """
+
+    @respx.mock
+    async def test_show_capabilities_win_over_the_tags_list(self):
+        respx.get(f"{HOST}/api/tags").mock(
+            return_value=tags_response(
+                [
+                    # exactly what Ollama returns for these tags
+                    {
+                        "name": "gemma4:latest",
+                        "size": 17,
+                        "capabilities": ["completion", "tools", "thinking"],
+                    },
+                    {
+                        "name": "phi4-mini:latest",
+                        "size": 2,
+                        "capabilities": ["completion", "tools"],
+                    },
+                ]
+            )
+        )
+        respx.post(f"{HOST}/api/show").mock(side_effect=show_route)
+
+        models = await make_service({"ollama_host": HOST}).list_models()
+
+        assert models[0]["name"] == "gemma4:latest"
+        assert "vision" in models[0]["capabilities"]
+        # A model that genuinely lacks vision still reads as lacking it.
+        assert "vision" not in models[1]["capabilities"]
+        assert models[0]["size"] == 17
+
+    @respx.mock
+    async def test_tags_capabilities_kept_when_show_reports_none(self):
+        # Older Ollama omits capabilities from /api/show; blanking the list
+        # would throw away the only signal available.
+        respx.get(f"{HOST}/api/tags").mock(
+            return_value=tags_response(
+                [{"name": "gemma4:latest", "size": 17, "capabilities": ["completion", "vision"]}]
+            )
+        )
+        respx.post(f"{HOST}/api/show").mock(
+            return_value=httpx.Response(200, json={"modelfile": "..."})
+        )
+
+        models = await make_service({"ollama_host": HOST}).list_models()
+        assert models[0]["capabilities"] == ["completion", "vision"]
+
+    @respx.mock
+    async def test_status_reports_vision_from_show(self):
+        respx.get(f"{HOST}/").mock(return_value=httpx.Response(200))
+        respx.post(f"{HOST}/api/show").mock(side_effect=show_route)
+
+        svc = make_service(
+            {
+                "ai_enabled": "true",
+                "ollama_host": HOST,
+                "ollama_model": "gemma4:latest",
+                "ollama_vision_model": "",
+            }
+        )
+        status = await svc.check_availability()
+        assert status["receipt_model"] == "gemma4:latest"
+        assert status["receipt_model_vision"] is True
+
+    @respx.mock
+    async def test_status_reports_a_genuine_lack_of_vision(self):
+        respx.get(f"{HOST}/").mock(return_value=httpx.Response(200))
+        respx.post(f"{HOST}/api/show").mock(side_effect=show_route)
+
+        svc = make_service(
+            {
+                "ai_enabled": "true",
+                "ollama_host": HOST,
+                "ollama_model": "phi4-mini:latest",
+                "ollama_vision_model": "",
+            }
+        )
+        assert (await svc.check_availability())["receipt_model_vision"] is False
+
+    @respx.mock
+    async def test_status_vision_unknown_when_ollama_is_unreachable(self):
+        # Down is not misconfigured: the UI must not turn this into
+        # "your model does not support vision".
+        respx.get(f"{HOST}/").mock(side_effect=httpx.ConnectError("down"))
+
+        svc = make_service(
+            {"ai_enabled": "true", "ollama_host": HOST, "ollama_model": "gemma4:latest"}
+        )
+        status = await svc.check_availability()
+        assert status["available"] is False
+        assert status["receipt_model_vision"] is None
+
+    async def test_status_vision_unknown_when_ai_is_disabled(self):
+        svc = make_service({"ai_enabled": "false", "ollama_model": "gemma4:latest"})
+        assert (await svc.check_availability())["receipt_model_vision"] is None

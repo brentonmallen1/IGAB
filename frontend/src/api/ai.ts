@@ -12,6 +12,10 @@ export interface AIStatus {
    * set, otherwise the main model. Resolved server-side so the UI never
    * re-implements the fallback chain. */
   receipt_model: string
+  /** Whether that model supports vision, from the same /api/show probe the
+   * worker gates receipt scans on. null = unknown (Ollama unreachable, or
+   * too old to report capabilities) — never render that as "unsupported". */
+  receipt_model_vision: boolean | null
 }
 
 /**
