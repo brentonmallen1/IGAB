@@ -175,12 +175,12 @@ async def test_account_type_overrides_applied(db_session):
         services,
         db_session,
         budget,
-        account_types={"Brokerage": ("tracking", False)},
+        account_types={"Brokerage": ("investment", False)},
     ).import_budget(data)
 
     accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
     brokerage = accounts["Brokerage"]
-    assert brokerage.account_type == "tracking"
+    assert brokerage.account_type == "investment"
     assert brokerage.on_budget is False
 
 

@@ -389,6 +389,25 @@
   font-weight: normal;
 }
 
+.ynab-mapping__type-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: var(--spacing-sm);
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: var(--font-size-xs);
+  font-weight: normal;
+  color: var(--color-accent);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.ynab-mapping__type-help:hover {
+  text-decoration: underline;
+}
+
 .ynab-mapping__row {
   display: grid;
   grid-template-columns: auto 1fr 130px auto;

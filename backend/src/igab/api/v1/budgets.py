@@ -43,6 +43,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.account_type_service import ensure_account_types_seeded
 from igab.services.transaction_service import TransactionService
 
 router = APIRouter()
@@ -150,6 +151,7 @@ async def import_ynab_as_budget(
     await session.flush()
     _grant_owner(session, budget.id, current_user.id)
     await session.refresh(budget)
+    await ensure_account_types_seeded(session, budget.id)
 
     importer = YNABImporter(
         session=session,
@@ -251,6 +253,7 @@ async def create_sample_budget(
     _grant_owner(session, budget.id, current_user.id)
     await session.refresh(budget)
     await seed_system_tags(session, budget.id)
+    await ensure_account_types_seeded(session, budget.id)
 
     generator = SampleBudgetGenerator(
         session,
@@ -326,6 +329,7 @@ async def create_budget(
     from igab.repositories.tag_repo import seed_system_tags
 
     await seed_system_tags(session, budget.id)
+    await ensure_account_types_seeded(session, budget.id)
 
     return BudgetResponse.model_validate(budget)
 

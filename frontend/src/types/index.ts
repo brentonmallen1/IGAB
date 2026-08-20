@@ -43,7 +43,11 @@ export interface Account {
   uncategorized_count: number
 }
 
-export type AccountType = 'checking' | 'savings' | 'credit_card' | 'loan' | 'tracking'
+// Account types are per-budget registry keys now (built-ins seeded for every
+// budget plus user-defined custom types) — see api/accountTypes.ts. Built-in
+// keys: checking, savings, cash, credit_card, loan, investment, other_asset,
+// other_liability.
+export type AccountType = string
 export type AccountClassification = 'asset' | 'liability'
 
 export interface CategoryGroup {

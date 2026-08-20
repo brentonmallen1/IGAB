@@ -126,6 +126,42 @@ class BudgetMember(Base):
 # ─── Accounts ─────────────────────────────────────────────────────────────────
 
 
+class AccountType(Base):
+    """Per-budget registry of account types.
+
+    Built-in rows (is_system=True) are seeded for every budget from
+    igab.domain.account_types; users add custom rows. The row is the source of
+    truth for label, asset/liability classification, and default budget
+    participation. accounts.account_type (the row's key) and
+    accounts.classification are denormalized mirrors kept join-free for
+    sidebar/report queries — igab.services.account_type_service is their only
+    writer.
+    """
+
+    __tablename__ = "account_types"
+    __table_args__ = (UniqueConstraint("budget_id", "key", name="uq_account_type_budget_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    key: Mapped[str] = mapped_column(String(30), nullable=False)
+    label: Mapped[str] = mapped_column(String(50), nullable=False)
+    # 'asset' | 'liability'
+    classification: Mapped[str] = mapped_column(String(20), nullable=False)
+    default_on_budget: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # User-facing explanation of what the type means and implies
+    description: Mapped[str | None] = mapped_column(Text)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class Account(Base):
     __tablename__ = "accounts"
     __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_account_budget_name"),)
@@ -135,9 +171,17 @@ class Account(Base):
         UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    account_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # FK default (NO ACTION) checks at statement end, so a budget delete may
+    # cascade to accounts and account_types in either order; RESTRICT would
+    # fail mid-cascade. Custom-type deletion is guarded at the API layer.
+    account_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("account_types.id"), nullable=False, index=True
+    )
+    # Mirror of the type row's key — kept join-free for queries and the API
+    account_type: Mapped[str] = mapped_column(String(30), nullable=False)
     on_budget: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    # For tracking (off-budget) accounts: 'asset' or 'liability'. Null for on-budget.
+    # Mirror of the type row's classification ('asset' | 'liability') — set for
+    # every account, on-budget included. Nullable only for pre-registry rows.
     classification: Mapped[str | None] = mapped_column(String(20))
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

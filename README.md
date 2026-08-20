@@ -94,7 +94,7 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
 - Custom saved budget views (filter and arrange the grid the way you think)
 
 ### Accounts & Transactions
-- On-budget and tracking accounts: checking, savings, credit cards, loans
+- On-budget and tracking accounts: checking, savings, cash, credit cards, loans, investments, and other assets/liabilities — plus your own custom account types per budget
 - Full transaction editor: splits, transfers, memos, flags, file attachments
 - Bulk actions — categorize, approve, or clean up many transactions at once
 - Payee management with merge tooling and fuzzy duplicate detection

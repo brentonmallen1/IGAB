@@ -101,6 +101,22 @@
   letter-spacing: 0.4px;
 }
 
+.acct-modal__type-help {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 6px;
+  padding: 1px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.acct-modal__type-help:hover {
+  color: var(--color-accent);
+}
+
 .acct-modal__input {
   padding: var(--spacing-xs) var(--spacing-sm);
   border: 1px solid var(--border-color);

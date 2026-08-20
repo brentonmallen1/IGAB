@@ -13,6 +13,7 @@ from igab.dependencies import (
 )
 from igab.domain.exceptions import DuplicateError, NotFoundError
 from igab.repositories.account_repo import AccountRepository
+from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.transaction_matching_service import TransactionMatchingService
 
 router = APIRouter()
@@ -49,28 +50,18 @@ async def create_account(
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> AccountResponse:
-    # Tracking accounts are always off-budget
-    on_budget = body.on_budget
-    if body.account_type == "tracking":
-        on_budget = False
-
-    # Auto-set classification for tracking accounts if not provided
-    classification = body.classification
-    if not on_budget and classification is None:
-        if body.account_type in ("loan", "credit_card"):
-            classification = "liability"
-        else:
-            classification = "asset"
+    try:
+        type_row = await resolve_type(account_repo.session, budget_id, body.account_type)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     try:
         acc = await account_repo.create(
             budget_id=budget_id,
             name=body.name,
-            account_type=body.account_type,
-            on_budget=on_budget,
-            classification=classification if not on_budget else None,
             note=body.note,
             sort_order=body.sort_order,
+            **apply_type(type_row, body.on_budget),
         )
     except DuplicateError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
@@ -107,8 +98,25 @@ async def update_account(
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> AccountResponse:
+    # exclude_unset (not exclude_none): fields the client omitted stay
+    # untouched, while an explicit null still clears the one nullable field
+    # (note); null on any non-nullable field is dropped, not written.
+    changes = {
+        k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None or k == "note"
+    }
     try:
-        changes = body.model_dump(exclude_none=True)
+        if changes.get("account_type") is not None:
+            existing = await account_repo.get_or_raise(account_id)
+            type_row = await resolve_type(
+                account_repo.session, existing.budget_id, changes["account_type"]
+            )
+            # Retyping re-derives the mirrors; on_budget only changes when the
+            # client asked for it (the type default is a creation-time hint).
+            changes.update(
+                account_type_id=type_row.id,
+                account_type=type_row.key,
+                classification=type_row.classification,
+            )
         acc = await account_repo.update(account_id, **changes)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
