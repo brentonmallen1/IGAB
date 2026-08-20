@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import re
@@ -194,10 +195,17 @@ class AIService:
                 "model": model,
                 "vision_model": vision_model,
                 "receipt_model": receipt_model,
+                "receipt_model_vision": None,
             }
 
         client = await self._client()
         available = await client.health()
+        # Same /api/show probe the worker gates receipt scans on, so the
+        # settings UI cannot disagree with what actually happens. None =
+        # unknown (Ollama unreachable or too old to report capabilities).
+        receipt_model_vision = None
+        if available:
+            receipt_model_vision, _, _ = await self.check_vision_support()
         return {
             "enabled": enabled,
             "available": available,
@@ -205,10 +213,23 @@ class AIService:
             "model": model,
             "vision_model": vision_model,
             "receipt_model": receipt_model,
+            "receipt_model_vision": receipt_model_vision,
         }
 
+    # /api/show probes fan out one request per model; keep the burst small
+    # so a remote Ollama isn't hammered just to render the settings page.
+    _SHOW_CONCURRENCY = 8
+
     async def list_models(self) -> list[dict]:
-        """List available models from the configured Ollama instance."""
+        """List available models from the configured Ollama instance.
+
+        /api/tags carries a capabilities list, but it under-reports: for some
+        models (the gemma4 family, notably) it omits the "vision" that
+        /api/show reports for the very same tag. Receipt scans are gated on
+        /api/show, so a UI built on the tags list contradicts what the worker
+        does — it labeled a working vision model "does not support vision".
+        Probe /api/show per model (cached, concurrent) and let it win.
+        """
         host = await self.settings.get("ollama_host")
         if not host:
             return []
@@ -223,15 +244,28 @@ class AIService:
         except Exception:
             return []
 
-        models = []
-        for m in data.get("models", []):
-            models.append(
-                {
-                    "name": m.get("name", ""),
-                    "size": m.get("size", 0),
-                    "capabilities": m.get("capabilities", []),
-                }
-            )
+        models = [
+            {
+                "name": m.get("name", ""),
+                "size": m.get("size", 0),
+                "capabilities": m.get("capabilities", []),
+            }
+            for m in data.get("models", [])
+        ]
+
+        sem = asyncio.Semaphore(self._SHOW_CONCURRENCY)
+
+        async def enrich(entry: dict) -> None:
+            if not entry["name"]:
+                return
+            async with sem:
+                caps = await self._capabilities(OllamaClient(host, entry["name"]))
+            # None = the server didn't report capabilities; keep the tags
+            # value rather than blanking the list.
+            if caps is not None:
+                entry["capabilities"] = caps
+
+        await asyncio.gather(*(enrich(m) for m in models))
         return models
 
     async def check_vision_support(self) -> tuple[bool | None, str, bool]:

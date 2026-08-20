@@ -15,10 +15,9 @@ const settingsState = vi.hoisted(() => ({
   data: undefined as { key: string; value: string }[] | undefined,
 }))
 const aiStatusState = vi.hoisted(() => ({
-  data: undefined as { receipt_model: string } | undefined,
-}))
-const modelsState = vi.hoisted(() => ({
-  data: undefined as { name: string; size: number; capabilities: string[] }[] | undefined,
+  data: undefined as
+    | { receipt_model: string; receipt_model_vision?: boolean | null }
+    | undefined,
 }))
 
 vi.mock('../../api/settings', () => ({
@@ -26,11 +25,8 @@ vi.mock('../../api/settings', () => ({
   useUpdateSetting: () => ({ mutateAsync: updateMutate, isPending: false }),
 }))
 vi.mock('../../api/ai', async (importOriginal) => ({
-  // Keep the real sameOllamaModel — the ":latest" normalization is part of
-  // what the warning logic under test relies on.
   ...(await importOriginal<typeof import('../../api/ai')>()),
   useAIStatus: () => aiStatusState,
-  useOllamaModels: () => modelsState,
 }))
 
 import { AIAdvancedSettings } from './AIAdvancedSettings'
@@ -54,7 +50,6 @@ describe('AIAdvancedSettings vision override sync', () => {
     updateMutate.mockClear()
     settingsState.data = undefined
     aiStatusState.data = undefined
-    modelsState.data = undefined
   })
 
   it('shows the override as ON with its value when the server has one', () => {
@@ -93,7 +88,6 @@ describe('AIAdvancedSettings resolved receipt-model line', () => {
   beforeEach(() => {
     settingsState.data = makeSettings('')
     aiStatusState.data = undefined
-    modelsState.data = undefined
   })
 
   it('names the model that will scan receipts', () => {
@@ -103,36 +97,32 @@ describe('AIAdvancedSettings resolved receipt-model line', () => {
     expect(line).toHaveTextContent('Receipts are scanned by granite4:latest')
   })
 
-  it('warns when Ollama knows the model and it lacks vision', () => {
-    aiStatusState.data = { receipt_model: 'granite4:latest' }
-    modelsState.data = [{ name: 'granite4:latest', size: 1, capabilities: ['completion'] }]
+  it('warns only when the server says the model lacks vision', () => {
+    aiStatusState.data = { receipt_model: 'granite4:latest', receipt_model_vision: false }
     render(<AIAdvancedSettings />)
     expect(screen.getByTestId('receipt-model-line')).toHaveTextContent(
       'this model does not support vision'
     )
   })
 
-  it('does not warn when the model advertises vision', () => {
-    aiStatusState.data = { receipt_model: 'gemma4:31b' }
-    modelsState.data = [{ name: 'gemma4:31b', size: 1, capabilities: ['completion', 'vision'] }]
+  it('does not warn when the server confirms vision', () => {
+    aiStatusState.data = { receipt_model: 'gemma4:latest', receipt_model_vision: true }
     render(<AIAdvancedSettings />)
     expect(screen.getByTestId('receipt-model-line')).not.toHaveTextContent('does not support')
   })
 
-  it('does not warn when the model is unknown to Ollama (down ≠ misconfigured)', () => {
-    aiStatusState.data = { receipt_model: 'gemma4:31b' }
-    modelsState.data = []
+  it('does not warn when vision support is unknown (down ≠ misconfigured)', () => {
+    // The regression this line had: the verdict came from /api/tags, which
+    // omits "vision" for models that have it, so a working gemma4 was
+    // labeled unsupported. Absent/null is unknown, never a warning.
+    aiStatusState.data = { receipt_model: 'gemma4:latest', receipt_model_vision: null }
     render(<AIAdvancedSettings />)
     expect(screen.getByTestId('receipt-model-line')).not.toHaveTextContent('does not support')
-  })
 
-  it('matches an untagged setting against the tagged tile name', () => {
-    // env-seeded "granite4" vs /api/tags "granite4:latest" — same model.
-    aiStatusState.data = { receipt_model: 'granite4' }
-    modelsState.data = [{ name: 'granite4:latest', size: 1, capabilities: ['completion'] }]
+    aiStatusState.data = { receipt_model: 'gemma4:latest' }
     render(<AIAdvancedSettings />)
-    expect(screen.getByTestId('receipt-model-line')).toHaveTextContent(
-      'this model does not support vision'
+    expect(screen.getAllByTestId('receipt-model-line')[1]).not.toHaveTextContent(
+      'does not support'
     )
   })
 })
