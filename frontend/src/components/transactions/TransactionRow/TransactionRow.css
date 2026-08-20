@@ -279,16 +279,55 @@
   color: var(--color-accent);
 }
 
+/* Fully themed checkbox: the native control is UA-painted (white box, gray
+   border) and ignores the palette when unchecked — glaring in dark themes. */
 .txn-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
   width: 14px;
   height: 14px;
+  margin: 0;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-content: center;
+  border: 1.5px solid var(--text-muted);
+  border-radius: 4px;
+  background: var(--bg-primary);
   cursor: pointer;
-  accent-color: var(--color-accent);
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
 
-.transaction-row--selected .txn-checkbox {
+.txn-checkbox:checked,
+.txn-checkbox:indeterminate {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.txn-checkbox:checked::before {
+  content: '';
+  width: 62%;
+  height: 62%;
+  background: var(--bg-primary);
+  clip-path: polygon(14% 44%, 0 65%, 40% 100%, 100% 16%, 81% 0, 38% 63%);
+}
+
+.txn-checkbox:indeterminate::before {
+  content: '';
+  width: 62%;
+  height: 2px;
+  background: var(--bg-primary);
+}
+
+.txn-checkbox:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* Selection mode reveals EVERY row's checkbox, not just the selected ones —
+   an invisible-but-tappable box reads as "you can't select more" */
+.transaction-row--selected .txn-checkbox,
+.transaction-row--any-selected .txn-checkbox {
   opacity: 1;
 }
 
