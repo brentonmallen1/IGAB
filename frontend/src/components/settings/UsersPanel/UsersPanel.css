@@ -101,7 +101,7 @@
 
 .users-panel__btn--danger {
   color: var(--color-negative);
-  border-color: color-mix(in srgb, var(--color-negative) 40%, var(--border-color));
+  border-color: color-mix(in srgb, var(--color-negative) 12%, var(--border-color));
 }
 
 .users-panel__add {

@@ -268,9 +268,9 @@
   font-size: var(--font-size-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
-  background-color: color-mix(in srgb, var(--color-warning) 20%, transparent);
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
   color: var(--color-warning);
-  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 12%, transparent);
   white-space: nowrap;
   pointer-events: none;
 }

@@ -149,12 +149,12 @@
 
 .ai-activity__chip--done {
   color: var(--color-positive);
-  border-color: color-mix(in srgb, var(--color-positive) 50%, transparent);
+  border-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
 }
 
 .ai-activity__chip--error {
   color: var(--color-negative);
-  border-color: color-mix(in srgb, var(--color-negative) 50%, transparent);
+  border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
 }
 
 .ai-activity__chip--removed {

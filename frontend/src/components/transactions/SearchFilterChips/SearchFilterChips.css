@@ -14,7 +14,7 @@
   font-size: var(--font-size-xs);
   color: var(--color-accent);
   background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 12%, transparent);
   border-radius: 999px;
   white-space: nowrap;
 }

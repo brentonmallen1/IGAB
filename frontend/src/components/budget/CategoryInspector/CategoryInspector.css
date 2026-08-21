@@ -484,7 +484,7 @@
 .month-summary__past-count {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
   border-radius: 8px;
   padding: 1px 5px;
   font-weight: 600;

@@ -25,7 +25,7 @@
 
 .cat-mobile-actions__btn--danger {
   color: var(--color-negative);
-  border-color: color-mix(in srgb, var(--color-negative) 35%, transparent);
+  border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
 }
 
 .cat-mobile-actions--renaming {

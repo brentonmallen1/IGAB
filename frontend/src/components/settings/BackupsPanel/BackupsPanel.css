@@ -18,7 +18,7 @@
 
 .bkp-status-pill--online {
   color: var(--color-positive);
-  background: color-mix(in srgb, var(--color-positive) 15%, transparent);
+  background: color-mix(in srgb, var(--color-positive) 12%, transparent);
 }
 
 .bkp-status-pill--offline {
