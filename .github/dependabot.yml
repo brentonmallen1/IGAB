@@ -34,6 +34,13 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    # ty is pinned in pyproject.toml because it is 0.0.x and its diagnostics
+    # move release to release — a floating alpha type checker fails CI on
+    # someone else's schedule. Suppress the bump so the pin means something;
+    # upgrade it deliberately, with the new diagnostics as their own work.
+    ignore:
+      - dependency-name: "ty"
+
     groups:
       backend-patch: # auto-merges
         dependency-type: "production"
