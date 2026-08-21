@@ -103,7 +103,9 @@
   position: relative;
 }
 
-.header__theme-btn {
+.header__theme-btn,
+.header__privacy-btn,
+.header__mode-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -114,29 +116,21 @@
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
-.header__theme-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.header__privacy-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
-}
-
-.header__privacy-btn:hover {
+.header__theme-btn:hover,
+.header__privacy-btn:hover,
+.header__mode-btn:hover:not(:disabled) {
   background-color: var(--bg-hover);
   color: var(--text-primary);
 }
 
 .header__privacy-btn--active {
   color: var(--color-accent);
+}
+
+/* A single-look palette has no other mode to switch to */
+.header__mode-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .header__theme-dropdown {
@@ -151,55 +145,6 @@
   z-index: var(--z-dropdown);
   overflow: hidden;
   padding: 4px 0;
-}
-
-.header__theme-toggle {
-  display: flex;
-  gap: 4px;
-  padding: 6px 8px;
-}
-
-.header__theme-mode {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.header__theme-mode:hover:not(:disabled) {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.header__theme-mode:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.header__theme-mode--active {
-  background-color: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--text-inverse);
-}
-
-.header__theme-mode--active:hover:not(:disabled) {
-  background-color: var(--color-accent-hover);
-  color: var(--text-inverse);
-}
-
-.header__theme-divider {
-  height: 1px;
-  background: var(--border-color);
-  margin: 4px 0;
 }
 
 .header__theme-option {
@@ -222,6 +167,15 @@
 .header__theme-option--active {
   color: var(--color-accent);
   font-weight: 600;
+  /* A rule above and below brackets the current palette. The accent alone
+     can't carry this: on gruvbox-light it lands at 1.97:1 against the
+     dropdown, so the one cue that says "you are here" disappears in exactly
+     the themes that need it. --text-secondary holds >=4.2:1 in all 36.
+     Insets rather than borders so the row doesn't grow 2px and shove the
+     list when the selection moves. */
+  box-shadow:
+    inset 0 1px 0 var(--text-secondary),
+    inset 0 -1px 0 var(--text-secondary);
 }
 
 @media (max-width: 768px) {
@@ -255,7 +209,9 @@
     height: 44px;
   }
 
-  .header__theme-btn {
+  .header__theme-btn,
+  .header__privacy-btn,
+  .header__mode-btn {
     width: 44px;
     height: 44px;
   }

@@ -344,6 +344,8 @@ class SimpleFINService:
                         updates: dict[str, object] = {
                             "cleared": "cleared",
                             "bank_posted_date": txn_date,
+                            "bank_amount": amount,
+                            "bank_payee": synced_payee or None,
                         }
                         if existing.amount != amount:
                             updates["amount"] = amount
@@ -374,6 +376,10 @@ class SimpleFINService:
                     "sync_source": "simplefin",
                     "import_description": t.get("description"),
                     "has_sync_source": True,
+                    # The bank's own values, kept next to the user's — this is
+                    # the pair that makes a match reviewable after the fact.
+                    "bank_amount": amount,
+                    "bank_payee": synced_payee or None,
                 }
                 if sync_id is not None:
                     updates["sync_id"] = sync_id
@@ -410,6 +416,8 @@ class SimpleFINService:
                             cleared=new_cleared,
                             approved=False,
                             bank_posted_date=txn_date if is_posted else None,
+                            bank_amount=amount,
+                            bank_payee=synced_payee or None,
                         ),
                     )
             except IntegrityError:

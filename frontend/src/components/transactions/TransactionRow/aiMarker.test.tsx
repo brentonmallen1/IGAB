@@ -27,7 +27,7 @@ vi.mock('../../../api/attachments', () => ({
 vi.mock('../../../api/categories', () => ({ useCreateCategory: () => ({ mutateAsync: vi.fn() }) }))
 vi.mock('../../../api/payees', () => ({ useCreatePayee: () => ({ mutateAsync: vi.fn() }) }))
 vi.mock('./RowAttachmentButton', () => ({ RowAttachmentButton: () => null }))
-vi.mock('../../simplefin/TransactionLinkPopup', () => ({ TransactionLinkIcon: () => null }))
+vi.mock('../../simplefin/BankRecordIcon', () => ({ BankRecordIcon: () => null }))
 
 const MARKER = 'Extracted from an image by AI — needs review'
 
@@ -46,7 +46,7 @@ function txn(overrides: Partial<Transaction> = {}): Transaction {
     created_via: 'ai_receipt',
     is_split: false,
     transfer_id: null,
-    linked_transaction_id: null,
+    has_sync_source: false,
     ...overrides,
   } as unknown as Transaction
 }

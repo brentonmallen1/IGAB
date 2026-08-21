@@ -32,6 +32,7 @@ import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
+import { inReviewSection, nextHeldForReview } from './reviewSection'
 import './TransactionTable.css'
 
 interface Props {
@@ -274,34 +275,33 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   }, [transactions, transactionSortColumn, transactionSortDirection, payeeMap, categoryMap, accountMap])
 
   // Off-budget accounts don't use categories — their rows never land in the
-  // "Needs Category" section or wear the yellow chip
+  // "Needs Review" section or wear the yellow chip
   const onBudgetAccountIds = useMemo(
     () => new Set(accounts.filter((a) => a.on_budget).map((a) => a.id)),
     [accounts]
   )
 
+  // A row categorized mid-review is held in place until it's approved —
+  // see reviewSection.ts
+  const [heldForReviewIds, setHeldForReviewIds] = useState<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    setHeldForReviewIds((prev) => nextHeldForReview(prev, transactions, onBudgetAccountIds))
+  }, [transactions, onBudgetAccountIds])
+
+  const isInReviewSection = useCallback(
+    (t: Transaction) => inReviewSection(t, onBudgetAccountIds, heldForReviewIds),
+    [onBudgetAccountIds, heldForReviewIds]
+  )
+
   // Partition into sections
   const pendingTxns = useMemo(() => sorted.filter((t) => t.cleared === 'pending'), [sorted])
   const uncategorizedTxns = useMemo(
-    () =>
-      sorted.filter(
-        (t) =>
-          t.cleared !== 'pending' &&
-          !t.category_id &&
-          !t.transfer_id &&
-          !t.is_split &&
-          onBudgetAccountIds.has(t.account_id)
-      ),
-    [sorted, onBudgetAccountIds]
+    () => sorted.filter(isInReviewSection),
+    [sorted, isInReviewSection]
   )
   const regularTxns = useMemo(
-    () =>
-      sorted.filter(
-        (t) =>
-          t.cleared !== 'pending' &&
-          (t.category_id || t.transfer_id || t.is_split || !onBudgetAccountIds.has(t.account_id))
-      ),
-    [sorted, onBudgetAccountIds]
+    () => sorted.filter((t) => t.cleared !== 'pending' && !isInReviewSection(t)),
+    [sorted, isInReviewSection]
   )
 
   // Build map: txn_id → TransactionMatch for pending duplicate pairs
@@ -462,6 +462,13 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     if (t1.is_split || t2.is_split || t1.parent_transaction_id || t2.parent_transaction_id) return null
     if (t1.transfer_id || t2.transfer_id) return null
     return [t1, t2]
+  }, [selectedTransactionIds, transactionMap])
+
+  const editableSelectedTxn = useMemo((): Transaction | null => {
+    if (selectedTransactionIds.size !== 1) return null
+    const txn = transactionMap.get([...selectedTransactionIds][0])
+    if (!txn || txn.cleared === 'reconciled' || txn.parent_transaction_id) return null
+    return txn
   }, [selectedTransactionIds, transactionMap])
 
   const handleConfirmMerge = useCallback(async (survivorId?: string) => {
@@ -807,6 +814,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           onApprove={canApprove ? handleBulkApprove : undefined}
           onMerge={() => setShowMergeModal(true)}
           canMerge={!!mergeEligiblePair}
+          onEdit={editableSelectedTxn ? () => openTransactionEditor(editableSelectedTxn.id) : undefined}
           onAttachments={() => {
             setShowAttachmentPanel(true)
             setAttachmentTxnId(Array.from(selectedTransactionIds)[0])
@@ -892,7 +900,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
           {uncategorizedTxns.length > 0 && (
             <Collapsible
-              title="Needs Category"
+              title="Needs Review"
               count={uncategorizedTxns.length}
               isOpen={!collapsedSections.has('uncategorized')}
               onToggle={() => toggleSection('uncategorized')}

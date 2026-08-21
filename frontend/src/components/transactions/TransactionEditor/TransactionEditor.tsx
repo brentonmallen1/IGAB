@@ -436,6 +436,31 @@ export function TransactionEditor({
   const isPending =
     createTxn.isPending || updateTxn.isPending || deleteTxn.isPending || convertToSplit.isPending
 
+  // What the bank reported, as distinct from the ledger values the user can
+  // edit. The payee line prefers the bank's own string and falls back to the
+  // import description; showing both only helps when they actually differ.
+  const bankRecord = useMemo(() => {
+    if (!transaction) return null
+    const payee = transaction.bank_payee
+    const description = transaction.import_description
+    const hasAny =
+      transaction.bank_posted_date != null ||
+      transaction.bank_amount != null ||
+      payee != null ||
+      description != null
+    if (!hasAny) return null
+    return {
+      postedDate: transaction.bank_posted_date,
+      amount: transaction.bank_amount,
+      amountDiffers:
+        transaction.bank_amount != null && transaction.bank_amount !== transaction.amount,
+      dateDiffers:
+        transaction.bank_posted_date != null && transaction.bank_posted_date !== transaction.date,
+      payee: payee ?? description,
+      description: payee && description && payee !== description ? description : null,
+    }
+  }, [transaction])
+
   const similarAmount = useMemo(() => {
     const o = parseAmountExpressionInput(outflow)
     const i = parseAmountExpressionInput(inflow)
@@ -926,14 +951,41 @@ export function TransactionEditor({
           </div>
         </div>
 
-        {isEdit && transaction && (transaction.bank_posted_date || transaction.import_description) && (
+        {isEdit && transaction && bankRecord && (
           <div className="txn-editor__bank-meta">
-            {transaction.bank_posted_date && (
-              <span>Bank posted {formatDate(transaction.bank_posted_date)}</span>
-            )}
-            {transaction.import_description && (
-              <span className="txn-editor__bank-meta-desc">{transaction.import_description}</span>
-            )}
+            <span className="txn-editor__bank-meta-label">From your bank</span>
+            <dl className="txn-editor__bank-meta-fields">
+              {bankRecord.postedDate && (
+                <div
+                  className={`txn-editor__bank-meta-field${bankRecord.dateDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
+                  title={bankRecord.dateDiffers ? 'Differs from the date on this transaction' : undefined}
+                >
+                  <dt>Posted</dt>
+                  <dd>{formatDate(bankRecord.postedDate)}</dd>
+                </div>
+              )}
+              {bankRecord.amount !== null && (
+                <div
+                  className={`txn-editor__bank-meta-field${bankRecord.amountDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
+                  title={bankRecord.amountDiffers ? 'Differs from the amount on this transaction' : undefined}
+                >
+                  <dt>Amount</dt>
+                  <dd>{formatMoney(bankRecord.amount)}</dd>
+                </div>
+              )}
+              {bankRecord.payee && (
+                <div className="txn-editor__bank-meta-field txn-editor__bank-meta-field--wide">
+                  <dt>Payee</dt>
+                  <dd title={bankRecord.payee}>{bankRecord.payee}</dd>
+                </div>
+              )}
+              {bankRecord.description && (
+                <div className="txn-editor__bank-meta-field txn-editor__bank-meta-field--wide">
+                  <dt>Description</dt>
+                  <dd title={bankRecord.description}>{bankRecord.description}</dd>
+                </div>
+              )}
+            </dl>
           </div>
         )}
 

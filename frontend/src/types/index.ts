@@ -124,6 +124,10 @@ export interface Transaction {
   /** The bank's posted date; `date` stays the user's ledger date */
   bank_posted_date: string | null
   amount: number
+  /** The bank's own amount, kept verbatim; `amount` is the ledger value */
+  bank_amount: number | null
+  /** The bank's own payee string before it was resolved to a payee */
+  bank_payee: string | null
   payee_id: string | null
   category_id: string | null
   memo: string | null
@@ -139,8 +143,6 @@ export interface Transaction {
   /** AI provenance: 'ai_receipt' | 'ai_nl'; null for manual/import/sync rows */
   created_via: string | null
   has_sync_source: boolean
-  linked_transaction_id: string | null
-  link_confidence: number | null
   created_at: string
   updated_at: string
 }

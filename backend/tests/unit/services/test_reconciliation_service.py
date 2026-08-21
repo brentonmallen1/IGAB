@@ -82,6 +82,7 @@ def make_status_service(cleared_bal, uncleared_count=0, pending_count=0):
         account_repo=MagicMock(),
         payee_repo=MagicMock(),
         transaction_repo=MagicMock(),
+        transaction_service=AsyncMock(),
     )
 
 
@@ -93,15 +94,16 @@ def make_adjustment_service(account, payee, created_txn):
     payee_repo = MagicMock()
     payee_repo.find_or_create = AsyncMock(return_value=payee)
 
-    transaction_repo = MagicMock()
-    transaction_repo.create = AsyncMock(return_value=created_txn)
+    transaction_service = MagicMock()
+    transaction_service.create = AsyncMock(return_value=created_txn)
 
     return ReconciliationService(
         session=AsyncMock(),
         repo=MagicMock(),
         account_repo=account_repo,
         payee_repo=payee_repo,
-        transaction_repo=transaction_repo,
+        transaction_repo=MagicMock(),
+        transaction_service=transaction_service,
     )
 
 
@@ -145,15 +147,16 @@ def make_finish_service(cleared_bal, snapshot, uncleared_count=0, pending_count=
 
     adjustment = MagicMock()
     adjustment.id = uuid.uuid4()
-    transaction_repo = MagicMock()
-    transaction_repo.create = AsyncMock(return_value=adjustment)
+    transaction_service = MagicMock()
+    transaction_service.create = AsyncMock(return_value=adjustment)
 
     svc = ReconciliationService(
         session=session,
         repo=repo,
         account_repo=account_repo,
         payee_repo=payee_repo,
-        transaction_repo=transaction_repo,
+        transaction_repo=MagicMock(),
+        transaction_service=transaction_service,
     )
     svc._test_adjustment = adjustment  # type: ignore[attr-defined]
     return svc
@@ -241,8 +244,8 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("150.00"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["amount"] == D("150.00")
+        data = svc.transaction_service.create.call_args[0][1]
+        assert data.amount == D("150.00")
 
     async def test_negative_adjustment_amount_correct(self):
         """Negative adjustment: account overstated vs bank statement."""
@@ -253,8 +256,8 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("-75.00"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["amount"] == D("-75.00")
+        data = svc.transaction_service.create.call_args[0][1]
+        assert data.amount == D("-75.00")
 
     async def test_zero_adjustment_when_already_balanced(self):
         account = MockAccount()
@@ -264,8 +267,8 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("0"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["amount"] == D("0")
+        data = svc.transaction_service.create.call_args[0][1]
+        assert data.amount == D("0")
 
     async def test_adjustment_is_cleared_not_reconciled(self):
         """
@@ -280,8 +283,8 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("100.00"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["cleared"] == "cleared"
+        data = svc.transaction_service.create.call_args[0][1]
+        assert data.cleared == "cleared"
 
     async def test_adjustment_is_uncategorized(self):
         """Adjustment transaction has no category (category_id=None)."""
@@ -292,8 +295,11 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("50.00"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["category_id"] is None
+        data = svc.transaction_service.create.call_args[0][1]
+        assert data.category_id is None
+        # ...and stays that way: auto-categorization would file the difference
+        # under whatever the last adjustment used instead of Ready to Assign
+        assert data.auto_categorize is False
 
     async def test_adjustment_memo_is_automatic_message(self):
         account = MockAccount()
@@ -303,8 +309,8 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("50.00"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["memo"] == "Entered automatically by IGAB"
+        data = svc.transaction_service.create.call_args[0][1]
+        assert data.memo == "Entered automatically by IGAB"
 
     async def test_adjustment_is_approved(self):
         account = MockAccount()
@@ -314,8 +320,8 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("50.00"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["approved"] is True
+        data = svc.transaction_service.create.call_args[0][1]
+        assert data.approved is True
 
     async def test_payee_name_is_reconciliation_adjustment(self):
         """Specific payee name is created or reused so it's recognizable in history."""
@@ -339,8 +345,8 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("100.00"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["payee_id"] == payee.id
+        data = svc.transaction_service.create.call_args[0][1]
+        assert data.payee_id == payee.id
 
     async def test_returns_created_transaction(self):
         account = MockAccount()
@@ -361,8 +367,8 @@ class TestCreateAdjustment:
 
         await svc.create_adjustment(ACCOUNT_ID, D("50.00"))
 
-        kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert kwargs["budget_id"] == BUDGET_ID
+        budget_id = svc.transaction_service.create.call_args[0][0]
+        assert budget_id == BUDGET_ID
 
 
 class TestFinish:
@@ -423,9 +429,9 @@ class TestFinish:
 
         await svc.finish(ACCOUNT_ID, D("1500.00"))
 
-        svc.transaction_repo.create.assert_called_once()
-        create_kwargs = svc.transaction_repo.create.call_args.kwargs
-        assert create_kwargs["amount"] == D("300.00")
+        svc.transaction_service.create.assert_called_once()
+        create_data = svc.transaction_service.create.call_args[0][1]
+        assert create_data.amount == D("300.00")
         kwargs = svc.repo.create.call_args.kwargs
         assert kwargs["adjustment_transaction_id"] == svc._test_adjustment.id
 
@@ -507,6 +513,7 @@ class TestGetHistory:
             account_repo=MagicMock(),
             payee_repo=MagicMock(),
             transaction_repo=MagicMock(),
+            transaction_service=AsyncMock(),
         )
 
         result = await svc.get_history(ACCOUNT_ID)
@@ -524,6 +531,7 @@ class TestGetHistory:
             account_repo=MagicMock(),
             payee_repo=MagicMock(),
             transaction_repo=MagicMock(),
+            transaction_service=AsyncMock(),
         )
 
         result = await svc.get_history(ACCOUNT_ID)

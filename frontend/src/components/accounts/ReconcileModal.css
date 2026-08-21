@@ -1,0 +1,121 @@
+.reconcile-modal-overlay {
+  align-items: center;
+  justify-content: center;
+}
+
+.reconcile-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--spacing-xl);
+  width: 400px;
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--spacing-xs);
+}
+
+.reconcile-modal__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--spacing-sm);
+}
+
+.reconcile-modal__question {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* The number the user is being asked to check against their statement —
+   the one thing on screen that has to be unmissable. */
+.reconcile-modal__amount {
+  margin: 0;
+  font-size: var(--font-size-display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.reconcile-modal__context {
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.reconcile-modal__input-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  margin-top: var(--spacing-md);
+}
+
+.reconcile-modal__input-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.reconcile-modal__input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.reconcile-modal__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.reconcile-modal__actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
+  width: 100%;
+  justify-content: center;
+}
+
+.reconcile-modal__btn {
+  flex: 1;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  min-height: var(--tap-min);
+}
+
+.reconcile-modal__btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.reconcile-modal__btn--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--bg-primary);
+  font-weight: 500;
+}
+
+.reconcile-modal__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

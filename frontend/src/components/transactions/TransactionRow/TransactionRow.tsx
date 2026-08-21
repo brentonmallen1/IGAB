@@ -18,7 +18,7 @@ import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
-import { TransactionLinkIcon } from '../../simplefin/TransactionLinkPopup'
+import { BankRecordIcon } from '../../simplefin/BankRecordIcon'
 import { RowAttachmentButton } from './RowAttachmentButton'
 import type { Transaction, Category, CategoryGroup, Payee } from '../../../types'
 import './TransactionRow.css'
@@ -90,7 +90,8 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     a.approved !== b.approved ||
     a.is_split !== b.is_split ||
     a.transfer_id !== b.transfer_id ||
-    a.linked_transaction_id !== b.linked_transaction_id ||
+    a.bank_amount !== b.bank_amount ||
+    a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
   ) return false
   if (prev.payeeMap !== next.payeeMap) return false
@@ -290,13 +291,7 @@ export const TransactionRow = memo(function TransactionRow({
   )
 
   function handleCategoryChange(id: string | null) {
-    if (id !== null && !txn.approved) {
-      useHistoryStore.getState().push({ transactionId: txn.id, field: 'category_id', before: txn.category_id })
-      updateTxn.mutate({ id: txn.id, category_id: id, approved: true })
-      stopEditing()
-    } else {
-      commitField('category_id', id)
-    }
+    commitField('category_id', id)
   }
 
   async function handleCreatePayee(name: string): Promise<ComboboxOption | void> {
@@ -384,9 +379,7 @@ export const TransactionRow = memo(function TransactionRow({
             <Sparkles size={12} />
           </span>
         )}
-        {txn.linked_transaction_id && (
-          <TransactionLinkIcon transaction={txn} budgetId={txn.budget_id} />
-        )}
+        <BankRecordIcon transaction={txn} />
         {/* Mobile cards only show the icon when an image exists (view); adding
             happens through the editor. Desktop always offers add-or-view. */}
         {(!isMobile || hasAttachment) && (

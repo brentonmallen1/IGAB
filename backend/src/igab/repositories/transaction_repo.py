@@ -1,10 +1,12 @@
+import re
 import uuid
 from collections.abc import Collection
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, update
+from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import Payee, Transaction, TransactionAttachment
 from igab.repositories.base import BaseRepository
@@ -19,6 +21,33 @@ from igab.repositories.txn_filters import (
 
 if TYPE_CHECKING:
     import polars as pl
+
+
+_AMOUNT_SEARCH_RE = re.compile(r"\d*\.?\d+")
+
+
+def _amount_from_search(search: str) -> Decimal | None:
+    """A free-text search that reads as a plain number, e.g. '12.34' or '$1,200'."""
+    raw = search.strip().lstrip("$").replace(",", "")
+    if not _AMOUNT_SEARCH_RE.fullmatch(raw):
+        return None
+    try:
+        return abs(Decimal(raw))
+    except InvalidOperation:
+        return None
+
+
+def _search_predicate(search: str):
+    """Free text matches payee name or memo — and the amount when it's numeric."""
+    pattern = f"%{search}%"
+    clauses: list[ColumnElement[bool]] = [
+        Payee.name.ilike(pattern),
+        Transaction.memo.ilike(pattern),
+    ]
+    amount = _amount_from_search(search)
+    if amount is not None:
+        clauses.append(func.abs(Transaction.amount) == amount)
+    return or_(*clauses)
 
 
 class TransactionRepository(BaseRepository[Transaction]):
@@ -62,8 +91,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
         if search:
             q = q.outerjoin(Payee, Transaction.payee_id == Payee.id)
-            pattern = f"%{search}%"
-            q = q.where(or_(Payee.name.ilike(pattern), Transaction.memo.ilike(pattern)))
+            q = q.where(_search_predicate(search))
         if cleared:
             q = q.where(Transaction.cleared == cleared)
         if exclude_cleared:
@@ -225,8 +253,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             where.append(attachment_exists if has_attachment else ~attachment_exists)
         if search:
-            pattern = f"%{search}%"
-            where.append(or_(Payee.name.ilike(pattern), Transaction.memo.ilike(pattern)))
+            where.append(_search_predicate(search))
 
         rows_q = select(Transaction)
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(

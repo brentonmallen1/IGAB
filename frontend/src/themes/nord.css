@@ -75,3 +75,284 @@
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
+
+/* Nord Light — Nord's own Snow Storm group (nord4–nord6) as the surfaces and
+   Polar Night (nord0–nord3) as the text. The Frost and Aurora accents are
+   built for a dark ground, so each one is deepened along its own hue until it
+   clears 4.5:1 on the Snow Storm background — same colors, not new ones. */
+[data-theme="nord-light"] {
+  --bg-primary: #eceff4;
+  --bg-secondary: #e5e9f0;
+  --bg-tertiary: #d8dee9;
+  --bg-elevated: #f6f8fa;
+  --bg-hover: #d8dee9;
+
+  --text-primary: #2e3440;
+  --text-secondary: #434c5e;
+  --text-muted: #4c566a;
+  --text-inverse: #eceff4;
+
+  /* Frost teal, the same accent hue the dark variant wears, deepened so the
+     one-click mode toggle doesn't change the app's accent hue */
+  --color-accent: #3e7483;
+  --color-accent-hover: #245b6a;
+  --accent-color: var(--color-accent);
+  --color-positive: #5c7446;
+  --color-negative: #ac5059;
+  --color-warning: #866829;
+  --color-info: #4c6f99;
+
+  --border-color: #c6cdd9;
+  --border-subtle: #d8dee9;
+  --input-bg: #f6f8fa;
+  --input-border: #abb3c1;
+  --input-focus-ring: #3e7483;
+
+  --row-hover-bg: rgba(62, 116, 131, 0.06);
+  --row-selected-bg: rgba(62, 116, 131, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(46, 52, 64, 0.12);
+  --shadow-md: 0 4px 12px rgba(46, 52, 64, 0.18);
+  --shadow-lg: 0 8px 24px rgba(46, 52, 64, 0.24);
+
+  /* Dark sidebar, like the app's other light themes — Polar Night keeps it Nord */
+  --sidebar-bg: #2e3440;
+  --header-bg: #f6f8fa;
+  --card-bg: #f6f8fa;
+  --card-border: #c6cdd9;
+
+  /* Sidebar text — validated for contrast against --sidebar-bg: #2e3440 */
+  --sidebar-text-primary: #eceff4;
+  --sidebar-text-secondary: #d8dee9;
+  --sidebar-text-muted: #9aa3b8;
+
+  /* Tag color slots — Aurora and Frost, deepened for a light ground */
+  --tag-red: #ac5059;
+  --tag-orange: #9f5a45;
+  --tag-yellow: #866829;
+  --tag-green: #5c7446;
+  --tag-teal: #4a7474;
+  --tag-blue: #4c6f99;
+  --tag-purple: #85617f;
+  --tag-pink: #85617f;
+
+  /* Chart palette — validated against this theme's chart surface (base.css).
+     Nord is a muted palette, so eight hues alone don't separate on a light
+     ground; the slots are spread across a lightness ramp as well, which is
+     what carries the separation under deuteranopia. Same structure as the
+     dark variant, with one forced move: the accent is the frost teal, and
+     --chart-net aliases the accent, so slot 3 can't also be teal — on a light
+     ground there is no second teal far enough from it that still clears 3:1.
+     Slot 3 takes a deep aurora purple instead, a lightness step below slot 5.
+     Slot 7 lifts its frost blue clear of the accent for the same reason. */
+  --chart-1: #385a82;
+  --chart-2: #ae725f;
+  --chart-3: #73506d;
+  --chart-4: #7e6120;
+  --chart-5: #a27f9c;
+  --chart-6: #4a6035;
+  --chart-7: #6386b1;
+  --chart-8: #a1545b;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+
+/* Nord Aurora — Aurora is the lead, not a highlight. Where plain Nord builds
+   the whole app out of Polar Night and Frost and keeps Aurora for state, this
+   variant inverts that: Aurora carries the accent, the semantics, the tags and
+   most of the chart palette, and Frost drops back to a supporting role.
+
+   The ground moves with it. Polar Night is kept at its own four lightnesses,
+   but its hue is rotated from nord's blue (264°) to 292° and its chroma raised
+   about 1.5x, so the surfaces sit under the Aurora accent instead of pulling
+   against it. Same values, different cast — still unmistakably Polar Night. */
+[data-theme="nord-aurora"] {
+  --bg-primary: #343144;
+  --bg-secondary: #292637;
+  --bg-tertiary: #423e57;
+  --bg-elevated: #4c4764;
+  --bg-hover: #423e57;
+
+  --text-primary: #eceff4;
+  --text-secondary: #d9d5e2;
+  /* Nord's own nord3 (#4c566a) lands at 1.7:1 on this ground — invisible, not
+     muted. Same neutral, lifted to 3.9:1 so labels are actually readable. */
+  --text-muted: #8f8d9e;
+  --text-inverse: #343144;
+
+  /* Aurora purple (nord15) at roughly twice its native chroma, rotated to 328°
+     where the extra saturation still reads purple rather than pink. nord15 is
+     the only Aurora color free to take the accent — red, orange, yellow and
+     green carry negative/warning/positive, and money must never change meaning
+     to suit a theme. */
+  --color-accent: #d795d4;
+  --color-accent-hover: #eaafe7;
+  --accent-color: var(--color-accent);
+  /* The Aurora semantics, punched to clear AA on this ground. Plain Nord's
+     #bf616a sits at 3.0:1, which is not enough for an amount you have to
+     read. */
+  --color-positive: #9fc37f;
+  --color-negative: #e87d86;
+  --color-warning: #f1ca78;
+  --color-info: #5db0d8;
+
+  --border-color: #423e57;
+  --border-subtle: #343144;
+  --input-bg: #292637;
+  --input-border: #636078;
+  --input-focus-ring: #d795d4;
+
+  /* Selection is a state worth seeing — plain Nord's 6%/12% barely registers */
+  --row-hover-bg: rgba(215, 149, 212, 0.1);
+  --row-selected-bg: rgba(215, 149, 212, 0.2);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  --sidebar-bg: #292637;
+  --header-bg: #292637;
+  --card-bg: #423e57;
+  --card-border: #4c4764;
+
+  /* Sidebar text — validated for contrast against --sidebar-bg: #292637 */
+  --sidebar-text-primary: #eceff4;
+  --sidebar-text-secondary: #d9d5e2;
+  --sidebar-text-muted: #9290a1;
+
+  /* Tag color slots — Aurora first, Frost only for the two hues Aurora
+     doesn't have */
+  --tag-red: #e47a83;
+  --tag-orange: #e88668;
+  --tag-yellow: #f1ca78;
+  --tag-green: #9fc37f;
+  --tag-teal: #7bc3c2;
+  --tag-blue: #6db3e4;
+  --tag-purple: #d594d2;
+  --tag-pink: #f1a3c1;
+
+  /* Chart palette — validated against this theme's chart surface (base.css).
+     Aurora holds five of the eight slots and four of the first five, so a
+     typical two-to-five series chart reads Aurora; Frost takes 2, 6 and 8,
+     where its blues do the work Aurora's four warm-to-green hues can't —
+     separating series for red-green color blindness. Slot 7 is the Aurora
+     green a lightness step down from slot 3.
+     Worst-case separation across normal, deuteranopic and protanopic vision
+     is 0.035 in OKLab (the palette this replaced managed 0.005), and every
+     slot clears 2.96:1 on the card surface. */
+  --chart-1: #e38263;
+  --chart-2: #5192d0;
+  --chart-3: #a2c97f;
+  --chart-4: #d36a74;
+  --chart-5: #fcd585;
+  --chart-6: #75bbba;
+  --chart-7: #739a4d;
+  --chart-8: #98e1f6;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
+
+/* Nord Aurora Light — Snow Storm carrying the same 292° aurora cast as the
+   dark variant, with Aurora deepened along each of its own hues until it
+   clears AA on a light ground. Same colors, moved, not new ones. */
+[data-theme="nord-aurora-light"] {
+  --bg-primary: #efedf6;
+  --bg-secondary: #e7e5f1;
+  --bg-tertiary: #dcdae8;
+  --bg-elevated: #f6f5fb;
+  --bg-hover: #dcdae8;
+
+  --text-primary: #343142;
+  --text-secondary: #504d61;
+  --text-muted: #69667a;
+  --text-inverse: #efedf6;
+
+  /* Aurora purple deepened for the Snow Storm ground, at the same raised
+     chroma as the dark variant so the mode toggle keeps the theme's identity */
+  --color-accent: #934a91;
+  --color-accent-hover: #762c76;
+  --accent-color: var(--color-accent);
+  --color-positive: #507623;
+  --color-negative: #af4050;
+  --color-warning: #8a670f;
+  --color-info: #246fb0;
+
+  --border-color: #cccadb;
+  --border-subtle: #dcdae8;
+  --input-bg: #f6f5fb;
+  --input-border: #b1aec2;
+  --input-focus-ring: #934a91;
+
+  --row-hover-bg: rgba(147, 74, 145, 0.08);
+  --row-selected-bg: rgba(147, 74, 145, 0.16);
+
+  --shadow-sm: 0 1px 3px rgba(52, 49, 68, 0.12);
+  --shadow-md: 0 4px 12px rgba(52, 49, 68, 0.18);
+  --shadow-lg: 0 8px 24px rgba(52, 49, 68, 0.24);
+
+  /* Dark sidebar, like the app's other light themes — the dark variant's own
+     ground keeps it Nord Aurora */
+  --sidebar-bg: #343144;
+  --header-bg: #f6f5fb;
+  --card-bg: #f6f5fb;
+  --card-border: #cccadb;
+
+  /* Sidebar text — validated for contrast against --sidebar-bg: #343144 */
+  --sidebar-text-primary: #eceff4;
+  --sidebar-text-secondary: #d9d5e2;
+  --sidebar-text-muted: #9290a1;
+
+  /* Tag color slots — Aurora first, deepened for a light ground */
+  --tag-red: #ac3d4d;
+  --tag-orange: #aa5134;
+  --tag-yellow: #8a670f;
+  --tag-green: #507623;
+  --tag-teal: #307e7d;
+  --tag-blue: #246fb0;
+  --tag-purple: #934a91;
+  --tag-pink: #ad5078;
+
+  /* Chart palette — validated against this theme's chart surface (base.css).
+     Same eight hues and the same Aurora-first ordering as the dark variant,
+     re-solved for Snow Storm: worst-case separation 0.042 in OKLab across
+     normal, deuteranopic and protanopic vision, every slot at or above
+     3.18:1 on the card surface. */
+  --chart-1: #aa5e47;
+  --chart-2: #28679f;
+  --chart-3: #739455;
+  --chart-4: #9f414d;
+  --chart-5: #9c7b31;
+  --chart-6: #3a807f;
+  --chart-7: #3a531e;
+  --chart-8: #438fa3;
+
+  /* Aliases used by older components */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
+}
