@@ -1,0 +1,137 @@
+# Run the test suite, linters, and type checkers on every PR and on main.
+#
+# These same checks exist as `just` recipes, but those shell into docker
+# compose against your laptop. This is the copy that runs on GitHub, and it is
+# what makes Dependabot PRs trustworthy: a green check here means ~1,700 tests
+# passed against the proposed dependency bump.
+#
+# The job names below (backend / frontend / dependency-review) are wired up as
+# required status checks in the `main` branch ruleset. Renaming a job silently
+# removes its gate — update the ruleset if you rename one.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A force-push supersedes the run already in flight for that ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+
+    # tests/integration/conftest.py builds a database per xdist worker
+    # (igab_test_gw0, ...) by connecting to the `postgres` maintenance DB and
+    # issuing CREATE DATABASE. POSTGRES_USER here becomes the cluster
+    # superuser, so that and the DROP ... WITH (FORCE) both succeed.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: igab
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: igab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --frozen --all-groups
+
+      # Mirrors `just lint-backend`.
+      - name: Lint (ruff)
+        working-directory: backend
+        run: |
+          uv run ruff check src/
+          uv run ruff format --check src/
+
+      # Mirrors `just typecheck-backend`.
+      - name: Type check (ty)
+        working-directory: backend
+        run: uv run ty check src/
+
+      # No secrets needed: every field in igab/config.py has a default and
+      # pydantic-settings tolerates the absent .env file. pyproject sets
+      # `addopts = -n auto`, so xdist spins up one test DB per runner core.
+      - name: Tests (pytest)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://igab:changeme@localhost:5432/igab
+        run: uv run pytest
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22 # matches frontend/Dockerfile
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: frontend
+        run: npm run typecheck
+
+      # `npm run lint` has never run in CI and starts from a red baseline
+      # (36 errors, mostly react-hooks/refs and set-state-in-effect). Reported
+      # but non-blocking so it can't wedge the Dependabot queue. Once the
+      # backlog is cleared, delete continue-on-error to make this a real gate.
+      - name: Lint (eslint)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm run lint
+
+      # Includes src/themes/contrast.test.ts, which holds every palette to
+      # WCAG AA — the hard gate described in CLAUDE.md.
+      - name: Tests (vitest)
+        working-directory: frontend
+        run: npm test
+
+  # Fails the PR if a dependency bump introduces a package with a known CVE,
+  # rather than alerting after it has already landed on main.
+  dependency-review:
+    name: dependency-review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure

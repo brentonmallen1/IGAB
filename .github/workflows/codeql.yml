@@ -1,0 +1,54 @@
+# Static analysis of our own code — injection, unsafe deserialization, path
+# traversal and friends. This is the complement to Dependabot: Dependabot knows
+# about flaws in code we import, CodeQL knows about flaws in code we wrote.
+#
+# Findings land in the repo's Security tab, not as failed builds. Free for
+# public repos.
+#
+# If you ever enable CodeQL "default setup" in the Security tab, disable this
+# workflow first — the two configurations conflict and default setup wins.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays, an hour ahead of the Dependabot batch.
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # build-mode: none is correct for both languages here — neither needs a
+      # compilation step, so there is no autobuild phase to configure.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
