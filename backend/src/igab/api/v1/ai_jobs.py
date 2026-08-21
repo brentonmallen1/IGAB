@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, date, datetime
 from hashlib import sha256
+from pathlib import PurePosixPath
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -54,6 +55,30 @@ async def _removed_transaction_ids(repo: AIJobRepository, jobs: list[AIJob]) -> 
         return set()
     existing = await repo.existing_transaction_ids(txn_ids)
     return {tid for tid in txn_ids if tid not in existing}
+
+
+def _safe_filename(name: str | None) -> str:
+    """Reduce an uploaded filename to a bare basename that cannot escape a directory.
+
+    Starlette hands back the Content-Disposition filename verbatim, so this is
+    attacker-controlled, and joining it onto a Path is what makes that dangerous:
+    `Path(base) / "../../x"` walks out of the staging directory, and worse, an
+    absolute component discards `base` entirely — `Path("/a/b") / "/etc/cron.d/x"`
+    is just `/etc/cron.d/x`. Either one turns a receipt upload into an arbitrary
+    file write.
+
+    PurePosixPath().name keeps the last component and drops any directory part;
+    backslashes are folded too, since they are not separators on POSIX and would
+    otherwise survive into the stored name. "..", "/" and "" all reduce to
+    nothing, hence the fallback.
+    """
+    candidate = PurePosixPath(name or "").name.replace("\\", "_").strip()
+    # PurePosixPath("..").name is ".." rather than "", and `stage_dir / ".."`
+    # is the parent directory — a failed write rather than an escaped one, but
+    # not something to hand to the filesystem either.
+    if candidate in {"", ".", ".."}:
+        return "receipt.jpg"
+    return candidate
 
 
 def _parse_client_today(value: str | None) -> date:
@@ -136,7 +161,7 @@ async def submit_receipt(
 
     today = _parse_client_today(client_today)
     job_id = uuid.uuid4()
-    original_filename = file.filename or "receipt.jpg"
+    original_filename = _safe_filename(file.filename)
 
     stage_dir = staging_dir(job_id)
     stage_dir.mkdir(parents=True, exist_ok=True)
