@@ -8,25 +8,25 @@
 
   --text-primary: #ebdbb2;
   --text-secondary: #d5c4a1;
-  --text-muted: #a89984;
+  --text-muted: #bdae93;
   --text-inverse: #282828;
 
-  --color-accent: #d79921;
+  --color-accent: #de9f2b;
   --color-accent-hover: #fabd2f;
   --accent-color: var(--color-accent);
   --color-positive: #b8bb26;
-  --color-negative: #fb4934;
+  --color-negative: #ff8975;
   --color-warning: #fabd2f;
-  --color-info: #83a598;
+  --color-info: #90b3a6;
 
   --border-color: #504945;
   --border-subtle: #3c3836;
   --input-bg: #3c3836;
-  --input-border: #504945;
-  --input-focus-ring: #d79921;
+  --input-border: #89817d;
+  --input-focus-ring: #de9f2b;
 
-  --row-hover-bg: rgba(215, 153, 33, 0.08);
-  --row-selected-bg: rgba(215, 153, 33, 0.15);
+  --row-hover-bg: rgba(222, 159, 43, 0.08);
+  --row-selected-bg: rgba(222, 159, 43, 0.15);
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -40,7 +40,7 @@
   /* Sidebar text — validated for contrast against --sidebar-bg: #1d2021 */
   --sidebar-text-primary: #ebdbb2;
   --sidebar-text-secondary: #bdae93;
-  --sidebar-text-muted: #928374;
+  --sidebar-text-muted: #948576;
 
   /* Tag color slots — Gruvbox Dark */
   --tag-red: #fb4934;
@@ -71,7 +71,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -86,25 +86,25 @@
 
   --text-primary: #3c3836;
   --text-secondary: #504945;
-  --text-muted: #7c6f64;
+  --text-muted: #605349;
   --text-inverse: #fbf1c7;
 
-  --color-accent: #d79921;
-  --color-accent-hover: #b57614;
+  --color-accent: #734e00;
+  --color-accent-hover: #875500;
   --accent-color: var(--color-accent);
-  --color-positive: #79740e;
-  --color-negative: #cc241d;
-  --color-warning: #d79921;
-  --color-info: #076678;
+  --color-positive: #5c5700;
+  --color-negative: #a90003;
+  --color-warning: #734e00;
+  --color-info: #005d6e;
 
   --border-color: #d5c4a1;
   --border-subtle: #ebdbb2;
   --input-bg: #f9f5d7;
-  --input-border: #bdae93;
-  --input-focus-ring: #d79921;
+  --input-border: #998a70;
+  --input-focus-ring: #734e00;
 
-  --row-hover-bg: rgba(215, 153, 33, 0.06);
-  --row-selected-bg: rgba(215, 153, 33, 0.12);
+  --row-hover-bg: rgba(115, 78, 0, 0.06);
+  --row-selected-bg: rgba(115, 78, 0, 0.12);
 
   --shadow-sm: 0 1px 3px rgba(60, 56, 54, 0.15);
   --shadow-md: 0 4px 12px rgba(60, 56, 54, 0.2);
@@ -118,7 +118,7 @@
   /* Sidebar text — sidebar stays dark (#3c3836) in gruvbox-light */
   --sidebar-text-primary: #ebdbb2;
   --sidebar-text-secondary: #d5c4a1;
-  --sidebar-text-muted: #a89984;
+  --sidebar-text-muted: #b0a18c;
 
   /* Tag color slots — Gruvbox Light */
   --tag-red: #cc241d;
@@ -147,7 +147,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

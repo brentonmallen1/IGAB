@@ -8,25 +8,25 @@
 
   --text-primary: #eceff4;
   --text-secondary: #d8dee9;
-  --text-muted: #4c566a;
+  --text-muted: #bbc7de;
   --text-inverse: #2e3440;
 
-  --color-accent: #88c0d0;
-  --color-accent-hover: #81a1c1;
+  --color-accent: #97cfdf;
+  --color-accent-hover: #a0c1e2;
   --accent-color: var(--color-accent);
-  --color-positive: #a3be8c;
-  --color-negative: #bf616a;
+  --color-positive: #b3cf9c;
+  --color-negative: #ffb1b5;
   --color-warning: #ebcb8b;
-  --color-info: #5e81ac;
+  --color-info: #a4c9f8;
 
   --border-color: #3b4252;
   --border-subtle: #2e3440;
   --input-bg: #242933;
-  --input-border: #4c566a;
-  --input-focus-ring: #88c0d0;
+  --input-border: #687388;
+  --input-focus-ring: #97cfdf;
 
-  --row-hover-bg: rgba(136, 192, 208, 0.06);
-  --row-selected-bg: rgba(136, 192, 208, 0.12);
+  --row-hover-bg: rgba(151, 207, 223, 0.06);
+  --row-selected-bg: rgba(151, 207, 223, 0.12);
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -40,7 +40,7 @@
   /* Sidebar text — validated for contrast against --sidebar-bg: #242933 */
   --sidebar-text-primary: #eceff4;
   --sidebar-text-secondary: #d8dee9;
-  --sidebar-text-muted: #81899c;
+  --sidebar-text-muted: #8991a4;
 
   /* Tag color slots — Nord palette */
   --tag-red: #bf616a;
@@ -71,7 +71,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -94,22 +94,22 @@
 
   /* Frost teal, the same accent hue the dark variant wears, deepened so the
      one-click mode toggle doesn't change the app's accent hue */
-  --color-accent: #3e7483;
+  --color-accent: #265d6c;
   --color-accent-hover: #245b6a;
   --accent-color: var(--color-accent);
-  --color-positive: #5c7446;
-  --color-negative: #ac5059;
-  --color-warning: #866829;
-  --color-info: #4c6f99;
+  --color-positive: #465d30;
+  --color-negative: #913842;
+  --color-warning: #6f510c;
+  --color-info: #365881;
 
   --border-color: #c6cdd9;
   --border-subtle: #d8dee9;
   --input-bg: #f6f8fa;
-  --input-border: #abb3c1;
-  --input-focus-ring: #3e7483;
+  --input-border: #888f9d;
+  --input-focus-ring: #265d6c;
 
-  --row-hover-bg: rgba(62, 116, 131, 0.06);
-  --row-selected-bg: rgba(62, 116, 131, 0.12);
+  --row-hover-bg: rgba(38, 93, 108, 0.06);
+  --row-selected-bg: rgba(38, 93, 108, 0.12);
 
   --shadow-sm: 0 1px 3px rgba(46, 52, 64, 0.12);
   --shadow-md: 0 4px 12px rgba(46, 52, 64, 0.18);
@@ -161,7 +161,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -187,7 +187,7 @@
   --text-secondary: #d9d5e2;
   /* Nord's own nord3 (#4c566a) lands at 1.7:1 on this ground — invisible, not
      muted. Same neutral, lifted to 3.9:1 so labels are actually readable. */
-  --text-muted: #8f8d9e;
+  --text-muted: #c5c3d5;
   --text-inverse: #343144;
 
   /* Aurora purple (nord15) at roughly twice its native chroma, rotated to 328°
@@ -195,26 +195,26 @@
      the only Aurora color free to take the accent — red, orange, yellow and
      green carry negative/warning/positive, and money must never change meaning
      to suit a theme. */
-  --color-accent: #d795d4;
+  --color-accent: #f2aeef;
   --color-accent-hover: #eaafe7;
   --accent-color: var(--color-accent);
   /* The Aurora semantics, punched to clear AA on this ground. Plain Nord's
      #bf616a sits at 3.0:1, which is not enough for an amount you have to
      read. */
-  --color-positive: #9fc37f;
-  --color-negative: #e87d86;
+  --color-positive: #abcf8b;
+  --color-negative: #ffafb4;
   --color-warning: #f1ca78;
-  --color-info: #5db0d8;
+  --color-info: #7bcef7;
 
   --border-color: #423e57;
   --border-subtle: #343144;
   --input-bg: #292637;
-  --input-border: #636078;
-  --input-focus-ring: #d795d4;
+  --input-border: #726f88;
+  --input-focus-ring: #f2aeef;
 
   /* Selection is a state worth seeing — plain Nord's 6%/12% barely registers */
-  --row-hover-bg: rgba(215, 149, 212, 0.1);
-  --row-selected-bg: rgba(215, 149, 212, 0.2);
+  --row-hover-bg: rgba(242, 174, 239, 0.1);
+  --row-selected-bg: rgba(242, 174, 239, 0.2);
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -266,7 +266,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -283,27 +283,27 @@
 
   --text-primary: #343142;
   --text-secondary: #504d61;
-  --text-muted: #69667a;
+  --text-muted: #565366;
   --text-inverse: #efedf6;
 
   /* Aurora purple deepened for the Snow Storm ground, at the same raised
      chroma as the dark variant so the mode toggle keeps the theme's identity */
-  --color-accent: #934a91;
+  --color-accent: #80387f;
   --color-accent-hover: #762c76;
   --accent-color: var(--color-accent);
-  --color-positive: #507623;
-  --color-negative: #af4050;
-  --color-warning: #8a670f;
-  --color-info: #246fb0;
+  --color-positive: #3a5f00;
+  --color-negative: #992b3e;
+  --color-warning: #6e5000;
+  --color-info: #005795;
 
   --border-color: #cccadb;
   --border-subtle: #dcdae8;
   --input-bg: #f6f5fb;
-  --input-border: #b1aec2;
-  --input-focus-ring: #934a91;
+  --input-border: #8e8b9e;
+  --input-focus-ring: #80387f;
 
-  --row-hover-bg: rgba(147, 74, 145, 0.08);
-  --row-selected-bg: rgba(147, 74, 145, 0.16);
+  --row-hover-bg: rgba(128, 56, 127, 0.08);
+  --row-selected-bg: rgba(128, 56, 127, 0.16);
 
   --shadow-sm: 0 1px 3px rgba(52, 49, 68, 0.12);
   --shadow-md: 0 4px 12px rgba(52, 49, 68, 0.18);
@@ -319,7 +319,7 @@
   /* Sidebar text — validated for contrast against --sidebar-bg: #343144 */
   --sidebar-text-primary: #eceff4;
   --sidebar-text-secondary: #d9d5e2;
-  --sidebar-text-muted: #9290a1;
+  --sidebar-text-muted: #9d9bac;
 
   /* Tag color slots — Aurora first, deepened for a light ground */
   --tag-red: #ac3d4d;
@@ -352,7 +352,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

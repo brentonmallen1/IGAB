@@ -8,21 +8,21 @@
 
   --text-primary: #33ff33;
   --text-secondary: #28cc28;
-  --text-muted: #1a801a;
+  --text-muted: #44a341;
   --text-inverse: #0a0f0a;
 
   --color-accent: #33ff33;
   --color-accent-hover: #66ff66;
   --accent-color: var(--color-accent);
   --color-positive: #33ff33;
-  --color-negative: #ff4444;
+  --color-negative: #ff4847;
   --color-warning: #cccc33;
   --color-info: #33ccff;
 
   --border-color: #1a3a1a;
   --border-subtle: #0f160f;
   --input-bg: #0f160f;
-  --input-border: #286028;
+  --input-border: #376f36;
   --input-focus-ring: #33ff33;
 
   --row-hover-bg: rgba(51, 255, 51, 0.06);
@@ -39,7 +39,7 @@
 
   --sidebar-text-primary: #33ff33;
   --sidebar-text-secondary: #28cc28;
-  --sidebar-text-muted: #1a801a;
+  --sidebar-text-muted: #2a8b28;
 
   --tag-red: #ff4444;
   --tag-orange: #ff9933;
@@ -65,7 +65,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -80,7 +80,7 @@
 
   --text-primary: #ffaa33;
   --text-secondary: #cc8828;
-  --text-muted: #80551a;
+  --text-muted: #b2844c;
   --text-inverse: #0f0a06;
 
   --color-accent: #ffaa33;
@@ -94,7 +94,7 @@
   --border-color: #3a2810;
   --border-subtle: #16100a;
   --input-bg: #16100a;
-  --input-border: #604020;
+  --input-border: #7c5a3a;
   --input-focus-ring: #ffaa33;
 
   --row-hover-bg: rgba(255, 170, 51, 0.06);
@@ -111,7 +111,7 @@
 
   --sidebar-text-primary: #ffaa33;
   --sidebar-text-secondary: #cc8828;
-  --sidebar-text-muted: #80551a;
+  --sidebar-text-muted: #9c7038;
 
   --tag-red: #ff4444;
   --tag-orange: #ff8833;
@@ -137,7 +137,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
