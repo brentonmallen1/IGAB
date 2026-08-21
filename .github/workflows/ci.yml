@@ -51,8 +51,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned to an exact release, not @v10: setup-uv stopped publishing
+      # moving major tags after v7, so @v10 does not resolve. Dependabot's
+      # github-actions ecosystem keeps this current.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
