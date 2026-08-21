@@ -14,7 +14,10 @@ class BaseRepository[ModelT: Base]:
         self.session = session
 
     async def get(self, id: uuid.UUID) -> ModelT | None:
-        conditions = [self.model.id == id]  # type: ignore
+        # list[Any]: the elements are SQLAlchemy binary expressions whose
+        # static types differ per model, and `where(*conditions)` cannot match
+        # an overload against the inferred join of them.
+        conditions: list[Any] = [self.model.id == id]  # type: ignore
         # Not every model is soft-deletable (e.g. BudgetAssignment)
         if hasattr(self.model, "is_deleted"):
             conditions.append(self.model.is_deleted == False)  # noqa: E712

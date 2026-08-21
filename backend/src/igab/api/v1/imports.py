@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import TypedDict
 
 import polars as pl
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -29,6 +30,31 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import snapshot
 
 router = APIRouter()
+
+
+class InsertRow(TypedDict):
+    """One row of the bulk transaction insert.
+
+    Typed so `r["import_id"]` narrows to str. Left as a bare dict the row
+    infers as dict[str, UUID | date | Decimal | str | bool | None], and that
+    union is neither a valid key for the seen_ids counter nor a valid element
+    for get_existing_import_ids(..., list[str]).
+    """
+
+    id: uuid.UUID
+    budget_id: uuid.UUID
+    account_id: uuid.UUID
+    date: date
+    amount: Decimal
+    payee_id: uuid.UUID | None
+    category_id: uuid.UUID | None
+    memo: str | None
+    cleared: str
+    approved: bool
+    import_batch_id: uuid.UUID
+    is_split: bool
+    is_deleted: bool
+    import_id: str
 
 
 def _generate_import_id(account_id: uuid.UUID, txn_date: date, amount: Decimal, payee: str) -> str:
@@ -307,7 +333,7 @@ async def import_csv(
 
     # Build insert rows
     batch_id = uuid.uuid4()
-    rows_to_insert = []
+    rows_to_insert: list[InsertRow] = []
     df_iter = df.iter_rows(named=True)
     for row in df_iter:
         payee_name = (row.get("payee") or "").strip() if payee_col else ""

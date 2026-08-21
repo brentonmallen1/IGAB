@@ -3,6 +3,7 @@ import json
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import TypedDict
 
 import polars as pl
 from sqlalchemy import func, literal_column, select
@@ -32,6 +33,71 @@ from igab.repositories.txn_filters import (
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
 from igab.services.amortization import add_months
+
+# Report payload shapes.
+#
+# These rows are built as plain dicts and then sorted and summed by key. Left
+# untyped, each one infers as dict[str, <union of every value type>], so
+# `-row["months_over"]`, `sum(r["total_inflow"] for ...)` and
+# `abs(row["z_score"])` all resolve against that whole union and fail: `str`
+# has no `__abs__`, `Decimal` has no unary minus in the union, and so on. The
+# values are correct at runtime — the type just could not be narrowed.
+#
+# TypedDict pins each key to its own type, so indexing narrows and the
+# arithmetic checks. total=True throughout: every key is always written.
+
+
+class ChronicMonth(TypedDict):
+    month: date
+    assigned: Decimal
+    spent: Decimal
+    variance: Decimal
+
+
+class ChronicCategory(TypedDict):
+    category_id: str
+    category_name: str
+    category_group_name: str
+    monthly: list[ChronicMonth]
+    months_over: int
+    months_active: int
+    total_assigned: Decimal
+    total_spent: Decimal
+    avg_overspend: Decimal
+    chronic: bool
+
+
+class SubscriptionRow(TypedDict):
+    payee_id: str
+    payee_name: str
+    monthly_amounts: list[Decimal]
+    total: Decimal
+    avg_monthly: Decimal
+    avg_per_charge: Decimal
+    last_charge_date: date | None
+    transaction_count: int
+
+
+class SavingsCategory(TypedDict):
+    category_id: str
+    category_name: str
+    group_name: str
+    monthly_balances: list[Decimal]
+    current_balance: Decimal
+    target_balance: Decimal | None
+    total_inflow: Decimal
+
+
+class AnomalyRow(TypedDict):
+    category_id: str
+    category_name: str
+    group_name: str
+    month: date
+    actual: Decimal
+    baseline_mean: Decimal
+    z_score: float
+    direction: str
+    history: list[Decimal]
 
 
 class ReportService:
@@ -1305,12 +1371,12 @@ class ReportService:
             entry["spent"][m] += abs(Decimal(str(r.amount)))
 
         recent = set(months_list[-6:])
-        categories = []
+        categories: list[ChronicCategory] = []
         total_assigned = zero
         total_spent = zero
         chronic_count = 0
         for entry in cats.values():
-            monthly = []
+            monthly: list[ChronicMonth] = []
             months_over = 0
             months_active = 0
             recent_over = 0
@@ -1975,7 +2041,7 @@ class ReportService:
         )
 
         # Build subscription items
-        subscriptions = []
+        subscriptions: list[SubscriptionRow] = []
         for payee_id in df["payee_id"].unique().to_list():
             payee_rows = payee_monthly.filter(pl.col("payee_id") == payee_id)
             payee_name = payee_rows["payee_name"][0]
@@ -2169,7 +2235,7 @@ class ReportService:
         prior_activity = {str(r.category_id): r.total or Decimal("0") for r in prior_activity_rows}
 
         # Build category results
-        categories = []
+        categories: list[SavingsCategory] = []
         for cid in savings_cat_ids:
             cid_str = str(cid)
             if cid_str not in cat_info:
@@ -2281,7 +2347,7 @@ class ReportService:
             }
         )
 
-        anomalies = []
+        anomalies: list[AnomalyRow] = []
 
         # Group by category and compute z-scores
         for cat_id in df["category_id"].unique().to_list():
