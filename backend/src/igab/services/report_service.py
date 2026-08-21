@@ -1989,7 +1989,7 @@ class ReportService:
                 else:
                     monthly_amounts.append(Decimal("0"))
 
-            total = sum(monthly_amounts)
+            total = sum(monthly_amounts, Decimal("0"))
 
             # Last charge date and count
             payee_txns = df.filter(pl.col("payee_id") == payee_id)
@@ -2023,7 +2023,7 @@ class ReportService:
         subscriptions.sort(key=lambda x: x["total"], reverse=True)
 
         # Summary
-        total_monthly = sum(s["avg_monthly"] for s in subscriptions)
+        total_monthly = sum((s["avg_monthly"] for s in subscriptions), Decimal("0"))
         total_annual = total_monthly * 12
 
         return {
@@ -2211,8 +2211,8 @@ class ReportService:
         categories.sort(key=lambda x: x["current_balance"], reverse=True)
 
         # Summary
-        total_balance = sum(c["current_balance"] for c in categories)
-        total_inflow = sum(c["total_inflow"] for c in categories)
+        total_balance = sum((c["current_balance"] for c in categories), Decimal("0"))
+        total_inflow = sum((c["total_inflow"] for c in categories), Decimal("0"))
         avg_monthly = total_inflow / len(month_list) if month_list else Decimal("0")
 
         return {
