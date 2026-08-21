@@ -87,6 +87,26 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    # postgres, python and node define the runtime, and nothing in CI builds
+    # an image — a green check on a base-image bump exercises none of the
+    # change. Worse, these three each have a specific trap:
+    #   postgres: the backup container's pg_dump must match the db service's
+    #             pg_restore, and moving the server major is a pg_upgrade job
+    #   python:   Docker calls 3.13 -> 3.14 a *minor*; it is a whole runtime
+    #             upgrade, with wheel availability to verify
+    #   node:     build-image change, first exercised during a release
+    # Upgrade these deliberately, with a build. Security advisories against
+    # them still surface as Dependabot alerts; only the routine version
+    # updates are suppressed.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-patch: # auto-merges
         update-types: ["patch"]
