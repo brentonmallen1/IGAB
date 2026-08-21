@@ -474,9 +474,6 @@
 }
 
 .txn-editor__bank-meta {
-  display: flex;
-  align-items: baseline;
-  gap: var(--spacing-sm);
   border-top: 1px solid var(--border-color);
   padding: var(--spacing-sm) var(--spacing-lg);
   font-size: var(--font-size-xs);
@@ -484,12 +481,48 @@
   flex-shrink: 0;
 }
 
-.txn-editor__bank-meta-desc {
+.txn-editor__bank-meta-label {
+  display: block;
   color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--spacing-xs);
+}
+
+.txn-editor__bank-meta-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-lg);
+  margin: 0;
+  min-width: 0;
+}
+
+.txn-editor__bank-meta-field {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.txn-editor__bank-meta-field dt {
+  color: var(--text-muted);
+}
+
+.txn-editor__bank-meta-field dd {
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* The bank disagrees with the ledger value — worth noticing, not alarming */
+.txn-editor__bank-meta-field--differs dd {
+  color: var(--color-warning);
+}
+
+.txn-editor__bank-meta-field--wide {
+  flex: 1 1 100%;
 }
 
 .txn-editor__similar {

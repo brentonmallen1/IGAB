@@ -1,0 +1,170 @@
+/* Follows the floating selection bar pattern: fixed, centred, accent
+   background with inverted text. See CLAUDE.md → UI Patterns. */
+.reconcile-bar {
+  position: fixed;
+  bottom: calc(var(--vv-bottom) + var(--nav-h) + var(--spacing-lg) * 2);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-accent);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--bg-primary);
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-float);
+  white-space: nowrap;
+  animation: reconcile-bar-rise 0.15s ease;
+}
+
+/* Lifted clear of the selection bar when a bulk selection is also active */
+.reconcile-bar--stacked {
+  bottom: calc(var(--vv-bottom) + var(--nav-h) + var(--spacing-lg) * 2 + 48px);
+}
+
+@keyframes reconcile-bar-rise {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.reconcile-bar__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--bg-primary);
+  opacity: 0.7;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: var(--border-radius-sm);
+  flex-shrink: 0;
+}
+
+.reconcile-bar__close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.reconcile-bar__label {
+  font-weight: 600;
+}
+
+.reconcile-bar__divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+}
+
+.reconcile-bar__stat {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+}
+
+.reconcile-bar__stat-label {
+  font-size: var(--font-size-xs);
+  opacity: 0.75;
+}
+
+.reconcile-bar__stat-value {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* The difference is the number the user is working toward — everything else
+   on the bar is reference material, so it gets its own inset panel. */
+.reconcile-bar__stat--difference {
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: var(--border-radius-sm);
+  padding: 3px var(--spacing-sm);
+  margin: 0 2px;
+}
+
+.reconcile-bar__stat--difference .reconcile-bar__stat-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--font-size-2xs);
+  opacity: 0.7;
+}
+
+.reconcile-bar__difference {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+/* Balanced is the go-signal: the panel brightens and hands off to Finish */
+.reconcile-bar__stat--balanced {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.reconcile-bar__btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  border: none;
+  cursor: pointer;
+  color: var(--bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--border-radius-sm);
+  white-space: nowrap;
+}
+
+.reconcile-bar__btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Balanced: the finish action becomes the brightest thing on the bar */
+.reconcile-bar__btn--primary {
+  background: var(--bg-primary);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.reconcile-bar__btn--primary:hover:not(:disabled) {
+  background: var(--bg-primary);
+  opacity: 0.9;
+}
+
+.reconcile-bar__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .reconcile-bar {
+    bottom: calc(var(--vv-bottom) + var(--nav-h) + var(--spacing-md));
+    max-width: calc(100vw - 16px);
+    white-space: normal;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .reconcile-bar--stacked {
+    bottom: calc(var(--vv-bottom) + var(--nav-h) + var(--spacing-md) + 52px);
+  }
+
+  .reconcile-bar__btn {
+    min-height: var(--tap-min);
+    padding: 4px var(--spacing-md);
+  }
+
+  .reconcile-bar__close {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    justify-content: center;
+  }
+}

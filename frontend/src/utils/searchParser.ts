@@ -159,6 +159,103 @@ function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch
   return null
 }
 
+function validDate(y: number, m: number, d: number): Date | null {
+  const dt = new Date(y, m, d)
+  return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d ? dt : null
+}
+
+/** M/D · M/D/YY · M/D/YYYY · YYYY-MM-DD. Bare M/D assumes the current year. */
+function parseExplicitDay(s: string, now: Date): Date | null {
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (iso) return validDate(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+
+  const us = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/)
+  if (us) {
+    const year = us[3] ? (us[3].length === 2 ? 2000 + Number(us[3]) : Number(us[3])) : now.getFullYear()
+    return validDate(year, Number(us[1]) - 1, Number(us[2]))
+  }
+  return null
+}
+
+function formatDay(d: Date): string {
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`
+}
+
+interface DateExprMatch {
+  startDate?: string
+  endDate?: string
+  label: string
+}
+
+/**
+ * The value side of a date: token — a single day, an open-ended bound
+ * (>3/1, <3/15) or a range (3/1-3/15, 2025-03-01..2025-03-15). Natural
+ * language values fall through to matchDateTokens.
+ */
+function matchExplicitDateExpr(expr: string, now: Date): DateExprMatch | null {
+  const raw = expr.replace(/^"|"$/g, '')
+
+  if (raw.startsWith('>')) {
+    const d = parseExplicitDay(raw.replace(/^>=?/, ''), now)
+    return d ? { startDate: toIsoDate(d), label: `On or after ${formatDay(d)}` } : null
+  }
+  if (raw.startsWith('<')) {
+    const d = parseExplicitDay(raw.replace(/^<=?/, ''), now)
+    return d ? { endDate: toIsoDate(d), label: `On or before ${formatDay(d)}` } : null
+  }
+
+  // Ranges: '..' separates any two forms; a bare '-' only when both sides
+  // are slash dates, so ISO dates (which contain dashes) stay intact.
+  let parts: string[] | null = null
+  if (raw.includes('..')) parts = raw.split('..')
+  else {
+    const slashRange = raw.match(
+      /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)-(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)$/
+    )
+    if (slashRange) parts = [slashRange[1], slashRange[2]]
+  }
+  if (parts) {
+    if (parts.length !== 2) return null
+    const a = parseExplicitDay(parts[0], now)
+    const b = parseExplicitDay(parts[1], now)
+    if (!a || !b) return null
+    return { startDate: toIsoDate(a), endDate: toIsoDate(b), label: `${formatDay(a)} – ${formatDay(b)}` }
+  }
+
+  const day = parseExplicitDay(raw, now)
+  return day ? { startDate: toIsoDate(day), endDate: toIsoDate(day), label: formatDay(day) } : null
+}
+
+/**
+ * A date: token at position i, in either the compact (date:3/15) or spaced
+ * (date: 3/15) form. Explicit forms win; anything else is handed to the
+ * natural-language matcher so date: last month works too.
+ */
+function matchDateFilterToken(
+  tokens: string[],
+  i: number,
+  now: Date
+): (DateExprMatch & { consumed: number }) | null {
+  const lower = tokens[i].toLowerCase()
+  const compact = lower.match(/^date:(.+)$/)?.[1]
+
+  if (compact !== undefined) {
+    const explicit = matchExplicitDateExpr(compact, now)
+    if (explicit) return { ...explicit, consumed: 1 }
+    const natural = matchDateTokens([compact], 0, now)
+    return natural ? { ...natural, consumed: 1 } : null
+  }
+
+  if (lower !== 'date:') return null
+
+  const next = tokens[i + 1]
+  if (!next) return null
+  const explicit = matchExplicitDateExpr(next, now)
+  if (explicit) return { ...explicit, consumed: 2 }
+  const natural = matchDateTokens(tokens, i + 1, now)
+  return natural ? { ...natural, consumed: natural.consumed + 1 } : null
+}
+
 function applyIsValue(result: TransactionFilters, val: string): void {
   if (val === 'uncategorized') result.uncategorized = true
   else if (val === 'unapproved') result.unapproved = true
@@ -266,7 +363,29 @@ function parseSegment(
       else {
         const range = amountExpr?.match(/^([\d.]+)-([\d.]+)$/)
         if (range) { result.amountMin = parseFloat(range[1]); result.amountMax = parseFloat(range[2]) }
+        else {
+          // Bare value is an exact amount — a zero-width range
+          const exact = amountExpr?.match(/^\$?([\d,]*\.?\d+)$/)
+          if (exact) {
+            const value = parseFloat(exact[1].replace(/,/g, ''))
+            if (!isNaN(value)) { result.amountMin = value; result.amountMax = value }
+          }
+        }
       }
+      continue
+    }
+
+    // date: 3/15 · date:>3/1 · date: 3/1-3/15 · date: last month
+    const dateFilter = matchDateFilterToken(tokens, i, now)
+    if (dateFilter) {
+      if (dateFilter.startDate) result.startDate = dateFilter.startDate
+      if (dateFilter.endDate) result.endDate = dateFilter.endDate
+      i += dateFilter.consumed - 1
+      continue
+    }
+    if (lower === 'date:' || lower.startsWith('date:')) {
+      // Unparseable date token — swallow it rather than searching for "date:"
+      if (lower === 'date:') i++
       continue
     }
 
@@ -428,8 +547,12 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'NOT has: attachment ', description: 'Transactions without an image' },
   { syntax: 'category:', description: 'Filter by category name' },
   { syntax: 'payee:', description: 'Filter by payee name' },
+  { syntax: 'amount: ', description: 'Exact amount or range (amount: 12.34, amount: 10-20) — typing 12.34 alone works too' },
   { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },
   { syntax: 'amount:<', description: 'Amount less than (e.g. amount:<50)' },
+  { syntax: 'date: ', description: 'On a date or range (date: 3/15, date: 3/1-3/15, date: 2025-03-15)' },
+  { syntax: 'date:>', description: 'On or after a date (e.g. date:>3/1)' },
+  { syntax: 'date:<', description: 'On or before a date (e.g. date:<3/15)' },
   { syntax: 'today ', description: 'Dated today (also: yesterday, last week, last month)' },
   { syntax: 'last month ', description: 'Dated in the previous calendar month' },
   { syntax: 'march ', description: 'Dated in a month (add a year: march 2025, or a range: jan-mar)' },
@@ -533,6 +656,14 @@ export function describeSearchChips(
     const hasMatch = lower.match(/^has:(\w+)$/)
     if (hasMatch) {
       if (ATTACHMENT_VALUES.has(hasMatch[1])) push('Has attachment', [i])
+      continue
+    }
+
+    const dateFilter = matchDateFilterToken(tokens, i, now)
+    if (dateFilter) {
+      const indices = Array.from({ length: dateFilter.consumed }, (_, k) => i + k)
+      push(dateFilter.label, indices)
+      i += dateFilter.consumed - 1
       continue
     }
 

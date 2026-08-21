@@ -292,8 +292,11 @@ def get_reconciliation_service(
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    transaction_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> ReconciliationService:
-    return ReconciliationService(session, repo, account_repo, payee_repo, transaction_repo)
+    return ReconciliationService(
+        session, repo, account_repo, payee_repo, transaction_repo, transaction_service
+    )
 
 
 def get_scheduled_transaction_service(

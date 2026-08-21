@@ -164,10 +164,10 @@
   font-weight: 500;
 }
 
-.match-modal__cleared--cleared { background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success); }
-.match-modal__cleared--uncleared { background: color-mix(in srgb, var(--color-text-muted) 15%, transparent); color: var(--color-text-muted); }
-.match-modal__cleared--pending { background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning); }
-.match-modal__cleared--reconciled { background: color-mix(in srgb, var(--color-accent) 15%, transparent); color: var(--color-accent); }
+.match-modal__cleared--cleared { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); }
+.match-modal__cleared--uncleared { background: color-mix(in srgb, var(--color-text-muted) 12%, transparent); color: var(--color-text-muted); }
+.match-modal__cleared--pending { background: color-mix(in srgb, var(--color-warning) 12%, transparent); color: var(--color-warning); }
+.match-modal__cleared--reconciled { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
 
 .match-modal__txn-value {
   text-align: right;

@@ -10,6 +10,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.transaction_service import TransactionCreate, TransactionService
 from igab.utils.clock import today_utc
 
 
@@ -21,12 +22,14 @@ class ReconciliationService:
         account_repo: AccountRepository,
         payee_repo: PayeeRepository,
         transaction_repo: TransactionRepository,
+        transaction_service: TransactionService,
     ) -> None:
         self.session = session
         self.repo = repo
         self.account_repo = account_repo
         self.payee_repo = payee_repo
         self.transaction_repo = transaction_repo
+        self.transaction_service = transaction_service
 
     async def get_status(self, account_id: uuid.UUID) -> dict:
         """Return current cleared balance and uncleared transaction count for the account.
@@ -90,16 +93,23 @@ class ReconciliationService:
         payee = await self.payee_repo.find_or_create(
             account.budget_id, "Reconciliation Balance Adjustment"
         )
-        return await self.transaction_repo.create(
-            budget_id=account.budget_id,
-            account_id=account_id,
-            date=today_utc(),
-            amount=adjustment_amount,
-            payee_id=payee.id,
-            category_id=None,
-            memo="Entered automatically by IGAB",
-            cleared="cleared",
-            approved=True,
+        # Through the service, not the repo: an adjustment moves real money
+        # and belongs in the change log like any other transaction, so the
+        # user can undo it. Left uncategorized on purpose — on a budget
+        # account that lands the difference in Ready to Assign.
+        return await self.transaction_service.create(
+            account.budget_id,
+            TransactionCreate(
+                account_id=account_id,
+                date=today_utc(),
+                amount=adjustment_amount,
+                payee_id=payee.id,
+                category_id=None,
+                memo="Entered automatically by IGAB",
+                cleared="cleared",
+                approved=True,
+                auto_categorize=False,
+            ),
         )
 
     async def finish(

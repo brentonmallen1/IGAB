@@ -92,7 +92,7 @@
 }
 
 .reports-nav__dropdown-item--active {
-  background: color-mix(in srgb, var(--accent-color) 15%, transparent);
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
   color: var(--accent-color);
   font-weight: 600;
 }
@@ -545,12 +545,12 @@
 }
 
 .anomaly-card__pct--high {
-  background: color-mix(in srgb, var(--color-negative) 15%, transparent);
+  background: color-mix(in srgb, var(--color-negative) 12%, transparent);
   color: var(--color-negative);
 }
 
 .anomaly-card__pct--low {
-  background: color-mix(in srgb, var(--color-info) 15%, transparent);
+  background: color-mix(in srgb, var(--color-info) 12%, transparent);
   color: var(--color-info);
 }
 
@@ -561,7 +561,7 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
   border: 1px solid var(--color-warning);
   border-radius: var(--border-radius);
   color: var(--color-warning);
@@ -632,12 +632,12 @@
 }
 
 .projection-event__source--scheduled {
-  background: color-mix(in srgb, var(--color-info) 15%, transparent);
+  background: color-mix(in srgb, var(--color-info) 12%, transparent);
   color: var(--color-info);
 }
 
 .projection-event__source--subscription {
-  background: color-mix(in srgb, var(--tag-purple) 15%, transparent);
+  background: color-mix(in srgb, var(--tag-purple) 12%, transparent);
   color: var(--tag-purple);
 }
 

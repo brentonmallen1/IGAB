@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { CalendarDays, ChevronLeft, ChevronRight, Eye, EyeOff, Moon, Palette, Search, Sun } from 'lucide-react'
-import { useAppStore, PALETTES, getPaletteForTheme, isLightTheme } from '../../../stores/appStore'
+import { useAppStore, PALETTES, getPaletteForTheme, hasBothModes, isLightTheme } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { AIActivityBadge } from '../../ai/AIActivityBadge'
@@ -14,6 +14,7 @@ export function Header() {
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
+  const toggleThemeMode = useAppStore((s) => s.toggleThemeMode)
   const privacyMode = useAppStore((s) => s.privacyMode)
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const openPalette = useUIStore((s) => s.openPalette)
@@ -22,6 +23,14 @@ export function Header() {
   const themeRef = useRef<HTMLDivElement>(null)
   // selectedMonth only drives the budget view; elsewhere the nav is dead weight.
   const onBudgetPage = useLocation().pathname === '/budget'
+
+  const canToggleMode = hasBothModes(theme)
+  const isLight = canToggleMode && isLightTheme(theme)
+  const modeLabel = canToggleMode
+    ? isLight
+      ? 'Switch to dark mode'
+      : 'Switch to light mode'
+    : `${getPaletteForTheme(theme).label} has a single look`
 
   useEffect(() => {
     if (!themeOpen) return
@@ -91,6 +100,16 @@ export function Header() {
         {privacyMode ? <EyeOff size={16} /> : <Eye size={16} />}
       </button>
 
+      <button
+        className="header__mode-btn"
+        onClick={toggleThemeMode}
+        disabled={!canToggleMode}
+        aria-label={modeLabel}
+        title={modeLabel}
+      >
+        {isLight ? <Moon size={16} /> : <Sun size={16} />}
+      </button>
+
       <div className="header__theme-picker" ref={themeRef}>
         <button
           className="header__theme-btn"
@@ -102,53 +121,21 @@ export function Header() {
         </button>
         {themeOpen && (
           <div className="header__theme-dropdown">
-            <div className="header__theme-toggle">
-              {(() => {
-                const currentPalette = getPaletteForTheme(theme)
-                const isLight = isLightTheme(theme)
-                const hasBothVariants = currentPalette.dark !== currentPalette.light
-                return (
-                  <>
-                    <button
-                      className={`header__theme-mode ${!isLight ? 'header__theme-mode--active' : ''}`}
-                      onClick={() => setTheme(currentPalette.dark)}
-                      disabled={!hasBothVariants}
-                      aria-label="Dark mode"
-                    >
-                      <Moon size={14} />
-                      <span>Dark</span>
-                    </button>
-                    <button
-                      className={`header__theme-mode ${isLight ? 'header__theme-mode--active' : ''}`}
-                      onClick={() => setTheme(currentPalette.light)}
-                      disabled={!hasBothVariants}
-                      aria-label="Light mode"
-                    >
-                      <Sun size={14} />
-                      <span>Light</span>
-                    </button>
-                  </>
-                )
-              })()}
-            </div>
-            <div className="header__theme-divider" />
-            {PALETTES.map((p) => {
-              const currentPalette = getPaletteForTheme(theme)
-              const isActive = p.id === currentPalette.id
-              return (
-                <button
-                  key={p.id}
-                  className={`header__theme-option ${isActive ? 'header__theme-option--active' : ''}`}
-                  onClick={() => {
-                    const useLight = isLightTheme(theme)
-                    setTheme(useLight ? p.light : p.dark)
-                    setThemeOpen(false)
-                  }}
-                >
-                  {p.label}
-                </button>
-              )
-            })}
+            {PALETTES.map((p) => (
+              <button
+                key={p.id}
+                className={`header__theme-option ${
+                  p.id === getPaletteForTheme(theme).id ? 'header__theme-option--active' : ''
+                }`}
+                onClick={() => {
+                  // Keep the mode the user is in — the palette list only swaps style
+                  setTheme(isLightTheme(theme) ? p.light : p.dark)
+                  setThemeOpen(false)
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         )}
       </div>

@@ -10,28 +10,28 @@
   /* Text — warm off-white */
   --text-primary: #f0ecf4;
   --text-secondary: #c0b8c8;
-  --text-muted: #807888;
+  --text-muted: #aaa2b3;
   --text-inverse: #1a1820;
 
   /* Semantic colors from the 80s pop palette */
-  --color-accent: #e86090;
+  --color-accent: #ff76a4;
   --color-accent-hover: #f080a8;
   --accent-color: var(--color-accent);
   --color-positive: #70d8d8;
-  --color-negative: #e86090;
+  --color-negative: #ff76a4;
   --color-warning: #f0c860;
-  --color-info: #4a70c8;
+  --color-info: #79a3ff;
 
   /* Borders and inputs */
   --border-color: #38343f;
   --border-subtle: #242028;
   --input-bg: #242028;
-  --input-border: #484050;
-  --input-focus-ring: #e86090;
+  --input-border: #71697a;
+  --input-focus-ring: #ff76a4;
 
   /* Row states */
-  --row-hover-bg: rgba(232, 96, 144, 0.08);
-  --row-selected-bg: rgba(232, 96, 144, 0.15);
+  --row-hover-bg: rgba(255, 118, 164, 0.08);
+  --row-selected-bg: rgba(255, 118, 164, 0.15);
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -47,7 +47,7 @@
   /* Sidebar text — validated for contrast against --sidebar-bg: #14121a */
   --sidebar-text-primary: #f0ecf4;
   --sidebar-text-secondary: #c0b8c8;
-  --sidebar-text-muted: #807888;
+  --sidebar-text-muted: #837b8c;
 
   /* Tag color slots — 80s pop palette */
   --tag-red: #e86090;
@@ -76,7 +76,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -93,28 +93,28 @@
   /* Text — deep purple-gray */
   --text-primary: #2a2530;
   --text-secondary: #4a4550;
-  --text-muted: #8a8590;
+  --text-muted: #65616b;
   --text-inverse: #ffffff;
 
   /* Semantic colors — adjusted for light background */
-  --color-accent: #d05080;
+  --color-accent: #ae3063;
   --color-accent-hover: #b84070;
   --accent-color: var(--color-accent);
-  --color-positive: #40a8a8;
-  --color-negative: #d05080;
-  --color-warning: #c8a040;
-  --color-info: #3a60b0;
+  --color-positive: #006d6e;
+  --color-negative: #ae3063;
+  --color-warning: #7d5d00;
+  --color-info: #395faf;
 
   /* Borders and inputs */
   --border-color: #e8e0f0;
   --border-subtle: #f4f0f8;
   --input-bg: #ffffff;
-  --input-border: #d8d0e0;
-  --input-focus-ring: #d05080;
+  --input-border: #9891a0;
+  --input-focus-ring: #ae3063;
 
   /* Row states */
-  --row-hover-bg: rgba(208, 80, 128, 0.06);
-  --row-selected-bg: rgba(208, 80, 128, 0.12);
+  --row-hover-bg: rgba(174, 48, 99, 0.06);
+  --row-selected-bg: rgba(174, 48, 99, 0.12);
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(42, 37, 48, 0.1);
@@ -130,7 +130,7 @@
   /* Sidebar text — sidebar is dark (#1a1820) in light theme */
   --sidebar-text-primary: #f0ecf4;
   --sidebar-text-secondary: #c0b8c8;
-  --sidebar-text-muted: #807888;
+  --sidebar-text-muted: #887f90;
 
   /* Tag color slots — 80s pop palette, adjusted for light bg */
   --tag-red: #d05080;
@@ -159,7 +159,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

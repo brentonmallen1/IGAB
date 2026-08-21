@@ -15,6 +15,8 @@ from igab.utils.clock import today_utc
 from .factories import (
     create_account,
     create_budget,
+    create_category,
+    create_category_group,
     create_transaction,
     create_user,
     make_services,
@@ -251,3 +253,47 @@ async def test_api_rejects_reconciled_cleared_on_create_and_bulk(api_client, db_
         json={"transaction_ids": [], "cleared": "pending"},
     )
     assert resp.status_code == 422, "pending is reserved for bank sync"
+
+
+async def test_adjustment_is_recorded_in_the_change_log(db_session):
+    """An adjustment moves real money, so it belongs in the change log like
+    any other transaction — otherwise the user can't see or undo it."""
+    from sqlalchemy import select
+
+    from igab.db.models import ChangeLog
+
+    services, budget, checking = await _setup(db_session)
+    await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
+
+    adjustment = await services.reconciliation.create_adjustment(checking.id, Decimal("-1.00"))
+
+    await db_session.flush()
+    result = await db_session.execute(
+        select(ChangeLog).where(
+            ChangeLog.budget_id == budget.id,
+            ChangeLog.entity_type == "transaction",
+            ChangeLog.entity_id == adjustment.id,
+        )
+    )
+    change = result.scalars().one()
+    assert change.action == "create"
+    assert Decimal(change.after["amount"]) == Decimal("-1.00")
+
+
+async def test_adjustment_never_inherits_a_category_from_an_earlier_one(db_session):
+    """Adjustments stay uncategorized so the difference lands in Ready to
+    Assign. Auto-categorization would quietly file the second one under
+    whatever category the user gave the first."""
+    services, budget, checking = await _setup(db_session)
+    group = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, group, "Groceries")
+
+    first = await services.reconciliation.create_adjustment(checking.id, Decimal("-1.00"))
+    await services.transactions.update(
+        budget.id, first.id, TransactionUpdate(category_id=groceries.id)
+    )
+
+    second = await services.reconciliation.create_adjustment(checking.id, Decimal("-2.00"))
+
+    assert second.category_id is None
+    assert second.payee_id == first.payee_id, "same adjustment payee, no inherited category"

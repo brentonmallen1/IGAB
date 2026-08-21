@@ -8,7 +8,7 @@
 
   --text-primary: #e8f0ff;
   --text-secondary: #a8c0e0;
-  --text-muted: #6080a8;
+  --text-muted: #7ea0c9;
   --text-inverse: #0a1628;
 
   --color-accent: #60c0ff;
@@ -22,7 +22,7 @@
   --border-color: #1a3858;
   --border-subtle: #0f1e34;
   --input-bg: #0f1e34;
-  --input-border: #284870;
+  --input-border: #4a6b96;
   --input-focus-ring: #60c0ff;
 
   --row-hover-bg: rgba(96, 192, 255, 0.08);
@@ -65,7 +65,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -80,25 +80,25 @@
 
   --text-primary: #0a1628;
   --text-secondary: #283848;
-  --text-muted: #607088;
+  --text-muted: #4d5d74;
   --text-inverse: #ffffff;
 
-  --color-accent: #1870c0;
+  --color-accent: #005ca6;
   --color-accent-hover: #1060a0;
   --accent-color: var(--color-accent);
-  --color-positive: #208860;
-  --color-negative: #c84030;
-  --color-warning: #b88020;
-  --color-info: #1870c0;
+  --color-positive: #006846;
+  --color-negative: #ac2316;
+  --color-warning: #7d5300;
+  --color-info: #005ca6;
 
   --border-color: #c0d0e8;
   --border-subtle: #d8e8f8;
   --input-bg: #ffffff;
-  --input-border: #a8c0d8;
-  --input-focus-ring: #1870c0;
+  --input-border: #7f96ad;
+  --input-focus-ring: #005ca6;
 
-  --row-hover-bg: rgba(24, 112, 192, 0.06);
-  --row-selected-bg: rgba(24, 112, 192, 0.12);
+  --row-hover-bg: rgba(0, 92, 166, 0.06);
+  --row-selected-bg: rgba(0, 92, 166, 0.12);
 
   --shadow-sm: 0 1px 3px rgba(10, 22, 40, 0.1);
   --shadow-md: 0 4px 12px rgba(10, 22, 40, 0.15);
@@ -111,7 +111,7 @@
 
   --sidebar-text-primary: #e8f0ff;
   --sidebar-text-secondary: #a8c0e0;
-  --sidebar-text-muted: #6080a8;
+  --sidebar-text-muted: #6282ab;
 
   --tag-red: #c84030;
   --tag-orange: #c86820;
@@ -137,7 +137,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

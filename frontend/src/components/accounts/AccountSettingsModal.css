@@ -155,7 +155,7 @@
 .acct-modal__sf-badge {
   font-size: var(--font-size-2xs);
   font-weight: 600;
-  background: color-mix(in srgb, var(--color-positive) 15%, transparent);
+  background: color-mix(in srgb, var(--color-positive) 12%, transparent);
   color: var(--color-positive);
   padding: 1px 6px;
   border-radius: 10px;
