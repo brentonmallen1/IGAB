@@ -94,25 +94,22 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    # postgres, python and node define the runtime, and nothing in CI builds
-    # an image — a green check on a base-image bump exercises none of the
-    # change. Worse, these three each have a specific trap:
-    #   postgres: the backup container's pg_dump must match the db service's
-    #             pg_restore, and moving the server major is a pg_upgrade job
-    #   python:   Docker calls 3.13 -> 3.14 a *minor*; it is a whole runtime
-    #             upgrade, with wheel availability to verify
-    #   node:     build-image change, first exercised during a release
-    # Upgrade these deliberately, with a build. Security advisories against
-    # them still surface as Dependabot alerts; only the routine version
-    # updates are suppressed.
+    # python and node used to be suppressed here because nothing in CI built
+    # an image, so those bumps arrived with green checks that had exercised
+    # none of the change. docker-build.yml builds all four images on any PR
+    # touching a Dockerfile or lockfile, so they now carry real evidence —
+    # a python minor that broke a pymupdf or polars wheel, or a node major
+    # that broke the frontend build, fails the PR. Let them flow.
+    #
+    # postgres stays ignored, and not for the same reason. A build proves the
+    # image assembles; it says nothing about the trap here, which is a runtime
+    # pairing: the backup container's pg_dump writes an archive that the db
+    # service's pg_restore has to read. Bump one major alone and backups keep
+    # succeeding while restore silently stops working — the failure surfaces
+    # on the day you need it. Moving the server major is a pg_upgrade job, not
+    # a tag change, so both sides move together or not at all.
     ignore:
       - dependency-name: "postgres"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "python"
-        update-types:
-          - "version-update:semver-major"
-          - "version-update:semver-minor"
-      - dependency-name: "node"
         update-types: ["version-update:semver-major"]
     groups:
       docker-patch: # auto-merges
