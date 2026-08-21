@@ -1,9 +1,9 @@
 import re
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Mapping, Sequence
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, update
 from sqlalchemy.sql.elements import ColumnElement
@@ -531,7 +531,7 @@ class TransactionRepository(BaseRepository[Transaction]):
 
     _BULK_CHUNK = 1000  # ~15k params/chunk, well under asyncpg's 32767 limit
 
-    async def bulk_create(self, transactions: list[dict]) -> int:
+    async def bulk_create(self, transactions: Sequence[Mapping[str, Any]]) -> int:
         """Bulk insert transactions in chunks. Returns count inserted.
 
         Each chunk is its own INSERT statement, and Postgres validates the

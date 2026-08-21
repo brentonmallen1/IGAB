@@ -1,6 +1,7 @@
 import datetime
 import re
 import uuid
+from typing import TypedDict
 
 from rapidfuzz import fuzz
 from sqlalchemy import func, select, update
@@ -12,6 +13,25 @@ from igab.repositories.base import BaseRepository
 
 PAYEE_FUZZY_THRESHOLD = 80
 DUPLICATE_SUGGESTION_THRESHOLD = 75
+
+
+class DuplicatePayee(TypedDict):
+    id: str
+    name: str
+    transaction_count: int
+
+
+class DuplicateGroup(TypedDict):
+    """A cluster of payees judged to be the same one.
+
+    Typed so `-g["total_count"]` narrows to int. As a bare dict the row is
+    dict[str, str | int | list[...]], and unary minus is not defined across
+    that union.
+    """
+
+    payees: list[DuplicatePayee]
+    similarity: float
+    total_count: int
 
 
 class PayeeRepository(BaseRepository[Payee]):
@@ -231,7 +251,7 @@ class PayeeRepository(BaseRepository[Payee]):
 
     async def find_duplicate_groups(
         self, budget_id: uuid.UUID, threshold: int = DUPLICATE_SUGGESTION_THRESHOLD
-    ) -> list[dict]:
+    ) -> list[DuplicateGroup]:
         """Find groups of similar payees using fuzzy matching.
 
         Complete-linkage grouping: a payee joins a group only if its similarity
@@ -287,7 +307,7 @@ class PayeeRepository(BaseRepository[Payee]):
                         group_of[m] = gi
                     groups[gi].extend(groups.pop(gj))
 
-        result = []
+        result: list[DuplicateGroup] = []
         for indices in groups.values():
             members = [payees_with_counts[i] for i in indices]
             total_count = sum(c for _, c in members)
