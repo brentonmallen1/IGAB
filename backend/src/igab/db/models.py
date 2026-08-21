@@ -405,6 +405,11 @@ class Transaction(Base):
     # ledger date (budget months follow it); this is display-only provenance.
     bank_posted_date: Mapped[_PyDate | None] = mapped_column(Date, nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    # The bank's own amount and payee string, kept verbatim as provenance.
+    # `amount` and `payee_id` are the user's ledger values and may be edited
+    # or (on the pending→posted path) overwritten by the bank; these are not.
+    bank_amount: Mapped[Decimal | None] = mapped_column(Numeric(19, 4), nullable=True)
+    bank_payee: Mapped[str | None] = mapped_column(Text, nullable=True)
     payee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("payees.id", ondelete="SET NULL"), index=True
     )

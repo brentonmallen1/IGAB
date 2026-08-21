@@ -81,6 +81,8 @@ class TransactionResponse(BaseModel):
     entered_date: datetime.date | None = None
     bank_posted_date: datetime.date | None = None
     amount: Decimal
+    bank_amount: Decimal | None = None
+    bank_payee: str | None = None
     payee_id: uuid.UUID | None
     category_id: uuid.UUID | None
     memo: str | None

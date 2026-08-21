@@ -1163,6 +1163,138 @@ class TestSyncFlow:
         assert calls[1] == {existing.id}
 
 
+class TestBankRecordCapture:
+    """The bank's own amount and payee are provenance: they are captured on
+    every path a bank row can reach a transaction, and never overwritten by
+    the user's ledger edits. Without them a synced row keeps no trace of
+    what the bank actually reported."""
+
+    _make_svc = TestSyncFlow._make_svc
+    _base_sync_mocks = TestSyncFlow._base_sync_mocks
+
+    @pytest.mark.asyncio
+    async def test_new_import_records_bank_amount_and_payee(self) -> None:
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
+        svc.txn_service.create = AsyncMock(return_value=make_transaction())
+
+        raw_txns = [
+            {
+                "id": "txn-new",
+                "account_id": account.simplefin_account_id,
+                "posted": int(datetime.now(UTC).timestamp()),
+                "amount": "-50.00",
+                "description": "SQ *FOOD TRUCK",
+            }
+        ]
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            await svc.sync(conn.id, uuid.uuid4())
+
+        create_data = svc.txn_service.create.call_args[0][1]
+        assert create_data.bank_amount == D("-50.00")
+        assert create_data.bank_payee == "SQ *FOOD TRUCK"
+
+    @pytest.mark.asyncio
+    async def test_pending_to_posted_records_the_posted_bank_amount(self) -> None:
+        """The bank's figure changes at posting (tips, gas holds). The ledger
+        amount follows it, and bank_amount records what the bank said."""
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+        pending_txn = make_transaction(sync_id="txn-hold", cleared="pending", amount="-40.00")
+        svc.txn_repo.find_by_sync_id = AsyncMock(return_value=pending_txn)
+
+        raw_txns = [
+            {
+                "id": "txn-hold",
+                "account_id": account.simplefin_account_id,
+                "posted": int(datetime.now(UTC).timestamp()),
+                "amount": "-52.75",
+                "description": "SHELL OIL",
+            }
+        ]
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            await svc.sync(conn.id, uuid.uuid4())
+
+        kwargs = svc.txn_repo.update.call_args.kwargs
+        assert kwargs["amount"] == D("-52.75")
+        assert kwargs["bank_amount"] == D("-52.75")
+        assert kwargs["bank_payee"] == "SHELL OIL"
+
+    @pytest.mark.asyncio
+    async def test_auto_match_stamps_bank_values_onto_the_existing_row(self) -> None:
+        """The user's manual row keeps its own amount and payee — the bank's
+        are recorded alongside so the pair stays reviewable."""
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+        existing = make_transaction(amount="-50.00", cleared="cleared")
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "Groceries")]
+        )
+
+        raw_txns = [
+            {
+                "id": "txn-match",
+                "account_id": account.simplefin_account_id,
+                "posted": int(datetime.now(UTC).timestamp()),
+                "amount": "-50.00",
+                "description": "KROGER #412",
+            }
+        ]
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            await svc.sync(conn.id, uuid.uuid4())
+
+        kwargs = svc.txn_repo.update.call_args.kwargs
+        assert kwargs["bank_amount"] == D("-50.00")
+        assert kwargs["bank_payee"] == "KROGER #412"
+        # The user's ledger values are never rewritten by a match
+        assert "amount" not in kwargs
+        assert "payee_id" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_payee_falls_back_to_description_then_to_none(self) -> None:
+        svc = self._make_svc()
+        conn = make_connection()
+        account = make_account(first_sync_complete=True)
+        self._base_sync_mocks(svc, account, conn)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[])
+        svc.txn_service.create = AsyncMock(return_value=make_transaction())
+
+        raw_txns = [
+            {
+                "id": "txn-bare",
+                "account_id": account.simplefin_account_id,
+                "posted": int(datetime.now(UTC).timestamp()),
+                "amount": "-9.99",
+            }
+        ]
+        with (
+            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+        ):
+            await svc.sync(conn.id, uuid.uuid4())
+
+        create_data = svc.txn_service.create.call_args[0][1]
+        assert create_data.bank_payee is None
+        assert create_data.bank_amount == D("-9.99")
+
+
+
 # ─── Match decision ladder ────────────────────────────────────────────────────
 
 

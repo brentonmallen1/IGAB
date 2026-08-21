@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Tag, CheckCircle, Trash2, MoreHorizontal, ThumbsUp, GitMerge, Paperclip } from 'lucide-react'
+import { Tag, CheckCircle, Trash2, MoreHorizontal, ThumbsUp, GitMerge, Paperclip, Pencil } from 'lucide-react'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { FloatingSelectionBar } from '../../common/FloatingSelectionBar/FloatingSelectionBar'
@@ -20,6 +20,7 @@ interface Props {
   onMerge?: () => void
   canMerge?: boolean
   onAttachments?: () => void
+  onEdit?: () => void
 }
 
 const MORE_ITEMS: ContextMenuItem[] = [
@@ -43,6 +44,7 @@ export function SelectionActionBar({
   onMerge,
   canMerge,
   onAttachments,
+  onEdit,
 }: Props) {
   const { formatMoney } = useFormatters()
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
@@ -73,6 +75,13 @@ export function SelectionActionBar({
       sublabel={<span className={`sab__total sab__total--${totalClass}`}>{formatMoney(selectedTotal)}</span>}
       onClose={onClear}
     >
+      {onEdit && selectedCount === 1 && (
+        <FloatingSelectionBar.Button onClick={onEdit} title="Edit transaction details">
+          <Pencil size={14} />
+          Edit
+        </FloatingSelectionBar.Button>
+      )}
+
       <div className="sab__categorize">
         {showCategoryPicker ? (
           <div className="sab__category-picker">

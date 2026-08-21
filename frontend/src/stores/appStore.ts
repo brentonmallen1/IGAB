@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { syncThemeColorMeta } from '../utils/themeColor'
 
-export type Theme = 'dark' | 'light' | 'gruvbox-dark' | 'gruvbox-light' | 'catppuccin-mocha' | 'catppuccin-latte' | 'rose-pine' | 'rose-pine-moon' | 'rose-pine-dawn' | 'rose-pine-moon-dawn' | 'nord' | 'nineties-dark' | 'nineties-light' | 'eighties-dark' | 'eighties-light' | 'eighties-pop-dark' | 'eighties-pop-light' | 'synthwave-dark' | 'synthwave-light' | 'cozy-dark' | 'cozy-light' | 'vapor-dark' | 'vapor-light' | 'kodachrome-dark' | 'kodachrome-light' | 'phosphor-dark' | 'phosphor-light' | 'blueprint-dark' | 'blueprint-light' | 'desert-dark' | 'desert-light' | 'bauhaus-dark' | 'bauhaus-light' | 'paper-dark' | 'paper-light' | 'eink-dark' | 'eink-light'
+export type Theme = 'dark' | 'light' | 'gruvbox-dark' | 'gruvbox-light' | 'catppuccin-mocha' | 'catppuccin-latte' | 'rose-pine' | 'rose-pine-moon' | 'rose-pine-dawn' | 'rose-pine-moon-dawn' | 'nord' | 'nord-light' | 'nord-aurora' | 'nord-aurora-light' | 'nineties-dark' | 'nineties-light' | 'eighties-dark' | 'eighties-light' | 'eighties-pop-dark' | 'eighties-pop-light' | 'synthwave-dark' | 'synthwave-light' | 'cozy-dark' | 'cozy-light' | 'vapor-dark' | 'vapor-light' | 'kodachrome-dark' | 'kodachrome-light' | 'phosphor-dark' | 'phosphor-light' | 'blueprint-dark' | 'blueprint-light' | 'desert-dark' | 'desert-light' | 'bauhaus-dark' | 'bauhaus-light' | 'paper-dark' | 'paper-light' | 'eink-dark' | 'eink-light'
 
 export interface Palette {
   id: string
@@ -17,7 +17,8 @@ export const PALETTES: Palette[] = [
   { id: 'catppuccin', label: 'Catppuccin', dark: 'catppuccin-mocha', light: 'catppuccin-latte' },
   { id: 'rose-pine', label: 'Rosé Pine', dark: 'rose-pine', light: 'rose-pine-dawn' },
   { id: 'rose-pine-moon', label: 'Rosé Pine Moon', dark: 'rose-pine-moon', light: 'rose-pine-moon-dawn' },
-  { id: 'nord', label: 'Nord', dark: 'nord', light: 'nord' },
+  { id: 'nord', label: 'Nord', dark: 'nord', light: 'nord-light' },
+  { id: 'nord-aurora', label: 'Nord Aurora', dark: 'nord-aurora', light: 'nord-aurora-light' },
   { id: 'nineties', label: "90's", dark: 'nineties-dark', light: 'nineties-light' },
   { id: 'eighties', label: "80's", dark: 'eighties-dark', light: 'eighties-light' },
   { id: 'eighties-pop', label: "80's Pop", dark: 'eighties-pop-dark', light: 'eighties-pop-light' },
@@ -42,6 +43,12 @@ export function isLightTheme(theme: Theme): boolean {
   return theme === palette.light
 }
 
+/** A palette whose dark and light slots are the same theme has no mode to toggle. */
+export function hasBothModes(theme: Theme): boolean {
+  const palette = getPaletteForTheme(theme)
+  return palette.dark !== palette.light
+}
+
 export const THEMES: { value: Theme; label: string }[] = [
   { value: 'dark', label: 'Dark' },
   { value: 'light', label: 'Light' },
@@ -54,6 +61,9 @@ export const THEMES: { value: Theme; label: string }[] = [
   { value: 'rose-pine-dawn', label: 'Rosé Pine Dawn' },
   { value: 'rose-pine-moon-dawn', label: 'Rosé Pine Moon Dawn' },
   { value: 'nord', label: 'Nord' },
+  { value: 'nord-light', label: 'Nord Light' },
+  { value: 'nord-aurora', label: 'Nord Aurora' },
+  { value: 'nord-aurora-light', label: 'Nord Aurora Light' },
   { value: 'nineties-dark', label: "90's Dark" },
   { value: 'nineties-light', label: "90's Light" },
   { value: 'eighties-dark', label: "80's Dark" },
@@ -104,6 +114,7 @@ interface AppState {
   privacyMode: boolean
 
   setTheme: (theme: Theme) => void
+  toggleThemeMode: () => void
   setFontScale: (scale: FontScale) => void
   setCurrentBudgetId: (id: string) => void
   clearCurrentBudget: () => void
@@ -122,7 +133,7 @@ function currentMonthString(): string {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       theme: 'dark',
       fontScale: 'small',
       currentBudgetId: null,
@@ -137,6 +148,12 @@ export const useAppStore = create<AppState>()(
         document.documentElement.setAttribute('data-theme', theme)
         syncThemeColorMeta()
         set({ theme })
+      },
+      toggleThemeMode: () => {
+        const { theme, setTheme } = get()
+        const palette = getPaletteForTheme(theme)
+        if (palette.dark === palette.light) return
+        setTheme(isLightTheme(theme) ? palette.dark : palette.light)
       },
       setFontScale: (scale) => {
         document.documentElement.setAttribute('data-font-size', scale)

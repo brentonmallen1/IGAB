@@ -197,7 +197,7 @@
 
 .quick-add__date-chip--active {
   border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   color: var(--color-accent);
   font-weight: 600;
 }

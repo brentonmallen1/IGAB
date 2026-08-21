@@ -76,7 +76,7 @@
 }
 
 .overview-report__top-item:first-child .overview-report__top-rank {
-  background: color-mix(in srgb, var(--accent-color) 20%, var(--bg-secondary));
+  background: color-mix(in srgb, var(--accent-color) 12%, var(--bg-secondary));
   color: var(--accent-color);
 }
 

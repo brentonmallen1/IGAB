@@ -80,7 +80,7 @@
   margin-left: var(--spacing-xs);
   padding: 1px 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--chart-negative) 15%, transparent);
+  background: color-mix(in srgb, var(--chart-negative) 12%, transparent);
   color: var(--chart-negative);
   font-size: var(--font-size-2xs);
   font-weight: 600;

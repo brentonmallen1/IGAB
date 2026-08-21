@@ -45,6 +45,12 @@ class TransactionCreate:
     sync_id: str | None = None
     sync_source: str | None = None
     bank_posted_date: datetime.date | None = None
+    bank_amount: Decimal | None = None
+    bank_payee: str | None = None
+    # Set False when an uncategorized row is the point — a reconciliation
+    # adjustment must reach Ready to Assign, not inherit whatever category
+    # the last adjustment happened to be filed under.
+    auto_categorize: bool = True
     # AI provenance ('ai_receipt' | 'ai_nl') — set server-side only, never
     # accepted verbatim from clients.
     created_via: str | None = None
@@ -153,7 +159,7 @@ class TransactionService:
         # Auto-categorization: use the most recent category for this payee.
         # Falls back to default_category_id for new payees with no transaction history.
         category_id = data.category_id
-        if payee and not category_id:
+        if payee and not category_id and data.auto_categorize:
             category_id = await self.transaction_repo.get_most_recent_category_for_payee(
                 budget_id, payee.id
             )
@@ -177,6 +183,8 @@ class TransactionService:
             sync_id=data.sync_id,
             sync_source=data.sync_source,
             bank_posted_date=data.bank_posted_date,
+            bank_amount=data.bank_amount,
+            bank_payee=data.bank_payee,
             created_via=data.created_via,
             latitude=data.latitude,
             longitude=data.longitude,
@@ -610,6 +618,13 @@ class TransactionService:
             inherited = deleted.bank_posted_date or (deleted.date if deleted_is_bank else None)
             if inherited is not None:
                 updates["bank_posted_date"] = inherited
+        if survivor.bank_amount is None:
+            deleted_is_bank = bool(deleted.sync_id or deleted.sync_source)
+            inherited_amount = deleted.bank_amount or (deleted.amount if deleted_is_bank else None)
+            if inherited_amount is not None:
+                updates["bank_amount"] = inherited_amount
+        if survivor.bank_payee is None and deleted.bank_payee:
+            updates["bank_payee"] = deleted.bank_payee
         # Mirror case: survivor is the bank row, the deleted row is manual —
         # keep the user's date once as entered-date provenance.
         if (

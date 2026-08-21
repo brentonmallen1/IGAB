@@ -19,3 +19,5 @@
 @import './themes/bauhaus.css';
 @import './themes/paper.css';
 @import './themes/eink.css';
+/* last: its [data-theme] overrides must outrank the per-theme blocks above */
+@import './themes/high-contrast.css';

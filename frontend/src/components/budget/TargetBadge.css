@@ -16,12 +16,12 @@
 }
 
 .target-badge--funded {
-  background-color: color-mix(in srgb, var(--color-positive) 20%, transparent);
+  background-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
   color: var(--color-positive);
 }
 
 .target-badge--underfunded {
-  background-color: color-mix(in srgb, var(--color-negative) 20%, transparent);
+  background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
   color: var(--color-negative);
 }
 

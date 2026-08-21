@@ -101,6 +101,55 @@ async def test_merge_keeps_survivor_date_and_inherits_bank_posted_date(db_sessio
     assert survivor.bank_posted_date == TODAY, "bank date arrives as metadata instead"
 
 
+
+async def test_merge_inherits_bank_amount_and_payee_from_the_bank_row(db_session):
+    """The survivor is the user's row; the bank's own figures must survive the
+    merge as provenance instead of dying with the deleted row."""
+    services, budget, checking = await _setup(db_session)
+    manual = await create_transaction(db_session, budget, checking, "-50.00", TODAY)
+    synced = await create_transaction(
+        db_session, budget, checking, "-50.00", TODAY,
+        sync_id="t-bank", sync_source="simplefin",
+        bank_amount="-50.00", bank_payee="SHELL OIL",
+    )
+
+    survivor = await services.transactions.merge(
+        budget.id, [manual.id, synced.id], survivor_id=manual.id
+    )
+
+    assert survivor.amount == Decimal("-50.00"), "the user's ledger amount stands"
+    assert survivor.bank_amount == Decimal("-50.00")
+    assert survivor.bank_payee == "SHELL OIL"
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_merge_falls_back_to_the_bank_rows_own_amount(db_session):
+    """A bank row synced before bank_amount existed has none recorded; its
+    ledger amount is still the bank's figure and stands in for it."""
+    services, budget, checking = await _setup(db_session)
+    manual = await create_transaction(db_session, budget, checking, "-50.00", TODAY)
+    synced = await create_transaction(
+        db_session, budget, checking, "-50.00", TODAY,
+        sync_id="t-legacy", sync_source="simplefin",
+    )
+
+    survivor = await services.transactions.merge(
+        budget.id, [manual.id, synced.id], survivor_id=manual.id
+    )
+
+    assert survivor.bank_amount == Decimal("-50.00")
+
+
+async def test_merge_of_two_manual_rows_records_no_bank_amount(db_session):
+    services, budget, checking = await _setup(db_session)
+    a = await create_transaction(db_session, budget, checking, "-50.00", TODAY)
+    b = await create_transaction(db_session, budget, checking, "-50.00", TODAY)
+
+    survivor = await services.transactions.merge(budget.id, [a.id, b.id], survivor_id=a.id)
+
+    assert survivor.bank_amount is None
+    assert survivor.bank_payee is None
+
 async def test_merge_prefers_losers_explicit_bank_posted_date(db_session):
     services, budget, checking = await _setup(db_session)
     posted_day = TODAY - timedelta(days=1)

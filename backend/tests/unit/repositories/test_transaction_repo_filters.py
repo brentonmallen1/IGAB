@@ -171,3 +171,39 @@ class TestDuplicatePairStructuredFilter:
         assert "transfer_id" in sql.lower()
         # At least one side of every pair must be flat (not split, not transfer)
         assert " or " in sql.lower()
+
+
+class TestFreeTextSearchMatchesAmounts:
+    """Typing a bare number should find the transaction with that amount —
+    the sign is ignored, so an outflow of -12.34 matches '12.34'."""
+
+    @pytest.mark.asyncio
+    async def test_numeric_search_adds_amount_clause(self) -> None:
+        repo = _make_repo()
+        await repo.get_for_account(uuid.uuid4(), search="12.34")
+        sql = _captured_sql(repo)
+        assert "abs(transactions.amount) = 12.34" in sql.lower()
+        # Payee/memo matching is preserved alongside it
+        assert "ilike" in sql.lower() or "like" in sql.lower()
+
+    @pytest.mark.asyncio
+    async def test_currency_formatting_is_tolerated(self) -> None:
+        repo = _make_repo()
+        await repo.get_for_account(uuid.uuid4(), search="$1,200")
+        sql = _captured_sql(repo)
+        assert "abs(transactions.amount) = 1200" in sql.lower()
+
+    @pytest.mark.asyncio
+    async def test_non_numeric_search_has_no_amount_clause(self) -> None:
+        repo = _make_repo()
+        await repo.get_for_account(uuid.uuid4(), search="starbucks")
+        sql = _captured_sql(repo)
+        assert "abs(transactions.amount) =" not in sql.lower()
+
+    @pytest.mark.asyncio
+    async def test_partially_numeric_search_has_no_amount_clause(self) -> None:
+        """'12 west' is a payee fragment, not an amount."""
+        repo = _make_repo()
+        await repo.get_for_account(uuid.uuid4(), search="12 west")
+        sql = _captured_sql(repo)
+        assert "abs(transactions.amount) =" not in sql.lower()

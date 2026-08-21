@@ -1,0 +1,26 @@
+/* Honours the OS "increase contrast" preference.
+
+   With 40 palettes and no escape hatch, a user who needs more contrast than a
+   theme gives had only one option: abandon the theme they like. This raises
+   the dimmest tier instead, so the palette survives.
+
+   Specificity is load-bearing. Themes declare their tokens on
+   [data-theme="name"] (0,1,0) and the default theme on :root:not([data-theme])
+   (0,2,0). The selectors below match those weights exactly and this file is
+   imported last, so it wins on source order rather than by escalating with
+   !important. */
+@media (prefers-contrast: more) {
+  :root:not([data-theme]),
+  [data-theme] {
+    /* The muted tier is where every palette sits closest to its AA floor —
+       promoting it to the secondary tier is the single highest-value bump. */
+    --text-muted: var(--text-secondary);
+    --sidebar-text-muted: var(--sidebar-text-secondary);
+
+    /* Hairline separators become real edges. --input-border is already held
+       to 3:1 against its own field, so it is the right strength to borrow. */
+    --border-color: var(--input-border);
+    --border-subtle: var(--input-border);
+    --card-border: var(--input-border);
+  }
+}

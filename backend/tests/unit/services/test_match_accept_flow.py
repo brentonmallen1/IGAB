@@ -41,6 +41,9 @@ def make_txn(
     transfer_id: uuid.UUID | None = None,
     parent_transaction_id: uuid.UUID | None = None,
     bank_posted_date: datetime.date | None = None,
+    bank_amount: Decimal | None = None,
+    bank_payee: str | None = None,
+    amount: str = "-25.00",
     txn_date: datetime.date | None = None,
 ) -> MagicMock:
     t = MagicMock()
@@ -58,6 +61,9 @@ def make_txn(
     t.transfer_id = transfer_id
     t.parent_transaction_id = parent_transaction_id
     t.bank_posted_date = bank_posted_date
+    t.bank_amount = bank_amount
+    t.bank_payee = bank_payee
+    t.amount = Decimal(amount)
     t.payee_id = None
     t.budget_id = BUDGET_ID
     t.date = txn_date
@@ -255,6 +261,52 @@ class TestBankIdentityInheritance:
         update_params = _statement_params(svc.session.execute.call_args_list[1])
         assert "sync_source" not in update_params
 
+    async def test_bank_loser_confers_its_amount_and_payee(self) -> None:
+        """The keeper is the user's row; the bank's own figures survive the
+        merge as provenance rather than being lost with the deleted row."""
+        svc = make_service()
+        synced = make_txn(
+            sync_source="simplefin",
+            cleared="cleared",
+            amount="-52.75",
+            bank_payee="SHELL OIL",
+        )
+        manual = make_txn(cleared="uncleared", amount="-52.75")
+
+        await svc._accept_link(synced, manual, 0.9)
+
+        update_params = _statement_params(svc.session.execute.call_args_list[1])
+        assert update_params.get("bank_amount") == Decimal("-52.75")
+        assert update_params.get("bank_payee") == "SHELL OIL"
+
+    async def test_bank_losers_recorded_bank_amount_wins_over_its_ledger_amount(self) -> None:
+        svc = make_service()
+        synced = make_txn(
+            sync_source="simplefin",
+            cleared="cleared",
+            amount="-52.75",
+            bank_amount=Decimal("-50.00"),
+        )
+        manual = make_txn(cleared="uncleared")
+
+        await svc._accept_link(synced, manual, 0.9)
+
+        update_params = _statement_params(svc.session.execute.call_args_list[1])
+        assert update_params.get("bank_amount") == Decimal("-50.00")
+
+    async def test_keeper_keeps_its_own_bank_values(self) -> None:
+        svc = make_service()
+        synced = make_txn(sync_source="simplefin", cleared="cleared", amount="-52.75")
+        manual = make_txn(
+            cleared="uncleared", bank_amount=Decimal("-99.00"), bank_payee="EXISTING"
+        )
+
+        await svc._accept_link(synced, manual, 0.9)
+
+        update_params = _statement_params(svc.session.execute.call_args_list[1])
+        assert "bank_amount" not in update_params
+        assert "bank_payee" not in update_params
+
     async def test_manual_loser_confers_no_bank_provenance(self) -> None:
         svc = make_service()
         synced = make_txn(cleared="reconciled", sync_id="t-1")
@@ -264,6 +316,8 @@ class TestBankIdentityInheritance:
 
         update_params = _statement_params(svc.session.execute.call_args_list[1])
         assert "bank_posted_date" not in update_params
+        assert "bank_amount" not in update_params
+        assert "bank_payee" not in update_params
         assert "cleared" not in update_params
 
 

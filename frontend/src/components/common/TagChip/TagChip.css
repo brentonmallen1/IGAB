@@ -23,42 +23,42 @@
 
 .tag-chip--red {
   background-color: color-mix(in srgb, var(--tag-red) 18%, transparent);
-  color: var(--tag-red);
+  color: var(--text-primary);
 }
 
 .tag-chip--orange {
   background-color: color-mix(in srgb, var(--tag-orange) 18%, transparent);
-  color: var(--tag-orange);
+  color: var(--text-primary);
 }
 
 .tag-chip--yellow {
   background-color: color-mix(in srgb, var(--tag-yellow) 18%, transparent);
-  color: var(--tag-yellow);
+  color: var(--text-primary);
 }
 
 .tag-chip--green {
   background-color: color-mix(in srgb, var(--tag-green) 18%, transparent);
-  color: var(--tag-green);
+  color: var(--text-primary);
 }
 
 .tag-chip--teal {
   background-color: color-mix(in srgb, var(--tag-teal) 18%, transparent);
-  color: var(--tag-teal);
+  color: var(--text-primary);
 }
 
 .tag-chip--blue {
   background-color: color-mix(in srgb, var(--tag-blue) 18%, transparent);
-  color: var(--tag-blue);
+  color: var(--text-primary);
 }
 
 .tag-chip--purple {
   background-color: color-mix(in srgb, var(--tag-purple) 18%, transparent);
-  color: var(--tag-purple);
+  color: var(--text-primary);
 }
 
 .tag-chip--pink {
   background-color: color-mix(in srgb, var(--tag-pink) 18%, transparent);
-  color: var(--tag-pink);
+  color: var(--text-primary);
 }
 
 .tag-chip__remove {

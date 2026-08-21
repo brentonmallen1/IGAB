@@ -1,0 +1,15 @@
+.bank-record-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--color-accent);
+  opacity: 0.6;
+  cursor: help;
+  transition: opacity 0.15s;
+}
+
+.bank-record-icon:hover {
+  opacity: 1;
+}

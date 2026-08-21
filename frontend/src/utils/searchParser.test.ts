@@ -119,6 +119,88 @@ describe('amount filters', () => {
     expect(result.amountMin).toBe(10)
     expect(result.amountMax).toBe(50)
   })
+
+  it('parses an exact amount as a zero-width range', () => {
+    const result = parse('amount: 12.34')
+    expect(result.amountMin).toBe(12.34)
+    expect(result.amountMax).toBe(12.34)
+  })
+
+  it('parses an exact amount in compact form, with $ and commas', () => {
+    const result = parse('amount:$1,200')
+    expect(result.amountMin).toBe(1200)
+    expect(result.amountMax).toBe(1200)
+  })
+
+  it('ignores an unparseable amount value', () => {
+    const result = parse('amount: abc')
+    expect(result.amountMin).toBeUndefined()
+    expect(result.amountMax).toBeUndefined()
+  })
+
+  it('leaves a bare number as free text for the backend to match', () => {
+    expect(parse('12.34').text).toBe('12.34')
+  })
+})
+
+describe('date: filters (now = Tue 2026-08-11)', () => {
+  it('parses a bare M/D as a single day in the current year', () => {
+    const result = parse('date: 3/15')
+    expect(result.startDate).toBe('2026-03-15')
+    expect(result.endDate).toBe('2026-03-15')
+  })
+
+  it('parses M/D/YYYY', () => {
+    const result = parse('date:3/15/2025')
+    expect(result.startDate).toBe('2025-03-15')
+    expect(result.endDate).toBe('2025-03-15')
+  })
+
+  it('parses a two-digit year', () => {
+    expect(parse('date: 3/15/25').startDate).toBe('2025-03-15')
+  })
+
+  it('parses an ISO date', () => {
+    const result = parse('date: 2025-03-15')
+    expect(result.startDate).toBe('2025-03-15')
+    expect(result.endDate).toBe('2025-03-15')
+  })
+
+  it('parses a slash range', () => {
+    const result = parse('date: 3/1-3/15')
+    expect(result.startDate).toBe('2026-03-01')
+    expect(result.endDate).toBe('2026-03-15')
+  })
+
+  it('parses an ISO range with ..', () => {
+    const result = parse('date: 2025-03-01..2025-03-15')
+    expect(result.startDate).toBe('2025-03-01')
+    expect(result.endDate).toBe('2025-03-15')
+  })
+
+  it('parses an open-ended lower bound', () => {
+    const result = parse('date:>3/1')
+    expect(result.startDate).toBe('2026-03-01')
+    expect(result.endDate).toBeUndefined()
+  })
+
+  it('parses an open-ended upper bound', () => {
+    const result = parse('date:<3/15')
+    expect(result.endDate).toBe('2026-03-15')
+    expect(result.startDate).toBeUndefined()
+  })
+
+  it('falls back to natural language values', () => {
+    const result = parse('date: last month')
+    expect(result.startDate).toBe('2026-07-01')
+    expect(result.endDate).toBe('2026-07-31')
+  })
+
+  it('rejects an impossible date rather than rolling over', () => {
+    const result = parse('date: 2/30')
+    expect(result.startDate).toBeUndefined()
+    expect(result.text).toBeUndefined()
+  })
 })
 
 describe('category and payee filters', () => {

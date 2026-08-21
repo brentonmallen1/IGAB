@@ -219,6 +219,14 @@ class TransactionMatchingService:
         if loser_is_bank:
             if keeper.bank_posted_date is None:
                 updates["bank_posted_date"] = loser.bank_posted_date or loser.date
+            # The bank's own amount/payee follow the merge too — without them
+            # the surviving row loses all trace of what the bank reported.
+            if keeper.bank_amount is None:
+                updates["bank_amount"] = (
+                    loser.bank_amount if loser.bank_amount is not None else loser.amount
+                )
+            if keeper.bank_payee is None and loser.bank_payee:
+                updates["bank_payee"] = loser.bank_payee
             if keeper.cleared in ("uncleared", "pending") and loser.cleared in (
                 "cleared",
                 "reconciled",

@@ -10,28 +10,28 @@
   /* Text — warm off-white */
   --text-primary: #f0ece8;
   --text-secondary: #c0b8b0;
-  --text-muted: #808080;
+  --text-muted: #aaaaaa;
   --text-inverse: #181a1c;
 
   /* Semantic colors from the 90s palette */
-  --color-accent: #5a9aa0;
+  --color-accent: #74b5bb;
   --color-accent-hover: #70b0b8;
   --accent-color: var(--color-accent);
-  --color-positive: #5a9aa0;
-  --color-negative: #c0654a;
+  --color-positive: #74b5bb;
+  --color-negative: #f09074;
   --color-warning: #d4a84a;
-  --color-info: #4a6ab8;
+  --color-info: #84a9fc;
 
   /* Borders and inputs */
   --border-color: #363a3f;
   --border-subtle: #222528;
   --input-bg: #222528;
-  --input-border: #464a50;
-  --input-focus-ring: #5a9aa0;
+  --input-border: #6b6f76;
+  --input-focus-ring: #74b5bb;
 
   /* Row states */
-  --row-hover-bg: rgba(90, 154, 160, 0.08);
-  --row-selected-bg: rgba(90, 154, 160, 0.15);
+  --row-hover-bg: rgba(116, 181, 187, 0.08);
+  --row-selected-bg: rgba(116, 181, 187, 0.15);
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -76,7 +76,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -93,28 +93,28 @@
   /* Text — deep warm gray */
   --text-primary: #282a2c;
   --text-secondary: #484a50;
-  --text-muted: #888890;
+  --text-muted: #5e5e66;
   --text-inverse: #ffffff;
 
   /* Semantic colors — adjusted for light background */
-  --color-accent: #4a8890;
+  --color-accent: #28676f;
   --color-accent-hover: #3a7078;
   --accent-color: var(--color-accent);
-  --color-positive: #4a8890;
-  --color-negative: #a85040;
-  --color-warning: #b89040;
+  --color-positive: #28676f;
+  --color-negative: #9a4434;
+  --color-warning: #7c5900;
   --color-info: #3a5aa0;
 
   /* Borders and inputs */
   --border-color: #e0dcd5;
   --border-subtle: #f0ebe5;
   --input-bg: #ffffff;
-  --input-border: #d0ccc5;
-  --input-focus-ring: #4a8890;
+  --input-border: #97938d;
+  --input-focus-ring: #28676f;
 
   /* Row states */
-  --row-hover-bg: rgba(74, 136, 144, 0.06);
-  --row-selected-bg: rgba(74, 136, 144, 0.12);
+  --row-hover-bg: rgba(40, 103, 111, 0.06);
+  --row-selected-bg: rgba(40, 103, 111, 0.12);
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(40, 42, 44, 0.1);
@@ -130,7 +130,7 @@
   /* Sidebar text — sidebar is dark (#181a1c) in light theme */
   --sidebar-text-primary: #f0ece8;
   --sidebar-text-secondary: #c0b8b0;
-  --sidebar-text-muted: #808080;
+  --sidebar-text-muted: #838383;
 
   /* Tag color slots — 90s palette, adjusted for light bg */
   --tag-red: #a85040;
@@ -159,7 +159,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

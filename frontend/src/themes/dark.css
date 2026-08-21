@@ -8,26 +8,26 @@
   --bg-hover: #2a2d3e;
 
   --text-primary: #e8eaf0;
-  --text-secondary: #9da3b4;
-  --text-muted: #6b7280;
+  --text-secondary: #a4aabc;
+  --text-muted: #9aa1b0;
   --text-inverse: #0f1117;
 
-  --color-accent: #6c8cf7;
+  --color-accent: #7d9cff;
   --color-accent-hover: #8aa3f9;
   --accent-color: var(--color-accent);
   --color-positive: #4ade80;
-  --color-negative: #f87171;
+  --color-negative: #fc7574;
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
 
   --border-color: #2d3047;
   --border-subtle: #1e2235;
   --input-bg: #1a1d27;
-  --input-border: #3a3e54;
-  --input-focus-ring: #6c8cf7;
+  --input-border: #636880;
+  --input-focus-ring: #7d9cff;
 
-  --row-hover-bg: rgba(108, 140, 247, 0.06);
-  --row-selected-bg: rgba(108, 140, 247, 0.12);
+  --row-hover-bg: rgba(125, 156, 255, 0.06);
+  --row-selected-bg: rgba(125, 156, 255, 0.12);
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -41,7 +41,7 @@
   /* Sidebar text — validated for contrast against --sidebar-bg: #13161f */
   --sidebar-text-primary: #e8eaf0;
   --sidebar-text-secondary: #9da3b4;
-  --sidebar-text-muted: #6b7280;
+  --sidebar-text-muted: #7a818f;
 
   /* Tag color slots */
   --tag-red: #f87171;
@@ -70,7 +70,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

@@ -186,6 +186,8 @@ async def create_transaction(
     latitude: float | None = None,
     longitude: float | None = None,
     bank_posted_date: date | None = None,
+    bank_amount: Decimal | str | None = None,
+    bank_payee: str | None = None,
     entered_date: date | None = None,
 ) -> Transaction:
     txn = Transaction(
@@ -209,6 +211,8 @@ async def create_transaction(
         latitude=latitude,
         longitude=longitude,
         bank_posted_date=bank_posted_date,
+        bank_amount=Decimal(str(bank_amount)) if bank_amount is not None else None,
+        bank_payee=bank_payee,
         entered_date=entered_date,
     )
     session.add(txn)
@@ -385,7 +389,7 @@ def make_services(session: AsyncSession) -> Services:
         move_repo=BudgetMoveRepository(session),
     )
     reconciliation = ReconciliationService(
-        session, reconciliation_repo, account_repo, payee_repo, transaction_repo
+        session, reconciliation_repo, account_repo, payee_repo, transaction_repo, transactions
     )
     matching = TransactionMatchingService(session, transaction_repo, match_repo, payee_repo)
 

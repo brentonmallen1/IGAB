@@ -7,22 +7,22 @@
   --bg-hover: #26233a;
 
   --text-primary: #e0def4;
-  --text-secondary: #908caa;
-  --text-muted: #6e6a86;
+  --text-secondary: #b7b3d2;
+  --text-muted: #ada9c7;
   --text-inverse: #191724;
 
   --color-accent: #c4a7e7;
   --color-accent-hover: #ebbcba;
   --accent-color: var(--color-accent);
-  --color-positive: #31748f;
-  --color-negative: #eb6f92;
+  --color-positive: #73b5d2;
+  --color-negative: #ff86a7;
   --color-warning: #f6c177;
   --color-info: #9ccfd8;
 
   --border-color: #26233a;
   --border-subtle: #1f1d2e;
   --input-bg: #1f1d2e;
-  --input-border: #403d52;
+  --input-border: #6b687e;
   --input-focus-ring: #c4a7e7;
 
   --row-hover-bg: rgba(196, 167, 231, 0.06);
@@ -40,7 +40,7 @@
   /* Sidebar text — validated for contrast against --sidebar-bg: #1f1d2e */
   --sidebar-text-primary: #e0def4;
   --sidebar-text-secondary: #908caa;
-  --sidebar-text-muted: #6e6a86;
+  --sidebar-text-muted: #8884a1;
 
   /* Tag color slots — Rosé Pine */
   --tag-red: #eb6f92;
@@ -71,7 +71,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -85,27 +85,27 @@
   --bg-elevated: #fffaf3;
   --bg-hover: #f2e9e1;
 
-  --text-primary: #575279;
-  --text-secondary: #797593;
-  --text-muted: #9893a5;
+  --text-primary: #524d74;
+  --text-secondary: #575279;
+  --text-muted: #615c6c;
   --text-inverse: #faf4ed;
 
-  --color-accent: #907aa9;
-  --color-accent-hover: #d7827e;
+  --color-accent: #6a5582;
+  --color-accent-hover: #a1514f;
   --accent-color: var(--color-accent);
-  --color-positive: #286983;
-  --color-negative: #b4637a;
-  --color-warning: #ea9d34;
-  --color-info: #56949f;
+  --color-positive: #23657f;
+  --color-negative: #92455c;
+  --color-warning: #855300;
+  --color-info: #266671;
 
   --border-color: #dfdad9;
   --border-subtle: #f2e9e1;
   --input-bg: #fffaf3;
-  --input-border: #cecacd;
-  --input-focus-ring: #907aa9;
+  --input-border: #939092;
+  --input-focus-ring: #6a5582;
 
-  --row-hover-bg: rgba(144, 122, 169, 0.06);
-  --row-selected-bg: rgba(144, 122, 169, 0.12);
+  --row-hover-bg: rgba(106, 85, 130, 0.06);
+  --row-selected-bg: rgba(106, 85, 130, 0.12);
 
   --shadow-sm: 0 1px 3px rgba(87, 82, 121, 0.1);
   --shadow-md: 0 4px 12px rgba(87, 82, 121, 0.15);
@@ -120,8 +120,8 @@
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
   --sidebar-text-primary: #e0def4;
-  --sidebar-text-secondary: #908caa;
-  --sidebar-text-muted: #6e6a86;
+  --sidebar-text-secondary: #928eac;
+  --sidebar-text-muted: #928eac;
 
   /* Tag color slots — Rosé Pine Dawn */
   --tag-red: #b4637a;
@@ -152,7 +152,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -169,26 +169,26 @@
   --bg-hover: #e6e1ef;
 
   --text-primary: #433f5e;
-  --text-secondary: #615c7d;
-  --text-muted: #8d87a2;
+  --text-secondary: #544f6f;
+  --text-muted: #5c5770;
   --text-inverse: #f1eef6;
 
-  --color-accent: #907aa9;
-  --color-accent-hover: #c96a66;
+  --color-accent: #66517d;
+  --color-accent-hover: #a34846;
   --accent-color: var(--color-accent);
-  --color-positive: #2b7091;
-  --color-negative: #ad5a72;
-  --color-warning: #d68b21;
-  --color-info: #4f8d99;
+  --color-positive: #176080;
+  --color-negative: #8f3f58;
+  --color-warning: #804e00;
+  --color-info: #21626d;
 
   --border-color: #d9d3e3;
   --border-subtle: #e6e1ef;
   --input-bg: #f9f7fc;
-  --input-border: #c6bfd6;
-  --input-focus-ring: #907aa9;
+  --input-border: #928ca1;
+  --input-focus-ring: #66517d;
 
-  --row-hover-bg: rgba(144, 122, 169, 0.07);
-  --row-selected-bg: rgba(144, 122, 169, 0.14);
+  --row-hover-bg: rgba(102, 81, 125, 0.07);
+  --row-selected-bg: rgba(102, 81, 125, 0.14);
 
   --shadow-sm: 0 1px 3px rgba(67, 63, 94, 0.1);
   --shadow-md: 0 4px 12px rgba(67, 63, 94, 0.15);
@@ -203,8 +203,8 @@
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
   --sidebar-text-primary: #e0def4;
-  --sidebar-text-secondary: #908caa;
-  --sidebar-text-muted: #6e6a86;
+  --sidebar-text-secondary: #928eac;
+  --sidebar-text-muted: #928eac;
 
   /* Tag color slots — Moon accents darkened for the light surface */
   --tag-red: #ad5a72;
@@ -234,7 +234,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
@@ -248,26 +248,26 @@
   --bg-hover: #393552;
 
   --text-primary: #e0def4;
-  --text-secondary: #908caa;
-  --text-muted: #6e6a86;
+  --text-secondary: #c3bede;
+  --text-muted: #b8b4d3;
   --text-inverse: #232136;
 
-  --color-accent: #c4a7e7;
-  --color-accent-hover: #ea9a97;
+  --color-accent: #c8abec;
+  --color-accent-hover: #ed9d9a;
   --accent-color: var(--color-accent);
-  --color-positive: #3e8fb0;
-  --color-negative: #eb6f92;
+  --color-positive: #71c1e4;
+  --color-negative: #ff98b2;
   --color-warning: #f6c177;
   --color-info: #9ccfd8;
 
   --border-color: #393552;
   --border-subtle: #2a273f;
   --input-bg: #2a273f;
-  --input-border: #44415a;
-  --input-focus-ring: #c4a7e7;
+  --input-border: #73718c;
+  --input-focus-ring: #c8abec;
 
-  --row-hover-bg: rgba(196, 167, 231, 0.06);
-  --row-selected-bg: rgba(196, 167, 231, 0.12);
+  --row-hover-bg: rgba(200, 171, 236, 0.06);
+  --row-selected-bg: rgba(200, 171, 236, 0.12);
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -280,8 +280,8 @@
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
   --sidebar-text-primary: #e0def4;
-  --sidebar-text-secondary: #908caa;
-  --sidebar-text-muted: #6e6a86;
+  --sidebar-text-secondary: #928eac;
+  --sidebar-text-muted: #928eac;
 
   /* Tag color slots — Rosé Pine Moon */
   --tag-red: #eb6f92;
@@ -311,7 +311,7 @@
   --color-text-muted: var(--text-muted);
   --hover-bg: var(--bg-hover);
   --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 15%, transparent);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
   --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

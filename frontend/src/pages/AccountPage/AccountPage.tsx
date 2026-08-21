@@ -11,7 +11,8 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
-import { ReconcileBanner } from '../../components/accounts/ReconcileBanner'
+import { ReconcileModal } from '../../components/accounts/ReconcileModal'
+import { ReconcileStatusBar } from '../../components/accounts/ReconcileStatusBar'
 import { PendingReviewBanner } from '../../components/accounts/PendingReviewBanner'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
@@ -54,7 +55,13 @@ export function AccountPage() {
   const { data: accounts } = useAccounts(budgetId)
 
   const account = accounts?.find((a) => a.id === accountId)
-  const { isReconciling, reconcileAccountId, startReconciliation, setTransactionSearch } = useUIStore()
+  const {
+    isReconciling,
+    reconcileAccountId,
+    reconcileStatementBalance,
+    startReconciliation,
+    setTransactionSearch,
+  } = useUIStore()
   const { data: sfConnections } = useSimpleFINConnections()
   const firstConnection = sfConnections?.[0] ?? null
   const sync = useSyncSimpleFIN(budgetId)
@@ -63,7 +70,11 @@ export function AccountPage() {
   const { data: pendingMatches = [] } = usePendingMatches(budgetId)
   const [showMatchModal, setShowMatchModal] = useState(false)
 
-  const showReconcileBanner = isReconciling && reconcileAccountId === accountId
+  // The modal asks the opening question; once a statement balance is set the
+  // floating bar takes over and tracks the difference live.
+  const isReconcilingHere = isReconciling && reconcileAccountId === accountId
+  const showReconcileModal = isReconcilingHere && reconcileStatementBalance === null
+  const showReconcileBar = isReconcilingHere && reconcileStatementBalance !== null
 
   useEffect(() => {
     if (accountId) setSelectedAccount(accountId)
@@ -201,7 +212,7 @@ export function AccountPage() {
           <button
             className="account-page__reconcile-btn"
             onClick={() => startReconciliation(accountId!)}
-            disabled={isReconciling && reconcileAccountId === accountId}
+            disabled={isReconcilingHere}
           >
             Reconcile
           </button>
@@ -209,11 +220,13 @@ export function AccountPage() {
         </div>
       </div>
 
-      {showReconcileBanner && accountId && (
-        <ReconcileBanner accountId={accountId} accountName={account.name} />
+      {showReconcileModal && accountId && (
+        <ReconcileModal accountId={accountId} accountName={account.name} />
       )}
 
-      {!showReconcileBanner && budgetId && (
+      {showReconcileBar && accountId && <ReconcileStatusBar accountId={accountId} />}
+
+      {!isReconcilingHere && budgetId && (
         <PendingReviewBanner budgetId={budgetId} accountId={accountId ?? undefined} onView={setTransactionSearch} />
       )}
 

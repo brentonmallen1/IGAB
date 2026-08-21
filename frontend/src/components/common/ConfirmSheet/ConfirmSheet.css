@@ -37,7 +37,9 @@
 
 .confirm-sheet__confirm--destructive {
   background: var(--color-danger);
-  color: var(--overlay-text);
+  /* --overlay-text is fixed white, for scrims that are black in every theme.
+     This fill is themed, so it needs the theme's own on-fill colour. */
+  color: var(--text-inverse);
 }
 
 .confirm-sheet__cancel {
