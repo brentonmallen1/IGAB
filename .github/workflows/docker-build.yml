@@ -1,0 +1,94 @@
+# Build every image on PRs that could change what lands inside one.
+#
+# This closes the gap that made the first Dependabot sweep so awkward: ci.yml
+# runs tests, but nothing built an image, so a base-image bump arrived with a
+# full row of green checks that had exercised none of it. Four such PRs got
+# closed unverified rather than merged on false confidence — postgres 16->18,
+# python 3.13->3.14, and node 22->26 twice.
+#
+# Its own workflow rather than a job in ci.yml so it can carry path filters:
+# gating on paths at the workflow level would otherwise suppress the test jobs
+# too. Runs only when an image definition or a lockfile actually moves, so the
+# common CSS-or-handler PR pays nothing.
+#
+# amd64 only and never pushes. This answers "does it still build", not "does
+# the arm64 manifest assemble" — release-images.yml owns that, on a tag.
+#
+# Once this has proven stable, add `docker-build (<image>)` to the main branch
+# ruleset's required checks and relax the base-image `ignore` rules in
+# dependabot.yml: those bumps can flow normally once something verifies them.
+
+name: Docker build
+
+on:
+  pull_request:
+    paths:
+      - "**/Dockerfile*"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "docker-compose*.yml"
+      - ".github/workflows/docker-build.yml"
+  push:
+    branches: [main]
+    paths:
+      - "**/Dockerfile*"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - "docker-compose*.yml"
+      - ".github/workflows/docker-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: docker-build (${{ matrix.image }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: igab-api
+            context: backend
+            dockerfile: backend/Dockerfile
+            target: ""
+          - image: igab-web
+            context: frontend
+            dockerfile: frontend/Dockerfile
+            target: production
+          - image: igab-backup
+            context: scripts
+            dockerfile: scripts/Dockerfile
+            target: ""
+          - image: igab-aio
+            context: .
+            dockerfile: Dockerfile.aio
+            target: ""
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build ${{ matrix.image }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          push: false
+          # Shares the cache scope release-images.yml writes, so most layers
+          # are already warm and this stays a check rather than a rebuild.
+          cache-from: type=gha,scope=${{ matrix.image }}-linux-amd64
+          build-args: APP_VERSION=ci

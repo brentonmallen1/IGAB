@@ -216,7 +216,16 @@ release VERSION:
         exit 1
     fi
     echo "Releasing $version..."
-    git push origin main
+    # main is ruleset-protected: direct pushes are rejected and everything
+    # lands via PR, so there is never anything to push here. Assert we match
+    # the remote instead — otherwise this failed mid-release, after the
+    # version checks passed but before the tag existed.
+    git fetch --quiet origin main
+    if [ "$(git rev-parse main)" != "$(git rev-parse origin/main)" ]; then
+        echo "Error: local main and origin/main have diverged."
+        echo "  Land the work via a PR, then: git pull --ff-only origin main"
+        exit 1
+    fi
     # Create release (also creates the tag) with auto-generated notes
     gh release create "$version" --generate-notes --latest
     echo "✓ Released $version"
