@@ -4,7 +4,9 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Pinned rather than :latest so Dependabot tracks it — a floating tag drifts
+# silently on every rebuild and no bump ever shows up for review.
+COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /usr/local/bin/uv
 
 # Install third-party deps first (cached layer)
 COPY pyproject.toml uv.lock README.md ./

@@ -1,0 +1,112 @@
+# Weekly dependency updates across all four ecosystems in this repo.
+#
+# Grouping here is load-bearing, not cosmetic: it maps 1:1 onto the auto-merge
+# policy in .github/workflows/dependabot-auto-merge.yml. The `*-patch` and
+# `*-dev` groups merge themselves once CI is green; `*-minor` and every major
+# bump wait for a human.
+#
+# Do NOT merge patch and minor into a single group. fetch-metadata reports the
+# *highest* update type present in a group, so a mixed group either never
+# auto-merges or auto-merges a minor bump — neither is what we want.
+#
+# Note on `update-types` spelling: inside `groups` it is "patch"/"minor"/"major".
+# The longer "version-update:semver-patch" form belongs to `ignore` rules and to
+# the fetch-metadata action output. Three different contexts, three spellings.
+#
+# Security updates are deliberately left ungrouped — each CVE fix gets its own
+# PR so it can be reviewed and shipped on its own timeline, independent of the
+# Monday batch.
+
+version: 2
+
+updates:
+  # ─── Backend: pyproject.toml + uv.lock ──────────────────────────────────────
+  # Every dependency in pyproject.toml carries a `>=` constraint, which avoids
+  # the known Dependabot/uv bug where unconstrained deps never produce a PR.
+  - package-ecosystem: "uv"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "backend"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      backend-patch: # auto-merges
+        dependency-type: "production"
+        update-types: ["patch"]
+      backend-dev: # auto-merges
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+      backend-minor: # needs review
+        dependency-type: "production"
+        update-types: ["minor"]
+
+  # ─── Frontend: package.json + package-lock.json ─────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "frontend"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      frontend-patch: # auto-merges
+        dependency-type: "production"
+        update-types: ["patch"]
+      frontend-dev: # auto-merges
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+      frontend-minor: # needs review
+        dependency-type: "production"
+        update-types: ["minor"]
+
+  # ─── Base images: the four Dockerfiles + the compose files ──────────────────
+  # "/" picks up Dockerfile.aio and docker-compose*.yml at the repo root.
+  # Dependabot only sees the FROM tag here, never the packages inside the image
+  # — that gap is what image-scan.yml (Trivy) covers.
+  - package-ecosystem: "docker"
+    directories:
+      - "/backend"
+      - "/frontend"
+      - "/scripts"
+      - "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      docker-patch: # auto-merges
+        update-types: ["patch"]
+      docker-minor: # needs review
+        update-types: ["minor"]
+
+  # ─── The action pins in the workflows themselves ────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions-patch: # auto-merges
+        update-types: ["patch"]
+      actions-minor: # needs review
+        update-types: ["minor"]

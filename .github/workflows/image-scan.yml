@@ -1,0 +1,79 @@
+# Scan the published images for OS-level CVEs in their base layers.
+#
+# This covers the blind spot Dependabot cannot see. Dependabot reads the FROM
+# tag in a Dockerfile and tells you when `python:3.13-slim` gets a new tag — it
+# has no idea what packages are inside the image you actually shipped. Trivy
+# opens the image and enumerates them.
+#
+# Deliberately a separate workflow rather than a step inside release-images.yml:
+# that workflow publishes, it works, and a scanner has no business sitting in
+# its critical path.
+#
+# The weekly schedule is the point. A scan at build time only tells you about
+# CVEs known on release day; most base-layer CVEs are disclosed *after* you
+# ship. Re-scanning :latest every week is what catches those. After cutting a
+# release you can run this immediately via workflow_dispatch rather than
+# waiting for Monday.
+#
+# Trivy is Apache-2.0 and runs entirely on the runner — no account, no SaaS
+# backend. It does pull its vulnerability DB from a public registry, and that
+# anonymous pull is rate-limited, hence TRIVY_USERNAME/TRIVY_PASSWORD below:
+# not an authentication requirement, just a reliability measure.
+
+name: Image scan
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trivy:
+    name: trivy (${{ matrix.image }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [igab-api, igab-web, igab-backup, igab-aio]
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # exit-code 0: report, never fail. A CVE in a Debian base layer is
+      # something to triage in the Security tab, not a broken build siren on a
+      # Monday morning.
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+      # A distinct category per image is mandatory. Without it, each upload
+      # replaces the previous one and the Security tab shows results for
+      # whichever image finished last instead of all four.
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
