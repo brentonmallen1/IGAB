@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.13-blue" alt="Python 3.13" />
+  <img src="https://img.shields.io/badge/python-3.14-blue" alt="Python 3.14" />
   <img src="https://img.shields.io/badge/FastAPI-async-009688" alt="FastAPI" />
   <img src="https://img.shields.io/badge/React-19-61dafb" alt="React 19" />
   <img src="https://img.shields.io/badge/PostgreSQL-16-336791" alt="PostgreSQL" />
@@ -50,16 +50,16 @@ Your financial data is deeply personal. IGAB keeps it that way:
 
 ### Reports That Actually Help
 
-Twenty reports across six groups give you the visibility you need to plan and understand your finances:
+Twenty-one reports across six groups give you the visibility you need to plan and understand your finances:
 
 | Group | Reports |
 | --- | --- |
-| Overview | Spending, income, net change, ready-to-assign dashboard |
+| Overview | Spending, income, net change, and ready-to-assign on one dashboard |
 | Financial State | Net worth, account composition, liabilities, savings tracker |
-| Cash Flow | Income vs. expense, burn rate, Sankey money-flow diagram, cash projection |
+| Cash Flow | Income vs. expenses, burn rate, Sankey money-flow diagram, cash projection |
 | Budget | Budget vs. actual, cumulative variance, volatility |
 | Spending | Pareto breakdown, treemap, seasonality heatmap, subscriptions |
-| Insights | Anomaly detection, payee analysis, day-of-week patterns (with payday effect), event timeline |
+| Insights | Plan vs. reality, anomaly detection, payee analysis, day-of-week patterns (with payday effect), event timeline |
 
 Reports use date-range and category/payee/account filtering where applicable. Monthly reports (net worth, burn rate, etc.) have their own time horizon selectors.
 
@@ -100,6 +100,9 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
 - Payee management with merge tooling and fuzzy duplicate detection
 - Scheduled/recurring transactions
 - Statement reconciliation with adjustment handling
+- **Loans and liabilities** — amortization schedules, interest and origination
+  insight, promotional-financing periods, and a live payoff estimate drawn from
+  what you have actually been paying rather than the contractual minimum
 
 ### Bank Sync & Import
 - **SimpleFIN sync** — link multiple banks; encrypted token storage,
@@ -111,6 +114,37 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
   are not available in the data file, so they cannot be imported.
 - **CSV import** — per-account bank CSV import with configurable parsing
   (including EU decimal formats) and hash-based dedup
+
+### AI Assist *(optional)*
+
+Everything here runs against your own [Ollama](https://ollama.com/) server — no
+third-party API, nothing leaving your network — and every feature switches off
+cleanly when AI is disabled or the server is unreachable.
+
+- **Receipt → transaction in one step** — photograph a receipt, or pick an image
+  or PDF from your library, and a local vision model reads it: payee, amount,
+  date, memo, and a category, with a one-line reason for the category it picked.
+  IGAB then creates the transaction *and* files the image against it as an
+  attachment, so the record and its proof arrive together. Itemized receipts
+  become splits.
+- **Yours to approve** — scanned transactions land **unapproved**, queued for
+  review rather than dropping silently into your budget. Scanning runs as a
+  background job, so you can submit and keep moving.
+- **A bad scan never costs you the photo** — if extraction fails you still get a
+  transaction with the receipt attached and a memo telling you to fill in the
+  rest by hand, instead of an error and a lost image
+- **Type it or say it** — "coffee at Starbucks 5.50 yesterday" becomes a drafted
+  transaction, by keyboard or by microphone
+- **Payee normalization and category suggestions** on ordinary manual entry
+- **AI Activity page** — every job with the model it used, the prompt, the raw
+  response, and the words behind each entry, so you can see why it guessed what
+  it did
+
+Configured in Settings → AI, with a connection test and a model picker.
+Receipt scanning needs a **vision-capable** model — set one as the dedicated
+vision model there, or it falls back to your main model, which will not read
+images unless it happens to support them. The text features work with any
+general model.
 
 ### Mobile & PWA
 - **Installable app** — add IGAB to your phone's home screen (manifest +
@@ -124,20 +158,33 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
   between entries, "save & add another" chains purchases
 - **Receipt camera** — snap a photo (or pick from the library) while adding a
   transaction; images are converted server-side to WebP with thumbnails, HEIC
-  from iPhones included
+  from iPhones included. Hand it to the scanner above and the transaction fills
+  itself in.
 - **Nearby payees** *(opt-in, per device)* — with location enabled, quick-add
   suggests payees you've used near where you're standing; coordinates stay on
   your server and never touch budget math
 
 ### Comfort & Polish
-- **9 built-in themes** — dark, light, Gruvbox (dark/light), Catppuccin
-  (Mocha/Latte), Rosé Pine (+ Moon), and Nord — implemented with CSS custom
-  properties throughout
+- **20 themes, each in light and dark** — 40 variants in all: Default, Gruvbox,
+  Catppuccin, Rosé Pine (+ Moon), Nord (+ Aurora), Synthwave, Cozy, Vapor,
+  Kodachrome, Phosphor, Blueprint, Desert, Bauhaus, Paper, E-Ink, 90's, 80's,
+  and 80's Pop — built on CSS custom properties throughout, so every theme picks
+  up new UI for free
+- **Contrast is tested, not assumed** — an automated suite holds every palette to
+  WCAG AA across all its surfaces, and the UI honors `prefers-contrast`
+- **⌘K command palette** — navigation, budget actions, theme switching, and live
+  search from one prompt
 - Information-dense, keyboard-friendly UI designed to stay calm: color is
   reserved for state that matters (overspent, funded, needs attention)
-- Optional **local AI assist** via [Ollama](https://ollama.com/) for payee
-  normalization and category suggestions — runs on your hardware like
-  everything else, and entirely optional
+
+### Household & History
+- **Share a budget** — invite another person and grant them owner or member
+  access. Owners manage membership and can delete the budget; members do
+  everything day-to-day. A budget always keeps at least one owner — the API
+  refuses to remove the last one.
+- **Undo** — a change log records edits so they can be reversed, individually or
+  as a whole batch. A CSV import that went wrong is one undo, not an evening of
+  cleanup.
 
 ### Operations Built In
 - Automated **daily database backups** with retention pruning (production
@@ -238,7 +285,7 @@ data lives in `/data` (database, attachments, backups) — just mount one volume
 | `WEB_PORT` | | `8080` | Web UI port |
 | `TZ` | | `UTC` | Timezone |
 | `OLLAMA_HOST` | | — | Ollama server URL for AI features |
-| `OLLAMA_MODEL` | | `llama3.2` | Default LLM model |
+| `OLLAMA_MODEL` | | `llama3.2` | Seed LLM model; Settings → AI overrides it, and sets the vision model for receipts |
 | `BACKUP_INTERVAL_HOURS` | | `24` | Hours between backups |
 | `BACKUP_KEEP_DAYS` | | `30` | Prune backups older than this |
 | `BACKUP_AGE_RECIPIENT` | | — | age public key for encrypted backups |
@@ -403,7 +450,7 @@ just migrate                # single squashed migration (0001)
 
 | Layer | Technology |
 | --- | --- |
-| Backend | Python 3.13, FastAPI (fully async), SQLAlchemy + asyncpg, Alembic |
+| Backend | Python 3.14, FastAPI (fully async), SQLAlchemy + asyncpg, Alembic |
 | Frontend | React 19, TypeScript, Vite, Zustand, React Query, recharts |
 | Database | PostgreSQL 16 |
 | Deployment | Docker Compose (nginx + daily backups in the production profile) |
@@ -413,8 +460,9 @@ just migrate                # single squashed migration (0001)
 ## Roadmap
 
 - Deeper mobile polish (chart touch interactions, per-page refinements)
-- Advanced loan accounts (amortization, interest, extra-payment simulation)
-- Command palette, bill reminders
+- Extra-payment "what if" simulation for loans — amortization, interest, and
+  promo periods have shipped; the interactive simulator has not
+- Bill reminders
 - YNAB-compatible export — an exit strategy from IGAB itself, because a tool
   you can leave is a tool you can trust
 
