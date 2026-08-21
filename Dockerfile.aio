@@ -55,8 +55,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# uv for Python package management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# uv for Python package management. Pinned rather than :latest so Dependabot
+# tracks it — a floating tag drifts silently on every rebuild.
+COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /usr/local/bin/uv
 
 # Python backend
 WORKDIR /app

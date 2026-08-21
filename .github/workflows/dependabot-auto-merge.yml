@@ -1,0 +1,76 @@
+# Queue low-risk Dependabot PRs for merge once CI passes.
+#
+# This does NOT merge anything itself. `gh pr merge --auto` hands the PR to
+# GitHub's auto-merge queue, which holds it until the required status checks on
+# `main` go green. That indirection is the entire safety model, and it depends
+# on repo configuration that does not live in this file:
+#
+#   Settings > General > Pull Requests > Allow auto-merge         (must be ON)
+#   Settings > Rules > ruleset on `main`:
+#     - require a PR, with required approvals set to 0
+#       (Dependabot cannot approve its own PR; requiring 1 stalls everything)
+#     - require status checks: backend, frontend, dependency-review
+#
+# With auto-merge ON but no required checks, --auto merges IMMEDIATELY and the
+# test suite is skipped entirely. If you ever see a bump land without CI having
+# run, that ruleset is missing — that is the failure mode to watch for.
+#
+# `on: pull_request` (not pull_request_target) is correct here. Dependabot runs
+# honor the permissions block below, and nothing in this job checks out or
+# executes PR code, so there is no untrusted-code path to escalate.
+
+name: Dependabot auto-merge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v3
+
+      # Gate on the group name from .github/dependabot.yml rather than on
+      # inferred metadata. For a grouped PR, `update-type` collapses to the
+      # highest bump in the group and `dependency-type` is ambiguous when the
+      # group spans several packages — the group name is unambiguous.
+      - name: Decide whether this can merge unattended
+        id: gate
+        env:
+          GROUP: ${{ steps.meta.outputs.dependency-group }}
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+        run: |
+          set -euo pipefail
+          automerge=false
+          case "$GROUP" in
+            backend-patch|backend-dev|frontend-patch|frontend-dev|docker-patch|actions-patch)
+              automerge=true
+              ;;
+            "")
+              # Ungrouped PR — a major bump, or a security update (those are
+              # deliberately never grouped). Patch level only.
+              if [ "$UPDATE_TYPE" = "version-update:semver-patch" ]; then
+                automerge=true
+              fi
+              ;;
+          esac
+          echo "automerge=$automerge" >> "$GITHUB_OUTPUT"
+          echo "group='${GROUP}' update-type='${UPDATE_TYPE}' -> automerge=$automerge"
+
+      - name: Enable auto-merge
+        if: steps.gate.outputs.automerge == 'true'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"
+
+      - name: Leave for review
+        if: steps.gate.outputs.automerge != 'true'
+        run: echo "Minor or major bump — leaving this one for a human."
