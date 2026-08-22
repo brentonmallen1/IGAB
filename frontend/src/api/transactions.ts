@@ -114,6 +114,9 @@ export interface BudgetTransactionParams {
   payeeIds?: string[]
   accountIds?: string[]
   dayOfWeek?: number
+  /** Restrict to these activity classes, so the panel totals what the chart
+   *  that opened it counted rather than every row of the same sign. */
+  activityClasses?: string[]
   limit?: number
   offset?: number
 }
@@ -141,6 +144,8 @@ export function useBudgetTransactions(
       if (params!.categoryIds?.length) p.category_ids = params!.categoryIds.join(',')
       if (params!.payeeIds?.length) p.payee_ids = params!.payeeIds.join(',')
       if (params!.accountIds?.length) p.account_ids = params!.accountIds.join(',')
+      if (params!.activityClasses?.length)
+        p.activity_classes = params!.activityClasses.join(',')
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
         { params: p },
@@ -476,5 +481,28 @@ export function useTransaction(transactionId: string | null) {
       return data
     },
     enabled: !!transactionId,
+  })
+}
+
+export interface TransactionClassification {
+  activity_class: string
+  label: string
+  reason: string
+  explanation: string
+}
+
+/** Why a transaction counts the way it does in reports. Fetched on demand —
+ *  the class is derived per row, so it is not carried on list responses. */
+export function useTransactionClassification(transactionId: string | null) {
+  return useQuery({
+    queryKey: ['transaction-classification', transactionId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TransactionClassification>(
+        `/transactions/${transactionId}/classification`,
+      )
+      return data
+    },
+    enabled: !!transactionId,
+    staleTime: 30_000,
   })
 }

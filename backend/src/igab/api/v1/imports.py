@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import re
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -82,6 +83,9 @@ class YNABImportResult(BaseModel):
     #: Register rows belonging to those accounts — deliberately excluded,
     #: distinct from `skipped` (dedup/errors).
     transactions_excluded: int = 0
+    #: Transfer legs imported without their partner. Non-zero means some rows
+    #: that are really internal movement could not be identified as such.
+    transfer_legs_unpaired: int = 0
     errors: list[str]
 
 
@@ -90,6 +94,14 @@ class YNABAccountPreview(BaseModel):
     transaction_count: int
     suggested_type: str
     suggested_on_budget: bool
+    #: The name gave no confident signal (or gave an ambiguous one), so the
+    #: suggestion is a fallback. The mapping UI should ask the user to confirm
+    #: rather than letting it through pre-filled — a tracked account slipping in
+    #: as on-budget corrupts to_be_assigned for the whole budget.
+    needs_review: bool = False
+    #: Sum of the account's register rows, shown next to the type picker so the
+    #: user can tell a house from its mortgage at a glance.
+    implied_balance: Decimal = Decimal("0")
 
 
 class YNABPreviewResult(BaseModel):
@@ -117,39 +129,148 @@ class YNABAccountTypeChoice(BaseModel):
 #   Mortgage / Auto / Student / Personal loans → loan (off budget; add a
 #     Liability record for payoff tracking)
 #   Asset tracking (brokerage, 401k, IRA, HSA, ESPP) → investment
-#   Other tracking assets (crypto, treasury, wallets) → other_asset
+#   Other tracking assets (crypto, treasury) → other_asset
 #   Liability tracking → other_liability
+#
+# Matching is token-based, never substring: "ira" must not fire on "Admiral",
+# "cc" must not fire on "Account", "mm" must not fire on "Summit". Multi-word
+# keywords ("money market") match as adjacent tokens.
+#
+# Getting `on_budget` wrong is not a cosmetic error: to_be_assigned is
+# `total_account_balance - total_category_balance - assigned_in_future`, so an
+# account wrongly ON budget silently corrupts every budget number. Rules are
+# therefore ordered most-specific first, and anything unrecognised is returned
+# with needs_review set so the mapping UI can demand a decision.
 _TYPE_HINTS: list[tuple[tuple[str, ...], str, bool]] = [
-    (("mortgage", "loan", "student"), "loan", False),
-    (("credit", "card", "visa", "amex", "mastercard", "discover"), "credit_card", True),
+    # Explicit debt first — "Cedar Grove Property Loan" is a loan, not property.
+    (("mortgage", "loan", "student", "heloc"), "loan", False),
+    (
+        ("credit", "card", "visa", "amex", "mastercard", "discover", "cc"),
+        "credit_card",
+        True,
+    ),
     (
         (
             "invest",
             "brokerage",
             "401k",
-            "401(k)",
+            "401 k",
             "403b",
+            "403 b",
+            "457",
             "ira",
             "roth",
             "hsa",
             "retirement",
             "espp",
+            "stock",
+            "equity",
+            "rollover",
+            "pension",
+            "annuity",
         ),
         "investment",
         False,
     ),
-    (("crypto", "treasury", "wallet"), "other_asset", False),
-    (("saving", "emergency", "money market"), "savings", True),
+    (("crypto", "treasury"), "other_asset", False),
+    (("checking", "chequing", "chk", "debit"), "checking", True),
+    (("hysa", "money market", "mm", "saving", "savings", "emergency"), "savings", True),
     (("cash",), "cash", True),
 ]
 
+# Names describing something owned or owed rather than a bank account. Which
+# side it falls on cannot be read from the name — "Birchwood Property Ferry" is
+# a mortgage while "Birchwood Property Ferry House" is the house — so the sign
+# of the account's own register decides. Either way the account is OFF budget,
+# which is the part that protects to_be_assigned; the asset/liability split
+# only affects net-worth presentation, so a wrong guess there is cheap.
+_TRACKED_HINTS: tuple[str, ...] = (
+    "property",
+    "house",
+    "home",
+    "real estate",
+    "land",
+    "condo",
+    "apartment",
+    "vehicle",
+    "car",
+    "truck",
+    "boat",
+    "motorcycle",
+    "auto",
+    "rv",
+)
 
-def suggest_account_type(name: str) -> tuple[str, bool]:
-    lowered = name.lower()
+#: YNAB users commonly mark tracking accounts in the name itself. That is a
+#: deliberate statement about budget membership, so it outranks any type
+#: keyword that also happens to appear ("Lakeside Trust MM - tracked" is a
+#: tracking account, not a money-market savings account).
+_OFF_BUDGET_MARKERS: tuple[str, ...] = ("tracked", "tracking", "off budget")
+
+
+def _normalize_for_match(name: str) -> str:
+    """Lowercase, punctuation → single spaces, padded so " kw " matches on
+    token boundaries at either end."""
+    return " " + re.sub(r"[^a-z0-9]+", " ", name.lower()).strip() + " "
+
+
+#: Keywords that also match inside a run-together name ("TreasuryDirect",
+#: "SavingsPlus"). Listed explicitly rather than by length: a length rule lets
+#: "discover" fire on "Discovery Fund". Every entry here must be a word that
+#: cannot be the prefix of an unrelated one.
+_CONCATENATION_SAFE: frozenset[str] = frozenset(
+    {"treasury", "brokerage", "mortgage", "savings", "checking", "retirement"}
+)
+
+
+#: Keywords are stems, not whole words: "invest" has to reach "Investments",
+#: "Investment Account" and "Investing". The move from substring to token
+#: matching silently dropped every inflected form — "Investments" is a very
+#: common YNAB account name, and it began importing as ON-BUDGET checking,
+#: folding a brokerage balance straight into Ready to Assign. An explicit
+#: suffix list restores that reach without the substring rule's false
+#: positives ("invest" as substring also hits "investigation").
+_STEM_SUFFIXES: tuple[str, ...] = ("", "s", "es", "ing", "ment", "ments")
+
+
+def _matches(normalized: str, keywords: tuple[str, ...]) -> bool:
+    for kw in keywords:
+        for suffix in _STEM_SUFFIXES:
+            if f" {kw}{suffix} " in normalized:
+                return True
+        if kw in _CONCATENATION_SAFE and kw in normalized:
+            return True
+    return False
+
+
+def suggest_account_type(
+    name: str, implied_balance: Decimal | None = None
+) -> tuple[str, bool, bool]:
+    """Guess (account_type, on_budget, needs_review) for a YNAB account name.
+
+    `implied_balance` is the sum of the account's register rows. It is used only
+    to pick asset vs liability for tracked-thing names, where the name alone is
+    genuinely ambiguous.
+    """
+    normalized = _normalize_for_match(name)
+
+    if _matches(normalized, _OFF_BUDGET_MARKERS):
+        is_liability = implied_balance is not None and implied_balance < 0
+        return ("other_liability" if is_liability else "other_asset"), False, True
+
     for keywords, account_type, on_budget in _TYPE_HINTS:
-        if any(k in lowered for k in keywords):
-            return account_type, on_budget
-    return "checking", True
+        if _matches(normalized, keywords):
+            return account_type, on_budget, False
+
+    if _matches(normalized, _TRACKED_HINTS):
+        is_liability = implied_balance is not None and implied_balance < 0
+        # Off budget either way; the side is a suggestion worth confirming.
+        return ("other_liability" if is_liability else "other_asset"), False, True
+
+    # Unrecognised. `checking` stays the convenient default, but the caller is
+    # told not to trust it — silently importing an unknown account as on-budget
+    # is exactly how a tracked account corrupts to_be_assigned.
+    return "checking", True, True
 
 
 def parse_account_types_form(
@@ -190,18 +311,25 @@ def parse_account_types_form(
 
 def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
     counts: dict[str, int] = {}
+    balances: dict[str, Decimal] = {}
     for txn in ynab_budget.transactions:
         counts[txn.account_name] = counts.get(txn.account_name, 0) + 1
+        # Split parents carry the full amount and their legs are nested, so
+        # summing top-level rows gives the account balance without double count.
+        balances[txn.account_name] = balances.get(txn.account_name, Decimal("0")) + txn.amount
 
     accounts = []
     for name in sorted(counts):
-        suggested_type, suggested_on_budget = suggest_account_type(name)
+        implied = balances.get(name, Decimal("0"))
+        suggested_type, suggested_on_budget, needs_review = suggest_account_type(name, implied)
         accounts.append(
             YNABAccountPreview(
                 name=name,
                 transaction_count=counts[name],
                 suggested_type=suggested_type,
                 suggested_on_budget=suggested_on_budget,
+                needs_review=needs_review,
+                implied_balance=implied,
             )
         )
     return YNABPreviewResult(

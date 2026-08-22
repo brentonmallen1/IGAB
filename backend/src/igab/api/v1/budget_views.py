@@ -2,7 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from igab.api.v1.schemas.budget_view import BudgetViewCreate, BudgetViewResponse, BudgetViewUpdate
+from igab.api.v1.schemas.budget_view import (
+    BudgetViewCreate,
+    BudgetViewResponse,
+    BudgetViewUpdate,
+)
 from igab.dependencies import BudgetAccess, CurrentUser, ViewAccess, get_budget_view_repo
 from igab.domain.exceptions import NotFoundError
 from igab.repositories.budget_view_repo import BudgetViewRepository
@@ -10,14 +14,14 @@ from igab.repositories.budget_view_repo import BudgetViewRepository
 router = APIRouter()
 
 
+ViewRepo = Annotated[BudgetViewRepository, Depends(get_budget_view_repo)]
+
+
 @router.get("/{budget_id}/views", response_model=list[BudgetViewResponse])
 async def list_budget_views(
-    budget_id: BudgetAccess,
-    current_user: CurrentUser,
-    view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
+    budget_id: BudgetAccess, current_user: CurrentUser, repo: ViewRepo
 ) -> list[BudgetViewResponse]:
-    views = await view_repo.get_all(budget_id)
-    return [BudgetViewResponse.model_validate(v) for v in views]
+    return [BudgetViewResponse.model_validate(v) for v in await repo.get_all(budget_id)]
 
 
 @router.post(
@@ -29,21 +33,24 @@ async def create_budget_view(
     budget_id: BudgetAccess,
     body: BudgetViewCreate,
     current_user: CurrentUser,
-    view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
+    repo: ViewRepo,
 ) -> BudgetViewResponse:
-    view = await view_repo.create(budget_id=budget_id, name=body.name)
-    await view_repo.set_categories(view.id, body.category_ids)
-    view = await view_repo.get_with_categories(view.id)
-    return BudgetViewResponse.model_validate(view)
+    # Name collisions become a 409 via the IntegrityError handler in main,
+    # which reads the constraint that actually failed. Catching it here meant
+    # a duplicate PLACEMENT was reported as 'a view named "" already exists'.
+    view = await repo.create(
+        budget_id=budget_id, name=body.name, hide_unassigned=body.hide_unassigned
+    )
+    if body.groups:
+        await repo.set_groups(view.id, body.groups)
+    return BudgetViewResponse.model_validate(await repo.get_full(view.id))
 
 
 @router.get("/views/{view_id}", response_model=BudgetViewResponse)
 async def get_budget_view(
-    view_id: ViewAccess,
-    current_user: CurrentUser,
-    view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
+    view_id: ViewAccess, current_user: CurrentUser, repo: ViewRepo
 ) -> BudgetViewResponse:
-    view = await view_repo.get_with_categories(view_id)
+    view = await repo.get_full(view_id)
     if view is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="View not found")
     return BudgetViewResponse.model_validate(view)
@@ -54,28 +61,35 @@ async def update_budget_view(
     view_id: ViewAccess,
     body: BudgetViewUpdate,
     current_user: CurrentUser,
-    view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
+    repo: ViewRepo,
 ) -> BudgetViewResponse:
     try:
-        changes = body.model_dump(exclude_none=True)
-        category_ids = changes.pop("category_ids", None)
+        changes = {
+            k: v
+            for k, v in (
+                ("name", body.name),
+                ("sort_order", body.sort_order),
+                ("hide_unassigned", body.hide_unassigned),
+            )
+            if v is not None
+        }
         if changes:
-            await view_repo.update(view_id, **changes)
-        if category_ids is not None:
-            await view_repo.set_categories(view_id, category_ids)
+            await repo.update(view_id, **changes)
+        # Groups first: placements may reference ids created in the same call.
+        if body.groups is not None:
+            await repo.set_groups(view_id, body.groups)
+        if body.placements is not None:
+            await repo.set_placements(view_id, [p.model_dump() for p in body.placements])
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
-    view = await view_repo.get_with_categories(view_id)
-    return BudgetViewResponse.model_validate(view)
+    return BudgetViewResponse.model_validate(await repo.get_full(view_id))
 
 
 @router.delete("/views/{view_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_budget_view(
-    view_id: ViewAccess,
-    current_user: CurrentUser,
-    view_repo: Annotated[BudgetViewRepository, Depends(get_budget_view_repo)],
+    view_id: ViewAccess, current_user: CurrentUser, repo: ViewRepo
 ) -> None:
     try:
-        await view_repo.soft_delete(view_id)
+        await repo.soft_delete(view_id)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

@@ -78,12 +78,43 @@ export interface Category {
   tags?: TagSimple[]
 }
 
-export interface BudgetView {
+export interface BudgetFilter {
   id: string
   budget_id: string
   name: string
   sort_order: number
   category_ids: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface BudgetViewGroup {
+  id: string
+  name: string
+  sort_order: number
+}
+
+export interface BudgetViewPlacement {
+  category_id: string
+  /** null = placed in the view but in no group; shown under Unassigned. */
+  group_id: string | null
+  sort_order: number
+  is_hidden: boolean
+}
+
+/** A different arrangement of the same categories. Unlike a BudgetFilter,
+ *  which narrows the set, a view regroups it — and never edits the budget's
+ *  own category groups. */
+export interface BudgetView {
+  id: string
+  budget_id: string
+  name: string
+  sort_order: number
+  /** Drop categories this view hasn't placed, instead of collecting them under
+   *  Unassigned. Off by default so a newly added category surfaces. */
+  hide_unassigned: boolean
+  groups: BudgetViewGroup[]
+  placements: BudgetViewPlacement[]
   created_at: string
   updated_at: string
 }
@@ -218,7 +249,12 @@ export interface SpendingReport {
 export interface IncomeExpenseMonth {
   month: string
   income: number
+  /** Money spent. Saving and debt principal are separate — both leave the
+   *  budget, but neither is spending. */
   expenses: number
+  savings: number
+  debt_principal: number
+  /** income - expenses - savings - debt_principal, so the parts reconcile. */
   net: number
 }
 
@@ -368,6 +404,10 @@ export interface SankeyNode {
   id: string
   name: string
   type: 'income_payee' | 'budget' | 'category_group' | 'category' | 'expense_payee'
+  /** The entity this node stands for. `id` is a display key that may compose
+   *  several ids — a category node is keyed by (group, category) so one
+   *  category can sit under both its own group and the savings trunk. */
+  entity_id?: string | null
 }
 
 export interface SankeyLink {
@@ -385,7 +425,13 @@ export interface CashFlowReport {
   nodes: SankeyNode[]
   links: SankeyLink[]
   total_income: number
+  /** Everything that left the budget — the links off the budget node sum to
+   *  this. `total_spending` + `total_savings` + `total_debt_principal` is how
+   *  it splits; a card labelled "Expenses" must use the first, not this. */
   total_expense: number
+  total_spending: number | string
+  total_savings: number | string
+  total_debt_principal: number | string
   category_payees: Record<string, CategoryPayee[]>
   group_categories: Record<string, CategoryPayee[]>
 }
@@ -474,9 +520,39 @@ export interface SpendingGroupItem {
   children?: SpendingGroupItem[]
 }
 
+export interface SpendingClassExcluded {
+  activity_class: string
+  label: string
+  categories: number
+  total: number | string
+}
+
 export interface SpendingGroupedReport {
   groups: SpendingGroupItem[]
   total: number
+  /** What the active view kept out: categories with spending in the window
+   *  that the view hides. Zero without a view. Decimals arrive as strings —
+   *  coerce before math. */
+  view_hidden_categories: number
+  view_hidden_total: number | string
+  /** Savings / debt activity in categories the user is looking at that a
+   *  spending report will not count. Empty without a selection or view. */
+  class_excluded: SpendingClassExcluded[]
+}
+
+export interface CategoryClassSlice {
+  activity_class: string
+  label: string
+  total: number | string
+  count: number
+}
+
+export interface CategoryClassification {
+  classes: CategoryClassSlice[]
+  window_months: number
+  dominant: string | null
+  dominant_label: string | null
+  explanation: string | null
 }
 
 export interface SeasonalityCell {
@@ -528,6 +604,13 @@ export interface TimelineTransaction {
   payee_name: string | null
   category_name: string | null
   memo: string | null
+  /** What this row counts as — 'savings', 'debt_principal', 'income', etc.
+   *  A large transfer into savings belongs on this timeline, but drawing it
+   *  as an expense because the amount is negative would misreport it. */
+  activity_class: string
+  /** Its display label, served rather than mirrored — a local copy here had
+   *  already drifted from the backend's wording. */
+  activity_label: string
 }
 
 export interface TimelineReport {

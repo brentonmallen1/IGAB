@@ -185,6 +185,29 @@ typecheck:
 test-frontend:
     docker compose --profile dev exec frontend npm test
 
+# Run exactly what CI runs, locally, without Docker.
+#
+# Every other quality recipe here shells into docker compose, which is fine
+# until the containers aren't up — at which point it is tempting to improvise
+# an equivalent, and the equivalents are not equivalent. `npx tsc --noEmit` in
+# particular exits 0 having checked nothing: the root tsconfig is
+# `{"files": [], "references": [...]}`, so with no file arguments it compiles an
+# empty program. `tsc -b` (what `npm run typecheck` runs) is the real check.
+#
+# Run this before pushing and there is nothing left for CI to surprise you with.
+ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "── backend: ruff check ──"        && cd backend && uv run ruff check src/
+    echo "── backend: ruff format check ──" && uv run ruff format --check src/
+    echo "── backend: ty ──"                && uv run ty check src/
+    echo "── backend: pytest ──"            && uv run pytest
+    cd ../frontend
+    echo "── frontend: typecheck ──"        && npm run typecheck
+    echo "── frontend: vitest ──"           && npm test
+    echo
+    echo "All CI checks passed."
+
 # ─── Production ───────────────────────────────────────────────────────────────
 
 # Start in production mode (includes nginx)

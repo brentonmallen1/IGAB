@@ -19,11 +19,11 @@ export function VarianceReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
-  const { data, isLoading, isError, refetch } = useVarianceReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = useVarianceReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   const latest = points[points.length - 1]

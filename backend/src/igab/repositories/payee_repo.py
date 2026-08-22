@@ -179,6 +179,61 @@ class PayeeRepository(BaseRepository[Payee]):
             payee = await self.create(budget_id=budget_id, name=name)
         return payee
 
+    #: The name every transfer payee carries, in both the app's own transfer
+    #: flow and YNAB's register export. Kept here so the importer and the
+    #: transaction service agree on one spelling.
+    TRANSFER_PREFIX = "Transfer : "
+
+    @classmethod
+    def transfer_payee_name(cls, account_name: str) -> str:
+        return f"{cls.TRANSFER_PREFIX}{account_name}"
+
+    async def find_or_create_transfer(
+        self, budget_id: uuid.UUID, account_id: uuid.UUID, account_name: str
+    ) -> Payee:
+        """Resolve the "Transfer : <account>" payee, guaranteeing that
+        `transfer_account_id` points at the account it names.
+
+        A payee is what marks a row as transfer-shaped once its partner link is
+        gone, so the field has to be set for every transfer payee — not only the
+        ones the sample-budget generator makes. An existing row created before
+        this (or by an import) is adopted and backfilled rather than duplicated,
+        since `uq_payee_budget_name` allows only one payee per name.
+        """
+        name = self.transfer_payee_name(account_name)
+        # Exact match, not find_by_name's case-insensitive one. The unique
+        # constraint is case-sensitive, so "Savings" and "savings" are two
+        # accounts with two distinct payees — a case-insensitive lookup found
+        # the first one's payee for the second account, saw it already bound,
+        # and returned it. Every unlinked leg into "savings" then resolved its
+        # counterpart to the wrong account, which can classify a debt payment
+        # as savings.
+        payee = (
+            await self.session.execute(
+                select(Payee).where(
+                    Payee.budget_id == budget_id,
+                    Payee.name == name,
+                    Payee.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+
+        if payee is None:
+            return await self.create(budget_id=budget_id, name=name, transfer_account_id=account_id)
+        if payee.transfer_account_id is None:
+            payee.transfer_account_id = account_id
+            await self.session.flush()
+        elif payee.transfer_account_id != account_id:
+            # Reachable by renaming an account and reusing its old name. Both
+            # answers are wrong: re-pointing rewrites what existing transfers
+            # mean, and returning it as-is misfiles every future one. Refuse,
+            # so a person decides.
+            raise InvariantViolation(
+                f'Payee "{name}" already points at a different account. '
+                "Rename one of them so each transfer payee names one account."
+            )
+        return payee
+
     async def find_or_create_batch(
         self, budget_id: uuid.UUID, names: list[str]
     ) -> dict[str, uuid.UUID]:

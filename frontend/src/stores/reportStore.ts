@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { PERSIST_KEYS } from './persistKeys'
 
 export type ReportTab =
   | 'overview'
@@ -21,6 +22,7 @@ export type ReportTab =
   | 'liabilities'
   | 'subscriptions'
   | 'savings'
+  | 'savings-rate'
   | 'anomalies'
   | 'plan-reality'
 
@@ -44,6 +46,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'account-composition', label: 'Accounts', group: 'financial' },
   { id: 'liabilities', label: 'Liabilities', group: 'financial' },
   { id: 'savings', label: 'Savings', group: 'financial' },
+  { id: 'savings-rate', label: 'Savings Rate', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'burn-rate', label: 'Burn Rate', group: 'cashflow' },
   { id: 'cash-flow', label: 'Cash Flow', group: 'cashflow' },
@@ -84,12 +87,29 @@ export function getGroupTabs(groupId: TabGroup): TabDef[] {
 
 export type GroupBy = 'group' | 'category' | 'payee'
 
+/** Which activity classes a spending chart is counting, given its
+ *  "Include savings & debt payments" toggle. Drill-downs pass this so the
+ *  transaction list totals what the chart totals — the one list must never
+ *  contradict the bar that opened it. Mirrors `_spending_classes` on the
+ *  server; keep the two in step. */
+export function spendingDrillClasses(includeSavings: boolean): string[] {
+  return includeSavings ? ['spending', 'savings', 'debt_principal'] : ['spending']
+}
+
 export interface TabFilterSupport {
+  /** Whether the tab can roll up by a saved view's groups instead of the
+   *  budget's own. Only the group-capable ones — everything else has no group
+   *  dimension for a view to change. */
+  views?: boolean
   dates: boolean
   categories: boolean
   payees: boolean
   accounts: boolean
   groupBy: boolean
+  /** Which modes the tab can actually draw. Omitted = all three. The stored
+   *  groupBy is shared across tabs, so a mode picked on one tab can be one
+   *  another cannot draw — see resolveGroupBy. */
+  groupByModes?: GroupBy[]
 }
 
 /** Which shared filters each report actually consumes — the filter bar dims
@@ -98,6 +118,7 @@ export interface TabFilterSupport {
 export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'overview': { dates: true, categories: false, payees: false, accounts: false, groupBy: false },
   'net-worth': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'savings-rate': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'account-composition': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'liabilities': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'income-expense': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
@@ -107,8 +128,8 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'budget-actual': { dates: true, categories: true, payees: false, accounts: false, groupBy: false },
   'variance': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'volatility': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'pareto': { dates: true, categories: true, payees: true, accounts: true, groupBy: true },
-  'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true },
+  'pareto': { dates: true, categories: true, payees: true, accounts: true, groupBy: true, views: true },
+  'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true, groupByModes: ['group', 'category'], views: true },
   'seasonality': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'subscriptions': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'savings': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
@@ -119,6 +140,21 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'timeline': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
 }
 
+/** The mode a tab actually draws for the stored preference.
+
+Tabs share one stored groupBy, so "Payee" picked on the pareto arrives at
+the treemap, which has no payee data. Before this resolver the treemap
+silently drew group tiles under a highlighted Payee button — group names
+where the user asked for payees. Fall back to the tab's first mode, and
+never write the fallback to the store: the preference should survive the
+detour and still mean payee when the user returns to a tab that can draw it. */
+export function resolveGroupBy(tab: ReportTab, groupBy: GroupBy): GroupBy {
+  const support = TAB_FILTER_SUPPORT[tab]
+  const modes = support.groupByModes
+  if (!support.groupBy || !modes || modes.includes(groupBy)) return groupBy
+  return modes[0]
+}
+
 export interface ReportFilters {
   startDate: string
   endDate: string
@@ -126,6 +162,8 @@ export interface ReportFilters {
   payeeIds: string[]
   accountIds: string[]
   groupBy: GroupBy
+  /** Roll up by this view's arrangement. null = the budget's own groups. */
+  viewId: string | null
 }
 
 /** Fully-resolved drill-down request; charts resolve ids and the date window
@@ -139,6 +177,10 @@ export interface DrillDownContext {
   categoryIds?: string[]
   payeeIds?: string[]
   dayOfWeek?: number
+  /** Activity classes the originating chart counted. A chart that means
+   *  "spending" must say so, or its drill lists savings and debt too — an
+   *  $800 bar opening a panel that totals $1,800. */
+  activityClasses?: string[]
   startDate: string
   endDate: string
 }
@@ -164,6 +206,7 @@ function defaultFilters(): ReportFilters {
     payeeIds: [],
     accountIds: [],
     groupBy: 'category',
+    viewId: null,
   }
 }
 
@@ -183,7 +226,7 @@ export const useReportStore = create<ReportState>()(
       resetFilters: () => set({ filters: defaultFilters(), drillDown: null }),
     }),
     {
-      name: 'igab-reports',
+      name: PERSIST_KEYS.reports,
       partialize: (s) => ({ activeTab: s.activeTab, filters: s.filters }),
     }
   )

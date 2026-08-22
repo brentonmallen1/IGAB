@@ -8,7 +8,6 @@ from igab.domain.exceptions import AuthenticationError
 from igab.repositories.user_repo import UserRepository
 from igab.services.auth_service import AuthService
 
-from .factories import create_user
 from .test_budget_membership import as_user
 
 

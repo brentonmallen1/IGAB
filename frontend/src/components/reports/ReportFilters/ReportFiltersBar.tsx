@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
+import { useBudgetViews } from '../../../api/budgetViews'
+import { categoryOptions } from './categoryOptions'
 import { usePayees } from '../../../api/payees'
 import { useAccounts } from '../../../api/accounts'
-import { useReportStore, TAB_FILTER_SUPPORT, type GroupBy } from '../../../stores/reportStore'
+import { resolveGroupBy, useReportStore, TAB_FILTER_SUPPORT, type GroupBy } from '../../../stores/reportStore'
 import { DateRangePicker } from './DateRangePicker'
 import { MultiSelectCombobox } from './MultiSelectCombobox'
 import type { MultiSelectOption } from './MultiSelectCombobox'
@@ -26,6 +28,7 @@ export function ReportFiltersBar({ budgetId }: Props) {
   const groups = useCategoryGroups(budgetId)
   const payees = usePayees(budgetId)
   const accounts = useAccounts(budgetId)
+  const views = useBudgetViews(budgetId)
 
   const groupMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -33,11 +36,19 @@ export function ReportFiltersBar({ budgetId }: Props) {
     return m
   }, [groups.data])
 
-  const categoryOptions = useMemo<MultiSelectOption[]>(() => {
-    return (categories.data ?? [])
-      .filter((c) => !c.is_hidden)
-      .map((c) => ({ id: c.id, label: c.name, group: groupMap.get(c.category_group_id) ?? '' }))
-  }, [categories.data, groupMap])
+  // Only on tabs that actually roll up by a view. The preference is stored
+  // once and shared, so a view picked on Pareto reached tabs with no view
+  // selector and no view_id in their request — narrowing the category picker
+  // to a view the report was ignoring, with no control on that tab to undo it.
+  const activeView = useMemo(
+    () => (support.views ? (views.data?.find((v) => v.id === filters.viewId) ?? null) : null),
+    [support.views, views.data, filters.viewId]
+  )
+
+  const categoryOpts = useMemo(
+    () => categoryOptions(categories.data ?? [], groupMap, activeView),
+    [categories.data, groupMap, activeView]
+  )
 
   const payeeOptions = useMemo<MultiSelectOption[]>(() => {
     return (payees.data ?? [])
@@ -51,13 +62,24 @@ export function ReportFiltersBar({ budgetId }: Props) {
       .map((a) => ({ id: a.id, label: a.name }))
   }, [accounts.data])
 
+  // viewId counts: it is sent on every request and changes what the report
+  // shows. Leaving it out meant a view carried over from another budget was
+  // narrowing reports with no selector rendered (that budget has no views)
+  // and no Reset offered — unreachable dead state.
   const hasFilters =
     filters.categoryIds.length > 0 ||
     filters.payeeIds.length > 0 ||
-    filters.accountIds.length > 0
+    filters.accountIds.length > 0 ||
+    filters.viewId !== null
 
   // Check if any filters are supported for this tab
-  const hasAnySupport = support.dates || support.categories || support.payees || support.accounts || support.groupBy
+  const hasAnySupport =
+    support.dates ||
+    support.categories ||
+    support.payees ||
+    support.accounts ||
+    support.groupBy ||
+    support.views
 
   // If no filters apply, don't render the bar
   if (!hasAnySupport) {
@@ -74,13 +96,33 @@ export function ReportFiltersBar({ budgetId }: Props) {
             onChange={(startDate, endDate) => setFilters({ startDate, endDate })}
           />
         )}
+        {support.views && (views.data?.length ?? 0) > 0 && (
+          <label className="rfb__view">
+            <span className="rfb__view-label">View</span>
+            <select
+              className={`rfb__view-select ${filters.viewId ? 'rfb__view-select--active' : ''}`}
+              value={filters.viewId ?? ''}
+              onChange={(e) => setFilters({ viewId: e.target.value || null })}
+              title="Roll up by a saved view's groups instead of your own"
+            >
+              <option value="">Default groups</option>
+              {views.data!.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {support.groupBy && (
           <div className="rfb__groupby">
             <span className="rfb__groupby-label">Group by</span>
-            {GROUP_BY_OPTIONS.map((opt) => (
+            {GROUP_BY_OPTIONS.filter(
+              (opt) => !support.groupByModes || support.groupByModes.includes(opt.value)
+            ).map((opt) => (
               <button
                 key={opt.value}
-                className={`rfb__groupby-btn ${filters.groupBy === opt.value ? 'rfb__groupby-btn--active' : ''}`}
+                className={`rfb__groupby-btn ${resolveGroupBy(activeTab, filters.groupBy) === opt.value ? 'rfb__groupby-btn--active' : ''}`}
                 onClick={() => setFilters({ groupBy: opt.value })}
                 type="button"
               >
@@ -96,7 +138,7 @@ export function ReportFiltersBar({ budgetId }: Props) {
             <MultiSelectCombobox
               label="Categories"
               selectedIds={filters.categoryIds}
-              options={categoryOptions}
+              options={categoryOpts}
               onChange={(ids) => setFilters({ categoryIds: ids })}
               placeholder="All categories"
             />

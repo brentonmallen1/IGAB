@@ -20,12 +20,12 @@ export function AccountCompositionReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
-  const { data, isLoading, isError, refetch } = useAccountCompositionReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = useAccountCompositionReport(budgetId, months)
   const { data: typeRows } = useAccountTypes(budgetId)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   // Series are whatever type keys this budget actually has — custom types

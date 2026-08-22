@@ -7,6 +7,9 @@ export interface SankeyViewNode {
   name: string
   type: string
   id: string
+  /** The entity the node stands for. `id` is a display key that may compose
+   *  several ids, so a drill-down must read this rather than parse that. */
+  entity_id?: string | null
   /** Previous-window value when compare is on; null = node is new this window */
   prev?: number | null
 }
@@ -114,7 +117,10 @@ export function buildSankeyView(
 
     if (group && category) {
       nodes.push({ id: group.id, name: group.name, type: 'category_group' })
-      nodes.push({ id: category.id, name: category.name, type: 'category' })
+      nodes.push({
+        id: category.id, name: category.name, type: 'category',
+        entity_id: category.entity_id,
+      })
       links.push({ source: 0, target: 1, value: groupTotals.get(group.id) ?? 0 })
       links.push({ source: 1, target: 2, value: catTotals.get(category.id) ?? 0 })
 
@@ -134,7 +140,9 @@ export function buildSankeyView(
         data.links.some((l) => l.source === group.id && l.target === c.id)
       )
       groupCats.forEach((cat, i) => {
-        nodes.push({ id: cat.id, name: cat.name, type: 'category' })
+        nodes.push({
+          id: cat.id, name: cat.name, type: 'category', entity_id: cat.entity_id,
+        })
         links.push({ source: 1, target: 2 + i, value: catTotals.get(cat.id) ?? 0 })
       })
     }

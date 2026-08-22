@@ -6,7 +6,7 @@ live on the on-budget side and still count. An explicit account filter
 overrides the default scope.
 """
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from .factories import (
@@ -15,7 +15,6 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
-    create_user,
 )
 
 TODAY = date.today()
@@ -63,11 +62,15 @@ async def test_income_expense_excludes_off_budget_activity(api_client, db_sessio
     month = resp.json()["months"][-1]
     # 1000 paycheck only — the 800 market gain is not income
     assert Decimal(month["income"]) == Decimal("1000.00")
-    # 100 groceries + 500 spending transfer; the 50 brokerage fee is not spend
-    assert Decimal(month["expenses"]) == Decimal("600.00")
+    # 100 groceries. The 500 transfer to the brokerage is saving, not spending,
+    # and the 50 brokerage fee is off-budget so never in scope at all.
+    assert Decimal(month["expenses"]) == Decimal("100.00")
+    assert Decimal(month["savings"]) == Decimal("500.00")
 
 
-async def test_spending_counts_categorized_transfer_leg(api_client, db_session):
+async def test_spending_excludes_a_transfer_into_savings(api_client, db_session):
+    """Money moved to the brokerage is saving, not spending. Leaving it in
+    inflates every spending average — the complaint that motivated this."""
     budget, _, _ = await _setup(db_session, api_client.test_user)
 
     resp = await api_client.get(
@@ -77,7 +80,23 @@ async def test_spending_counts_categorized_transfer_leg(api_client, db_session):
     assert resp.status_code == 200
     by_name = {c["name"]: Decimal(c["total"]) for c in resp.json()["categories"]}
     assert by_name["Groceries"] == Decimal("100.00")
+    assert "Investing" not in by_name
+
+
+async def test_include_savings_brings_the_transfer_back(api_client, db_session):
+    budget, _, _ = await _setup(db_session, api_client.test_user)
+
+    resp = await api_client.get(
+        f"/api/v1/{budget.id}/reports/spending",
+        params={
+            "start_date": IN_MONTH.isoformat(),
+            "end_date": TODAY.isoformat(),
+            "include_savings": "true",
+        },
+    )
+    by_name = {c["name"]: Decimal(c["total"]) for c in resp.json()["categories"]}
     assert by_name["Investing"] == Decimal("500.00")
+    assert by_name["Groceries"] == Decimal("100.00")
 
 
 async def test_explicit_account_filter_overrides_default_scope(api_client, db_session):

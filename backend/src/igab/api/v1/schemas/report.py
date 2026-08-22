@@ -23,7 +23,12 @@ class SpendingReportResponse(BaseModel):
 class IncomeExpenseMonth(BaseModel):
     month: date
     income: Decimal
+    #: Money spent. Saving and debt principal are reported separately — both
+    #: leave the budget, but neither is spending.
     expenses: Decimal
+    savings: Decimal
+    debt_principal: Decimal
+    #: income - expenses - savings - debt_principal, so the parts reconcile.
     net: Decimal
 
 
@@ -117,6 +122,12 @@ class SankeyNode(BaseModel):
     id: str
     name: str
     type: str
+    #: The entity this node stands for, when it stands for one. `id` is a
+    #: display key that may compose several ids (a category node is keyed by
+    #: group AND category, so one category can sit under both its own group
+    #: and the savings trunk) — recovering an id by string-surgery on it sent
+    #: "{group_uuid}_{category_uuid}" to the transactions API as a category id.
+    entity_id: str | None = None
 
 
 class SankeyLink(BaseModel):
@@ -134,7 +145,14 @@ class CashFlowResponse(BaseModel):
     nodes: list[SankeyNode]
     links: list[SankeyLink]
     total_income: Decimal
+    #: Everything that left the budget. The links off the budget node sum to
+    #: this — flow conservation, whatever the branches are.
     total_expense: Decimal
+    #: How that outflow splits. Spent mode only; budgeted mode draws from
+    #: assignments, where activity class has no meaning.
+    total_spending: Decimal = Decimal("0")
+    total_savings: Decimal = Decimal("0")
+    total_debt_principal: Decimal = Decimal("0")
     category_payees: dict[str, list[CategoryPayee]]
     group_categories: dict[str, list[CategoryPayee]]
 
@@ -230,16 +248,45 @@ class VolatilityResponse(BaseModel):
 class SpendingGroupItem(BaseModel):
     id: uuid.UUID
     name: str
-    parent_id: uuid.UUID | None
+    #: Opaque rollup key, not a foreign key: a category-group id normally, a
+    #: view-group id under a view, and the "__unassigned__" sentinel for
+    #: categories a view has not placed. Typing it as a UUID made that last
+    #: case a 500 the moment a view left anything unplaced.
+    parent_id: str | None
     parent_name: str | None
     total: Decimal
     count: int
     pct: float
 
 
+class SpendingClassExcluded(BaseModel):
+    """Activity in the user's current scope that a spending report will not
+    count — savings or debt payments in categories they selected or a view
+    shows. Absence without this reads as a bug: "I picked Car Payment and it
+    isn't here."""
+
+    activity_class: str
+    label: str
+    categories: int
+    total: Decimal
+
+
 class SpendingGroupedResponse(BaseModel):
     groups: list[SpendingGroupItem]
     total: Decimal
+    #: What the active view kept out of this report: categories hidden by the
+    #: view (or unplaced, when it hides those too) that had spending in the
+    #: window. Zero without a view. The chart states this out loud — a view
+    #: that hides most spending otherwise reads as data loss.
+    view_hidden_categories: int = 0
+    view_hidden_total: Decimal = Decimal("0")
+    #: Present only when the user selected categories or a view is active.
+    class_excluded: list[SpendingClassExcluded] = []
+    #: The requested view no longer exists (deleted, or another budget's), so
+    #: these groups are the budget's own. Said out loud because the client
+    #: persists viewId outside any budget scope and would otherwise show one
+    #: arrangement while its selector claims another.
+    view_unavailable: bool = False
 
 
 # ─── Seasonality ─────────────────────────────────────────────────────────────
@@ -312,6 +359,15 @@ class TimelineTransaction(BaseModel):
     payee_name: str | None
     category_name: str | None
     memo: str | None
+    #: What this row counts as. A large transfer into savings belongs on a
+    #: timeline of large transactions, but calling it an expense because the
+    #: amount is negative is the mislabelling this taxonomy exists to fix.
+    activity_class: str = "spending"
+    #: Its display label, served rather than mirrored. A local copy in the
+    #: chart had already drifted ("Interest" vs the canonical "Interest &
+    #: fees"), and a class added later would fall back to sign-based colouring
+    #: there — the exact mislabelling this taxonomy exists to fix.
+    activity_label: str = "Spending"
 
 
 class TimelineResponse(BaseModel):
@@ -397,6 +453,35 @@ class SavingsReportResponse(BaseModel):
     categories: list[SavingsCategory]
     summary: SavingsSummary
     months: list[date]
+
+
+# ─── Savings Rate Report ─────────────────────────────────────────────────────
+
+
+class SavingsRateMonth(BaseModel):
+    month: date
+    income: Decimal
+    spending: Decimal
+    savings: Decimal
+    debt_principal: Decimal
+    #: None when there was no income that month — distinct from a rate of 0,
+    #: which would read as "saved nothing out of real income".
+    savings_rate: float | None
+    savings_rate_with_debt: float | None
+
+
+class SavingsRateSummary(BaseModel):
+    income: Decimal
+    spending: Decimal
+    savings: Decimal
+    debt_principal: Decimal
+    savings_rate: float | None
+    savings_rate_with_debt: float | None
+
+
+class SavingsRateResponse(BaseModel):
+    months: list[SavingsRateMonth]
+    summary: SavingsRateSummary
 
 
 # ─── Anomaly Detection Report ────────────────────────────────────────────────

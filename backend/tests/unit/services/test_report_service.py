@@ -121,40 +121,96 @@ class TestSpendingByCategory:
 # ─── income_vs_expense ────────────────────────────────────────────────────────
 
 class TestIncomeVsExpense:
+    """The service now groups by activity class in SQL, so the mocked rows are
+    (month, cls, total) rather than raw (date, amount)."""
+
+    @staticmethod
+    def _rows(*triples):
+        return [row(month=m, cls=c, total=t) for m, c, t in triples]
+
     async def test_buckets_by_month(self):
         today = date.today()
         first = today.replace(day=1)
         last_month = _subtract_months(first, 1)
 
-        rows = [
-            row(date=last_month.replace(day=10), amount=D("3000.00")),
-            row(date=last_month.replace(day=15), amount=D("-500.00")),
-            row(date=first.replace(day=5),       amount=D("3000.00")),
-            row(date=first.replace(day=10),      amount=D("-800.00")),
-        ]
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(
+            make_session(
+                mock_result(
+                    self._rows(
+                        (last_month, "income", D("3000.00")),
+                        (last_month, "spending", D("-500.00")),
+                        (first, "income", D("3000.00")),
+                        (first, "spending", D("-800.00")),
+                    )
+                )
+            )
+        )
         result = await svc.income_vs_expense(BUDGET, months=2)
 
         assert len(result) == 2
         prev = next(r for r in result if r["month"] == last_month)
         curr = next(r for r in result if r["month"] == first)
 
-        assert prev["income"] == D("3000.0")
-        assert prev["expenses"] == D("500.0")
-        assert curr["income"] == D("3000.0")
-        assert curr["expenses"] == D("800.0")
+        assert prev["income"] == D("3000.00")
+        assert prev["expenses"] == D("500.00")
+        assert curr["income"] == D("3000.00")
+        assert curr["expenses"] == D("800.00")
 
-    async def test_net_is_income_minus_expenses(self):
-        today = date.today()
-        first = today.replace(day=1)
-        rows = [
-            row(date=first.replace(day=1), amount=D("1000.00")),
-            row(date=first.replace(day=2), amount=D("-600.00")),
-        ]
-        svc = ReportService(make_session(mock_result(rows)))
+    async def test_savings_is_broken_out_of_expenses(self):
+        """The point of the change: money moved into savings is not spending."""
+        first = date.today().replace(day=1)
+        svc = ReportService(
+            make_session(
+                mock_result(
+                    self._rows(
+                        (first, "income", D("3000.00")),
+                        (first, "spending", D("-800.00")),
+                        (first, "savings", D("-1000.00")),
+                        (first, "debt_principal", D("-200.00")),
+                    )
+                )
+            )
+        )
         result = await svc.income_vs_expense(BUDGET, months=1)
-        # net = 1000 + (-600) = 400
-        assert result[0]["net"] == pytest.approx(D("400.0"), rel=D("0.01"))
+        assert result[0]["expenses"] == D("800.00")
+        assert result[0]["savings"] == D("1000.00")
+        assert result[0]["debt_principal"] == D("200.00")
+
+    async def test_the_parts_reconcile(self):
+        """net must stay income minus everything that left, or a stacked chart
+        drifts away from its own total."""
+        first = date.today().replace(day=1)
+        svc = ReportService(
+            make_session(
+                mock_result(
+                    self._rows(
+                        (first, "income", D("3000.00")),
+                        (first, "spending", D("-800.00")),
+                        (first, "savings", D("-1000.00")),
+                        (first, "debt_principal", D("-200.00")),
+                    )
+                )
+            )
+        )
+        r = (await svc.income_vs_expense(BUDGET, months=1))[0]
+        assert r["net"] == r["income"] - r["expenses"] - r["savings"] - r["debt_principal"]
+        assert r["net"] == D("1000.00")
+
+    async def test_internal_transfers_are_ignored(self):
+        first = date.today().replace(day=1)
+        svc = ReportService(
+            make_session(
+                mock_result(
+                    self._rows(
+                        (first, "income", D("1000.00")),
+                        (first, "transfer_internal", D("-400.00")),
+                    )
+                )
+            )
+        )
+        r = (await svc.income_vs_expense(BUDGET, months=1))[0]
+        assert r["expenses"] == D("0")
+        assert r["net"] == D("1000.00")
 
     async def test_empty_fills_all_months_with_zeros(self):
         svc = ReportService(make_session(mock_result([])))
@@ -163,235 +219,27 @@ class TestIncomeVsExpense:
         for r in result:
             assert r["income"] == D("0")
             assert r["expenses"] == D("0")
+            assert r["savings"] == D("0")
             assert r["net"] == D("0")
 
     async def test_expenses_are_absolute_values(self):
-        today = date.today()
-        first = today.replace(day=1)
-        rows = [row(date=first.replace(day=1), amount=D("-300.00"))]
-        svc = ReportService(make_session(mock_result(rows)))
+        first = date.today().replace(day=1)
+        svc = ReportService(
+            make_session(mock_result(self._rows((first, "spending", D("-300.00")))))
+        )
         result = await svc.income_vs_expense(BUDGET, months=1)
-        assert result[0]["expenses"] > 0
+        assert result[0]["expenses"] == D("300.00")
 
 
 # ─── dashboard_metrics ────────────────────────────────────────────────────────
 
-class TestDashboardMetrics:
-    def _make_txn(
-        self,
-        txn_date,
-        amount,
-        account_id=None,
-        category_id=None,
-        transfer_id=None,
-        is_split=False,
-        parent_transaction_id=None,
-    ):
-        return row(
-            id=uuid.uuid4(),
-            date=txn_date,
-            amount=amount,
-            account_id=account_id or ACCT_1,
-            category_id=category_id,
-            transfer_id=transfer_id,
-            is_split=is_split,
-            parent_transaction_id=parent_transaction_id,
-        )
+# TestDashboardMetrics moved to tests/integration/test_dashboard_metrics.py.
+# These mocked `session.execute` with a fixed sequence of result sets, which
+# cannot exercise dashboard_metrics now that its figures come from the
+# activity-class CASE: the classification happens in SQL, so a mock hands
+# back whatever the test fabricated and proves only that polars can add.
+# The card is money math, so it gets a real database.
 
-    def _make_account(self, acct_id=None, on_budget=True, account_type="checking"):
-        return row(
-            id=acct_id or ACCT_1, on_budget=on_budget,
-            account_type=account_type, is_deleted=False,
-        )
-
-    def _make_cat(self, cat_id=None, name="Groceries", group_name="Food"):
-        return row(id=cat_id or CAT_A, name=name, group_name=group_name)
-
-    async def test_returns_empty_when_no_transactions(self):
-        session = make_session(
-            mock_result([]),   # transactions
-            mock_result([]),   # accounts
-            mock_result([]),   # categories
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, JAN, APR)
-        assert result["net_worth"] == D("0")
-        assert result["top_categories"] == []
-
-    async def test_net_worth_sums_all_accounts(self):
-        """Net worth spans every account (matching net_worth_history); the
-        off-budget flag scopes envelope math, never the balance sheet."""
-        today = date.today()
-        start = today.replace(day=1)
-        end = today
-
-        txns = [
-            self._make_txn(date(2026, 1, 10), D("2000.00"), ACCT_1),  # on_budget
-            self._make_txn(date(2026, 1, 10), D("500.00"), ACCT_2),   # off_budget
-        ]
-        accounts = [
-            self._make_account(ACCT_1, on_budget=True),
-            self._make_account(ACCT_2, on_budget=False),
-        ]
-        cats = []
-
-        session = make_session(
-            mock_result(txns), mock_result(accounts), mock_result(cats),
-            mock_result([]),  # unmanaged debts
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, start, end)
-        assert result["net_worth"] == D("2500.0")
-
-    async def test_off_budget_cash_flow_excluded_from_income(self):
-        """A brokerage 'market adjustment' is net-worth movement, never income."""
-        today = date.today()
-        start = today.replace(day=1)
-
-        txns = [
-            self._make_txn(today, D("1000.00"), ACCT_1),  # paycheck, on-budget
-            self._make_txn(today, D("800.00"), ACCT_2),   # off-budget market gain
-        ]
-        accounts = [
-            self._make_account(ACCT_1, on_budget=True),
-            self._make_account(ACCT_2, on_budget=False),
-        ]
-
-        session = make_session(
-            mock_result(txns), mock_result(accounts), mock_result([]),
-            mock_result([]),  # unmanaged debts
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, start, today)
-        assert result["income_this_month"] == D("1000.0")
-        assert result["net_worth"] == D("1800.0")
-
-    async def test_savings_rate(self):
-        today = date.today()
-        start = today.replace(day=1)
-
-        txns = [
-            self._make_txn(today, D("5000.00"), ACCT_1),
-            self._make_txn(today, D("-3000.00"), ACCT_1, CAT_A),
-        ]
-        accounts = [self._make_account(ACCT_1)]
-        cats = [self._make_cat(CAT_A)]
-
-        session = make_session(
-            mock_result(txns), mock_result(accounts), mock_result(cats),
-            mock_result([]),  # unmanaged debts
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, start, today)
-        # savings = (5000-3000)/5000 = 40%
-        assert result["savings_rate"] == pytest.approx(0.40)
-
-    async def test_savings_rate_zero_when_no_income(self):
-        today = date.today()
-        start = today.replace(day=1)
-
-        txns = [self._make_txn(today, D("-500.00"), ACCT_1, CAT_A)]
-        accounts = [self._make_account(ACCT_1)]
-        cats = [self._make_cat(CAT_A)]
-
-        session = make_session(
-            mock_result(txns), mock_result(accounts), mock_result(cats),
-            mock_result([]),  # unmanaged debts
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, start, today)
-        assert result["savings_rate"] == 0.0
-
-    async def test_transfers_excluded_from_income_expense(self):
-        today = date.today()
-        start = today.replace(day=1)
-
-        txns = [
-            self._make_txn(today, D("1000.00"), ACCT_1),
-            # Transfer — should be excluded from income/expense calcs
-            self._make_txn(today, D("-500.00"), ACCT_1, transfer_id=uuid.uuid4()),
-        ]
-        accounts = [self._make_account(ACCT_1)]
-        cats = []
-
-        session = make_session(
-            mock_result(txns), mock_result(accounts), mock_result(cats),
-            mock_result([]),  # unmanaged debts
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, start, today)
-        assert result["income_this_month"] == D("1000.0")
-        assert result["expenses_this_month"] == D("0")
-
-    async def test_top_categories_sorted_by_spending(self):
-        today = date.today()
-        start = today.replace(day=1)
-
-        txns = [
-            self._make_txn(today, D("-100.00"), ACCT_1, CAT_A),
-            self._make_txn(today, D("-300.00"), ACCT_1, CAT_B),
-            self._make_txn(today, D("-200.00"), ACCT_1, CAT_C),
-        ]
-        accounts = [self._make_account(ACCT_1)]
-        cats = [
-            self._make_cat(CAT_A, "Food"),
-            self._make_cat(CAT_B, "Rent"),
-            self._make_cat(CAT_C, "Transport"),
-        ]
-
-        session = make_session(
-            mock_result(txns), mock_result(accounts), mock_result(cats),
-            mock_result([]),  # unmanaged debts
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, start, today)
-        top = result["top_categories"]
-        assert len(top) == 3
-        assert top[0]["name"] == "Rent"       # 300
-        assert top[1]["name"] == "Transport"  # 200
-        assert top[2]["name"] == "Food"       # 100
-
-    async def test_days_until_zero(self):
-        today = date.today()
-        start = today.replace(day=1)
-        burn_date = today - timedelta(days=15)  # within the 30-day window
-
-        # 600 burned in 30 days → daily = 20
-        # net worth = 6000 (income) - 600 (expense) = 5400
-        # days_until_zero = 5400 / 20 = 270
-        txns = [
-            self._make_txn(today - timedelta(days=60), D("6000.00"), ACCT_1),
-            self._make_txn(burn_date, D("-600.00"), ACCT_1, CAT_A),
-        ]
-        accounts = [self._make_account(ACCT_1)]
-        cats = [self._make_cat(CAT_A)]
-
-        session = make_session(
-            mock_result(txns), mock_result(accounts), mock_result(cats),
-            mock_result([]),  # unmanaged debts
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, start, today)
-        assert result["days_until_zero"] == pytest.approx(270.0, rel=0.05)
-
-    async def test_days_until_zero_none_when_no_burn(self):
-        today = date.today()
-        start = today.replace(day=1)
-
-        txns = [self._make_txn(today, D("5000.00"), ACCT_1)]
-        accounts = [self._make_account(ACCT_1)]
-        cats = []
-
-        session = make_session(
-            mock_result(txns), mock_result(accounts), mock_result(cats),
-            mock_result([]),  # unmanaged debts
-        )
-        svc = ReportService(session)
-        result = await svc.dashboard_metrics(BUDGET, start, today)
-        assert result["days_until_zero"] is None
-
-
-# ─── budget_vs_actual ─────────────────────────────────────────────────────────
 
 class TestBudgetVsActual:
     def _assignment(self, cat_id, month, assigned, cat_name="Groceries", group_name="Food"):
@@ -508,12 +356,12 @@ class TestCumulativeVariance:
 class TestSpendingGrouped:
     async def test_basic_grouping(self):
         rows = [
-            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-100.00")),
-            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-50.00")),
-            row(id=CAT_B, name="Gas", group_id=GRP_2, group_name="Transport", amount=D("-75.00")),
+            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-100.00"), cls="spending"),
+            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-50.00"), cls="spending"),
+            row(id=CAT_B, name="Gas", group_id=GRP_2, group_name="Transport", amount=D("-75.00"), cls="spending"),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        items, total = await svc.spending_grouped(BUDGET, JAN, APR)
+        items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
 
         assert total == D("225.0")
         grocery = next(i for i in items if i["name"] == "Groceries")
@@ -524,11 +372,11 @@ class TestSpendingGrouped:
 
     async def test_percentages(self):
         rows = [
-            row(id=CAT_A, name="X", group_id=GRP_1, group_name="G1", amount=D("-300.00")),
-            row(id=CAT_B, name="Y", group_id=GRP_1, group_name="G1", amount=D("-100.00")),
+            row(id=CAT_A, name="X", group_id=GRP_1, group_name="G1", amount=D("-300.00"), cls="spending"),
+            row(id=CAT_B, name="Y", group_id=GRP_1, group_name="G1", amount=D("-100.00"), cls="spending"),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        items, total = await svc.spending_grouped(BUDGET, JAN, APR)
+        items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
 
         x = next(i for i in items if i["name"] == "X")
         y = next(i for i in items if i["name"] == "Y")
@@ -537,7 +385,7 @@ class TestSpendingGrouped:
 
     async def test_empty(self):
         svc = ReportService(make_session(mock_result([])))
-        items, total = await svc.spending_grouped(BUDGET, JAN, APR)
+        items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
         assert items == []
         assert total == D("0")
 
@@ -960,6 +808,7 @@ class TestLargeTransactions:
                 payee_name="Landlord",
                 category_name="Rent",
                 memo="January rent",
+                activity_class="spending",
             )
         ]
         svc = ReportService(make_session(mock_result(rows)))
@@ -972,6 +821,24 @@ class TestLargeTransactions:
         assert t["payee_name"] == "Landlord"
         assert t["category_name"] == "Rent"
         assert t["memo"] == "January rent"
+
+    async def test_carries_the_activity_class(self):
+        """A big transfer into savings belongs on a timeline of large
+        transactions — it just must not be drawn as an expense."""
+        rows = [
+            row(
+                id=uuid.uuid4(),
+                date=date(2026, 1, 15),
+                amount=D("-5000.00"),
+                payee_name="Transfer : Brokerage",
+                category_name="Investments",
+                memo=None,
+                activity_class="savings",
+            )
+        ]
+        svc = ReportService(make_session(mock_result(rows)))
+        result = await svc.large_transactions(BUDGET, JAN, APR)
+        assert result[0]["activity_class"] == "savings"
 
     async def test_empty(self):
         svc = ReportService(make_session(mock_result([])))

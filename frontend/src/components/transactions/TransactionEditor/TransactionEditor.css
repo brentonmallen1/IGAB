@@ -700,3 +700,19 @@
   border-top: 1px solid var(--border-subtle);
   padding: var(--spacing-sm) var(--spacing-lg);
 }
+
+/* Why this row counts the way it does in reports. Quiet by default — it is
+   reassurance when a number looks wrong, not something to read every time. */
+.txn-editor__classification {
+  margin: 0 0 var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-left: 2px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.txn-editor__classification strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}

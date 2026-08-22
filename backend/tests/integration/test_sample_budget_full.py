@@ -12,6 +12,8 @@ here too, because the starter is a strict subset of this data.
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import select
+
 from igab.db.models import Transaction
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -30,7 +32,6 @@ from igab.sample_budget.data import SAMPLE_BUDGET
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.budget_service import BudgetService
 from igab.services.integrity_service import IntegrityService
-from sqlalchemy import select
 
 from .factories import create_budget, create_user
 

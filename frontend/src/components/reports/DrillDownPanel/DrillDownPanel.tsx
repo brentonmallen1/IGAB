@@ -58,6 +58,7 @@ function DrillDownPanelInner({
       categoryIds: drillDown.categoryIds,
       payeeIds: drillDown.payeeIds,
       dayOfWeek: drillDown.dayOfWeek,
+      activityClasses: drillDown.activityClasses,
       accountIds: filters.accountIds.length > 0 ? filters.accountIds : undefined,
       limit,
     }),

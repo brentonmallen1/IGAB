@@ -2,6 +2,8 @@
 
 import pytest
 
+from igab.repositories.tag_repo import SYSTEM_TAGS, TagRepository, seed_system_tags
+
 from .factories import (
     create_budget,
     create_category,
@@ -10,8 +12,6 @@ from .factories import (
     create_tag,
     create_user,
 )
-
-from igab.repositories.tag_repo import TagRepository, seed_system_tags
 
 
 @pytest.mark.asyncio
@@ -39,7 +39,8 @@ async def test_seed_system_tags(db_session):
 
     tags = await repo.list_for_budget(budget.id)
     system_keys = {t.system_key for t in tags if t.system_key}
-    assert system_keys == {"subscription", "savings", "long_term_expense"}
+    # Derived, not hardcoded: adding a system tag should not need a test edit.
+    assert system_keys == {key for key, _, _ in SYSTEM_TAGS}
 
 
 @pytest.mark.asyncio
@@ -53,7 +54,7 @@ async def test_seed_system_tags_idempotent(db_session):
 
     tags = await repo.list_for_budget(budget.id)
     system_keys = [t.system_key for t in tags if t.system_key]
-    assert len(system_keys) == 3  # Should still be 3, not 6
+    assert len(system_keys) == len(SYSTEM_TAGS), "seeding twice must not duplicate"
 
 
 @pytest.mark.asyncio

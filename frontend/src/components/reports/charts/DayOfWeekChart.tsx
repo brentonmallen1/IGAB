@@ -10,7 +10,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
 interface Props { budgetId: string }
@@ -23,14 +23,14 @@ export function DayPatternsReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, refetch } = useDayPatternsReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
+  const { data, isLoading, isError, error, refetch } = useDayPatternsReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const [paydayWindow, setPaydayWindow] = useState<(typeof WINDOW_OPTIONS)[number]>(14)
   const { data: paydayData, isLoading: paydayLoading } = usePaydayEffectReport(budgetId, paydayWindow, 12)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const days = data?.days ?? []
 
@@ -80,7 +80,8 @@ export function DayPatternsReport({ budgetId }: Props) {
             <p>High weekday spending often signals structured habits (groceries, work lunches). High weekend spending can indicate impulse or leisure spending. Use this to identify which days need more discipline.</p>
             <p>Click a bar to see that weekday's transactions.</p>
             <ReportScopeNote scope="on-budget-filterable" />
-          </ReportInfoButton>
+            <SpendingClassNote />
+        </ReportInfoButton>
           <div className="ms-auto">
             <ReportExportButton
               reportId="day-patterns"

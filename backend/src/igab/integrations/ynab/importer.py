@@ -45,6 +45,13 @@ class ImportResult:
     # transactions_skipped, which means dedup hits and row errors.
     accounts_skipped: int = 0
     transactions_excluded: int = 0
+    #: Transfer legs whose partner leg never turned up, so they import
+    #: unlinked. Balances stay right either way, but a non-zero count means the
+    #: export was not what we expected — the partner account was skipped, or
+    #: the legs did not match on (accounts, date, amount). Surfaced rather than
+    #: swallowed: silently unlinked legs are indistinguishable from real
+    #: income and expense until someone reads a report and disbelieves it.
+    transfer_legs_unpaired: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -168,6 +175,60 @@ class YNABImporter:
 
         return self._category_cache[cache_key]
 
+    async def _resolve_payees(
+        self, budget: YNABBudget, payee_names: set[str], result: ImportResult
+    ) -> dict[str, uuid.UUID]:
+        """Resolve every payee name, turning "Transfer : <account>" into a real
+        transfer payee rather than a plain payee that merely looks like one.
+
+        `Payee.transfer_account_id` is what keeps a leg out of income/expense
+        once its partner link is missing, and what keeps transfer payees out of
+        payee pickers and AI suggestions. A YNAB register names the partner
+        account in the payee column, so the mapping is available here — it was
+        simply never used, and every imported transfer payee came out as an
+        ordinary payee named "Transfer : Vanguard".
+
+        Accounts are created up front (they were previously created lazily per
+        row) because a transfer payee needs its target account's id to exist.
+        """
+        # Every account that will actually import, in first-seen order.
+        account_names: list[str] = []
+        seen: set[str] = set()
+        for txn in budget.transactions:
+            lowered = txn.account_name.lower()
+            if lowered in self.skip_accounts or lowered in seen:
+                continue
+            seen.add(lowered)
+            account_names.append(txn.account_name)
+        for name in account_names:
+            await self._get_or_create_account(name, result)
+
+        by_lower = {name.lower(): name for name in account_names}
+
+        payee_map: dict[str, uuid.UUID] = {}
+        plain_names: list[str] = []
+        for name in payee_names:
+            if not name.startswith(_TRANSFER_PREFIX):
+                plain_names.append(name)
+                continue
+            target = name[len(_TRANSFER_PREFIX) :]
+            actual = by_lower.get(target.lower())
+            if actual is None:
+                # Names an account the user chose to skip (or one that never
+                # appears in the register). There is no account to point at, so
+                # it stays an ordinary payee — counted below so the user sees
+                # that these rows are not recognised as transfers.
+                plain_names.append(name)
+                continue
+            account = self._account_cache[actual]
+            payee = await self.payee_repo.find_or_create_transfer(
+                self.budget_id, account.id, account.name
+            )
+            payee_map[name] = payee.id
+
+        payee_map.update(await self.payee_repo.find_or_create_batch(self.budget_id, plain_names))
+        return payee_map
+
     async def _import_transactions(self, budget: YNABBudget, result: ImportResult) -> None:
         """Import every register row — transfers included — as bulk rows with
         deterministic import_ids (fully idempotent re-import), then link
@@ -200,7 +261,7 @@ class YNABImporter:
             for txn in budget.transactions
             if txn.payee and txn.account_name.lower() not in self.skip_accounts
         }
-        payee_map = await self.payee_repo.find_or_create_batch(self.budget_id, list(payee_names))
+        payee_map = await self._resolve_payees(budget, payee_names, result)
 
         skipped_account_names: set[str] = set()
         for txn in budget.transactions:
@@ -326,6 +387,7 @@ class YNABImporter:
                 result.transactions_skipped += 1
 
         result.accounts_skipped = len(skipped_account_names)
+        result.transfer_legs_unpaired = sum(len(legs) for legs in unpaired_legs.values())
 
         # Make import_ids unique within the batch: two transactions with identical
         # (account, date, amount, payee) produce the same hash, so append ":N" for N>0.

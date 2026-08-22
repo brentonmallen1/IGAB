@@ -1,0 +1,71 @@
+import { EyeOff, Info } from 'lucide-react'
+import type { SpendingGroupedReport, SpendingClassExcluded } from '../../types'
+import { useFormatters } from '../../hooks/useFormatters'
+import './ReportNotes.css'
+
+/** How each class reads mid-sentence. A bare `label + 's'` produced
+ *  "savingss", and "Interest & fees" was never pluralisable at all. */
+const CLASS_PHRASE: Record<string, string> = {
+  savings: 'savings',
+  debt_principal: 'debt payments',
+  debt_interest: 'interest & fees',
+}
+
+interface Props {
+  report: SpendingGroupedReport | undefined
+  /** Whether the chart's "Include savings & debt payments" toggle is visible
+   *  and off — the one action from here that adds the money back. */
+  toggleAvailable: boolean
+}
+
+/**
+ * The chart-face caveats: what the active view hid, and what classified out
+ * of spending. One component because they are one thing to the reader — the
+ * reasons this chart shows less than they expected — and one flex child
+ * because the section's column gap otherwise spreads each line a full step
+ * apart, which read as three unrelated paragraphs.
+ *
+ * Renders nothing when there is nothing to explain: an empty wrapper would
+ * still occupy a gap slot in the section column.
+ */
+export function ReportNotes({ report, toggleAvailable }: Props) {
+  const { formatMoney } = useFormatters()
+  if (!report) return null
+
+  const hidden = report.view_hidden_categories > 0
+  const excluded: SpendingClassExcluded[] = report.class_excluded ?? []
+  if (!hidden && excluded.length === 0) return null
+
+  const parts = excluded.map(
+    (e) =>
+      `${formatMoney(Number(e.total))} of ${CLASS_PHRASE[e.activity_class] ?? e.label.toLowerCase()}` +
+      ` (${e.categories === 1 ? '1 category' : `${e.categories} categories`})`
+  )
+
+  return (
+    <div className="report-notes">
+      {hidden && (
+        <p className="report-notes__line" role="note">
+          <EyeOff size={12} aria-hidden />
+          <span>
+            This view hides{' '}
+            {report.view_hidden_categories === 1
+              ? '1 category'
+              : `${report.view_hidden_categories} categories`}{' '}
+            with {formatMoney(Number(report.view_hidden_total))} of spending in this window —
+            edit the view or switch it off to see everything.
+          </span>
+        </p>
+      )}
+      {excluded.length > 0 && (
+        <p className="report-notes__line" role="note">
+          <Info size={12} aria-hidden />
+          <span>
+            Not counted as spending here: {parts.join(' and ')}.
+            {toggleAvailable && ' Tick “Include savings & debt payments” to add it.'}
+          </span>
+        </p>
+      )}
+    </div>
+  )
+}

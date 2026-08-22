@@ -1,13 +1,14 @@
 import { useState, useMemo, useRef } from 'react'
 import { Treemap, ResponsiveContainer, Tooltip } from 'recharts'
 import { ChevronRight } from 'lucide-react'
-import { useReportStore } from '../../../stores/reportStore'
+import { resolveGroupBy, spendingDrillClasses, useReportStore } from '../../../stores/reportStore'
 import { useSpendingGroupedReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { chartColor } from './chartColors'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
+import { ReportNotes } from '../ReportNotes'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 
@@ -29,19 +30,26 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(440)
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
-  const groupBy = filters.groupBy
+  // The stored mode can be 'payee' (picked on the pareto); this tab has no
+  // payee data, so draw the declared fallback instead.
+  const groupBy = resolveGroupBy('treemap', filters.groupBy)
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const [hideSavings, setHideSavings] = useState(false)
-  const { data, isLoading, isError, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings)
+  const [includeSavings, setIncludeSavings] = useState(false)
+  const { data, isLoading, isError, error, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, includeSavings, filters.viewId)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
-  // Reset the drill when the group-by mode changes (state adjusted during
-  // render instead of in an effect, per react-hooks/set-state-in-effect)
-  const [prevGroupBy, setPrevGroupBy] = useState(groupBy)
-  if (prevGroupBy !== groupBy) {
-    setPrevGroupBy(groupBy)
+  // Reset the drill when the group-by mode OR the view changes (state adjusted
+  // during render instead of in an effect, per react-hooks/set-state-in-effect).
+  // A view replaces the whole parent_id keyspace — budget group ids become view
+  // group ids — so a drill held across the switch pointed at a key that no
+  // longer exists, rendering the empty state and, if the view hid anything,
+  // blaming it on the view.
+  const [prevScope, setPrevScope] = useState(`${groupBy}|${filters.viewId ?? ''}`)
+  const scope = `${groupBy}|${filters.viewId ?? ''}`
+  if (prevScope !== scope) {
+    setPrevScope(scope)
     setSelectedGroup(null)
   }
 
@@ -73,7 +81,6 @@ export function SpendingTreemapReport({ budgetId }: Props) {
 
   // groupBy=group → show only top-level groups (no drill-down)
   // groupBy=category → show all categories flat (colored by group)
-  // groupBy=payee → fall back to category (payee data not in this endpoint)
   const visibleItems: TreeNode[] = useMemo(() => {
     if (groupBy === 'category') {
       // flat: all categories colored by their group
@@ -108,7 +115,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   }, [groupBy, selectedGroup, groups, items, grandTotal])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const selectedGroupName = selectedGroup ? groups.get(selectedGroup)?.name : null
 
@@ -121,6 +128,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
           <p><strong>Group</strong> mode: shows category groups only. <strong>Category</strong> mode: shows all categories flat, colored by group. Use the global <em>Group by</em> filter to switch. In Group mode you can click a tile to drill into its categories.</p>
           <p>Clicking a category tile opens the list of transactions behind it below the chart.</p>
           <ReportScopeNote scope="on-budget-filterable" />
+          <SpendingClassNote />
         </ReportInfoButton>
         {groupBy !== 'category' && (
           <div className="treemap-breadcrumb">
@@ -138,10 +146,12 @@ export function SpendingTreemapReport({ budgetId }: Props) {
         <label className="report-toggle">
           <input
             type="checkbox"
-            checked={hideSavings}
-            onChange={(e) => setHideSavings(e.target.checked)}
+            checked={includeSavings}
+            onChange={(e) => setIncludeSavings(e.target.checked)}
           />
-          Hide tagged as savings
+          <span title="Money moved into savings or used to pay down a tracked debt isn't spending, so it's left out by default. Tick to add it back.">
+            Include savings &amp; debt payments
+          </span>
         </label>
         <div className="ms-auto">
           <ReportExportButton
@@ -168,8 +178,14 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             : 'Click a group to drill down into its categories.'}
       </p>
 
+      <ReportNotes report={data} toggleAvailable={!includeSavings} />
+
       {visibleItems.length === 0 ? (
-        <div className="reports-empty">No spending data for this period.</div>
+        <div className="reports-empty">
+          {(data?.view_hidden_categories ?? 0) > 0
+            ? 'Everything with spending in this window is hidden by the current view.'
+            : 'No spending data for this period.'}
+        </div>
       ) : (
         <div ref={captureRef} className="report-capture">
         <ResponsiveContainer width="100%" height={chartHeight}>
@@ -196,6 +212,8 @@ export function SpendingTreemapReport({ budgetId }: Props) {
                   scope: 'leaf',
                   direction: 'outflow',
                   categoryIds: [item.id],
+                  // Same classes the tiles were sized from.
+                  activityClasses: spendingDrillClasses(includeSavings),
                   startDate: filters.startDate,
                   endDate: filters.endDate,
                 })

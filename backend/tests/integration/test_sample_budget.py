@@ -10,6 +10,8 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import select
+
 from igab.db.models import Budget, BudgetMember, ScheduledTransaction, Transaction
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -27,7 +29,6 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.budget_service import BudgetService
 from igab.services.integrity_service import IntegrityService
-from sqlalchemy import select
 
 from .factories import create_budget, create_user
 

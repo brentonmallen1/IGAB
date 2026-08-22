@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { PERSIST_KEYS } from './persistKeys'
 import { syncThemeColorMeta } from '../utils/themeColor'
 
 export type Theme = 'dark' | 'light' | 'gruvbox-dark' | 'gruvbox-light' | 'catppuccin-mocha' | 'catppuccin-latte' | 'rose-pine' | 'rose-pine-moon' | 'rose-pine-dawn' | 'rose-pine-moon-dawn' | 'nord' | 'nord-light' | 'nord-aurora' | 'nord-aurora-light' | 'nineties-dark' | 'nineties-light' | 'eighties-dark' | 'eighties-light' | 'eighties-pop-dark' | 'eighties-pop-light' | 'synthwave-dark' | 'synthwave-light' | 'cozy-dark' | 'cozy-light' | 'vapor-dark' | 'vapor-light' | 'kodachrome-dark' | 'kodachrome-light' | 'phosphor-dark' | 'phosphor-light' | 'blueprint-dark' | 'blueprint-light' | 'desert-dark' | 'desert-light' | 'bauhaus-dark' | 'bauhaus-light' | 'paper-dark' | 'paper-light' | 'eink-dark' | 'eink-light'
@@ -169,7 +170,7 @@ export const useAppStore = create<AppState>()(
       togglePrivacyMode: () => set((s) => ({ privacyMode: !s.privacyMode })),
     }),
     {
-      name: 'igab-app',
+      name: PERSIST_KEYS.app,
       onRehydrateStorage: () => (state) => {
         // Apply theme and font scale on hydration
         if (state?.theme) {

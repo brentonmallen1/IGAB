@@ -11,6 +11,7 @@ import { AutoAssignSection } from './AutoAssignSection'
 import { CategoryNotesSection } from './CategoryNotesSection'
 import { CategorySubtitleSection } from './CategorySubtitleSection'
 import { TagsSection } from './TagsSection'
+import { ClassificationSection } from './ClassificationSection'
 import { MonthSummary } from './MonthSummary'
 import './CategoryInspector.css'
 
@@ -136,6 +137,10 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
             ) : (
               <>
                 <AvailableBreakdown balances={selectedBalances} prevBalances={prevBalances} />
+
+                {isSingle && singleCategory && (
+                  <ClassificationSection categoryId={singleCategory.id} />
+                )}
 
                 {isSingle && singleCategory && (
                   <TargetSection categoryId={singleCategory.id} />

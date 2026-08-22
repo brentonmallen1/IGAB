@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 
 from igab.api.v1.schemas.transaction import (
     BudgetTransactionListResponse,
@@ -27,11 +28,12 @@ from igab.api.v1.schemas.transaction import (
     PayeeWithCount,
     PendingReviewCount,
     SimilarTransactionResponse,
+    TransactionClassification,
     TransactionCreate,
     TransactionResponse,
     TransactionUpdate,
 )
-from igab.db.models import Category
+from igab.db.models import Category, Transaction
 from igab.dependencies import (
     AccountAccess,
     BudgetAccess,
@@ -44,6 +46,13 @@ from igab.dependencies import (
     get_payee_repo,
     get_transaction_repo,
     get_transaction_service,
+)
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    ACTIVITY_REASON,
+    CLASS_LABEL,
+    ActivityClass,
+    explain,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.ai_job_repo import AIJobRepository
@@ -131,6 +140,9 @@ async def list_budget_transactions(
     scope: Literal["parent", "leaf"] = "parent",
     posted_only: bool = False,
     cash_flow_only: bool = False,
+    #: Comma-separated activity classes, so a report drill-down lists exactly
+    #: what the chart that opened it counted.
+    activity_classes: str | None = Query(None),
     direction: Literal["inflow", "outflow"] | None = None,
     day_of_week: int | None = Query(None, ge=0, le=6),
     cleared: str | None = None,
@@ -167,6 +179,7 @@ async def list_budget_transactions(
         scope=scope,
         posted_only=posted_only,
         cash_flow_only=cash_flow_only,
+        activity_classes=_parse_csv(activity_classes),
         direction=direction,
         day_of_week=day_of_week,
         cleared=cleared,
@@ -189,10 +202,27 @@ async def list_budget_transactions(
     )
 
 
-def _parse_uuid_list(value: str | None) -> list[uuid.UUID] | None:
+def _parse_csv(value: str | None) -> list[str] | None:
     if not value:
         return None
-    return [uuid.UUID(v.strip()) for v in value.split(",") if v.strip()]
+    return [v.strip() for v in value.split(",") if v.strip()] or None
+
+
+def _parse_uuid_list(value: str | None) -> list[uuid.UUID] | None:
+    """Parse a comma-separated id list, rejecting malformed entries with a 400.
+
+    Unguarded `uuid.UUID()` turns a client-side id-construction slip into a
+    500 from the catch-all handler, which reads as a server fault and tells
+    nobody which value was wrong.
+    """
+    if not value:
+        return None
+    try:
+        return [uuid.UUID(v.strip()) for v in value.split(",") if v.strip()]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Malformed id: {e}"
+        ) from e
 
 
 @router.get(
@@ -304,6 +334,40 @@ async def get_transaction(
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     return TransactionResponse.model_validate(txn)
+
+
+@router.get(
+    "/transactions/{transaction_id}/classification",
+    response_model=TransactionClassification,
+)
+async def get_transaction_classification(
+    transaction_id: TransactionAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> TransactionClassification:
+    """Why this row counts the way it does in reports.
+
+    Its own endpoint rather than a field on TransactionResponse: the class is
+    derived from correlated subqueries over the counterpart account and the
+    category's tags, which is cheap for one row and wasteful for a list of a
+    thousand. It is asked for when a user opens a transaction and wonders why
+    it isn't in their spending — not on every render.
+    """
+    row = (
+        await session.execute(
+            select(ACTIVITY_CLASS, ACTIVITY_REASON).where(Transaction.id == transaction_id)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+
+    activity_class = ActivityClass(row[0])
+    return TransactionClassification(
+        activity_class=activity_class,
+        label=CLASS_LABEL[activity_class],
+        reason=row[1],
+        explanation=explain(row[1]),
+    )
 
 
 @router.patch("/transactions/{transaction_id}", response_model=TransactionResponse)

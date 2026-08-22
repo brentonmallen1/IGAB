@@ -4,8 +4,10 @@ import { BudgetTable } from '../../components/budget/BudgetTable/BudgetTable'
 import { CategoryInspector } from '../../components/budget/CategoryInspector/CategoryInspector'
 import { CategoryMobileActions } from '../../components/budget/CategoryInspector/CategoryMobileActions'
 import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
+import { BudgetFilterModal } from '../../components/budget/BudgetFilterModal/BudgetFilterModal'
 import { BudgetViewModal } from '../../components/budget/BudgetViewModal/BudgetViewModal'
 import { ManageViewsModal } from '../../components/budget/ManageViewsModal/ManageViewsModal'
+import { ManageFiltersModal } from '../../components/budget/ManageFiltersModal/ManageFiltersModal'
 import { MultiMonthSheet } from '../../components/budget/MultiMonthSheet/MultiMonthSheet'
 import { TbaHero } from '../../components/budget/TbaHero/TbaHero'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
@@ -28,11 +30,16 @@ export function BudgetPage() {
 
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const clearCategorySelection = useUIStore((s) => s.clearCategorySelection)
+  const isFilterModalOpen = useUIStore((s) => s.isFilterModalOpen)
   const isViewModalOpen = useUIStore((s) => s.isViewModalOpen)
   const editingViewId = useUIStore((s) => s.editingViewId)
   const closeViewModal = useUIStore((s) => s.closeViewModal)
   const isManageViewsModalOpen = useUIStore((s) => s.isManageViewsModalOpen)
   const closeManageViewsModal = useUIStore((s) => s.closeManageViewsModal)
+  const editingFilterId = useUIStore((s) => s.editingFilterId)
+  const closeFilterModal = useUIStore((s) => s.closeFilterModal)
+  const isManageFiltersModalOpen = useUIStore((s) => s.isManageFiltersModalOpen)
+  const closeManageFiltersModal = useUIStore((s) => s.closeManageFiltersModal)
   const mobileInspectorOpen = useUIStore((s) => s.mobileInspectorOpen)
   const closeMobileInspector = useUIStore((s) => s.closeMobileInspector)
   const multiMonthOpen = useUIStore((s) => s.multiMonthOpen)
@@ -212,17 +219,23 @@ export function BudgetPage() {
         </FloatingSelectionBar>
       )}
 
-      {isViewModalOpen && (
-        <BudgetViewModal
+      {isFilterModalOpen && (
+        <BudgetFilterModal
           budgetId={budgetId}
-          viewId={editingViewId}
-          onClose={closeViewModal}
+          filterId={editingFilterId}
+          onClose={closeFilterModal}
         />
       )}
+      {isViewModalOpen && (
+        <BudgetViewModal budgetId={budgetId} viewId={editingViewId} onClose={closeViewModal} />
+      )}
       {isManageViewsModalOpen && (
-        <ManageViewsModal
+        <ManageViewsModal budgetId={budgetId} onClose={closeManageViewsModal} />
+      )}
+      {isManageFiltersModalOpen && (
+        <ManageFiltersModal
           budgetId={budgetId}
-          onClose={closeManageViewsModal}
+          onClose={closeManageFiltersModal}
         />
       )}
       {!isMobile && multiMonthOpen && <MultiMonthSheet budgetId={budgetId} />}

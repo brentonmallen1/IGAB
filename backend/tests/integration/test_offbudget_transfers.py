@@ -1,12 +1,19 @@
-"""Phase 8 spec: transfers to off-budget accounts are real spending (YNAB
-semantics). The on-budget leg may carry a category, which flows into category
-activity and spending reports; on-budget↔on-budget transfers never can."""
+"""Transfers to off-budget accounts: the on-budget leg may carry a category,
+which flows into category activity; on-budget↔on-budget transfers never can.
+
+Where IGAB now departs from YNAB: such a leg is no longer *spending*. Moving
+money to a brokerage or a mortgage leaves the budget, but it builds net worth
+rather than consuming it, so spending reports exclude it by default and offer
+it back behind `include_savings`. Category activity is unchanged — the money
+did leave the envelope.
+"""
 
 from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
+from igab.domain.activity_class import ActivityClass
 from igab.domain.exceptions import InvariantViolation
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
@@ -83,16 +90,28 @@ async def test_categorized_offbudget_transfer_in_spending_reports(db_session):
         ),
     )
 
-    categories, total = await reports.spending_by_category(
+    # Paying down a tracked mortgage is debt principal, not spending.
+    categories, _ = await reports.spending_by_category(
         budget.id, TODAY - timedelta(days=30), TODAY
+    )
+    assert "Housing" not in {c["name"] for c in categories}, (
+        "a mortgage payment is not spending — this is the skew derkus reported"
+    )
+
+    # Still reachable for anyone who wants the fuller picture.
+    categories, _ = await reports.spending_by_category(
+        budget.id,
+        TODAY - timedelta(days=30),
+        TODAY,
+        include_classes=[ActivityClass.SPENDING, ActivityClass.DEBT_PRINCIPAL],
     )
     by_name = {c["name"]: c["total"] for c in categories}
     assert by_name.get("Housing") == Decimal("1200.0")
 
+    # Cash flow agrees: the mortgage payment is debt principal, not expense.
     results = await reports.income_vs_expense(budget.id, months=1)
-    assert results[-1]["expenses"] == Decimal("1200.0"), (
-        "categorized off-budget transfer counts as expense in cash flow"
-    )
+    assert results[-1]["expenses"] == Decimal("0")
+    assert results[-1]["debt_principal"] == Decimal("1200.00")
     assert results[-1]["income"] == Decimal("0")
 
 

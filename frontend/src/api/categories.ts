@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
-import type { Category, CategoryGroup } from '../types'
+import type { Category, CategoryGroup, CategoryClassification } from '../types'
 
 export function useCategoryGroups(budgetId: string | null, includeHidden = false) {
   return useQuery({
@@ -47,6 +47,23 @@ export function useRecentPayeeForCategory(budgetId: string, categoryId: string |
       return data
     },
     enabled: !!budgetId && !!categoryId,
+    staleTime: 60_000,
+  })
+}
+
+/** How this category's recent activity counts in reports — fetched when the
+ *  inspector opens on one category, the same way the transaction editor asks
+ *  about one row. `dominant` set = it deserves a badge. */
+export function useCategoryClassification(categoryId: string | null) {
+  return useQuery({
+    queryKey: ['categoryClassification', categoryId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CategoryClassification>(
+        `/categories/${categoryId}/classification`
+      )
+      return data
+    },
+    enabled: !!categoryId,
     staleTime: 60_000,
   })
 }

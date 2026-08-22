@@ -52,11 +52,11 @@ export function BudgetActualReport({ budgetId }: Props) {
   const [showOverspent, setShowOverspent] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>('default')
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
-  const { data, isLoading, isError, refetch } = useBudgetActualReport(budgetId, filters.startDate, filters.endDate, catIds)
+  const { data, isLoading, isError, error, refetch } = useBudgetActualReport(budgetId, filters.startDate, filters.endDate, catIds)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   let categories = data?.categories ?? []
   if (showOverspent) categories = categories.filter((c) => Number(c.spent) > Number(c.assigned))

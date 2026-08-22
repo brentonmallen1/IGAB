@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import (
     Account,
     Budget,
-    BudgetMember,
     BudgetAssignment,
+    BudgetMember,
     Category,
     CategoryGroup,
     Liability,
@@ -151,12 +151,14 @@ async def create_payee(
     *,
     default_category_id: uuid.UUID | None = None,
     match_pattern: str | None = None,
+    transfer_account_id: uuid.UUID | None = None,
 ) -> Payee:
     payee = Payee(
         budget_id=budget.id,
         name=name or _name("Payee"),
         default_category_id=default_category_id,
         match_pattern=match_pattern,
+        transfer_account_id=transfer_account_id,
     )
     session.add(payee)
     await session.flush()

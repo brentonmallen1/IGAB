@@ -1,0 +1,288 @@
+.budget-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  flex-wrap: wrap;
+}
+
+.budget-filter-bar__btn {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid transparent;
+  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.budget-filter-bar__btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.budget-filter-bar__btn.active {
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.budget-filter-bar__btn--negative {
+  color: var(--color-negative);
+}
+.budget-filter-bar__btn--negative:hover {
+  color: var(--color-negative);
+  background-color: color-mix(in srgb, var(--color-negative) 10%, transparent);
+}
+.budget-filter-bar__btn--negative.active {
+  color: var(--color-negative);
+  background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
+}
+
+.budget-filter-bar__btn--warning {
+  color: var(--color-warning);
+}
+.budget-filter-bar__btn--warning:hover {
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);
+}
+.budget-filter-bar__btn--warning.active {
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+
+.budget-filter-bar__btn--positive {
+  color: var(--color-positive);
+}
+.budget-filter-bar__btn--positive:hover {
+  color: var(--color-positive);
+  background-color: color-mix(in srgb, var(--color-positive) 10%, transparent);
+}
+.budget-filter-bar__btn--positive.active {
+  color: var(--color-positive);
+  background-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
+}
+
+.budget-filter-bar__search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 0 6px;
+  height: 26px;
+  width: 170px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background-color: var(--bg-secondary);
+  transition: border-color var(--transition-fast);
+}
+
+.budget-filter-bar__search:focus-within {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+
+.budget-filter-bar__search-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.budget-filter-bar__search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.budget-filter-bar__search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.budget-filter-bar__search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  border-radius: var(--border-radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.budget-filter-bar__search-clear:hover {
+  color: var(--text-primary);
+}
+
+.budget-filter-bar__menu-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.budget-filter-bar__menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--text-muted);
+  border-radius: var(--border-radius-sm);
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.budget-filter-bar__menu-btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+/* The whole bar was desktop-density: ~26px buttons, a 26px-tall search field
+   and a 16px clear button, on the app's most-used mobile page. */
+@media (max-width: 768px) {
+  .budget-filter-bar {
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .budget-filter-bar__btn {
+    min-height: var(--tap-min);
+    padding: 4px var(--spacing-md);
+    font-size: var(--font-size-base);
+  }
+
+  .budget-filter-bar__search {
+    height: var(--tap-min);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .budget-filter-bar__search-clear {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* One-time note that saved views are now called filters. Quiet and inline with
+   the chips rather than a banner — it is a reassurance, not an alert. */
+.budget-filter-bar__notice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 2px var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.budget-filter-bar__notice strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.budget-filter-bar__notice-close {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.budget-filter-bar__notice-close:hover {
+  opacity: 1;
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* Grouping control. Shaped like the filter chips beside it — borderless,
+   muted, same radius — because a control that looks like a form input in a row
+   of chips reads as belonging to a different screen. Accent when a view is on,
+   matching how an active chip behaves. */
+.budget-filter-bar__view {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.budget-filter-bar__view:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.budget-filter-bar__view.active {
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+/* One ring around the whole chip. The select's own outline drew inside it,
+   which read as a stray box rather than a focus state. */
+.budget-filter-bar__view:has(.budget-filter-bar__view-select:focus-visible) {
+  border-color: var(--color-accent);
+  box-shadow: var(--input-focus-shadow);
+}
+
+/* The native control, covering the chip so every pixel of it is the hit area.
+   Kept in the DOM rather than replaced by a custom menu so keyboard and
+   screen-reader behaviour comes for free. */
+.budget-filter-bar__view-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  appearance: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.budget-filter-bar__view-label,
+.budget-filter-bar__view-icon,
+.budget-filter-bar__view-caret {
+  pointer-events: none;
+}
+
+.budget-filter-bar__view-icon,
+.budget-filter-bar__view-caret {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+/* Separates the grouping control from the filter chips: they are different
+   questions, not peers in one list. */
+.budget-filter-bar__divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--spacing-xs);
+  background-color: var(--border-color);
+  flex-shrink: 0;
+}
