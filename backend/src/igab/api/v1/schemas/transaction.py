@@ -73,6 +73,18 @@ class TransactionUpdate(BaseModel):
         return self
 
 
+class TransactionClassification(BaseModel):
+    """Why a transaction counts the way it does in reports."""
+
+    activity_class: str
+    #: Short human label for the class, e.g. "Savings".
+    label: str
+    #: Stable rule identifier — safe to branch on, unlike the prose.
+    reason: str
+    #: A sentence completing "This counts as <label> because …".
+    explanation: str
+
+
 class TransactionResponse(BaseModel):
     id: uuid.UUID
     budget_id: uuid.UUID

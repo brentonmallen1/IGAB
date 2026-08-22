@@ -93,6 +93,18 @@ REASON_TEXT: dict[ActivityReason, str] = {
     ActivityReason.DEFAULT_SPENDING: "it is ordinary spending from a budget account",
 }
 
+#: Short label for each class, for anywhere a class is shown to a person.
+CLASS_LABEL: dict[ActivityClass, str] = {
+    ActivityClass.INCOME: "Income",
+    ActivityClass.SPENDING: "Spending",
+    ActivityClass.SAVINGS: "Savings",
+    ActivityClass.DEBT_PRINCIPAL: "Debt payment",
+    ActivityClass.TRANSFER_INTERNAL: "Transfer",
+    ActivityClass.INVESTMENT_RETURN: "Investment change",
+    ActivityClass.DEBT_INTEREST: "Interest & fees",
+    ActivityClass.OPENING_BALANCE: "Starting balance",
+}
+
 _LIABILITY = "liability"
 
 _partner = aliased(Transaction)

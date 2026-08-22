@@ -478,3 +478,26 @@ export function useTransaction(transactionId: string | null) {
     enabled: !!transactionId,
   })
 }
+
+export interface TransactionClassification {
+  activity_class: string
+  label: string
+  reason: string
+  explanation: string
+}
+
+/** Why a transaction counts the way it does in reports. Fetched on demand —
+ *  the class is derived per row, so it is not carried on list responses. */
+export function useTransactionClassification(transactionId: string | null) {
+  return useQuery({
+    queryKey: ['transaction-classification', transactionId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TransactionClassification>(
+        `/transactions/${transactionId}/classification`,
+      )
+      return data
+    },
+    enabled: !!transactionId,
+    staleTime: 30_000,
+  })
+}
