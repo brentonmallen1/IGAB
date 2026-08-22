@@ -14,7 +14,6 @@ export const PERSIST_KEYS = {
   app: 'igab-app',
   ui: 'igab-ui',
   reports: 'igab-reports',
-  guide: 'igab-guide',
 } as const
 
 /** Keys safe to clear when recovering from a render crash. All of them: each

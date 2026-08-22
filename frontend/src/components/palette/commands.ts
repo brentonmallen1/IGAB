@@ -8,7 +8,6 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Compass,
   DatabaseBackup,
   Landmark,
   LifeBuoy,
@@ -133,14 +132,6 @@ export const STATIC_COMMANDS: AppCommand[] = [
     keywords: 'charts analytics',
     icon: BarChart3,
     run: (c) => c.navigate('/reports'),
-  },
-  {
-    id: 'nav-guide',
-    label: 'Guide',
-    section: 'Navigate',
-    keywords: 'roadmap education glossary learn help checkup wishlist',
-    icon: Compass,
-    run: (c) => c.navigate('/guide'),
   },
   {
     id: 'nav-scheduled',
