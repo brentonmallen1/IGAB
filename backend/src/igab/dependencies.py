@@ -13,6 +13,7 @@ from igab.repositories.account_type_repo import AccountTypeRepository
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.attachment_repo import AttachmentRepository
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
+from igab.repositories.budget_view_repo import BudgetViewRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
     CategoryGroupRepository,
@@ -108,6 +109,10 @@ def get_attachment_service(
     repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
 ) -> AttachmentService:
     return AttachmentService(repo)
+
+
+def get_budget_view_repo(session: SessionDep) -> BudgetViewRepository:
+    return BudgetViewRepository(session)
 
 
 def get_budget_filter_repo(session: SessionDep) -> BudgetFilterRepository:
@@ -525,6 +530,14 @@ async def require_category_group_access(
     )
 
 
+async def require_view_access(
+    view_id: uuid.UUID, current_user: CurrentUser, session: SessionDep
+) -> uuid.UUID:
+    from igab.db.models import BudgetView
+
+    return await _require_budget_child(session, BudgetView, view_id, current_user.id, "View")
+
+
 async def require_filter_access(
     filter_id: uuid.UUID, current_user: CurrentUser, session: SessionDep
 ) -> uuid.UUID:
@@ -581,6 +594,7 @@ PayeeAccess = Annotated[uuid.UUID, Depends(require_payee_access)]
 CategoryAccess = Annotated[uuid.UUID, Depends(require_category_access)]
 CategoryGroupAccess = Annotated[uuid.UUID, Depends(require_category_group_access)]
 FilterAccess = Annotated[uuid.UUID, Depends(require_filter_access)]
+ViewAccess = Annotated[uuid.UUID, Depends(require_view_access)]
 ScheduledAccess = Annotated[uuid.UUID, Depends(require_scheduled_access)]
 MatchAccess = Annotated[uuid.UUID, Depends(require_match_access)]
 TagAccess = Annotated[uuid.UUID, Depends(require_tag_access)]
