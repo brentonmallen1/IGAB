@@ -49,6 +49,7 @@ import { ParetoReport } from './charts/ParetoChart'
 import { PayeeReport } from './charts/PayeeChart'
 import { PlanVsRealityReport } from './charts/PlanVsRealityReport'
 import { SavingsReport } from './charts/SavingsReport'
+import { SavingsRateReport } from './charts/SavingsRateChart'
 import { SeasonalityReport } from './charts/SeasonalityHeatmap'
 import { SpendingTreemapReport } from './charts/SpendingTreemap'
 import { SubscriptionsReport } from './charts/SubscriptionsReport'
@@ -61,6 +62,7 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['AccountComposition', AccountCompositionReport],
   ['Liabilities', LiabilitiesReport],
   ['Savings', SavingsReport],
+  ['SavingsRate', SavingsRateReport],
   ['IncomeExpense', IncomeExpenseReport],
   ['BurnRate', BurnRateReport],
   ['CashFlowSankey', CashFlowSankeyReport],

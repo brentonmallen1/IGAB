@@ -27,6 +27,7 @@ import { TimelineReport } from '../../components/reports/charts/EventTimeline'
 import { LiabilitiesReport } from '../../components/reports/charts/LiabilitiesReport'
 import { SubscriptionsReport } from '../../components/reports/charts/SubscriptionsReport'
 import { SavingsReport } from '../../components/reports/charts/SavingsReport'
+import { SavingsRateReport } from '../../components/reports/charts/SavingsRateChart'
 import { AnomaliesReport } from '../../components/reports/charts/AnomaliesReport'
 import { PlanVsRealityReport } from '../../components/reports/charts/PlanVsRealityReport'
 import { CashProjectionReport } from '../../components/reports/charts/CashProjectionReport'
@@ -98,6 +99,7 @@ export function ReportsPage() {
       case 'account-composition': return <AccountCompositionReport budgetId={budgetId!} />
       case 'liabilities': return <LiabilitiesReport budgetId={budgetId!} />
       case 'savings': return <SavingsReport budgetId={budgetId!} />
+      case 'savings-rate': return <SavingsRateReport budgetId={budgetId!} />
       case 'income-expense': return <IncomeExpenseReport budgetId={budgetId!} />
       case 'burn-rate': return <BurnRateReport budgetId={budgetId!} />
       case 'cash-flow': return <CashFlowSankeyReport budgetId={budgetId!} />

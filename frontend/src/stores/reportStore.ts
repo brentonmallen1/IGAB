@@ -21,6 +21,7 @@ export type ReportTab =
   | 'liabilities'
   | 'subscriptions'
   | 'savings'
+  | 'savings-rate'
   | 'anomalies'
   | 'plan-reality'
 
@@ -44,6 +45,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'account-composition', label: 'Accounts', group: 'financial' },
   { id: 'liabilities', label: 'Liabilities', group: 'financial' },
   { id: 'savings', label: 'Savings', group: 'financial' },
+  { id: 'savings-rate', label: 'Savings Rate', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'burn-rate', label: 'Burn Rate', group: 'cashflow' },
   { id: 'cash-flow', label: 'Cash Flow', group: 'cashflow' },
@@ -98,6 +100,7 @@ export interface TabFilterSupport {
 export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'overview': { dates: true, categories: false, payees: false, accounts: false, groupBy: false },
   'net-worth': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'savings-rate': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'account-composition': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'liabilities': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'income-expense': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
