@@ -199,9 +199,20 @@ async def list_budget_transactions(
 
 
 def _parse_uuid_list(value: str | None) -> list[uuid.UUID] | None:
+    """Parse a comma-separated id list, rejecting malformed entries with a 400.
+
+    Unguarded `uuid.UUID()` turns a client-side id-construction slip into a
+    500 from the catch-all handler, which reads as a server fault and tells
+    nobody which value was wrong.
+    """
     if not value:
         return None
-    return [uuid.UUID(v.strip()) for v in value.split(",") if v.strip()]
+    try:
+        return [uuid.UUID(v.strip()) for v in value.split(",") if v.strip()]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Malformed id: {e}"
+        ) from e
 
 
 @router.get(

@@ -17,6 +17,9 @@ to an off-budget account is real spending and stays in cash flow.
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
+
+from igab.domain.exceptions import InvariantViolation
 from igab.repositories.payee_repo import PayeeRepository
 from igab.services.report_service import ReportService
 
@@ -81,7 +84,12 @@ class TestOrphanedLegsAreNotCashFlow:
             db_session, budget, brokerage, "-500.00", TODAY, payee=payee
         )
         await create_transaction(
-            db_session, budget, checking, "500.00", TODAY, payee=payee,
+            db_session,
+            budget,
+            checking,
+            "500.00",
+            TODAY,
+            payee=payee,
             transfer_id=partner.id,
         )
         assert await _income(db_session, budget) == Decimal("0")
@@ -145,3 +153,43 @@ class TestTransferPayeeResolution:
         first = await repo.find_or_create_transfer(budget.id, brokerage.id, brokerage.name)
         second = await repo.find_or_create_transfer(budget.id, brokerage.id, brokerage.name)
         assert first.id == second.id
+
+
+class TestTransferPayeeBinding:
+    """`find_or_create_transfer` promises that `transfer_account_id` points at
+    the account the payee names. It looked the payee up case-insensitively
+    while the unique constraint is case-sensitive, so two accounts differing
+    only in case shared one payee — and the second silently kept the first's
+    binding. Every unlinked leg then resolved its counterpart to the wrong
+    account, which can classify a debt payment as savings."""
+
+    async def test_accounts_differing_only_in_case_get_their_own_payees(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        upper = await create_account(db_session, budget, "Savings", on_budget=True)
+        lower = await create_account(db_session, budget, "savings", on_budget=True)
+        repo = PayeeRepository(db_session)
+
+        a = await repo.find_or_create_transfer(budget.id, upper.id, upper.name)
+        b = await repo.find_or_create_transfer(budget.id, lower.id, lower.name)
+
+        assert a.id != b.id
+        assert a.transfer_account_id == upper.id
+        assert b.transfer_account_id == lower.id
+
+    async def test_reusing_a_renamed_accounts_name_is_refused(self, db_session):
+        """Rename "Savings" to "Vacation Fund", then create a new "Savings".
+        Re-pointing rewrites what existing transfers mean and returning it
+        as-is misfiles every future one, so neither is silently chosen."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        original = await create_account(db_session, budget, "Savings", on_budget=True)
+        repo = PayeeRepository(db_session)
+        await repo.find_or_create_transfer(budget.id, original.id, "Savings")
+
+        original.name = "Vacation Fund"
+        replacement = await create_account(db_session, budget, "Savings2", on_budget=True)
+        await db_session.flush()
+
+        with pytest.raises(InvariantViolation, match="different account"):
+            await repo.find_or_create_transfer(budget.id, replacement.id, "Savings")

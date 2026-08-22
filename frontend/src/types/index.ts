@@ -404,6 +404,10 @@ export interface SankeyNode {
   id: string
   name: string
   type: 'income_payee' | 'budget' | 'category_group' | 'category' | 'expense_payee'
+  /** The entity this node stands for. `id` is a display key that may compose
+   *  several ids — a category node is keyed by (group, category) so one
+   *  category can sit under both its own group and the savings trunk. */
+  entity_id?: string | null
 }
 
 export interface SankeyLink {

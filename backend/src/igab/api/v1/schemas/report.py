@@ -122,6 +122,12 @@ class SankeyNode(BaseModel):
     id: str
     name: str
     type: str
+    #: The entity this node stands for, when it stands for one. `id` is a
+    #: display key that may compose several ids (a category node is keyed by
+    #: group AND category, so one category can sit under both its own group
+    #: and the savings trunk) — recovering an id by string-surgery on it sent
+    #: "{group_uuid}_{category_uuid}" to the transactions API as a category id.
+    entity_id: str | None = None
 
 
 class SankeyLink(BaseModel):

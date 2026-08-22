@@ -446,59 +446,37 @@ class ReportService:
         net_worth -= unmanaged_now
         net_worth_prev -= self._unmanaged_total_at(unmanaged_series, prev_end)
 
-        # Cash-flow expenses only
-        expenses_df = pdf.filter(pl.col("cash_flow") & (pl.col("amount") < 0))
-
-        # Current period income/expenses
-        period_df = pdf.filter(
-            (pl.col("date") >= start_date) & (pl.col("date") <= end_date) & pl.col("cash_flow")
-        )
-        income_this = Decimal(
-            str(period_df.filter(pl.col("amount") > 0).select(pl.col("amount").sum()).item() or 0)
-        )
-        expenses_this = Decimal(
-            str(
-                period_df.filter(pl.col("amount") < 0).select(pl.col("amount").abs().sum()).item()
-                or 0
-            )
-        )
-
-        # Previous period expenses
-        prev_df = pdf.filter(
-            (pl.col("date") >= prev_start) & (pl.col("date") <= prev_end) & pl.col("cash_flow")
-        )
-        expenses_prev = Decimal(
-            str(
-                prev_df.filter(pl.col("amount") < 0).select(pl.col("amount").abs().sum()).item()
-                or 0
-            )
-        )
-
-        # Burn rates (annualized to monthly)
+        # Every figure below reads the activity-class partition, not the sign
+        # of the amount. The dashboard summarises the report tabs, so it has to
+        # mean the same thing they do: reading `amount < 0` as "expense" made
+        # this card announce "Savings Rate 0% / Expenses $5,000" beside a
+        # Savings Rate tab reading 40% and an Income vs Expenses tab reading
+        # $3,000, for the same window and the same budget.
         thirty_ago = today - timedelta(days=30)
         ninety_ago = today - timedelta(days=90)
-        burn_30 = Decimal(
-            str(
-                expenses_df.filter(pl.col("date") >= thirty_ago)
-                .select(pl.col("amount").abs().sum())
-                .item()
-                or 0
-            )
-        )
-        burn_90_raw = Decimal(
-            str(
-                expenses_df.filter(pl.col("date") >= ninety_ago)
-                .select(pl.col("amount").abs().sum())
-                .item()
-                or 0
-            )
-        )
-        burn_90 = burn_90_raw / 3  # Monthly equivalent
+        cdf = await self._class_frame(budget_id, min(prev_start, ninety_ago), today)
 
-        # Savings rate
-        savings_rate = (
-            float((income_this - expenses_this) / income_this) if income_this > 0 else 0.0
-        )
+        def _cls_total(start: date, end: date, cls: ActivityClass) -> Decimal:
+            window = cdf.filter(
+                (pl.col("date") >= start) & (pl.col("date") <= end) & (pl.col("cls") == cls.value)
+            )
+            return Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
+
+        income_this = _cls_total(start_date, end_date, ActivityClass.INCOME)
+        # Outflow classes are stored negative; these cards report magnitudes.
+        expenses_this = -_cls_total(start_date, end_date, ActivityClass.SPENDING)
+        savings_this = -_cls_total(start_date, end_date, ActivityClass.SAVINGS)
+        expenses_prev = -_cls_total(prev_start, prev_end, ActivityClass.SPENDING)
+
+        # Burn rate is how fast money is consumed, so savings and debt
+        # principal are out — matching the Burn Rate chart exactly.
+        burn_30 = -_cls_total(thirty_ago, today, ActivityClass.SPENDING)
+        burn_90 = -_cls_total(ninety_ago, today, ActivityClass.SPENDING) / 3
+
+        # savings / income, the same ratio the Savings Rate tab shows by
+        # default. The old (income - expenses) / income counted a brokerage
+        # transfer as an expense and so reported 0% for a household saving 40%.
+        savings_rate = float(savings_this / income_this) if income_this > 0 else 0.0
 
         # Days until zero
         daily_burn = float(burn_30) / 30 if burn_30 > 0 else 0
@@ -1039,10 +1017,10 @@ class ReportService:
         links: list[dict] = []
         node_ids: dict[str, int] = {}
 
-        def get_node(nid: str, name: str, ntype: str) -> int:
+        def get_node(nid: str, name: str, ntype: str, entity_id: str | None = None) -> int:
             if nid not in node_ids:
                 node_ids[nid] = len(nodes)
-                nodes.append({"id": nid, "name": name, "type": ntype})
+                nodes.append({"id": nid, "name": name, "type": ntype, "entity_id": entity_id})
             return node_ids[nid]
 
         get_node("__budget__", "Budget", "budget")
@@ -1147,9 +1125,13 @@ class ReportService:
         category_payees: dict[str, list[dict]] = {}
         for slot, cat_payees in payee_by_cat.items():
             gid, cat_id = slot
+            # Keyed by (group, category) so one category can appear under both
+            # its own group and the savings/debt trunk. The composite is a
+            # display key only — `entity_id` is what a drill-down needs, and
+            # parsing it back out of the id sent a non-UUID to the API.
             node_id = f"c_{gid}_{cat_id}"
             group_to_cats.setdefault(gid, []).append(slot)
-            get_node(node_id, cat_names[slot], "category")
+            get_node(node_id, cat_names[slot], "category", entity_id=cat_id)
             links.append(
                 {
                     "source": f"g_{gid}",
@@ -1171,7 +1153,15 @@ class ReportService:
             ]
 
         return {
-            "nodes": [{"id": n["id"], "name": n["name"], "type": n["type"]} for n in nodes],
+            "nodes": [
+                {
+                    "id": n["id"],
+                    "name": n["name"],
+                    "type": n["type"],
+                    "entity_id": n.get("entity_id"),
+                }
+                for n in nodes
+            ],
             "links": links,
             "total_income": total_income,
             "total_expense": total_expense,
@@ -2319,6 +2309,39 @@ class ReportService:
             },
             "months": month_list,
         }
+
+    async def _class_frame(self, budget_id: uuid.UUID, start: date, end: date) -> pl.DataFrame:
+        """(date, amount, class) for on-budget leaf rows, for window slicing.
+
+        Same rows and same classification as `_monthly_class_totals`; that one
+        groups by month in SQL, this one hands back the rows so a caller can
+        cut arbitrary windows (30 days, previous period) without a query each.
+        """
+        rows = (
+            await self.session.execute(
+                select(
+                    Transaction.date,
+                    Transaction.amount,
+                    ACTIVITY_CLASS.label("cls"),
+                ).where(
+                    Transaction.budget_id == budget_id,
+                    NOT_DELETED,
+                    POSTED,
+                    LEAF,
+                    Transaction.date >= start,
+                    Transaction.date <= end,
+                    ON_BUDGET_ACCOUNT,
+                )
+            )
+        ).all()
+        return pl.DataFrame(
+            {
+                "date": [r.date for r in rows],
+                "amount": [float(r.amount) for r in rows],
+                "cls": [r.cls for r in rows],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64, "cls": pl.String},
+        )
 
     async def _monthly_class_totals(
         self, budget_id: uuid.UUID, start: date, end: date

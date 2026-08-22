@@ -1,7 +1,6 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
 
 from igab.api.v1.schemas.budget_view import (
     BudgetViewCreate,
@@ -13,16 +12,6 @@ from igab.domain.exceptions import NotFoundError
 from igab.repositories.budget_view_repo import BudgetViewRepository
 
 router = APIRouter()
-
-
-def _conflict(name: str) -> HTTPException:
-    """A view name collides with an existing one. Naming a second view the same
-    thing is an ordinary mistake, so it gets a 409 the UI can show — not the
-    500 an unhandled IntegrityError would produce."""
-    return HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail=f'A view named "{name}" already exists in this budget',
-    )
 
 
 ViewRepo = Annotated[BudgetViewRepository, Depends(get_budget_view_repo)]
@@ -46,14 +35,14 @@ async def create_budget_view(
     current_user: CurrentUser,
     repo: ViewRepo,
 ) -> BudgetViewResponse:
-    try:
-        view = await repo.create(
-            budget_id=budget_id, name=body.name, hide_unassigned=body.hide_unassigned
-        )
-        if body.groups:
-            await repo.set_groups(view.id, body.groups)
-    except IntegrityError as e:
-        raise _conflict(body.name) from e
+    # Name collisions become a 409 via the IntegrityError handler in main,
+    # which reads the constraint that actually failed. Catching it here meant
+    # a duplicate PLACEMENT was reported as 'a view named "" already exists'.
+    view = await repo.create(
+        budget_id=budget_id, name=body.name, hide_unassigned=body.hide_unassigned
+    )
+    if body.groups:
+        await repo.set_groups(view.id, body.groups)
     return BudgetViewResponse.model_validate(await repo.get_full(view.id))
 
 
@@ -93,8 +82,6 @@ async def update_budget_view(
             await repo.set_placements(view_id, [p.model_dump() for p in body.placements])
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
-    except IntegrityError as e:
-        raise _conflict(body.name or "") from e
     return BudgetViewResponse.model_validate(await repo.get_full(view_id))
 
 

@@ -249,7 +249,10 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         // Already at payee level — the category node opens its transactions
         setDrillDown({
           kind: 'category', label: nodeData.name, scope: 'leaf', direction: 'outflow',
-          categoryIds: [nodeData.id.replace(/^c_/, '')], ...window,
+          // entity_id, not the node id: the id is a (group, category)
+          // composite so one category can appear under both its own group and
+          // the savings trunk, and stripping the prefix yielded a non-UUID.
+          categoryIds: [nodeData.entity_id ?? nodeData.id.replace(/^c_/, '')], ...window,
         })
       }
     } else if (nodeData.type === 'payee') {
