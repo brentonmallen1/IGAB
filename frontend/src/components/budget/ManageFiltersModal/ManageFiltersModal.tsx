@@ -27,7 +27,7 @@ const QUICK_FILTER_VARIANTS: Record<QuickFilter, string> = {
 
 export function ManageFiltersModal({ budgetId, onClose }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
-  const deleteView = useDeleteBudgetFilter(budgetId)
+  const deleteFilter = useDeleteBudgetFilter(budgetId)
   const openFilterModal = useUIStore((s) => s.openFilterModal)
   const quickFilterOrder = useUIStore((s) => s.quickFilterOrder)
   const reorderQuickFilters = useUIStore((s) => s.reorderQuickFilters)
@@ -77,7 +77,7 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
   }
 
   async function handleDeleteFilter(id: string) {
-    await deleteView.mutateAsync(id)
+    await deleteFilter.mutateAsync(id)
     if (activeFilterId === id) setActiveFilter(null)
   }
 
@@ -86,7 +86,7 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
     onClose()
   }
 
-  function handleNewView() {
+  function handleNewFilter() {
     openFilterModal()
     onClose()
   }
@@ -170,10 +170,10 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
               <button
                 type="button"
                 className="manage-filters-modal__add-btn"
-                onClick={handleNewView}
+                onClick={handleNewFilter}
               >
                 <Plus size={13} />
-                New View
+                New Filter
               </button>
             </div>
             {(!filters || filters.length === 0) ? (
@@ -184,13 +184,13 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
               <div className="manage-filters-modal__list">
                 {filters.map((f) => (
                   <div key={filter.id} className="manage-filters-modal__row">
-                    <span className="manage-filters-modal__view-name">{filter.name}</span>
+                    <span className="manage-filters-modal__filter-name">{filter.name}</span>
                     <div className="manage-filters-modal__row-actions">
                       <button
                         type="button"
                         className="manage-filters-modal__icon-btn"
                         onClick={() => handleEditFilter(filter.id)}
-                        aria-label={`Edit view ${filter.name}`}
+                        aria-label={`Edit filter ${filter.name}`}
                         title="Edit filter"
                       >
                         <Pencil size={13} />
@@ -199,8 +199,8 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                         type="button"
                         className="manage-filters-modal__icon-btn manage-filters-modal__icon-btn--danger"
                         onClick={() => handleDeleteFilter(filter.id)}
-                        disabled={deleteView.isPending}
-                        aria-label={`Delete view ${filter.name}`}
+                        disabled={deleteFilter.isPending}
+                        aria-label={`Delete filter ${filter.name}`}
                         title="Delete filter"
                       >
                         <Trash2 size={13} />

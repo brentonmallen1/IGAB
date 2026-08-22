@@ -1,4 +1,4 @@
-.manage-filters-overlay {
+.manage-views-overlay {
   position: fixed;
   inset: 0;
   background-color: rgba(0, 0, 0, 0.55);
@@ -9,7 +9,7 @@
   z-index: var(--z-overlay);
 }
 
-.manage-filters-modal {
+.manage-views-modal {
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
@@ -21,7 +21,7 @@
   flex-direction: column;
 }
 
-.manage-filters-modal__header {
+.manage-views-modal__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -30,13 +30,13 @@
   flex-shrink: 0;
 }
 
-.manage-filters-modal__title {
+.manage-views-modal__title {
   font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.manage-filters-modal__close {
+.manage-views-modal__close {
   color: var(--text-muted);
   padding: 4px;
   border-radius: var(--border-radius-sm);
@@ -45,11 +45,11 @@
   transition: color var(--transition-fast);
 }
 
-.manage-filters-modal__close:hover {
+.manage-views-modal__close:hover {
   color: var(--text-primary);
 }
 
-.manage-filters-modal__body {
+.manage-views-modal__body {
   padding: var(--spacing-lg);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -59,13 +59,13 @@
   gap: var(--spacing-lg);
 }
 
-.manage-filters-modal__section {
+.manage-views-modal__section {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
 }
 
-.manage-filters-modal__section-header {
+.manage-views-modal__section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -74,13 +74,13 @@
   color: var(--text-primary);
 }
 
-.manage-filters-modal__section-hint {
+.manage-views-modal__section-hint {
   font-size: var(--font-size-xs);
   font-weight: 400;
   color: var(--text-muted);
 }
 
-.manage-filters-modal__add-btn {
+.manage-views-modal__add-btn {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -92,18 +92,18 @@
   transition: background-color var(--transition-fast);
 }
 
-.manage-filters-modal__add-btn:hover {
+.manage-views-modal__add-btn:hover {
   background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
-.manage-filters-modal__list {
+.manage-views-modal__list {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   background-color: var(--bg-secondary);
   overflow: hidden;
 }
 
-.manage-filters-modal__row {
+.manage-views-modal__row {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -112,77 +112,18 @@
   transition: background-color var(--transition-fast);
 }
 
-.manage-filters-modal__row:last-child {
+.manage-views-modal__row:last-child {
   border-bottom: none;
 }
 
-.manage-filters-modal__row--quick {
-  cursor: grab;
-}
-
-.manage-filters-modal__row--quick:active {
-  cursor: grabbing;
-}
-
-.manage-filters-modal__row.drag-over {
-  background-color: color-mix(in srgb, var(--color-accent) 8%, transparent);
-}
-
-.manage-filters-modal__row.dragging {
-  opacity: 0.4;
-}
-
-.manage-filters-modal__grip {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.manage-filters-modal__filter-badge {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: var(--border-radius-md);
-  border: 1px solid transparent;
-}
-
-.manage-filters-modal__filter-badge--negative {
-  color: var(--color-negative);
-  background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
-}
-
-.manage-filters-modal__filter-badge--warning {
-  color: var(--color-warning);
-  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
-}
-
-.manage-filters-modal__filter-badge--positive {
-  color: var(--color-positive);
-  background-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
-}
-
-.manage-filters-modal__lock {
-  color: var(--text-muted);
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.manage-filters-modal__filter-name {
-  flex: 1;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-}
-
-.manage-filters-modal__row-actions {
+.manage-views-modal__row-actions {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.manage-filters-modal__icon-btn {
+.manage-views-modal__icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -193,22 +134,22 @@
   transition: color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.manage-filters-modal__icon-btn:hover {
+.manage-views-modal__icon-btn:hover {
   color: var(--text-primary);
   background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
-.manage-filters-modal__icon-btn--danger:hover {
+.manage-views-modal__icon-btn--danger:hover {
   color: var(--color-negative);
   background-color: color-mix(in srgb, var(--color-negative) 10%, transparent);
 }
 
-.manage-filters-modal__icon-btn:disabled {
+.manage-views-modal__icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.manage-filters-modal__empty {
+.manage-views-modal__empty {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   padding: var(--spacing-md);
@@ -217,8 +158,45 @@
   border-radius: var(--border-radius-sm);
 }
 
-.manage-filters-modal__note {
+.manage-views-modal__note {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   padding: var(--spacing-xs) 0;
+}
+
+.manage-views-modal__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.manage-views-modal__view-name {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+/* Which view the budget page is currently showing. Accent, matching the active
+   chip in the filter bar, so "in use" reads the same in both places. */
+.manage-views-modal__active {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--border-radius-md);
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.manage-views-modal__meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
 }

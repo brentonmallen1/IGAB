@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ListFilter, Layers, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
+import { ChevronDown, ListFilter, Layers, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore } from '../../../stores/uiStore'
@@ -25,6 +25,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
   const activeViewId = useUIStore((s) => s.activeViewId)
   const setActiveView = useUIStore((s) => s.setActiveView)
   const openViewModal = useUIStore((s) => s.openViewModal)
+  const openManageViewsModal = useUIStore((s) => s.openManageViewsModal)
   const [renameNoticeSeen, setRenameNoticeSeen] = useState(
     () => localStorage.getItem(RENAME_NOTICE_KEY) === '1'
   )
@@ -87,7 +88,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
     if (id === 'new') openFilterModal()
     else if (id === 'manage') openManageFiltersModal()
     else if (id === 'new-view') openViewModal()
-    else if (id === 'edit-view' && activeViewId) openViewModal(activeViewId)
+    else if (id === 'manage-views') openManageViewsModal()
   }
 
   function handleAllClick() {
@@ -103,20 +104,31 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
           because it is a separate question — a view decides the arrangement,
           a filter decides which of those categories show. Both can be on. */}
       {(views?.length ?? 0) > 0 && (
-        <select
-          className="budget-filter-bar__view-select"
-          value={activeViewId ?? ''}
-          onChange={(e) => setActiveView(e.target.value || null)}
-          title="How categories are grouped"
-          aria-label="Category view"
-        >
-          <option value="">Default groups</option>
-          {views!.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name}
-            </option>
-          ))}
-        </select>
+        <>
+          <span
+            className={`budget-filter-bar__view ${activeViewId ? 'active' : ''}`}
+          >
+            <Layers size={12} className="budget-filter-bar__view-icon" />
+            <select
+              className="budget-filter-bar__view-select"
+              value={activeViewId ?? ''}
+              onChange={(e) => setActiveView(e.target.value || null)}
+              title="How categories are grouped"
+              aria-label="Category view"
+            >
+              <option value="">Default groups</option>
+              {views!.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={12} className="budget-filter-bar__view-caret" />
+          </span>
+          {/* The grouping control answers a different question from the chips
+              beside it, so a rule keeps them from reading as one row of peers. */}
+          <span className="budget-filter-bar__divider" aria-hidden="true" />
+        </>
       )}
 
       <button
@@ -213,7 +225,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
           ref={menuAnchorRef}
           className="budget-filter-bar__menu-btn"
           onClick={() => setMenuOpen((v) => !v)}
-          title="Filter options"
+          title="Filters and views"
         >
           <ListFilter size={14} />
         </button>
@@ -224,10 +236,11 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
               items={[
                 { id: 'new', label: 'New Filter', icon: Plus },
                 { id: 'manage', label: 'Manage Filters', icon: Settings2 },
+                // Views are a different axis from filters, so they sit below a
+                // rule rather than reading as two more filter actions.
+                { id: 'sep', label: '', separator: true },
                 { id: 'new-view', label: 'New View', icon: Layers },
-                ...(activeViewId
-                  ? [{ id: 'edit-view', label: 'Edit This View', icon: Settings2 }]
-                  : []),
+                { id: 'manage-views', label: 'Manage Views', icon: Settings2 },
               ]}
               onSelect={handleMenuSelect}
               onClose={() => setMenuOpen(false)}

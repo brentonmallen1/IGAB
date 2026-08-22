@@ -6,6 +6,7 @@ import { CategoryMobileActions } from '../../components/budget/CategoryInspector
 import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
 import { BudgetFilterModal } from '../../components/budget/BudgetFilterModal/BudgetFilterModal'
 import { BudgetViewModal } from '../../components/budget/BudgetViewModal/BudgetViewModal'
+import { ManageViewsModal } from '../../components/budget/ManageViewsModal/ManageViewsModal'
 import { ManageFiltersModal } from '../../components/budget/ManageFiltersModal/ManageFiltersModal'
 import { MultiMonthSheet } from '../../components/budget/MultiMonthSheet/MultiMonthSheet'
 import { TbaHero } from '../../components/budget/TbaHero/TbaHero'
@@ -33,6 +34,8 @@ export function BudgetPage() {
   const isViewModalOpen = useUIStore((s) => s.isViewModalOpen)
   const editingViewId = useUIStore((s) => s.editingViewId)
   const closeViewModal = useUIStore((s) => s.closeViewModal)
+  const isManageViewsModalOpen = useUIStore((s) => s.isManageViewsModalOpen)
+  const closeManageViewsModal = useUIStore((s) => s.closeManageViewsModal)
   const editingFilterId = useUIStore((s) => s.editingFilterId)
   const closeFilterModal = useUIStore((s) => s.closeFilterModal)
   const isManageFiltersModalOpen = useUIStore((s) => s.isManageFiltersModalOpen)
@@ -225,6 +228,9 @@ export function BudgetPage() {
       )}
       {isViewModalOpen && (
         <BudgetViewModal budgetId={budgetId} viewId={editingViewId} onClose={closeViewModal} />
+      )}
+      {isManageViewsModalOpen && (
+        <ManageViewsModal budgetId={budgetId} onClose={closeManageViewsModal} />
       )}
       {isManageFiltersModalOpen && (
         <ManageFiltersModal

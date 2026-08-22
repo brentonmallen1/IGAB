@@ -21,9 +21,9 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId, true)
   const { data: categories = [] } = useCategories(budgetId, true)
-  const createView = useCreateBudgetFilter(budgetId)
-  const updateView = useUpdateBudgetFilter(budgetId)
-  const deleteView = useDeleteBudgetFilter(budgetId)
+  const createFilter = useCreateBudgetFilter(budgetId)
+  const updateFilter = useUpdateBudgetFilter(budgetId)
+  const deleteFilter = useDeleteBudgetFilter(budgetId)
   const setActiveFilter = useUIStore((s) => s.setActiveFilter)
   const activeFilterId = useUIStore((s) => s.activeFilterId)
 
@@ -76,9 +76,9 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
     if (!trimmed) return
     const categoryIds = Array.from(selectedIds)
     if (isEdit && existingFilter) {
-      await updateView.mutateAsync({ id: existingFilter.id, name: trimmed, category_ids: categoryIds })
+      await updateFilter.mutateAsync({ id: existingFilter.id, name: trimmed, category_ids: categoryIds })
     } else {
-      const created = await createView.mutateAsync({ name: trimmed, category_ids: categoryIds })
+      const created = await createFilter.mutateAsync({ name: trimmed, category_ids: categoryIds })
       setActiveFilter(created.id)
     }
     onClose()
@@ -86,12 +86,12 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
 
   async function handleDelete() {
     if (!existingFilter) return
-    await deleteView.mutateAsync(existingFilter.id)
+    await deleteFilter.mutateAsync(existingFilter.id)
     if (activeFilterId === existingFilter.id) setActiveFilter(null)
     onClose()
   }
 
-  const isPending = createView.isPending || updateView.isPending || deleteView.isPending
+  const isPending = createFilter.isPending || updateFilter.isPending || deleteFilter.isPending
 
   return (
     <div
@@ -100,7 +100,7 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
     >
       <form ref={trapRef} tabIndex={-1} className="filter-modal" onSubmit={handleSubmit} role="dialog" aria-modal aria-labelledby="filter-modal-title">
         <div className="filter-modal__header">
-          <span id="filter-modal-title" className="filter-modal__title">{isEdit ? 'Edit View' : 'New Custom View'}</span>
+          <span id="filter-modal-title" className="filter-modal__title">{isEdit ? 'Edit Filter' : 'New Filter'}</span>
           <button type="button" className="filter-modal__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
@@ -113,7 +113,7 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
 
           <div className="filter-modal__field">
             <label className="filter-modal__label" htmlFor="view-name">
-              View Name
+              Filter Name
             </label>
             <input
               id="view-name"

@@ -89,6 +89,9 @@ interface UIState {
   editingViewId: string | null
   openViewModal: (viewId?: string) => void
   closeViewModal: () => void
+  isManageViewsModalOpen: boolean
+  openManageViewsModal: () => void
+  closeManageViewsModal: () => void
   isFilterModalOpen: boolean
   editingFilterId: string | null
   setActiveFilter: (filterId: string | null) => void
@@ -335,6 +338,9 @@ export const useUIStore = create<UIState>()(
   editingViewId: null,
   openViewModal: (viewId) => set({ isViewModalOpen: true, editingViewId: viewId ?? null }),
   closeViewModal: () => set({ isViewModalOpen: false, editingViewId: null }),
+  isManageViewsModalOpen: false,
+  openManageViewsModal: () => set({ isManageViewsModalOpen: true }),
+  closeManageViewsModal: () => set({ isManageViewsModalOpen: false }),
   isFilterModalOpen: false,
   editingFilterId: null,
   setActiveFilter: (filterId) => set({ activeFilterId: filterId, activeQuickFilter: null }),
