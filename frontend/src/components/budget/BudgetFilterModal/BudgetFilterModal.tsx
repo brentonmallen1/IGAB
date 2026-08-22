@@ -112,11 +112,11 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
           </p>
 
           <div className="filter-modal__field">
-            <label className="filter-modal__label" htmlFor="view-name">
+            <label className="filter-modal__label" htmlFor="filter-name">
               Filter Name
             </label>
             <input
-              id="view-name"
+              id="filter-name"
               ref={nameRef}
               className="filter-modal__input"
               value={name}

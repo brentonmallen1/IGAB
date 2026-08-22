@@ -59,12 +59,6 @@
   gap: var(--spacing-lg);
 }
 
-.manage-views-modal__section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
 .manage-views-modal__section-header {
   display: flex;
   align-items: center;
@@ -72,12 +66,6 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.manage-views-modal__section-hint {
-  font-size: var(--font-size-xs);
-  font-weight: 400;
-  color: var(--text-muted);
 }
 
 .manage-views-modal__add-btn {
@@ -156,12 +144,6 @@
   text-align: center;
   border: 1px dashed var(--border-color);
   border-radius: var(--border-radius-sm);
-}
-
-.manage-views-modal__note {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  padding: var(--spacing-xs) 0;
 }
 
 .manage-views-modal__hint {
