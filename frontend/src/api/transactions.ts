@@ -114,6 +114,9 @@ export interface BudgetTransactionParams {
   payeeIds?: string[]
   accountIds?: string[]
   dayOfWeek?: number
+  /** Restrict to these activity classes, so the panel totals what the chart
+   *  that opened it counted rather than every row of the same sign. */
+  activityClasses?: string[]
   limit?: number
   offset?: number
 }
@@ -141,6 +144,8 @@ export function useBudgetTransactions(
       if (params!.categoryIds?.length) p.category_ids = params!.categoryIds.join(',')
       if (params!.payeeIds?.length) p.payee_ids = params!.payeeIds.join(',')
       if (params!.accountIds?.length) p.account_ids = params!.accountIds.join(',')
+      if (params!.activityClasses?.length)
+        p.activity_classes = params!.activityClasses.join(',')
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
         { params: p },

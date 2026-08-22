@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { Treemap, ResponsiveContainer, Tooltip } from 'recharts'
 import { ChevronRight } from 'lucide-react'
-import { resolveGroupBy, useReportStore } from '../../../stores/reportStore'
+import { resolveGroupBy, spendingDrillClasses, useReportStore } from '../../../stores/reportStore'
 import { useSpendingGroupedReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -40,11 +40,16 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
-  // Reset the drill when the group-by mode changes (state adjusted during
-  // render instead of in an effect, per react-hooks/set-state-in-effect)
-  const [prevGroupBy, setPrevGroupBy] = useState(groupBy)
-  if (prevGroupBy !== groupBy) {
-    setPrevGroupBy(groupBy)
+  // Reset the drill when the group-by mode OR the view changes (state adjusted
+  // during render instead of in an effect, per react-hooks/set-state-in-effect).
+  // A view replaces the whole parent_id keyspace — budget group ids become view
+  // group ids — so a drill held across the switch pointed at a key that no
+  // longer exists, rendering the empty state and, if the view hid anything,
+  // blaming it on the view.
+  const [prevScope, setPrevScope] = useState(`${groupBy}|${filters.viewId ?? ''}`)
+  const scope = `${groupBy}|${filters.viewId ?? ''}`
+  if (prevScope !== scope) {
+    setPrevScope(scope)
     setSelectedGroup(null)
   }
 
@@ -207,6 +212,8 @@ export function SpendingTreemapReport({ budgetId }: Props) {
                   scope: 'leaf',
                   direction: 'outflow',
                   categoryIds: [item.id],
+                  // Same classes the tiles were sized from.
+                  activityClasses: spendingDrillClasses(includeSavings),
                   startDate: filters.startDate,
                   endDate: filters.endDate,
                 })

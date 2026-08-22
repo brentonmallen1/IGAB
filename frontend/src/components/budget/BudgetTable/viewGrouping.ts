@@ -67,3 +67,21 @@ export function groupByView(
 
   return { groups, byGroup }
 }
+
+/** The categories a view actually renders — everything it has not hidden, and
+ *  (unless it hides them) everything it has not placed.
+ *
+ *  Anything counting rows must go through this, not the raw category list:
+ *  the quick-filter chips counted the unfiltered set, so with a view active
+ *  "Overspent 5" opened a list of 2 and nothing explained the gap. */
+export function visibleCategoryIds(
+  view: BudgetView,
+  categories: Category[],
+  budgetId: string
+): Set<string> {
+  const ids = new Set<string>()
+  for (const list of groupByView(view, categories, budgetId).byGroup.values()) {
+    for (const cat of list) ids.add(cat.id)
+  }
+  return ids
+}

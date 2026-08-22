@@ -140,6 +140,9 @@ async def list_budget_transactions(
     scope: Literal["parent", "leaf"] = "parent",
     posted_only: bool = False,
     cash_flow_only: bool = False,
+    #: Comma-separated activity classes, so a report drill-down lists exactly
+    #: what the chart that opened it counted.
+    activity_classes: str | None = Query(None),
     direction: Literal["inflow", "outflow"] | None = None,
     day_of_week: int | None = Query(None, ge=0, le=6),
     cleared: str | None = None,
@@ -176,6 +179,7 @@ async def list_budget_transactions(
         scope=scope,
         posted_only=posted_only,
         cash_flow_only=cash_flow_only,
+        activity_classes=_parse_csv(activity_classes),
         direction=direction,
         day_of_week=day_of_week,
         cleared=cleared,
@@ -196,6 +200,12 @@ async def list_budget_transactions(
         total_count=total_count,
         total_amount=total_amount,
     )
+
+
+def _parse_csv(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    return [v.strip() for v in value.split(",") if v.strip()] or None
 
 
 def _parse_uuid_list(value: str | None) -> list[uuid.UUID] | None:

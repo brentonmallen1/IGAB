@@ -10,7 +10,7 @@ import {
 } from '../../../api/categories'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
-import { groupByView } from './viewGrouping'
+import { groupByView, visibleCategoryIds } from './viewGrouping'
 import { useTargetsByBudget } from '../../../api/targets'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
@@ -115,6 +115,17 @@ export function BudgetTable() {
     })
   }
 
+  // Chip counts must describe the rows the grid will actually render. A view
+  // drops hidden placements, and with hide_unassigned drops every unplaced
+  // category — counting from the unfiltered balances made "Overspent 5" open
+  // a list of 2 with nothing to explain the gap.
+  const viewVisibleIds = activeView
+    ? visibleCategoryIds(activeView, categories ?? [], budgetId)
+    : null
+  const chipBalances = viewVisibleIds
+    ? (budgetMonth?.category_balances ?? []).filter((b) => viewVisibleIds.has(b.category_id))
+    : (budgetMonth?.category_balances ?? [])
+
   const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
   const sourceGroups = arranged?.groups ?? groups
   const visibleGroups =
@@ -147,7 +158,7 @@ export function BudgetTable() {
     <div className="budget-table">
       <BudgetFilterBar
         budgetId={budgetId}
-        categoryBalances={budgetMonth?.category_balances ?? []}
+        categoryBalances={chipBalances}
         targets={targets ?? []}
       />
       <div className="budget-table__header">

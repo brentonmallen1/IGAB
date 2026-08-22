@@ -86,6 +86,15 @@ export function getGroupTabs(groupId: TabGroup): TabDef[] {
 
 export type GroupBy = 'group' | 'category' | 'payee'
 
+/** Which activity classes a spending chart is counting, given its
+ *  "Include savings & debt payments" toggle. Drill-downs pass this so the
+ *  transaction list totals what the chart totals — the one list must never
+ *  contradict the bar that opened it. Mirrors `_spending_classes` on the
+ *  server; keep the two in step. */
+export function spendingDrillClasses(includeSavings: boolean): string[] {
+  return includeSavings ? ['spending', 'savings', 'debt_principal'] : ['spending']
+}
+
 export interface TabFilterSupport {
   /** Whether the tab can roll up by a saved view's groups instead of the
    *  budget's own. Only the group-capable ones — everything else has no group
@@ -167,6 +176,10 @@ export interface DrillDownContext {
   categoryIds?: string[]
   payeeIds?: string[]
   dayOfWeek?: number
+  /** Activity classes the originating chart counted. A chart that means
+   *  "spending" must say so, or its drill lists savings and debt too — an
+   *  $800 bar opening a panel that totals $1,800. */
+  activityClasses?: string[]
   startDate: string
   endDate: string
 }

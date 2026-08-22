@@ -282,6 +282,11 @@ class SpendingGroupedResponse(BaseModel):
     view_hidden_total: Decimal = Decimal("0")
     #: Present only when the user selected categories or a view is active.
     class_excluded: list[SpendingClassExcluded] = []
+    #: The requested view no longer exists (deleted, or another budget's), so
+    #: these groups are the budget's own. Said out loud because the client
+    #: persists viewId outside any budget scope and would otherwise show one
+    #: arrangement while its selector claims another.
+    view_unavailable: bool = False
 
 
 # ─── Seasonality ─────────────────────────────────────────────────────────────

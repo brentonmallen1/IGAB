@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groupByView, UNASSIGNED_GROUP_ID } from './viewGrouping'
+import { groupByView, UNASSIGNED_GROUP_ID, visibleCategoryIds } from './viewGrouping'
 import type { BudgetView, Category } from '../../../types'
 
 const BUDGET = 'b1'
@@ -154,5 +154,32 @@ describe('groupByView', () => {
     }
     const { byGroup } = groupByView(v, [cat('c1', 'Rent')], BUDGET)
     expect(byGroup.get('need')!.map((c) => c.name)).toEqual(['Rent'])
+  })
+})
+
+describe('visibleCategoryIds', () => {
+  it('includes both placed and unplaced categories', () => {
+    const v = view([['g1', 'Need']], [{ category_id: 'c-rent', group_id: 'g1' }])
+    const ids = visibleCategoryIds(v, [cat('c-rent', 'Rent'), cat('c-new', 'New')], BUDGET)
+    expect(ids).toEqual(new Set(['c-rent', 'c-new']))
+  })
+
+  it('excludes what the view hides', () => {
+    const v = view(
+      [['g1', 'Need']],
+      [
+        { category_id: 'c-rent', group_id: 'g1' },
+        { category_id: 'c-fun', is_hidden: true },
+      ]
+    )
+    const ids = visibleCategoryIds(v, [cat('c-rent', 'Rent'), cat('c-fun', 'Fun')], BUDGET)
+    expect(ids).toEqual(new Set(['c-rent']))
+  })
+
+  it('excludes the unplaced when hide_unassigned is on', () => {
+    const v = view([['g1', 'Need']], [{ category_id: 'c-rent', group_id: 'g1' }])
+    v.hide_unassigned = true
+    const ids = visibleCategoryIds(v, [cat('c-rent', 'Rent'), cat('c-new', 'New')], BUDGET)
+    expect(ids).toEqual(new Set(['c-rent']))
   })
 })

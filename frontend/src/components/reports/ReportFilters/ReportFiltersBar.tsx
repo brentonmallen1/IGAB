@@ -36,9 +36,13 @@ export function ReportFiltersBar({ budgetId }: Props) {
     return m
   }, [groups.data])
 
+  // Only on tabs that actually roll up by a view. The preference is stored
+  // once and shared, so a view picked on Pareto reached tabs with no view
+  // selector and no view_id in their request — narrowing the category picker
+  // to a view the report was ignoring, with no control on that tab to undo it.
   const activeView = useMemo(
-    () => views.data?.find((v) => v.id === filters.viewId) ?? null,
-    [views.data, filters.viewId]
+    () => (support.views ? (views.data?.find((v) => v.id === filters.viewId) ?? null) : null),
+    [support.views, views.data, filters.viewId]
   )
 
   const categoryOpts = useMemo(
@@ -58,10 +62,15 @@ export function ReportFiltersBar({ budgetId }: Props) {
       .map((a) => ({ id: a.id, label: a.name }))
   }, [accounts.data])
 
+  // viewId counts: it is sent on every request and changes what the report
+  // shows. Leaving it out meant a view carried over from another budget was
+  // narrowing reports with no selector rendered (that budget has no views)
+  // and no Reset offered — unreachable dead state.
   const hasFilters =
     filters.categoryIds.length > 0 ||
     filters.payeeIds.length > 0 ||
-    filters.accountIds.length > 0
+    filters.accountIds.length > 0 ||
+    filters.viewId !== null
 
   // Check if any filters are supported for this tab
   const hasAnySupport =

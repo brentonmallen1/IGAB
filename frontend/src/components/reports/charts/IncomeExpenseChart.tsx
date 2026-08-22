@@ -32,7 +32,12 @@ export function IncomeExpenseReport({ budgetId }: Props) {
     setDrillDown({
       kind: 'month',
       label: `${direction === 'inflow' ? 'Income' : 'Expenses'} · ${ym}`,
-      scope: 'parent', direction,
+      // Leaf + explicit classes: these bars mean income and SPENDING (savings
+      // and debt principal are separate series), so the panel must not list
+      // every row of the matching sign. Classes live on leaves, not on a
+      // split parent, so the scope has to match too.
+      scope: 'leaf', direction,
+      activityClasses: direction === 'inflow' ? ['income'] : ['spending'],
       startDate: window.start, endDate: window.end,
     })
   }

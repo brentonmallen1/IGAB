@@ -321,6 +321,7 @@ async def spending_grouped_report(
         class_excluded=[
             SpendingClassExcluded.model_validate(c) for c in notes["class_excluded"] or []
         ],
+        view_unavailable=notes["view_unavailable"],
     )
 
 

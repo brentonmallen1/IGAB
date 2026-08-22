@@ -1643,7 +1643,14 @@ class ReportService:
             q = q.where(ON_BUDGET_ACCOUNT)
         rows = (await self.session.execute(q)).all()
 
+        # `_view_arrangement` returns None for a view that does not exist or
+        # belongs to another budget. Falling back to the budget's own groups
+        # there is right — an empty report would be worse — but it must be
+        # visible: reportStore persists viewId outside any budget scope, so
+        # deleting a view in another tab, or switching budgets, otherwise left
+        # the page charting one arrangement while still requesting another.
         regroup = await self._view_arrangement(budget_id, view_id) if view_id else None
+        view_unavailable = view_id is not None and regroup is None
         dropped_by_view: dict | None = None
         if regroup is not None:
             dropped = [r for r in rows if regroup(r.id) is None]
@@ -1663,7 +1670,11 @@ class ReportService:
             include_classes,
             regroup,
         )
-        notes = {"view_hidden": dropped_by_view, "class_excluded": class_excluded}
+        notes = {
+            "view_hidden": dropped_by_view,
+            "class_excluded": class_excluded,
+            "view_unavailable": view_unavailable,
+        }
 
         # The all-hidden case still carries the notes: an empty chart with
         # no explanation is exactly the failure these exist to prevent.

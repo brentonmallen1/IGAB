@@ -9,6 +9,7 @@ from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, upd
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import Payee, Transaction, TransactionAttachment
+from igab.domain.activity_class import ACTIVITY_CLASS
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
@@ -171,6 +172,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         scope: str = "parent",
         posted_only: bool = False,
         cash_flow_only: bool = False,
+        activity_classes: list[str] | None = None,
         direction: str | None = None,
         day_of_week: int | None = None,
         cleared: str | None = None,
@@ -203,6 +205,12 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(POSTED)
         if cash_flow_only:
             where.append(CASH_FLOW_ROW)
+        if activity_classes:
+            # So a drill-down lists exactly what the chart that opened it
+            # counted. Without this an $800 "Expenses" bar opened a panel
+            # totalling $1,800, because the bar means SPENDING and the list
+            # meant every negative row.
+            where.append(ACTIVITY_CLASS.in_(list(activity_classes)))
         if direction == "outflow":
             where.append(Transaction.amount < 0)
         elif direction == "inflow":

@@ -3,7 +3,7 @@ import {
   Bar, Cell, ComposedChart, CartesianGrid, Legend, Line,
   ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine,
 } from 'recharts'
-import { useReportStore, type GroupBy } from '../../../stores/reportStore'
+import { spendingDrillClasses, useReportStore, type GroupBy } from '../../../stores/reportStore'
 import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -116,22 +116,25 @@ export function ParetoReport({ budgetId }: Props) {
 
   function drillTo(id: string, name: string) {
     const window = { startDate: filters.startDate, endDate: filters.endDate }
+    // The chart counts spending (plus savings when the toggle is on); the
+    // panel must count the same, or the list contradicts the bar.
+    const activityClasses = spendingDrillClasses(includeSavings)
     if (groupBy === 'payee') {
       setDrillDown({
-        kind: 'payee', label: name, scope: 'parent', direction: 'outflow',
-        payeeIds: [id], ...window,
+        kind: 'payee', label: name, scope: 'leaf', direction: 'outflow',
+        payeeIds: [id], activityClasses, ...window,
       })
     } else if (groupBy === 'group') {
       const memberIds = groupMembers.get(id) ?? []
       if (memberIds.length === 0) return
       setDrillDown({
         kind: 'category-group', label: name, scope: 'leaf', direction: 'outflow',
-        categoryIds: memberIds, ...window,
+        categoryIds: memberIds, activityClasses, ...window,
       })
     } else {
       setDrillDown({
         kind: 'category', label: name, scope: 'leaf', direction: 'outflow',
-        categoryIds: [id], ...window,
+        categoryIds: [id], activityClasses, ...window,
       })
     }
   }
