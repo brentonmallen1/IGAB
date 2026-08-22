@@ -8,6 +8,7 @@ where a category sits. Both hide what the view hides, and both collect the
 unplaced under Unassigned unless the view says otherwise.
 """
 
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -27,8 +28,8 @@ TODAY = date.today()
 START = TODAY - timedelta(days=20)
 
 
-async def _world(db_session):
-    user = await create_user(db_session)
+async def _world(db_session, owner=None):
+    user = owner or await create_user(db_session)
     budget = await create_budget(db_session, user)
     checking = await create_account(db_session, budget, "Checking", on_budget=True)
     bills = await create_category_group(db_session, budget, "Monthly Bills")
@@ -155,8 +156,6 @@ class TestViewArrangement:
 
     async def test_an_unknown_view_falls_back_to_the_default_groups(self, db_session):
         """A stale id in a persisted report filter must not empty the report."""
-        import uuid
-
         budget, c = await _world(db_session)
         by_name, total = await _grouped(db_session, budget, view_id=uuid.uuid4())
         assert set(by_name) == {"Monthly Bills", "Everyday"}
@@ -172,3 +171,105 @@ class TestViewArrangement:
 
         by_name, _ = await _grouped(db_session, budget, view_id=foreign.id)
         assert set(by_name) == {"Monthly Bills", "Everyday"}
+
+
+class TestThroughTheApi:
+    """The service returns plain dicts; the endpoint validates them against
+    `SpendingGroupedResponse`. Every test above stops short of that boundary,
+    which is how `parent_id: uuid.UUID` shipped while the Unassigned bucket
+    emitted `"__unassigned__"` — a 500 on the one path the service tests
+    cover most carefully. These go over HTTP so the schema is in the loop.
+    """
+
+    async def _view(self, db_session, budget, c, *, place_all: bool, hide_unassigned=False):
+        repo = BudgetViewRepository(db_session)
+        view = await repo.create(
+            budget_id=budget.id, name="Need / Want", hide_unassigned=hide_unassigned
+        )
+        groups = await repo.set_groups(view.id, ["Need", "Want"])
+        placements = [{"category_id": c["rent"].id, "group_id": groups[0].id}]
+        if place_all:
+            placements += [
+                {"category_id": c["power"].id, "group_id": groups[0].id},
+                {"category_id": c["dining"].id, "group_id": groups[1].id},
+            ]
+        await repo.set_placements(view.id, placements)
+        return view
+
+    async def _get(self, api_client, budget, **params):
+        return await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-grouped",
+            params={"start_date": START.isoformat(), "end_date": TODAY.isoformat(), **params},
+        )
+
+    async def test_a_view_that_leaves_a_category_unplaced_still_responds(
+        self, api_client, db_session
+    ):
+        budget, c = await _world(db_session, api_client.test_user)
+        view = await self._view(db_session, budget, c, place_all=False)
+
+        resp = await self._get(api_client, budget, view_id=str(view.id))
+
+        assert resp.status_code == 200
+        body = resp.json()
+        by_parent = {g["parent_name"] for g in body["groups"]}
+        assert by_parent == {"Need", "Unassigned"}
+        assert Decimal(body["total"]) == Decimal("1500.00")
+
+    async def test_the_unassigned_bucket_shares_one_rollup_key(self, api_client, db_session):
+        """The client groups on `parent_id`, so both unplaced categories have
+        to arrive under the same key or Unassigned splits into two slices."""
+        budget, c = await _world(db_session, api_client.test_user)
+        view = await self._view(db_session, budget, c, place_all=False)
+
+        body = (await self._get(api_client, budget, view_id=str(view.id))).json()
+
+        keys = {g["parent_id"] for g in body["groups"] if g["parent_name"] == "Unassigned"}
+        assert keys == {"__unassigned__"}
+
+    async def test_a_fully_placed_view_responds(self, api_client, db_session):
+        budget, c = await _world(db_session, api_client.test_user)
+        view = await self._view(db_session, budget, c, place_all=True)
+
+        resp = await self._get(api_client, budget, view_id=str(view.id))
+
+        assert resp.status_code == 200
+        assert {g["parent_name"] for g in resp.json()["groups"]} == {"Need", "Want"}
+
+    async def test_hide_unassigned_responds(self, api_client, db_session):
+        budget, c = await _world(db_session, api_client.test_user)
+        view = await self._view(
+            db_session, budget, c, place_all=False, hide_unassigned=True
+        )
+
+        resp = await self._get(api_client, budget, view_id=str(view.id))
+
+        assert resp.status_code == 200
+        assert {g["parent_name"] for g in resp.json()["groups"]} == {"Need"}
+
+    async def test_the_default_arrangement_still_returns_group_uuids(
+        self, api_client, db_session
+    ):
+        """Widening `parent_id` to a string must not change what the ordinary
+        path emits — the client keys off it either way."""
+        budget, c = await _world(db_session, api_client.test_user)
+
+        body = (await self._get(api_client, budget)).json()
+
+        assert {g["parent_name"] for g in body["groups"]} == {"Monthly Bills", "Everyday"}
+        by_name = {g["parent_name"]: g["parent_id"] for g in body["groups"]}
+        assert by_name["Monthly Bills"] == str(c["bills"].id)
+        assert by_name["Everyday"] == str(c["fun"].id)
+
+    async def test_a_stale_view_id_falls_back_rather_than_erroring(
+        self, api_client, db_session
+    ):
+        budget, _ = await _world(db_session, api_client.test_user)
+
+        resp = await self._get(api_client, budget, view_id=str(uuid.uuid4()))
+
+        assert resp.status_code == 200
+        assert {g["parent_name"] for g in resp.json()["groups"]} == {
+            "Monthly Bills",
+            "Everyday",
+        }

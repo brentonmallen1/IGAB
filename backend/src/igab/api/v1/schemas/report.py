@@ -242,7 +242,11 @@ class VolatilityResponse(BaseModel):
 class SpendingGroupItem(BaseModel):
     id: uuid.UUID
     name: str
-    parent_id: uuid.UUID | None
+    #: Opaque rollup key, not a foreign key: a category-group id normally, a
+    #: view-group id under a view, and the "__unassigned__" sentinel for
+    #: categories a view has not placed. Typing it as a UUID made that last
+    #: case a 500 the moment a view left anything unplaced.
+    parent_id: str | None
     parent_name: str | None
     total: Decimal
     count: int
