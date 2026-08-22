@@ -13,8 +13,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
 import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
-import { ViewHiddenNote } from '../ViewHiddenNote'
-import { ClassExcludedNote } from '../ClassExcludedNote'
+import { ReportNotes } from '../ReportNotes'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -206,17 +205,8 @@ export function ParetoReport({ budgetId }: Props) {
         Which {GROUP_PLURALS[groupBy]} account for 80% of your spending?
       </p>
       {/* Payee mode draws from payee analysis, which no view filters. */}
-      {groupBy !== 'payee' && spendingQ.data && (
-        <>
-          <ViewHiddenNote
-            categories={spendingQ.data.view_hidden_categories}
-            total={spendingQ.data.view_hidden_total}
-          />
-          <ClassExcludedNote
-            excluded={spendingQ.data.class_excluded ?? []}
-            toggleAvailable={!includeSavings}
-          />
-        </>
+      {groupBy !== 'payee' && (
+        <ReportNotes report={spendingQ.data} toggleAvailable={!includeSavings} />
       )}
 
       <div ref={captureRef} className="report-capture">

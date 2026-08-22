@@ -1,0 +1,22 @@
+/* Tucked toward the subtitle it qualifies: the section column's gap is
+   sized for separating a header from a chart, not a sentence from the
+   sentence it annotates. */
+.report-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: calc(-1 * var(--spacing-sm));
+}
+
+.report-notes__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.report-notes__line svg {
+  flex-shrink: 0;
+  align-self: center;
+}

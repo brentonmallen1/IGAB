@@ -177,6 +177,7 @@ describe('class-excluded note on the spending charts', () => {
     view_hidden_total: '0',
     class_excluded: [
       { activity_class: 'debt_principal', label: 'Debt payment', categories: 1, total: '275.00' },
+      { activity_class: 'savings', label: 'Savings', categories: 2, total: '101.00' },
     ],
   }
 
@@ -188,6 +189,8 @@ describe('class-excluded note on the spending charts', () => {
     renderReport(<Report budgetId="b1" />)
     expect(screen.getByText(/Not counted as spending here:/)).toBeInTheDocument()
     expect(screen.getByText(/debt payments \(1 category\)/)).toBeInTheDocument()
+    // "Savings" must not pluralise into "savingss".
+    expect(screen.getByText(/of savings \(2 categories\)/)).toBeInTheDocument()
     expect(screen.getByText(/Include savings & debt payments” to add it/)).toBeInTheDocument()
   })
 

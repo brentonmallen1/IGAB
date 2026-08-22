@@ -8,8 +8,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
-import { ViewHiddenNote } from '../ViewHiddenNote'
-import { ClassExcludedNote } from '../ClassExcludedNote'
+import { ReportNotes } from '../ReportNotes'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 
@@ -173,18 +172,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             : 'Click a group to drill down into its categories.'}
       </p>
 
-      {data && (
-        <>
-          <ViewHiddenNote
-            categories={data.view_hidden_categories}
-            total={data.view_hidden_total}
-          />
-          <ClassExcludedNote
-            excluded={data.class_excluded ?? []}
-            toggleAvailable={!includeSavings}
-          />
-        </>
-      )}
+      <ReportNotes report={data} toggleAvailable={!includeSavings} />
 
       {visibleItems.length === 0 ? (
         <div className="reports-empty">
