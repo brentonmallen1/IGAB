@@ -23,7 +23,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
-  const { data, isLoading, isError, refetch } = useIncomeExpenseReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = useIncomeExpenseReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   function drillTo(month: string, direction: 'inflow' | 'outflow') {
@@ -44,7 +44,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const chartData = (data?.months ?? []).map((m) => ({
     month: m.month.slice(0, 7),

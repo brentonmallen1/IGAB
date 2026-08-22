@@ -21,11 +21,11 @@ export function BurnRateReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
   const [logScale, setLogScale] = useState(false)
-  const { data, isLoading, isError, refetch } = useBurnRateReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = useBurnRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   const latest = points[points.length - 1]

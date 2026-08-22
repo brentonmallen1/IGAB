@@ -22,7 +22,7 @@ const SENSITIVITY_OPTIONS = [
 export function AnomaliesReport({ budgetId }: Props) {
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
   const [threshold, setThreshold] = useState(2.5)
-  const { data, isLoading, isError, refetch } = useAnomaliesReport(budgetId, months, threshold)
+  const { data, isLoading, isError, error, refetch } = useAnomaliesReport(budgetId, months, threshold)
   const { setDrillDown } = useReportStore()
   const { formatMoney, formatMonth } = useFormatters()
 
@@ -75,7 +75,7 @@ export function AnomaliesReport({ budgetId }: Props) {
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   return (
     <div className="report-section">

@@ -29,7 +29,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
   const { formatMoney, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
-  const { data, isLoading, isError, refetch } = useSubscriptionsReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = useSubscriptionsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const subscriptions = useMemo(() => data?.subscriptions ?? [], [data])
@@ -55,7 +55,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const hasData = subscriptions.length > 0
 

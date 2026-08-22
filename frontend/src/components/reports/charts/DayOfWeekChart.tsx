@@ -23,14 +23,14 @@ export function DayPatternsReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, refetch } = useDayPatternsReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
+  const { data, isLoading, isError, error, refetch } = useDayPatternsReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const [paydayWindow, setPaydayWindow] = useState<(typeof WINDOW_OPTIONS)[number]>(14)
   const { data: paydayData, isLoading: paydayLoading } = usePaydayEffectReport(budgetId, paydayWindow, 12)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const days = data?.days ?? []
 

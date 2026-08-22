@@ -48,7 +48,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
   const [logScale, setLogScale] = useState(false)
   const captureRef = useRef<HTMLDivElement>(null)
 
-  const { data, isLoading, isError, refetch } = useLiabilitiesReport(
+  const { data, isLoading, isError, error, refetch } = useLiabilitiesReport(
     budgetId,
     typeFilter ?? undefined,
     modeFilter ?? undefined
@@ -82,7 +82,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
   }, [data, sortKey, sortDesc])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const presentTypes = [...new Set((allData?.items ?? []).map((i) => i.liability_type))]
   const chartPoints = (data?.balance_over_time ?? []).map((p) => {

@@ -33,7 +33,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const [hideSavings, setHideSavings] = useState(false)
-  const { data, isLoading, isError, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings, filters.viewId)
+  const { data, isLoading, isError, error, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings, filters.viewId)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -108,7 +108,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   }, [groupBy, selectedGroup, groups, items, grandTotal])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const selectedGroupName = selectedGroup ? groups.get(selectedGroup)?.name : null
 

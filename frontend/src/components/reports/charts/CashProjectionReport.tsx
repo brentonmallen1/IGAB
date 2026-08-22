@@ -21,7 +21,7 @@ const HORIZON_OPTIONS = [30, 60, 90, 180] as const
 export function CashProjectionReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(360)
   const [horizon, setHorizon] = useState<(typeof HORIZON_OPTIONS)[number]>(90)
-  const { data, isLoading, isError, refetch } = useCashProjectionReport(budgetId, horizon)
+  const { data, isLoading, isError, error, refetch } = useCashProjectionReport(budgetId, horizon)
   const { formatMoney, formatDate, settings } = useFormatters()
 
   const formatShortDate = useCallback((dateStr: string) => {
@@ -34,7 +34,7 @@ export function CashProjectionReport({ budgetId }: Props) {
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const points = data?.points ?? []
   const events = data?.events ?? []

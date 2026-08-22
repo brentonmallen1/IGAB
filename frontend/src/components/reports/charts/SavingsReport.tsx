@@ -29,7 +29,7 @@ export function SavingsReport({ budgetId }: Props) {
   const { formatMoney, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
-  const { data, isLoading, isError, refetch } = useSavingsReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   const categories = useMemo(() => data?.categories ?? [], [data])
@@ -55,7 +55,7 @@ export function SavingsReport({ budgetId }: Props) {
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const hasData = categories.length > 0
 

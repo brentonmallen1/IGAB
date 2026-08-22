@@ -21,13 +21,13 @@ export function PayeeReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, refetch } = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
+  const { data, isLoading, isError, error, refetch } = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
   const [view, setView] = useState<'top' | 'recurring'>('top')
   const [logScale, setLogScale] = useState(false)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const payees = data?.payees ?? []
   const recurring = payees.filter((p) => p.is_recurring)

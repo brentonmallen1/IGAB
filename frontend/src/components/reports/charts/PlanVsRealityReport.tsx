@@ -38,7 +38,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
   const [chronicOnly, setChronicOnly] = useState(false)
-  const { data, isLoading, isError, refetch } = usePlanVsRealityReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = usePlanVsRealityReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   function drillTo(categoryId: string, label: string, startMonth: string, endMonth: string) {
@@ -51,7 +51,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const allMonths = data?.months ?? []
   let categories = data?.categories ?? []

@@ -14,25 +14,11 @@ function Boom(): never {
 
 const reload = vi.fn()
 
-/** This environment ships without localStorage (the suite warns about it), so
- *  the boundary's escape hatch needs a real one to act on. */
-function installStorage() {
-  const store = new Map<string, string>()
-  Object.defineProperty(globalThis, 'localStorage', {
-    configurable: true,
-    value: {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-      removeItem: (k: string) => void store.delete(k),
-      clear: () => store.clear(),
-    },
-  })
-}
-
 beforeEach(() => {
   // React logs caught render errors; that noise is expected here.
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  installStorage()
+  // localStorage comes from test-utils/setup — Node declares the global but
+  // leaves it unusable, so the suite installs a working one.
   localStorage.setItem('igab-ui', '{"activeViewId":"v1"}')
   localStorage.setItem('igab-reports', '{"activeTab":"pareto"}')
   Object.defineProperty(window, 'location', {

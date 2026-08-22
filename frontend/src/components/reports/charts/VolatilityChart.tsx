@@ -21,7 +21,7 @@ export function VolatilityReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const [months, setMonths] = useState(12)
-  const { data, isLoading, isError, refetch } = useVolatilityReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = useVolatilityReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   // Same window the backend aggregates over: first-of-month (months-1) ago → today
@@ -33,7 +33,7 @@ export function VolatilityReport({ budgetId }: Props) {
   }
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const categories = filterVolatile(data?.categories ?? [])
 

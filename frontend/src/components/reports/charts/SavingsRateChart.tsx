@@ -22,11 +22,11 @@ export function SavingsRateReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const [months, setMonths] = useState(12)
   const [withDebt, setWithDebt] = useState(true)
-  const { data, isLoading, isError, refetch } = useSavingsRateReport(budgetId, months)
+  const { data, isLoading, isError, error, refetch } = useSavingsRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const rows = data?.months ?? []
   const summary = data?.summary

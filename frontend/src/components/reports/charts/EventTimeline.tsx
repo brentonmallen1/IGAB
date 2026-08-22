@@ -38,7 +38,7 @@ export function TimelineReport({ budgetId }: Props) {
   const [limit, setLimit] = useState<25 | 50 | 100>(25)
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, refetch } = useTimelineReport(budgetId, filters.startDate, filters.endDate, limit, catIds, acctIds)
+  const { data, isLoading, isError, error, refetch } = useTimelineReport(budgetId, filters.startDate, filters.endDate, limit, catIds, acctIds)
   const { data: payees } = usePayees(budgetId)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -49,7 +49,7 @@ export function TimelineReport({ budgetId }: Props) {
   )
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   function drillTo(payeeName: string) {
     const payeeId = payeeIdByName.get(payeeName)

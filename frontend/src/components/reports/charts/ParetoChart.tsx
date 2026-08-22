@@ -111,7 +111,7 @@ export function ParetoReport({ budgetId }: Props) {
   // All hooks above — safe to conditionally return now
   const activeQ = groupBy === 'payee' ? payeeQ : spendingQ
   if (activeQ.isLoading) return <div className="report-loading">Loading…</div>
-  if (activeQ.isError) return <ReportErrorState onRetry={() => activeQ.refetch()} />
+  if (activeQ.isError) return <ReportErrorState error={activeQ.error} onRetry={() => activeQ.refetch()} />
 
   function drillTo(id: string, name: string) {
     const window = { startDate: filters.startDate, endDate: filters.endDate }

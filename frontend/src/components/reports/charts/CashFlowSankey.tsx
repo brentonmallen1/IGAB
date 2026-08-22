@@ -164,7 +164,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
   const [viewMode, setViewMode] = useState<'spent' | 'budgeted'>('spent')
   const [compare, setCompare] = useState(false)
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, refetch } = useCashFlowReport(budgetId, filters.startDate, filters.endDate, viewMode, acctIds)
+  const { data, isLoading, isError, error, refetch } = useCashFlowReport(budgetId, filters.startDate, filters.endDate, viewMode, acctIds)
   const prevWindow = previousWindow(filters.startDate, filters.endDate)
   const { data: prevData } = useCashFlowReport(
     budgetId, prevWindow.start, prevWindow.end, viewMode, acctIds, { enabled: compare },
@@ -203,7 +203,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     : null
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   if (!sankeyData.nodes.length) {
     return (
