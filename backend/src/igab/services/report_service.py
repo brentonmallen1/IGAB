@@ -2107,6 +2107,100 @@ class ReportService:
             "months": month_list,
         }
 
+    # ─── Savings Rate ─────────────────────────────────────────────────────────
+
+    async def savings_rate(self, budget_id: uuid.UUID, months: int = 12) -> dict:
+        """How much of what came in was kept, month by month.
+
+        derkus asked for this directly: "i would like there to be categories
+        that are classified as savings and be able to track my savings rate as
+        compared to income and/or all spending".
+
+        Two rates, because paying down a mortgage and funding a brokerage both
+        build net worth but people think about them differently:
+
+            savings_rate           = savings / income
+            savings_rate_with_debt = (savings + debt_principal) / income
+
+        Scoped to on-budget accounts, which is what makes the number honest:
+        growth inside a tracked account classifies as `investment_return` and
+        is left out. A savings rate that counted market gains as saving would
+        rise in a bull market without the household doing anything.
+
+        A month with no income yields a rate of None rather than 0 — "no income
+        recorded" and "saved nothing" are different facts, and a chart should
+        show a gap rather than a floor.
+        """
+        today = date.today()
+        first = today.replace(day=1)
+        start = _subtract_months(first, months - 1)
+
+        month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        q = (
+            select(
+                month_col,
+                ACTIVITY_CLASS.label("cls"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            )
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                LEAF,
+                Transaction.date >= start,
+                Transaction.date <= today,
+                ON_BUDGET_ACCOUNT,
+            )
+            .group_by(month_col, ACTIVITY_CLASS)
+        )
+        rows = (await self.session.execute(q)).all()
+
+        by_month: dict[date, dict[str, Decimal]] = {}
+        for row in rows:
+            key = row.month.date() if hasattr(row.month, "date") else row.month
+            by_month.setdefault(key, {})[row.cls] = Decimal(str(row.total))
+
+        def _rate(numerator: Decimal, income: Decimal) -> float | None:
+            if income <= 0:
+                return None
+            return float(numerator / income)
+
+        series: list[dict] = []
+        for i in range(months - 1, -1, -1):
+            month = _subtract_months(first, i)
+            buckets = by_month.get(month, {})
+            income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
+            # Outflow classes are stored negative; report them as magnitudes.
+            savings = -buckets.get(ActivityClass.SAVINGS.value, Decimal("0"))
+            debt = -buckets.get(ActivityClass.DEBT_PRINCIPAL.value, Decimal("0"))
+            spending = -buckets.get(ActivityClass.SPENDING.value, Decimal("0"))
+            series.append(
+                {
+                    "month": month,
+                    "income": income,
+                    "spending": spending,
+                    "savings": savings,
+                    "debt_principal": debt,
+                    "savings_rate": _rate(savings, income),
+                    "savings_rate_with_debt": _rate(savings + debt, income),
+                }
+            )
+
+        totals = {
+            key: sum((m[key] for m in series), Decimal("0"))
+            for key in ("income", "spending", "savings", "debt_principal")
+        }
+        return {
+            "months": series,
+            "summary": {
+                **totals,
+                "savings_rate": _rate(totals["savings"], totals["income"]),
+                "savings_rate_with_debt": _rate(
+                    totals["savings"] + totals["debt_principal"], totals["income"]
+                ),
+            },
+        }
+
     # ─── Savings Report ───────────────────────────────────────────────────────
 
     async def savings_report(self, budget_id: uuid.UUID, months: int = 12) -> dict:

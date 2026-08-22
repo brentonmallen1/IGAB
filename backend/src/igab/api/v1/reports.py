@@ -40,6 +40,7 @@ from igab.api.v1.schemas.report import (
     SankeyLink,
     SankeyNode,
     SavingsCategory,
+    SavingsRateResponse,
     SavingsReportResponse,
     SavingsSummary,
     SeasonalityResponse,
@@ -428,6 +429,20 @@ async def subscriptions_report(
         summary=SubscriptionsSummary.model_validate(data["summary"]),
         months=data["months"],
     )
+
+
+@router.get("/{budget_id}/reports/savings-rate", response_model=SavingsRateResponse)
+async def savings_rate_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: int = 12,
+) -> SavingsRateResponse:
+    """How much of what came in was kept. Distinct from /reports/savings, which
+    asks what you *budgeted* toward savings; this asks what actually left as
+    saving."""
+    data = await report_svc.savings_rate(budget_id, months)
+    return SavingsRateResponse.model_validate(data)
 
 
 @router.get("/{budget_id}/reports/savings", response_model=SavingsReportResponse)

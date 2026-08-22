@@ -399,6 +399,35 @@ class SavingsReportResponse(BaseModel):
     months: list[date]
 
 
+# ─── Savings Rate Report ─────────────────────────────────────────────────────
+
+
+class SavingsRateMonth(BaseModel):
+    month: date
+    income: Decimal
+    spending: Decimal
+    savings: Decimal
+    debt_principal: Decimal
+    #: None when there was no income that month — distinct from a rate of 0,
+    #: which would read as "saved nothing out of real income".
+    savings_rate: float | None
+    savings_rate_with_debt: float | None
+
+
+class SavingsRateSummary(BaseModel):
+    income: Decimal
+    spending: Decimal
+    savings: Decimal
+    debt_principal: Decimal
+    savings_rate: float | None
+    savings_rate_with_debt: float | None
+
+
+class SavingsRateResponse(BaseModel):
+    months: list[SavingsRateMonth]
+    summary: SavingsRateSummary
+
+
 # ─── Anomaly Detection Report ────────────────────────────────────────────────
 
 
