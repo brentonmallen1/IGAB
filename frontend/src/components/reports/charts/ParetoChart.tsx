@@ -12,7 +12,7 @@ import { MetricCard } from '../MetricCard'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
 import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -169,6 +169,7 @@ export function ParetoReport({ budgetId }: Props) {
           <p>Switch the <strong>Group by</strong> filter in the toolbar to see the pattern at the category group, category, or payee level.</p>
           <p>Click a bar or a table row to see the transactions behind it.</p>
           <ReportScopeNote scope="on-budget-filterable" />
+          <SpendingClassNote />
         </ReportInfoButton>
         {groupBy !== 'payee' && (
           <label className="report-toggle">

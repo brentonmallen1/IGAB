@@ -7,7 +7,7 @@ import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { chartColor } from './chartColors'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 
@@ -121,6 +121,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
           <p><strong>Group</strong> mode: shows category groups only. <strong>Category</strong> mode: shows all categories flat, colored by group. Use the global <em>Group by</em> filter to switch. In Group mode you can click a tile to drill into its categories.</p>
           <p>Clicking a category tile opens the list of transactions behind it below the chart.</p>
           <ReportScopeNote scope="on-budget-filterable" />
+          <SpendingClassNote />
         </ReportInfoButton>
         {groupBy !== 'category' && (
           <div className="treemap-breadcrumb">

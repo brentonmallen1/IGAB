@@ -102,7 +102,7 @@ class AnomalyRow(TypedDict):
     history: list[Decimal]
 
 
-def _spending_classes(include: Sequence[ActivityClass] | None):
+def _spending_classes(include: Sequence[ActivityClass] | None = None):
     """WHERE clause limiting a spending query to the requested activity classes.
 
     Defaults to spending alone. That is the behaviour change derkus asked for:
@@ -112,6 +112,18 @@ def _spending_classes(include: Sequence[ActivityClass] | None):
     """
     classes = include or SPENDING_CLASSES
     return ACTIVITY_CLASS.in_([c.value for c in classes])
+
+
+def _spending_classes_parent_row(include: Sequence[ActivityClass] | None = None):
+    """Same, for parent-centric queries (one row per real purchase).
+
+    A split parent carries no category, so it classifies as ordinary spending
+    by amount sign. That is the right answer for a purchase: a split is a
+    single trip to the shop with its legs itemised. Transfers are never split,
+    so a savings or debt-principal leg is always a plain row and classifies
+    correctly here.
+    """
+    return _spending_classes(include)
 
 
 class ReportService:
@@ -738,6 +750,9 @@ class ReportService:
             PARENT_ROW,
             CASH_FLOW_ROW,
             ON_BUDGET_ACCOUNT,
+            # A burn rate is how fast money is consumed. Money moved into
+            # savings has not been burned.
+            _spending_classes_parent_row(),
         )
         txns = (await self.session.execute(q)).all()
 
@@ -1697,6 +1712,9 @@ class ReportService:
                 PARENT_ROW,
                 CASH_FLOW_ROW,
                 Transaction.payee_id.isnot(None),
+                # Otherwise "Transfer : Brokerage" ranks as a top payee, which
+                # is true and useless — it is not somewhere money was spent.
+                _spending_classes_parent_row(),
             )
         )
         if payee_ids:
@@ -1809,6 +1827,7 @@ class ReportService:
             Transaction.date <= end_date,
             LEAF,
             CASH_FLOW_ROW,
+            _spending_classes(),
         )
         if category_ids:
             q = q.where(Transaction.category_id.in_(category_ids))

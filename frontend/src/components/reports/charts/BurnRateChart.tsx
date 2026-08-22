@@ -10,7 +10,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -44,6 +44,7 @@ export function BurnRateReport({ budgetId }: Props) {
           <p>Shows your average monthly spending smoothed over <strong>30-day</strong> and <strong>90-day</strong> rolling windows.</p>
           <p>Rolling averages reduce calendar-month noise (e.g. quarterly bills). The 90-day line is more stable and better reflects your true spending rate. A widening gap between them signals recent spending changes.</p>
           <ReportScopeNote scope="on-budget" />
+          <SpendingClassNote />
         </ReportInfoButton>
         <p className="report-section__subtitle">Monthly spending rolling averages</p>
         <div className="flex-row ms-auto">

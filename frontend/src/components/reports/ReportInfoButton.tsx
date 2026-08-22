@@ -81,3 +81,17 @@ const SCOPE_COPY: Record<ReportScope, string> = {
 export function ReportScopeNote({ scope }: { scope: ReportScope }) {
   return <p className="report-info__scope">{SCOPE_COPY[scope]}</p>
 }
+
+/** Stated on every report that now means spending in the narrow sense. Moving
+ *  money to a tracked account used to count as spending here — it no longer
+ *  does, and a number that changed under the user deserves saying so out
+ *  loud rather than being noticed later and distrusted. */
+export function SpendingClassNote() {
+  return (
+    <p className="report-info__scope">
+      Counts spending only. Money moved into savings or investments, or used to
+      pay down a tracked debt, leaves your budget but stays yours — so it is not
+      counted here. Open any transaction to see how it is classified and why.
+    </p>
+  )
+}
