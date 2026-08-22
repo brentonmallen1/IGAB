@@ -23,7 +23,12 @@ from igab.db.models import (
     Payee,
     Transaction,
 )
-from igab.domain.activity_class import ACTIVITY_CLASS, SPENDING_CLASSES, ActivityClass
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    CLASS_LABEL,
+    SPENDING_CLASSES,
+    ActivityClass,
+)
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -1580,7 +1585,7 @@ class ReportService:
         account_ids: list[uuid.UUID] | None = None,
         include_classes: Sequence[ActivityClass] | None = None,
         view_id: uuid.UUID | None = None,
-    ) -> tuple[list[dict], Decimal, dict | None]:
+    ) -> tuple[list[dict], Decimal, dict]:
         """Spending rolled up by group.
 
         With `view_id`, the groups come from that view's arrangement instead of
@@ -1588,11 +1593,16 @@ class ReportService:
         point of a view. Categories the view hides drop out; ones it has not
         placed collect under "Unassigned", or drop out too if the view says so.
 
-        The third element says what the view kept out — ``{"categories": n,
-        "total": Decimal}`` — or None when nothing was dropped. A view that
-        hides most of a budget's spending produces a report that is *right*
-        but reads as data loss; the number only stays trustworthy if the
-        report can say "this view hides $X" instead of silently shrinking.
+        The third element is a notes dict explaining what the report left out,
+        so the chart can say so instead of silently shrinking:
+
+        - ``view_hidden``: ``{"categories": n, "total": Decimal}`` or None —
+          spending dropped because the active view hides those categories.
+        - ``class_excluded``: per-class list or None — activity in categories
+          the user is looking at (their selection, or the view's visible set)
+          that is savings / debt payment rather than spending. A car payment
+          that "vanishes" from a spending report is this, and without the note
+          the exclusion is indistinguishable from data loss.
 
         The groups/total shape is identical either way, so the client-side
         rollup does not care which arrangement produced it.
@@ -1639,10 +1649,21 @@ class ReportService:
                 }
             rows = [r for r in rows if regroup(r.id) is not None]
 
-        # The all-hidden case still carries the summary: an empty chart with
-        # no explanation is exactly the failure this exists to prevent.
+        class_excluded = await self._class_excluded(
+            budget_id,
+            start_date,
+            end_date,
+            category_ids,
+            account_ids,
+            include_classes,
+            regroup,
+        )
+        notes = {"view_hidden": dropped_by_view, "class_excluded": class_excluded}
+
+        # The all-hidden case still carries the notes: an empty chart with
+        # no explanation is exactly the failure these exist to prevent.
         if not rows:
-            return [], Decimal("0"), dropped_by_view
+            return [], Decimal("0"), notes
 
         def _group_of(r) -> tuple[str, str]:
             if regroup is None:
@@ -1685,7 +1706,102 @@ class ReportService:
             for row in cat_agg.iter_rows(named=True)
         ]
 
-        return items, Decimal(str(round(grand_total, 4))), dropped_by_view
+        return items, Decimal(str(round(grand_total, 4))), notes
+
+    async def _class_excluded(
+        self,
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        category_ids: list[uuid.UUID] | None,
+        account_ids: list[uuid.UUID] | None,
+        include_classes: Sequence[ActivityClass] | None,
+        regroup,
+    ) -> list[dict] | None:
+        """Savings / debt activity inside the user's current scope that a
+        spending report will not count.
+
+        Only computed when the user has *pointed at* categories — an explicit
+        selection or an active view — because that is when absence misleads:
+        "I selected Car Payment and it isn't here" reads as a bug, not a
+        definition. The unfiltered report stays calm; the info panel already
+        explains the general rule.
+        """
+        if not category_ids and regroup is None:
+            return None
+
+        included = set(include_classes or SPENDING_CLASSES)
+        targets = [
+            c
+            for c in (
+                ActivityClass.SAVINGS,
+                ActivityClass.DEBT_PRINCIPAL,
+                ActivityClass.DEBT_INTEREST,
+            )
+            if c not in included
+        ]
+        if not targets:
+            return None
+
+        q = (
+            select(
+                Category.id,
+                ACTIVITY_CLASS.label("activity_class"),
+                func.sum(func.abs(Transaction.amount)).label("total"),
+            )
+            .join(Transaction, Transaction.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                Transaction.amount < 0,
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                LEAF,
+                CASH_FLOW_ROW,
+                CategoryGroup.is_system == False,  # noqa: E712
+                ACTIVITY_CLASS.in_([c.value for c in targets]),
+            )
+            .group_by(Category.id, ACTIVITY_CLASS)
+        )
+        if category_ids:
+            q = q.where(Transaction.category_id.in_(category_ids))
+        if account_ids:
+            q = q.where(Transaction.account_id.in_(account_ids))
+        else:
+            q = q.where(ON_BUDGET_ACCOUNT)
+
+        rows = (await self.session.execute(q)).all()
+        # A view scopes what the user sees — activity in categories the view
+        # hides is the view_hidden note's story, not this one's.
+        if regroup is not None:
+            rows = [r for r in rows if regroup(r.id) is not None]
+        if not rows:
+            return None
+
+        by_class: dict[str, dict] = {}
+        for r in rows:
+            slot = by_class.setdefault(
+                r.activity_class,
+                {"activity_class": r.activity_class, "categories": set(), "total": Decimal("0")},
+            )
+            slot["categories"].add(r.id)
+            slot["total"] += r.total
+        return sorted(
+            (
+                {
+                    "activity_class": v["activity_class"],
+                    "label": CLASS_LABEL[ActivityClass(v["activity_class"])],
+                    "categories": len(v["categories"]),
+                    # Storage is 4dp; the note is user-facing copy, so cents.
+                    "total": v["total"].quantize(Decimal("0.01")),
+                }
+                for v in by_class.values()
+            ),
+            key=lambda v: v["total"],
+            reverse=True,
+        )
 
     # ─── Seasonality ─────────────────────────────────────────────────────────
 

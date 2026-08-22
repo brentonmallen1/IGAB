@@ -20,6 +20,7 @@ from .factories import (
     create_budget,
     create_category,
     create_category_group,
+    create_payee,
     create_transaction,
     create_user,
 )
@@ -41,7 +42,26 @@ async def _world(db_session, owner=None):
     for cat, amount in ((rent, "-1200.00"), (power, "-100.00"), (dining, "-200.00")):
         await create_transaction(db_session, budget, checking, amount, TODAY, category=cat)
 
-    return budget, {"rent": rent, "power": power, "dining": dining, "bills": bills, "fun": fun}
+    # A car payment: a categorised transfer to a tracked loan. Classifies as
+    # debt_principal, so spending reports leave it out — the class-excluded
+    # note is what keeps that from reading as data loss.
+    loan = await create_account(db_session, budget, "Car Loan", account_type="loan", on_budget=False)
+    car = await create_category(db_session, budget, bills, "Car Payment")
+    to_loan = await create_payee(
+        db_session, budget, "Transfer : Car Loan", transfer_account_id=loan.id
+    )
+    await create_transaction(
+        db_session, budget, checking, "-275.00", TODAY, category=car, payee=to_loan
+    )
+
+    return budget, {
+        "rent": rent,
+        "power": power,
+        "dining": dining,
+        "car": car,
+        "bills": bills,
+        "fun": fun,
+    }
 
 
 async def _grouped(db_session, budget, **kw):
@@ -157,10 +177,10 @@ class TestViewArrangement:
     async def test_a_complete_view_reports_nothing_dropped(self, db_session):
         budget, c = await _world(db_session)
         view = await self._need_want_view(db_session, budget, c)
-        _, _, dropped = await ReportService(db_session).spending_grouped(
+        _, _, notes = await ReportService(db_session).spending_grouped(
             budget.id, START, TODAY, view_id=view.id
         )
-        assert dropped is None
+        assert notes["view_hidden"] is None
 
     async def test_hidden_spending_is_reported_not_just_dropped(self, db_session):
         budget, c = await _world(db_session)
@@ -175,11 +195,11 @@ class TestViewArrangement:
                 {"category_id": c["dining"].id, "is_hidden": True},
             ],
         )
-        _, total, dropped = await ReportService(db_session).spending_grouped(
+        _, total, notes = await ReportService(db_session).spending_grouped(
             budget.id, START, TODAY, view_id=view.id
         )
         assert total == Decimal("1300.00")
-        assert dropped == {"categories": 1, "total": Decimal("200.00")}
+        assert notes["view_hidden"] == {"categories": 1, "total": Decimal("200.00")}
 
     async def test_hide_unassigned_spending_counts_as_dropped(self, db_session):
         """hide_unassigned quietly removes every unplaced category — the
@@ -191,11 +211,11 @@ class TestViewArrangement:
         await repo.set_placements(
             view.id, [{"category_id": c["rent"].id, "group_id": groups[0].id}]
         )
-        _, total, dropped = await ReportService(db_session).spending_grouped(
+        _, total, notes = await ReportService(db_session).spending_grouped(
             budget.id, START, TODAY, view_id=view.id
         )
         assert total == Decimal("1200.00")
-        assert dropped == {"categories": 2, "total": Decimal("300.00")}
+        assert notes["view_hidden"] == {"categories": 2, "total": Decimal("300.00")}
 
     async def test_a_view_that_hides_everything_still_explains_itself(self, db_session):
         """The report the user actually hit: a sparse view + hide_unassigned
@@ -204,12 +224,12 @@ class TestViewArrangement:
         budget, c = await _world(db_session)
         repo = BudgetViewRepository(db_session)
         view = await repo.create(budget_id=budget.id, name="Void", hide_unassigned=True)
-        items, total, dropped = await ReportService(db_session).spending_grouped(
+        items, total, notes = await ReportService(db_session).spending_grouped(
             budget.id, START, TODAY, view_id=view.id
         )
         assert items == []
         assert total == Decimal("0")
-        assert dropped == {"categories": 3, "total": Decimal("1500.00")}
+        assert notes["view_hidden"] == {"categories": 3, "total": Decimal("1500.00")}
 
     async def test_an_unknown_view_falls_back_to_the_default_groups(self, db_session):
         """A stale id in a persisted report filter must not empty the report."""
@@ -228,6 +248,91 @@ class TestViewArrangement:
 
         by_name, _ = await _grouped(db_session, budget, view_id=foreign.id)
         assert set(by_name) == {"Monthly Bills", "Everyday"}
+
+
+class TestClassExcludedNote:
+    """"I selected Car Payment and it isn't here" — the report must say the
+    money is debt payment, not pretend the category is empty."""
+
+    async def test_selecting_an_excluded_category_names_what_is_missing(self, db_session):
+        budget, c = await _world(db_session)
+        _, _, notes = await ReportService(db_session).spending_grouped(
+            budget.id, START, TODAY, category_ids=[c["car"].id, c["rent"].id]
+        )
+        assert notes["class_excluded"] == [
+            {
+                "activity_class": "debt_principal",
+                "label": "Debt payment",
+                "categories": 1,
+                "total": Decimal("275.00"),
+            }
+        ]
+
+    async def test_the_unfiltered_report_stays_calm(self, db_session):
+        """No selection, no view: absence of a category the user never asked
+        for is not confusing, and the info panel covers the general rule."""
+        budget, _ = await _world(db_session)
+        _, _, notes = await ReportService(db_session).spending_grouped(budget.id, START, TODAY)
+        assert notes["class_excluded"] is None
+
+    async def test_a_view_that_shows_the_category_triggers_the_note(self, db_session):
+        budget, c = await _world(db_session)
+        repo = BudgetViewRepository(db_session)
+        view = await repo.create(budget_id=budget.id, name="With Car")
+        groups = await repo.set_groups(view.id, ["Need"])
+        await repo.set_placements(
+            view.id, [{"category_id": c["car"].id, "group_id": groups[0].id}]
+        )
+        _, _, notes = await ReportService(db_session).spending_grouped(
+            budget.id, START, TODAY, view_id=view.id
+        )
+        assert notes["class_excluded"] == [
+            {
+                "activity_class": "debt_principal",
+                "label": "Debt payment",
+                "categories": 1,
+                "total": Decimal("275.00"),
+            }
+        ]
+
+    async def test_a_view_that_hides_the_category_stays_quiet_about_it(self, db_session):
+        """Deliberately hidden is not confusingly missing — that exclusion
+        belongs to the view, and the user made it."""
+        budget, c = await _world(db_session)
+        repo = BudgetViewRepository(db_session)
+        view = await repo.create(budget_id=budget.id, name="No Car")
+        groups = await repo.set_groups(view.id, ["Need"])
+        await repo.set_placements(
+            view.id,
+            [
+                {"category_id": c["rent"].id, "group_id": groups[0].id},
+                {"category_id": c["car"].id, "is_hidden": True},
+            ],
+        )
+        _, _, notes = await ReportService(db_session).spending_grouped(
+            budget.id, START, TODAY, view_id=view.id
+        )
+        assert notes["class_excluded"] is None
+
+    async def test_including_the_classes_dissolves_the_note(self, db_session):
+        """Once savings and debt payments are counted, there is nothing left
+        to explain — the note must not linger."""
+        from igab.domain.activity_class import ActivityClass
+
+        budget, c = await _world(db_session)
+        _, total, notes = await ReportService(db_session).spending_grouped(
+            budget.id,
+            START,
+            TODAY,
+            category_ids=[c["car"].id, c["rent"].id],
+            include_classes=[
+                ActivityClass.SPENDING,
+                ActivityClass.SAVINGS,
+                ActivityClass.DEBT_PRINCIPAL,
+            ],
+        )
+        assert total == Decimal("1475.00"), "car payment now counted"
+        assert notes["class_excluded"] is None
 
 
 class TestThroughTheApi:
@@ -336,6 +441,31 @@ class TestThroughTheApi:
 
         assert body["view_hidden_categories"] == 0
         assert Decimal(body["view_hidden_total"]) == Decimal("0")
+
+    async def test_class_excluded_reaches_the_client(self, api_client, db_session):
+        budget, c = await _world(db_session, api_client.test_user)
+
+        body = (
+            await self._get(
+                api_client, budget, category_ids=f"{c['car'].id},{c['rent'].id}"
+            )
+        ).json()
+
+        assert body["class_excluded"] == [
+            {
+                "activity_class": "debt_principal",
+                "label": "Debt payment",
+                "categories": 1,
+                "total": "275.00",
+            }
+        ]
+
+    async def test_class_excluded_is_empty_without_selection_or_view(
+        self, api_client, db_session
+    ):
+        budget, _ = await _world(db_session, api_client.test_user)
+        body = (await self._get(api_client, budget)).json()
+        assert body["class_excluded"] == []
 
     async def test_a_stale_view_id_falls_back_rather_than_erroring(
         self, api_client, db_session

@@ -45,6 +45,7 @@ from igab.api.v1.schemas.report import (
     SavingsSummary,
     SeasonalityResponse,
     SpendingCategory,
+    SpendingClassExcluded,
     SpendingGroupedResponse,
     SpendingGroupItem,
     SpendingReportResponse,
@@ -302,7 +303,7 @@ async def spending_grouped_report(
     end = end_date or today
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
-    items, total, dropped = await report_svc.spending_grouped(
+    items, total, notes = await report_svc.spending_grouped(
         budget_id,
         start,
         end,
@@ -311,11 +312,15 @@ async def spending_grouped_report(
         _spending_classes(include_savings),
         view_id=view_id,
     )
+    hidden = notes["view_hidden"]
     return SpendingGroupedResponse(
         groups=[SpendingGroupItem.model_validate(i) for i in items],
         total=total,
-        view_hidden_categories=dropped["categories"] if dropped else 0,
-        view_hidden_total=dropped["total"] if dropped else Decimal("0"),
+        view_hidden_categories=hidden["categories"] if hidden else 0,
+        view_hidden_total=hidden["total"] if hidden else Decimal("0"),
+        class_excluded=[
+            SpendingClassExcluded.model_validate(c) for c in notes["class_excluded"] or []
+        ],
     )
 
 

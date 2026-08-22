@@ -253,6 +253,18 @@ class SpendingGroupItem(BaseModel):
     pct: float
 
 
+class SpendingClassExcluded(BaseModel):
+    """Activity in the user's current scope that a spending report will not
+    count — savings or debt payments in categories they selected or a view
+    shows. Absence without this reads as a bug: "I picked Car Payment and it
+    isn't here."""
+
+    activity_class: str
+    label: str
+    categories: int
+    total: Decimal
+
+
 class SpendingGroupedResponse(BaseModel):
     groups: list[SpendingGroupItem]
     total: Decimal
@@ -262,6 +274,8 @@ class SpendingGroupedResponse(BaseModel):
     #: that hides most spending otherwise reads as data loss.
     view_hidden_categories: int = 0
     view_hidden_total: Decimal = Decimal("0")
+    #: Present only when the user selected categories or a view is active.
+    class_excluded: list[SpendingClassExcluded] = []
 
 
 # ─── Seasonality ─────────────────────────────────────────────────────────────

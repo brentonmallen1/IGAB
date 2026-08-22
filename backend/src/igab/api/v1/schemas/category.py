@@ -249,3 +249,31 @@ class RecentPayeeResponse(BaseModel):
 
     payee_id: uuid.UUID
     name: str
+
+
+# ─── Category classification ─────────────────────────────────────────────────
+
+
+class CategoryClassSlice(BaseModel):
+    activity_class: str
+    label: str
+    total: Decimal
+    count: int
+
+
+class CategoryClassification(BaseModel):
+    """How this category's recent activity counts in reports.
+
+    The badge contract: `dominant` is set only when a single non-spending
+    class covers more than half of the category's outflow in the window —
+    that is when a category deserves a tag like "Debt payment" next to its
+    name, and when its absence from a spending report needs explaining
+    before the user ever opens one.
+    """
+
+    #: Outflow by class over the window, largest first. Empty = no activity.
+    classes: list[CategoryClassSlice]
+    window_months: int = 12
+    dominant: str | None = None
+    dominant_label: str | None = None
+    explanation: str | None = None
