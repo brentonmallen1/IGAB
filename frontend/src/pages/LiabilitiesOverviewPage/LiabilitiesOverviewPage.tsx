@@ -21,14 +21,15 @@ export function LiabilitiesOverviewPage() {
   const { formatMoney, formatMonth } = useFormatters()
   const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)
-  const { isLiabilityEditorOpen, editingLiabilityId, openLiabilityEditor, closeLiabilityEditor } =
-    useUIStore()
+  const activeModal = useUIStore((s) => s.activeModal)
+  const openModal = useUIStore((s) => s.openModal)
+  const closeModal = useUIStore((s) => s.closeModal)
 
   const [prefill, setPrefill] = useState<LiabilityPrefill | undefined>()
 
   if (!budgetId) return null
 
-  const editingLiability = liabilities.find((d) => d.id === editingLiabilityId) ?? null
+  const editingLiability = liabilities.find((d) => d.id === activeModal?.editingId) ?? null
   const totalOwed = liabilities.reduce((sum, d) => sum + Number(d.current_balance), 0)
 
   // Accounts that could be liabilities but aren't tracked yet
@@ -43,12 +44,12 @@ export function LiabilitiesOverviewPage() {
       accountName: account.name,
       liabilityType: account.account_type === 'credit_card' ? 'credit_card' : 'auto',
     })
-    openLiabilityEditor(null)
+    openModal('liability')
   }
 
   function handleClose() {
     setPrefill(undefined)
-    closeLiabilityEditor()
+    closeModal()
   }
 
   return (
@@ -63,7 +64,7 @@ export function LiabilitiesOverviewPage() {
             </div>
           )}
         </div>
-        <button className="liabilities-page__add" onClick={() => openLiabilityEditor(null)}>
+        <button className="liabilities-page__add" onClick={() => openModal('liability')}>
           <Plus size={14} />
           Track a liability
         </button>
@@ -78,7 +79,7 @@ export function LiabilitiesOverviewPage() {
             Track a loan account you already have here, or a liability that lives entirely outside
             this budget — either way you get a payoff date, schedule, and paydown chart.
           </p>
-          <button className="liabilities-page__add" onClick={() => openLiabilityEditor(null)}>
+          <button className="liabilities-page__add" onClick={() => openModal('liability')}>
             <Plus size={14} />
             Track a liability
           </button>
@@ -186,7 +187,7 @@ export function LiabilitiesOverviewPage() {
         </div>
       )}
 
-      {isLiabilityEditorOpen && (
+      {activeModal?.kind === 'liability' && (
         <LiabilitySettingsModal
           budgetId={budgetId}
           liability={editingLiability}

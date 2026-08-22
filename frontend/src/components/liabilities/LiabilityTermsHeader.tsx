@@ -27,7 +27,7 @@ const NOT_SET = 'Not set'
 export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
   const { data: liabilities = [] } = useLiabilities(budgetId)
-  const openLiabilityEditor = useUIStore((s) => s.openLiabilityEditor)
+  const openModal = useUIStore((s) => s.openModal)
 
   const liability = liabilities.find((l) => l.linked_account_id === accountId)
   // Defensive: after the companion backfill every liability account has one,
@@ -97,7 +97,7 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
         <button
           type="button"
           className="liability-terms__btn"
-          onClick={() => openLiabilityEditor(liability.id)}
+          onClick={() => openModal('liability', liability.id)}
         >
           <Pencil size={12} />
           {termsSet ? 'Edit terms' : 'Add terms'}

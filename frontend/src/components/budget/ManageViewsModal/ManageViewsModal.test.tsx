@@ -14,7 +14,7 @@ const deleteMutate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const store = vi.hoisted(() => ({
   activeViewId: null as string | null,
   setActiveView: vi.fn(),
-  openViewModal: vi.fn(),
+  openModal: vi.fn(),
 }))
 
 vi.mock('../../../api/budgetViews', () => ({
@@ -81,7 +81,7 @@ describe('ManageViewsModal', () => {
     viewsState.data = [view('v1', 'Need / Want / Save')]
     renderModal()
     fireEvent.click(screen.getByLabelText('Edit view Need / Want / Save'))
-    expect(store.openViewModal).toHaveBeenCalledWith('v1')
+    expect(store.openModal).toHaveBeenCalledWith('view', 'v1')
   })
 
   it('deleting the active view falls back to the default groups', async () => {

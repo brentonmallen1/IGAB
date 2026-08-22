@@ -30,16 +30,8 @@ export function BudgetPage() {
 
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const clearCategorySelection = useUIStore((s) => s.clearCategorySelection)
-  const isFilterModalOpen = useUIStore((s) => s.isFilterModalOpen)
-  const isViewModalOpen = useUIStore((s) => s.isViewModalOpen)
-  const editingViewId = useUIStore((s) => s.editingViewId)
-  const closeViewModal = useUIStore((s) => s.closeViewModal)
-  const isManageViewsModalOpen = useUIStore((s) => s.isManageViewsModalOpen)
-  const closeManageViewsModal = useUIStore((s) => s.closeManageViewsModal)
-  const editingFilterId = useUIStore((s) => s.editingFilterId)
-  const closeFilterModal = useUIStore((s) => s.closeFilterModal)
-  const isManageFiltersModalOpen = useUIStore((s) => s.isManageFiltersModalOpen)
-  const closeManageFiltersModal = useUIStore((s) => s.closeManageFiltersModal)
+  const activeModal = useUIStore((s) => s.activeModal)
+  const closeModal = useUIStore((s) => s.closeModal)
   const mobileInspectorOpen = useUIStore((s) => s.mobileInspectorOpen)
   const closeMobileInspector = useUIStore((s) => s.closeMobileInspector)
   const multiMonthOpen = useUIStore((s) => s.multiMonthOpen)
@@ -219,24 +211,27 @@ export function BudgetPage() {
         </FloatingSelectionBar>
       )}
 
-      {isFilterModalOpen && (
+      {/* One slot, so these are alternatives rather than four independent
+          conditions that could all be true. */}
+      {activeModal?.kind === 'filter' && (
         <BudgetFilterModal
           budgetId={budgetId}
-          filterId={editingFilterId}
-          onClose={closeFilterModal}
+          filterId={activeModal.editingId}
+          onClose={closeModal}
         />
       )}
-      {isViewModalOpen && (
-        <BudgetViewModal budgetId={budgetId} viewId={editingViewId} onClose={closeViewModal} />
-      )}
-      {isManageViewsModalOpen && (
-        <ManageViewsModal budgetId={budgetId} onClose={closeManageViewsModal} />
-      )}
-      {isManageFiltersModalOpen && (
-        <ManageFiltersModal
+      {activeModal?.kind === 'view' && (
+        <BudgetViewModal
           budgetId={budgetId}
-          onClose={closeManageFiltersModal}
+          viewId={activeModal.editingId}
+          onClose={closeModal}
         />
+      )}
+      {activeModal?.kind === 'manage-views' && (
+        <ManageViewsModal budgetId={budgetId} onClose={closeModal} />
+      )}
+      {activeModal?.kind === 'manage-filters' && (
+        <ManageFiltersModal budgetId={budgetId} onClose={closeModal} />
       )}
       {!isMobile && multiMonthOpen && <MultiMonthSheet budgetId={budgetId} />}
     </div>

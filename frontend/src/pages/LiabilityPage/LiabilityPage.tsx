@@ -35,7 +35,9 @@ export function LiabilityPage() {
   const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
   const liability = liabilities.find((d) => d.id === liabilityId) ?? null
 
-  const { isLiabilityEditorOpen, editingLiabilityId, openLiabilityEditor, closeLiabilityEditor } = useUIStore()
+  const activeModal = useUIStore((s) => s.activeModal)
+  const openModal = useUIStore((s) => s.openModal)
+  const closeModal = useUIStore((s) => s.closeModal)
 
   const [chartMode, setChartMode] = useState<'now' | 'beginning'>('now')
   const [extraInput, setExtraInput] = useState('')
@@ -169,7 +171,7 @@ export function LiabilityPage() {
           </span>
           <button
             className="liability-page__settings"
-            onClick={() => openLiabilityEditor(liability.id)}
+            onClick={() => openModal('liability', liability.id)}
             aria-label="Liability settings"
             title="Liability settings"
           >
@@ -430,7 +432,7 @@ export function LiabilityPage() {
               <button
                 type="button"
                 className="liability-page__empty-action"
-                onClick={() => openLiabilityEditor(liability.id)}
+                onClick={() => openModal('liability', liability.id)}
               >
                 <Settings size={13} />
                 Add the terms
@@ -456,7 +458,7 @@ export function LiabilityPage() {
               <button
                 type="button"
                 className="liability-page__empty-action"
-                onClick={() => openLiabilityEditor(liability.id)}
+                onClick={() => openModal('liability', liability.id)}
               >
                 <Settings size={13} />
                 Add the terms
@@ -513,11 +515,11 @@ export function LiabilityPage() {
         </div>
       )}
 
-      {isLiabilityEditorOpen && editingLiabilityId === liability.id && (
+      {activeModal?.kind === 'liability' && activeModal.editingId === liability.id && (
         <LiabilitySettingsModal
           budgetId={budgetId}
           liability={liability}
-          onClose={closeLiabilityEditor}
+          onClose={closeModal}
           onDeleted={() => navigate('/liabilities')}
         />
       )}

@@ -116,10 +116,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     toggleSection,
     setTransactionSort,
     setTransactionSearch,
-    isTransactionEditorOpen,
-    editingTransactionId,
-    openTransactionEditor,
-    closeTransactionEditor,
+    activeModal,
+    openModal,
+    closeModal,
   } = useUIStore(
     useShallow((s) => ({
       selectedTransactionIds: s.selectedTransactionIds,
@@ -133,10 +132,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       toggleSection: s.toggleSection,
       setTransactionSort: s.setTransactionSort,
       setTransactionSearch: s.setTransactionSearch,
-      isTransactionEditorOpen: s.isTransactionEditorOpen,
-      editingTransactionId: s.editingTransactionId,
-      openTransactionEditor: s.openTransactionEditor,
-      closeTransactionEditor: s.closeTransactionEditor,
+      activeModal: s.activeModal,
+      openModal: s.openModal,
+      closeModal: s.closeModal,
     }))
   )
 
@@ -219,6 +217,10 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const transactionIds = useMemo(() => transactions.map((t) => t.id), [transactions])
   const { data: attachmentMap = {} } = useCheckAttachments(transactionIds)
 
+  // Only when the transaction editor is the dialog that is open — activeModal
+  // carries one editingId for whichever kind holds the slot.
+  const editingTransactionId =
+    activeModal?.kind === 'transaction' ? activeModal.editingId : null
   const editingTxn = useMemo(
     () => transactions.find((t) => t.id === editingTransactionId) ?? null,
     [transactions, editingTransactionId]
@@ -545,8 +547,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   }
 
   const handleEdit = useCallback((txn: Transaction) => {
-    openTransactionEditor(txn.id)
-  }, [openTransactionEditor])
+    openModal('transaction', txn.id)
+  }, [openModal])
 
   function renderTxnRow(txn: Transaction) {
     return (
@@ -788,7 +790,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           value={transactionSearchQuery}
           onChange={setTransactionSearch}
         />
-        <button className="transaction-table__add-btn" onClick={() => openTransactionEditor()}>
+        <button className="transaction-table__add-btn" onClick={() => openModal('transaction')}>
           <Plus size={14} />
           Add Transaction
         </button>
@@ -814,7 +816,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           onApprove={canApprove ? handleBulkApprove : undefined}
           onMerge={() => setShowMergeModal(true)}
           canMerge={!!mergeEligiblePair}
-          onEdit={editableSelectedTxn ? () => openTransactionEditor(editableSelectedTxn.id) : undefined}
+          onEdit={editableSelectedTxn ? () => openModal('transaction', editableSelectedTxn.id) : undefined}
           onAttachments={() => {
             setShowAttachmentPanel(true)
             setAttachmentTxnId(Array.from(selectedTransactionIds)[0])
@@ -937,13 +939,13 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         </>
       )}
 
-      {isTransactionEditorOpen && (
+      {activeModal?.kind === 'transaction' && (
         <TransactionEditor
           budgetId={budgetId}
           accountId={accountId}
           transaction={editingTxn}
           aiJob={editingTxn?.created_via?.startsWith('ai') ? (editingTxnAIJob ?? null) : null}
-          onClose={closeTransactionEditor}
+          onClose={closeModal}
         />
       )}
 

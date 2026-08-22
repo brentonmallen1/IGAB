@@ -95,7 +95,9 @@ export function SettingsPage() {
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const updateBudget = useUpdateBudget()
 
-  const { isAccountEditorOpen, editingAccountId, openAccountEditor, closeAccountEditor } = useUIStore()
+  const activeModal = useUIStore((s) => s.activeModal)
+  const openModal = useUIStore((s) => s.openModal)
+  const closeModal = useUIStore((s) => s.closeModal)
 
 
   const { data: sfConnections } = useSimpleFINConnections()
@@ -445,7 +447,7 @@ export function SettingsPage() {
                     </span>
                     <button
                       className="settings-btn settings-btn--secondary"
-                      onClick={() => openAccountEditor(acc.id)}
+                      onClick={() => openModal('account', acc.id)}
                     >
                       Edit
                     </button>
@@ -698,8 +700,8 @@ export function SettingsPage() {
         </div>
       )}
 
-      {isAccountEditorOpen && editingAccountId && (
-        <AccountSettingsModal accountId={editingAccountId} onClose={closeAccountEditor} />
+      {activeModal?.kind === 'account' && activeModal.editingId && (
+        <AccountSettingsModal accountId={activeModal.editingId} onClose={closeModal} />
       )}
       {showTypeInfo && (
         <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />

@@ -28,8 +28,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
   const { data: views } = useBudgetViews(budgetId)
   const activeViewId = useUIStore((s) => s.activeViewId)
   const setActiveView = useUIStore((s) => s.setActiveView)
-  const openViewModal = useUIStore((s) => s.openViewModal)
-  const openManageViewsModal = useUIStore((s) => s.openManageViewsModal)
+  const openModal = useUIStore((s) => s.openModal)
   const viaPointer = useRef(false)
   const [renameNoticeSeen, setRenameNoticeSeen] = useState(
     () => localStorage.getItem(RENAME_NOTICE_KEY) === '1'
@@ -50,8 +49,6 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
   const quickFilterOrder = useUIStore((s) => s.quickFilterOrder)
   const setActiveFilter = useUIStore((s) => s.setActiveFilter)
   const setActiveQuickFilter = useUIStore((s) => s.setActiveQuickFilter)
-  const openFilterModal = useUIStore((s) => s.openFilterModal)
-  const openManageFiltersModal = useUIStore((s) => s.openManageFiltersModal)
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const toggleBudgetRowMode = useUIStore((s) => s.toggleBudgetRowMode)
   const categorySearch = useUIStore((s) => s.categorySearch)
@@ -96,10 +93,10 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
   }
 
   function handleMenuSelect(id: string) {
-    if (id === 'new') openFilterModal()
-    else if (id === 'manage') openManageFiltersModal()
-    else if (id === 'new-view') openViewModal()
-    else if (id === 'manage-views') openManageViewsModal()
+    if (id === 'new') openModal('filter')
+    else if (id === 'manage') openModal('manage-filters')
+    else if (id === 'new-view') openModal('view')
+    else if (id === 'manage-views') openModal('manage-views')
   }
 
   function handleAllClick() {
@@ -203,7 +200,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
           key={saved.id}
           className={`budget-filter-bar__btn ${activeFilterId === saved.id ? 'active' : ''}`}
           onClick={() => setActiveFilter(saved.id)}
-          onDoubleClick={() => openFilterModal(saved.id)}
+          onDoubleClick={() => openModal('filter', saved.id)}
           title="Double-click to edit"
         >
           {saved.name}

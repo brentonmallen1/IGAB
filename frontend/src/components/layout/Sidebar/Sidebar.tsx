@@ -57,10 +57,9 @@ export function Sidebar() {
   const updateAvailable = useUpdateStatus().data?.update_available === true
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
-  const isAddAccountModalOpen = useUIStore((s) => s.isAddAccountModalOpen)
-  const openAddAccountModal = useUIStore((s) => s.openAddAccountModal)
-  const closeAddAccountModal = useUIStore((s) => s.closeAddAccountModal)
-  const openLiabilityEditor = useUIStore((s) => s.openLiabilityEditor)
+  const activeModal = useUIStore((s) => s.activeModal)
+  const openModal = useUIStore((s) => s.openModal)
+  const closeModal = useUIStore((s) => s.closeModal)
 
   const logout = useLogout()
   const { data: me } = useCurrentUser()
@@ -234,7 +233,7 @@ export function Sidebar() {
           </button>
           <button
             className="sidebar__add-account"
-            onClick={openAddAccountModal}
+            onClick={() => openModal('add-account')}
             aria-label="Add account"
             title="Add account"
           >
@@ -329,7 +328,7 @@ export function Sidebar() {
               </span>
               <button
                 className="sidebar__add-liability"
-                onClick={() => { openLiabilityEditor(null); navigate('/liabilities') }}
+                onClick={() => { openModal('liability'); navigate('/liabilities') }}
                 aria-label="Add liability"
                 title="Add liability"
               >
@@ -406,7 +405,7 @@ export function Sidebar() {
           </button>
           <button
             className="sidebar__add-liability"
-            onClick={() => { openLiabilityEditor(null); navigate('/liabilities') }}
+            onClick={() => { openModal('liability'); navigate('/liabilities') }}
             aria-label="Add liability"
             title="Add liability"
           >
@@ -447,7 +446,7 @@ export function Sidebar() {
         </div>
       )}
 
-      {isAddAccountModalOpen && <AddAccountModal onClose={closeAddAccountModal} />}
+      {activeModal?.kind === 'add-account' && <AddAccountModal onClose={closeModal} />}
       {assetModalOpen && (
         <AddAccountModal
           initialTypeKey="investment"
