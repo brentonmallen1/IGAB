@@ -8,6 +8,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
+import { ViewHiddenNote } from '../ViewHiddenNote'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 
@@ -169,8 +170,19 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             : 'Click a group to drill down into its categories.'}
       </p>
 
+      {data && (
+        <ViewHiddenNote
+          categories={data.view_hidden_categories}
+          total={data.view_hidden_total}
+        />
+      )}
+
       {visibleItems.length === 0 ? (
-        <div className="reports-empty">No spending data for this period.</div>
+        <div className="reports-empty">
+          {(data?.view_hidden_categories ?? 0) > 0
+            ? 'Everything with spending in this window is hidden by the current view.'
+            : 'No spending data for this period.'}
+        </div>
       ) : (
         <div ref={captureRef} className="report-capture">
         <ResponsiveContainer width="100%" height={chartHeight}>

@@ -124,6 +124,49 @@ describe.each(ALL_REPORTS)('%s report', (_name, Report) => {
   })
 })
 
+describe('view-hidden note on the spending charts', () => {
+  const hiddenData = {
+    groups: [
+      { id: 'c1', name: 'Dining Out', parent_id: 'g1', parent_name: 'group c', total: 205, count: 3, pct: 100 },
+    ],
+    total: 205,
+    view_hidden_categories: 31,
+    view_hidden_total: '14820.45',
+  }
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s states what the view hid', (_name, Report) => {
+    setQuery({ data: hiddenData })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.getByText(/This view hides 31 categories/)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s stays quiet when nothing was hidden', (_name, Report) => {
+    setQuery({ data: { ...hiddenData, view_hidden_categories: 0, view_hidden_total: '0' } })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.queryByText(/This view hides/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s explains an all-hidden empty state instead of claiming no data', (_name, Report) => {
+    setQuery({
+      data: { groups: [], total: 0, view_hidden_categories: 34, view_hidden_total: '15025.45' },
+    })
+    renderReport(<Report budgetId="b1" />)
+    expect(
+      screen.getByText('Everything with spending in this window is hidden by the current view.')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No spending data for this period.')).not.toBeInTheDocument()
+  })
+})
+
 describe('OverviewReport metric cards', () => {
   it('shows deltas, savings rate, and runway from the dashboard data', () => {
     setQuery({

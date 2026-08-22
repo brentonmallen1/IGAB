@@ -13,6 +13,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
 import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
+import { ViewHiddenNote } from '../ViewHiddenNote'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -203,6 +204,13 @@ export function ParetoReport({ budgetId }: Props) {
       <p className="report-section__subtitle">
         Which {GROUP_PLURALS[groupBy]} account for 80% of your spending?
       </p>
+      {/* Payee mode draws from payee analysis, which no view filters. */}
+      {groupBy !== 'payee' && spendingQ.data && (
+        <ViewHiddenNote
+          categories={spendingQ.data.view_hidden_categories}
+          total={spendingQ.data.view_hidden_total}
+        />
+      )}
 
       <div ref={captureRef} className="report-capture">
       {grandTotal > 0 && (
@@ -220,7 +228,11 @@ export function ParetoReport({ budgetId }: Props) {
       )}
 
       {chartData.length === 0 ? (
-        <div className="reports-empty">No spending data for this period.</div>
+        <div className="reports-empty">
+          {groupBy !== 'payee' && (spendingQ.data?.view_hidden_categories ?? 0) > 0
+            ? 'Everything with spending in this window is hidden by the current view.'
+            : 'No spending data for this period.'}
+        </div>
       ) : (
         <>
           <ResponsiveContainer width="100%" height={chartHeight}>

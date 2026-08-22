@@ -4,6 +4,14 @@ import type { BudgetView } from '../types'
 
 const key = (budgetId: string | null) => ['budgetViews', budgetId]
 
+/** Editing a view changes how reports roll up, so their cache is stale the
+ *  moment a mutation lands — without this, pareto/treemap keep showing the
+ *  old arrangement for up to a minute after a save. */
+function invalidate(qc: ReturnType<typeof useQueryClient>, budgetId: string) {
+  qc.invalidateQueries({ queryKey: key(budgetId) })
+  qc.invalidateQueries({ queryKey: ['reports'] })
+}
+
 export function useBudgetViews(budgetId: string | null) {
   return useQuery({
     queryKey: key(budgetId),
@@ -21,7 +29,7 @@ export function useCreateBudgetView(budgetId: string) {
   return useMutation({
     mutationFn: (data: { name: string; groups?: string[]; hide_unassigned?: boolean }) =>
       apiClient.post<BudgetView>(`/${budgetId}/views`, data).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key(budgetId) }),
+    onSuccess: () => invalidate(qc, budgetId),
   })
 }
 
@@ -46,7 +54,7 @@ export function useUpdateBudgetView(budgetId: string) {
         is_hidden?: boolean
       }[]
     }) => apiClient.patch<BudgetView>(`/views/${id}`, data).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key(budgetId) }),
+    onSuccess: () => invalidate(qc, budgetId),
   })
 }
 
@@ -54,6 +62,6 @@ export function useDeleteBudgetView(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/views/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key(budgetId) }),
+    onSuccess: () => invalidate(qc, budgetId),
   })
 }

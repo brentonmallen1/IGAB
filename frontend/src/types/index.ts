@@ -513,6 +513,11 @@ export interface SpendingGroupItem {
 export interface SpendingGroupedReport {
   groups: SpendingGroupItem[]
   total: number
+  /** What the active view kept out: categories with spending in the window
+   *  that the view hides. Zero without a view. Decimals arrive as strings —
+   *  coerce before math. */
+  view_hidden_categories: number
+  view_hidden_total: number | string
 }
 
 export interface SeasonalityCell {
