@@ -418,6 +418,24 @@ export function LiabilityPage() {
         {amortization ? (
           Number(liability.current_balance) === 0 ? (
             <div className="liability-page__empty">Nothing left to pay down.</div>
+          ) : !amortization.terms_complete ? (
+            // The curve past today IS the projection. Without terms there is
+            // nothing to draw but the balance you already know, so say what is
+            // missing rather than render an almost-empty chart.
+            <div className="liability-page__empty">
+              <p>
+                A paydown curve needs the APR and minimum payment — they decide how much of
+                each payment is interest, and therefore when this is gone.
+              </p>
+              <button
+                type="button"
+                className="liability-page__empty-action"
+                onClick={() => openLiabilityEditor(liability.id)}
+              >
+                <Settings size={13} />
+                Add the terms
+              </button>
+            </div>
           ) : (
             <PaydownChart amortization={amortization} mode={chartMode} isMobile={isMobile} />
           )
@@ -434,7 +452,15 @@ export function LiabilityPage() {
         {amortization ? (
           !amortization.terms_complete ? (
             <div className="liability-page__empty">
-              Add this liability's APR and minimum payment to see its schedule.
+              <p>Add this liability&apos;s APR and minimum payment to see its schedule.</p>
+              <button
+                type="button"
+                className="liability-page__empty-action"
+                onClick={() => openLiabilityEditor(liability.id)}
+              >
+                <Settings size={13} />
+                Add the terms
+              </button>
             </div>
           ) : amortization.baseline_never_pays_off &&
             amortization.baseline_schedule.length === 0 ? (

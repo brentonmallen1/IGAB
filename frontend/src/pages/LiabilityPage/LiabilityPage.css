@@ -6,10 +6,47 @@
 }
 
 .liability-page__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
   padding: var(--spacing-xl) 0;
   text-align: center;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+}
+
+.liability-page__empty p {
+  margin: 0;
+  max-width: 52ch;
+}
+
+/* An empty state that names what is missing should also be where you fix it —
+   otherwise it is a sign pointing at a door in another room. */
+.liability-page__empty-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.liability-page__empty-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--color-accent);
+}
+
+.liability-page__empty-action:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 .liability-page__header {
