@@ -11,7 +11,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { monthWindow } from '../../../utils/dateWindow'
 import { DrillDownTable } from '../DrillDownTable'
 import { ChartTooltip } from './ChartTooltip'
-import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
+import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './IncomeExpenseChart.css'
@@ -50,6 +50,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
     month: m.month.slice(0, 7),
     Income: Number(m.income),
     Expenses: Number(m.expenses),
+    Saved: Number(m.savings) + Number(m.debt_principal),
     Net: Number(m.net),
   }))
 
@@ -66,6 +67,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
         <h2 className="report-section__title">Income vs Expenses</h2>
         <ReportInfoButton title="Income vs Expenses">
           <p>Monthly <strong>income</strong> (green) vs <strong>expenses</strong> (red) as bars, with the <strong>net cash flow</strong> (blue line) overlaid.</p>
+          <p><strong>Saved</strong> is money that left the budget but stayed yours — moved into savings or investments, or used to pay down a tracked debt. It sits beside expenses rather than inside them, because it isn't money spent.</p>
           <p>Months where the blue line is above zero mean you spent less than you earned — a positive sign. Dipping below zero means you ran a deficit that month.</p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
@@ -87,6 +89,8 @@ export function IncomeExpenseReport({ budgetId }: Props) {
                 month: m.month.slice(0, 7),
                 income: Number(m.income),
                 expenses: Number(m.expenses),
+                savings: Number(m.savings),
+                debt_principal: Number(m.debt_principal),
                 net: Number(m.net),
               }))
             }
@@ -107,6 +111,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
               <Legend />
               <Bar dataKey="Income" fill={COLOR_POSITIVE} radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('inflow')} />
               <Bar dataKey="Expenses" fill={COLOR_NEGATIVE} radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('outflow')} />
+              <Bar dataKey="Saved" fill={COLOR_NEUTRAL} radius={[2, 2, 0, 0]} />
               <Line dataKey="Net" stroke={COLOR_NET} strokeWidth={2} dot={{ r: 3 }} type="monotone" />
             </ComposedChart>
           </ResponsiveContainer>

@@ -23,7 +23,12 @@ class SpendingReportResponse(BaseModel):
 class IncomeExpenseMonth(BaseModel):
     month: date
     income: Decimal
+    #: Money spent. Saving and debt principal are reported separately — both
+    #: leave the budget, but neither is spending.
     expenses: Decimal
+    savings: Decimal
+    debt_principal: Decimal
+    #: income - expenses - savings - debt_principal, so the parts reconcile.
     net: Decimal
 
 

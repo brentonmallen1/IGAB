@@ -218,7 +218,12 @@ export interface SpendingReport {
 export interface IncomeExpenseMonth {
   month: string
   income: number
+  /** Money spent. Saving and debt principal are separate — both leave the
+   *  budget, but neither is spending. */
   expenses: number
+  savings: number
+  debt_principal: number
+  /** income - expenses - savings - debt_principal, so the parts reconcile. */
   net: number
 }
 

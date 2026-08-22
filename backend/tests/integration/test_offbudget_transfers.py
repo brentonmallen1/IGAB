@@ -108,10 +108,10 @@ async def test_categorized_offbudget_transfer_in_spending_reports(db_session):
     by_name = {c["name"]: c["total"] for c in categories}
     assert by_name.get("Housing") == Decimal("1200.0")
 
-    # Cash flow still counts it: income_vs_expense aggregates PARENT_ROW, where
-    # a split can mix classes, so it is not classified yet.
+    # Cash flow agrees: the mortgage payment is debt principal, not expense.
     results = await reports.income_vs_expense(budget.id, months=1)
-    assert results[-1]["expenses"] == Decimal("1200.0")
+    assert results[-1]["expenses"] == Decimal("0")
+    assert results[-1]["debt_principal"] == Decimal("1200.00")
     assert results[-1]["income"] == Decimal("0")
 
 

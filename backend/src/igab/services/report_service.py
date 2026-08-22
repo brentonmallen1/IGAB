@@ -192,76 +192,43 @@ class ReportService:
         return categories, Decimal(str(round(grand_total, 4)))
 
     async def income_vs_expense(self, budget_id: uuid.UUID, months: int = 12) -> list[dict]:
+        """Money in, money out, per month — with saving broken out of spending.
+
+        `expenses` used to be every negative row, which meant a transfer into a
+        brokerage read as an expense. It now means spending; money that left the
+        budget but stayed in the household's net worth is reported separately as
+        `savings` and `debt_principal`.
+
+        `net` remains income minus everything that left, so the four figures
+        still reconcile — a chart can stack them without the total drifting.
+        Internal transfers between two on-budget accounts are excluded: they
+        cancel, and showing them would double the apparent flow.
+        """
         today = date.today()
         first_of_month = today.replace(day=1)
         start = _subtract_months(first_of_month, months - 1)
 
-        q = select(Transaction.date, Transaction.amount).where(
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            Transaction.date >= start,
-            Transaction.date <= today,
-            PARENT_ROW,
-            CASH_FLOW_ROW,
-            ON_BUDGET_ACCOUNT,
-        )
-        rows = (await self.session.execute(q)).all()
-
-        if not rows:
-            return [
-                {
-                    "month": _subtract_months(first_of_month, i),
-                    "income": Decimal("0"),
-                    "expenses": Decimal("0"),
-                    "net": Decimal("0"),
-                }
-                for i in range(months - 1, -1, -1)
-            ]
-
-        df = pl.DataFrame(
-            {
-                "date": [r[0] for r in rows],
-                "amount": [float(r[1]) for r in rows],
-            },
-            schema_overrides={"date": pl.Date, "amount": pl.Float64},
-        )
-
-        monthly = (
-            df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
-            .group_by("month")
-            .agg(
-                pl.col("amount").filter(pl.col("amount") > 0).sum().alias("income"),
-                pl.col("amount").filter(pl.col("amount") < 0).sum().abs().alias("expenses"),
-                pl.col("amount").sum().alias("net"),
-            )
-            .sort("month")
-        )
-
-        month_map = {row["month"]: row for row in monthly.iter_rows(named=True)}
+        by_month = await self._monthly_class_totals(budget_id, start, today)
 
         results = []
         for i in range(months - 1, -1, -1):
             month_start = _subtract_months(first_of_month, i)
-            if month_start in month_map:
-                r = month_map[month_start]
-                results.append(
-                    {
-                        "month": month_start,
-                        "income": Decimal(str(round(r["income"] or 0, 4))),
-                        "expenses": Decimal(str(round(r["expenses"] or 0, 4))),
-                        "net": Decimal(str(round(r["net"] or 0, 4))),
-                    }
-                )
-            else:
-                results.append(
-                    {
-                        "month": month_start,
-                        "income": Decimal("0"),
-                        "expenses": Decimal("0"),
-                        "net": Decimal("0"),
-                    }
-                )
+            buckets = by_month.get(month_start, {})
+            income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
+            # Outflow classes are stored negative; report magnitudes.
+            expenses = -buckets.get(ActivityClass.SPENDING.value, Decimal("0"))
+            savings = -buckets.get(ActivityClass.SAVINGS.value, Decimal("0"))
+            debt = -buckets.get(ActivityClass.DEBT_PRINCIPAL.value, Decimal("0"))
+            results.append(
+                {
+                    "month": month_start,
+                    "income": income,
+                    "expenses": expenses,
+                    "savings": savings,
+                    "debt_principal": debt,
+                    "net": income - expenses - savings - debt,
+                }
+            )
         return results
 
     async def export_transactions(
@@ -2107,6 +2074,43 @@ class ReportService:
             "months": month_list,
         }
 
+    async def _monthly_class_totals(
+        self, budget_id: uuid.UUID, start: date, end: date
+    ) -> dict[date, dict[str, Decimal]]:
+        """month -> activity class -> signed total, for on-budget rows.
+
+        LEAF, not PARENT_ROW. The two sum to the same figure (money
+        conservation), but only leaves carry a category, and a split parent can
+        mix classes across its legs — one bank row holding both groceries and a
+        transfer into savings. Aggregating the parent would force that row into
+        a single class chosen by its net sign.
+        """
+        month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        q = (
+            select(
+                month_col,
+                ACTIVITY_CLASS.label("cls"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            )
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                LEAF,
+                Transaction.date >= start,
+                Transaction.date <= end,
+                ON_BUDGET_ACCOUNT,
+            )
+            .group_by(month_col, ACTIVITY_CLASS)
+        )
+        rows = (await self.session.execute(q)).all()
+
+        by_month: dict[date, dict[str, Decimal]] = {}
+        for row in rows:
+            key = row.month.date() if hasattr(row.month, "date") else row.month
+            by_month.setdefault(key, {})[row.cls] = Decimal(str(row.total))
+        return by_month
+
     # ─── Savings Rate ─────────────────────────────────────────────────────────
 
     async def savings_rate(self, budget_id: uuid.UUID, months: int = 12) -> dict:
@@ -2135,30 +2139,7 @@ class ReportService:
         first = today.replace(day=1)
         start = _subtract_months(first, months - 1)
 
-        month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
-        q = (
-            select(
-                month_col,
-                ACTIVITY_CLASS.label("cls"),
-                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
-            )
-            .where(
-                Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                LEAF,
-                Transaction.date >= start,
-                Transaction.date <= today,
-                ON_BUDGET_ACCOUNT,
-            )
-            .group_by(month_col, ACTIVITY_CLASS)
-        )
-        rows = (await self.session.execute(q)).all()
-
-        by_month: dict[date, dict[str, Decimal]] = {}
-        for row in rows:
-            key = row.month.date() if hasattr(row.month, "date") else row.month
-            by_month.setdefault(key, {})[row.cls] = Decimal(str(row.total))
+        by_month = await self._monthly_class_totals(budget_id, start, today)
 
         def _rate(numerator: Decimal, income: Decimal) -> float | None:
             if income <= 0:

@@ -121,40 +121,96 @@ class TestSpendingByCategory:
 # ─── income_vs_expense ────────────────────────────────────────────────────────
 
 class TestIncomeVsExpense:
+    """The service now groups by activity class in SQL, so the mocked rows are
+    (month, cls, total) rather than raw (date, amount)."""
+
+    @staticmethod
+    def _rows(*triples):
+        return [row(month=m, cls=c, total=t) for m, c, t in triples]
+
     async def test_buckets_by_month(self):
         today = date.today()
         first = today.replace(day=1)
         last_month = _subtract_months(first, 1)
 
-        rows = [
-            row(date=last_month.replace(day=10), amount=D("3000.00")),
-            row(date=last_month.replace(day=15), amount=D("-500.00")),
-            row(date=first.replace(day=5),       amount=D("3000.00")),
-            row(date=first.replace(day=10),      amount=D("-800.00")),
-        ]
-        svc = ReportService(make_session(mock_result(rows)))
+        svc = ReportService(
+            make_session(
+                mock_result(
+                    self._rows(
+                        (last_month, "income", D("3000.00")),
+                        (last_month, "spending", D("-500.00")),
+                        (first, "income", D("3000.00")),
+                        (first, "spending", D("-800.00")),
+                    )
+                )
+            )
+        )
         result = await svc.income_vs_expense(BUDGET, months=2)
 
         assert len(result) == 2
         prev = next(r for r in result if r["month"] == last_month)
         curr = next(r for r in result if r["month"] == first)
 
-        assert prev["income"] == D("3000.0")
-        assert prev["expenses"] == D("500.0")
-        assert curr["income"] == D("3000.0")
-        assert curr["expenses"] == D("800.0")
+        assert prev["income"] == D("3000.00")
+        assert prev["expenses"] == D("500.00")
+        assert curr["income"] == D("3000.00")
+        assert curr["expenses"] == D("800.00")
 
-    async def test_net_is_income_minus_expenses(self):
-        today = date.today()
-        first = today.replace(day=1)
-        rows = [
-            row(date=first.replace(day=1), amount=D("1000.00")),
-            row(date=first.replace(day=2), amount=D("-600.00")),
-        ]
-        svc = ReportService(make_session(mock_result(rows)))
+    async def test_savings_is_broken_out_of_expenses(self):
+        """The point of the change: money moved into savings is not spending."""
+        first = date.today().replace(day=1)
+        svc = ReportService(
+            make_session(
+                mock_result(
+                    self._rows(
+                        (first, "income", D("3000.00")),
+                        (first, "spending", D("-800.00")),
+                        (first, "savings", D("-1000.00")),
+                        (first, "debt_principal", D("-200.00")),
+                    )
+                )
+            )
+        )
         result = await svc.income_vs_expense(BUDGET, months=1)
-        # net = 1000 + (-600) = 400
-        assert result[0]["net"] == pytest.approx(D("400.0"), rel=D("0.01"))
+        assert result[0]["expenses"] == D("800.00")
+        assert result[0]["savings"] == D("1000.00")
+        assert result[0]["debt_principal"] == D("200.00")
+
+    async def test_the_parts_reconcile(self):
+        """net must stay income minus everything that left, or a stacked chart
+        drifts away from its own total."""
+        first = date.today().replace(day=1)
+        svc = ReportService(
+            make_session(
+                mock_result(
+                    self._rows(
+                        (first, "income", D("3000.00")),
+                        (first, "spending", D("-800.00")),
+                        (first, "savings", D("-1000.00")),
+                        (first, "debt_principal", D("-200.00")),
+                    )
+                )
+            )
+        )
+        r = (await svc.income_vs_expense(BUDGET, months=1))[0]
+        assert r["net"] == r["income"] - r["expenses"] - r["savings"] - r["debt_principal"]
+        assert r["net"] == D("1000.00")
+
+    async def test_internal_transfers_are_ignored(self):
+        first = date.today().replace(day=1)
+        svc = ReportService(
+            make_session(
+                mock_result(
+                    self._rows(
+                        (first, "income", D("1000.00")),
+                        (first, "transfer_internal", D("-400.00")),
+                    )
+                )
+            )
+        )
+        r = (await svc.income_vs_expense(BUDGET, months=1))[0]
+        assert r["expenses"] == D("0")
+        assert r["net"] == D("1000.00")
 
     async def test_empty_fills_all_months_with_zeros(self):
         svc = ReportService(make_session(mock_result([])))
@@ -163,15 +219,16 @@ class TestIncomeVsExpense:
         for r in result:
             assert r["income"] == D("0")
             assert r["expenses"] == D("0")
+            assert r["savings"] == D("0")
             assert r["net"] == D("0")
 
     async def test_expenses_are_absolute_values(self):
-        today = date.today()
-        first = today.replace(day=1)
-        rows = [row(date=first.replace(day=1), amount=D("-300.00"))]
-        svc = ReportService(make_session(mock_result(rows)))
+        first = date.today().replace(day=1)
+        svc = ReportService(
+            make_session(mock_result(self._rows((first, "spending", D("-300.00")))))
+        )
         result = await svc.income_vs_expense(BUDGET, months=1)
-        assert result[0]["expenses"] > 0
+        assert result[0]["expenses"] == D("300.00")
 
 
 # ─── dashboard_metrics ────────────────────────────────────────────────────────

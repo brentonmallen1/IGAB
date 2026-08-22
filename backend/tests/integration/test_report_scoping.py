@@ -62,8 +62,10 @@ async def test_income_expense_excludes_off_budget_activity(api_client, db_sessio
     month = resp.json()["months"][-1]
     # 1000 paycheck only — the 800 market gain is not income
     assert Decimal(month["income"]) == Decimal("1000.00")
-    # 100 groceries + 500 spending transfer; the 50 brokerage fee is not spend
-    assert Decimal(month["expenses"]) == Decimal("600.00")
+    # 100 groceries. The 500 transfer to the brokerage is saving, not spending,
+    # and the 50 brokerage fee is off-budget so never in scope at all.
+    assert Decimal(month["expenses"]) == Decimal("100.00")
+    assert Decimal(month["savings"]) == Decimal("500.00")
 
 
 async def test_spending_excludes_a_transfer_into_savings(api_client, db_session):
