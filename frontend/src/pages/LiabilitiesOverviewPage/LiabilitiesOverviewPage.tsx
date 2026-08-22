@@ -115,7 +115,11 @@ export function LiabilitiesOverviewPage() {
                   {formatMoney(Number(liability.current_balance))}
                 </div>
                 <div className="liability-card__meta">
-                  <span>{Number(liability.interest_rate)}% APR</span>
+                  <span>
+                    {liability.interest_rate === null
+                      ? 'APR not set'
+                      : `${Number(liability.interest_rate)}% APR`}
+                  </span>
                   <span
                     className="liability-card__mode"
                     title={liability.mode === 'managed' ? 'Tracked from account' : 'Manually tracked'}
@@ -140,6 +144,8 @@ export function LiabilitiesOverviewPage() {
                         ? "Recent payments won't pay this off"
                         : "Minimum payment won't pay this off"}
                     </>
+                  ) : !liability.terms_complete ? (
+                    'Needs APR and minimum payment'
                   ) : payoffDate ? (
                     `Paid off ${formatMonth(payoffDate)}`
                   ) : (

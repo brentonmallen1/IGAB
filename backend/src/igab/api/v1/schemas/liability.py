@@ -59,14 +59,18 @@ class LiabilityOut(BaseModel):
     # linked account's register is empty and the pre-link manual balance is
     # standing in; the UI prompts for an opening balance in that state
     balance_source: Literal["ledger", "manual", "manual_fallback"]
-    interest_rate: Decimal
-    minimum_payment: Decimal
+    # Null until someone fills the terms in. terms_complete is the one flag to
+    # branch on: false means every projection below is absent, not zero.
+    interest_rate: Decimal | None
+    minimum_payment: Decimal | None
+    terms_complete: bool
     origination_date: datetime.date | None
     original_principal: Decimal | None
     # This month's interest at the current balance — the concrete number the
-    # payoff copy compares payments against
-    monthly_interest_now: Decimal
-    # Average of recent positive payments (None until 2+ months of history)
+    # payoff copy compares payments against. Null without a rate.
+    monthly_interest_now: Decimal | None
+    # Average of recent positive payments (None until 2+ months of history).
+    # Observed, not projected, so it survives missing terms.
     average_recent_payment: Decimal | None
     # Contractual term implied by origination + principal + minimum payment.
     # implied_never_pays_off=True flags the P&I-vs-escrow data-entry trap:
@@ -133,10 +137,14 @@ class BalancePointOut(BaseModel):
 
 class AmortizationResponse(BaseModel):
     current_balance: Decimal
+    # terms_complete=false returns an empty schedule and null totals rather
+    # than an error: the page renders a "terms not set" state, and a 4xx would
+    # make an ordinary, expected state look like a failure.
+    terms_complete: bool
     baseline_schedule: list[AmortizationMonthOut]
     baseline_payoff_date: datetime.date | None
     baseline_never_pays_off: bool
-    baseline_total_interest: Decimal
+    baseline_total_interest: Decimal | None
     extra_payment: Decimal | None = None
     extra_schedule: list[AmortizationMonthOut] | None = None
     extra_payoff_date: datetime.date | None = None

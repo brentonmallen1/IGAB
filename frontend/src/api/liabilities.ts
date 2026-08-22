@@ -22,13 +22,18 @@ export interface Liability {
   /** 'manual_fallback' = linked account's register is empty; the pre-link
    * manual balance stands in until an opening balance is added */
   balance_source: 'ledger' | 'manual' | 'manual_fallback'
-  interest_rate: number
-  minimum_payment: number
+  /** Null until the terms are filled in — see terms_complete */
+  interest_rate: number | null
+  minimum_payment: number | null
+  /** False = no APR/minimum on file yet, so every projection below is absent
+   * rather than zero. The one flag to branch on. */
+  terms_complete: boolean
   origination_date: string | null
   original_principal: number | null
-  /** This month's interest at the current balance */
-  monthly_interest_now: number
-  /** Average of recent positive payments; null until 2+ months of history */
+  /** This month's interest at the current balance; null without a rate */
+  monthly_interest_now: number | null
+  /** Average of recent positive payments; null until 2+ months of history.
+   * Observed from the ledger, so it survives missing terms. */
   average_recent_payment: number | null
   /** Contractual term implied by origination + principal + minimum payment */
   implied_term_months: number | null
@@ -90,10 +95,12 @@ export interface BalancePoint {
 
 export interface AmortizationResponse {
   current_balance: number
+  /** False = terms not set: an empty schedule and null totals, not an error */
+  terms_complete: boolean
   baseline_schedule: AmortizationMonth[]
   baseline_payoff_date: string | null
   baseline_never_pays_off: boolean
-  baseline_total_interest: number
+  baseline_total_interest: number | null
   extra_payment: number | null
   extra_schedule: AmortizationMonth[] | null
   extra_payoff_date: string | null

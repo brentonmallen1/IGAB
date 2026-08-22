@@ -32,6 +32,7 @@ from igab.services.amortization import (
     add_months,
     amortization_schedule,
     amortization_schedule_with_promo,
+    average_recent_payment,
     project_payoff,
     promo_outlook,
     quantize_cents,
@@ -60,9 +61,16 @@ class LiabilityStatus:
     current_balance: Decimal  # owed, positive
     # Where current_balance came from
     balance_source: BalanceSource
-    baseline: AmortizationResult  # contractual schedule at minimum_payment
-    live: LiveProjection | None  # None: not enough payment history
+    # Whether interest_rate and minimum_payment are both set. False leaves
+    # every contract-derived field below at None: see get_status.
+    terms_complete: bool
+    # Contractual schedule at minimum_payment. None when the terms are unset.
+    baseline: AmortizationResult | None
+    live: LiveProjection | None  # None: not enough payment history, or no terms
     recent_payments: list[Decimal]
+    # Pace from observed history, independent of the contract — so it survives
+    # when there are no terms to project against.
+    average_payment: Decimal | None
     promo: PromoOutlook | None = None  # set when the liability has a promo window
 
 
@@ -82,6 +90,17 @@ class LiabilityService:
     @staticmethod
     def mode(liability: Liability) -> str:
         return "managed" if liability.linked_account_id is not None else "unmanaged"
+
+    @staticmethod
+    def terms_complete(liability: Liability) -> bool:
+        """Whether the contract terms every projection needs are known.
+
+        Both or neither: a rate without a payment cannot produce a schedule and
+        neither can a payment without a rate, so one flag answers the only
+        question a consumer has. A companion liability created with its account
+        starts False and stays there until someone fills the terms in.
+        """
+        return liability.interest_rate is not None and liability.minimum_payment is not None
 
     async def get_balance(self, liability: Liability) -> Decimal:
         """Amount currently owed, positive; zero when fully paid."""
@@ -156,46 +175,62 @@ class LiabilityService:
         return [max(ZERO, by_month.get(m, ZERO)) for m in window]
 
     async def get_status(self, liability: Liability, as_of: date | None = None) -> LiabilityStatus:
+        """Everything known about a liability right now.
+
+        Balance and payment history are observed — they hold whether or not the
+        contract terms are on file. The schedule, the live projection and the
+        promo outlook are all derived FROM those terms, so without them there is
+        nothing to derive and each is returned as None. They are not computed at
+        zero: `amortization_schedule` treats a payment that fails to cover the
+        month's interest as proof the debt never retires, so zero terms would
+        report `never_pays_off=True` — a fabricated claim that rides into the
+        Liabilities report's interest total, not merely a label on a page.
+        """
         as_of = as_of or today_utc()
         balance, balance_source = await self.get_balance_with_source(liability)
-        if liability.promo_end_date is not None:
-            baseline = amortization_schedule_with_promo(
-                balance,
-                liability.interest_rate,
-                liability.minimum_payment,
-                as_of,
-                liability.promo_end_date,
-            )
-        else:
-            baseline = amortization_schedule(
-                balance, liability.interest_rate, liability.minimum_payment, as_of
-            )
         payments = await self.get_recent_monthly_payments(liability, as_of=as_of)
-        # Live projection stays at the contract rate even during a promo —
-        # a conservative date beats an optimistic one that assumes the
-        # balance clears before interest starts.
-        live = project_payoff(balance, liability.interest_rate, payments, as_of)
+        average = average_recent_payment(payments)
+
+        rate = liability.interest_rate
+        minimum = liability.minimum_payment
+        baseline: AmortizationResult | None = None
+        live: LiveProjection | None = None
         promo: PromoOutlook | None = None
-        if liability.promo_end_date is not None and balance > ZERO:
-            promo = promo_outlook(
-                balance,
-                liability.interest_rate,
-                liability.minimum_payment,
-                live.average_payment if live else None,
-                as_of,
-                liability.promo_end_date,
-                liability.promo_deferred_interest,
-                liability.origination_date,
-                liability.original_principal,
-            )
+
+        if rate is not None and minimum is not None:
+            if liability.promo_end_date is not None:
+                baseline = amortization_schedule_with_promo(
+                    balance, rate, minimum, as_of, liability.promo_end_date
+                )
+            else:
+                baseline = amortization_schedule(balance, rate, minimum, as_of)
+            # Live projection stays at the contract rate even during a promo —
+            # a conservative date beats an optimistic one that assumes the
+            # balance clears before interest starts.
+            live = project_payoff(balance, rate, payments, as_of)
+            if liability.promo_end_date is not None and balance > ZERO:
+                promo = promo_outlook(
+                    balance,
+                    rate,
+                    minimum,
+                    average,
+                    as_of,
+                    liability.promo_end_date,
+                    liability.promo_deferred_interest,
+                    liability.origination_date,
+                    liability.original_principal,
+                )
+
         return LiabilityStatus(
             liability=liability,
             mode=self.mode(liability),
             current_balance=balance,
             balance_source=balance_source,
+            terms_complete=rate is not None and minimum is not None,
             baseline=baseline,
             live=live,
             recent_payments=payments,
+            average_payment=average,
             promo=promo,
         )
 
@@ -259,7 +294,16 @@ class LiabilityService:
 
         for liability in liabilities:
             status = await self.get_status(liability, as_of=as_of)
-            never = status.live.never_pays_off if status.live else status.baseline.never_pays_off
+            baseline = status.baseline
+            # Unknown is not "never". Without terms there is no schedule to ask,
+            # and answering True would assert something about the user's debt
+            # that nobody has told us.
+            if status.live is not None:
+                never = status.live.never_pays_off
+            elif baseline is not None:
+                never = baseline.never_pays_off
+            else:
+                never = False
             items.append(
                 {
                     "liability_id": liability.id,
@@ -268,10 +312,11 @@ class LiabilityService:
                     "mode": status.mode,
                     "current_balance": status.current_balance,
                     "interest_rate": liability.interest_rate,
-                    "baseline_payoff_date": status.baseline.payoff_date,
+                    "baseline_payoff_date": baseline.payoff_date if baseline else None,
                     "live_payoff_date": status.live.payoff_date if status.live else None,
-                    "total_interest_remaining": status.baseline.total_interest,
+                    "total_interest_remaining": baseline.total_interest if baseline else None,
                     "never_pays_off": never,
+                    "terms_complete": status.terms_complete,
                 }
             )
             monthly: dict[date, Decimal] = {}
@@ -281,7 +326,19 @@ class LiabilityService:
             per_liability_monthly[str(liability.id)] = monthly
 
         total_balance = sum((i["current_balance"] for i in items), ZERO)
-        total_interest = sum((i["total_interest_remaining"] for i in items), ZERO)
+        # Only rows with terms contribute interest, so the total is a floor
+        # rather than a full figure whenever some are unset. `missing_terms`
+        # travels with it so the report can say so instead of quietly
+        # under-reporting — a balance is still a balance either way.
+        total_interest = sum(
+            (
+                i["total_interest_remaining"]
+                for i in items
+                if i["total_interest_remaining"] is not None
+            ),
+            ZERO,
+        )
+        missing_terms = sum(1 for i in items if not i["terms_complete"])
 
         points: list[dict] = []
         if per_liability_monthly:
@@ -308,5 +365,6 @@ class LiabilityService:
             "items": items,
             "total_balance": total_balance,
             "total_interest_remaining": total_interest,
+            "liabilities_missing_terms": missing_terms,
             "balance_over_time": points,
         }

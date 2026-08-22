@@ -62,14 +62,18 @@ export function LiabilitiesReport({ budgetId }: Props) {
       switch (sortKey) {
         case 'balance':
           return Number(row.current_balance)
+        // Unknown sorts to one end rather than mixing in with real zeros —
+        // a 0% promo card and a card with no APR entered are different things.
         case 'rate':
-          return Number(row.interest_rate)
+          return row.interest_rate === null ? -Infinity : Number(row.interest_rate)
         case 'baseline':
           return row.baseline_payoff_date ?? '9999'
         case 'live':
           return row.live_payoff_date ?? '9999'
         case 'interest':
-          return Number(row.total_interest_remaining)
+          return row.total_interest_remaining === null
+            ? -Infinity
+            : Number(row.total_interest_remaining)
       }
     }
     rows.sort((a, b) => {
@@ -165,10 +169,11 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 type: i.liability_type,
                 mode: i.mode,
                 balance: Number(i.current_balance),
-                interest_rate: Number(i.interest_rate),
+                interest_rate: i.interest_rate === null ? '' : Number(i.interest_rate),
                 baseline_payoff: i.baseline_payoff_date ?? '',
                 live_payoff: i.live_payoff_date ?? '',
-                interest_remaining: Number(i.total_interest_remaining),
+                interest_remaining:
+                  i.total_interest_remaining === null ? '' : Number(i.total_interest_remaining),
               }))
             }
             captureRef={captureRef}
@@ -189,10 +194,16 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 value={formatMoney(Number(data!.total_balance))}
                 accent
               />
+              {/* Rows without terms contribute no interest, so say the total
+                  is partial rather than let it read as the whole figure. */}
               <MetricCard
                 label="Interest Remaining"
                 value={formatMoney(Number(data!.total_interest_remaining))}
-                sub="At minimum payments"
+                sub={
+                  data!.liabilities_missing_terms > 0
+                    ? `At minimum payments · excludes ${data!.liabilities_missing_terms} without terms`
+                    : 'At minimum payments'
+                }
               />
               <MetricCard label="Liabilities" value={String(data!.items.length)} />
             </div>
@@ -269,7 +280,9 @@ export function LiabilitiesReport({ budgetId }: Props) {
                         </span>
                       </td>
                       <td className="num">{formatMoney(Number(item.current_balance))}</td>
-                      <td className="num">{Number(item.interest_rate)}%</td>
+                      <td className="num">
+                        {item.interest_rate === null ? '—' : `${Number(item.interest_rate)}%`}
+                      </td>
                       <td>
                         {item.baseline_payoff_date
                           ? formatMonth(item.baseline_payoff_date)
@@ -286,7 +299,11 @@ export function LiabilitiesReport({ budgetId }: Props) {
                           '—'
                         )}
                       </td>
-                      <td className="num">{formatMoney(Number(item.total_interest_remaining))}</td>
+                      <td className="num">
+                        {item.total_interest_remaining === null
+                          ? '—'
+                          : formatMoney(Number(item.total_interest_remaining))}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

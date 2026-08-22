@@ -95,9 +95,13 @@ export function LiabilityPage() {
       !c.linked_account_id
   )
 
-  const monthsRemaining = amortization?.baseline_never_pays_off
-    ? null
-    : amortization?.baseline_schedule.length ?? null
+  // Unknown, not zero. With no terms on file the schedule is empty, and an
+  // empty schedule counted as months would read "0 months remaining" — paid
+  // off — which is the opposite of what is true.
+  const monthsRemaining =
+    !amortization || !amortization.terms_complete || amortization.baseline_never_pays_off
+      ? null
+      : amortization.baseline_schedule.length
 
   async function handleSaveBalance(e: React.FormEvent) {
     e.preventDefault()
@@ -145,13 +149,19 @@ export function LiabilityPage() {
     toast.success('Category unlinked')
   }
 
+  // "Sooner" and "saved" are both differences against the contractual
+  // baseline, so neither exists without terms to form one.
   const whatIfSavings =
-    amortization?.extra_schedule && !amortization.extra_never_pays_off && extraPayment > 0
+    amortization?.terms_complete &&
+    amortization.extra_schedule &&
+    !amortization.extra_never_pays_off &&
+    extraPayment > 0
       ? {
           monthsSooner: amortization.baseline_never_pays_off
             ? null
             : amortization.baseline_schedule.length - amortization.extra_schedule.length,
-          interestSaved: amortization.baseline_total_interest - (amortization.extra_total_interest ?? 0),
+          interestSaved:
+            (amortization.baseline_total_interest ?? 0) - (amortization.extra_total_interest ?? 0),
         }
       : null
 
@@ -255,20 +265,28 @@ export function LiabilityPage() {
           value={formatMoney(Number(liability.current_balance))}
           accent
         />
-        <MetricCard label="Interest Rate" value={`${Number(liability.interest_rate)}%`} />
+        {/* 0% is a real rate here — promo cards have one — so an unset rate
+            has to read differently from zero, not as Number(null). */}
+        <MetricCard
+          label="Interest Rate"
+          value={liability.interest_rate === null ? 'Not set' : `${Number(liability.interest_rate)}%`}
+          sub={liability.interest_rate === null ? 'Add it for a payoff date' : undefined}
+        />
         <MetricCard
           label="Interest Remaining"
           value={
-            amortization
-              ? amortization.baseline_never_pays_off
+            !amortization
+              ? '…'
+              : !amortization.terms_complete || amortization.baseline_never_pays_off
                 ? '—'
                 : formatMoney(Number(amortization.baseline_total_interest))
-              : '…'
           }
           sub={
-            amortization?.baseline_never_pays_off
-              ? "Minimum doesn't cover interest"
-              : 'At minimum payment'
+            amortization && !amortization.terms_complete
+              ? 'Needs APR and minimum payment'
+              : amortization?.baseline_never_pays_off
+                ? "Minimum doesn't cover interest"
+                : 'At minimum payment'
           }
         />
         <MetricCard
@@ -421,7 +439,12 @@ export function LiabilityPage() {
           <span className="liability-page__section-sub">At the minimum payment</span>
         </div>
         {amortization ? (
-          amortization.baseline_never_pays_off && amortization.baseline_schedule.length === 0 ? (
+          !amortization.terms_complete ? (
+            <div className="liability-page__empty">
+              Add this liability's APR and minimum payment to see its schedule.
+            </div>
+          ) : amortization.baseline_never_pays_off &&
+            amortization.baseline_schedule.length === 0 ? (
             <div className="liability-page__empty">
               The minimum payment doesn't cover interest — there is no schedule to show.
             </div>

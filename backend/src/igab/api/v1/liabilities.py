@@ -80,7 +80,12 @@ async def _liability_out(
     # surfaced so the UI can say so instead of a bare "won't pay off".
     implied_term_months: int | None = None
     implied_never_pays_off: bool | None = None
-    if liability.origination_date is not None and liability.original_principal is not None:
+    if (
+        liability.origination_date is not None
+        and liability.original_principal is not None
+        and liability.interest_rate is not None
+        and liability.minimum_payment is not None
+    ):
         implied = amortization_schedule(
             liability.original_principal,
             liability.interest_rate,
@@ -103,12 +108,17 @@ async def _liability_out(
         balance_source=status_.balance_source,
         interest_rate=liability.interest_rate,
         minimum_payment=liability.minimum_payment,
+        terms_complete=status_.terms_complete,
         origination_date=liability.origination_date,
         original_principal=liability.original_principal,
-        monthly_interest_now=quantize_cents(
-            status_.current_balance * liability.interest_rate / Decimal("1200")
+        monthly_interest_now=(
+            quantize_cents(status_.current_balance * liability.interest_rate / Decimal("1200"))
+            if liability.interest_rate is not None
+            else None
         ),
-        average_recent_payment=status_.live.average_payment if status_.live else None,
+        # From observed payments, so it stands even with no terms on file —
+        # useful precisely there, beside an empty minimum-payment field.
+        average_recent_payment=status_.average_payment,
         implied_term_months=implied_term_months,
         implied_never_pays_off=implied_never_pays_off,
         promo_end_date=liability.promo_end_date,
@@ -125,8 +135,9 @@ async def _liability_out(
             if status_.promo is not None
             else None
         ),
-        baseline_payoff_date=status_.baseline.payoff_date,
-        baseline_never_pays_off=status_.baseline.never_pays_off,
+        baseline_payoff_date=status_.baseline.payoff_date if status_.baseline else None,
+        # No terms means no claim either way, so False — see LiabilityStatus.
+        baseline_never_pays_off=status_.baseline.never_pays_off if status_.baseline else False,
         live_payoff_date=status_.live.payoff_date if status_.live else None,
         live_never_pays_off=status_.live.never_pays_off if status_.live else False,
         has_live_projection=status_.live is not None,
@@ -293,12 +304,16 @@ async def get_amortization(
     status_ = await liability_service.get_status(liability)
     baseline = status_.baseline
     extra_sched: AmortizationResult | None = None
-    if extra_payment > 0:
+    # "What if I paid more?" is only answerable relative to a known minimum —
+    # more than what, and saving interest at what rate? Without both terms
+    # there is no baseline to beat, so the arm sits out rather than treating
+    # unset as zero. Gating on the same flag as the baseline also keeps the
+    # response coherent: an extra schedule never appears without one to
+    # compare it against.
+    rate, minimum = liability.interest_rate, liability.minimum_payment
+    if extra_payment > 0 and rate is not None and minimum is not None:
         extra_sched = amortization_schedule(
-            status_.current_balance,
-            liability.interest_rate,
-            liability.minimum_payment + extra_payment,
-            today_utc(),
+            status_.current_balance, rate, minimum + extra_payment, today_utc()
         )
 
     history: list[BalancePointOut] = []
@@ -308,6 +323,7 @@ async def get_amortization(
 
     return AmortizationResponse(
         current_balance=status_.current_balance,
+        terms_complete=status_.terms_complete,
         baseline_schedule=[
             AmortizationMonthOut(
                 month_index=m.month_index,
@@ -317,11 +333,11 @@ async def get_amortization(
                 interest_paid=m.interest_paid,
                 balance=m.balance,
             )
-            for m in baseline.schedule
+            for m in (baseline.schedule if baseline else [])
         ],
-        baseline_payoff_date=baseline.payoff_date,
-        baseline_never_pays_off=baseline.never_pays_off,
-        baseline_total_interest=baseline.total_interest,
+        baseline_payoff_date=baseline.payoff_date if baseline else None,
+        baseline_never_pays_off=baseline.never_pays_off if baseline else False,
+        baseline_total_interest=baseline.total_interest if baseline else None,
         extra_payment=extra_payment if extra_payment > 0 else None,
         extra_schedule=(
             [

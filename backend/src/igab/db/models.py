@@ -1155,10 +1155,13 @@ class Liability(Base):
     )
     # Authoritative only when linked_account_id IS NULL
     manual_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
-    # Annual percent, e.g. 6.2500
-    interest_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False)
-    # Contractual payment — drives the baseline schedule
-    minimum_payment: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    # Annual percent, e.g. 6.2500. Null = not known yet: a companion liability
+    # created alongside its account starts with no terms, and zero is not a
+    # stand-in — at zero the schedule reports never_pays_off. Both term columns
+    # move together; LiabilityService.terms_complete is the single gate.
+    interest_rate: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    # Contractual payment — drives the baseline schedule. Null as above.
+    minimum_payment: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     compounding: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
     origination_date: Mapped[_PyDate | None] = mapped_column(Date)
     original_principal: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
