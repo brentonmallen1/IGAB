@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from igab.api.v1.schemas.account import AccountCreate, AccountResponse, AccountUpdate
@@ -12,7 +12,7 @@ from igab.dependencies import (
     get_transaction_matching_service,
 )
 from igab.domain.exceptions import DuplicateError, NotFoundError
-from igab.repositories.account_repo import AccountRepository
+from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.liability_service import (
     LIABILITY_CLASSIFICATION,
@@ -150,9 +150,13 @@ async def delete_account(
     account_id: AccountAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    #: What becomes of the debt this account tracked. Defaults to keeping it —
+    #: deleting an account is not a statement that a mortgage was repaid, and
+    #: the non-destructive branch is the one that should happen by accident.
+    liability: LiabilityDisposition = Query(default="keep"),
 ) -> None:
     try:
-        await account_repo.soft_delete(account_id)
+        await account_repo.soft_delete(account_id, liability_disposition=liability)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 

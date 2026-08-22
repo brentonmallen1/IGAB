@@ -650,3 +650,141 @@ class TestLiabilityTypeIsDerivedWhenLinked:
             )
         ).scalar_one()
         assert stored.liability_type is None
+
+
+class TestDeletingTheAccountBehindADebt:
+    """The debt does not stop existing because its ledger did.
+
+    Converting managed → unmanaged is the right default: the balance history is
+    worth keeping and a mortgage is not repaid by deleting an account. It must
+    not happen silently either way, which is why the disposition is a parameter
+    the caller supplies rather than something inferred here.
+    """
+
+    async def _account_with_debt(self, db_session, *, terms=True):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        account = await create_account(
+            db_session, budget, "Car Loan", account_type="auto_loan", on_budget=False
+        )
+        await create_transaction(db_session, budget, account, "-9480.00", TODAY)
+        companion = await create_liability(
+            db_session,
+            budget,
+            "Car Loan",
+            liability_type=None,
+            linked_account_id=account.id,
+            interest_rate=Decimal("6.25") if terms else None,
+            minimum_payment=Decimal("275.00") if terms else None,
+        )
+        return budget, account, companion
+
+    async def test_keeping_the_debt_freezes_its_balance(self, db_session):
+        """The ledger is about to be soft-deleted, so the balance has to be
+        captured first — computing it afterwards would freeze a zero and read
+        as "paid off"."""
+        from igab.repositories.account_repo import AccountRepository
+
+        budget, account, companion = await self._account_with_debt(db_session)
+
+        await AccountRepository(db_session).soft_delete(account.id, liability_disposition="keep")
+
+        assert companion.is_deleted is False
+        assert companion.linked_account_id is None
+        assert companion.manual_balance == Decimal("9480.00")
+        assert companion.interest_rate == Decimal("6.25")
+
+    async def test_keeping_the_debt_gives_it_back_a_kind_of_its_own(self, db_session):
+        """It was reading its kind off the account. With the account gone it
+        has to carry one again, or the Liabilities report shows a blank."""
+        from igab.repositories.account_repo import AccountRepository
+
+        budget, account, companion = await self._account_with_debt(db_session)
+        assert companion.liability_type is None
+
+        await AccountRepository(db_session).soft_delete(account.id)
+
+        assert companion.liability_type == "auto"
+
+    async def test_keep_is_the_default(self, db_session):
+        from igab.repositories.account_repo import AccountRepository
+
+        budget, account, companion = await self._account_with_debt(db_session)
+
+        await AccountRepository(db_session).soft_delete(account.id)
+
+        assert companion.is_deleted is False
+
+    async def test_deleting_both_removes_the_liability(self, db_session):
+        from igab.repositories.account_repo import AccountRepository
+
+        budget, account, companion = await self._account_with_debt(db_session)
+
+        await AccountRepository(db_session).soft_delete(account.id, liability_disposition="delete")
+
+        assert companion.is_deleted is True
+
+    async def test_the_kept_debt_still_reports_its_balance(self, db_session):
+        """The point of keeping it: the household still owes this money, and
+        the rollup has to keep saying so."""
+        from igab.repositories.account_repo import AccountRepository
+        from igab.services.liability_service import LiabilityService
+
+        from .factories import make_services
+
+        services = make_services(db_session)
+        budget, account, _ = await self._account_with_debt(db_session)
+        svc = LiabilityService(
+            LiabilityRepository(db_session),
+            services.account_repo,
+            services.category_repo,
+            services.transaction_repo,
+        )
+
+        await AccountRepository(db_session).soft_delete(account.id)
+
+        report = await svc.liabilities_report(budget.id, as_of=TODAY)
+        (row,) = report["items"]
+        assert row["mode"] == "unmanaged"
+        assert row["current_balance"] == Decimal("9480.00")
+
+    async def test_an_ordinary_account_is_unaffected(self, db_session):
+        from igab.repositories.account_repo import AccountRepository
+
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Everyday")
+        await create_transaction(db_session, budget, checking, "-40.00", TODAY)
+
+        await AccountRepository(db_session).soft_delete(checking.id)
+
+        assert await LiabilityRepository(db_session).get_all(budget.id) == []
+
+    async def test_the_endpoint_defaults_to_keeping_the_debt(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await create_account(
+            db_session, budget, "Car Loan", account_type="auto_loan", on_budget=False
+        )
+        await create_transaction(db_session, budget, account, "-9480.00", TODAY)
+        await ensure_for_account(db_session, account)
+
+        resp = await api_client.delete(f"/api/v1/accounts/{account.id}")
+
+        assert resp.status_code == 204, resp.text
+        (kept,) = await LiabilityRepository(db_session).get_all(budget.id)
+        assert kept.linked_account_id is None
+
+    async def test_the_endpoint_honours_an_explicit_delete(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await create_account(
+            db_session, budget, "Car Loan", account_type="auto_loan", on_budget=False
+        )
+        await create_transaction(db_session, budget, account, "-9480.00", TODAY)
+        await ensure_for_account(db_session, account)
+
+        resp = await api_client.delete(
+            f"/api/v1/accounts/{account.id}", params={"liability": "delete"}
+        )
+
+        assert resp.status_code == 204, resp.text
+        assert await LiabilityRepository(db_session).get_all(budget.id) == []

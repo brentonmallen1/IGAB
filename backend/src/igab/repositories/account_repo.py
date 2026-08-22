@@ -1,10 +1,25 @@
 import uuid
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import func, select, update
 
-from igab.db.models import Account, Category, Transaction
+from igab.db.models import Account, Category, Liability, Transaction
 from igab.repositories.base import BaseRepository
+
+LiabilityDisposition = Literal["keep", "delete"]
+
+#: Account type → the unmanaged liability kind that means the same thing.
+#: Needed only when an account is deleted: its companion stops being able to
+#: read a kind off the account and has to carry one itself again. Anything not
+#: listed — the generic loan, other_liability, a custom type — becomes 'other',
+#: which is what the unmanaged vocabulary has for "a debt".
+_UNMANAGED_KIND: dict[str, str] = {
+    "mortgage": "mortgage",
+    "auto_loan": "auto",
+    "student_loan": "student",
+    "credit_card": "credit_card",
+}
 
 
 class AccountRepository(BaseRepository[Account]):
@@ -90,7 +105,33 @@ class AccountRepository(BaseRepository[Account]):
         )
         return list(result.scalars().all())
 
-    async def soft_delete(self, id: uuid.UUID) -> None:
+    async def soft_delete(
+        self, id: uuid.UUID, *, liability_disposition: LiabilityDisposition = "keep"
+    ) -> None:
+        """Remove the account, and decide what becomes of the debt it tracked.
+
+        `keep` (the default, and the non-destructive branch) converts the
+        companion liability from managed to unmanaged: the debt still exists,
+        so it keeps its APR, its payment history and its balance, and only
+        stops deriving that balance from a ledger that is going away. `delete`
+        removes both.
+
+        The balance has to be frozen BEFORE the transactions are soft-deleted —
+        an unmanaged liability reads `manual_balance`, and computing it after
+        would freeze a zero.
+        """
+        frozen_balance: Decimal | None = None
+        companion = (
+            await self.session.execute(
+                select(Liability).where(
+                    Liability.linked_account_id == id,
+                    Liability.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+        if companion is not None and liability_disposition == "keep":
+            frozen_balance = max(Decimal("0"), -(await self.get_balance(id)))
+
         await self.session.execute(
             update(Transaction)
             .where(Transaction.account_id == id, Transaction.is_deleted == False)  # noqa: E712
@@ -101,6 +142,21 @@ class AccountRepository(BaseRepository[Account]):
         await self.session.execute(
             update(Category).where(Category.linked_account_id == id).values(linked_account_id=None)
         )
+
+        if companion is not None:
+            if liability_disposition == "delete":
+                companion.is_deleted = True
+            else:
+                companion.linked_account_id = None
+                companion.manual_balance = frozen_balance
+                # An unmanaged liability has to answer "what kind of debt?" on
+                # its own now — the account that was answering is going.
+                account = await self.get(id)
+                companion.liability_type = companion.liability_type or _UNMANAGED_KIND.get(
+                    account.account_type if account else "", "other"
+                )
+            await self.session.flush()
+
         await super().soft_delete(id)
 
     async def get_by_simplefin_id(self, budget_id: uuid.UUID, simplefin_id: str) -> Account | None:

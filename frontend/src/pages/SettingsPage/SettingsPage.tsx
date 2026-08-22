@@ -3,6 +3,8 @@ import { useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAppStore, THEMES, FONT_SCALES, type Theme, type FontScale } from '../../stores/appStore'
 import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '../../api/accounts'
+import { useLiabilities } from '../../api/liabilities'
+import { confirmAccountDeletion } from '../../utils/confirmAccountDeletion'
 import { useBudgets, useUpdateBudget } from '../../api/budgets'
 import {
   useSimpleFINConnections,
@@ -90,6 +92,7 @@ export function SettingsPage() {
   const createAccount = useCreateAccount(budgetId ?? '')
   const updateAccount = useUpdateAccount(budgetId ?? '')
   const deleteAccount = useDeleteAccount(budgetId ?? '')
+  const { data: liabilities = [] } = useLiabilities(budgetId)
   const updateBudget = useUpdateBudget()
 
   const { isAccountEditorOpen, editingAccountId, openAccountEditor, closeAccountEditor } = useUIStore()
@@ -102,15 +105,12 @@ export function SettingsPage() {
   const firstConnectionId = sfConnections && sfConnections.length > 0 ? sfConnections[0].id : null
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(firstConnectionId)
 
-  async function handleDeleteAccount(id: string, name: string) {
-    const ok = await confirmAsync({
-      title: `Delete account "${name}"?`,
-      message: 'This cannot be undone.',
-      confirmLabel: 'Delete',
-      destructive: true,
-    })
-    if (!ok) return
-    await deleteAccount.mutateAsync(id)
+  async function handleDeleteAccount(id: string) {
+    const account = accounts?.find((a) => a.id === id)
+    if (!account) return
+    const choice = await confirmAccountDeletion(account, liabilities)
+    if (!choice.proceed) return
+    await deleteAccount.mutateAsync({ accountId: id, liability: choice.liability })
   }
 
   async function handleToggleClose(id: string, isClosed: boolean) {
@@ -457,7 +457,7 @@ export function SettingsPage() {
                     </button>
                     <button
                       className="settings-btn settings-btn--danger"
-                      onClick={() => handleDeleteAccount(acc.id, acc.name)}
+                      onClick={() => handleDeleteAccount(acc.id)}
                     >
                       Delete
                     </button>
