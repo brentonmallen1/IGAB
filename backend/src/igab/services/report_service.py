@@ -1,6 +1,7 @@
 import io
 import json
 import uuid
+from collections.abc import Sequence
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import TypedDict
@@ -19,6 +20,7 @@ from igab.db.models import (
     Payee,
     Transaction,
 )
+from igab.domain.activity_class import ACTIVITY_CLASS, SPENDING_CLASSES, ActivityClass
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -100,6 +102,18 @@ class AnomalyRow(TypedDict):
     history: list[Decimal]
 
 
+def _spending_classes(include: Sequence[ActivityClass] | None):
+    """WHERE clause limiting a spending query to the requested activity classes.
+
+    Defaults to spending alone. That is the behaviour change derkus asked for:
+    a transfer to a brokerage or a mortgage is money leaving the budget, but it
+    is not money spent, and counting it as spending skews every average.
+    Callers that genuinely want the wider picture pass the classes they mean.
+    """
+    classes = include or SPENDING_CLASSES
+    return ACTIVITY_CLASS.in_([c.value for c in classes])
+
+
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -113,6 +127,7 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
+        include_classes: Sequence[ActivityClass] | None = None,
     ) -> tuple[list[dict], Decimal]:
         q = (
             select(
@@ -132,6 +147,7 @@ class ReportService:
                 Transaction.date <= end_date,
                 LEAF,
                 CASH_FLOW_ROW,
+                _spending_classes(include_classes),
             )
         )
         if category_ids:
@@ -1529,18 +1545,8 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
-        exclude_savings: bool = False,
+        include_classes: Sequence[ActivityClass] | None = None,
     ) -> tuple[list[dict], Decimal]:
-        # Get categories to exclude if exclude_savings is True
-        exclude_cat_ids: set[uuid.UUID] = set()
-        if exclude_savings:
-            from igab.repositories.tag_repo import TagRepository
-
-            tag_repo = TagRepository(self.session)
-            exclude_cat_ids = await tag_repo.get_category_ids_by_system_keys(
-                budget_id, ["savings", "long_term_expense"]
-            )
-
         q = (
             select(
                 Category.id,
@@ -1561,6 +1567,7 @@ class ReportService:
                 LEAF,
                 CASH_FLOW_ROW,
                 CategoryGroup.is_system == False,  # noqa: E712
+                _spending_classes(include_classes),
             )
         )
         if category_ids:
@@ -1569,8 +1576,6 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
-        if exclude_cat_ids:
-            q = q.where(Transaction.category_id.notin_(exclude_cat_ids))
         rows = (await self.session.execute(q)).all()
 
         if not rows:

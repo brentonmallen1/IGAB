@@ -11,6 +11,13 @@ asserted in tests/integration/invariants.py, and it is the point: the
 `CASH_FLOW_ROW` bug happened because "not cash flow" was a leftover bucket
 rather than a named class, so rows could fall through it unnoticed.
 
+Scope note: a row's class is read from its category, which lives on split
+*children*. Apply this to LEAF queries. A split parent has no category and can
+legitimately mix classes across its legs (groceries and a savings transfer in
+one bank row), so PARENT_ROW aggregates — account balances, cash flow — cannot
+use it as-is and still classify by amount sign. Splitting those correctly means
+rolling children up per class, which is not done here.
+
 The rules are ordered and first-match-wins, so each one also carries a stable
 `ActivityReason`. That is what lets the UI answer "why is this savings?" with
 "transfer to an off-budget asset account" instead of asking the user to trust

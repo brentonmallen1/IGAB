@@ -67,7 +67,7 @@ export function ParetoReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
   const captureRef = useRef<HTMLDivElement>(null)
-  const [hideSavings, setHideSavings] = useState(false)
+  const [includeSavings, setIncludeSavings] = useState(false)
   const [logScale, setLogScale] = useState(false)
 
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
@@ -75,9 +75,9 @@ export function ParetoReport({ budgetId }: Props) {
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
 
   // Both queries always fetched — hooks must be unconditional
-  // hideSavings only applies to category/group views, not payee view
-  const excludeSavings = hideSavings && groupBy !== 'payee'
-  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, excludeSavings)
+  // Only meaningful for category/group views, not the payee view
+  const withSavings = includeSavings && groupBy !== 'payee'
+  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, withSavings)
   const payeeQ = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
 
   const spendingItems = useMemo(() => spendingQ.data?.groups ?? [], [spendingQ.data])
@@ -174,10 +174,12 @@ export function ParetoReport({ budgetId }: Props) {
           <label className="report-toggle">
             <input
               type="checkbox"
-              checked={hideSavings}
-              onChange={(e) => setHideSavings(e.target.checked)}
+              checked={includeSavings}
+              onChange={(e) => setIncludeSavings(e.target.checked)}
             />
-            Hide tagged as savings
+            <span title="Money moved into savings or used to pay down a tracked debt isn't spending, so it's left out by default. Tick to add it back.">
+              Include savings &amp; debt payments
+            </span>
           </label>
         )}
         <div className="flex-row ms-auto">

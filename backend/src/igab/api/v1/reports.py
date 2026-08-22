@@ -59,8 +59,19 @@ from igab.api.v1.schemas.report import (
     VolatilityResponse,
 )
 from igab.dependencies import BudgetAccess, CurrentUser, get_liability_service, get_report_service
+from igab.domain.activity_class import ActivityClass
 from igab.services.liability_service import LiabilityService
 from igab.services.report_service import ReportService
+
+
+#: Spending reports mean money spent. Saving into a brokerage and paying down a
+#: mortgage both leave the budget, but neither is spending, and counting them as
+#: such skews every average. Callers that want the fuller picture opt in.
+def _spending_classes(include_savings: bool) -> list[ActivityClass] | None:
+    if not include_savings:
+        return None  # service default: spending only
+    return [ActivityClass.SPENDING, ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL]
+
 
 router = APIRouter()
 
@@ -74,6 +85,7 @@ async def spending_report(
     end_date: date | None = None,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
+    include_savings: bool = False,
 ) -> SpendingReportResponse:
     today = date.today()
     start = start_date or today.replace(month=1, day=1)
@@ -81,7 +93,7 @@ async def spending_report(
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
     categories, total = await report_svc.spending_by_category(
-        budget_id, start, end, cat_ids, acct_ids
+        budget_id, start, end, cat_ids, acct_ids, _spending_classes(include_savings)
     )
     return SpendingReportResponse(
         categories=[SpendingCategory.model_validate(c) for c in categories], total=total
@@ -275,7 +287,7 @@ async def spending_grouped_report(
     end_date: date | None = None,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
-    exclude_savings: bool = False,
+    include_savings: bool = False,
 ) -> SpendingGroupedResponse:
     today = date.today()
     start = start_date or today.replace(day=1)
@@ -283,7 +295,7 @@ async def spending_grouped_report(
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
     items, total = await report_svc.spending_grouped(
-        budget_id, start, end, cat_ids, acct_ids, exclude_savings=exclude_savings
+        budget_id, start, end, cat_ids, acct_ids, _spending_classes(include_savings)
     )
     return SpendingGroupedResponse(
         groups=[SpendingGroupItem.model_validate(i) for i in items],
