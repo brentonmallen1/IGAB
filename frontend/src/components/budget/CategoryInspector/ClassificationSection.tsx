@@ -19,7 +19,7 @@ export function ClassificationSection({ categoryId }: Props) {
   if (!data?.dominant || !data.dominant_label) return null
 
   const tooltip = (
-    <span className="classification-tooltip">
+    <span>
       {data.explanation}
       {data.classes.length > 1 && (
         <>

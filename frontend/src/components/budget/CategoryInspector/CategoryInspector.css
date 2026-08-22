@@ -603,8 +603,3 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
-
-.classification-tooltip {
-  display: block;
-  max-width: 260px;
-}
