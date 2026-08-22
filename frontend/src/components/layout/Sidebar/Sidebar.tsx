@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { UserCircle2, LayoutDashboard, List, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, Sparkles, History } from 'lucide-react'
+import { UserCircle2, LayoutDashboard, List, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, Sparkles, History, Compass } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useAccountTypes } from '../../../api/accountTypes'
@@ -164,6 +164,10 @@ export function Sidebar() {
         <NavLink to="/reports" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Reports" aria-label="Reports">
           <BarChart2 size={16} />
           {!collapsed && <span>Reports</span>}
+        </NavLink>
+        <NavLink to="/guide" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Guide" aria-label="Guide">
+          <Compass size={16} />
+          {!collapsed && <span>Guide</span>}
         </NavLink>
         <NavLink to="/scheduled" className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`} title="Scheduled" aria-label="Scheduled">
           <CalendarClock size={16} />
