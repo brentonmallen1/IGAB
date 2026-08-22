@@ -149,6 +149,28 @@ _split_parent = aliased(Transaction)
 PAYEE_OF_RECORD = func.coalesce(Transaction.payee_id, _split_parent.payee_id)
 
 
+#: Inflow that is not income: money drawn back out of savings, or borrowed.
+#: Labelled from the budget's point of view — "where did this money come from"
+#: — rather than by the class name, which describes the outflow direction.
+_DRAWDOWN_LABELS: dict[str, str] = {
+    ActivityClass.SAVINGS.value: "Drawn from savings",
+    ActivityClass.DEBT_PRINCIPAL.value: "Borrowed",
+    ActivityClass.INVESTMENT_RETURN.value: "Investment gains",
+}
+
+
+#: Classes worth explaining when a spending report leaves them out. Internal
+#: transfers and market movement are not "money you spent somewhere else" — a
+#: note about them would be noise, not reassurance.
+_EXPLAINED_EXCLUSIONS: frozenset[str] = frozenset(
+    {
+        ActivityClass.SAVINGS.value,
+        ActivityClass.DEBT_PRINCIPAL.value,
+        ActivityClass.DEBT_INTEREST.value,
+    }
+)
+
+
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -992,8 +1014,21 @@ class ReportService:
 
         # Income at parent level (cash-flow view); expense category flows at
         # leaf level so split children reach their categories.
-        income_rows = [r for r in rows if r.amount > 0 and r.parent_transaction_id is None]
-        expense_rows = [r for r in rows if r.amount < 0 and not r.is_split]
+        # Split by activity class, not by amount sign. Sign said a withdrawal
+        # FROM a brokerage (+500 into checking) was income, which disagreed
+        # with income_vs_expense over the same window and left the savings
+        # branch missing the draw. Income is what classifies as income;
+        # everything else that moved money out is outflow.
+        income_rows = [
+            r
+            for r in rows
+            if r.parent_transaction_id is None and r.activity_class == ActivityClass.INCOME.value
+        ]
+        expense_rows = [
+            r
+            for r in rows
+            if not r.is_split and r.amount < 0 and r.activity_class != ActivityClass.INCOME.value
+        ]
 
         total_income = sum((r.amount for r in income_rows), Decimal("0"))
         # Everything leaving the budget. Kept as one figure because the links
@@ -1049,6 +1084,28 @@ class ReportService:
                     "value": total,
                 }
             )
+
+        # Money coming back INTO the budget that is not income: drawing on a
+        # brokerage, or borrowing. By amount sign these read as income, which
+        # overstated earnings and disagreed with income_vs_expense; dropping
+        # them instead would silently break flow conservation. They get their
+        # own inflow trunk so the diagram stays honest either way.
+        drawn_by_class: dict[str, Decimal] = {}
+        for r in rows:
+            if (
+                r.parent_transaction_id is None
+                and r.amount > 0
+                and r.activity_class != ActivityClass.INCOME.value
+                and r.activity_class in _DRAWDOWN_LABELS
+            ):
+                drawn_by_class[r.activity_class] = (
+                    drawn_by_class.get(r.activity_class, Decimal("0")) + r.amount
+                )
+
+        for cls, total in sorted(drawn_by_class.items(), key=lambda x: -x[1]):
+            nid = f"drawn_{cls}"
+            get_node(nid, _DRAWDOWN_LABELS[cls], "income_payee")
+            links.append({"source": nid, "target": "__budget__", "value": total})
 
         # Expenses: budget -> category group -> category -> top payees.
         # Uncategorized spending flows through its own pseudo group/category so
@@ -1619,6 +1676,7 @@ class ReportService:
                 CategoryGroup.id.label("group_id"),
                 CategoryGroup.name.label("group_name"),
                 Transaction.amount,
+                ACTIVITY_CLASS.label("cls"),
             )
             .join(Transaction, Transaction.category_id == Category.id)
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
@@ -1632,7 +1690,6 @@ class ReportService:
                 LEAF,
                 CASH_FLOW_ROW,
                 CategoryGroup.is_system == False,  # noqa: E712
-                _spending_classes(include_classes, scoped_accounts=bool(account_ids)),
             )
         )
         if category_ids:
@@ -1651,25 +1708,46 @@ class ReportService:
         # the page charting one arrangement while still requesting another.
         regroup = await self._view_arrangement(budget_id, view_id) if view_id else None
         view_unavailable = view_id is not None and regroup is None
+
+        # One scan, partitioned here. The class filter used to sit in the WHERE
+        # above while _class_excluded reran the identical query for the
+        # complement — two full scans of the same window, each paying the
+        # per-row subqueries ACTIVITY_CLASS compiles to, on exactly the
+        # requests a view or a selection makes.
+        included = {c.value for c in (include_classes or SPENDING_CLASSES)}
+        if account_ids:
+            included |= {
+                ActivityClass.INVESTMENT_RETURN.value,
+                ActivityClass.DEBT_INTEREST.value,
+            }
+        counted = [r for r in rows if r.cls in included]
+        other_class = [r for r in rows if r.cls not in included]
+
+        def _visible(candidates: list) -> list:
+            return (
+                candidates
+                if regroup is None
+                else [r for r in candidates if regroup(r.id) is not None]
+            )
+
+        # "This view hides $X of spending" means spending, not every class —
+        # a debt payment the view also hides belongs to neither note.
         dropped_by_view: dict | None = None
         if regroup is not None:
-            dropped = [r for r in rows if regroup(r.id) is None]
+            dropped = [r for r in counted if regroup(r.id) is None]
             if dropped:
                 dropped_by_view = {
                     "categories": len({r.id for r in dropped}),
                     "total": sum((abs(r.amount) for r in dropped), Decimal("0")),
                 }
-            rows = [r for r in rows if regroup(r.id) is not None]
 
-        class_excluded = await self._class_excluded(
-            budget_id,
-            start_date,
-            end_date,
-            category_ids,
-            account_ids,
-            include_classes,
-            regroup,
+        # A category the view deliberately hides is the view's story, so its
+        # excluded activity is left out of this note too.
+        class_excluded = self._class_excluded_note(
+            _visible(other_class),
+            scoped=bool(category_ids) or regroup is not None,
         )
+        rows = _visible(counted)
         notes = {
             "view_hidden": dropped_by_view,
             "class_excluded": class_excluded,
@@ -1724,96 +1802,39 @@ class ReportService:
 
         return items, Decimal(str(round(grand_total, 4))), notes
 
-    async def _class_excluded(
-        self,
-        budget_id: uuid.UUID,
-        start_date: date,
-        end_date: date,
-        category_ids: list[uuid.UUID] | None,
-        account_ids: list[uuid.UUID] | None,
-        include_classes: Sequence[ActivityClass] | None,
-        regroup,
-    ) -> list[dict] | None:
-        """Savings / debt activity inside the user's current scope that a
-        spending report will not count.
+    @staticmethod
+    def _class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | None:
+        """Savings / debt activity the report will not count, summarised.
 
-        Only computed when the user has *pointed at* categories — an explicit
-        selection or an active view — because that is when absence misleads:
-        "I selected Car Payment and it isn't here" reads as a bug, not a
-        definition. The unfiltered report stays calm; the info panel already
-        explains the general rule.
+        Only when the user has *pointed at* categories — an explicit selection
+        or an active view — because that is when absence misleads: "I selected
+        Car Payment and it isn't here" reads as a bug, not as a definition.
+        The unfiltered report stays calm; the info panel covers the general
+        rule there.
         """
-        if not category_ids and regroup is None:
-            return None
-
-        included = set(include_classes or SPENDING_CLASSES)
-        targets = [
-            c
-            for c in (
-                ActivityClass.SAVINGS,
-                ActivityClass.DEBT_PRINCIPAL,
-                ActivityClass.DEBT_INTEREST,
-            )
-            if c not in included
-        ]
-        if not targets:
-            return None
-
-        q = (
-            select(
-                Category.id,
-                ACTIVITY_CLASS.label("activity_class"),
-                func.sum(func.abs(Transaction.amount)).label("total"),
-            )
-            .join(Transaction, Transaction.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
-                Transaction.date >= start_date,
-                Transaction.date <= end_date,
-                LEAF,
-                CASH_FLOW_ROW,
-                CategoryGroup.is_system == False,  # noqa: E712
-                ACTIVITY_CLASS.in_([c.value for c in targets]),
-            )
-            .group_by(Category.id, ACTIVITY_CLASS)
-        )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
-        if account_ids:
-            q = q.where(Transaction.account_id.in_(account_ids))
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
-
-        rows = (await self.session.execute(q)).all()
-        # A view scopes what the user sees — activity in categories the view
-        # hides is the view_hidden note's story, not this one's.
-        if regroup is not None:
-            rows = [r for r in rows if regroup(r.id) is not None]
-        if not rows:
+        if not scoped or not excluded_rows:
             return None
 
         by_class: dict[str, dict] = {}
-        for r in rows:
-            slot = by_class.setdefault(
-                r.activity_class,
-                {"activity_class": r.activity_class, "categories": set(), "total": Decimal("0")},
-            )
+        for r in excluded_rows:
+            if r.cls not in _EXPLAINED_EXCLUSIONS:
+                continue
+            slot = by_class.setdefault(r.cls, {"categories": set(), "total": Decimal("0")})
             slot["categories"].add(r.id)
-            slot["total"] += r.total
+            slot["total"] += abs(r.amount)
+        if not by_class:
+            return None
+
         return sorted(
             (
                 {
-                    "activity_class": v["activity_class"],
-                    "label": CLASS_LABEL[ActivityClass(v["activity_class"])],
+                    "activity_class": cls,
+                    "label": CLASS_LABEL[ActivityClass(cls)],
                     "categories": len(v["categories"]),
                     # Storage is 4dp; the note is user-facing copy, so cents.
                     "total": v["total"].quantize(Decimal("0.01")),
                 }
-                for v in by_class.values()
+                for cls, v in by_class.items()
             ),
             key=lambda v: v["total"],
             reverse=True,
@@ -2163,6 +2184,7 @@ class ReportService:
                 "category_name": r.category_name,
                 "memo": r.memo,
                 "activity_class": r.activity_class,
+                "activity_label": CLASS_LABEL[ActivityClass(r.activity_class)],
             }
             for r in rows
         ]

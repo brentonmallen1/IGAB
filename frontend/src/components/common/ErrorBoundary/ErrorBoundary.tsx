@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import './ErrorBoundary.css'
+import { RECOVERABLE_PERSIST_KEYS } from '../../../stores/persistKeys'
 
 interface Props {
   children: ReactNode
@@ -12,7 +13,7 @@ interface State {
 /** Keys whose stored value can make a render crash survive a reload.
  *  Persisted UI selections are replayed on boot, so if one of them is what the
  *  crashing render read, refreshing lands straight back on the same error. */
-const RECOVERABLE_KEYS = ['igab-ui', 'igab-reports']
+// From the stores themselves — hardcoding the list here left igab-app out.
 
 /**
  * Catches render errors so a bad component blanks its own region instead of
@@ -43,7 +44,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private resetAndReload = () => {
-    for (const key of RECOVERABLE_KEYS) {
+    for (const key of RECOVERABLE_PERSIST_KEYS) {
       try {
         localStorage.removeItem(key)
       } catch {

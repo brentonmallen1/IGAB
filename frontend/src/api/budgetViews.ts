@@ -9,7 +9,10 @@ const key = (budgetId: string | null) => ['budgetViews', budgetId]
  *  old arrangement for up to a minute after a save. */
 function invalidate(qc: ReturnType<typeof useQueryClient>, budgetId: string) {
   qc.invalidateQueries({ queryKey: key(budgetId) })
-  qc.invalidateQueries({ queryKey: ['reports'] })
+  // Only spending-grouped takes view_id. ['reports'] dumped all ~21 report
+  // caches on any view mutation — including a rename, which changes no report
+  // data — and a new-view save fires POST then PATCH, so it ran twice.
+  qc.invalidateQueries({ queryKey: ['reports', 'spending-grouped'] })
 }
 
 export function useBudgetViews(budgetId: string | null) {

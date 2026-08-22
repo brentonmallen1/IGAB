@@ -82,13 +82,16 @@ function ViewEditor({
     setNewGroup('')
   }
 
-  function renameGroup(from: string, to: string) {
+  /** Returns whether the rename was accepted, so the caller can put the
+   *  uncontrolled input back in step when it was not. */
+  function renameGroup(from: string, to: string): boolean {
     const trimmed = to.trim()
-    if (!trimmed || trimmed === from) return
+    if (!trimmed) return false
+    if (trimmed === from) return true
     // Refuse a name that already exists rather than silently merging two
     // groups — the server matches groups by name, so a collision would fold
     // one into the other on save.
-    if (groupNames.includes(trimmed)) return
+    if (groupNames.includes(trimmed)) return false
     setGroupNames((g) => g.map((n) => (n === from ? trimmed : n)))
     setAssignment((prev) =>
       Object.fromEntries(
@@ -97,6 +100,7 @@ function ViewEditor({
         )
       )
     )
+    return true
   }
 
   function removeGroup(target: string) {
@@ -237,11 +241,18 @@ function ViewEditor({
               {/* Editable in place: a group name is the whole label the user
                   reads on the budget page, and getting it wrong should not
                   mean deleting the group and reassigning everything in it. */}
+              {/* Uncontrolled, so a rejected rename (blank or duplicate)
+                  used to leave the typed text sitting in the DOM while state
+                  kept the old name — two chips could both read "Need" while
+                  the payload still said ["Need", "Want"]. Reset the field
+                  explicitly whenever the rename does not take. */}
               <input
                 className="view-editor__chip-input"
                 defaultValue={g}
                 size={Math.max(g.length, 4)}
-                onBlur={(e) => renameGroup(g, e.target.value)}
+                onBlur={(e) => {
+                  if (!renameGroup(g, e.target.value)) e.target.value = g
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
                   if (e.key === 'Escape') { e.currentTarget.value = g; e.currentTarget.blur() }

@@ -20,13 +20,6 @@ const TONE_BY_CLASS: Record<string, string> = {
   transfer_internal: 'neutral',
 }
 
-/** Shown beside the amount where "expense" would be the wrong read. */
-const CLASS_LABEL: Record<string, string> = {
-  savings: 'Savings',
-  debt_principal: 'Debt payment',
-  investment_return: 'Investment change',
-  debt_interest: 'Interest',
-}
 
 interface Props { budgetId: string }
 
@@ -147,8 +140,10 @@ export function TimelineReport({ budgetId }: Props) {
                   )}
                   <div className={`timeline__amount timeline__amount--${tone}`}>
                     {formatMoney(Math.abs(amt))}
-                    {CLASS_LABEL[tx.activity_class] && (
-                      <span className="timeline__class">{CLASS_LABEL[tx.activity_class]}</span>
+                    {/* Label served with the row, so a class added later
+                        cannot silently lose its chip here. */}
+                    {tx.activity_class !== 'spending' && (
+                      <span className="timeline__class">{tx.activity_label}</span>
                     )}
                   </div>
                   {tx.memo && <div className="timeline__memo">{tx.memo}</div>}

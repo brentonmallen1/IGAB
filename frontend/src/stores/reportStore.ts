@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { PERSIST_KEYS } from './persistKeys'
 
 export type ReportTab =
   | 'overview'
@@ -225,7 +226,7 @@ export const useReportStore = create<ReportState>()(
       resetFilters: () => set({ filters: defaultFilters(), drillDown: null }),
     }),
     {
-      name: 'igab-reports',
+      name: PERSIST_KEYS.reports,
       partialize: (s) => ({ activeTab: s.activeTab, filters: s.filters }),
     }
   )

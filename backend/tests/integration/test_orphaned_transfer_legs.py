@@ -109,10 +109,13 @@ class TestOrphanedLegsAreNotCashFlow:
 
 class TestCategorizedTransfersStillCount:
     async def test_categorized_orphan_stays_in_cash_flow(self, db_session):
-        """A YNAB spending-transfer to a tracked account is real spending. It
-        keeps its category, so it passes CASH_FLOW_ROW even though it is a
-        transfer leg — orphaned or not. (Phase 2 reclassifies it as savings;
-        Phase 1 must not change what it counts as.)"""
+        """A categorized transfer leg keeps its category, so it passes
+        CASH_FLOW_ROW even though it is a transfer — orphaned or not.
+
+        This fixture is an INFLOW leg (+500 into checking from a brokerage),
+        so what it must not do is read as income: nobody earned it, it was
+        drawn out of savings. It gets its own inflow trunk, which is how the
+        diagram stays flow-conserving without overstating earnings."""
         budget, checking, brokerage = await _budget_with_accounts(db_session)
         group = await create_category_group(db_session, budget, "Savings")
         category = await create_category(db_session, budget, group, "Investments")
@@ -122,7 +125,17 @@ class TestCategorizedTransfersStillCount:
         await create_transaction(
             db_session, budget, checking, "500.00", TODAY, payee=payee, category=category
         )
-        assert await _income(db_session, budget) == Decimal("500.00")
+
+        result = await ReportService(db_session).cash_flow_sankey(budget.id, START, TODAY)
+
+        assert result["total_income"] == Decimal("0"), "a savings draw is not income"
+        drawn = [
+            link
+            for link in result["links"]
+            if link["target"] == "__budget__" and str(link["source"]).startswith("drawn_")
+        ]
+        assert drawn, "and it must not vanish either"
+        assert sum(link["value"] for link in drawn) == Decimal("500.00")
 
 
 class TestTransferPayeeResolution:

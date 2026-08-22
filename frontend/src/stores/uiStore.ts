@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { PERSIST_KEYS } from './persistKeys'
 import type { AssignStrategy } from '../types'
 
 type TransactionSortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
@@ -396,7 +397,7 @@ export const useUIStore = create<UIState>()(
   }),
 }),
     {
-      name: 'igab-ui',
+      name: PERSIST_KEYS.ui,
       // Only the two selections a user makes deliberately and expects to find
       // still applied. Everything else here is transient dialog state that
       // would be actively wrong to restore — reloading into a half-open

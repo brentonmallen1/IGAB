@@ -84,7 +84,8 @@ export function SavingsRateReport({ budgetId }: Props) {
           ))}
           <button
             className={`report-btn ${withDebt ? 'report-btn--active' : ''}`}
-            onClick={() => setWithDebt((v) => !v)}
+            aria-pressed={withDebt}
+          onClick={() => setWithDebt((v) => !v)}
             type="button"
             title="Count money used to pay down a tracked debt as saving"
           >

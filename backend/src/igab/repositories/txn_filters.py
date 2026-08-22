@@ -78,18 +78,16 @@ _COUNTERPART_ON_BUDGET = func.coalesce(
 )
 COUNTERPART_OFF_BUDGET = not_(_COUNTERPART_ON_BUDGET)
 
-# Cash-flow rows: plain transactions plus CATEGORIZED transfer legs (spending
-# transfers to off-budget accounts). Uncategorized transfer legs are internal
-# money movement and never income/expense — including the orphaned ones, which
-# is the whole point of matching on the payee as well as the partner link.
+# Cash-flow rows: plain transactions, categorized transfer legs (YNAB spending
+# transfers), and any leg pointing OUT of the budget. That last case is money
+# genuinely leaving: a transfer to a brokerage or a mortgage is not internal
+# movement just because the user left it uncategorized, and excluding it made
+# the saving it represents invisible to every cash-flow report.
 #
-# NOTE: an uncategorized transfer *out of the budget* now classifies as savings
-# or debt principal (see activity_class RULES), but is still excluded here.
-# Admitting it requires cash_flow_sankey to split income from expense by
-# activity class rather than by amount sign — otherwise a withdrawal from a
-# brokerage (+500 into checking) reads as income. The two changes have to land
-# together; until then this stays as it was.
-CASH_FLOW_ROW = or_(~TRANSFER_LEG, Transaction.category_id.isnot(None))
+# Transfers between two on-budget accounts stay out — both legs sit inside the
+# budget, so counting either double-counts. That asymmetry is the point: only
+# the on-budget leg of an out-of-budget transfer passes, never the tracked side.
+CASH_FLOW_ROW = or_(~TRANSFER_LEG, Transaction.category_id.isnot(None), COUNTERPART_OFF_BUDGET)
 # Budget cash flow happens on on-budget accounts: plain activity inside
 # tracking accounts (dividends, market adjustments, loan interest) moves net
 # worth, not budget income/expense. Categorized spending-transfer legs already

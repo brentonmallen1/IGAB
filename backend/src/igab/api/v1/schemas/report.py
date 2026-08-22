@@ -363,6 +363,11 @@ class TimelineTransaction(BaseModel):
     #: timeline of large transactions, but calling it an expense because the
     #: amount is negative is the mislabelling this taxonomy exists to fix.
     activity_class: str = "spending"
+    #: Its display label, served rather than mirrored. A local copy in the
+    #: chart had already drifted ("Interest" vs the canonical "Interest &
+    #: fees"), and a class added later would fall back to sign-based colouring
+    #: there — the exact mislabelling this taxonomy exists to fix.
+    activity_label: str = "Spending"
 
 
 class TimelineResponse(BaseModel):

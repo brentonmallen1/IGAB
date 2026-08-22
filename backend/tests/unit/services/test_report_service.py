@@ -356,9 +356,9 @@ class TestCumulativeVariance:
 class TestSpendingGrouped:
     async def test_basic_grouping(self):
         rows = [
-            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-100.00")),
-            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-50.00")),
-            row(id=CAT_B, name="Gas", group_id=GRP_2, group_name="Transport", amount=D("-75.00")),
+            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-100.00"), cls="spending"),
+            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-50.00"), cls="spending"),
+            row(id=CAT_B, name="Gas", group_id=GRP_2, group_name="Transport", amount=D("-75.00"), cls="spending"),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
@@ -372,8 +372,8 @@ class TestSpendingGrouped:
 
     async def test_percentages(self):
         rows = [
-            row(id=CAT_A, name="X", group_id=GRP_1, group_name="G1", amount=D("-300.00")),
-            row(id=CAT_B, name="Y", group_id=GRP_1, group_name="G1", amount=D("-100.00")),
+            row(id=CAT_A, name="X", group_id=GRP_1, group_name="G1", amount=D("-300.00"), cls="spending"),
+            row(id=CAT_B, name="Y", group_id=GRP_1, group_name="G1", amount=D("-100.00"), cls="spending"),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)

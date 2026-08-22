@@ -425,7 +425,13 @@ export interface CashFlowReport {
   nodes: SankeyNode[]
   links: SankeyLink[]
   total_income: number
+  /** Everything that left the budget — the links off the budget node sum to
+   *  this. `total_spending` + `total_savings` + `total_debt_principal` is how
+   *  it splits; a card labelled "Expenses" must use the first, not this. */
   total_expense: number
+  total_spending: number | string
+  total_savings: number | string
+  total_debt_principal: number | string
   category_payees: Record<string, CategoryPayee[]>
   group_categories: Record<string, CategoryPayee[]>
 }
@@ -602,6 +608,9 @@ export interface TimelineTransaction {
    *  A large transfer into savings belongs on this timeline, but drawing it
    *  as an expense because the amount is negative would misreport it. */
   activity_class: string
+  /** Its display label, served rather than mirrored — a local copy here had
+   *  already drifted from the backend's wording. */
+  activity_label: string
 }
 
 export interface TimelineReport {

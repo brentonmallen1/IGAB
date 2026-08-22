@@ -18,6 +18,10 @@ interface Props {
 //: saved things without a word reads as data loss, however much better the new
 //: name is. Keyed in localStorage so it is genuinely once, not once per reload.
 const RENAME_NOTICE_KEY = 'igab-filters-rename-seen'
+//: Anything created before the rename migration belongs to a user who had
+//: "views"; anything after was always called a filter. A date beats a flag
+//: column for a notice that should disappear in a release or two.
+const RENAME_SHIPPED_AT = '2026-08-21'
 
 export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
@@ -30,7 +34,13 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
   const [renameNoticeSeen, setRenameNoticeSeen] = useState(
     () => localStorage.getItem(RENAME_NOTICE_KEY) === '1'
   )
-  const showRenameNotice = !renameNoticeSeen && (filters?.length ?? 0) > 0
+  // Only for filters that predate the rename. Keying off "has any filter"
+  // showed a brand-new install "your saved views are now called filters" the
+  // first time it created one, describing a migration it never lived through.
+  const hasPreRenameFilter = (filters ?? []).some(
+    (f) => f.created_at != null && f.created_at < RENAME_SHIPPED_AT
+  )
+  const showRenameNotice = !renameNoticeSeen && hasPreRenameFilter
   const dismissRenameNotice = () => {
     localStorage.setItem(RENAME_NOTICE_KEY, '1')
     setRenameNoticeSeen(true)
@@ -233,6 +243,8 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
           className="budget-filter-bar__menu-btn"
           onClick={toggleBudgetRowMode}
           title={budgetRowMode === 'expanded' ? 'Switch to compact rows' : 'Switch to expanded rows'}
+          aria-label="Compact rows"
+          aria-pressed={budgetRowMode !== 'expanded'}
         >
           {budgetRowMode === 'expanded' ? <AlignLeft size={14} /> : <AlignJustify size={14} />}
         </button>
@@ -241,6 +253,9 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
           className="budget-filter-bar__menu-btn"
           onClick={() => setMenuOpen((v) => !v)}
           title="Filters and views"
+          aria-label="Filters and views"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
         >
           <ListFilter size={14} />
         </button>
