@@ -9,6 +9,7 @@ from typing import TypedDict
 import polars as pl
 from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from igab.db.models import (
     Account,
@@ -115,28 +116,37 @@ class AnomalyRow(TypedDict):
 UNASSIGNED_VIEW_GROUP = "__unassigned__"
 
 
-def _spending_classes(include: Sequence[ActivityClass] | None = None):
+def _spending_classes(
+    include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
+):
     """WHERE clause limiting a spending query to the requested activity classes.
 
     Defaults to spending alone. That is the behaviour change derkus asked for:
     a transfer to a brokerage or a mortgage is money leaving the budget, but it
     is not money spent, and counting it as spending skews every average.
     Callers that genuinely want the wider picture pass the classes they mean.
+
+    `scoped_accounts` says the caller has an explicit account selection, which
+    overrides the on-budget default — so the user may be looking straight at a
+    tracked account, whose outflows classify `investment_return` (brokerage
+    fees) or `debt_interest` (loan interest) and never `spending`. Without
+    widening here, deliberately picking "Brokerage" in the account filter
+    returned an empty chart: this predicate is ANDed into the WHERE *before*
+    the scope override, so it silently cancelled the user's selection.
     """
-    classes = include or SPENDING_CLASSES
+    classes = list(include or SPENDING_CLASSES)
+    if scoped_accounts:
+        classes += [ActivityClass.INVESTMENT_RETURN, ActivityClass.DEBT_INTEREST]
     return ACTIVITY_CLASS.in_([c.value for c in classes])
 
 
-def _spending_classes_parent_row(include: Sequence[ActivityClass] | None = None):
-    """Same, for parent-centric queries (one row per real purchase).
-
-    A split parent carries no category, so it classifies as ordinary spending
-    by amount sign. That is the right answer for a purchase: a split is a
-    single trip to the shop with its legs itemised. Transfers are never split,
-    so a savings or debt-principal leg is always a plain row and classifies
-    correctly here.
-    """
-    return _spending_classes(include)
+#: Payee of record for a leaf row: its own, falling back to its split parent's.
+#: Splits are one trip to the shop with the legs itemised, so the parent names
+#: where the money went — but the legs are what carry categories, and therefore
+#: classes. Reading the parent row instead would classify the whole basket by
+#: its net sign, counting a savings-tagged leg as spending.
+_split_parent = aliased(Transaction)
+PAYEE_OF_RECORD = func.coalesce(Transaction.payee_id, _split_parent.payee_id)
 
 
 class ReportService:
@@ -172,7 +182,7 @@ class ReportService:
                 Transaction.date <= end_date,
                 LEAF,
                 CASH_FLOW_ROW,
-                _spending_classes(include_classes),
+                _spending_classes(include_classes, scoped_accounts=bool(account_ids)),
             )
         )
         if category_ids:
@@ -760,12 +770,17 @@ class ReportService:
             Transaction.amount < 0,
             Transaction.date >= start,
             Transaction.date <= today,
-            PARENT_ROW,
+            # LEAF, not PARENT_ROW. The two sum to the same figure, but only
+            # leaves carry categories and therefore classes: a split parent has
+            # none, so it classified as plain spending and dragged any
+            # savings-tagged leg in with it — burn rate reported $300 for a
+            # split whose real spending was $100.
+            LEAF,
             CASH_FLOW_ROW,
             ON_BUDGET_ACCOUNT,
             # A burn rate is how fast money is consumed. Money moved into
             # savings has not been burned.
-            _spending_classes_parent_row(),
+            _spending_classes(),
         )
         txns = (await self.session.execute(q)).all()
 
@@ -1627,7 +1642,7 @@ class ReportService:
                 LEAF,
                 CASH_FLOW_ROW,
                 CategoryGroup.is_system == False,  # noqa: E712
-                _spending_classes(include_classes),
+                _spending_classes(include_classes, scoped_accounts=bool(account_ids)),
             )
         )
         if category_ids:
@@ -1897,12 +1912,13 @@ class ReportService:
             select(
                 Transaction.date,
                 Transaction.amount,
-                Transaction.payee_id,
+                PAYEE_OF_RECORD.label("payee_id"),
                 Transaction.category_id,
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
             )
-            .outerjoin(Payee, Transaction.payee_id == Payee.id)
+            .outerjoin(_split_parent, Transaction.parent_transaction_id == _split_parent.id)
+            .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
                 Transaction.budget_id == budget_id,
@@ -1911,18 +1927,18 @@ class ReportService:
                 Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                # Payee-of-record lives on the parent row; per-child payees on
-                # splits are intentionally not surfaced here.
-                PARENT_ROW,
+                # Leaves, so each split leg classifies on its own category;
+                # the payee still comes from the parent row via PAYEE_OF_RECORD.
+                LEAF,
                 CASH_FLOW_ROW,
-                Transaction.payee_id.isnot(None),
+                PAYEE_OF_RECORD.isnot(None),
                 # Otherwise "Transfer : Brokerage" ranks as a top payee, which
                 # is true and useless — it is not somewhere money was spent.
-                _spending_classes_parent_row(),
+                _spending_classes(scoped_accounts=bool(account_ids)),
             )
         )
         if payee_ids:
-            q = q.where(Transaction.payee_id.in_(payee_ids))
+            q = q.where(PAYEE_OF_RECORD.in_(payee_ids))
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -2031,7 +2047,7 @@ class ReportService:
             Transaction.date <= end_date,
             LEAF,
             CASH_FLOW_ROW,
-            _spending_classes(),
+            _spending_classes(scoped_accounts=bool(account_ids)),
         )
         if category_ids:
             q = q.where(Transaction.category_id.in_(category_ids))

@@ -223,10 +223,21 @@ _CONCATENATION_SAFE: frozenset[str] = frozenset(
 )
 
 
+#: Keywords are stems, not whole words: "invest" has to reach "Investments",
+#: "Investment Account" and "Investing". The move from substring to token
+#: matching silently dropped every inflected form — "Investments" is a very
+#: common YNAB account name, and it began importing as ON-BUDGET checking,
+#: folding a brokerage balance straight into Ready to Assign. An explicit
+#: suffix list restores that reach without the substring rule's false
+#: positives ("invest" as substring also hits "investigation").
+_STEM_SUFFIXES: tuple[str, ...] = ("", "s", "es", "ing", "ment", "ments")
+
+
 def _matches(normalized: str, keywords: tuple[str, ...]) -> bool:
     for kw in keywords:
-        if f" {kw} " in normalized:
-            return True
+        for suffix in _STEM_SUFFIXES:
+            if f" {kw}{suffix} " in normalized:
+                return True
         if kw in _CONCATENATION_SAFE and kw in normalized:
             return True
     return False

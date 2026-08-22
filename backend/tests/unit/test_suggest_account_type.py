@@ -140,3 +140,44 @@ class TestBalanceIsOptional:
     def test_missing_balance_defaults_to_asset_side(self):
         account_type, on_budget, _ = suggest_account_type("Vehicle A")
         assert (account_type, on_budget) == ("other_asset", False)
+
+
+class TestInflectedForms:
+    """The token-matching rewrite kept the singular and lost every inflection.
+    Keywords are stems: "invest" must reach the whole family, because
+    "Investments" is one of the commonest YNAB account names there is and it
+    began importing on-budget — which folds a brokerage balance into Ready to
+    Assign and corrupts every budget figure from the first screen."""
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Investments",
+            "Investment",
+            "Investment Account",
+            "Vanguard Investments",
+            "Investing",
+            "Fidelity Investments",
+        ],
+    )
+    def test_investment_family_is_off_budget(self, name):
+        account_type, on_budget, _ = suggest_account_type(name)
+        assert (account_type, on_budget) == ("investment", False)
+
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("Car Loans", "loan"),
+            ("Student Loan", "loan"),
+            ("Credit Cards", "credit_card"),
+            ("Credit Card", "credit_card"),
+        ],
+    )
+    def test_plurals_match_their_singular(self, name, expected):
+        assert suggest_account_type(name)[0] == expected
+
+    @pytest.mark.parametrize("name", ["Discovery Fund", "Discovery Channel Savings"])
+    def test_the_stem_rule_does_not_resurrect_false_positives(self, name):
+        """"discover" (the card) must still not fire on "Discovery" — the
+        reason token matching was introduced in the first place."""
+        assert suggest_account_type(name)[0] != "credit_card"
