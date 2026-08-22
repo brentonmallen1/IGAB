@@ -8,7 +8,6 @@ These are critical trust-surface tests covering:
 4. SimpleFIN sync deduplication flow
 """
 
-import hashlib
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -18,7 +17,6 @@ import pytest
 
 from igab.api.v1.imports import _generate_import_id as csv_generate_import_id
 from igab.integrations.ynab.importer import _generate_import_id as ynab_generate_import_id
-
 
 # ─── Import ID Generation Tests ──────────────────────────────────────────────
 

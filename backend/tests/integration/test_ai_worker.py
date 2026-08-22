@@ -2,13 +2,12 @@
 bookkeeping, terminal-failure stub, stub refill on retry, crash recovery."""
 
 import base64
+import json
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from io import BytesIO
 from unittest.mock import AsyncMock
-
-import json
 
 import httpx
 import pytest
@@ -33,6 +32,7 @@ from .factories import (
     create_transaction,
 )
 from .invariants import assert_financial_invariants
+
 
 async def _on_budget_total(session, budget_id) -> Decimal:
     """Sum of posted on-budget parent rows — what every balance derives from."""

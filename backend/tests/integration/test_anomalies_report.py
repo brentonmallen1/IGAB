@@ -10,10 +10,10 @@ Pins the detection contract:
   so they are absent from the baseline rather than counted as 0.
 """
 
-import pytest
-
 from datetime import date
 from decimal import Decimal
+
+import pytest
 
 from igab.services.report_service import ReportService
 

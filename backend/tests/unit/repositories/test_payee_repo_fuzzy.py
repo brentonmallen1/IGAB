@@ -14,8 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from igab.repositories.payee_repo import PAYEE_FUZZY_THRESHOLD, PayeeRepository
-
+from igab.repositories.payee_repo import PayeeRepository
 
 BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 

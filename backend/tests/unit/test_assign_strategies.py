@@ -10,6 +10,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+
 from igab.services.assign_service import (
     ASSIGN_STRATEGIES,
     HISTORY_STRATEGIES,

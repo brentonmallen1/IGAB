@@ -11,7 +11,7 @@ from PIL import Image
 from sqlalchemy import select
 
 import igab.config
-from igab.db.models import AIJob, Transaction
+from igab.db.models import AIJob
 from igab.services.ai_service import AIService
 from igab.services.settings_service import SettingsService
 

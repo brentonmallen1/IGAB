@@ -6,7 +6,7 @@ live on the on-budget side and still count. An explicit account filter
 overrides the default scope.
 """
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from .factories import (
@@ -15,7 +15,6 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
-    create_user,
 )
 
 TODAY = date.today()

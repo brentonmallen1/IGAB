@@ -1,7 +1,5 @@
 from datetime import date
 
-import pytest
-
 from igab.services.report_service import (
     _last_day,
     _months_in_range,

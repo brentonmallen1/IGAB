@@ -50,7 +50,6 @@ from .factories import (
     create_scheduled_transaction,
     create_tag,
     create_transaction,
-    create_user,
 )
 
 TODAY = date.today()

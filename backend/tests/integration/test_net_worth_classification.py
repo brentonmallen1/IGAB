@@ -15,7 +15,6 @@ from .factories import (
     create_liability,
     create_liability_snapshot,
     create_transaction,
-    create_user,
 )
 
 TODAY = date.today()
