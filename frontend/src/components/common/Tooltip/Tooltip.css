@@ -14,7 +14,12 @@
   padding: 8px 10px;
   font-size: var(--font-size-xs);
   line-height: 1.6;
-  white-space: nowrap;
+  /* One line while it fits, wrapping when it doesn't: max-content keeps
+     short tooltips exactly as they were, the cap keeps sentence-length
+     content on screen instead of running past the viewport edge. */
+  width: max-content;
+  max-width: min(280px, calc(100vw - 16px));
+  white-space: normal;
   pointer-events: none;
   z-index: var(--z-tooltip);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);

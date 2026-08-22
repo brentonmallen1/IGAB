@@ -3,7 +3,7 @@ import {
   Bar, Cell, ComposedChart, CartesianGrid, Legend, Line,
   ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine,
 } from 'recharts'
-import { useReportStore, type GroupBy } from '../../../stores/reportStore'
+import { spendingDrillClasses, useReportStore, type GroupBy } from '../../../stores/reportStore'
 import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -12,7 +12,8 @@ import { MetricCard } from '../MetricCard'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
 import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
+import { ReportNotes } from '../ReportNotes'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -67,7 +68,7 @@ export function ParetoReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
   const captureRef = useRef<HTMLDivElement>(null)
-  const [hideSavings, setHideSavings] = useState(false)
+  const [includeSavings, setIncludeSavings] = useState(false)
   const [logScale, setLogScale] = useState(false)
 
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
@@ -75,9 +76,9 @@ export function ParetoReport({ budgetId }: Props) {
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
 
   // Both queries always fetched — hooks must be unconditional
-  // hideSavings only applies to category/group views, not payee view
-  const excludeSavings = hideSavings && groupBy !== 'payee'
-  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, excludeSavings)
+  // Only meaningful for category/group views, not the payee view
+  const withSavings = includeSavings && groupBy !== 'payee'
+  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, withSavings, filters.viewId)
   const payeeQ = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
 
   const spendingItems = useMemo(() => spendingQ.data?.groups ?? [], [spendingQ.data])
@@ -111,26 +112,29 @@ export function ParetoReport({ budgetId }: Props) {
   // All hooks above — safe to conditionally return now
   const activeQ = groupBy === 'payee' ? payeeQ : spendingQ
   if (activeQ.isLoading) return <div className="report-loading">Loading…</div>
-  if (activeQ.isError) return <ReportErrorState onRetry={() => activeQ.refetch()} />
+  if (activeQ.isError) return <ReportErrorState error={activeQ.error} onRetry={() => activeQ.refetch()} />
 
   function drillTo(id: string, name: string) {
     const window = { startDate: filters.startDate, endDate: filters.endDate }
+    // The chart counts spending (plus savings when the toggle is on); the
+    // panel must count the same, or the list contradicts the bar.
+    const activityClasses = spendingDrillClasses(includeSavings)
     if (groupBy === 'payee') {
       setDrillDown({
-        kind: 'payee', label: name, scope: 'parent', direction: 'outflow',
-        payeeIds: [id], ...window,
+        kind: 'payee', label: name, scope: 'leaf', direction: 'outflow',
+        payeeIds: [id], activityClasses, ...window,
       })
     } else if (groupBy === 'group') {
       const memberIds = groupMembers.get(id) ?? []
       if (memberIds.length === 0) return
       setDrillDown({
         kind: 'category-group', label: name, scope: 'leaf', direction: 'outflow',
-        categoryIds: memberIds, ...window,
+        categoryIds: memberIds, activityClasses, ...window,
       })
     } else {
       setDrillDown({
         kind: 'category', label: name, scope: 'leaf', direction: 'outflow',
-        categoryIds: [id], ...window,
+        categoryIds: [id], activityClasses, ...window,
       })
     }
   }
@@ -169,15 +173,18 @@ export function ParetoReport({ budgetId }: Props) {
           <p>Switch the <strong>Group by</strong> filter in the toolbar to see the pattern at the category group, category, or payee level.</p>
           <p>Click a bar or a table row to see the transactions behind it.</p>
           <ReportScopeNote scope="on-budget-filterable" />
+          <SpendingClassNote />
         </ReportInfoButton>
         {groupBy !== 'payee' && (
           <label className="report-toggle">
             <input
               type="checkbox"
-              checked={hideSavings}
-              onChange={(e) => setHideSavings(e.target.checked)}
+              checked={includeSavings}
+              onChange={(e) => setIncludeSavings(e.target.checked)}
             />
-            Hide tagged as savings
+            <span title="Money moved into savings or used to pay down a tracked debt isn't spending, so it's left out by default. Tick to add it back.">
+              Include savings &amp; debt payments
+            </span>
           </label>
         )}
         <div className="flex-row ms-auto">
@@ -200,6 +207,10 @@ export function ParetoReport({ budgetId }: Props) {
       <p className="report-section__subtitle">
         Which {GROUP_PLURALS[groupBy]} account for 80% of your spending?
       </p>
+      {/* Payee mode draws from payee analysis, which no view filters. */}
+      {groupBy !== 'payee' && (
+        <ReportNotes report={spendingQ.data} toggleAvailable={!includeSavings} />
+      )}
 
       <div ref={captureRef} className="report-capture">
       {grandTotal > 0 && (
@@ -217,7 +228,11 @@ export function ParetoReport({ budgetId }: Props) {
       )}
 
       {chartData.length === 0 ? (
-        <div className="reports-empty">No spending data for this period.</div>
+        <div className="reports-empty">
+          {groupBy !== 'payee' && (spendingQ.data?.view_hidden_categories ?? 0) > 0
+            ? 'Everything with spending in this window is hidden by the current view.'
+            : 'No spending data for this period.'}
+        </div>
       ) : (
         <>
           <ResponsiveContainer width="100%" height={chartHeight}>

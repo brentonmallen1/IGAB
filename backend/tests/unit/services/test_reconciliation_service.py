@@ -16,7 +16,6 @@ Cleared state filtering (documented):
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 

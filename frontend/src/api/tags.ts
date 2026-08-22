@@ -46,6 +46,9 @@ export function useUpdateTag(budgetId: string | null) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tags', budgetId] });
       qc.invalidateQueries({ queryKey: ['categories', budgetId] });
+      // Tags are a classification override, so the "Counts as" badge
+      // changes with them. Its key is not under ['categories'].
+      qc.invalidateQueries({ queryKey: ['categoryClassification'] });
       qc.invalidateQueries({ queryKey: ['payees', budgetId] });
     },
   });
@@ -58,6 +61,9 @@ export function useDeleteTag(budgetId: string | null) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tags', budgetId] });
       qc.invalidateQueries({ queryKey: ['categories', budgetId] });
+      // Tags are a classification override, so the "Counts as" badge
+      // changes with them. Its key is not under ['categories'].
+      qc.invalidateQueries({ queryKey: ['categoryClassification'] });
       qc.invalidateQueries({ queryKey: ['payees', budgetId] });
     },
   });
@@ -70,6 +76,9 @@ export function useSetCategoryTags(budgetId: string | null) {
       apiClient.put<TagSimple[]>(`/${budgetId}/categories/${categoryId}/tags`, { tag_ids: tagIds }).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['categories', budgetId] });
+      // Tags are a classification override, so the "Counts as" badge
+      // changes with them. Its key is not under ['categories'].
+      qc.invalidateQueries({ queryKey: ['categoryClassification'] });
       qc.invalidateQueries({ queryKey: ['tags', budgetId] });
     },
   });

@@ -260,18 +260,60 @@ export function useVolatilityReport(budgetId: string | null, months = 12) {
 
 // ─── Spending Grouped ──────────────────────────────────────────────────────
 
+export interface SavingsRateMonth {
+  month: string
+  income: string
+  spending: string
+  savings: string
+  debt_principal: string
+  /** null when there was no income that month — a gap, not a zero. */
+  savings_rate: number | null
+  savings_rate_with_debt: number | null
+}
+
+export interface SavingsRateReport {
+  months: SavingsRateMonth[]
+  summary: {
+    income: string
+    spending: string
+    savings: string
+    debt_principal: string
+    savings_rate: number | null
+    savings_rate_with_debt: number | null
+  }
+}
+
+export function useSavingsRateReport(budgetId: string | null, months = 12) {
+  return useQuery({
+    queryKey: ['reports', 'savings-rate', budgetId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SavingsRateReport>(
+        `/${budgetId}/reports/savings-rate`,
+        { params: params({ months }) },
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
 export function useSpendingGroupedReport(
   budgetId: string | null,
   startDate?: string,
   endDate?: string,
   categoryIds?: string[],
   accountIds?: string[],
-  excludeSavings?: boolean,
+  /** Spending reports mean money spent, so saving and debt principal are left
+   *  out by default. Set to bring them back into the totals. */
+  includeSavings?: boolean,
+  /** Roll up by this view's groups instead of the budget's own. */
+  viewId?: string | null,
 ) {
   const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'spending-grouped', budgetId, startDate, endDate, catParam, acctParam, excludeSavings],
+    queryKey: ['reports', 'spending-grouped', budgetId, startDate, endDate, catParam, acctParam, includeSavings, viewId],
     queryFn: async () => {
       const { data } = await apiClient.get<SpendingGroupedReport>(
         `/${budgetId}/reports/spending-grouped`,
@@ -281,7 +323,8 @@ export function useSpendingGroupedReport(
             end_date: endDate,
             category_ids: catParam,
             account_ids: acctParam,
-            exclude_savings: excludeSavings ? 'true' : undefined,
+            include_savings: includeSavings ? 'true' : undefined,
+            view_id: viewId ?? undefined,
           }),
         },
       )

@@ -14,7 +14,6 @@ balances, negative amounts, overspending floors, future-dated data, rounding
 cents, and stale-row pruning.
 """
 
-import uuid
 from datetime import date
 from decimal import Decimal
 

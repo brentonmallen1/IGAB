@@ -5,6 +5,7 @@ import { NLEntryForm } from '../../ai/NLEntryForm'
 import { ReceiptPane } from '../../ai/ReceiptPane'
 import { ReceiptScanTab } from './ReceiptScanTab'
 import {
+  useTransactionClassification,
   useCreateTransaction,
   useUpdateTransaction,
   useDeleteTransaction,
@@ -98,6 +99,9 @@ export function TransactionEditor({
   // Android back / swipe-back cancels the editor instead of leaving the page
 
   const isEdit = !!transaction
+  // Why this row counts the way it does in reports. Only for saved rows — a
+  // draft has no classification yet, and the endpoint derives it per row.
+  const { data: classification } = useTransactionClassification(transaction?.id ?? null)
   // Review mode: an AI-created transaction being verified against its receipt
   const isReview = !!aiJob && isEdit
   const reprocess = useReprocessAIJob(budgetId)
@@ -1033,6 +1037,13 @@ export function TransactionEditor({
               <AttachmentPanel transactionId={transaction.id} embedded />
             )}
           </div>
+        )}
+
+        {classification && (
+          <p className="txn-editor__classification">
+            Counts as <strong>{classification.label}</strong> in reports — because{' '}
+            {classification.explanation}.
+          </p>
         )}
 
         <div className="txn-editor__footer">

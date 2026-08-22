@@ -1,8 +1,6 @@
 from datetime import date
 from unittest.mock import MagicMock
 
-import pytest
-
 from igab.services.scheduled_transaction_service import calculate_next
 
 

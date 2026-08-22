@@ -33,6 +33,7 @@ vi.mock('../../api/payees', () => ({ usePayees: () => ({ data: undefined }) }))
 vi.mock('../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }) }))
 vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 
+import { useReportStore } from '../../stores/reportStore'
 import { OverviewReport } from './OverviewReport'
 import { AccountCompositionReport } from './charts/AccountCompositionChart'
 import { AnomaliesReport } from './charts/AnomaliesReport'
@@ -49,6 +50,7 @@ import { ParetoReport } from './charts/ParetoChart'
 import { PayeeReport } from './charts/PayeeChart'
 import { PlanVsRealityReport } from './charts/PlanVsRealityReport'
 import { SavingsReport } from './charts/SavingsReport'
+import { SavingsRateReport } from './charts/SavingsRateChart'
 import { SeasonalityReport } from './charts/SeasonalityHeatmap'
 import { SpendingTreemapReport } from './charts/SpendingTreemap'
 import { SubscriptionsReport } from './charts/SubscriptionsReport'
@@ -61,6 +63,7 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['AccountComposition', AccountCompositionReport],
   ['Liabilities', LiabilitiesReport],
   ['Savings', SavingsReport],
+  ['SavingsRate', SavingsRateReport],
   ['IncomeExpense', IncomeExpenseReport],
   ['BurnRate', BurnRateReport],
   ['CashFlowSankey', CashFlowSankeyReport],
@@ -119,6 +122,112 @@ describe.each(ALL_REPORTS)('%s report', (_name, Report) => {
     renderReport(<Report budgetId="b1" />)
     expect(screen.queryByText(/Loading/)).not.toBeInTheDocument()
     expect(screen.queryByText("Couldn't load this report.")).not.toBeInTheDocument()
+  })
+})
+
+describe('view-hidden note on the spending charts', () => {
+  const hiddenData = {
+    groups: [
+      { id: 'c1', name: 'Dining Out', parent_id: 'g1', parent_name: 'group c', total: 205, count: 3, pct: 100 },
+    ],
+    total: 205,
+    view_hidden_categories: 31,
+    view_hidden_total: '14820.45',
+  }
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s states what the view hid', (_name, Report) => {
+    setQuery({ data: hiddenData })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.getByText(/This view hides 31 categories/)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s stays quiet when nothing was hidden', (_name, Report) => {
+    setQuery({ data: { ...hiddenData, view_hidden_categories: 0, view_hidden_total: '0' } })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.queryByText(/This view hides/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s explains an all-hidden empty state instead of claiming no data', (_name, Report) => {
+    setQuery({
+      data: { groups: [], total: 0, view_hidden_categories: 34, view_hidden_total: '15025.45' },
+    })
+    renderReport(<Report budgetId="b1" />)
+    expect(
+      screen.getByText('Everything with spending in this window is hidden by the current view.')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No spending data for this period.')).not.toBeInTheDocument()
+  })
+})
+
+describe('class-excluded note on the spending charts', () => {
+  const dataWithExcluded = {
+    groups: [
+      { id: 'c1', name: 'Dining Out', parent_id: 'g1', parent_name: 'Bills', total: 205, count: 3, pct: 100 },
+    ],
+    total: 205,
+    view_hidden_categories: 0,
+    view_hidden_total: '0',
+    class_excluded: [
+      { activity_class: 'debt_principal', label: 'Debt payment', categories: 1, total: '275.00' },
+      { activity_class: 'savings', label: 'Savings', categories: 2, total: '101.00' },
+    ],
+  }
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s says what a selection excluded and how to add it back', (_name, Report) => {
+    setQuery({ data: dataWithExcluded })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.getByText(/Not counted as spending here:/)).toBeInTheDocument()
+    expect(screen.getByText(/debt payments \(1 category\)/)).toBeInTheDocument()
+    // "Savings" must not pluralise into "savingss".
+    expect(screen.getByText(/of savings \(2 categories\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Include savings & debt payments” to add it/)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s stays quiet when nothing was class-excluded', (_name, Report) => {
+    setQuery({ data: { ...dataWithExcluded, class_excluded: [] } })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.queryByText(/Not counted as spending here/)).not.toBeInTheDocument()
+  })
+})
+
+describe('treemap group-by fallback', () => {
+  it('draws group tiles — and says so — when the stored mode is payee', () => {
+    useReportStore.getState().setFilters({ groupBy: 'payee' })
+    try {
+      setQuery({
+        data: {
+          groups: [
+            { id: 'c1', name: 'Dining', parent_id: 'g1', parent_name: 'Everyday', total: 205, count: 3, pct: 100 },
+          ],
+          total: 205,
+          view_hidden_categories: 0,
+          view_hidden_total: '0',
+          class_excluded: [],
+        },
+      })
+      renderReport(<SpendingTreemapReport budgetId="b1" />)
+      // The breadcrumb only exists in group mode; before the resolver the
+      // payee mode landed here by accident with Payee still highlighted.
+      expect(screen.getByText('All Groups')).toBeInTheDocument()
+      expect(screen.getByText('Click a group to drill down into its categories.')).toBeInTheDocument()
+    } finally {
+      useReportStore.getState().setFilters({ groupBy: 'category' })
+    }
   })
 })
 

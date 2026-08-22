@@ -393,7 +393,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--border-color, var(--bg-tertiary));
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   padding: var(--spacing-sm);
 }
 
@@ -468,6 +468,45 @@
   grid-template-columns: auto 1fr 130px auto;
   gap: var(--spacing-sm);
   align-items: center;
+  /* Uniform gutter so the review marker below can sit in it without
+     shifting flagged rows out of alignment with the rest. */
+  padding-left: var(--spacing-xs);
+}
+
+/* An account we couldn't identify from its name. Marked rather than blocked:
+   the guess may well be right, but getting `on budget` wrong on a tracked
+   account silently corrupts every budget total, so it must be looked at. */
+.ynab-mapping__row--review {
+  box-shadow: inset 2px 0 0 var(--color-warning);
+}
+
+.ynab-mapping__review {
+  margin-left: var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-warning);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* Shown next to the transaction count: the quickest way to tell a house from
+   the mortgage secured against it, which no account name reliably does. */
+.ynab-mapping__balance {
+  margin-left: var(--spacing-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.ynab-mapping__review-note {
+  display: block;
+  margin-top: var(--spacing-xs);
+  color: var(--text-secondary);
+  font-weight: normal;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
 }
 
 /* Include-checkbox: unchecking excludes the account from the import entirely.

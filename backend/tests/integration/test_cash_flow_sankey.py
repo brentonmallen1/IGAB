@@ -10,6 +10,7 @@ zero assignments, system groups, and deleted categories are invisible;
 income still comes from real transactions.
 """
 
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -64,13 +65,19 @@ async def test_spent_mode_links_sum_to_total_expense(db_session):
         db_session, budget, checking, "3000.00", TODAY - timedelta(days=5), payee=employer
     )
     await create_transaction(
-        db_session, budget, checking, "-200.00", TODAY - timedelta(days=4),
-        category=groceries, payee=megamart,
+        db_session,
+        budget,
+        checking,
+        "-200.00",
+        TODAY - timedelta(days=4),
+        category=groceries,
+        payee=megamart,
     )
     await create_transaction(
         db_session, budget, checking, "-100.00", TODAY - timedelta(days=4), category=gas
     )
-    # Categorized transfer to an off-budget account: real spending
+    # Categorized transfer to an off-budget account: leaves the budget, but as
+    # saving rather than spending — it gets its own branch off the budget node.
     await services.transactions.create(
         budget.id,
         TransactionCreate(
@@ -95,8 +102,13 @@ async def test_spent_mode_links_sum_to_total_expense(db_session):
     )
     # Pending: not posted yet
     await create_transaction(
-        db_session, budget, checking, "-75.00", TODAY - timedelta(days=2),
-        category=groceries, cleared="pending",
+        db_session,
+        budget,
+        checking,
+        "-75.00",
+        TODAY - timedelta(days=2),
+        category=groceries,
+        cleared="pending",
     )
     # Split: children flow to their categories, parent must not double-count
     header = TransactionCreate(
@@ -128,21 +140,32 @@ async def test_spent_mode_links_sum_to_total_expense(db_session):
         db_session, budget, checking, "-33.33", TODAY - timedelta(days=1), payee=corner
     )
 
-    sankey = await ReportService(db_session).cash_flow_sankey(
-        budget.id, START, TODAY, mode="spent"
-    )
+    sankey = await ReportService(db_session).cash_flow_sankey(budget.id, START, TODAY, mode="spent")
 
     assert sankey["total_income"] == Decimal("3000.00")
-    # 200 + 100 + 150 transfer + 100 split + 33.33 uncategorized
+    # Everything that left the budget: 200 + 100 + 150 transfer + 100 split
+    # + 33.33 uncategorized. total_expense stays the whole outflow, because the
+    # links off the budget node must sum to it.
     assert sankey["total_expense"] == Decimal("583.33")
+    # ...and how that outflow splits.
+    assert sankey["total_spending"] == Decimal("433.33")
+    assert sankey["total_savings"] == Decimal("150.00")
+    assert sankey["total_debt_principal"] == Decimal("0")
 
     links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
     assert links[(f"inc_{employer.id}", "__budget__")] == Decimal("3000.00")
-    assert links[("__budget__", f"g_{everyday.id}")] == Decimal("550.00")
-    assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("410.00")
-    assert links[(f"g_{everyday.id}", f"c_{gas.id}")] == Decimal("140.00")
+    # 400, not 550: the brokerage transfer left this group for the savings
+    # branch, even though its category still lives here.
+    assert links[("__budget__", f"g_{everyday.id}")] == Decimal("400.00")
+    assert links[("__budget__", "g___savings__")] == Decimal("150.00")
+    # Groceries keeps only its real spending; the 150 hangs under Savings.
+    assert links[(f"g_{everyday.id}", f"c_{everyday.id}_{groceries.id}")] == Decimal("260.00")
+    assert links[("g___savings__", f"c___savings___{groceries.id}")] == Decimal("150.00")
+    assert links[(f"g_{everyday.id}", f"c_{everyday.id}_{gas.id}")] == Decimal("140.00")
     assert links[("__budget__", "g___uncategorized__")] == Decimal("33.33")
-    assert links[("g___uncategorized__", "c___uncategorized__")] == Decimal("33.33")
+    assert links[("g___uncategorized__", "c___uncategorized_____uncategorized__")] == Decimal(
+        "33.33"
+    )
 
     # Flow conservation: budget outflows account for every expense dollar
     budget_outflows = sum(v for (src, _), v in links.items() if src == "__budget__")
@@ -151,12 +174,13 @@ async def test_spent_mode_links_sum_to_total_expense(db_session):
     names = {n["id"]: n["name"] for n in sankey["nodes"]}
     assert names["g___uncategorized__"] == "Uncategorized"
     grocery_payees = {
-        p["name"]: p["total"] for p in sankey["category_payees"][f"c_{groceries.id}"]
+        p["name"]: p["total"] for p in sankey["category_payees"][f"c_{everyday.id}_{groceries.id}"]
     }
     assert grocery_payees["MegaMart"] == Decimal("200.00")
     assert grocery_payees["Superstore"] == Decimal("60.00")
     uncat_payees = {
-        p["name"]: p["total"] for p in sankey["category_payees"]["c___uncategorized__"]
+        p["name"]: p["total"]
+        for p in sankey["category_payees"]["c___uncategorized_____uncategorized__"]
     }
     assert uncat_payees["CornerStore"] == Decimal("33.33")
 
@@ -171,9 +195,7 @@ async def test_spent_mode_totals_are_exact_decimals(db_session):
     await create_transaction(db_session, budget, checking, "0.10", TODAY - timedelta(days=3))
     await create_transaction(db_session, budget, checking, "0.20", TODAY - timedelta(days=3))
 
-    sankey = await ReportService(db_session).cash_flow_sankey(
-        budget.id, START, TODAY, mode="spent"
-    )
+    sankey = await ReportService(db_session).cash_flow_sankey(budget.id, START, TODAY, mode="spent")
 
     assert sankey["total_expense"] == Decimal("0.30")
     assert str(sankey["total_expense"]) != "0.30000000000000004"
@@ -267,3 +289,42 @@ async def test_budgeted_mode_sums_across_months(db_session):
     assert sankey["total_expense"] == Decimal("1000.00")
     links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
     assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("1000.00")
+
+
+class TestCategoryNodesCarryTheirEntityId:
+    """The node id is a (group, category) composite so one category can appear
+    under both its own group and the savings trunk. The client used to recover
+    a category id by stripping the "c_" prefix, which yielded
+    "{group_uuid}_{category_uuid}" and 500'd the transactions endpoint."""
+
+    async def _spent(self, db_session):
+        services, budget, checking, _, groceries, gas = await _setup(db_session)
+        for cat, amount in ((groceries, "-80.00"), (gas, "-40.00")):
+            await services.transactions.create(
+                budget.id,
+                TransactionCreate(
+                    account_id=checking.id,
+                    date=TODAY,
+                    amount=Decimal(amount),
+                    category_id=cat.id,
+                ),
+            )
+        await db_session.flush()
+        return await ReportService(db_session).cash_flow_sankey(
+            budget.id, START, TODAY, mode="spent"
+        )
+
+    async def test_entity_id_is_the_bare_category_id(self, db_session):
+        result = await self._spent(db_session)
+
+        category_nodes = [n for n in result["nodes"] if n["type"] == "category"]
+        assert category_nodes, "fixture should produce category nodes"
+        for node in category_nodes:
+            assert node["entity_id"] is not None
+            uuid.UUID(node["entity_id"])  # raises if the client would send junk
+            assert node["id"].endswith(node["entity_id"])
+
+    async def test_non_category_nodes_have_no_entity_id(self, db_session):
+        result = await self._spent(db_session)
+        budget_node = next(n for n in result["nodes"] if n["type"] == "budget")
+        assert budget_node["entity_id"] is None

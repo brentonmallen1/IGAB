@@ -243,6 +243,32 @@
   font-size: var(--font-size-sm);
 }
 
+.report-error__title {
+  color: var(--text-primary);
+}
+
+/* The server's own message, when it has one worth repeating. */
+.report-error__detail {
+  max-width: 46ch;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* Why retrying will or won't help — the difference between a button that
+   works and one that only looks like it might. */
+.report-error__hint {
+  max-width: 46ch;
+  text-align: center;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.report-error__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
 .report-error__retry {
   padding: var(--spacing-xs) var(--spacing-md);
   background: transparent;
@@ -257,6 +283,19 @@
 .report-error__retry:hover {
   background: var(--bg-secondary);
   border-color: var(--color-accent);
+}
+
+/* The action that can actually change the outcome leads. */
+.report-error__retry--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--bg-primary);
+}
+
+.report-error__retry--primary:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  filter: brightness(1.08);
 }
 
 /* ─── Custom chart key (for charts recharts' Legend can't describe) ──────── */

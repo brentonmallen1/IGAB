@@ -1,8 +1,10 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 
 from igab.api.v1.schemas.category import (
     AssignApplyRequest,
@@ -16,6 +18,8 @@ from igab.api.v1.schemas.category import (
     BudgetMonthResponse,
     BudgetMoveResponse,
     CategoryBalance,
+    CategoryClassification,
+    CategoryClassSlice,
     CategoryCreate,
     CategoryGroupCreate,
     CategoryGroupResponse,
@@ -35,12 +39,13 @@ from igab.api.v1.schemas.category import (
     MoveMoneyRequest,
     RecentPayeeResponse,
 )
-from igab.db.models import CategoryGroup
+from igab.db.models import CategoryGroup, Transaction
 from igab.dependencies import (
     BudgetAccess,
     CategoryAccess,
     CategoryGroupAccess,
     CurrentUser,
+    SessionDep,
     get_assign_service,
     get_budget_service,
     get_category_group_repo,
@@ -50,10 +55,18 @@ from igab.dependencies import (
     get_target_service,
     get_transaction_repo,
 )
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    ACTIVITY_REASON,
+    CLASS_LABEL,
+    ActivityClass,
+    explain,
+)
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
 from igab.services.assign_service import AssignPreview, AssignService
 from igab.services.budget_service import BudgetService
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
@@ -370,6 +383,89 @@ async def list_budget_targets(
     category_ids = [c.id for c in categories]
     targets = await target_repo.get_by_category_ids(category_ids)
     return [CategoryTargetResponse.model_validate(t) for t in targets]
+
+
+@router.get(
+    "/categories/{category_id}/classification",
+    response_model=CategoryClassification,
+)
+async def get_category_classification(
+    category_id: CategoryAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> CategoryClassification:
+    """How this category's recent activity counts in reports.
+
+    The per-transaction endpoint answers "why is this row not spending?";
+    this one answers it a level earlier — on the category itself, before the
+    user has opened a report and wondered where Car Payment went. Same
+    reasoning as there: derived via correlated subqueries, so it is its own
+    endpoint fetched when the inspector opens, not a field on every list row.
+
+    Trailing twelve months of outflow, not the viewed month: the badge
+    describes how the category *behaves*, and a month with no activity would
+    otherwise flicker the tag off.
+    """
+    window_start = date.today() - timedelta(days=365)
+    rows = (
+        await session.execute(
+            select(
+                ACTIVITY_CLASS.label("cls"),
+                ACTIVITY_REASON.label("reason"),
+                func.sum(func.abs(Transaction.amount)).label("total"),
+                func.count().label("count"),
+            )
+            .where(
+                Transaction.category_id == category_id,
+                NOT_DELETED,
+                POSTED,
+                LEAF,
+                Transaction.amount < 0,
+                Transaction.date >= window_start,
+            )
+            .group_by(ACTIVITY_CLASS, ACTIVITY_REASON)
+        )
+    ).all()
+
+    by_class: dict[str, dict] = {}
+    for r in rows:
+        slot = by_class.setdefault(r.cls, {"total": Decimal("0"), "count": 0, "reasons": {}})
+        slot["total"] += r.total
+        slot["count"] += r.count
+        slot["reasons"][r.reason] = slot["reasons"].get(r.reason, Decimal("0")) + r.total
+
+    ordered = sorted(by_class.items(), key=lambda kv: kv[1]["total"], reverse=True)
+    classes = [
+        CategoryClassSlice(
+            activity_class=cls,
+            label=CLASS_LABEL[ActivityClass(cls)],
+            total=v["total"].quantize(Decimal("0.01")),
+            count=v["count"],
+        )
+        for cls, v in ordered
+    ]
+
+    dominant = dominant_label = explanation = None
+    grand = sum((v["total"] for _, v in ordered), Decimal("0"))
+    if ordered and grand > 0:
+        cls, v = ordered[0]
+        if cls != ActivityClass.SPENDING.value and v["total"] * 2 > grand:
+            dominant = cls
+            dominant_label = CLASS_LABEL[ActivityClass(cls)]
+            top_reason = max(v["reasons"], key=lambda k: v["reasons"][k])
+            qualifier = "All" if v["total"] == grand else "Most"
+            explanation = (
+                f"{qualifier} of this category's activity in the last 12 months "
+                f"counts as {dominant_label} in reports, because "
+                f"{explain(top_reason)}."
+            )
+
+    return CategoryClassification(
+        classes=classes,
+        dominant=dominant,
+        dominant_label=dominant_label,
+        explanation=explanation,
+    )
 
 
 @router.get("/categories/{category_id}/recent-payee", response_model=RecentPayeeResponse | None)

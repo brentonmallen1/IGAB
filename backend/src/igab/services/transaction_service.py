@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Category, Payee, Transaction
+from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.exceptions import InvariantViolation
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
@@ -493,7 +493,7 @@ class TransactionService:
         dest_category = category_id if to_account.on_budget else None
 
         # Source: outflow from from-account
-        from_payee = await self._get_transfer_payee(budget_id, to_account.name)
+        from_payee = await self._get_transfer_payee(budget_id, to_account)
         source = await self.transaction_repo.create(
             budget_id=budget_id,
             account_id=data.account_id,
@@ -507,7 +507,7 @@ class TransactionService:
         )
 
         # Destination: inflow into to-account
-        to_payee = await self._get_transfer_payee(budget_id, from_account.name)
+        to_payee = await self._get_transfer_payee(budget_id, from_account)
         dest = await self.transaction_repo.create(
             budget_id=budget_id,
             account_id=data.transfer_account_id,
@@ -532,9 +532,15 @@ class TransactionService:
                 await self._record_txn(dest, "create")
         return source
 
-    async def _get_transfer_payee(self, budget_id: uuid.UUID, account_name: str):
-        name = f"Transfer : {account_name}"
-        return await self.payee_repo.find_or_create(budget_id, name)
+    async def _get_transfer_payee(self, budget_id: uuid.UUID, account: Account):
+        """The "Transfer : <account>" payee, with transfer_account_id set.
+
+        Naming it alone is not enough: `transfer_account_id` is what still
+        identifies a row as transfer-shaped after its partner link is gone, and
+        it is what keeps transfer payees out of payee pickers and AI
+        suggestions.
+        """
+        return await self.payee_repo.find_or_create_transfer(budget_id, account.id, account.name)
 
     async def merge(
         self,

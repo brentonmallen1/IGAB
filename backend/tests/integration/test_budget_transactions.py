@@ -235,9 +235,17 @@ async def test_month_reconciles_with_income_vs_expense(api_client, db_session):
     )
     rows = [Decimal(t["amount"]) for t in body["transactions"]]
     income = sum(a for a in rows if a > 0)
-    expenses = -sum(a for a in rows if a < 0)
+    outflow = -sum(a for a in rows if a < 0)
     assert income == Decimal(str(this_month["income"]))
-    assert expenses == Decimal(str(this_month["expenses"]))
+    # The list buckets by sign; the report buckets by activity class, so the
+    # categorized transfer to the brokerage lands in `savings` rather than
+    # `expenses`. Both must still see the same money — that conservation is
+    # the property worth pinning, not which bucket a row happens to fall in.
+    assert outflow == Decimal(str(this_month["expenses"])) + Decimal(
+        str(this_month["savings"])
+    ) + Decimal(str(this_month["debt_principal"]))
+    assert Decimal(str(this_month["expenses"])) == Decimal("200.00")
+    assert Decimal(str(this_month["savings"])) == Decimal("50.00")
 
     # direction narrows to one side, totals still reconcile
     inflow = await _fetch(
@@ -261,7 +269,9 @@ async def test_month_reconciles_with_income_vs_expense(api_client, db_session):
         start_date=month_start.isoformat(),
         end_date=TODAY.isoformat(),
     )
-    assert abs(Decimal(outflow["total_amount"])) == Decimal(str(this_month["expenses"]))
+    assert abs(Decimal(outflow["total_amount"])) == Decimal(
+        str(this_month["expenses"])
+    ) + Decimal(str(this_month["savings"])) + Decimal(str(this_month["debt_principal"]))
 
 
 async def test_pending_excluded_iff_posted_only(api_client, db_session):

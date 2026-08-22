@@ -24,12 +24,12 @@ export function OverviewReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const selectedMonth = useAppStore((s) => s.selectedMonth)
   const { filters } = useReportStore()
-  const { data, isLoading, isError, refetch } = useDashboardMetrics(budgetId, filters.startDate, filters.endDate)
+  const { data, isLoading, isError, error, refetch } = useDashboardMetrics(budgetId, filters.startDate, filters.endDate)
   const { data: budgetMonth } = useBudgetMonth(budgetId, selectedMonth)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return <div className="reports-empty">No data available.</div>
 
   const netWorthDeltaPct = netWorthDelta(Number(data.net_worth), Number(data.net_worth_prev))

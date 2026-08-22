@@ -137,7 +137,7 @@ async def test_budget_vs_actual_and_grouped_include_split_children(db_session):
     assert spent_by_cat.get(str(gas.id)) == Decimal("40.00")
     assert bva["total_spent"] == Decimal("100.00")
 
-    items, total = await reports.spending_grouped(budget.id, START, TODAY)
+    items, total, _ = await reports.spending_grouped(budget.id, START, TODAY)
     grouped = {i["name"]: i["total"] for i in items}
     assert grouped.get("Groceries") == Decimal("60.0")
     assert grouped.get("Gas") == Decimal("40.0")
@@ -192,7 +192,7 @@ async def test_float_boundary_amounts_stay_exact_decimals(db_session):
     assert grand_total == Decimal("0.30")
     assert categories[0]["total"] == Decimal("0.30")
 
-    items, grouped_total = await reports.spending_grouped(budget.id, START, TODAY)
+    items, grouped_total, _ = await reports.spending_grouped(budget.id, START, TODAY)
     assert grouped_total == Decimal("0.30")
     assert items[0]["total"] == Decimal("0.30")
 
@@ -233,8 +233,8 @@ async def test_cash_flow_sankey_includes_split_children(db_session):
 
     sankey = await reports.cash_flow_sankey(budget.id, START, TODAY, mode="spent")
     link_values = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
-    assert link_values.get((f"g_{groceries.category_group_id}", f"c_{groceries.id}")) == Decimal(
+    assert link_values.get((f"g_{groceries.category_group_id}", f"c_{groceries.category_group_id}_{groceries.id}")) == Decimal(
         "60.0"
     )
-    assert link_values.get((f"g_{gas.category_group_id}", f"c_{gas.id}")) == Decimal("40.0")
+    assert link_values.get((f"g_{gas.category_group_id}", f"c_{gas.category_group_id}_{gas.id}")) == Decimal("40.0")
     assert sankey["total_expense"] == Decimal("100.0")

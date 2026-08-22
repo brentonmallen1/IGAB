@@ -25,6 +25,9 @@ function report(): CashFlowReport {
     ],
     total_income: 3000,
     total_expense: 1000,
+    total_spending: 1000,
+    total_savings: 0,
+    total_debt_principal: 0,
     category_payees: {
       c_1: [
         { name: 'MegaMart', total: 250 },

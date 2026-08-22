@@ -17,6 +17,7 @@ import {
 import { useLogout } from '../../api/auth'
 import { useAppStore } from '../../stores/appStore'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
+import { formatMoney } from '../../utils/money'
 import './BudgetSelectorPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import { SharingModal } from '../../components/budgets/SharingModal'
@@ -234,6 +235,21 @@ export function BudgetSelectorPage() {
         )
       }
       toast.success(`Imported ${parts.join(', ')}`, { duration: 15000 })
+      // Unlinked transfer legs still balance the accounts they sit on, but they
+      // can't be told apart from real income and expense, so reports will read
+      // high. Warn rather than bury it in a count — it means the export wasn't
+      // shaped the way we expected, and the numbers can't be trusted until it's
+      // understood.
+      if (r.transfer_legs_unpaired > 0) {
+        const n = r.transfer_legs_unpaired.toLocaleString()
+        const leg = r.transfer_legs_unpaired === 1 ? 'transfer' : 'transfers'
+        toast(
+          `${n} ${leg} couldn't be matched to the other side. Account balances are ` +
+            `still correct, but these may show up as income or spending in reports. ` +
+            `This usually means an account was left out of the import.`,
+          { duration: 20000, icon: '⚠️' }
+        )
+      }
       if (r.errors.length > 0) {
         toast.error(
           `${r.errors.length} rows had problems — first: ${r.errors[0]}`,
@@ -466,6 +482,16 @@ export function BudgetSelectorPage() {
                     (YNAB exports include archived accounts). Need something more specific
                     than these types? You can create custom account types after the import.
                   </span>
+                  {previewAccounts.some((a) => a.needs_review) && (
+                    <span className="ynab-mapping__review-note">
+                      We couldn't tell what{' '}
+                      {previewAccounts.filter((a) => a.needs_review).length} of these are from
+                      their names — they're marked <strong>Check</strong> below. Their balance
+                      is shown to help: a large balance usually means a tracked thing (a house,
+                      a car, a brokerage) that should be <em>off</em> budget. An account left on
+                      budget by mistake throws off every total in your budget.
+                    </span>
+                  )}
                 </label>
                 <div className="ynab-mapping">
                   {previewAccounts.map((a) => {
@@ -473,7 +499,9 @@ export function BudgetSelectorPage() {
                     return (
                       <div
                         key={a.name}
-                        className={`ynab-mapping__row ${skipped ? 'ynab-mapping__row--skipped' : ''}`}
+                        className={`ynab-mapping__row ${skipped ? 'ynab-mapping__row--skipped' : ''} ${
+                          a.needs_review && !skipped ? 'ynab-mapping__row--review' : ''
+                        }`}
                       >
                         <input
                           type="checkbox"
@@ -489,8 +517,19 @@ export function BudgetSelectorPage() {
                         />
                         <div className="ynab-mapping__name">
                           {a.name}
+                          {a.needs_review && !skipped && (
+                            <span
+                              className="ynab-mapping__review"
+                              title="We couldn't identify this account from its name — confirm the type and whether it belongs on budget"
+                            >
+                              Check
+                            </span>
+                          )}
                           <span className="ynab-mapping__count">
                             {a.transaction_count} txns
+                            <span className="ynab-mapping__balance">
+                              {formatMoney(Number(a.implied_balance))}
+                            </span>
                           </span>
                         </div>
                         <select

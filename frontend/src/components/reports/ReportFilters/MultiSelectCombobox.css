@@ -92,6 +92,10 @@
 
 .msc__search {
   flex: 1;
+  /* Without this the input keeps its intrinsic width — min-width defaults to
+     auto on a flex item — and "Select all / Clear all" get pushed out past the
+     right edge of the panel. */
+  min-width: 0;
   border: none;
   background: transparent;
   color: var(--text-primary);
@@ -219,4 +223,16 @@
 
 .msc--disabled .msc__trigger {
   cursor: not-allowed;
+}
+
+/* Wrap rather than truncate: these are the names you are picking between, so
+   hiding the end of one defeats the control. `anywhere` covers a long name with
+   no spaces in it, which would otherwise push the row past the panel edge. */
+/* The option's own label. Named apart from .msc__label (the combobox's
+   field label) because sharing that class let its muted, extra-small type
+   win over .msc__option's colour — so every option rendered secondary and a
+   checked one no longer turned accent. */
+.msc__option-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

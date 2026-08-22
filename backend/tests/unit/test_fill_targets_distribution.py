@@ -17,8 +17,6 @@ bug here directly causes incorrect budget amounts.
 
 from decimal import Decimal
 
-import pytest
-
 
 def D(s: str) -> Decimal:
     return Decimal(s)

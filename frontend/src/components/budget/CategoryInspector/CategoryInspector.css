@@ -581,3 +581,25 @@
     display: none;
   }
 }
+
+/* ─── Classification badge ("Counts as") ─────────────────────────────────── */
+
+/* Calm chip, not an alert: the class is a fact about the category, and the
+   accent border is what says "this one is different" without shouting. */
+.classification-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--border-radius-md);
+  cursor: default;
+}
+
+.classification-hint {
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

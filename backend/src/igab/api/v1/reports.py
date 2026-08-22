@@ -40,10 +40,12 @@ from igab.api.v1.schemas.report import (
     SankeyLink,
     SankeyNode,
     SavingsCategory,
+    SavingsRateResponse,
     SavingsReportResponse,
     SavingsSummary,
     SeasonalityResponse,
     SpendingCategory,
+    SpendingClassExcluded,
     SpendingGroupedResponse,
     SpendingGroupItem,
     SpendingReportResponse,
@@ -59,8 +61,19 @@ from igab.api.v1.schemas.report import (
     VolatilityResponse,
 )
 from igab.dependencies import BudgetAccess, CurrentUser, get_liability_service, get_report_service
+from igab.domain.activity_class import ActivityClass
 from igab.services.liability_service import LiabilityService
 from igab.services.report_service import ReportService
+
+
+#: Spending reports mean money spent. Saving into a brokerage and paying down a
+#: mortgage both leave the budget, but neither is spending, and counting them as
+#: such skews every average. Callers that want the fuller picture opt in.
+def _spending_classes(include_savings: bool) -> list[ActivityClass] | None:
+    if not include_savings:
+        return None  # service default: spending only
+    return [ActivityClass.SPENDING, ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL]
+
 
 router = APIRouter()
 
@@ -74,6 +87,7 @@ async def spending_report(
     end_date: date | None = None,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
+    include_savings: bool = False,
 ) -> SpendingReportResponse:
     today = date.today()
     start = start_date or today.replace(month=1, day=1)
@@ -81,7 +95,12 @@ async def spending_report(
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
     categories, total = await report_svc.spending_by_category(
-        budget_id, start, end, cat_ids, acct_ids
+        budget_id,
+        start,
+        end,
+        cat_ids,
+        acct_ids,
+        _spending_classes(include_savings),
     )
     return SpendingReportResponse(
         categories=[SpendingCategory.model_validate(c) for c in categories], total=total
@@ -275,19 +294,34 @@ async def spending_grouped_report(
     end_date: date | None = None,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
-    exclude_savings: bool = False,
+    include_savings: bool = False,
+    #: Roll up by this view's groups instead of the budget's own.
+    view_id: uuid.UUID | None = None,
 ) -> SpendingGroupedResponse:
     today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
-    items, total = await report_svc.spending_grouped(
-        budget_id, start, end, cat_ids, acct_ids, exclude_savings=exclude_savings
+    items, total, notes = await report_svc.spending_grouped(
+        budget_id,
+        start,
+        end,
+        cat_ids,
+        acct_ids,
+        _spending_classes(include_savings),
+        view_id=view_id,
     )
+    hidden = notes["view_hidden"]
     return SpendingGroupedResponse(
         groups=[SpendingGroupItem.model_validate(i) for i in items],
         total=total,
+        view_hidden_categories=hidden["categories"] if hidden else 0,
+        view_hidden_total=hidden["total"] if hidden else Decimal("0"),
+        class_excluded=[
+            SpendingClassExcluded.model_validate(c) for c in notes["class_excluded"] or []
+        ],
+        view_unavailable=notes["view_unavailable"],
     )
 
 
@@ -416,6 +450,20 @@ async def subscriptions_report(
         summary=SubscriptionsSummary.model_validate(data["summary"]),
         months=data["months"],
     )
+
+
+@router.get("/{budget_id}/reports/savings-rate", response_model=SavingsRateResponse)
+async def savings_rate_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: int = 12,
+) -> SavingsRateResponse:
+    """How much of what came in was kept. Distinct from /reports/savings, which
+    asks what you *budgeted* toward savings; this asks what actually left as
+    saving."""
+    data = await report_svc.savings_rate(budget_id, months)
+    return SavingsRateResponse.model_validate(data)
 
 
 @router.get("/{budget_id}/reports/savings", response_model=SavingsReportResponse)

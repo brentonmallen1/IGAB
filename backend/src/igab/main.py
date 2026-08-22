@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from igab.api.v1.router import api_router
 from igab.config import settings
@@ -141,6 +142,44 @@ async def not_found_handler(request: Request, exc: NotFoundError) -> JSONRespons
 @app.exception_handler(IGABError)
 async def igab_error_handler(request: Request, exc: IGABError) -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(exc)})
+
+
+#: Friendly text per unique constraint, so "I named two things the same" —
+#: an ordinary mistake — reads as a 409 the UI can show instead of a 500.
+#: Keyed by the constraint's own name, which means a router cannot forget to
+#: handle its own table: adding the constraint is what registers the message.
+#: Doing this per-route is what let budget_filters ship without the handling
+#: its sibling budget_views got in the same change, and let a duplicate
+#: PLACEMENT surface as 'a view named "" already exists'.
+_UNIQUE_CONSTRAINT_DETAIL: dict[str, str] = {
+    "uq_budget_user_name": "You already have a budget with that name",
+    "uq_account_budget_name": "An account with that name already exists in this budget",
+    "uq_account_type_budget_key": "An account type with that key already exists",
+    "uq_payee_budget_name": "A payee with that name already exists in this budget",
+    "uq_category_group_budget_name": "A category group with that name already exists",
+    "uq_category_group_name": "A category with that name already exists in this group",
+    "uq_budget_filter_budget_name": "A filter with that name already exists in this budget",
+    "uq_filter_category": "That category is already in this filter",
+    "uq_budget_view_budget_name": "A view with that name already exists in this budget",
+    "uq_budget_view_group_name": "This view already has a group with that name",
+    "uq_budget_view_placement": "That category is placed more than once in this view",
+    "uq_tag_budget_name": "A tag with that name already exists in this budget",
+}
+
+
+def _violated_constraint(exc: IntegrityError) -> str | None:
+    """The constraint name asyncpg reports, if this is a constraint violation."""
+    return getattr(getattr(exc.orig, "__cause__", None), "constraint_name", None)
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+    detail = _UNIQUE_CONSTRAINT_DETAIL.get(_violated_constraint(exc) or "")
+    if detail is None:
+        # Not a name collision we have copy for — a real fault, so let the
+        # catch-all own it rather than dressing it up as the user's mistake.
+        return await unhandled_exception_handler(request, exc)
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": detail})
 
 
 @app.exception_handler(Exception)

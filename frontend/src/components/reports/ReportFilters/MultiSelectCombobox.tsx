@@ -159,7 +159,7 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
                   onMouseEnter={() => setHighlightedIndex(idx)}
                 >
                   <span className="msc__check">{checked && <Check size={11} />}</span>
-                  {opt.label}
+                  <span className="msc__option-label">{opt.label}</span>
                 </div>
               )
             })}

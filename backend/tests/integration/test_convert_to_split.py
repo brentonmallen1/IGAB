@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from igab.db.models import Transaction, TransactionAttachment
+from igab.db.models import TransactionAttachment
 from igab.domain.exceptions import InvariantViolation
 from igab.services.transaction_service import SplitSpec
 

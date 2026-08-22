@@ -10,7 +10,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
-import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
+import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -21,13 +21,13 @@ export function PayeeReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, refetch } = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
+  const { data, isLoading, isError, error, refetch } = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
   const [view, setView] = useState<'top' | 'recurring'>('top')
   const [logScale, setLogScale] = useState(false)
   const captureRef = useRef<HTMLDivElement>(null)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const payees = data?.payees ?? []
   const recurring = payees.filter((p) => p.is_recurring)
@@ -67,6 +67,7 @@ export function PayeeReport({ budgetId }: Props) {
           <p>Ranks your top payees by total spending in the selected period. <strong>Highlighted bars</strong> indicate recurring payees (appeared in 3+ different months).</p>
           <p>Use <em>Recurring</em> mode to focus only on fixed or habitual expenses — subscriptions, utilities, regular vendors. These are the easiest targets for cutting predictable spending.</p>
           <ReportScopeNote scope="on-budget-filterable" />
+          <SpendingClassNote />
         </ReportInfoButton>
         <p className="report-section__subtitle">
           Top payees by spending. Recurring = appeared in 3+ months.

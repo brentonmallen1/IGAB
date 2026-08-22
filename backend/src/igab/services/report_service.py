@@ -1,6 +1,7 @@
 import io
 import json
 import uuid
+from collections.abc import Sequence
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import TypedDict
@@ -8,16 +9,26 @@ from typing import TypedDict
 import polars as pl
 from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from igab.db.models import (
     Account,
     BudgetAssignment,
+    BudgetView,
+    BudgetViewGroup,
+    BudgetViewPlacement,
     Category,
     CategoryGroup,
     Liability,
     LiabilityBalanceSnapshot,
     Payee,
     Transaction,
+)
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    CLASS_LABEL,
+    SPENDING_CLASSES,
+    ActivityClass,
 )
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
@@ -100,6 +111,66 @@ class AnomalyRow(TypedDict):
     history: list[Decimal]
 
 
+#: Bucket for categories a view has not placed. A string, not a UUID, so it
+#: cannot collide with a real group id.
+UNASSIGNED_VIEW_GROUP = "__unassigned__"
+
+
+def _spending_classes(
+    include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
+):
+    """WHERE clause limiting a spending query to the requested activity classes.
+
+    Defaults to spending alone. That is the behaviour change derkus asked for:
+    a transfer to a brokerage or a mortgage is money leaving the budget, but it
+    is not money spent, and counting it as spending skews every average.
+    Callers that genuinely want the wider picture pass the classes they mean.
+
+    `scoped_accounts` says the caller has an explicit account selection, which
+    overrides the on-budget default — so the user may be looking straight at a
+    tracked account, whose outflows classify `investment_return` (brokerage
+    fees) or `debt_interest` (loan interest) and never `spending`. Without
+    widening here, deliberately picking "Brokerage" in the account filter
+    returned an empty chart: this predicate is ANDed into the WHERE *before*
+    the scope override, so it silently cancelled the user's selection.
+    """
+    classes = list(include or SPENDING_CLASSES)
+    if scoped_accounts:
+        classes += [ActivityClass.INVESTMENT_RETURN, ActivityClass.DEBT_INTEREST]
+    return ACTIVITY_CLASS.in_([c.value for c in classes])
+
+
+#: Payee of record for a leaf row: its own, falling back to its split parent's.
+#: Splits are one trip to the shop with the legs itemised, so the parent names
+#: where the money went — but the legs are what carry categories, and therefore
+#: classes. Reading the parent row instead would classify the whole basket by
+#: its net sign, counting a savings-tagged leg as spending.
+_split_parent = aliased(Transaction)
+PAYEE_OF_RECORD = func.coalesce(Transaction.payee_id, _split_parent.payee_id)
+
+
+#: Inflow that is not income: money drawn back out of savings, or borrowed.
+#: Labelled from the budget's point of view — "where did this money come from"
+#: — rather than by the class name, which describes the outflow direction.
+_DRAWDOWN_LABELS: dict[str, str] = {
+    ActivityClass.SAVINGS.value: "Drawn from savings",
+    ActivityClass.DEBT_PRINCIPAL.value: "Borrowed",
+    ActivityClass.INVESTMENT_RETURN.value: "Investment gains",
+}
+
+
+#: Classes worth explaining when a spending report leaves them out. Internal
+#: transfers and market movement are not "money you spent somewhere else" — a
+#: note about them would be noise, not reassurance.
+_EXPLAINED_EXCLUSIONS: frozenset[str] = frozenset(
+    {
+        ActivityClass.SAVINGS.value,
+        ActivityClass.DEBT_PRINCIPAL.value,
+        ActivityClass.DEBT_INTEREST.value,
+    }
+)
+
+
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -113,6 +184,7 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
+        include_classes: Sequence[ActivityClass] | None = None,
     ) -> tuple[list[dict], Decimal]:
         q = (
             select(
@@ -132,6 +204,7 @@ class ReportService:
                 Transaction.date <= end_date,
                 LEAF,
                 CASH_FLOW_ROW,
+                _spending_classes(include_classes, scoped_accounts=bool(account_ids)),
             )
         )
         if category_ids:
@@ -176,76 +249,43 @@ class ReportService:
         return categories, Decimal(str(round(grand_total, 4)))
 
     async def income_vs_expense(self, budget_id: uuid.UUID, months: int = 12) -> list[dict]:
+        """Money in, money out, per month — with saving broken out of spending.
+
+        `expenses` used to be every negative row, which meant a transfer into a
+        brokerage read as an expense. It now means spending; money that left the
+        budget but stayed in the household's net worth is reported separately as
+        `savings` and `debt_principal`.
+
+        `net` remains income minus everything that left, so the four figures
+        still reconcile — a chart can stack them without the total drifting.
+        Internal transfers between two on-budget accounts are excluded: they
+        cancel, and showing them would double the apparent flow.
+        """
         today = date.today()
         first_of_month = today.replace(day=1)
         start = _subtract_months(first_of_month, months - 1)
 
-        q = select(Transaction.date, Transaction.amount).where(
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            Transaction.date >= start,
-            Transaction.date <= today,
-            PARENT_ROW,
-            CASH_FLOW_ROW,
-            ON_BUDGET_ACCOUNT,
-        )
-        rows = (await self.session.execute(q)).all()
-
-        if not rows:
-            return [
-                {
-                    "month": _subtract_months(first_of_month, i),
-                    "income": Decimal("0"),
-                    "expenses": Decimal("0"),
-                    "net": Decimal("0"),
-                }
-                for i in range(months - 1, -1, -1)
-            ]
-
-        df = pl.DataFrame(
-            {
-                "date": [r[0] for r in rows],
-                "amount": [float(r[1]) for r in rows],
-            },
-            schema_overrides={"date": pl.Date, "amount": pl.Float64},
-        )
-
-        monthly = (
-            df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
-            .group_by("month")
-            .agg(
-                pl.col("amount").filter(pl.col("amount") > 0).sum().alias("income"),
-                pl.col("amount").filter(pl.col("amount") < 0).sum().abs().alias("expenses"),
-                pl.col("amount").sum().alias("net"),
-            )
-            .sort("month")
-        )
-
-        month_map = {row["month"]: row for row in monthly.iter_rows(named=True)}
+        by_month = await self._monthly_class_totals(budget_id, start, today)
 
         results = []
         for i in range(months - 1, -1, -1):
             month_start = _subtract_months(first_of_month, i)
-            if month_start in month_map:
-                r = month_map[month_start]
-                results.append(
-                    {
-                        "month": month_start,
-                        "income": Decimal(str(round(r["income"] or 0, 4))),
-                        "expenses": Decimal(str(round(r["expenses"] or 0, 4))),
-                        "net": Decimal(str(round(r["net"] or 0, 4))),
-                    }
-                )
-            else:
-                results.append(
-                    {
-                        "month": month_start,
-                        "income": Decimal("0"),
-                        "expenses": Decimal("0"),
-                        "net": Decimal("0"),
-                    }
-                )
+            buckets = by_month.get(month_start, {})
+            income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
+            # Outflow classes are stored negative; report magnitudes.
+            expenses = -buckets.get(ActivityClass.SPENDING.value, Decimal("0"))
+            savings = -buckets.get(ActivityClass.SAVINGS.value, Decimal("0"))
+            debt = -buckets.get(ActivityClass.DEBT_PRINCIPAL.value, Decimal("0"))
+            results.append(
+                {
+                    "month": month_start,
+                    "income": income,
+                    "expenses": expenses,
+                    "savings": savings,
+                    "debt_principal": debt,
+                    "net": income - expenses - savings - debt,
+                }
+            )
         return results
 
     async def export_transactions(
@@ -428,59 +468,37 @@ class ReportService:
         net_worth -= unmanaged_now
         net_worth_prev -= self._unmanaged_total_at(unmanaged_series, prev_end)
 
-        # Cash-flow expenses only
-        expenses_df = pdf.filter(pl.col("cash_flow") & (pl.col("amount") < 0))
-
-        # Current period income/expenses
-        period_df = pdf.filter(
-            (pl.col("date") >= start_date) & (pl.col("date") <= end_date) & pl.col("cash_flow")
-        )
-        income_this = Decimal(
-            str(period_df.filter(pl.col("amount") > 0).select(pl.col("amount").sum()).item() or 0)
-        )
-        expenses_this = Decimal(
-            str(
-                period_df.filter(pl.col("amount") < 0).select(pl.col("amount").abs().sum()).item()
-                or 0
-            )
-        )
-
-        # Previous period expenses
-        prev_df = pdf.filter(
-            (pl.col("date") >= prev_start) & (pl.col("date") <= prev_end) & pl.col("cash_flow")
-        )
-        expenses_prev = Decimal(
-            str(
-                prev_df.filter(pl.col("amount") < 0).select(pl.col("amount").abs().sum()).item()
-                or 0
-            )
-        )
-
-        # Burn rates (annualized to monthly)
+        # Every figure below reads the activity-class partition, not the sign
+        # of the amount. The dashboard summarises the report tabs, so it has to
+        # mean the same thing they do: reading `amount < 0` as "expense" made
+        # this card announce "Savings Rate 0% / Expenses $5,000" beside a
+        # Savings Rate tab reading 40% and an Income vs Expenses tab reading
+        # $3,000, for the same window and the same budget.
         thirty_ago = today - timedelta(days=30)
         ninety_ago = today - timedelta(days=90)
-        burn_30 = Decimal(
-            str(
-                expenses_df.filter(pl.col("date") >= thirty_ago)
-                .select(pl.col("amount").abs().sum())
-                .item()
-                or 0
-            )
-        )
-        burn_90_raw = Decimal(
-            str(
-                expenses_df.filter(pl.col("date") >= ninety_ago)
-                .select(pl.col("amount").abs().sum())
-                .item()
-                or 0
-            )
-        )
-        burn_90 = burn_90_raw / 3  # Monthly equivalent
+        cdf = await self._class_frame(budget_id, min(prev_start, ninety_ago), today)
 
-        # Savings rate
-        savings_rate = (
-            float((income_this - expenses_this) / income_this) if income_this > 0 else 0.0
-        )
+        def _cls_total(start: date, end: date, cls: ActivityClass) -> Decimal:
+            window = cdf.filter(
+                (pl.col("date") >= start) & (pl.col("date") <= end) & (pl.col("cls") == cls.value)
+            )
+            return Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
+
+        income_this = _cls_total(start_date, end_date, ActivityClass.INCOME)
+        # Outflow classes are stored negative; these cards report magnitudes.
+        expenses_this = -_cls_total(start_date, end_date, ActivityClass.SPENDING)
+        savings_this = -_cls_total(start_date, end_date, ActivityClass.SAVINGS)
+        expenses_prev = -_cls_total(prev_start, prev_end, ActivityClass.SPENDING)
+
+        # Burn rate is how fast money is consumed, so savings and debt
+        # principal are out — matching the Burn Rate chart exactly.
+        burn_30 = -_cls_total(thirty_ago, today, ActivityClass.SPENDING)
+        burn_90 = -_cls_total(ninety_ago, today, ActivityClass.SPENDING) / 3
+
+        # savings / income, the same ratio the Savings Rate tab shows by
+        # default. The old (income - expenses) / income counted a brokerage
+        # transfer as an expense and so reported 0% for a household saving 40%.
+        savings_rate = float(savings_this / income_this) if income_this > 0 else 0.0
 
         # Days until zero
         daily_burn = float(burn_30) / 30 if burn_30 > 0 else 0
@@ -752,9 +770,17 @@ class ReportService:
             Transaction.amount < 0,
             Transaction.date >= start,
             Transaction.date <= today,
-            PARENT_ROW,
+            # LEAF, not PARENT_ROW. The two sum to the same figure, but only
+            # leaves carry categories and therefore classes: a split parent has
+            # none, so it classified as plain spending and dragged any
+            # savings-tagged leg in with it — burn rate reported $300 for a
+            # split whose real spending was $100.
+            LEAF,
             CASH_FLOW_ROW,
             ON_BUDGET_ACCOUNT,
+            # A burn rate is how fast money is consumed. Money moved into
+            # savings has not been burned.
+            _spending_classes(),
         )
         txns = (await self.session.execute(q)).all()
 
@@ -953,6 +979,7 @@ class ReportService:
                 Category.name.label("category_name"),
                 CategoryGroup.id.label("group_id"),
                 CategoryGroup.name.label("group_name"),
+                ACTIVITY_CLASS.label("activity_class"),
             )
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
@@ -978,26 +1005,57 @@ class ReportService:
                 "links": [],
                 "total_income": Decimal("0"),
                 "total_expense": Decimal("0"),
+                "total_spending": Decimal("0"),
+                "total_savings": Decimal("0"),
+                "total_debt_principal": Decimal("0"),
                 "category_payees": {},
                 "group_categories": {},
             }
 
         # Income at parent level (cash-flow view); expense category flows at
         # leaf level so split children reach their categories.
-        income_rows = [r for r in rows if r.amount > 0 and r.parent_transaction_id is None]
-        expense_rows = [r for r in rows if r.amount < 0 and not r.is_split]
+        # Split by activity class, not by amount sign. Sign said a withdrawal
+        # FROM a brokerage (+500 into checking) was income, which disagreed
+        # with income_vs_expense over the same window and left the savings
+        # branch missing the draw. Income is what classifies as income;
+        # everything else that moved money out is outflow.
+        income_rows = [
+            r
+            for r in rows
+            if r.parent_transaction_id is None and r.activity_class == ActivityClass.INCOME.value
+        ]
+        expense_rows = [
+            r
+            for r in rows
+            if not r.is_split and r.amount < 0 and r.activity_class != ActivityClass.INCOME.value
+        ]
 
         total_income = sum((r.amount for r in income_rows), Decimal("0"))
+        # Everything leaving the budget. Kept as one figure because the links
+        # off the budget node must sum to it — that flow conservation is what
+        # makes the diagram readable, and it holds however the branches split.
         total_expense = abs(sum((r.amount for r in expense_rows), Decimal("0")))
+
+        def _class_total(cls: ActivityClass) -> Decimal:
+            return abs(
+                sum(
+                    (r.amount for r in expense_rows if r.activity_class == cls.value),
+                    Decimal("0"),
+                )
+            )
+
+        total_spending = _class_total(ActivityClass.SPENDING)
+        total_savings = _class_total(ActivityClass.SAVINGS)
+        total_debt_principal = _class_total(ActivityClass.DEBT_PRINCIPAL)
 
         nodes: list[dict] = []
         links: list[dict] = []
         node_ids: dict[str, int] = {}
 
-        def get_node(nid: str, name: str, ntype: str) -> int:
+        def get_node(nid: str, name: str, ntype: str, entity_id: str | None = None) -> int:
             if nid not in node_ids:
                 node_ids[nid] = len(nodes)
-                nodes.append({"id": nid, "name": name, "type": ntype})
+                nodes.append({"id": nid, "name": name, "type": ntype, "entity_id": entity_id})
             return node_ids[nid]
 
         get_node("__budget__", "Budget", "budget")
@@ -1027,41 +1085,84 @@ class ReportService:
                 }
             )
 
+        # Money coming back INTO the budget that is not income: drawing on a
+        # brokerage, or borrowing. By amount sign these read as income, which
+        # overstated earnings and disagreed with income_vs_expense; dropping
+        # them instead would silently break flow conservation. They get their
+        # own inflow trunk so the diagram stays honest either way.
+        drawn_by_class: dict[str, Decimal] = {}
+        for r in rows:
+            if (
+                r.parent_transaction_id is None
+                and r.amount > 0
+                and r.activity_class != ActivityClass.INCOME.value
+                and r.activity_class in _DRAWDOWN_LABELS
+            ):
+                drawn_by_class[r.activity_class] = (
+                    drawn_by_class.get(r.activity_class, Decimal("0")) + r.amount
+                )
+
+        for cls, total in sorted(drawn_by_class.items(), key=lambda x: -x[1]):
+            nid = f"drawn_{cls}"
+            get_node(nid, _DRAWDOWN_LABELS[cls], "income_payee")
+            links.append({"source": nid, "target": "__budget__", "value": total})
+
         # Expenses: budget -> category group -> category -> top payees.
         # Uncategorized spending flows through its own pseudo group/category so
         # the links always sum to total_expense (flow conservation).
+        # Keyed by (group, category), not category alone: with savings on its
+        # own branch, one category can legitimately appear under two trunks —
+        # ordinary spending in its real group, and a savings transfer filed to
+        # the same category under Savings. Keying by category would collapse
+        # them and break flow conservation.
         group_totals: dict[str, Decimal] = {}
-        cat_totals: dict[str, Decimal] = {}
-        cat_to_group: dict[str, tuple[str, str]] = {}
-        cat_names: dict[str, str] = {}
-        payee_by_cat: dict[str, dict[str, Decimal]] = {}
+        cat_totals: dict[tuple[str, str], Decimal] = {}
+        group_names: dict[str, str] = {}
+        cat_names: dict[tuple[str, str], str] = {}
+        payee_by_cat: dict[tuple[str, str], dict[str, Decimal]] = {}
+
+        # Saving and paying down debt leave the budget but are not spending, so
+        # they get their own branch off the budget node instead of sitting
+        # inside an expense group where they read as consumption. The real
+        # categories still hang beneath, so the detail is unchanged — only
+        # which trunk they belong to.
+        CLASS_BRANCH = {
+            ActivityClass.SAVINGS.value: ("__savings__", "Savings"),
+            ActivityClass.DEBT_PRINCIPAL.value: ("__debt_principal__", "Debt Payments"),
+        }
 
         for r in expense_rows:
+            branch = CLASS_BRANCH.get(r.activity_class)
             if r.category_id:
                 cat_id = str(r.category_id)
-                gid = str(r.group_id) if r.group_id else "__uncategorized__"
-                gname = r.group_name or "Uncategorized"
                 cname = r.category_name or cat_id
+                if branch:
+                    gid, gname = branch
+                else:
+                    gid = str(r.group_id) if r.group_id else "__uncategorized__"
+                    gname = r.group_name or "Uncategorized"
+            elif branch:
+                gid, gname = branch
+                cat_id, cname = gid, gname
             else:
                 cat_id = "__uncategorized__"
                 gid = "__uncategorized__"
                 gname = "Uncategorized"
                 cname = "Uncategorized"
 
+            slot = (gid, cat_id)
             group_totals[gid] = group_totals.get(gid, Decimal("0")) + abs(r.amount)
-            cat_totals[cat_id] = cat_totals.get(cat_id, Decimal("0")) + abs(r.amount)
-            cat_to_group[cat_id] = (gid, gname)
-            cat_names[cat_id] = cname
+            cat_totals[slot] = cat_totals.get(slot, Decimal("0")) + abs(r.amount)
+            group_names[gid] = gname
+            cat_names[slot] = cname
 
             pname = r.payee_name or "Unknown"
             pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
-            if cat_id not in payee_by_cat:
-                payee_by_cat[cat_id] = {}
-            payee_by_cat[cat_id][pid] = payee_by_cat[cat_id].get(pid, Decimal("0")) + abs(r.amount)
+            payee_by_cat.setdefault(slot, {})
+            payee_by_cat[slot][pid] = payee_by_cat[slot].get(pid, Decimal("0")) + abs(r.amount)
 
         for gid, total in sorted(group_totals.items(), key=lambda x: -x[1]):
-            gname = next((v[1] for k, v in cat_to_group.items() if v[0] == gid), gid)
-            get_node(f"g_{gid}", gname, "category_group")
+            get_node(f"g_{gid}", group_names.get(gid, gid), "category_group")
             links.append(
                 {
                     "source": "__budget__",
@@ -1076,39 +1177,54 @@ class ReportService:
             pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
             payee_names[pid] = pname
 
-        group_to_cats: dict[str, list[str]] = {}
+        group_to_cats: dict[str, list[tuple[str, str]]] = {}
 
         category_payees: dict[str, list[dict]] = {}
-        for cat_id, cat_payees in payee_by_cat.items():
-            gid, _ = cat_to_group[cat_id]
-            cat_name = cat_names[cat_id]
-            group_to_cats.setdefault(gid, []).append(cat_id)
-            get_node(f"c_{cat_id}", cat_name, "category")
+        for slot, cat_payees in payee_by_cat.items():
+            gid, cat_id = slot
+            # Keyed by (group, category) so one category can appear under both
+            # its own group and the savings/debt trunk. The composite is a
+            # display key only — `entity_id` is what a drill-down needs, and
+            # parsing it back out of the id sent a non-UUID to the API.
+            node_id = f"c_{gid}_{cat_id}"
+            group_to_cats.setdefault(gid, []).append(slot)
+            get_node(node_id, cat_names[slot], "category", entity_id=cat_id)
             links.append(
                 {
                     "source": f"g_{gid}",
-                    "target": f"c_{cat_id}",
-                    "value": cat_totals[cat_id],
+                    "target": node_id,
+                    "value": cat_totals[slot],
                 }
             )
             top10 = sorted(cat_payees.items(), key=lambda x: -x[1])[:10]
-            category_payees[f"c_{cat_id}"] = [
+            category_payees[node_id] = [
                 {"name": payee_names.get(pid, "Unknown"), "total": ptotal} for pid, ptotal in top10
             ]
 
         group_categories: dict[str, list[dict]] = {}
-        for gid, cats in group_to_cats.items():
-            top10 = sorted(cats, key=lambda c: -cat_totals.get(c, Decimal("0")))[:10]
+        for gid, slots in group_to_cats.items():
+            top10 = sorted(slots, key=lambda sl: -cat_totals.get(sl, Decimal("0")))[:10]
             group_categories[f"g_{gid}"] = [
-                {"name": cat_names.get(c, c), "total": cat_totals.get(c, Decimal("0"))}
-                for c in top10
+                {"name": cat_names.get(sl, sl[1]), "total": cat_totals.get(sl, Decimal("0"))}
+                for sl in top10
             ]
 
         return {
-            "nodes": [{"id": n["id"], "name": n["name"], "type": n["type"]} for n in nodes],
+            "nodes": [
+                {
+                    "id": n["id"],
+                    "name": n["name"],
+                    "type": n["type"],
+                    "entity_id": n.get("entity_id"),
+                }
+                for n in nodes
+            ],
             "links": links,
             "total_income": total_income,
             "total_expense": total_expense,
+            "total_spending": total_spending,
+            "total_savings": total_savings,
+            "total_debt_principal": total_debt_principal,
             "category_payees": category_payees,
             "group_categories": group_categories,
         }
@@ -1529,18 +1645,30 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
-        exclude_savings: bool = False,
-    ) -> tuple[list[dict], Decimal]:
-        # Get categories to exclude if exclude_savings is True
-        exclude_cat_ids: set[uuid.UUID] = set()
-        if exclude_savings:
-            from igab.repositories.tag_repo import TagRepository
+        include_classes: Sequence[ActivityClass] | None = None,
+        view_id: uuid.UUID | None = None,
+    ) -> tuple[list[dict], Decimal, dict]:
+        """Spending rolled up by group.
 
-            tag_repo = TagRepository(self.session)
-            exclude_cat_ids = await tag_repo.get_category_ids_by_system_keys(
-                budget_id, ["savings", "long_term_expense"]
-            )
+        With `view_id`, the groups come from that view's arrangement instead of
+        the budget's own — the same money read a different way, which is the
+        point of a view. Categories the view hides drop out; ones it has not
+        placed collect under "Unassigned", or drop out too if the view says so.
 
+        The third element is a notes dict explaining what the report left out,
+        so the chart can say so instead of silently shrinking:
+
+        - ``view_hidden``: ``{"categories": n, "total": Decimal}`` or None —
+          spending dropped because the active view hides those categories.
+        - ``class_excluded``: per-class list or None — activity in categories
+          the user is looking at (their selection, or the view's visible set)
+          that is savings / debt payment rather than spending. A car payment
+          that "vanishes" from a spending report is this, and without the note
+          the exclusion is indistinguishable from data loss.
+
+        The groups/total shape is identical either way, so the client-side
+        rollup does not care which arrangement produced it.
+        """
         q = (
             select(
                 Category.id,
@@ -1548,6 +1676,7 @@ class ReportService:
                 CategoryGroup.id.label("group_id"),
                 CategoryGroup.name.label("group_name"),
                 Transaction.amount,
+                ACTIVITY_CLASS.label("cls"),
             )
             .join(Transaction, Transaction.category_id == Category.id)
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
@@ -1569,19 +1698,80 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
-        if exclude_cat_ids:
-            q = q.where(Transaction.category_id.notin_(exclude_cat_ids))
         rows = (await self.session.execute(q)).all()
 
+        # `_view_arrangement` returns None for a view that does not exist or
+        # belongs to another budget. Falling back to the budget's own groups
+        # there is right — an empty report would be worse — but it must be
+        # visible: reportStore persists viewId outside any budget scope, so
+        # deleting a view in another tab, or switching budgets, otherwise left
+        # the page charting one arrangement while still requesting another.
+        regroup = await self._view_arrangement(budget_id, view_id) if view_id else None
+        view_unavailable = view_id is not None and regroup is None
+
+        # One scan, partitioned here. The class filter used to sit in the WHERE
+        # above while _class_excluded reran the identical query for the
+        # complement — two full scans of the same window, each paying the
+        # per-row subqueries ACTIVITY_CLASS compiles to, on exactly the
+        # requests a view or a selection makes.
+        included = {c.value for c in (include_classes or SPENDING_CLASSES)}
+        if account_ids:
+            included |= {
+                ActivityClass.INVESTMENT_RETURN.value,
+                ActivityClass.DEBT_INTEREST.value,
+            }
+        counted = [r for r in rows if r.cls in included]
+        other_class = [r for r in rows if r.cls not in included]
+
+        def _visible(candidates: list) -> list:
+            return (
+                candidates
+                if regroup is None
+                else [r for r in candidates if regroup(r.id) is not None]
+            )
+
+        # "This view hides $X of spending" means spending, not every class —
+        # a debt payment the view also hides belongs to neither note.
+        dropped_by_view: dict | None = None
+        if regroup is not None:
+            dropped = [r for r in counted if regroup(r.id) is None]
+            if dropped:
+                dropped_by_view = {
+                    "categories": len({r.id for r in dropped}),
+                    "total": sum((abs(r.amount) for r in dropped), Decimal("0")),
+                }
+
+        # A category the view deliberately hides is the view's story, so its
+        # excluded activity is left out of this note too.
+        class_excluded = self._class_excluded_note(
+            _visible(other_class),
+            scoped=bool(category_ids) or regroup is not None,
+        )
+        rows = _visible(counted)
+        notes = {
+            "view_hidden": dropped_by_view,
+            "class_excluded": class_excluded,
+            "view_unavailable": view_unavailable,
+        }
+
+        # The all-hidden case still carries the notes: an empty chart with
+        # no explanation is exactly the failure these exist to prevent.
         if not rows:
-            return [], Decimal("0")
+            return [], Decimal("0"), notes
+
+        def _group_of(r) -> tuple[str, str]:
+            if regroup is None:
+                return str(r.group_id), r.group_name
+            placed = regroup(r.id)
+            assert placed is not None  # filtered above
+            return placed
 
         df = pl.DataFrame(
             {
                 "cat_id": [str(r.id) for r in rows],
                 "cat_name": [r.name for r in rows],
-                "group_id": [str(r.group_id) for r in rows],
-                "group_name": [r.group_name for r in rows],
+                "group_id": [_group_of(r)[0] for r in rows],
+                "group_name": [_group_of(r)[1] for r in rows],
                 "amount": [abs(float(r.amount)) for r in rows],
             }
         )
@@ -1610,7 +1800,45 @@ class ReportService:
             for row in cat_agg.iter_rows(named=True)
         ]
 
-        return items, Decimal(str(round(grand_total, 4)))
+        return items, Decimal(str(round(grand_total, 4))), notes
+
+    @staticmethod
+    def _class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | None:
+        """Savings / debt activity the report will not count, summarised.
+
+        Only when the user has *pointed at* categories — an explicit selection
+        or an active view — because that is when absence misleads: "I selected
+        Car Payment and it isn't here" reads as a bug, not as a definition.
+        The unfiltered report stays calm; the info panel covers the general
+        rule there.
+        """
+        if not scoped or not excluded_rows:
+            return None
+
+        by_class: dict[str, dict] = {}
+        for r in excluded_rows:
+            if r.cls not in _EXPLAINED_EXCLUSIONS:
+                continue
+            slot = by_class.setdefault(r.cls, {"categories": set(), "total": Decimal("0")})
+            slot["categories"].add(r.id)
+            slot["total"] += abs(r.amount)
+        if not by_class:
+            return None
+
+        return sorted(
+            (
+                {
+                    "activity_class": cls,
+                    "label": CLASS_LABEL[ActivityClass(cls)],
+                    "categories": len(v["categories"]),
+                    # Storage is 4dp; the note is user-facing copy, so cents.
+                    "total": v["total"].quantize(Decimal("0.01")),
+                }
+                for cls, v in by_class.items()
+            ),
+            key=lambda v: v["total"],
+            reverse=True,
+        )
 
     # ─── Seasonality ─────────────────────────────────────────────────────────
 
@@ -1706,12 +1934,13 @@ class ReportService:
             select(
                 Transaction.date,
                 Transaction.amount,
-                Transaction.payee_id,
+                PAYEE_OF_RECORD.label("payee_id"),
                 Transaction.category_id,
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
             )
-            .outerjoin(Payee, Transaction.payee_id == Payee.id)
+            .outerjoin(_split_parent, Transaction.parent_transaction_id == _split_parent.id)
+            .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
                 Transaction.budget_id == budget_id,
@@ -1720,15 +1949,18 @@ class ReportService:
                 Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                # Payee-of-record lives on the parent row; per-child payees on
-                # splits are intentionally not surfaced here.
-                PARENT_ROW,
+                # Leaves, so each split leg classifies on its own category;
+                # the payee still comes from the parent row via PAYEE_OF_RECORD.
+                LEAF,
                 CASH_FLOW_ROW,
-                Transaction.payee_id.isnot(None),
+                PAYEE_OF_RECORD.isnot(None),
+                # Otherwise "Transfer : Brokerage" ranks as a top payee, which
+                # is true and useless — it is not somewhere money was spent.
+                _spending_classes(scoped_accounts=bool(account_ids)),
             )
         )
         if payee_ids:
-            q = q.where(Transaction.payee_id.in_(payee_ids))
+            q = q.where(PAYEE_OF_RECORD.in_(payee_ids))
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -1837,6 +2069,7 @@ class ReportService:
             Transaction.date <= end_date,
             LEAF,
             CASH_FLOW_ROW,
+            _spending_classes(scoped_accounts=bool(account_ids)),
         )
         if category_ids:
             q = q.where(Transaction.category_id.in_(category_ids))
@@ -1913,6 +2146,12 @@ class ReportService:
                 Transaction.memo,
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
+                # Not filtered by class: a large transfer into savings really is
+                # one of the largest transactions, and a timeline that hid it
+                # would misrepresent what moved. But colouring by sign called it
+                # an expense — the same mislabelling this taxonomy exists to fix
+                # — so the class rides along and the chart labels it honestly.
+                ACTIVITY_CLASS.label("activity_class"),
             )
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
@@ -1944,6 +2183,8 @@ class ReportService:
                 "payee_name": r.payee_name,
                 "category_name": r.category_name,
                 "memo": r.memo,
+                "activity_class": r.activity_class,
+                "activity_label": CLASS_LABEL[ActivityClass(r.activity_class)],
             }
             for r in rows
         ]
@@ -2100,6 +2341,202 @@ class ReportService:
                 "active_count": len(subscriptions),
             },
             "months": month_list,
+        }
+
+    async def _class_frame(self, budget_id: uuid.UUID, start: date, end: date) -> pl.DataFrame:
+        """(date, amount, class) for on-budget leaf rows, for window slicing.
+
+        Same rows and same classification as `_monthly_class_totals`; that one
+        groups by month in SQL, this one hands back the rows so a caller can
+        cut arbitrary windows (30 days, previous period) without a query each.
+        """
+        rows = (
+            await self.session.execute(
+                select(
+                    Transaction.date,
+                    Transaction.amount,
+                    ACTIVITY_CLASS.label("cls"),
+                ).where(
+                    Transaction.budget_id == budget_id,
+                    NOT_DELETED,
+                    POSTED,
+                    LEAF,
+                    Transaction.date >= start,
+                    Transaction.date <= end,
+                    ON_BUDGET_ACCOUNT,
+                )
+            )
+        ).all()
+        return pl.DataFrame(
+            {
+                "date": [r.date for r in rows],
+                "amount": [float(r.amount) for r in rows],
+                "cls": [r.cls for r in rows],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64, "cls": pl.String},
+        )
+
+    async def _monthly_class_totals(
+        self, budget_id: uuid.UUID, start: date, end: date
+    ) -> dict[date, dict[str, Decimal]]:
+        """month -> activity class -> signed total, for on-budget rows.
+
+        LEAF, not PARENT_ROW. The two sum to the same figure (money
+        conservation), but only leaves carry a category, and a split parent can
+        mix classes across its legs — one bank row holding both groceries and a
+        transfer into savings. Aggregating the parent would force that row into
+        a single class chosen by its net sign.
+        """
+        month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        q = (
+            select(
+                month_col,
+                ACTIVITY_CLASS.label("cls"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            )
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                LEAF,
+                Transaction.date >= start,
+                Transaction.date <= end,
+                ON_BUDGET_ACCOUNT,
+            )
+            .group_by(month_col, ACTIVITY_CLASS)
+        )
+        rows = (await self.session.execute(q)).all()
+
+        by_month: dict[date, dict[str, Decimal]] = {}
+        for row in rows:
+            key = row.month.date() if hasattr(row.month, "date") else row.month
+            by_month.setdefault(key, {})[row.cls] = Decimal(str(row.total))
+        return by_month
+
+    async def _view_arrangement(self, budget_id: uuid.UUID, view_id: uuid.UUID):
+        """Return `category_id -> (group_id, group_name)` for one view, or None
+        for a category the view leaves out.
+
+        Mirrors the budget page's `groupByView` so a report and the grid never
+        disagree about where a category sits: hidden placements are dropped,
+        unplaced ones fall to "Unassigned" unless the view hides those too.
+        """
+        view = (
+            await self.session.execute(
+                select(BudgetView).where(
+                    BudgetView.id == view_id,
+                    BudgetView.budget_id == budget_id,
+                    BudgetView.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+        if view is None:
+            return None
+
+        group_names = {
+            g.id: g.name
+            for g in (
+                await self.session.execute(
+                    select(BudgetViewGroup).where(BudgetViewGroup.view_id == view_id)
+                )
+            )
+            .scalars()
+            .all()
+        }
+        placements = {
+            p.category_id: p
+            for p in (
+                await self.session.execute(
+                    select(BudgetViewPlacement).where(BudgetViewPlacement.view_id == view_id)
+                )
+            )
+            .scalars()
+            .all()
+        }
+        hide_unassigned = view.hide_unassigned
+
+        def arrange(category_id) -> tuple[str, str] | None:
+            placement = placements.get(category_id)
+            if placement is not None and placement.is_hidden:
+                return None
+            group_id = placement.group_id if placement else None
+            if group_id is None:
+                if hide_unassigned:
+                    return None
+                return UNASSIGNED_VIEW_GROUP, "Unassigned"
+            return str(group_id), group_names.get(group_id, "Unassigned")
+
+        return arrange
+
+    # ─── Savings Rate ─────────────────────────────────────────────────────────
+
+    async def savings_rate(self, budget_id: uuid.UUID, months: int = 12) -> dict:
+        """How much of what came in was kept, month by month.
+
+        derkus asked for this directly: "i would like there to be categories
+        that are classified as savings and be able to track my savings rate as
+        compared to income and/or all spending".
+
+        Two rates, because paying down a mortgage and funding a brokerage both
+        build net worth but people think about them differently:
+
+            savings_rate           = savings / income
+            savings_rate_with_debt = (savings + debt_principal) / income
+
+        Scoped to on-budget accounts, which is what makes the number honest:
+        growth inside a tracked account classifies as `investment_return` and
+        is left out. A savings rate that counted market gains as saving would
+        rise in a bull market without the household doing anything.
+
+        A month with no income yields a rate of None rather than 0 — "no income
+        recorded" and "saved nothing" are different facts, and a chart should
+        show a gap rather than a floor.
+        """
+        today = date.today()
+        first = today.replace(day=1)
+        start = _subtract_months(first, months - 1)
+
+        by_month = await self._monthly_class_totals(budget_id, start, today)
+
+        def _rate(numerator: Decimal, income: Decimal) -> float | None:
+            if income <= 0:
+                return None
+            return float(numerator / income)
+
+        series: list[dict] = []
+        for i in range(months - 1, -1, -1):
+            month = _subtract_months(first, i)
+            buckets = by_month.get(month, {})
+            income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
+            # Outflow classes are stored negative; report them as magnitudes.
+            savings = -buckets.get(ActivityClass.SAVINGS.value, Decimal("0"))
+            debt = -buckets.get(ActivityClass.DEBT_PRINCIPAL.value, Decimal("0"))
+            spending = -buckets.get(ActivityClass.SPENDING.value, Decimal("0"))
+            series.append(
+                {
+                    "month": month,
+                    "income": income,
+                    "spending": spending,
+                    "savings": savings,
+                    "debt_principal": debt,
+                    "savings_rate": _rate(savings, income),
+                    "savings_rate_with_debt": _rate(savings + debt, income),
+                }
+            )
+
+        totals = {
+            key: sum((m[key] for m in series), Decimal("0"))
+            for key in ("income", "spending", "savings", "debt_principal")
+        }
+        return {
+            "months": series,
+            "summary": {
+                **totals,
+                "savings_rate": _rate(totals["savings"], totals["income"]),
+                "savings_rate_with_debt": _rate(
+                    totals["savings"] + totals["debt_principal"], totals["income"]
+                ),
+            },
         }
 
     # ─── Savings Report ───────────────────────────────────────────────────────

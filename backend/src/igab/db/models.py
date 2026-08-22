@@ -91,7 +91,9 @@ class Budget(Base):
         back_populates="budget", passive_deletes=True
     )
     payees: Mapped[list["Payee"]] = relationship(back_populates="budget", passive_deletes=True)
-    views: Mapped[list["BudgetView"]] = relationship(back_populates="budget", passive_deletes=True)
+    filters: Mapped[list["BudgetFilter"]] = relationship(
+        back_populates="budget", passive_deletes=True
+    )
 
 
 class BudgetMember(Base):
@@ -704,12 +706,16 @@ class ReconciliationSnapshot(Base):
     )
 
 
-# ─── Budget Views ─────────────────────────────────────────────────────────────
+# ─── Budget Filters ───────────────────────────────────────────────────────────
+#
+# A saved subset of categories to narrow the budget grid to. Called "views"
+# until it became clear that is all it does: it cannot regroup, reorder or hide.
+# The name is now reserved for the feature that does.
 
 
-class BudgetView(Base):
-    __tablename__ = "budget_views"
-    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_view_budget_name"),)
+class BudgetFilter(Base):
+    __tablename__ = "budget_filters"
+    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_filter_budget_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -725,19 +731,19 @@ class BudgetView(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    budget: Mapped["Budget"] = relationship(back_populates="views")
-    category_selections: Mapped[list["BudgetViewCategory"]] = relationship(
-        back_populates="view", cascade="all, delete-orphan"
+    budget: Mapped["Budget"] = relationship(back_populates="filters")
+    category_selections: Mapped[list["BudgetFilterCategory"]] = relationship(
+        back_populates="filter_", cascade="all, delete-orphan"
     )
 
 
-class BudgetViewCategory(Base):
-    __tablename__ = "budget_view_categories"
-    __table_args__ = (UniqueConstraint("view_id", "category_id", name="uq_view_category"),)
+class BudgetFilterCategory(Base):
+    __tablename__ = "budget_filter_categories"
+    __table_args__ = (UniqueConstraint("filter_id", "category_id", name="uq_filter_category"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    view_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("budget_views.id", ondelete="CASCADE"), nullable=False
+    filter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budget_filters.id", ondelete="CASCADE"), nullable=False
     )
     category_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -746,7 +752,110 @@ class BudgetViewCategory(Base):
         index=True,
     )
 
-    view: Mapped["BudgetView"] = relationship(back_populates="category_selections")
+    filter_: Mapped["BudgetFilter"] = relationship(back_populates="category_selections")
+    category: Mapped["Category"] = relationship()
+
+
+# ─── Budget Views ─────────────────────────────────────────────────────────────
+#
+# A different way to look at the same categories. Unlike a BudgetFilter, which
+# narrows the set, a view REGROUPS it: the same categories arranged under groups
+# the user invents, so "Emergency Fund / Savings / True Expenses / Monthly Bills"
+# can also be read as "Need / Want / Save" without cloning the budget.
+#
+# The default arrangement stays in category_groups. A view never edits it.
+
+
+class BudgetView(Base):
+    __tablename__ = "budget_views"
+    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_view_budget_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Leave categories this view has not placed out of it entirely, instead of
+    #: collecting them under "Unassigned". Off by default: a category added
+    #: after the view was built should surface rather than disappear, and the
+    #: user opts into the tidier behaviour once they know the view is complete.
+    hide_unassigned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    groups: Mapped[list["BudgetViewGroup"]] = relationship(
+        back_populates="view",
+        cascade="all, delete-orphan",
+        order_by="BudgetViewGroup.sort_order",
+    )
+    placements: Mapped[list["BudgetViewPlacement"]] = relationship(
+        back_populates="view", cascade="all, delete-orphan"
+    )
+
+
+class BudgetViewGroup(Base):
+    """A group that exists only inside one view."""
+
+    __tablename__ = "budget_view_groups"
+    __table_args__ = (UniqueConstraint("view_id", "name", name="uq_budget_view_group_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    view_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("budget_views.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    view: Mapped["BudgetView"] = relationship(back_populates="groups")
+    placements: Mapped[list["BudgetViewPlacement"]] = relationship(back_populates="group")
+
+
+class BudgetViewPlacement(Base):
+    """Where one category sits in one view.
+
+    A category with no placement is not an error: it falls into an "Unassigned"
+    bucket the client renders last. That is deliberate — a category added after
+    a view was built must never silently vanish from it.
+
+    `is_hidden` covers the explicit ask to leave categories out of a view's
+    arithmetic without deleting anything.
+    """
+
+    __tablename__ = "budget_view_placements"
+    __table_args__ = (UniqueConstraint("view_id", "category_id", name="uq_budget_view_placement"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    view_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("budget_views.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    #: NULL means placed in the view but not in any of its groups — it shows
+    #: under "Unassigned" alongside categories with no placement at all.
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budget_view_groups.id", ondelete="SET NULL"), index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    view: Mapped["BudgetView"] = relationship(back_populates="placements")
+    group: Mapped["BudgetViewGroup | None"] = relationship(back_populates="placements")
     category: Mapped["Category"] = relationship()
 
 

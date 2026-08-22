@@ -164,7 +164,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
   const [viewMode, setViewMode] = useState<'spent' | 'budgeted'>('spent')
   const [compare, setCompare] = useState(false)
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, refetch } = useCashFlowReport(budgetId, filters.startDate, filters.endDate, viewMode, acctIds)
+  const { data, isLoading, isError, error, refetch } = useCashFlowReport(budgetId, filters.startDate, filters.endDate, viewMode, acctIds)
   const prevWindow = previousWindow(filters.startDate, filters.endDate)
   const { data: prevData } = useCashFlowReport(
     budgetId, prevWindow.start, prevWindow.end, viewMode, acctIds, { enabled: compare },
@@ -203,7 +203,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
     : null
 
   if (isLoading) return <div className="report-loading">Loading…</div>
-  if (isError) return <ReportErrorState onRetry={() => refetch()} />
+  if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   if (!sankeyData.nodes.length) {
     return (
@@ -249,7 +249,10 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         // Already at payee level — the category node opens its transactions
         setDrillDown({
           kind: 'category', label: nodeData.name, scope: 'leaf', direction: 'outflow',
-          categoryIds: [nodeData.id.replace(/^c_/, '')], ...window,
+          // entity_id, not the node id: the id is a (group, category)
+          // composite so one category can appear under both its own group and
+          // the savings trunk, and stripping the prefix yielded a non-UUID.
+          categoryIds: [nodeData.entity_id ?? nodeData.id.replace(/^c_/, '')], ...window,
         })
       }
     } else if (nodeData.type === 'payee') {
@@ -358,11 +361,26 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
             value={formatMoney(Number(data.total_income))}
             sub={compare && prevData ? formatDelta(Number(data.total_income), Number(prevData.total_income), formatMoney) : undefined}
           />
+          {/* total_expense is ALL outflow, including the savings and debt
+              trunks now drawn as their own branches — labelling it "Expenses"
+              put $5,000 above a diagram showing $3,000 into expense groups,
+              and disagreed with Income vs Expenses for the same window. */}
           <MetricCard
-            label="Total Expenses"
-            value={formatMoney(Number(data.total_expense))}
-            sub={compare && prevData ? formatDelta(Number(data.total_expense), Number(prevData.total_expense), formatMoney) : undefined}
+            label="Spent"
+            value={formatMoney(Number(data.total_spending))}
+            sub={compare && prevData ? formatDelta(Number(data.total_spending), Number(prevData.total_spending), formatMoney) : undefined}
           />
+          {Number(data.total_savings) > 0 && (
+            <MetricCard label="Saved" value={formatMoney(Number(data.total_savings))} />
+          )}
+          {Number(data.total_debt_principal) > 0 && (
+            <MetricCard
+              label="Debt Paid"
+              value={formatMoney(Number(data.total_debt_principal))}
+            />
+          )}
+          {/* Net still uses the whole outflow: everything that left the
+              budget did leave, however it is branched. */}
           <MetricCard
             label="Net"
             value={formatMoney(Number(data.total_income) - Number(data.total_expense))}

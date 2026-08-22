@@ -8,7 +8,6 @@ import pytest
 
 from igab.integrations.ynab.parser import YNABParser, _parse_currency, _parse_date, _parse_month
 
-
 REGISTER_CSV = """\
 "Account","Flag","Date","Payee","Category Group/Category","Category Group","Category","Memo","Outflow","Inflow","Cleared"
 "Checking","","04/15/2026","Walmart","Food: Groceries","Food","Groceries","weekly shop",$45.00,$0.00,"Reconciled"

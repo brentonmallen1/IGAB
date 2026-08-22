@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { PERSIST_KEYS } from './persistKeys'
 import type { AssignStrategy } from '../types'
 
 type TransactionSortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
@@ -77,13 +79,25 @@ interface UIState {
   setTransactionSort: (column: TransactionSortColumn, direction: SortDirection) => void
   setTransactionSearch: (query: string) => void
 
-  // Budget views
-  activeBudgetViewId: string | null
+  // Budget filters
+  activeFilterId: string | null
+  /** How categories are grouped on the budget page. Orthogonal to
+   *  activeFilterId: a view decides the arrangement, a filter decides which of
+   *  those categories show. Both can be on at once. */
+  activeViewId: string | null
+  setActiveView: (viewId: string | null) => void
   isViewModalOpen: boolean
   editingViewId: string | null
-  setActiveBudgetView: (viewId: string | null) => void
   openViewModal: (viewId?: string) => void
   closeViewModal: () => void
+  isManageViewsModalOpen: boolean
+  openManageViewsModal: () => void
+  closeManageViewsModal: () => void
+  isFilterModalOpen: boolean
+  editingFilterId: string | null
+  setActiveFilter: (filterId: string | null) => void
+  openFilterModal: (filterId?: string) => void
+  closeFilterModal: () => void
 
   // Quick filters
   activeQuickFilter: QuickFilter | null
@@ -91,14 +105,14 @@ interface UIState {
   setActiveQuickFilter: (filter: QuickFilter | null) => void
   reorderQuickFilters: (order: QuickFilter[]) => void
 
-  // Category name filter (combines with views/quick filters)
+  // Category name filter (combines with filters/quick filters)
   categorySearch: string
   setCategorySearch: (query: string) => void
 
-  // Manage views modal
-  isManageViewsModalOpen: boolean
-  openManageViewsModal: () => void
-  closeManageViewsModal: () => void
+  // Manage filters modal
+  isManageFiltersModalOpen: boolean
+  openManageFiltersModal: () => void
+  closeManageFiltersModal: () => void
 
   // Command palette
   isPaletteOpen: boolean
@@ -131,7 +145,9 @@ interface UIState {
   cancelReconciliation: () => void
 }
 
-export const useUIStore = create<UIState>((set, get) => ({
+export const useUIStore = create<UIState>()(
+  persist(
+    (set, get) => ({
   collapsedGroups: new Set(),
   isTransactionEditorOpen: false,
   editingTransactionId: null,
@@ -316,24 +332,33 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   setTransactionSearch: (query) => set({ transactionSearchQuery: query }),
 
-  activeBudgetViewId: null,
+  activeFilterId: null,
+  activeViewId: null,
+  setActiveView: (viewId) => set({ activeViewId: viewId }),
   isViewModalOpen: false,
   editingViewId: null,
-  setActiveBudgetView: (viewId) => set({ activeBudgetViewId: viewId, activeQuickFilter: null }),
   openViewModal: (viewId) => set({ isViewModalOpen: true, editingViewId: viewId ?? null }),
   closeViewModal: () => set({ isViewModalOpen: false, editingViewId: null }),
+  isManageViewsModalOpen: false,
+  openManageViewsModal: () => set({ isManageViewsModalOpen: true }),
+  closeManageViewsModal: () => set({ isManageViewsModalOpen: false }),
+  isFilterModalOpen: false,
+  editingFilterId: null,
+  setActiveFilter: (filterId) => set({ activeFilterId: filterId, activeQuickFilter: null }),
+  openFilterModal: (filterId) => set({ isFilterModalOpen: true, editingFilterId: filterId ?? null }),
+  closeFilterModal: () => set({ isFilterModalOpen: false, editingFilterId: null }),
 
   activeQuickFilter: null,
   quickFilterOrder: [...ALL_QUICK_FILTERS],
-  setActiveQuickFilter: (filter) => set({ activeQuickFilter: filter, activeBudgetViewId: null }),
+  setActiveQuickFilter: (filter) => set({ activeQuickFilter: filter, activeFilterId: null }),
   reorderQuickFilters: (order) => set({ quickFilterOrder: order }),
 
   categorySearch: '',
   setCategorySearch: (query) => set({ categorySearch: query }),
 
-  isManageViewsModalOpen: false,
-  openManageViewsModal: () => set({ isManageViewsModalOpen: true }),
-  closeManageViewsModal: () => set({ isManageViewsModalOpen: false }),
+  isManageFiltersModalOpen: false,
+  openManageFiltersModal: () => set({ isManageFiltersModalOpen: true }),
+  closeManageFiltersModal: () => set({ isManageFiltersModalOpen: false }),
 
   isPaletteOpen: false,
   openPalette: () => set({ isPaletteOpen: true }),
@@ -370,4 +395,18 @@ export const useUIStore = create<UIState>((set, get) => ({
     reconcileStatementBalance: null,
     reconcileAdjustmentTxnId: null,
   }),
-}))
+}),
+    {
+      name: PERSIST_KEYS.ui,
+      // Only the two selections a user makes deliberately and expects to find
+      // still applied. Everything else here is transient dialog state that
+      // would be actively wrong to restore — reloading into a half-open
+      // reconciliation or editor is worse than losing it.
+      partialize: (s) => ({
+        activeFilterId: s.activeFilterId,
+        activeViewId: s.activeViewId,
+        quickFilterOrder: s.quickFilterOrder,
+      }),
+    }
+  )
+)

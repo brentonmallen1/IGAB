@@ -42,6 +42,14 @@ Self-hosted YNAB-like envelope budgeting app. Single-user, zero-based budgeting.
 - Before finishing any backend change: run `just quality` (ruff fix + format + ty)
 - Before finishing any frontend change: run `just typecheck` (tsc)
 - Fix all type errors and lint violations — do not leave warnings
+- **`just ci` runs exactly what GitHub CI runs, locally and without Docker.**
+  Use it before pushing. The other recipes shell into docker compose, and when
+  the containers aren't up it is tempting to substitute an equivalent — but:
+  - `npx tsc --noEmit` **checks nothing** and exits 0. The root `tsconfig.json`
+    is `{"files": [], "references": [...]}`, so with no file arguments it
+    compiles an empty program. The real check is `tsc -b` (`npm run typecheck`).
+  - CI runs `ruff format --check src/`, which `just check-backend` includes but
+    a bare `ruff check` does not. `just quality` formats for you.
 
 ## Testing Requirements
 - Any code touching amount calculations, budget distribution, category assignment, or transaction reconciliation requires exhaustive test coverage — this is the core trust surface of the app

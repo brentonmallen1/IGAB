@@ -19,8 +19,11 @@ from igab.db.models import (
     BudgetAssignment,
     BudgetMember,
     BudgetMove,
+    BudgetFilter,
+    BudgetFilterCategory,
     BudgetView,
-    BudgetViewCategory,
+    BudgetViewGroup,
+    BudgetViewPlacement,
     Category,
     CategoryGroup,
     CategoryTarget,
@@ -111,12 +114,20 @@ async def _build_full_budget(db_session, user):
     )
     await db_session.execute(payee_tags.insert().values(payee_id=payee.id, tag_id=tag.id))
 
+    saved_filter = BudgetFilter(budget_id=budget.id, name="Filter")
+    db_session.add(saved_filter)
     view = BudgetView(budget_id=budget.id, name="View")
     db_session.add(view)
     await db_session.flush()
+    view_group = BudgetViewGroup(view_id=view.id, name="Need")
+    db_session.add(view_group)
+    await db_session.flush()
     db_session.add_all(
         [
-            BudgetViewCategory(view_id=view.id, category_id=category.id),
+            BudgetFilterCategory(filter_id=saved_filter.id, category_id=category.id),
+            BudgetViewPlacement(
+                view_id=view.id, category_id=category.id, group_id=view_group.id
+            ),
             CategoryTarget(
                 category_id=category.id,
                 target_type="monthly_funding",
@@ -163,6 +174,7 @@ async def _build_full_budget(db_session, user):
         "account_ids": [checking.id, savings.id, loan.id],
         "category_id": category.id,
         "tag_id": tag.id,
+        "filter_id": saved_filter.id,
         "view_id": view.id,
         "liability_ids": [managed.id, unmanaged.id],
         "transaction_ids": [plain.id, parent.id, leg_out.id, leg_in.id, manual.id, synced.id],
@@ -190,6 +202,7 @@ async def test_delete_budget_cascades_full_graph(api_client, db_session):
         ScheduledTransaction.budget_id,
         Tag.budget_id,
         Liability.budget_id,
+        BudgetFilter.budget_id,
         BudgetView.budget_id,
         ChangeLog.budget_id,
         BudgetMember.budget_id,
@@ -199,7 +212,10 @@ async def test_delete_budget_cascades_full_graph(api_client, db_session):
 
     # Child tables reached only through their parents
     assert await _count(db_session, CategoryTarget.category_id, doomed["category_id"]) == 0
-    assert await _count(db_session, BudgetViewCategory.view_id, doomed["view_id"]) == 0
+    assert await _count(db_session, BudgetFilterCategory.filter_id, doomed["filter_id"]) == 0
+    # Views reach their groups and placements only through the view row.
+    assert await _count(db_session, BudgetViewGroup.view_id, doomed["view_id"]) == 0
+    assert await _count(db_session, BudgetViewPlacement.view_id, doomed["view_id"]) == 0
     assert await _count(db_session, category_tags.c.tag_id, doomed["tag_id"]) == 0
     assert await _count(db_session, payee_tags.c.tag_id, doomed["tag_id"]) == 0
     for liability_id in doomed["liability_ids"]:
@@ -219,5 +235,45 @@ async def test_delete_budget_cascades_full_graph(api_client, db_session):
     assert await _count(db_session, Liability.budget_id, sid) == 2
     assert await _count(db_session, Tag.budget_id, sid) == 1
     assert await _count(db_session, category_tags.c.tag_id, survivor["tag_id"]) == 1
-    assert await _count(db_session, BudgetViewCategory.view_id, survivor["view_id"]) == 1
+    assert await _count(db_session, BudgetFilterCategory.filter_id, survivor["filter_id"]) == 1
+    assert await _count(db_session, BudgetViewGroup.view_id, survivor["view_id"]) == 1
+    assert await _count(db_session, BudgetViewPlacement.view_id, survivor["view_id"]) == 1
     assert await _count(db_session, CategoryTarget.category_id, survivor["category_id"]) == 1
+
+
+async def test_filter_rejects_another_budgets_categories(db_session):
+    """The route guard authorises the filter, not the ids in its body. Without
+    an explicit check a member could attach another budget's category ids to a
+    filter they legitimately own, then read those names back out of it."""
+    import pytest
+
+    from igab.domain.exceptions import InvariantViolation
+    from igab.repositories.budget_filter_repo import BudgetFilterRepository
+
+    user = await create_user(db_session)
+    mine = await create_budget(db_session, user, "Mine")
+    theirs = await create_budget(db_session, user, "Theirs")
+    their_group = await create_category_group(db_session, theirs, "Everyday")
+    their_cat = await create_category(db_session, theirs, their_group, "Groceries")
+
+    repo = BudgetFilterRepository(db_session)
+    mine_filter = await repo.create(budget_id=mine.id, name="Bills")
+
+    with pytest.raises(InvariantViolation, match="does not belong"):
+        await repo.set_categories(mine_filter.id, [their_cat.id])
+
+
+async def test_filter_accepts_its_own_budgets_categories(db_session):
+    from igab.repositories.budget_filter_repo import BudgetFilterRepository
+
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user, "Mine")
+    group = await create_category_group(db_session, budget, "Everyday")
+    cat = await create_category(db_session, budget, group, "Groceries")
+
+    repo = BudgetFilterRepository(db_session)
+    f = await repo.create(budget_id=budget.id, name="Bills")
+    await repo.set_categories(f.id, [cat.id])
+
+    loaded = await repo.get_with_categories(f.id)
+    assert [s.category_id for s in loaded.category_selections] == [cat.id]

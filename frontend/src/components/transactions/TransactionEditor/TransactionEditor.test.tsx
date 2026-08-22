@@ -28,6 +28,8 @@ const ACCOUNTS = vi.hoisted(() => [
   { id: 'acc-1', name: 'Checking', on_budget: true, is_closed: false },
 ])
 
+let classificationData: unknown = undefined
+
 vi.mock('../../../api/transactions', () => ({
   useCreateTransaction: () => ({ mutateAsync: createMutate, isPending: false }),
   useUpdateTransaction: () => ({ mutateAsync: updateMutate, isPending: false }),
@@ -36,6 +38,7 @@ vi.mock('../../../api/transactions', () => ({
   useTransaction: () => ({ data: undefined }),
   usePayees: () => ({ data: [] }),
   useSimilarTransactions: () => ({ data: [] }),
+  useTransactionClassification: () => ({ data: classificationData }),
 }))
 vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: CATEGORIES }),
@@ -256,5 +259,44 @@ describe('TransactionEditor split-mode validation', () => {
         ],
       })
     )
+  })
+})
+
+describe('TransactionEditor classification note', () => {
+  const savedTxn = {
+    id: 't-1',
+    account_id: 'acc-1',
+    date: '2030-01-10',
+    amount: -500,
+    category_id: 'cat-1',
+    payee_id: null,
+    memo: null,
+    cleared: 'uncleared',
+    transfer_id: null,
+  } as unknown as Transaction
+
+  beforeEach(() => {
+    classificationData = undefined
+  })
+
+  it('explains why a row counts the way it does', () => {
+    classificationData = {
+      activity_class: 'savings',
+      label: 'Savings',
+      reason: 'transfer_to_tracked_asset',
+      explanation: 'it moves money to a tracked account you own',
+    }
+    renderEditor({ transaction: savedTxn, accountId: null })
+
+    expect(screen.getByText(/Counts as/)).toBeInTheDocument()
+    expect(screen.getByText('Savings')).toBeInTheDocument()
+    expect(
+      screen.getByText(/moves money to a tracked account you own/)
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing for an unsaved draft', () => {
+    renderEditor({ transaction: null })
+    expect(screen.queryByText(/Counts as/)).not.toBeInTheDocument()
   })
 })

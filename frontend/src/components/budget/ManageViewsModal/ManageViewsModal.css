@@ -59,12 +59,6 @@
   gap: var(--spacing-lg);
 }
 
-.manage-views-modal__section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
 .manage-views-modal__section-header {
   display: flex;
   align-items: center;
@@ -72,12 +66,6 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.manage-views-modal__section-hint {
-  font-size: var(--font-size-xs);
-  font-weight: 400;
-  color: var(--text-muted);
 }
 
 .manage-views-modal__add-btn {
@@ -114,65 +102,6 @@
 
 .manage-views-modal__row:last-child {
   border-bottom: none;
-}
-
-.manage-views-modal__row--quick {
-  cursor: grab;
-}
-
-.manage-views-modal__row--quick:active {
-  cursor: grabbing;
-}
-
-.manage-views-modal__row.drag-over {
-  background-color: color-mix(in srgb, var(--color-accent) 8%, transparent);
-}
-
-.manage-views-modal__row.dragging {
-  opacity: 0.4;
-}
-
-.manage-views-modal__grip {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.manage-views-modal__filter-badge {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: var(--border-radius-md);
-  border: 1px solid transparent;
-}
-
-.manage-views-modal__filter-badge--negative {
-  color: var(--color-negative);
-  background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
-}
-
-.manage-views-modal__filter-badge--warning {
-  color: var(--color-warning);
-  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
-}
-
-.manage-views-modal__filter-badge--positive {
-  color: var(--color-positive);
-  background-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
-}
-
-.manage-views-modal__lock {
-  color: var(--text-muted);
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.manage-views-modal__view-name {
-  flex: 1;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
 }
 
 .manage-views-modal__row-actions {
@@ -217,8 +146,39 @@
   border-radius: var(--border-radius-sm);
 }
 
-.manage-views-modal__note {
-  font-size: var(--font-size-xs);
+.manage-views-modal__hint {
+  margin: 0;
   color: var(--text-muted);
-  padding: var(--spacing-xs) 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.manage-views-modal__view-name {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+/* Which view the budget page is currently showing. Accent, matching the active
+   chip in the filter bar, so "in use" reads the same in both places. */
+.manage-views-modal__active {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--border-radius-md);
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.manage-views-modal__meta {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
 }

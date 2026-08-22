@@ -2,8 +2,6 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock
 
-import pytest
-
 from igab.services.target_service import TargetService, _months_between
 
 
