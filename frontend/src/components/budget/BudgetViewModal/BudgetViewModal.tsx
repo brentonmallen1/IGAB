@@ -40,6 +40,7 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
     () => existing?.groups.map((g) => g.name) ?? []
   )
   const [newGroup, setNewGroup] = useState('')
+  const [hideUnassigned, setHideUnassigned] = useState(existing?.hide_unassigned ?? false)
   const [assignment, setAssignment] = useState<Assignment>(() => {
     if (!existing) return {}
     const nameById = new Map(existing.groups.map((g) => [g.id, g.name]))
@@ -66,6 +67,23 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
     if (!trimmed || groupNames.includes(trimmed)) return
     setGroupNames((g) => [...g, trimmed])
     setNewGroup('')
+  }
+
+  function renameGroup(from: string, to: string) {
+    const trimmed = to.trim()
+    if (!trimmed || trimmed === from) return
+    // Refuse a name that already exists rather than silently merging two
+    // groups — the server matches groups by name, so a collision would fold
+    // one into the other on save.
+    if (groupNames.includes(trimmed)) return
+    setGroupNames((g) => g.map((n) => (n === from ? trimmed : n)))
+    setAssignment((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([id, a]) =>
+          a.group === from ? [id, { ...a, group: trimmed }] : [id, a]
+        )
+      )
+    )
   }
 
   function removeGroup(target: string) {
@@ -107,25 +125,27 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
     try {
       const id = isEdit
         ? existing!.id
-        : (await createView.mutateAsync({ name: trimmed })).id
+        : (await createView.mutateAsync({ name: trimmed, hide_unassigned: hideUnassigned })).id
 
-      // Groups first — the response carries the ids the placements need.
-      const saved = await updateView.mutateAsync({
-        id,
-        ...(isEdit ? { name: trimmed } : {}),
-        groups: groupNames,
-      })
-      const idByName = new Map(saved.groups.map((g) => [g.name, g.id]))
-
+      // Groups and placements in one request: placements name their group, so
+      // the client never needs ids for groups it is creating in the same
+      // breath — and a failure can't leave the view renamed but unplaced.
       const placements = Object.entries(assignment)
         .filter(([, a]) => a.group !== null || a.hidden)
         .map(([category_id, a], i) => ({
           category_id,
-          group_id: a.group ? (idByName.get(a.group) ?? null) : null,
+          group_name: a.group,
           sort_order: i,
           is_hidden: a.hidden,
         }))
-      await updateView.mutateAsync({ id, placements })
+
+      await updateView.mutateAsync({
+        id,
+        ...(isEdit ? { name: trimmed } : {}),
+        hide_unassigned: hideUnassigned,
+        groups: groupNames,
+        placements,
+      })
 
       if (!isEdit) setActiveView(id)
       onClose()
@@ -181,11 +201,41 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
           required
         />
 
+        <label className="view-editor__toggle">
+          <input
+            type="checkbox"
+            checked={hideUnassigned}
+            onChange={(e) => setHideUnassigned(e.target.checked)}
+          />
+          <span>
+            Hide unassigned categories
+            <span className="view-editor__toggle-hint">
+              {hideUnassigned
+                ? 'Anything you don’t place is left out of this view — including categories you add later.'
+                : 'Anything you don’t place shows under Unassigned, so new categories don’t go missing.'}
+            </span>
+          </span>
+        </label>
+
         <div className="view-editor__section-title">Groups in this view</div>
         <div className="view-editor__groups">
           {groupNames.map((g) => (
             <span key={g} className="view-editor__chip">
-              {g}
+              {/* Editable in place: a group name is the whole label the user
+                  reads on the budget page, and getting it wrong should not
+                  mean deleting the group and reassigning everything in it. */}
+              <input
+                className="view-editor__chip-input"
+                defaultValue={g}
+                size={Math.max(g.length, 4)}
+                onBlur={(e) => renameGroup(g, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+                  if (e.key === 'Escape') { e.currentTarget.value = g; e.currentTarget.blur() }
+                }}
+                aria-label={`Rename group ${g}`}
+                maxLength={100}
+              />
               <button
                 type="button"
                 onClick={() => removeGroup(g)}

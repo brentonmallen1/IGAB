@@ -776,6 +776,11 @@ class BudgetView(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Leave categories this view has not placed out of it entirely, instead of
+    #: collecting them under "Unassigned". Off by default: a category added
+    #: after the view was built should surface rather than disappear, and the
+    #: user opts into the tidier behaviour once they know the view is complete.
+    hide_unassigned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -24,6 +24,7 @@ function view(groups: [string, string][], placements: Partial<BudgetView['placem
     budget_id: BUDGET,
     name: 'Need / Want / Save',
     sort_order: 0,
+    hide_unassigned: false,
     groups: groups.map(([id, name], i) => ({ id, name, sort_order: i })),
     placements: placements.map((p) => ({
       category_id: p.category_id!,
@@ -133,5 +134,25 @@ describe('groupByView', () => {
     const cats = [cat('c1', 'Rent'), cat('c2', 'Dining')]
     const { byGroup } = groupByView(view([], []), cats, BUDGET)
     expect(byGroup.get(UNASSIGNED_GROUP_ID)!).toHaveLength(2)
+  })
+
+  it('hide_unassigned drops unplaced categories instead of bucketing them', () => {
+    const v = {
+      ...view([['need', 'Need']], [{ category_id: 'c1', group_id: 'need' }]),
+      hide_unassigned: true,
+    }
+    const cats = [cat('c1', 'Rent'), cat('c2', 'Something New')]
+    const { groups, byGroup } = groupByView(v, cats, BUDGET)
+    expect(byGroup.has(UNASSIGNED_GROUP_ID)).toBe(false)
+    expect(groups.map((g) => g.name)).toEqual(['Need'])
+  })
+
+  it('hide_unassigned leaves placed categories alone', () => {
+    const v = {
+      ...view([['need', 'Need']], [{ category_id: 'c1', group_id: 'need' }]),
+      hide_unassigned: true,
+    }
+    const { byGroup } = groupByView(v, [cat('c1', 'Rent')], BUDGET)
+    expect(byGroup.get('need')!.map((c) => c.name)).toEqual(['Rent'])
   })
 })

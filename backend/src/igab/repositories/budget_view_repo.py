@@ -97,11 +97,30 @@ class BudgetViewRepository(BaseRepository[BudgetView]):
     async def set_placements(self, view_id: uuid.UUID, placements: list[dict]) -> None:
         """Replace where each category sits in this view.
 
-        Each entry is {category_id, group_id?, sort_order?, is_hidden?}. Both
-        ids are checked against the view's own budget: the route guard
-        authorises the *view*, not the ids in the body.
+        Each entry is {category_id, group_id? | group_name?, sort_order?,
+        is_hidden?}. Both ids are checked against the view's own budget: the
+        route guard authorises the *view*, not the ids in the body.
+
+        `group_name` is resolved against this view's groups, so a caller that
+        just created them in the same request can place categories without a
+        second round trip.
         """
         budget_id = await self._budget_of(view_id)
+
+        if any(p.get("group_name") and not p.get("group_id") for p in placements):
+            by_name = {
+                g.name: g.id
+                for g in (
+                    await self.session.execute(
+                        select(BudgetViewGroup).where(BudgetViewGroup.view_id == view_id)
+                    )
+                )
+                .scalars()
+                .all()
+            }
+            for p in placements:
+                if p.get("group_id") is None and p.get("group_name"):
+                    p["group_id"] = by_name.get(p["group_name"])
 
         category_ids = [p["category_id"] for p in placements]
         if category_ids:

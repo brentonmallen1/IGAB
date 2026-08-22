@@ -46,7 +46,9 @@ async def create_budget_view(
     repo: ViewRepo,
 ) -> BudgetViewResponse:
     try:
-        view = await repo.create(budget_id=budget_id, name=body.name)
+        view = await repo.create(
+            budget_id=budget_id, name=body.name, hide_unassigned=body.hide_unassigned
+        )
         if body.groups:
             await repo.set_groups(view.id, body.groups)
     except IntegrityError as e:
@@ -72,12 +74,16 @@ async def update_budget_view(
     repo: ViewRepo,
 ) -> BudgetViewResponse:
     try:
-        if body.name is not None or body.sort_order is not None:
-            changes = {
-                k: v
-                for k, v in (("name", body.name), ("sort_order", body.sort_order))
-                if v is not None
-            }
+        changes = {
+            k: v
+            for k, v in (
+                ("name", body.name),
+                ("sort_order", body.sort_order),
+                ("hide_unassigned", body.hide_unassigned),
+            )
+            if v is not None
+        }
+        if changes:
             await repo.update(view_id, **changes)
         # Groups first: placements may reference ids created in the same call.
         if body.groups is not None:

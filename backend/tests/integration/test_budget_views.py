@@ -221,3 +221,162 @@ class TestIsolationFromDefaultArrangement:
             ).scalars()
         }
         assert before == after, "a view must never edit the default arrangement"
+
+
+class TestHideUnassigned:
+    async def test_defaults_to_showing_them(self, api_client, db_session):
+        """A category the view has not placed must surface by default —
+        silently dropping it is how a view goes stale without anyone noticing."""
+        budget, _ = await _budget_with_categories(db_session, api_client.test_user)
+        body = (
+            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "NWS"})
+        ).json()
+        assert body["hide_unassigned"] is False
+
+    async def test_can_be_set_on_create_and_toggled(self, api_client, db_session):
+        budget, _ = await _budget_with_categories(db_session, api_client.test_user)
+        created = (
+            await api_client.post(
+                f"/api/v1/{budget.id}/views",
+                json={"name": "NWS", "hide_unassigned": True},
+            )
+        ).json()
+        assert created["hide_unassigned"] is True
+
+        toggled = (
+            await api_client.patch(
+                f"/api/v1/views/{created['id']}", json={"hide_unassigned": False}
+            )
+        ).json()
+        assert toggled["hide_unassigned"] is False
+
+    async def test_toggling_it_leaves_the_rest_of_the_view_alone(self, api_client, db_session):
+        budget, cats = await _budget_with_categories(db_session, api_client.test_user)
+        view = (
+            await api_client.post(
+                f"/api/v1/{budget.id}/views", json={"name": "NWS", "groups": ["Need"]}
+            )
+        ).json()
+        await api_client.patch(
+            f"/api/v1/views/{view['id']}",
+            json={
+                "placements": [
+                    {"category_id": str(cats[0].id), "group_id": view["groups"][0]["id"]}
+                ]
+            },
+        )
+
+        after = (
+            await api_client.patch(
+                f"/api/v1/views/{view['id']}", json={"hide_unassigned": True}
+            )
+        ).json()
+        assert after["hide_unassigned"] is True
+        assert [g["name"] for g in after["groups"]] == ["Need"]
+        assert len(after["placements"]) == 1
+
+
+class TestGroupsAndPlacementsInOneCall:
+    async def test_placements_can_name_groups_created_in_the_same_request(
+        self, api_client, db_session
+    ):
+        """A client cannot know the id of a group it is creating in the same
+        breath. Splitting that into two requests leaves the view with renamed
+        groups and no placements if the second one fails."""
+        budget, cats = await _budget_with_categories(db_session, api_client.test_user)
+        view = (
+            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "NWS"})
+        ).json()
+
+        resp = await api_client.patch(
+            f"/api/v1/views/{view['id']}",
+            json={
+                "groups": ["Need", "Save"],
+                "placements": [
+                    {"category_id": str(cats[0].id), "group_name": "Need"},
+                    {"category_id": str(cats[2].id), "group_name": "Save"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        id_by_name = {g["name"]: g["id"] for g in body["groups"]}
+        placed = {p["category_id"]: p["group_id"] for p in body["placements"]}
+        assert placed[str(cats[0].id)] == id_by_name["Need"]
+        assert placed[str(cats[2].id)] == id_by_name["Save"]
+
+    async def test_renaming_a_group_keeps_its_categories(self, api_client, db_session):
+        """The server matches groups by name, so a rename is a delete plus a
+        create. The categories must land in the renamed group, not Unassigned."""
+        budget, cats = await _budget_with_categories(db_session, api_client.test_user)
+        view = (
+            await api_client.post(
+                f"/api/v1/{budget.id}/views", json={"name": "NWS", "groups": ["Need"]}
+            )
+        ).json()
+        await api_client.patch(
+            f"/api/v1/views/{view['id']}",
+            json={
+                "placements": [
+                    {"category_id": str(cats[0].id), "group_id": view["groups"][0]["id"]}
+                ]
+            },
+        )
+
+        renamed = (
+            await api_client.patch(
+                f"/api/v1/views/{view['id']}",
+                json={
+                    "groups": ["Essential"],
+                    "placements": [
+                        {"category_id": str(cats[0].id), "group_name": "Essential"}
+                    ],
+                },
+            )
+        ).json()
+        assert [g["name"] for g in renamed["groups"]] == ["Essential"]
+        assert renamed["placements"][0]["group_id"] == renamed["groups"][0]["id"]
+
+    async def test_an_unknown_group_name_lands_unassigned(self, api_client, db_session):
+        budget, cats = await _budget_with_categories(db_session, api_client.test_user)
+        view = (
+            await api_client.post(
+                f"/api/v1/{budget.id}/views", json={"name": "NWS", "groups": ["Need"]}
+            )
+        ).json()
+        body = (
+            await api_client.patch(
+                f"/api/v1/views/{view['id']}",
+                json={
+                    "placements": [
+                        {"category_id": str(cats[0].id), "group_name": "Nope"}
+                    ]
+                },
+            )
+        ).json()
+        assert body["placements"][0]["group_id"] is None
+
+    async def test_group_id_wins_over_group_name(self, api_client, db_session):
+        budget, cats = await _budget_with_categories(db_session, api_client.test_user)
+        view = (
+            await api_client.post(
+                f"/api/v1/{budget.id}/views",
+                json={"name": "NWS", "groups": ["Need", "Save"]},
+            )
+        ).json()
+        need, save = view["groups"][0], view["groups"][1]
+        body = (
+            await api_client.patch(
+                f"/api/v1/views/{view['id']}",
+                json={
+                    "placements": [
+                        {
+                            "category_id": str(cats[0].id),
+                            "group_id": need["id"],
+                            "group_name": save["name"],
+                        }
+                    ]
+                },
+            )
+        ).json()
+        assert body["placements"][0]["group_id"] == need["id"]

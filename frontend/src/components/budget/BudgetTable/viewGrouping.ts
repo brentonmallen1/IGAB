@@ -34,6 +34,9 @@ export function groupByView(
     // Hidden in this view: out of the grid and out of its group totals.
     if (placement?.is_hidden) continue
     const bucket = placement?.group_id ?? UNASSIGNED_GROUP_ID
+    // Only when the user has said so — the default is to surface anything the
+    // view hasn't placed rather than let it quietly disappear.
+    if (bucket === UNASSIGNED_GROUP_ID && view.hide_unassigned) continue
     if (!byGroup.has(bucket)) byGroup.set(bucket, [])
     byGroup.get(bucket)!.push(cat)
   }

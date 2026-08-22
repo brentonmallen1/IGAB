@@ -110,6 +110,9 @@ export interface BudgetView {
   budget_id: string
   name: string
   sort_order: number
+  /** Drop categories this view hasn't placed, instead of collecting them under
+   *  Unassigned. Off by default so a newly added category surfaces. */
+  hide_unassigned: boolean
   groups: BudgetViewGroup[]
   placements: BudgetViewPlacement[]
   created_at: string

@@ -245,3 +245,54 @@
 .view-editor__btn--danger {
   color: var(--color-negative);
 }
+
+/* Whether the view drops what it hasn't placed. Sits above the groups because
+   it changes what the rest of the dialog means. */
+.view-editor__toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.view-editor__toggle input {
+  margin-top: 2px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.view-editor__toggle-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+/* The group name, editable where it is shown. Borderless until focused so the
+   chip still reads as a chip rather than a row of form fields. */
+.view-editor__chip-input {
+  min-width: 40px;
+  padding: 0 2px;
+  border: none;
+  border-bottom: 1px dashed transparent;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: text;
+}
+
+.view-editor__chip-input:hover {
+  border-bottom-color: var(--border-color);
+}
+
+.view-editor__chip-input:focus {
+  outline: none;
+  border-bottom-color: var(--color-accent);
+}

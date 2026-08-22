@@ -26,6 +26,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
   const setActiveView = useUIStore((s) => s.setActiveView)
   const openViewModal = useUIStore((s) => s.openViewModal)
   const openManageViewsModal = useUIStore((s) => s.openManageViewsModal)
+  const viaPointer = useRef(false)
   const [renameNoticeSeen, setRenameNoticeSeen] = useState(
     () => localStorage.getItem(RENAME_NOTICE_KEY) === '1'
   )
@@ -105,14 +106,29 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
           a filter decides which of those categories show. Both can be on. */}
       {(views?.length ?? 0) > 0 && (
         <>
-          <span
-            className={`budget-filter-bar__view ${activeViewId ? 'active' : ''}`}
-          >
+          <span className={`budget-filter-bar__view ${activeViewId ? 'active' : ''}`}>
             <Layers size={12} className="budget-filter-bar__view-icon" />
+            <span className="budget-filter-bar__view-label">
+              {views!.find((v) => v.id === activeViewId)?.name ?? 'Default groups'}
+            </span>
+            <ChevronDown size={12} className="budget-filter-bar__view-caret" />
+            {/* The real control, stretched invisibly over the whole chip. The
+                icon, label and caret above are only its appearance — as
+                siblings they were unclickable, leaving the chip's padding and
+                both icons dead to the pointer. */}
             <select
               className="budget-filter-bar__view-select"
               value={activeViewId ?? ''}
-              onChange={(e) => setActiveView(e.target.value || null)}
+              onPointerDown={() => { viaPointer.current = true }}
+              onKeyDown={() => { viaPointer.current = false }}
+              onChange={(e) => {
+                setActiveView(e.target.value || null)
+                // A select keeps focus after a click, and browsers count that
+                // as focus-visible, so the ring lingered after the user was
+                // plainly finished. Only drop focus for pointer use — keyboard
+                // users change the value with arrow keys and must keep it.
+                if (viaPointer.current) e.currentTarget.blur()
+              }}
               title="How categories are grouped"
               aria-label="Category view"
             >
@@ -123,7 +139,6 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
                 </option>
               ))}
             </select>
-            <ChevronDown size={12} className="budget-filter-bar__view-caret" />
           </span>
           {/* The grouping control answers a different question from the chips
               beside it, so a rule keeps them from reading as one row of peers. */}
