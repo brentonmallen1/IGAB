@@ -91,7 +91,7 @@ export function ReportFiltersBar({ budgetId }: Props) {
           <label className="rfb__view">
             <span className="rfb__view-label">View</span>
             <select
-              className="rfb__view-select"
+              className={`rfb__view-select ${filters.viewId ? 'rfb__view-select--active' : ''}`}
               value={filters.viewId ?? ''}
               onChange={(e) => setFilters({ viewId: e.target.value || null })}
               title="Roll up by a saved view's groups instead of your own"
