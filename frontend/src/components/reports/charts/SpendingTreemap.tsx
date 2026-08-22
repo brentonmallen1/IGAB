@@ -9,6 +9,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ViewHiddenNote } from '../ViewHiddenNote'
+import { ClassExcludedNote } from '../ClassExcludedNote'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 
@@ -33,8 +34,8 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const groupBy = filters.groupBy
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const [hideSavings, setHideSavings] = useState(false)
-  const { data, isLoading, isError, error, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings, filters.viewId)
+  const [includeSavings, setIncludeSavings] = useState(false)
+  const { data, isLoading, isError, error, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, includeSavings, filters.viewId)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -140,10 +141,12 @@ export function SpendingTreemapReport({ budgetId }: Props) {
         <label className="report-toggle">
           <input
             type="checkbox"
-            checked={hideSavings}
-            onChange={(e) => setHideSavings(e.target.checked)}
+            checked={includeSavings}
+            onChange={(e) => setIncludeSavings(e.target.checked)}
           />
-          Hide tagged as savings
+          <span title="Money moved into savings or used to pay down a tracked debt isn't spending, so it's left out by default. Tick to add it back.">
+            Include savings &amp; debt payments
+          </span>
         </label>
         <div className="ms-auto">
           <ReportExportButton
@@ -171,10 +174,16 @@ export function SpendingTreemapReport({ budgetId }: Props) {
       </p>
 
       {data && (
-        <ViewHiddenNote
-          categories={data.view_hidden_categories}
-          total={data.view_hidden_total}
-        />
+        <>
+          <ViewHiddenNote
+            categories={data.view_hidden_categories}
+            total={data.view_hidden_total}
+          />
+          <ClassExcludedNote
+            excluded={data.class_excluded ?? []}
+            toggleAvailable={!includeSavings}
+          />
+        </>
       )}
 
       {visibleItems.length === 0 ? (

@@ -167,6 +167,40 @@ describe('view-hidden note on the spending charts', () => {
   })
 })
 
+describe('class-excluded note on the spending charts', () => {
+  const dataWithExcluded = {
+    groups: [
+      { id: 'c1', name: 'Dining Out', parent_id: 'g1', parent_name: 'Bills', total: 205, count: 3, pct: 100 },
+    ],
+    total: 205,
+    view_hidden_categories: 0,
+    view_hidden_total: '0',
+    class_excluded: [
+      { activity_class: 'debt_principal', label: 'Debt payment', categories: 1, total: '275.00' },
+    ],
+  }
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s says what a selection excluded and how to add it back', (_name, Report) => {
+    setQuery({ data: dataWithExcluded })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.getByText(/Not counted as spending here:/)).toBeInTheDocument()
+    expect(screen.getByText(/debt payments \(1 category\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Include savings & debt payments” to add it/)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Pareto', ParetoReport],
+    ['Treemap', SpendingTreemapReport],
+  ] as const)('%s stays quiet when nothing was class-excluded', (_name, Report) => {
+    setQuery({ data: { ...dataWithExcluded, class_excluded: [] } })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.queryByText(/Not counted as spending here/)).not.toBeInTheDocument()
+  })
+})
+
 describe('OverviewReport metric cards', () => {
   it('shows deltas, savings rate, and runway from the dashboard data', () => {
     setQuery({

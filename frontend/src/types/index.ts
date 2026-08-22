@@ -510,6 +510,13 @@ export interface SpendingGroupItem {
   children?: SpendingGroupItem[]
 }
 
+export interface SpendingClassExcluded {
+  activity_class: string
+  label: string
+  categories: number
+  total: number | string
+}
+
 export interface SpendingGroupedReport {
   groups: SpendingGroupItem[]
   total: number
@@ -518,6 +525,24 @@ export interface SpendingGroupedReport {
    *  coerce before math. */
   view_hidden_categories: number
   view_hidden_total: number | string
+  /** Savings / debt activity in categories the user is looking at that a
+   *  spending report will not count. Empty without a selection or view. */
+  class_excluded: SpendingClassExcluded[]
+}
+
+export interface CategoryClassSlice {
+  activity_class: string
+  label: string
+  total: number | string
+  count: number
+}
+
+export interface CategoryClassification {
+  classes: CategoryClassSlice[]
+  window_months: number
+  dominant: string | null
+  dominant_label: string | null
+  explanation: string | null
 }
 
 export interface SeasonalityCell {
