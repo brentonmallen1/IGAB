@@ -256,6 +256,12 @@ class SpendingGroupItem(BaseModel):
 class SpendingGroupedResponse(BaseModel):
     groups: list[SpendingGroupItem]
     total: Decimal
+    #: What the active view kept out of this report: categories hidden by the
+    #: view (or unplaced, when it hides those too) that had spending in the
+    #: window. Zero without a view. The chart states this out loud — a view
+    #: that hides most spending otherwise reads as data loss.
+    view_hidden_categories: int = 0
+    view_hidden_total: Decimal = Decimal("0")
 
 
 # ─── Seasonality ─────────────────────────────────────────────────────────────

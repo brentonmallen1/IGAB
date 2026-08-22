@@ -302,7 +302,7 @@ async def spending_grouped_report(
     end = end_date or today
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
-    items, total = await report_svc.spending_grouped(
+    items, total, dropped = await report_svc.spending_grouped(
         budget_id,
         start,
         end,
@@ -314,6 +314,8 @@ async def spending_grouped_report(
     return SpendingGroupedResponse(
         groups=[SpendingGroupItem.model_validate(i) for i in items],
         total=total,
+        view_hidden_categories=dropped["categories"] if dropped else 0,
+        view_hidden_total=dropped["total"] if dropped else Decimal("0"),
     )
 
 

@@ -46,7 +46,7 @@ async def _world(db_session, owner=None):
 
 async def _grouped(db_session, budget, **kw):
     """Roll the per-category rows up by their parent, the way the charts do."""
-    items, total = await ReportService(db_session).spending_grouped(
+    items, total, _ = await ReportService(db_session).spending_grouped(
         budget.id, START, TODAY, **kw
     )
     by_parent: dict[str, Decimal] = {}
@@ -58,7 +58,7 @@ async def _grouped(db_session, budget, **kw):
 class TestDefaultArrangement:
     async def test_without_a_view_it_uses_the_budgets_own_groups(self, db_session):
         budget, c = await _world(db_session)
-        items, total = await ReportService(db_session).spending_grouped(budget.id, START, TODAY)
+        items, total, _ = await ReportService(db_session).spending_grouped(budget.id, START, TODAY)
         names = {i["parent_name"] for i in items}
         assert names == {"Monthly Bills", "Everyday"}
         assert total == Decimal("1500.00")
@@ -94,7 +94,7 @@ class TestViewArrangement:
     async def test_categories_keep_their_own_names(self, db_session):
         budget, c = await _world(db_session)
         view = await self._need_want_view(db_session, budget, c)
-        items, _ = await ReportService(db_session).spending_grouped(
+        items, _, _ = await ReportService(db_session).spending_grouped(
             budget.id, START, TODAY, view_id=view.id
         )
         assert {i["name"] for i in items} == {"Rent", "Power", "Dining"}
@@ -153,6 +153,63 @@ class TestViewArrangement:
         )
         assert set(by_name) == {"Need"}
         assert total == Decimal("1200.00")
+
+    async def test_a_complete_view_reports_nothing_dropped(self, db_session):
+        budget, c = await _world(db_session)
+        view = await self._need_want_view(db_session, budget, c)
+        _, _, dropped = await ReportService(db_session).spending_grouped(
+            budget.id, START, TODAY, view_id=view.id
+        )
+        assert dropped is None
+
+    async def test_hidden_spending_is_reported_not_just_dropped(self, db_session):
+        budget, c = await _world(db_session)
+        repo = BudgetViewRepository(db_session)
+        view = await repo.create(budget_id=budget.id, name="No Dining")
+        groups = await repo.set_groups(view.id, ["Need"])
+        await repo.set_placements(
+            view.id,
+            [
+                {"category_id": c["rent"].id, "group_id": groups[0].id},
+                {"category_id": c["power"].id, "group_id": groups[0].id},
+                {"category_id": c["dining"].id, "is_hidden": True},
+            ],
+        )
+        _, total, dropped = await ReportService(db_session).spending_grouped(
+            budget.id, START, TODAY, view_id=view.id
+        )
+        assert total == Decimal("1300.00")
+        assert dropped == {"categories": 1, "total": Decimal("200.00")}
+
+    async def test_hide_unassigned_spending_counts_as_dropped(self, db_session):
+        """hide_unassigned quietly removes every unplaced category — the
+        summary is what keeps that legible on a chart."""
+        budget, c = await _world(db_session)
+        repo = BudgetViewRepository(db_session)
+        view = await repo.create(budget_id=budget.id, name="Tidy", hide_unassigned=True)
+        groups = await repo.set_groups(view.id, ["Need"])
+        await repo.set_placements(
+            view.id, [{"category_id": c["rent"].id, "group_id": groups[0].id}]
+        )
+        _, total, dropped = await ReportService(db_session).spending_grouped(
+            budget.id, START, TODAY, view_id=view.id
+        )
+        assert total == Decimal("1200.00")
+        assert dropped == {"categories": 2, "total": Decimal("300.00")}
+
+    async def test_a_view_that_hides_everything_still_explains_itself(self, db_session):
+        """The report the user actually hit: a sparse view + hide_unassigned
+        left one category standing. Taken to the limit — nothing standing —
+        the empty result must carry the reason, or it reads as data loss."""
+        budget, c = await _world(db_session)
+        repo = BudgetViewRepository(db_session)
+        view = await repo.create(budget_id=budget.id, name="Void", hide_unassigned=True)
+        items, total, dropped = await ReportService(db_session).spending_grouped(
+            budget.id, START, TODAY, view_id=view.id
+        )
+        assert items == []
+        assert total == Decimal("0")
+        assert dropped == {"categories": 3, "total": Decimal("1500.00")}
 
     async def test_an_unknown_view_falls_back_to_the_default_groups(self, db_session):
         """A stale id in a persisted report filter must not empty the report."""
@@ -260,6 +317,25 @@ class TestThroughTheApi:
         by_name = {g["parent_name"]: g["parent_id"] for g in body["groups"]}
         assert by_name["Monthly Bills"] == str(c["bills"].id)
         assert by_name["Everyday"] == str(c["fun"].id)
+
+    async def test_the_response_carries_what_the_view_hid(self, api_client, db_session):
+        budget, c = await _world(db_session, api_client.test_user)
+        view = await self._view(
+            db_session, budget, c, place_all=False, hide_unassigned=True
+        )
+
+        body = (await self._get(api_client, budget, view_id=str(view.id))).json()
+
+        assert body["view_hidden_categories"] == 2
+        assert Decimal(body["view_hidden_total"]) == Decimal("300.00")
+
+    async def test_without_a_view_the_hidden_fields_are_zero(self, api_client, db_session):
+        budget, _ = await _world(db_session, api_client.test_user)
+
+        body = (await self._get(api_client, budget)).json()
+
+        assert body["view_hidden_categories"] == 0
+        assert Decimal(body["view_hidden_total"]) == Decimal("0")
 
     async def test_a_stale_view_id_falls_back_rather_than_erroring(
         self, api_client, db_session

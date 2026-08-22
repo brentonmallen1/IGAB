@@ -1580,7 +1580,7 @@ class ReportService:
         account_ids: list[uuid.UUID] | None = None,
         include_classes: Sequence[ActivityClass] | None = None,
         view_id: uuid.UUID | None = None,
-    ) -> tuple[list[dict], Decimal]:
+    ) -> tuple[list[dict], Decimal, dict | None]:
         """Spending rolled up by group.
 
         With `view_id`, the groups come from that view's arrangement instead of
@@ -1588,8 +1588,14 @@ class ReportService:
         point of a view. Categories the view hides drop out; ones it has not
         placed collect under "Unassigned", or drop out too if the view says so.
 
-        The response shape is identical either way, so the client-side rollup
-        does not care which arrangement produced it.
+        The third element says what the view kept out — ``{"categories": n,
+        "total": Decimal}`` — or None when nothing was dropped. A view that
+        hides most of a budget's spending produces a report that is *right*
+        but reads as data loss; the number only stays trustworthy if the
+        report can say "this view hides $X" instead of silently shrinking.
+
+        The groups/total shape is identical either way, so the client-side
+        rollup does not care which arrangement produced it.
         """
         q = (
             select(
@@ -1622,14 +1628,21 @@ class ReportService:
             q = q.where(ON_BUDGET_ACCOUNT)
         rows = (await self.session.execute(q)).all()
 
-        if not rows:
-            return [], Decimal("0")
-
         regroup = await self._view_arrangement(budget_id, view_id) if view_id else None
+        dropped_by_view: dict | None = None
         if regroup is not None:
+            dropped = [r for r in rows if regroup(r.id) is None]
+            if dropped:
+                dropped_by_view = {
+                    "categories": len({r.id for r in dropped}),
+                    "total": sum((abs(r.amount) for r in dropped), Decimal("0")),
+                }
             rows = [r for r in rows if regroup(r.id) is not None]
-            if not rows:
-                return [], Decimal("0")
+
+        # The all-hidden case still carries the summary: an empty chart with
+        # no explanation is exactly the failure this exists to prevent.
+        if not rows:
+            return [], Decimal("0"), dropped_by_view
 
         def _group_of(r) -> tuple[str, str]:
             if regroup is None:
@@ -1672,7 +1685,7 @@ class ReportService:
             for row in cat_agg.iter_rows(named=True)
         ]
 
-        return items, Decimal(str(round(grand_total, 4)))
+        return items, Decimal(str(round(grand_total, 4))), dropped_by_view
 
     # ─── Seasonality ─────────────────────────────────────────────────────────
 

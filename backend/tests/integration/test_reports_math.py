@@ -137,7 +137,7 @@ async def test_budget_vs_actual_and_grouped_include_split_children(db_session):
     assert spent_by_cat.get(str(gas.id)) == Decimal("40.00")
     assert bva["total_spent"] == Decimal("100.00")
 
-    items, total = await reports.spending_grouped(budget.id, START, TODAY)
+    items, total, _ = await reports.spending_grouped(budget.id, START, TODAY)
     grouped = {i["name"]: i["total"] for i in items}
     assert grouped.get("Groceries") == Decimal("60.0")
     assert grouped.get("Gas") == Decimal("40.0")
@@ -192,7 +192,7 @@ async def test_float_boundary_amounts_stay_exact_decimals(db_session):
     assert grand_total == Decimal("0.30")
     assert categories[0]["total"] == Decimal("0.30")
 
-    items, grouped_total = await reports.spending_grouped(budget.id, START, TODAY)
+    items, grouped_total, _ = await reports.spending_grouped(budget.id, START, TODAY)
     assert grouped_total == Decimal("0.30")
     assert items[0]["total"] == Decimal("0.30")
 

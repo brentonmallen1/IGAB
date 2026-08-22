@@ -570,7 +570,7 @@ class TestSpendingGrouped:
             row(id=CAT_B, name="Gas", group_id=GRP_2, group_name="Transport", amount=D("-75.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        items, total = await svc.spending_grouped(BUDGET, JAN, APR)
+        items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
 
         assert total == D("225.0")
         grocery = next(i for i in items if i["name"] == "Groceries")
@@ -585,7 +585,7 @@ class TestSpendingGrouped:
             row(id=CAT_B, name="Y", group_id=GRP_1, group_name="G1", amount=D("-100.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        items, total = await svc.spending_grouped(BUDGET, JAN, APR)
+        items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
 
         x = next(i for i in items if i["name"] == "X")
         y = next(i for i in items if i["name"] == "Y")
@@ -594,7 +594,7 @@ class TestSpendingGrouped:
 
     async def test_empty(self):
         svc = ReportService(make_session(mock_result([])))
-        items, total = await svc.spending_grouped(BUDGET, JAN, APR)
+        items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
         assert items == []
         assert total == D("0")
 
