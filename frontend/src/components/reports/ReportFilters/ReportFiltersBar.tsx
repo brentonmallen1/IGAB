@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
+import { useBudgetViews } from '../../../api/budgetViews'
+import { categoryOptions } from './categoryOptions'
 import { usePayees } from '../../../api/payees'
 import { useAccounts } from '../../../api/accounts'
 import { useReportStore, TAB_FILTER_SUPPORT, type GroupBy } from '../../../stores/reportStore'
@@ -26,6 +28,7 @@ export function ReportFiltersBar({ budgetId }: Props) {
   const groups = useCategoryGroups(budgetId)
   const payees = usePayees(budgetId)
   const accounts = useAccounts(budgetId)
+  const views = useBudgetViews(budgetId)
 
   const groupMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -33,11 +36,15 @@ export function ReportFiltersBar({ budgetId }: Props) {
     return m
   }, [groups.data])
 
-  const categoryOptions = useMemo<MultiSelectOption[]>(() => {
-    return (categories.data ?? [])
-      .filter((c) => !c.is_hidden)
-      .map((c) => ({ id: c.id, label: c.name, group: groupMap.get(c.category_group_id) ?? '' }))
-  }, [categories.data, groupMap])
+  const activeView = useMemo(
+    () => views.data?.find((v) => v.id === filters.viewId) ?? null,
+    [views.data, filters.viewId]
+  )
+
+  const categoryOpts = useMemo(
+    () => categoryOptions(categories.data ?? [], groupMap, activeView),
+    [categories.data, groupMap, activeView]
+  )
 
   const payeeOptions = useMemo<MultiSelectOption[]>(() => {
     return (payees.data ?? [])
@@ -57,7 +64,13 @@ export function ReportFiltersBar({ budgetId }: Props) {
     filters.accountIds.length > 0
 
   // Check if any filters are supported for this tab
-  const hasAnySupport = support.dates || support.categories || support.payees || support.accounts || support.groupBy
+  const hasAnySupport =
+    support.dates ||
+    support.categories ||
+    support.payees ||
+    support.accounts ||
+    support.groupBy ||
+    support.views
 
   // If no filters apply, don't render the bar
   if (!hasAnySupport) {
@@ -73,6 +86,24 @@ export function ReportFiltersBar({ budgetId }: Props) {
             endDate={filters.endDate}
             onChange={(startDate, endDate) => setFilters({ startDate, endDate })}
           />
+        )}
+        {support.views && (views.data?.length ?? 0) > 0 && (
+          <label className="rfb__view">
+            <span className="rfb__view-label">View</span>
+            <select
+              className="rfb__view-select"
+              value={filters.viewId ?? ''}
+              onChange={(e) => setFilters({ viewId: e.target.value || null })}
+              title="Roll up by a saved view's groups instead of your own"
+            >
+              <option value="">Default groups</option>
+              {views.data!.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         {support.groupBy && (
           <div className="rfb__groupby">
@@ -96,7 +127,7 @@ export function ReportFiltersBar({ budgetId }: Props) {
             <MultiSelectCombobox
               label="Categories"
               selectedIds={filters.categoryIds}
-              options={categoryOptions}
+              options={categoryOpts}
               onChange={(ids) => setFilters({ categoryIds: ids })}
               placeholder="All categories"
             />

@@ -13,6 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import (
     Account,
     BudgetAssignment,
+    BudgetView,
+    BudgetViewGroup,
+    BudgetViewPlacement,
     Category,
     CategoryGroup,
     Liability,
@@ -100,6 +103,11 @@ class AnomalyRow(TypedDict):
     z_score: float
     direction: str
     history: list[Decimal]
+
+
+#: Bucket for categories a view has not placed. A string, not a UUID, so it
+#: cannot collide with a real group id.
+UNASSIGNED_VIEW_GROUP = "__unassigned__"
 
 
 def _spending_classes(include: Sequence[ActivityClass] | None = None):
@@ -1572,7 +1580,18 @@ class ReportService:
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
         include_classes: Sequence[ActivityClass] | None = None,
+        view_id: uuid.UUID | None = None,
     ) -> tuple[list[dict], Decimal]:
+        """Spending rolled up by group.
+
+        With `view_id`, the groups come from that view's arrangement instead of
+        the budget's own — the same money read a different way, which is the
+        point of a view. Categories the view hides drop out; ones it has not
+        placed collect under "Unassigned", or drop out too if the view says so.
+
+        The response shape is identical either way, so the client-side rollup
+        does not care which arrangement produced it.
+        """
         q = (
             select(
                 Category.id,
@@ -1607,12 +1626,25 @@ class ReportService:
         if not rows:
             return [], Decimal("0")
 
+        regroup = await self._view_arrangement(budget_id, view_id) if view_id else None
+        if regroup is not None:
+            rows = [r for r in rows if regroup(r.id) is not None]
+            if not rows:
+                return [], Decimal("0")
+
+        def _group_of(r) -> tuple[str, str]:
+            if regroup is None:
+                return str(r.group_id), r.group_name
+            placed = regroup(r.id)
+            assert placed is not None  # filtered above
+            return placed
+
         df = pl.DataFrame(
             {
                 "cat_id": [str(r.id) for r in rows],
                 "cat_name": [r.name for r in rows],
-                "group_id": [str(r.group_id) for r in rows],
-                "group_name": [r.group_name for r in rows],
+                "group_id": [_group_of(r)[0] for r in rows],
+                "group_name": [_group_of(r)[1] for r in rows],
                 "amount": [abs(float(r.amount)) for r in rows],
             }
         )
@@ -2180,6 +2212,61 @@ class ReportService:
             key = row.month.date() if hasattr(row.month, "date") else row.month
             by_month.setdefault(key, {})[row.cls] = Decimal(str(row.total))
         return by_month
+
+    async def _view_arrangement(self, budget_id: uuid.UUID, view_id: uuid.UUID):
+        """Return `category_id -> (group_id, group_name)` for one view, or None
+        for a category the view leaves out.
+
+        Mirrors the budget page's `groupByView` so a report and the grid never
+        disagree about where a category sits: hidden placements are dropped,
+        unplaced ones fall to "Unassigned" unless the view hides those too.
+        """
+        view = (
+            await self.session.execute(
+                select(BudgetView).where(
+                    BudgetView.id == view_id,
+                    BudgetView.budget_id == budget_id,
+                    BudgetView.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+        if view is None:
+            return None
+
+        group_names = {
+            g.id: g.name
+            for g in (
+                await self.session.execute(
+                    select(BudgetViewGroup).where(BudgetViewGroup.view_id == view_id)
+                )
+            )
+            .scalars()
+            .all()
+        }
+        placements = {
+            p.category_id: p
+            for p in (
+                await self.session.execute(
+                    select(BudgetViewPlacement).where(BudgetViewPlacement.view_id == view_id)
+                )
+            )
+            .scalars()
+            .all()
+        }
+        hide_unassigned = view.hide_unassigned
+
+        def arrange(category_id) -> tuple[str, str] | None:
+            placement = placements.get(category_id)
+            if placement is not None and placement.is_hidden:
+                return None
+            group_id = placement.group_id if placement else None
+            if group_id is None:
+                if hide_unassigned:
+                    return None
+                return UNASSIGNED_VIEW_GROUP, "Unassigned"
+            return str(group_id), group_names.get(group_id, "Unassigned")
+
+        return arrange
 
     # ─── Savings Rate ─────────────────────────────────────────────────────────
 

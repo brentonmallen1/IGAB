@@ -77,7 +77,7 @@ export function ParetoReport({ budgetId }: Props) {
   // Both queries always fetched — hooks must be unconditional
   // Only meaningful for category/group views, not the payee view
   const withSavings = includeSavings && groupBy !== 'payee'
-  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, withSavings)
+  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, withSavings, filters.viewId)
   const payeeQ = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
 
   const spendingItems = useMemo(() => spendingQ.data?.groups ?? [], [spendingQ.data])

@@ -307,11 +307,13 @@ export function useSpendingGroupedReport(
   /** Spending reports mean money spent, so saving and debt principal are left
    *  out by default. Set to bring them back into the totals. */
   includeSavings?: boolean,
+  /** Roll up by this view's groups instead of the budget's own. */
+  viewId?: string | null,
 ) {
   const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'spending-grouped', budgetId, startDate, endDate, catParam, acctParam, includeSavings],
+    queryKey: ['reports', 'spending-grouped', budgetId, startDate, endDate, catParam, acctParam, includeSavings, viewId],
     queryFn: async () => {
       const { data } = await apiClient.get<SpendingGroupedReport>(
         `/${budgetId}/reports/spending-grouped`,
@@ -322,6 +324,7 @@ export function useSpendingGroupedReport(
             category_ids: catParam,
             account_ids: acctParam,
             include_savings: includeSavings ? 'true' : undefined,
+            view_id: viewId ?? undefined,
           }),
         },
       )

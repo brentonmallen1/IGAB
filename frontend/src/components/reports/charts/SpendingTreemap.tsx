@@ -33,7 +33,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const [hideSavings, setHideSavings] = useState(false)
-  const { data, isLoading, isError, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings)
+  const { data, isLoading, isError, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, hideSavings, filters.viewId)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 

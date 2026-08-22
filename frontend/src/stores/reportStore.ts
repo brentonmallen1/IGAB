@@ -87,6 +87,10 @@ export function getGroupTabs(groupId: TabGroup): TabDef[] {
 export type GroupBy = 'group' | 'category' | 'payee'
 
 export interface TabFilterSupport {
+  /** Whether the tab can roll up by a saved view's groups instead of the
+   *  budget's own. Only the group-capable ones — everything else has no group
+   *  dimension for a view to change. */
+  views?: boolean
   dates: boolean
   categories: boolean
   payees: boolean
@@ -110,8 +114,8 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'budget-actual': { dates: true, categories: true, payees: false, accounts: false, groupBy: false },
   'variance': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'volatility': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'pareto': { dates: true, categories: true, payees: true, accounts: true, groupBy: true },
-  'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true },
+  'pareto': { dates: true, categories: true, payees: true, accounts: true, groupBy: true, views: true },
+  'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true, views: true },
   'seasonality': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'subscriptions': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'savings': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
@@ -129,6 +133,8 @@ export interface ReportFilters {
   payeeIds: string[]
   accountIds: string[]
   groupBy: GroupBy
+  /** Roll up by this view's arrangement. null = the budget's own groups. */
+  viewId: string | null
 }
 
 /** Fully-resolved drill-down request; charts resolve ids and the date window
@@ -167,6 +173,7 @@ function defaultFilters(): ReportFilters {
     payeeIds: [],
     accountIds: [],
     groupBy: 'category',
+    viewId: null,
   }
 }
 

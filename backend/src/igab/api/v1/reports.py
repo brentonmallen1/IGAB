@@ -94,7 +94,12 @@ async def spending_report(
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
     categories, total = await report_svc.spending_by_category(
-        budget_id, start, end, cat_ids, acct_ids, _spending_classes(include_savings)
+        budget_id,
+        start,
+        end,
+        cat_ids,
+        acct_ids,
+        _spending_classes(include_savings),
     )
     return SpendingReportResponse(
         categories=[SpendingCategory.model_validate(c) for c in categories], total=total
@@ -289,6 +294,8 @@ async def spending_grouped_report(
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
     include_savings: bool = False,
+    #: Roll up by this view's groups instead of the budget's own.
+    view_id: uuid.UUID | None = None,
 ) -> SpendingGroupedResponse:
     today = date.today()
     start = start_date or today.replace(day=1)
@@ -296,7 +303,13 @@ async def spending_grouped_report(
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
     items, total = await report_svc.spending_grouped(
-        budget_id, start, end, cat_ids, acct_ids, _spending_classes(include_savings)
+        budget_id,
+        start,
+        end,
+        cat_ids,
+        acct_ids,
+        _spending_classes(include_savings),
+        view_id=view_id,
     )
     return SpendingGroupedResponse(
         groups=[SpendingGroupItem.model_validate(i) for i in items],
