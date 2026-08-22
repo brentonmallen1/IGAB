@@ -37,7 +37,7 @@ async def test_preview_lists_accounts_with_type_suggestions(api_client):
     assert set(by_name) == {"Checking", "Home Mortgage", "Vanguard Brokerage"}
     assert by_name["Checking"]["suggested_type"] == "checking"
     assert by_name["Checking"]["suggested_on_budget"] is True
-    assert by_name["Home Mortgage"]["suggested_type"] == "loan"
+    assert by_name["Home Mortgage"]["suggested_type"] == "mortgage"
     assert by_name["Home Mortgage"]["suggested_on_budget"] is False
     assert by_name["Vanguard Brokerage"]["suggested_type"] == "investment"
     assert by_name["Vanguard Brokerage"]["suggested_on_budget"] is False
@@ -60,7 +60,7 @@ async def test_import_applies_account_type_mapping(api_client, db_session):
     services = make_services(db_session)
 
     mapping = (
-        '{"Home Mortgage": {"account_type": "loan", "on_budget": false},'
+        '{"Home Mortgage": {"account_type": "mortgage", "on_budget": false},'
         ' "Vanguard Brokerage": {"account_type": "investment", "on_budget": false},'
         ' "Checking": {"account_type": "checking", "on_budget": true}}'
     )
@@ -75,7 +75,7 @@ async def test_import_applies_account_type_mapping(api_client, db_session):
     budget_id = uuid.UUID(body["budget"]["id"])
 
     accounts = {a.name: a for a in await services.account_repo.get_all(budget_id)}
-    assert accounts["Home Mortgage"].account_type == "loan"
+    assert accounts["Home Mortgage"].account_type == "mortgage"
     assert accounts["Home Mortgage"].on_budget is False
     assert accounts["Vanguard Brokerage"].account_type == "investment"
     assert accounts["Vanguard Brokerage"].on_budget is False
@@ -142,7 +142,7 @@ async def test_budget_creation_flow_preview_and_mapped_import(api_client, db_ses
     }
 
     mapping = (
-        '{"Home Mortgage": {"account_type": "loan", "on_budget": false},'
+        '{"Home Mortgage": {"account_type": "mortgage", "on_budget": false},'
         ' "Vanguard Brokerage": {"account_type": "investment", "on_budget": false}}'
     )
     resp = await api_client.post(
@@ -191,7 +191,7 @@ async def test_import_skips_accounts_marked_skip(api_client, db_session):
     services = make_services(db_session)
 
     mapping = (
-        '{"Home Mortgage": {"account_type": "loan", "on_budget": false, "skip": true},'
+        '{"Home Mortgage": {"account_type": "mortgage", "on_budget": false, "skip": true},'
         ' "Vanguard Brokerage": {"account_type": "investment", "on_budget": false},'
         ' "Checking": {"account_type": "checking", "on_budget": true}}'
     )

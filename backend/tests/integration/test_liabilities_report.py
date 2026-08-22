@@ -34,7 +34,7 @@ async def _setup(db_session):
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
     loan = await create_account(
-        db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        db_session, budget, "Car Loan", account_type="auto_loan", on_budget=False
     )
     await create_transaction(db_session, budget, loan, "-7000.00", TODAY - timedelta(days=90))
     managed = await create_liability(
@@ -86,7 +86,10 @@ async def test_filters_narrow_items_and_totals(db_session):
     services, budget, *_ = await _setup(db_session)
     svc = make_liability_service(db_session, services)
 
-    by_type = await svc.liabilities_report(budget.id, liability_type="auto")
+    # The filter matches what the report SHOWS. A managed liability's kind is
+    # its account's type now, so "auto_loan" is the value on screen — filtering
+    # the stored column would hide a row whose visible type matches.
+    by_type = await svc.liabilities_report(budget.id, liability_type="auto_loan")
     assert [i["name"] for i in by_type["items"]] == ["Car"]
     assert by_type["total_balance"] == Decimal("7000.00")
 

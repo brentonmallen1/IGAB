@@ -10,20 +10,13 @@ import {
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
+import { useAccountTypes } from '../../api/accountTypes'
+import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
 import './LiabilitiesOverviewPage.css'
-
-const TYPE_LABELS: Record<string, string> = {
-  mortgage: 'Mortgage',
-  auto: 'Auto loan',
-  student: 'Student loan',
-  personal: 'Personal',
-  credit_card: 'Credit card',
-  medical: 'Medical',
-  other: 'Other',
-}
 
 export function LiabilitiesOverviewPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
+  const { data: accountTypes } = useAccountTypes(budgetId)
   const navigate = useNavigate()
   const { formatMoney, formatMonth } = useFormatters()
   const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
@@ -108,7 +101,7 @@ export function LiabilitiesOverviewPage() {
                 <div className="liability-card__top">
                   <span className="liability-card__name">{liability.name}</span>
                   <span className="liability-card__type">
-                    {TYPE_LABELS[liability.liability_type] ?? 'Other'}
+                    {liabilityTypeLabel(liability.liability_type, accountTypes)}
                   </span>
                 </div>
                 <div className="liability-card__balance tabular">

@@ -51,14 +51,46 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
       'envelope money, and payments are transfers.',
   },
   {
+    key: 'mortgage',
+    label: 'Mortgage',
+    classification: 'liability',
+    default_on_budget: false,
+    description:
+      'A home loan. Off budget, with APR, payment and payoff tracking attached to ' +
+      'the account itself. Money you send here counts as paying down debt, not ' +
+      'spending, so it stays out of your spending reports — including the escrow ' +
+      'portion, which is why the payoff figures use the principal-and-interest amount.',
+  },
+  {
+    key: 'auto_loan',
+    label: 'Auto Loan',
+    classification: 'liability',
+    default_on_budget: false,
+    description:
+      'A car, truck, or other vehicle loan. Off budget. Money you send here counts ' +
+      'as paying down debt rather than spending. Track the vehicle\'s value ' +
+      'separately as an Other Asset if you want it in net worth.',
+  },
+  {
+    key: 'student_loan',
+    label: 'Student Loan',
+    classification: 'liability',
+    default_on_budget: false,
+    description:
+      'An education loan. Off budget. Money you send here counts as paying down ' +
+      'debt, not spending. Several loans that are billed together can be one ' +
+      'account, or separate ones if their rates differ enough to matter.',
+  },
+  {
     key: 'loan',
     label: 'Loan',
     classification: 'liability',
     default_on_budget: false,
     description:
-      'A mortgage, auto, student, or other loan. Usually off budget — link a ' +
-      'Liability record to it for payoff projections. Money you send here counts as ' +
-      'paying down debt, not spending, so it stays out of your spending reports.',
+      'Any other loan — personal, medical, a line of credit. Off budget. Money you ' +
+      'send here counts as paying down debt, not spending, so it stays out of your ' +
+      'spending reports. Pick Mortgage, Auto Loan or Student Loan instead when one ' +
+      'fits: they read better everywhere the debt is named.',
   },
   {
     key: 'investment',

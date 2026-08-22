@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAccountTypes } from '../../../api/accountTypes'
+import { liabilityTypeLabel } from '../../../utils/liabilityTypeLabel'
 import { AlertTriangle } from 'lucide-react'
 import {
   Area,
@@ -26,16 +28,6 @@ interface Props {
   budgetId: string
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  mortgage: 'Mortgage',
-  auto: 'Auto',
-  student: 'Student',
-  personal: 'Personal',
-  credit_card: 'Credit card',
-  medical: 'Medical',
-  other: 'Other',
-}
-
 type SortKey = 'balance' | 'rate' | 'baseline' | 'live' | 'interest'
 
 export function LiabilitiesReport({ budgetId }: Props) {
@@ -55,6 +47,8 @@ export function LiabilitiesReport({ budgetId }: Props) {
   )
   // Unfiltered call drives the filter pills so options don't vanish
   const { data: allData } = useLiabilitiesReport(budgetId)
+  // Labels come from the registry, so a custom liability type reads as itself
+  const { data: accountTypes } = useAccountTypes(budgetId)
 
   const items = useMemo(() => {
     const rows = [...(data?.items ?? [])]
@@ -147,7 +141,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 className={`report-btn ${typeFilter === t ? 'report-btn--active' : ''}`}
                 onClick={() => setTypeFilter(typeFilter === t ? null : t)}
               >
-                {TYPE_LABELS[t] ?? t}
+                {liabilityTypeLabel(t, accountTypes)}
               </button>
             ))}
           {(['managed', 'unmanaged'] as const).map((m) => (
@@ -275,7 +269,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                       <td>
                         <span className="liabilities-report__name">{item.name}</span>
                         <span className="liabilities-report__type">
-                          {TYPE_LABELS[item.liability_type] ?? item.liability_type} ·{' '}
+                          {liabilityTypeLabel(item.liability_type, accountTypes)} ·{' '}
                           {item.mode === 'managed' ? 'from account' : 'manual'}
                         </span>
                       </td>

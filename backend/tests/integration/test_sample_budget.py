@@ -159,7 +159,9 @@ async def test_generation_covers_every_entity_kind(db_session):
 
     visa = next(l for l in liabilities if l.linked_account_id == visa_account.id)
     assert visa.interest_rate is None and visa.minimum_payment is None
-    assert visa.liability_type == "credit_card"
+    # Nothing stored: a managed liability reads its kind off its account, so a
+    # companion storing one would be the duplicate field this model removed.
+    assert visa.liability_type is None
 
     unmanaged = next(l for l in liabilities if l.linked_account_id is None)
     assert unmanaged.name == "Dental Payment Plan"

@@ -18,6 +18,12 @@ import './GuidePage.css'
 export function GuidePage() {
   const activeTab = useGuideStore((s) => s.activeTab)
   const setActiveTab = useGuideStore((s) => s.setActiveTab)
+  const roadmapView = useGuideStore((s) => s.roadmapView)
+
+  // The map pans and zooms inside its own viewport. If the page scrolled too,
+  // one wheel gesture would drive both — which is exactly as confusing as it
+  // sounds. Every other tab is an ordinary scrolling document.
+  const fixedHeight = activeTab === 'roadmap' && roadmapView === 'map'
 
   // Guard against a persisted tab id that no longer exists — the same trap
   // ReportsPage hit when a tab was renamed.
@@ -83,7 +89,7 @@ export function GuidePage() {
   }
 
   return (
-    <div className="guide-page">
+    <div className={`guide-page ${fixedHeight ? 'guide-page--fixed' : ''}`}>
       <nav className="guide-nav" aria-label="Guide navigation">
         <div className="guide-nav__tabs">
           {GUIDE_TABS.map((tab) => (

@@ -88,15 +88,10 @@ describe('flow layout', () => {
     expect(edge('college-savings', 'your-call')?.kind).toBe('rejoin')
   })
 
-  it('walks the spine in sequence through step 0', () => {
-    const chain = [
-      'create-budget', 'housing', 'groceries', 'essential-items',
-      'income-earning-expenses', 'health-care', 'minimum-payments',
-      'starter-ef', 'nonessential-bills', 'match-question',
-    ]
-    for (let i = 0; i < chain.length - 1; i++) {
-      expect(edge(chain[i], chain[i + 1])?.kind).toBe('sequence')
-    }
+  it('carries the spine across a stage boundary', () => {
+    expect(edge('minimum-payments', 'starter-ef')?.kind).toBe('sequence')
+    expect(edge('starter-ef', 'nonessential-bills')?.kind).toBe('sequence')
+    expect(edge('nonessential-bills', 'match-question')?.kind).toBe('sequence')
   })
 
   it('gives every decision exactly as many arrows as distinct outcomes', () => {
@@ -118,12 +113,69 @@ describe('flow layout', () => {
     }
   })
 
-  it('never draws an arrow that goes upward', () => {
-    // The roadmap is a DAG that flows down. An upward arrow would be a loop.
+  it('never draws an arrow that goes backwards', () => {
+    // The roadmap is a DAG that flows forward. Packed runs share a row, so
+    // the invariant is on placement order — and a row may never decrease.
     for (const e of flow.edges) {
       const from = flow.byId.get(e.from)
       const to = flow.byId.get(e.to)
-      if (from && to) expect(to.row).toBeGreaterThan(from.row)
+      if (!from || !to) continue
+      expect(to.seq).toBeGreaterThan(from.seq)
+      expect(to.row).toBeGreaterThanOrEqual(from.row)
+    }
+  })
+
+  it('packs the opening run of plain steps horizontally', () => {
+    // The source chart lays its essentials out across the page rather than
+    // as a tall stack; a run of plain sequential steps should do the same.
+    const foundation = flow.nodes.filter((n) => n.stage.id === 'foundation')
+    expect(foundation).toHaveLength(7)
+    // Four across, then the remainder on a second line.
+    expect(foundation.slice(0, 4).map((n) => n.col)).toEqual([0, 1, 2, 3])
+    expect(new Set(foundation.slice(0, 4).map((n) => n.row)).size).toBe(1)
+    expect(new Set(foundation.slice(4).map((n) => n.row)).size).toBe(1)
+    expect(foundation[0].row).not.toBe(foundation[4].row)
+  })
+
+  it('snakes the second line back the other way', () => {
+    // Left-to-right then right-to-left, so the eye follows the flow instead
+    // of jumping the full width of the page between lines.
+    const foundation = flow.nodes.filter((n) => n.stage.id === 'foundation')
+    expect(foundation.slice(4).map((n) => n.col)).toEqual([3, 2, 1])
+  })
+
+  it('keeps packed steps on the spine despite their column', () => {
+    // Column is where a box sits; depth is whether it is on the main path.
+    // Packing moves the first but must not move the second.
+    for (const n of flow.nodes.filter((x) => x.stage.id === 'foundation')) {
+      expect(n.depth).toBe(0)
+    }
+  })
+
+  it('chains packed steps in reading order', () => {
+    const chain = [
+      'create-budget', 'housing', 'groceries', 'essential-items',
+      'income-earning-expenses', 'health-care', 'minimum-payments',
+    ]
+    for (let i = 0; i < chain.length - 1; i++) {
+      expect(edge(chain[i], chain[i + 1])?.kind).toBe('sequence')
+    }
+  })
+
+  it('does not pack a run shorter than three', () => {
+    // Two boxes side by side just look stranded.
+    const starter = flow.nodes.filter((n) => n.stage.id === 'starter-emergency-fund')
+    expect(starter).toHaveLength(2)
+    expect(starter[0].row).not.toBe(starter[1].row)
+    expect(starter.every((n) => n.col === 0)).toBe(true)
+  })
+
+  it('never overlaps two boxes', () => {
+    const seen = new Set<string>()
+    for (const n of [...flow.nodes, ...flow.collapsed]) {
+      const key = `${n.row}:${n.col}`
+      expect(seen.has(key)).toBe(false)
+      seen.add(key)
     }
   })
 

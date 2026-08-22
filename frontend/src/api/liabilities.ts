@@ -67,7 +67,9 @@ export interface PromoProjection {
 
 export interface LiabilityCreate {
   name: string
-  liability_type: LiabilityType
+  /** Only for an unmanaged liability. A managed one takes its kind from the
+   *  linked account, and the server drops anything sent here. */
+  liability_type?: LiabilityType
   interest_rate: number
   minimum_payment: number
   linked_account_id?: string | null

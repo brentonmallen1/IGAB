@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Maximize2, Minus, Plus, X } from 'lucide-react'
+import { Maximize2, Minus, Plus } from 'lucide-react'
 import type { StageId } from '../../content/roadmap'
 import { useGuideStore } from '../../stores/guideStore'
-import { useIsMobile } from '../../hooks/useMediaQuery'
-import { Modal } from '../common/Modal/Modal'
-import { BottomSheet } from '../common/BottomSheet/BottomSheet'
+import { GuideDialog } from './GuideDialog'
 import { NodeCard } from './NodeCard'
 import { stepColor } from './stepColor'
 import { buildFlow, NODE_W, NODE_H, ROW_GAP, type FlowEdge } from './flowLayout'
@@ -32,7 +30,6 @@ export function RoadmapMap() {
   const viewportRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
 
-  const isMobile = useIsMobile()
   const expandedDetails = useGuideStore((s) => s.expandedDetails)
   const toggleDetail = useGuideStore((s) => s.toggleDetail)
 
@@ -78,21 +75,36 @@ export function RoadmapMap() {
     ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
   }
 
-  function onWheel(e: React.WheelEvent) {
-    if (!e.ctrlKey && !e.metaKey && Math.abs(e.deltaY) < 2) return
+  // React's onWheel is registered passively, so it cannot stop the page from
+  // scrolling underneath the zoom. A native non-passive listener can — and the
+  // page behind the map is locked while this view is open, so the two no
+  // longer fight over the same gesture.
+  const scaleRef = useRef(scale)
+  useEffect(() => {
+    scaleRef.current = scale
+  }, [scale])
+
+  useEffect(() => {
     const el = viewportRef.current
     if (!el) return
-    const rect = el.getBoundingClientRect()
-    const px = e.clientX - rect.left
-    const py = e.clientY - rect.top
-    const next = clamp(scale * (e.deltaY > 0 ? 0.92 : 1.08))
-    // Keep the point under the cursor fixed while zooming.
-    setPan((p) => ({
-      x: px - ((px - p.x) * next) / scale,
-      y: py - ((py - p.y) * next) / scale,
-    }))
-    setScale(next)
-  }
+    function onWheel(e: WheelEvent) {
+      e.preventDefault()
+      const rect = el!.getBoundingClientRect()
+      const px = e.clientX - rect.left
+      const py = e.clientY - rect.top
+      const current = scaleRef.current
+      const next = clamp(current * wheelZoomFactor(e))
+      if (next === current) return
+      // Keep whatever is under the cursor pinned while the scale changes.
+      setPan((p) => ({
+        x: px - ((px - p.x) * next) / current,
+        y: py - ((py - p.y) * next) / current,
+      }))
+      setScale(next)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   function zoomBy(factor: number) {
     const el = viewportRef.current
@@ -144,7 +156,6 @@ export function RoadmapMap() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onWheel={onWheel}
       >
         <div
           className="flow__canvas"
@@ -171,7 +182,7 @@ export function RoadmapMap() {
                 markerHeight="6"
                 orient="auto-start-reverse"
               >
-                <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--border-color)" />
+                <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--flow-wire)" />
               </marker>
             </defs>
             {flow.edges.map((e) => {
@@ -253,32 +264,16 @@ export function RoadmapMap() {
         </div>
       </div>
 
-      {/* Reading a box is the same component the other views use, so there is
-          one place where a node's content is defined. */}
-      {selectedNode && !isMobile && (
-        <Modal onClose={() => setSelected(null)} className="flow-detail__overlay" historyKey="flow-node">
-          <div className="flow-detail" role="dialog" aria-modal="true" aria-label={selectedNode.node.title}>
-            <div className="flow-detail__head">
-              <span className="flow-node__step">
-                Step {selectedNode.stage.step} — {selectedNode.stage.title}
-              </span>
-              <button type="button" onClick={() => setSelected(null)} aria-label="Close">
-                <X size={16} />
-              </button>
-            </div>
-            {detail}
-          </div>
-        </Modal>
-      )}
-      {selectedNode && isMobile && (
-        <BottomSheet
-          open
-          onClose={() => setSelected(null)}
+      {/* Reading a box uses the same component the other views render, so a
+          node's content is defined in exactly one place. */}
+      {selectedNode && (
+        <GuideDialog
           title={`Step ${selectedNode.stage.step} — ${selectedNode.stage.title}`}
+          onClose={() => setSelected(null)}
           historyKey="flow-node"
         >
-          <div className="flow-detail">{detail}</div>
-        </BottomSheet>
+          {detail}
+        </GuideDialog>
       )}
     </div>
   )
@@ -286,6 +281,22 @@ export function RoadmapMap() {
 
 function clamp(v: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, v))
+}
+
+/** How much one wheel event should zoom.
+ *
+ * A fixed step per event is wrong for both input devices at once: a trackpad
+ * fires a stream of small deltas, so a fixed step rockets away, while a mouse
+ * fires one large delta per notch. So scale the change to the delta, cap how
+ * much any single event may do, and go through exp() so zooming in and back
+ * out returns to exactly where it started.
+ *
+ * `deltaMode` 1 means the delta is in lines rather than pixels — Firefox
+ * reports mouse wheels that way, and untranslated it zooms ~16x too slowly. */
+function wheelZoomFactor(e: WheelEvent): number {
+  const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+  const capped = Math.max(-40, Math.min(40, px))
+  return Math.exp(-capped * 0.0016)
 }
 
 type Pt = { x: number; y: number }
@@ -296,8 +307,17 @@ type Pt = { x: number; y: number }
 function edgePath(a: Pt, b: Pt): string {
   const aMidX = a.x + NODE_W / 2
   const bMidX = b.x + NODE_W / 2
-  const aBottom = a.y + NODE_H
   const aMidY = a.y + NODE_H / 2
+  const bMidY = b.y + NODE_H / 2
+  const aBottom = a.y + NODE_H
+
+  // Side by side on a packed row — a straight arrow between the two edges,
+  // pointing whichever way the run happens to be flowing.
+  if (a.y === b.y) {
+    return bMidX > aMidX
+      ? `M ${a.x + NODE_W} ${aMidY} L ${b.x} ${bMidY}`
+      : `M ${a.x} ${aMidY} L ${b.x + NODE_W} ${bMidY}`
+  }
 
   // Straight down the same column.
   if (aMidX === bMidX) return `M ${aMidX} ${aBottom} L ${bMidX} ${b.y}`
@@ -305,7 +325,8 @@ function edgePath(a: Pt, b: Pt): string {
   // Stepping right into a side branch: out of the right edge, then down.
   if (bMidX > aMidX) return `M ${a.x + NODE_W} ${aMidY} L ${bMidX} ${aMidY} L ${bMidX} ${b.y}`
 
-  // Rejoining the spine: down out of the box, across, then down into the next.
+  // Dropping back left — either rejoining the spine or wrapping onto the next
+  // line of a packed run. Down out of the box, across, then down into the next.
   const drop = aBottom + ROW_GAP / 2
   return `M ${aMidX} ${aBottom} L ${aMidX} ${drop} L ${bMidX} ${drop} L ${bMidX} ${b.y}`
 }
@@ -313,9 +334,11 @@ function edgePath(a: Pt, b: Pt): string {
 function EdgeLabel({ edge, a, b }: { edge: FlowEdge; a: Pt; b: Pt }) {
   const aMidX = a.x + NODE_W / 2
   const bMidX = b.x + NODE_W / 2
+  const sameRow = a.y === b.y
   const right = bMidX > aMidX
-  const x = right ? a.x + NODE_W + 8 : aMidX + 8
-  const y = right ? a.y + NODE_H / 2 - 6 : a.y + NODE_H + 14
+  // Sit just clear of the box the arrow leaves, on the side it leaves from.
+  const x = sameRow ? (right ? a.x + NODE_W + 6 : b.x + NODE_W + 6) : right ? a.x + NODE_W + 8 : aMidX + 8
+  const y = sameRow ? a.y + NODE_H / 2 - 8 : right ? a.y + NODE_H / 2 - 8 : a.y + NODE_H + 14
   return (
     <text className="flow__wire-label" x={x} y={y}>
       {edge.label}

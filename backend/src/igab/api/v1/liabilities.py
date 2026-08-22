@@ -100,7 +100,7 @@ async def _liability_out(
         id=liability.id,
         budget_id=liability.budget_id,
         name=liability.name,
-        liability_type=liability.liability_type,
+        liability_type=await liability_service.resolve_type(liability),
         mode="managed" if liability.linked_account_id is not None else "unmanaged",
         linked_account_id=liability.linked_account_id,
         linked_category_id=linked_category.id if linked_category else None,
@@ -175,6 +175,11 @@ async def create_liability(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="A liability is managed (linked) or unmanaged (manual balance), not both",
         )
+    if body.linked_account_id is None and body.liability_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="An unmanaged liability needs a type — there is no account to take one from",
+        )
     if body.linked_account_id is not None:
         await _validate_linked_account(
             account_repo, liability_repo, budget_id, body.linked_account_id
@@ -183,7 +188,9 @@ async def create_liability(
     liability = await liability_repo.create(
         budget_id=budget_id,
         name=body.name,
-        liability_type=body.liability_type,
+        # Dropped for a managed liability rather than stored and ignored: two
+        # answers to one question is the thing this model removed.
+        liability_type=None if body.linked_account_id is not None else body.liability_type,
         linked_account_id=body.linked_account_id,
         manual_balance=body.manual_balance,
         interest_rate=body.interest_rate,

@@ -126,8 +126,9 @@ class YNABAccountTypeChoice(BaseModel):
 # Where YNAB's own taxonomy lands in IGAB:
 #   Checking → checking · Savings/Money Market → savings · Cash → cash
 #   Credit Card / Line of Credit → credit_card
-#   Mortgage / Auto / Student / Personal loans → loan (off budget; add a
-#     Liability record for payoff tracking)
+#   Mortgage → mortgage · Car/auto loans → auto_loan · Student → student_loan
+#     · anything else owed → loan. All off budget, and all get their payoff
+#     tracking automatically — the liability record comes with the account.
 #   Asset tracking (brokerage, 401k, IRA, HSA, ESPP) → investment
 #   Other tracking assets (crypto, treasury) → other_asset
 #   Liability tracking → other_liability
@@ -143,7 +144,11 @@ class YNABAccountTypeChoice(BaseModel):
 # with needs_review set so the mapping UI can demand a decision.
 _TYPE_HINTS: list[tuple[tuple[str, ...], str, bool]] = [
     # Explicit debt first — "Cedar Grove Property Loan" is a loan, not property.
-    (("mortgage", "loan", "student", "heloc"), "loan", False),
+    # Specific kinds before the generic, since "Student Loans" and "Car Loan"
+    # both contain "loan": the first match wins, so the generic must be last.
+    (("mortgage",), "mortgage", False),
+    (("student",), "student_loan", False),
+    (("loan", "heloc"), "loan", False),
     (
         ("credit", "card", "visa", "amex", "mastercard", "discover", "cc"),
         "credit_card",
@@ -201,6 +206,14 @@ _TRACKED_HINTS: tuple[str, ...] = (
     "rv",
 )
 
+#: A vehicle word ALONE names the asset — "Vehicle A" is the car, not the debt
+#: against it — so only its co-occurrence with "loan" says auto loan. Handled
+#: outside _TYPE_HINTS because the words need not be adjacent ("Vehicle A Loan",
+#: "Car (2019) Loan") and a phrase list cannot express that. Boats and the like
+#: stay on the generic `loan`; there is no account type for them to be specific
+#: about.
+_VEHICLE_WORDS: tuple[str, ...] = ("car", "auto", "vehicle", "truck", "motorcycle", "rv")
+
 #: YNAB users commonly mark tracking accounts in the name itself. That is a
 #: deliberate statement about budget membership, so it outranks any type
 #: keyword that also happens to appear ("Lakeside Trust MM - tracked" is a
@@ -257,6 +270,16 @@ def suggest_account_type(
     if _matches(normalized, _OFF_BUDGET_MARKERS):
         is_liability = implied_balance is not None and implied_balance < 0
         return ("other_liability" if is_liability else "other_asset"), False, True
+
+    # Before the hint list, since the generic `loan` rule would otherwise claim
+    # it. Mortgage and student still win — a name carrying both words is
+    # describing the more specific thing.
+    if (
+        _matches(normalized, ("loan",))
+        and _matches(normalized, _VEHICLE_WORDS)
+        and not _matches(normalized, ("mortgage", "student"))
+    ):
+        return "auto_loan", False, False
 
     for keywords, account_type, on_budget in _TYPE_HINTS:
         if _matches(normalized, keywords):

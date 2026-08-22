@@ -50,17 +50,6 @@ BalanceSource = Literal["ledger", "manual", "manual_fallback"]
 
 LIABILITY_CLASSIFICATION = "liability"
 
-#: Account type → liability type for a companion row. Deliberately coarse:
-#: the account registry cannot tell a mortgage from an auto loan, and guessing
-#: from the account's name would be worse than saying "other". Phase 3 of this
-#: work derives the type from the linked account instead of storing it, at
-#: which point this map narrows to the credit-card case or disappears.
-_COMPANION_LIABILITY_TYPE: dict[str, str] = {
-    "credit_card": "credit_card",
-    "loan": "other",
-    "other_liability": "other",
-}
-
 
 async def ensure_for_account(session: AsyncSession, account: Account) -> Liability | None:
     """Guarantee the companion Liability for a liability-classified account.
@@ -103,10 +92,12 @@ async def ensure_for_account(session: AsyncSession, account: Account) -> Liabili
         await session.flush()
         return existing
 
+    # No stored type: a linked liability reads its account's, so storing one
+    # would be the duplicated field this model set out to remove.
     liability = Liability(
         budget_id=account.budget_id,
         name=account.name,
-        liability_type=_COMPANION_LIABILITY_TYPE.get(account.account_type, "other"),
+        liability_type=None,
         linked_account_id=account.id,
         interest_rate=None,
         minimum_payment=None,
@@ -198,6 +189,29 @@ class LiabilityService:
     @staticmethod
     def mode(liability: Liability) -> str:
         return "managed" if liability.linked_account_id is not None else "unmanaged"
+
+    async def resolve_type(self, liability: Liability) -> str:
+        """What kind of debt this is, from whichever side is authoritative.
+
+        Same rule the model already applies to `manual_balance` — the stored
+        column speaks only when `linked_account_id IS NULL`. A managed
+        liability's kind is its account's type, because the account is the
+        thing the user actually picked a type for, and keeping a second answer
+        beside it is how the two drift apart.
+
+        The account-type registry was made specific enough to carry this
+        (`mortgage`, `auto_loan`, `student_loan` alongside `credit_card` and a
+        generic `loan`), so deriving loses nothing that was there before. A
+        custom liability-classified type answers as itself, which is why there
+        is no mapping table here and a user's "HELOC" reads as HELOC.
+        """
+        if liability.linked_account_id is None:
+            return liability.liability_type or "other"
+        account = await self.account_repo.get(liability.linked_account_id)
+        if account is None:
+            # The link outlived its account. Fall back rather than invent.
+            return liability.liability_type or "other"
+        return account.account_type
 
     @staticmethod
     def terms_complete(liability: Liability) -> bool:
@@ -391,8 +405,14 @@ class LiabilityService:
         the consolidated Liabilities report. No new math — pure aggregation."""
         as_of = as_of or today_utc()
         liabilities = await self.liability_repo.get_all(budget_id)
+        resolved_types = {item.id: await self.resolve_type(item) for item in liabilities}
+        # Filter on what the report SHOWS. Filtering the stored column instead
+        # would hide rows whose visible type matches and surface ones whose
+        # does not — the pre-derivation column is not what anyone is reading.
         if liability_type is not None:
-            liabilities = [item for item in liabilities if item.liability_type == liability_type]
+            liabilities = [
+                item for item in liabilities if resolved_types[item.id] == liability_type
+            ]
         if mode is not None:
             liabilities = [item for item in liabilities if self.mode(item) == mode]
 
@@ -416,7 +436,7 @@ class LiabilityService:
                 {
                     "liability_id": liability.id,
                     "name": liability.name,
-                    "liability_type": liability.liability_type,
+                    "liability_type": resolved_types[liability.id],
                     "mode": status.mode,
                     "current_balance": status.current_balance,
                     "interest_rate": liability.interest_rate,

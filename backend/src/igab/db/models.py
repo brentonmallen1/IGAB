@@ -1150,8 +1150,12 @@ class Liability(Base):
         UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    # 'mortgage'|'auto'|'student'|'personal'|'credit_card'|'medical'|'other'
-    liability_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # Authoritative only when linked_account_id IS NULL — the same rule as
+    # manual_balance below. A managed liability's kind comes from its account's
+    # type, which is why a companion stores none at all.
+    # Unmanaged vocabulary: 'mortgage'|'auto'|'student'|'personal'|
+    # 'credit_card'|'medical'|'other'
+    liability_type: Mapped[str | None] = mapped_column(String(30))
     linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), unique=True
     )

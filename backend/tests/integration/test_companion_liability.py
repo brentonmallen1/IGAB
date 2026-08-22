@@ -20,7 +20,11 @@ from sqlalchemy import select
 
 from igab.db.models import Liability
 from igab.repositories.liability_repo import LiabilityRepository
-from igab.services.liability_service import ensure_for_account, release_for_account
+from igab.services.liability_service import (
+    LiabilityService,
+    ensure_for_account,
+    release_for_account,
+)
 
 from .factories import (
     create_account,
@@ -75,7 +79,9 @@ class TestEnsureForAccount:
         created = await ensure_for_account(db_session, card)
 
         assert created is not None
-        assert created.liability_type == "credit_card"
+        # Stored: nothing. The kind comes from the account, so there is no
+        # second copy to drift.
+        assert created.liability_type is None
 
     async def test_asset_accounts_get_nothing(self, db_session):
         user = await create_user(db_session)
@@ -467,3 +473,180 @@ class TestSnapshotsAndCategoriesCountAsFilledIn:
 
         refreshed = await _companion(db_session, card)
         assert refreshed is not None
+
+
+class TestLiabilityTypeIsDerivedWhenLinked:
+    """`liability_type` said what the linked account's type already said — the
+    one genuinely duplicated field in this model. It is now authoritative only
+    when there is no account, the same rule `manual_balance` follows.
+
+    That is only lossless because the account-type registry was made specific
+    enough to carry a debt's name: mortgage, auto_loan and student_loan sit
+    alongside credit_card and a generic loan. Deriving from a registry that
+    only knew "loan" would have relabelled every mortgage.
+    """
+
+    async def _service(self, db_session):
+        from .factories import make_services
+
+        services = make_services(db_session)
+        return LiabilityService(
+            LiabilityRepository(db_session),
+            services.account_repo,
+            services.category_repo,
+            services.transaction_repo,
+        )
+
+    async def test_a_managed_liability_reads_its_account(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        account = await create_account(
+            db_session, budget, "Maple St", account_type="mortgage", on_budget=False
+        )
+        companion = await ensure_for_account(db_session, account)
+        assert companion is not None
+
+        svc = await self._service(db_session)
+
+        assert await svc.resolve_type(companion) == "mortgage"
+
+    async def test_the_stored_column_does_not_speak_while_linked(self, db_session):
+        """A row carrying a stale value must not contradict its account — that
+        contradiction is the reason the field is being retired."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        account = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        stale = await create_liability(
+            db_session, budget, "Visa", liability_type="mortgage", linked_account_id=account.id
+        )
+
+        svc = await self._service(db_session)
+
+        assert await svc.resolve_type(stale) == "credit_card"
+
+    async def test_retyping_the_account_moves_the_liability_with_it(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        account = await create_account(
+            db_session, budget, "Vehicle Loan", account_type="loan", on_budget=False
+        )
+        companion = await ensure_for_account(db_session, account)
+        assert companion is not None
+        svc = await self._service(db_session)
+        assert await svc.resolve_type(companion) == "loan"
+
+        from igab.services.account_type_service import apply_type, resolve_type
+
+        type_row = await resolve_type(db_session, budget.id, "auto_loan")
+        for field, value in apply_type(type_row, False).items():
+            setattr(account, field, value)
+        await db_session.flush()
+
+        assert await svc.resolve_type(companion) == "auto_loan"
+
+    async def test_an_unmanaged_liability_keeps_its_own_kind(self, db_session):
+        """`personal` and `medical` have no account type, and should not need
+        one — nobody keeps a ledger for a dental payment plan."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        manual = await create_liability(
+            db_session,
+            budget,
+            "Dental Payment Plan",
+            liability_type="medical",
+            manual_balance=Decimal("855.00"),
+        )
+
+        svc = await self._service(db_session)
+
+        assert await svc.resolve_type(manual) == "medical"
+
+    async def test_a_custom_account_type_answers_as_itself(self, db_session):
+        """No mapping table, so a user's own type needs no entry anywhere —
+        which is the point of deriving from the registry rather than a literal."""
+        from igab.db.models import AccountType
+        from igab.services.account_type_service import apply_type, resolve_type
+
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        db_session.add(
+            AccountType(
+                budget_id=budget.id,
+                key="heloc",
+                label="HELOC",
+                classification="liability",
+                default_on_budget=False,
+                is_system=False,
+                sort_order=99,
+            )
+        )
+        await db_session.flush()
+        type_row = await resolve_type(db_session, budget.id, "heloc")
+        account = await create_account(db_session, budget, "Line of Credit")
+        for field, value in apply_type(type_row, False).items():
+            setattr(account, field, value)
+        await db_session.flush()
+        companion = await ensure_for_account(db_session, account)
+        assert companion is not None
+
+        svc = await self._service(db_session)
+
+        assert await svc.resolve_type(companion) == "heloc"
+
+    async def test_the_api_reports_the_resolved_kind(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await create_account(
+            db_session, budget, "Sallie Mae", account_type="student_loan", on_budget=False
+        )
+        await ensure_for_account(db_session, account)
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/liabilities")
+
+        assert resp.status_code == 200, resp.text
+        (body,) = resp.json()
+        assert body["liability_type"] == "student_loan"
+
+    async def test_creating_an_unmanaged_liability_still_needs_a_kind(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/liabilities",
+            json={
+                "name": "Family Loan",
+                "interest_rate": "4.5",
+                "minimum_payment": "150.00",
+                "manual_balance": "3600.00",
+            },
+        )
+
+        assert resp.status_code == 422, resp.text
+        assert "type" in resp.json()["detail"].lower()
+
+    async def test_creating_a_managed_liability_does_not_store_one(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await create_account(
+            db_session, budget, "Maple St", account_type="mortgage", on_budget=False
+        )
+
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/liabilities",
+            json={
+                "name": "Maple St Mortgage",
+                "liability_type": "personal",
+                "interest_rate": "6.25",
+                "minimum_payment": "1896.20",
+                "linked_account_id": str(account.id),
+            },
+        )
+
+        assert resp.status_code == 201, resp.text
+        # Sent "personal", stored nothing, reported the account's kind.
+        assert resp.json()["liability_type"] == "mortgage"
+        stored = (
+            await db_session.execute(
+                select(Liability).where(Liability.linked_account_id == account.id)
+            )
+        ).scalar_one()
+        assert stored.liability_type is None

@@ -20,22 +20,15 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
+import { useAccountTypes } from '../../api/accountTypes'
+import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
 import './LiabilityPage.css'
-
-const TYPE_LABELS: Record<string, string> = {
-  mortgage: 'Mortgage',
-  auto: 'Auto loan',
-  student: 'Student loan',
-  personal: 'Personal loan',
-  credit_card: 'Credit card',
-  medical: 'Medical',
-  other: 'Other',
-}
 
 export function LiabilityPage() {
   const { formatMoney, formatMonth } = useFormatters()
   const { liabilityId } = useParams<{ liabilityId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
+  const { data: accountTypes } = useAccountTypes(budgetId)
   const navigate = useNavigate()
   const isMobile = useIsMobile()
 
@@ -170,7 +163,7 @@ export function LiabilityPage() {
       <div className="liability-page__header">
         <div className="liability-page__header-left">
           <h1 className="liability-page__name">{liability.name}</h1>
-          <span className="liability-page__badge">{TYPE_LABELS[liability.liability_type] ?? 'Other'}</span>
+          <span className="liability-page__badge">{liabilityTypeLabel(liability.liability_type, accountTypes)}</span>
           <span className="liability-page__badge liability-page__badge--muted">
             {liability.mode === 'managed' ? 'Managed' : 'Unmanaged'}
           </span>

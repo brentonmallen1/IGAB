@@ -28,11 +28,27 @@ export const NODE_H = 78
 export const COL_GAP = 64
 export const ROW_GAP = 26
 
+/** How many boxes a packed run puts on one line before wrapping.
+ *
+ * Four, because that is what the source chart uses for its opening row of
+ * essentials — and because a run of plain sequential steps reads far better
+ * across the page than as a long vertical stack. */
+export const PACK_COLS = 4
+
+/** Shortest run worth packing. Two boxes side by side just look stranded. */
+const PACK_MIN = 3
+
 export interface FlowNode {
   node: RoadmapNode
   stage: RoadmapStage
+  /** Grid position. With horizontal packing, `col` is where the box sits —
+   *  which is no longer the same thing as how far off the spine it is. */
   col: number
   row: number
+  /** 0 = on the spine. Drives which edges exist; `col` only draws them. */
+  depth: number
+  /** Placement order. Rows can hold several boxes, so row is not an order. */
+  seq: number
   x: number
   y: number
 }
@@ -60,6 +76,7 @@ export interface CollapsedStage {
   stage: RoadmapStage
   col: 0
   row: number
+  seq: number
   x: number
   y: number
 }
@@ -125,28 +142,64 @@ export function buildFlow(collapsedStages: StageId[] = []): FlowResult {
     return d
   }
 
-  // ── Rows: content order, with collapsed stages taking one row each ────────
+  // ── Placement ─────────────────────────────────────────────────────────────
+  // A run of consecutive plain steps on the spine — no questions, no branches
+  // — is laid out horizontally and snakes back on itself, exactly as the
+  // source chart draws its opening row of essentials. Everything else takes a
+  // row of its own so questions and their branches stay easy to follow.
   const nodes: FlowNode[] = []
   const collapsed: CollapsedStage[] = []
   let row = 0
+  let seq = 0
+
+  const place = (node: RoadmapNode, stage: RoadmapStage, col: number, r: number) => {
+    nodes.push({
+      node,
+      stage,
+      col,
+      row: r,
+      depth: depthOf(node.id),
+      seq: seq++,
+      x: col * (NODE_W + COL_GAP),
+      y: r * (NODE_H + ROW_GAP),
+    })
+  }
+
+  /** A plain step: on the spine, asks nothing, offers no parallel options. */
+  const isPlain = (node: RoadmapNode) =>
+    depthOf(node.id) === 0 && !node.branches?.length && !optionsOf.has(node.id)
 
   for (const stage of ROADMAP) {
     if (collapsedSet.has(stage.id)) {
-      collapsed.push({ stage, col: 0, row, x: 0, y: row * (NODE_H + ROW_GAP) })
+      collapsed.push({ stage, col: 0, row, seq: seq++, x: 0, y: row * (NODE_H + ROW_GAP) })
       row += 1
       continue
     }
-    for (const node of stage.nodes) {
-      const col = depthOf(node.id)
-      nodes.push({
-        node,
-        stage,
-        col,
-        row,
-        x: col * (NODE_W + COL_GAP),
-        y: row * (NODE_H + ROW_GAP),
-      })
+
+    let i = 0
+    while (i < stage.nodes.length) {
+      // How many plain steps run consecutively from here?
+      let runEnd = i
+      while (runEnd < stage.nodes.length && isPlain(stage.nodes[runEnd])) runEnd++
+      const runLength = runEnd - i
+
+      if (runLength >= PACK_MIN) {
+        for (let k = 0; k < runLength; k++) {
+          const line = Math.floor(k / PACK_COLS)
+          const pos = k % PACK_COLS
+          // Odd lines run right to left, so the flow snakes instead of
+          // jumping back across the page between rows.
+          const col = line % 2 === 0 ? pos : PACK_COLS - 1 - pos
+          place(stage.nodes[i + k], stage, col, row + line)
+        }
+        row += Math.ceil(runLength / PACK_COLS)
+        i = runEnd
+        continue
+      }
+
+      place(stage.nodes[i], stage, depthOf(stage.nodes[i].id), row)
       row += 1
+      i += 1
     }
   }
 
@@ -155,7 +208,7 @@ export function buildFlow(collapsedStages: StageId[] = []): FlowResult {
   // ── Edges ─────────────────────────────────────────────────────────────────
   const edges: FlowEdge[] = []
 
-  /** First spine (column 0) node of a stage, following collapse. */
+  /** First spine node of a stage, following collapse. */
   function stageEntry(stageId: StageId): string | null {
     if (collapsedSet.has(stageId)) return `stage:${stageId}`
     const stage = ROADMAP.find((s) => s.id === stageId)
@@ -163,23 +216,26 @@ export function buildFlow(collapsedStages: StageId[] = []): FlowResult {
     return first?.id ?? stage?.nodes[0]?.id ?? null
   }
 
-  /** The next box on the spine below this row.
+  /** The next box on the spine after this one, in placement order.
    *
-   * Both a spine step and a branch rejoining it land in the same place, so
-   * this is one function. Note the source chart actually loops the two 15%
-   * outcomes back up to re-ask the question; we rejoin forward to the next
-   * spine node instead. Same meaning, and it keeps the diagram acyclic —
-   * an upward arrow in a scrolling chart reads as a mistake. */
-  function nextSpine(fromRow: number): string | null {
+   * Ordering is by `seq`, not by row: a packed run puts several boxes on the
+   * same row, so a row number no longer says what comes next.
+   *
+   * A spine step and a branch rejoining the spine both land here. Note the
+   * source chart actually loops the two 15% outcomes back up to re-ask the
+   * question; we rejoin forward to the next spine box instead. Same meaning,
+   * and it keeps the diagram acyclic — an upward arrow in a scrolling chart
+   * reads as a mistake. */
+  function nextSpine(fromSeq: number): string | null {
     const candidates = [
-      ...nodes.filter((n) => n.row > fromRow && n.col === 0).map((n) => ({ row: n.row, id: n.node.id })),
-      ...collapsed.filter((c) => c.row > fromRow).map((c) => ({ row: c.row, id: `stage:${c.stage.id}` })),
-    ].sort((a, b) => a.row - b.row)
+      ...nodes.filter((n) => n.seq > fromSeq && n.depth === 0).map((n) => ({ seq: n.seq, id: n.node.id })),
+      ...collapsed.filter((c) => c.seq > fromSeq).map((c) => ({ seq: c.seq, id: `stage:${c.stage.id}` })),
+    ].sort((a, b) => a.seq - b.seq)
     return candidates[0]?.id ?? null
   }
 
   for (const entry of nodes) {
-    const { node, row: r, col } = entry
+    const { node, seq: s0, depth: d } = entry
 
     if (node.branches?.length) {
       for (const b of node.branches) {
@@ -208,18 +264,18 @@ export function buildFlow(collapsedStages: StageId[] = []): FlowResult {
 
     // Otherwise continue to whatever comes next at this column or left of it.
     // From the spine that is the next step; from a branch it is the rejoin.
-    const next = nextSpine(r)
-    if (next) edges.push({ from: node.id, to: next, kind: col === 0 ? 'sequence' : 'rejoin' })
+    const next = nextSpine(s0)
+    if (next) edges.push({ from: node.id, to: next, kind: d === 0 ? 'sequence' : 'rejoin' })
   }
 
   // Collapsed stages sit on the spine and pass straight through.
   for (const c of collapsed) {
-    const next = nextSpine(c.row)
+    const next = nextSpine(c.seq)
     if (next) edges.push({ from: `stage:${c.stage.id}`, to: next, kind: 'sequence' })
   }
 
-  const maxCol = Math.max(0, ...nodes.map((n) => n.col))
-  const totalRows = row
+  const maxCol = Math.max(0, ...nodes.map((n) => n.col), ...collapsed.map((c) => c.col))
+  const maxRow = Math.max(0, ...nodes.map((n) => n.row), ...collapsed.map((c) => c.row))
 
   return {
     nodes,
@@ -227,6 +283,6 @@ export function buildFlow(collapsedStages: StageId[] = []): FlowResult {
     byId,
     collapsed,
     width: (maxCol + 1) * NODE_W + maxCol * COL_GAP,
-    height: totalRows * NODE_H + Math.max(0, totalRows - 1) * ROW_GAP,
+    height: (maxRow + 1) * NODE_H + maxRow * ROW_GAP,
   }
 }

@@ -917,25 +917,42 @@
   pointer-events: none;
 }
 
+/* Wires read against every palette because they use --text-muted, which the
+   contrast suite already holds to 4.5:1 on each surface. --border-color is
+   tuned to separate adjacent panels and is far too faint to follow across a
+   diagram, especially in the low-contrast light themes. */
+.flow { --flow-wire: var(--text-muted); }
+
 .flow__wire {
   fill: none;
-  stroke: var(--border-color);
-  stroke-width: 1.5;
+  stroke: var(--flow-wire);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
 }
 
-/* A branch is a choice, so it reads as a lighter, dashed departure from the
-   spine; the spine itself is solid because it is the default path. */
-.flow__wire--branch { stroke-dasharray: 4 3; }
+/* A branch is a choice, so it departs the spine as a dashed line; the spine
+   itself stays solid because it is the default path. Both keep the same
+   colour — dashing carries the difference, not fading, which would undo the
+   visibility this is fixing. */
+.flow__wire--branch { stroke-dasharray: 5 4; }
 
 .flow__wire--rejoin {
-  stroke: var(--border-subtle);
   stroke-dasharray: 2 4;
+  opacity: 0.75;
 }
 
 .flow__wire-label {
-  fill: var(--text-muted);
+  fill: var(--text-secondary);
   font-size: 10px;
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-sans);
+  /* A halo in the canvas colour keeps the label legible where it crosses a
+     wire, without needing a solid plate behind it. */
+  paint-order: stroke;
+  stroke: var(--bg-secondary);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 /* ─── Boxes ──────────────────────────────────────────────────────────────── */
@@ -1080,4 +1097,149 @@
   .flow__hint { display: none; }
   .flow__toolbar { justify-content: flex-end; }
   .flow-detail { width: 100%; border: none; padding: 0; max-height: none; }
+}
+
+/* ─── Fixed-height mode (map view) ───────────────────────────────────────── */
+
+/* The map owns the wheel for zooming, so the page beneath it must not scroll
+   — otherwise one gesture drives two things at once. */
+.guide-page--fixed .guide-content {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.guide-roadmap--map {
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  gap: var(--spacing-md);
+}
+
+.guide-roadmap--map .guide-roadmap__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.guide-roadmap--map .flow {
+  flex: 1;
+  min-height: 0;
+}
+
+.guide-roadmap--map .flow__viewport {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.guide-roadmap--map .guide-legend { padding: var(--spacing-xs) 0; }
+
+.guide-roadmap--map .guide-roadmap__footer {
+  padding-top: var(--spacing-sm);
+}
+
+/* ─── Header controls ────────────────────────────────────────────────────── */
+
+.guide-roadmap__heading { min-width: 0; }
+
+.guide-roadmap__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+.guide-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.guide-icon-button:hover {
+  color: var(--color-accent);
+  border-color: var(--border-color);
+}
+
+/* ─── Shared dialog ──────────────────────────────────────────────────────── */
+
+.guide-dialog__overlay {
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+}
+
+.guide-dialog {
+  width: min(520px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  /* Node cards rendered inside pick up their stage rule from here. */
+  --stage-color: var(--color-accent);
+}
+
+.guide-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.guide-dialog__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.guide-dialog__head button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+}
+
+.guide-dialog__head button:hover { color: var(--text-primary); }
+
+.guide-dialog__body {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.guide-dialog__body--muted { color: var(--text-muted); }
+
+.guide-dialog__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.guide-dialog__link:hover { text-decoration: underline; }
+
+@media (max-width: 768px) {
+  .guide-dialog { width: 100%; border: none; padding: 0; max-height: none; }
+  .guide-roadmap__controls { width: 100%; }
+  .guide-roadmap--map .guide-legend { display: none; }
 }

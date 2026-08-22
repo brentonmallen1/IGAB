@@ -14,7 +14,10 @@ LiabilityType = Literal[
 
 class LiabilityCreate(BaseModel):
     name: str
-    liability_type: LiabilityType
+    #: Ignored when linked_account_id is set — a managed liability's kind is
+    #: its account's type. Required for an unmanaged one, which has no account
+    #: to ask.
+    liability_type: LiabilityType | None = None
     interest_rate: Decimal  # annual percent, e.g. 6.25
     minimum_payment: Money
     # Managed (linked account) XOR unmanaged (manual balance) — not both.
@@ -50,6 +53,9 @@ class LiabilityOut(BaseModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str
+    #: Resolved, not stored: an account type key for a managed liability, the
+    #: stored kind for an unmanaged one. Display labels come from the account-
+    #: type registry, so a custom type reads as whatever the user named it.
     liability_type: str
     mode: Literal["managed", "unmanaged"]
     linked_account_id: uuid.UUID | None
