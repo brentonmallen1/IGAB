@@ -188,15 +188,15 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
         </span>
       )}
 
-      {filters?.map((f) => (
+      {filters?.map((saved) => (
         <button
-          key={filter.id}
-          className={`budget-filter-bar__btn ${activeFilterId === filter.id ? 'active' : ''}`}
-          onClick={() => setActiveFilter(filter.id)}
-          onDoubleClick={() => openFilterModal(filter.id)}
+          key={saved.id}
+          className={`budget-filter-bar__btn ${activeFilterId === saved.id ? 'active' : ''}`}
+          onClick={() => setActiveFilter(saved.id)}
+          onDoubleClick={() => openFilterModal(saved.id)}
           title="Double-click to edit"
         >
-          {filter.name}
+          {saved.name}
         </button>
       ))}
 

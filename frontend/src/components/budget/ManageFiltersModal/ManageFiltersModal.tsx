@@ -182,15 +182,15 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
               </p>
             ) : (
               <div className="manage-filters-modal__list">
-                {filters.map((f) => (
-                  <div key={filter.id} className="manage-filters-modal__row">
-                    <span className="manage-filters-modal__filter-name">{filter.name}</span>
+                {filters.map((saved) => (
+                  <div key={saved.id} className="manage-filters-modal__row">
+                    <span className="manage-filters-modal__filter-name">{saved.name}</span>
                     <div className="manage-filters-modal__row-actions">
                       <button
                         type="button"
                         className="manage-filters-modal__icon-btn"
-                        onClick={() => handleEditFilter(filter.id)}
-                        aria-label={`Edit filter ${filter.name}`}
+                        onClick={() => handleEditFilter(saved.id)}
+                        aria-label={`Edit filter ${saved.name}`}
                         title="Edit filter"
                       >
                         <Pencil size={13} />
@@ -198,9 +198,9 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                       <button
                         type="button"
                         className="manage-filters-modal__icon-btn manage-filters-modal__icon-btn--danger"
-                        onClick={() => handleDeleteFilter(filter.id)}
+                        onClick={() => handleDeleteFilter(saved.id)}
                         disabled={deleteFilter.isPending}
-                        aria-label={`Delete filter ${filter.name}`}
+                        aria-label={`Delete filter ${saved.name}`}
                         title="Delete filter"
                       >
                         <Trash2 size={13} />

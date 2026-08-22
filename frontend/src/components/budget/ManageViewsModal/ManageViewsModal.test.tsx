@@ -34,6 +34,7 @@ function view(id: string, name: string, groups = 2): BudgetView {
     budget_id: 'b1',
     name,
     sort_order: 0,
+    hide_unassigned: false,
     groups: Array.from({ length: groups }, (_, i) => ({
       id: `${id}-g${i}`,
       name: `G${i}`,
