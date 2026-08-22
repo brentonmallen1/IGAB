@@ -48,6 +48,19 @@ services:
         - action: sync
           path: ./backend/tests
           target: /app/tests
+        # Migrations are COPYed in at build time and run from the image's CMD
+        # (alembic upgrade head), so syncing them would not help — the running
+        # container needs a new image. Without this, adding a migration and
+        # restarting silently leaves the schema behind the code.
+        - action: rebuild
+          path: ./backend/alembic
+        - action: rebuild
+          path: ./backend/alembic.ini
+        # Same reasoning for dependencies: they are installed during build.
+        - action: rebuild
+          path: ./backend/pyproject.toml
+        - action: rebuild
+          path: ./backend/uv.lock
 
   frontend:
     build:
