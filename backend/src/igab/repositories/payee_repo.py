@@ -203,9 +203,7 @@ class PayeeRepository(BaseRepository[Payee]):
         name = self.transfer_payee_name(account_name)
         payee = await self.find_by_name(budget_id, name)
         if payee is None:
-            return await self.create(
-                budget_id=budget_id, name=name, transfer_account_id=account_id
-            )
+            return await self.create(budget_id=budget_id, name=name, transfer_account_id=account_id)
         if payee.transfer_account_id is None:
             payee.transfer_account_id = account_id
             await self.session.flush()

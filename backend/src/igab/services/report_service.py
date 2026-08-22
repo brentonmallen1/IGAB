@@ -1107,7 +1107,6 @@ class ReportService:
             payee_by_cat[slot][pid] = payee_by_cat[slot].get(pid, Decimal("0")) + abs(r.amount)
 
         for gid, total in sorted(group_totals.items(), key=lambda x: -x[1]):
-
             get_node(f"g_{gid}", group_names.get(gid, gid), "category_group")
             links.append(
                 {

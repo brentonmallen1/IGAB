@@ -53,9 +53,7 @@ class BudgetViewRepository(BaseRepository[BudgetView]):
 
     async def _budget_of(self, view_id: uuid.UUID) -> uuid.UUID | None:
         return (
-            await self.session.execute(
-                select(BudgetView.budget_id).where(BudgetView.id == view_id)
-            )
+            await self.session.execute(select(BudgetView.budget_id).where(BudgetView.id == view_id))
         ).scalar_one_or_none()
 
     async def set_groups(self, view_id: uuid.UUID, names: list[str]) -> list[BudgetViewGroup]:

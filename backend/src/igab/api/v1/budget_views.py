@@ -24,6 +24,7 @@ def _conflict(name: str) -> HTTPException:
         detail=f'A view named "{name}" already exists in this budget',
     )
 
+
 ViewRepo = Annotated[BudgetViewRepository, Depends(get_budget_view_repo)]
 
 

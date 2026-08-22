@@ -831,9 +831,7 @@ class BudgetViewPlacement(Base):
     """
 
     __tablename__ = "budget_view_placements"
-    __table_args__ = (
-        UniqueConstraint("view_id", "category_id", name="uq_budget_view_placement"),
-    )
+    __table_args__ = (UniqueConstraint("view_id", "category_id", name="uq_budget_view_placement"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     view_id: Mapped[uuid.UUID] = mapped_column(
