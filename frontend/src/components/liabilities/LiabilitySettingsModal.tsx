@@ -26,18 +26,11 @@ const LIABILITY_TYPES: { value: LiabilityType; label: string }[] = [
   { value: 'other', label: 'Other' },
 ]
 
-export interface LiabilityPrefill {
-  accountId: string
-  accountName: string
-  liabilityType?: LiabilityType
-}
-
 interface Props {
   budgetId: string
   liability: Liability | null // null = create
   onClose: () => void
   onDeleted?: () => void
-  prefill?: LiabilityPrefill // for suggesting from an untracked account
 }
 
 /**
@@ -45,7 +38,7 @@ interface Props {
  * exclusivity obvious: a liability tracks EITHER a real account's ledger OR a
  * manually entered balance — never both.
  */
-export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted, prefill }: Props) {
+export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted }: Props) {
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: accountTypes } = useAccountTypes(budgetId)
   const { data: liabilities = [] } = useLiabilities(budgetId)
@@ -53,18 +46,17 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const updateLiability = useUpdateLiability(budgetId)
   const deleteLiability = useDeleteLiability(budgetId)
 
-  const [name, setName] = useState(liability?.name ?? prefill?.accountName ?? '')
+  const [name, setName] = useState(liability?.name ?? '')
   // Only meaningful for an unmanaged liability. A managed one reads its kind
   // from the linked account, and liability.liability_type is that resolved
   // account-type key — not one of these options.
   const [liabilityType, setLiabilityType] = useState<LiabilityType>(
-    prefill?.liabilityType ?? (liability?.mode === 'unmanaged' ? liability.liability_type : null) ??
-      'personal'
+    (liability?.mode === 'unmanaged' ? liability.liability_type : null) ?? 'personal'
   )
   const [mode, setMode] = useState<'managed' | 'unmanaged'>(
-    liability?.mode ?? (prefill ? 'managed' : 'unmanaged')
+    liability?.mode ?? 'unmanaged'
   )
-  const [accountId, setAccountId] = useState(liability?.linked_account_id ?? prefill?.accountId ?? '')
+  const [accountId, setAccountId] = useState(liability?.linked_account_id ?? '')
   const [balance, setBalance] = useState(
     liability && liability.mode === 'unmanaged' ? String(liability.current_balance) : ''
   )

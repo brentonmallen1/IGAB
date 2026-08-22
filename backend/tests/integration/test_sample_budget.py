@@ -72,7 +72,7 @@ async def test_generation_covers_every_entity_kind(db_session):
     accounts = await AccountRepository(db_session).get_all(budget.id)
     types = {a.account_type for a in accounts}
     assert counts.accounts == 5
-    assert {"checking", "savings", "credit_card", "loan", "investment"} <= types
+    assert {"checking", "savings", "credit_card", "auto_loan", "investment"} <= types
 
     txns = await _transactions(db_session, budget.id)
     assert counts.transactions == len(txns)
@@ -153,7 +153,10 @@ async def test_generation_covers_every_entity_kind(db_session):
     car_loan_acct = next(a for a in accounts if a.name == "Car Loan")
     managed = next(l for l in liabilities if l.linked_account_id == car_loan_acct.id)
     assert managed.name == "Car Loan"
-    assert managed.liability_type == "auto"
+    # Nothing stored: it reads "Auto Loan" off the account, which is now typed
+    # specifically enough to say so.
+    assert managed.liability_type is None
+    assert car_loan_acct.account_type == "auto_loan"
     # The specced terms survive: the companion pass fills gaps, never overwrites
     assert managed.interest_rate == Decimal("6.25")
 

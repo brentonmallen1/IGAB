@@ -1,10 +1,17 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Literal
 
 from sqlalchemy import func, select, update
 
-from igab.db.models import Account, Category, Liability, Transaction
+from igab.db.models import (
+    Account,
+    Category,
+    Liability,
+    LiabilityBalanceSnapshot,
+    Transaction,
+)
 from igab.repositories.base import BaseRepository
 
 LiabilityDisposition = Literal["keep", "delete"]
@@ -121,6 +128,7 @@ class AccountRepository(BaseRepository[Account]):
         would freeze a zero.
         """
         frozen_balance: Decimal | None = None
+        history: list[tuple[date, Decimal]] = []
         companion = (
             await self.session.execute(
                 select(Liability).where(
@@ -131,6 +139,7 @@ class AccountRepository(BaseRepository[Account]):
         ).scalar_one_or_none()
         if companion is not None and liability_disposition == "keep":
             frozen_balance = max(Decimal("0"), -(await self.get_balance(id)))
+            history = await self._owed_history(id)
 
         await self.session.execute(
             update(Transaction)
@@ -149,15 +158,77 @@ class AccountRepository(BaseRepository[Account]):
             else:
                 companion.linked_account_id = None
                 companion.manual_balance = frozen_balance
+                # Carry the curve across, not just today's number. Net worth
+                # HISTORY reads an unmanaged liability from its snapshots, and
+                # a converted one has none — so without this the debt vanishes
+                # from every past point while today's stays right, drawing a
+                # cliff into the chart that never happened. `manual_balance`
+                # alone only fixes the latest point.
+                # A liability that was unmanaged before it was linked may still
+                # hold snapshots of its own, and (liability_id, date) is
+                # unique — its own record wins over a reconstructed one.
+                existing_dates = set(
+                    (
+                        await self.session.execute(
+                            select(LiabilityBalanceSnapshot.date).where(
+                                LiabilityBalanceSnapshot.liability_id == companion.id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for point_date, owed in history:
+                    if point_date in existing_dates:
+                        continue
+                    self.session.add(
+                        LiabilityBalanceSnapshot(
+                            liability_id=companion.id,
+                            date=point_date,
+                            balance=owed,
+                            source="initial",
+                        )
+                    )
                 # An unmanaged liability has to answer "what kind of debt?" on
                 # its own now — the account that was answering is going.
+                # Derived from the account, NOT from whatever the column
+                # happens to hold: while linked, that value was ignored by
+                # definition, so it is not evidence of anything. Companions
+                # created by the c1d9f4b26a83 backfill carry a coarse 'other'
+                # from before the kind became derived — preferring it would
+                # turn a mortgage into "Other" on the way out. The stored value
+                # is the fallback only when there is no account left to ask.
                 account = await self.get(id)
-                companion.liability_type = companion.liability_type or _UNMANAGED_KIND.get(
-                    account.account_type if account else "", "other"
-                )
+                derived = _UNMANAGED_KIND.get(account.account_type, "other") if account else None
+                companion.liability_type = derived or companion.liability_type or "other"
             await self.session.flush()
 
         await super().soft_delete(id)
+
+    async def _owed_history(self, account_id: uuid.UUID) -> list[tuple[date, Decimal]]:
+        """Monthly owed-balance points for a liability account's whole ledger.
+
+        Mirrors LiabilityService.get_balance_history's managed branch — same
+        monthly cumulation, same negation, same floor at zero — so a converted
+        liability's chart is the one the account was already drawing. Read
+        through TransactionRepository rather than reimplemented, because
+        "how much did this account move this month" has PARENT_ROW and POSTED
+        semantics that must not drift between the two.
+
+        Months with no activity are skipped: the snapshot lookup is a step
+        function that holds the last value, so a gap is not a hole.
+        """
+        from igab.repositories.transaction_repo import TransactionRepository
+
+        by_month = await TransactionRepository(self.session).sum_by_account_by_month(
+            account_id, end_date=date.today()
+        )
+        points: list[tuple[date, Decimal]] = []
+        running = Decimal("0")
+        for month in sorted(by_month):
+            running += by_month[month]
+            points.append((month, max(Decimal("0"), -running)))
+        return points
 
     async def get_by_simplefin_id(self, budget_id: uuid.UUID, simplefin_id: str) -> Account | None:
         result = await self.session.execute(

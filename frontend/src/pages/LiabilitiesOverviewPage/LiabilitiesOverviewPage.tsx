@@ -1,11 +1,8 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Link2, PenLine, Plus } from 'lucide-react'
-import { useAccounts } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
 import {
   LiabilitySettingsModal,
-  type LiabilityPrefill,
 } from '../../components/liabilities/LiabilitySettingsModal'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -20,35 +17,22 @@ export function LiabilitiesOverviewPage() {
   const navigate = useNavigate()
   const { formatMoney, formatMonth } = useFormatters()
   const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
-  const { data: accounts = [] } = useAccounts(budgetId)
   const activeModal = useUIStore((s) => s.activeModal)
   const openModal = useUIStore((s) => s.openModal)
   const closeModal = useUIStore((s) => s.closeModal)
-
-  const [prefill, setPrefill] = useState<LiabilityPrefill | undefined>()
 
   if (!budgetId) return null
 
   const editingLiability = liabilities.find((d) => d.id === activeModal?.editingId) ?? null
   const totalOwed = liabilities.reduce((sum, d) => sum + Number(d.current_balance), 0)
 
-  // Accounts that could be liabilities but aren't tracked yet
-  const linkedAccountIds = new Set(liabilities.map((l) => l.linked_account_id).filter(Boolean))
-  const suggestedAccounts = accounts.filter(
-    (a) => (a.account_type === 'loan' || a.account_type === 'credit_card') && !linkedAccountIds.has(a.id)
-  )
-
-  function handleSuggestTrack(account: (typeof accounts)[0]) {
-    setPrefill({
-      accountId: account.id,
-      accountName: account.name,
-      liabilityType: account.account_type === 'credit_card' ? 'credit_card' : 'auto',
-    })
-    openModal('liability')
-  }
+  // The "these accounts could be tracked as liabilities" panel used to live
+  // here. It cannot have anything to suggest any more: every
+  // liability-classified account carries a companion from the moment it is
+  // created, so the set it drew from is always empty — and its copy was
+  // false besides, since those accounts ARE tracked.
 
   function handleClose() {
-    setPrefill(undefined)
     closeModal()
   }
 
@@ -160,39 +144,11 @@ export function LiabilitiesOverviewPage() {
         </div>
       )}
 
-      {suggestedAccounts.length > 0 && (
-        <div className="liabilities-page__suggestions">
-          <h2 className="liabilities-page__suggestions-title">From your accounts</h2>
-          <p className="liabilities-page__suggestions-sub">
-            These accounts could be tracked as liabilities to get payoff projections and charts.
-          </p>
-          <div className="liabilities-page__suggestions-list">
-            {suggestedAccounts.map((account) => (
-              <div key={account.id} className="liability-suggestion">
-                <div className="liability-suggestion__info">
-                  <span className="liability-suggestion__name">{account.name}</span>
-                  <span className="liability-suggestion__balance tabular">
-                    {formatMoney(Math.abs(Number(account.balance)))}
-                  </span>
-                </div>
-                <button
-                  className="liability-suggestion__track"
-                  onClick={() => handleSuggestTrack(account)}
-                >
-                  Track
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {activeModal?.kind === 'liability' && (
         <LiabilitySettingsModal
           budgetId={budgetId}
           liability={editingLiability}
           onClose={handleClose}
-          prefill={prefill}
         />
       )}
     </div>

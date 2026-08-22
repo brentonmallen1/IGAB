@@ -13,7 +13,7 @@ every path that can make such an account, that it appears empty and inert, and
 that nothing quietly removes it again.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -788,3 +788,108 @@ class TestDeletingTheAccountBehindADebt:
 
         assert resp.status_code == 204, resp.text
         assert await LiabilityRepository(db_session).get_all(budget.id) == []
+
+
+class TestConvertingADebtKeepsItsChart:
+    """Net worth history is the figure most at risk here, and it fails
+    quietly: `_unmanaged_liabilities` reads an unmanaged liability from its
+    SNAPSHOTS, while `manual_balance` only answers for today. A conversion that
+    sets the balance and nothing else leaves the debt present now and absent
+    from every past point — drawing a cliff into the chart that never happened.
+    """
+
+    async def _year_of_mortgage(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Mortgage", account_type="mortgage", on_budget=False
+        )
+        await create_transaction(
+            db_session, budget, loan, "-300000.00", TODAY - timedelta(days=365)
+        )
+        for month in range(1, 12):
+            await create_transaction(
+                db_session, budget, loan, "1000.00", TODAY - timedelta(days=365 - month * 30)
+            )
+        companion = await create_liability(
+            db_session,
+            budget,
+            "Mortgage",
+            liability_type=None,
+            linked_account_id=loan.id,
+            interest_rate=Decimal("6.25"),
+            minimum_payment=Decimal("1800.00"),
+        )
+        await db_session.flush()
+        return budget, loan, companion
+
+    async def test_the_curve_survives_the_conversion(self, db_session):
+        from igab.repositories.account_repo import AccountRepository
+        from igab.services.report_service import ReportService
+
+        budget, loan, _ = await self._year_of_mortgage(db_session)
+        svc = ReportService(db_session)
+        before = [(p["date"], p["net_worth"]) for p in await svc.net_worth_history(budget.id)]
+
+        await AccountRepository(db_session).soft_delete(loan.id, liability_disposition="keep")
+        await db_session.flush()
+
+        after = [(p["date"], p["net_worth"]) for p in await svc.net_worth_history(budget.id)]
+        assert after == before
+
+    async def test_snapshots_are_written_for_the_whole_ledger(self, db_session):
+        from igab.repositories.account_repo import AccountRepository
+
+        budget, loan, companion = await self._year_of_mortgage(db_session)
+        assert await LiabilityRepository(db_session).get_snapshots(companion.id) == []
+
+        await AccountRepository(db_session).soft_delete(loan.id)
+
+        snapshots = await LiabilityRepository(db_session).get_snapshots(companion.id)
+        assert len(snapshots) >= 12
+        assert snapshots[0].balance == Decimal("300000.00")
+        assert snapshots[-1].balance == companion.manual_balance
+
+    async def test_deleting_both_writes_no_snapshots(self, db_session):
+        from igab.repositories.account_repo import AccountRepository
+
+        budget, loan, companion = await self._year_of_mortgage(db_session)
+
+        await AccountRepository(db_session).soft_delete(loan.id, liability_disposition="delete")
+
+        assert await LiabilityRepository(db_session).get_snapshots(companion.id) == []
+
+    async def test_a_liabilitys_own_snapshots_win(self, db_session):
+        """(liability_id, date) is unique, and a liability that was unmanaged
+        before it was linked keeps records of its own. Reconstructing over them
+        would both violate the constraint and overwrite the better number."""
+        from igab.repositories.account_repo import AccountRepository
+
+        budget, loan, companion = await self._year_of_mortgage(db_session)
+        own = await create_liability_snapshot(
+            db_session, companion, TODAY.replace(day=1), Decimal("123.45")
+        )
+
+        await AccountRepository(db_session).soft_delete(loan.id)
+
+        kept = [
+            s
+            for s in await LiabilityRepository(db_session).get_snapshots(companion.id)
+            if s.date == own.date
+        ]
+        assert len(kept) == 1 and kept[0].balance == Decimal("123.45")
+
+    async def test_the_kind_is_derived_not_inherited_from_a_stale_column(self, db_session):
+        """The c1d9f4b26a83 backfill wrote a coarse 'other' before the kind
+        became derived. While linked that value is ignored by definition, so it
+        is not evidence — preferring it would turn a mortgage into "Other" on
+        the way out."""
+        from igab.repositories.account_repo import AccountRepository
+
+        budget, loan, companion = await self._year_of_mortgage(db_session)
+        companion.liability_type = "other"  # as the backfill left it
+        await db_session.flush()
+
+        await AccountRepository(db_session).soft_delete(loan.id)
+
+        assert companion.liability_type == "mortgage"

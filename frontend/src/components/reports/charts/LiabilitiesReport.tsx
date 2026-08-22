@@ -183,9 +183,14 @@ export function LiabilitiesReport({ budgetId }: Props) {
         ) : (
           <>
             <div className="report-metrics">
+              {/* Every debt, on-budget credit cards included. The sidebar's
+                  Liabilities section deliberately sums something narrower —
+                  what that section lists, with cards counted under their own
+                  account type — so the two figures differ on purpose. */}
               <MetricCard
                 label="Total Liabilities"
                 value={formatMoney(Number(data!.total_balance))}
+                sub="Every debt, cards included"
                 accent
               />
               {/* Rows without terms contribute no interest, so say the total

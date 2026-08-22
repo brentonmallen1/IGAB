@@ -86,8 +86,8 @@ async def test_full_tier_shape_and_texture(db_session):
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
     assert counts.accounts == 16
     types = {a.account_type for a in accounts}
-    assert {"checking", "savings", "cash", "credit_card", "loan", "investment",
-            "other_asset"} <= types
+    assert {"checking", "savings", "cash", "credit_card", "auto_loan", "mortgage",
+            "investment", "other_asset"} <= types
     assert sum(1 for a in accounts if a.is_closed) == 1
     assert sum(1 for a in accounts if not a.on_budget) >= 8
     # Every account has a classification (the sidebar/net-worth contract)
