@@ -183,8 +183,10 @@ class Account(Base):
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
     on_budget: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Mirror of the type row's classification ('asset' | 'liability') — set for
-    # every account, on-budget included. Nullable only for pre-registry rows.
-    classification: Mapped[str | None] = mapped_column(String(20))
+    # every account, on-budget included. NOT NULL since b8c3e5a71f42: a null
+    # here reads as UNKNOWN in SQL, which makes both `= 'liability'` and its
+    # negation decline, silently disabling every rule that branches on it.
+    classification: Mapped[str] = mapped_column(String(20), nullable=False)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)

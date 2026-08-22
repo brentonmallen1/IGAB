@@ -18,6 +18,7 @@ from igab.repositories.category_repo import (
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import apply_type, resolve_type
+from igab.services.liability_service import ensure_for_account
 from igab.services.transaction_service import TransactionService
 
 _TRANSFER_PREFIX = "Transfer : "
@@ -122,6 +123,10 @@ class YNABImporter:
                 name=name,
                 **apply_type(type_row, on_budget),
             )
+            # Importing a budget with a mortgage is the scenario the loan
+            # features were built for, and it was the one that never reached
+            # them: the importer creates accounts and never a liability.
+            await ensure_for_account(self.session, account)
             result.accounts_imported += 1
 
         self._account_cache[name] = account

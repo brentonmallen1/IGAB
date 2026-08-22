@@ -22,9 +22,9 @@ export const GUIDE_TABS: GuideTabDef[] = [
  *
  * `journey` walks one stage at a time and is the default — it answers "what
  * next?". `browse` opens everything at once, including both sides of every
- * decision, for reading rather than following. A `map` mode joins these later
- * and renders the same content as a diagram. */
-export type RoadmapView = 'journey' | 'browse'
+ * decision, for reading rather than following. `map` is the chart itself:
+ * boxes and arrows, pannable and zoomable, foldable a step at a time. */
+export type RoadmapView = 'journey' | 'browse' | 'map'
 
 interface GuideState {
   activeTab: GuideTab

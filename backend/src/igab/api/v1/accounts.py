@@ -14,6 +14,11 @@ from igab.dependencies import (
 from igab.domain.exceptions import DuplicateError, NotFoundError
 from igab.repositories.account_repo import AccountRepository
 from igab.services.account_type_service import apply_type, resolve_type
+from igab.services.liability_service import (
+    LIABILITY_CLASSIFICATION,
+    ensure_for_account,
+    release_for_account,
+)
 from igab.services.transaction_matching_service import TransactionMatchingService
 
 router = APIRouter()
@@ -65,6 +70,10 @@ async def create_account(
         )
     except DuplicateError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+
+    # A liability-classified account gets its companion here, not on first
+    # visit to the page: every consumer downstream may assume the row exists.
+    await ensure_for_account(account_repo.session, acc)
 
     resp = AccountResponse.model_validate(acc)
     resp.balance = await account_repo.get_balance(acc.id)
@@ -120,6 +129,17 @@ async def update_account(
         acc = await account_repo.update(account_id, **changes)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+
+    # Retyping can cross the asset/liability line in either direction, and the
+    # companion has to follow — an account that became a loan needs one, and
+    # one that stopped being a loan should not keep drawing a debt balance
+    # from a ledger that no longer represents debt.
+    if changes.get("account_type") is not None:
+        if acc.classification == LIABILITY_CLASSIFICATION:
+            await ensure_for_account(account_repo.session, acc)
+        else:
+            await release_for_account(account_repo.session, acc)
+
     resp = AccountResponse.model_validate(acc)
     resp.balance = await account_repo.get_balance(acc.id)
     return resp

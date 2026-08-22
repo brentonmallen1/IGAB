@@ -91,6 +91,12 @@ export interface RoadmapNode {
   signal?: SignalKey
   /** US-specific account types and tax rules. */
   region?: 'us'
+  /** One of several parallel choices offered by the node before it, rather
+   *  than the next thing in sequence. The source chart's final pair — retire
+   *  early / more immediate goals — are these: both can apply, and the chart
+   *  says the order from there is up to you. Used by the flow layout to fork
+   *  instead of continuing the spine. */
+  option?: true
 }
 
 export interface RoadmapStage {
@@ -117,6 +123,57 @@ export const ROADMAP_STEPS: { step: number; label: string }[] = [
   { step: 6, label: 'Other goals & advanced' },
 ]
 
+/**
+ * ── Source map ──────────────────────────────────────────────────────────────
+ * Every box in the original chart, in its original order, and where it landed
+ * here. Check any edit against this list; it is the only record of what the
+ * source actually said once the wording has been rewritten.
+ *
+ *  Create Budget                              -> create-budget
+ *  Pay Rent/Mortgage                          -> housing
+ *  Buy Food/Groceries                         -> groceries
+ *  Pay Essential Items                        -> essential-items
+ *  Pay Income Earning Expenses                -> income-earning-expenses
+ *  Pay Health Care                            -> health-care
+ *  Make Minimum Payments On All Debts         -> minimum-payments
+ *  Build Small Emergency Fund            (S1) -> starter-ef
+ *  Pay Any Non-Essential Bills in Full   (S1) -> nonessential-bills
+ *  Employer match?                       (S2) -> match-question
+ *    yes -> Contribute to the full match (S2) -> contribute-to-match
+ *  High interest debt (>=10%)?           (S3) -> high-interest-question
+ *    yes -> Avalanche / Snowball         (S3) -> choose-payoff-method
+ *  Increase EF to 3-6 months             (S1) -> full-ef
+ *  Moderate interest debt (>4-5%)?       (S3) -> moderate-interest-question
+ *    yes -> Avalanche / Snowball         (S3) -> pay-moderate-debt
+ *  Roth vs Traditional IRA, max it       (S4) -> roth-vs-traditional
+ *  Large required purchase coming?       (S4) -> large-purchase-question
+ *    yes -> Save it in savings/checking  (S4) -> save-for-purchase
+ *  Saving >=15% pre-tax for retirement?  (S5) -> fifteen-percent-question
+ *    no  -> Employer plan to save more?  (S5) -> employer-plan-question
+ *      yes -> Increase contributions     (S5) -> increase-contributions
+ *      no  -> Solo 401k/SEP/SIMPLE, else
+ *             a taxable account          (S5) -> self-employed-options
+ *  Investable HSA?                       (S6) -> hsa-question
+ *    yes -> Max yearly HSA               (S6) -> max-hsa
+ *  Children's college?                   (S6) -> college-question
+ *    yes -> 529 or similar               (S6) -> college-savings
+ *  "At this point you have some options" (S6) -> your-call
+ *  Retire early?                         (S6) -> retire-early
+ *  More immediate goals?                 (S6) -> immediate-goals
+ *  Note on entertainment expenses             -> DISCRETIONARY_NOTE
+ *  Disclaimer                                 -> ROADMAP_DISCLAIMER
+ *
+ * ── Deliberate deviations ───────────────────────────────────────────────────
+ * 1. `retire-early` and `immediate-goals` are decisions in the source, drawn
+ *    with a "Yes" arrow and no "No" path. They are modelled as actions here
+ *    because both can be true at once — the source itself says the order from
+ *    that point is "completely up to you" — and a question with only one
+ *    answer asks the reader for something it does not use.
+ * 2. Stage grouping follows the *flow*, not the step numbers: the emergency
+ *    fund appears at two points and debt at two points, exactly as the chart
+ *    draws them. Each stage keeps its source step number for colour, which is
+ *    why steps 1 and 3 each appear twice.
+ */
 export const ROADMAP: RoadmapStage[] = [
   // ── Step 0 ────────────────────────────────────────────────────────────────
   {
@@ -137,14 +194,44 @@ export const ROADMAP: RoadmapStage[] = [
         signal: 'budget_exists',
       },
       {
-        id: 'essentials',
+        id: 'housing',
         kind: 'action',
-        title: 'Fund the essentials first',
-        body: 'Housing, food, utilities, and whatever it takes to keep earning — transport, a phone, tools of your trade. Then health care and insurance.',
+        title: 'Pay rent or mortgage',
+        body: 'Including renters or homeowners insurance where it is required.',
         detail:
-          'The ordering inside this group is yours. Some people fund utilities before groceries because a missed utility bill carries a reconnection fee and a credit mark, while groceries can flex for a week. What matters is that these are funded before anything discretionary.',
+          'Housing sits first because losing it makes every other problem on this roadmap harder to solve. If the payment is genuinely unaffordable, that is a bigger conversation than budgeting — but it is one worth having early rather than after arrears build up.',
         appLinks: [{ label: 'Open your budget', to: '/budget' }],
         signal: 'essential_expenses',
+      },
+      {
+        id: 'groceries',
+        kind: 'action',
+        title: 'Buy food and groceries',
+        body: 'Depending on how tight things are, you may want to cover utilities before this one.',
+        detail:
+          'The source chart flags this ordering explicitly, and the reasoning is practical: a missed utility bill can bring a reconnection fee and a mark on your credit, while a grocery budget can flex for a week without lasting damage. Neither should be squeezed for long.',
+      },
+      {
+        id: 'essential-items',
+        kind: 'action',
+        title: 'Pay for essential items',
+        body: 'Power, water, heat, toiletries — the running costs of a household.',
+      },
+      {
+        id: 'income-earning-expenses',
+        kind: 'action',
+        title: 'Pay what it costs you to keep earning',
+        body: 'Necessary transport, possibly internet and a phone, and anything else required to keep your income coming in.',
+        detail:
+          'This category is easy to under-fund because it looks discretionary from the outside. A phone plan or a commute is not a lifestyle expense when your job depends on it — cutting here can cost you the income the rest of the budget assumes.',
+      },
+      {
+        id: 'health-care',
+        kind: 'action',
+        title: 'Pay for health care',
+        body: 'Health insurance and your ongoing health care costs.',
+        detail:
+          'Health costs are the classic route from a stable budget into high-interest debt, which is exactly what the next several steps are about avoiding. Insurance is the cheaper end of that problem.',
       },
       {
         id: 'minimum-payments',
@@ -235,7 +322,7 @@ export const ROADMAP: RoadmapStage[] = [
       {
         id: 'high-interest-question',
         kind: 'decision',
-        title: 'Do you have any debt above about 10% APR?',
+        title: 'Do you have any debt with an interest rate of 10% or higher?',
         body: 'Credit cards, store cards, payday loans and some personal loans usually land here.',
         detail:
           'Ten percent is a rule of thumb, not a law. The reasoning: paying off a debt is a guaranteed, tax-free return equal to its rate, and a guaranteed 10% is hard to beat reliably anywhere else. Where a debt sits close to the line, either choice is defensible.',
@@ -273,7 +360,7 @@ export const ROADMAP: RoadmapStage[] = [
         title: 'Build up to three to six months of living expenses',
         body: 'Measure against what you would actually spend in a lean month — essentials, not your current spending.',
         detail:
-          'Where you land in the three-to-six range depends on how quickly you could replace your income. A two-earner household in a field that hires constantly can reasonably sit at the low end. A single earner, a specialised role, a long typical job search, or self-employment all argue for the high end.\n\nKeep it accessible. Savings or a money market account is the usual home; this is still not money to invest.',
+          'Where you land in the three-to-six range depends on how quickly you could replace your income. A two-earner household in a field that hires constantly can reasonably sit at the low end. A single earner, a specialised role, a long typical job search, or self-employment all argue for the high end.\n\nKeep it accessible — a savings or checking account, same as the starter fund. This is still not money to invest.',
         glossary: ['emergency-fund'],
         appLinks: [
           { label: 'Open your budget', to: '/budget' },
@@ -482,6 +569,7 @@ export const ROADMAP: RoadmapStage[] = [
       {
         id: 'retire-early',
         kind: 'action',
+        option: true,
         title: 'If you want to retire early',
         body: 'Fill your workplace plan to its limit, look into whether a mega backdoor Roth is available to you, then use a taxable account.',
         detail:
@@ -492,6 +580,7 @@ export const ROADMAP: RoadmapStage[] = [
       {
         id: 'immediate-goals',
         kind: 'action',
+        option: true,
         title: 'If you have nearer-term goals',
         body: 'For anything within three to five years, keep it in savings. For longer horizons, a conservative mix of stocks and bonds is the usual approach.',
         detail:
@@ -505,7 +594,7 @@ export const ROADMAP: RoadmapStage[] = [
 
 /** A standing note from the source chart, shown once beneath the roadmap. */
 export const DISCRETIONARY_NOTE =
-  'Discretionary spending is not a moral failing, and this roadmap is not an argument for having no fun. But while high-interest debt is outstanding, money spent on wants is money borrowed at that rate — which is the honest way to think about the tradeoff.'
+  'Discretionary spending is not a moral failing, and this roadmap is not an argument for having no fun. But while high-interest debt is outstanding — and arguably while moderate-interest debt is too — money spent on wants is money borrowed at that rate, which is the honest way to think about the tradeoff.'
 
 export const ROADMAP_ATTRIBUTION = {
   text: 'Adapted from the r/personalfinance Personal Income Spending Flowchart.',

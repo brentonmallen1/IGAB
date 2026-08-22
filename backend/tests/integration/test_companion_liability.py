@@ -1,0 +1,469 @@
+"""Every liability-classified account carries a Liability row.
+
+Before this, creating an account of type Loan gave you a working ledger and
+none of the loan features — no APR, no amortization, no payoff estimate — and
+the only thing in the product that mentioned the missing piece was education
+copy inside a modal you had to go looking for. The YNAB importer made it the
+default outcome: it maps accounts through a type mapping and never created a
+liability, so importing a real budget with a mortgage landed you in the dead
+end every time.
+
+The fix is structural rather than a prompt. These pin that the row appears on
+every path that can make such an account, that it appears empty and inert, and
+that nothing quietly removes it again.
+"""
+
+from datetime import date
+from decimal import Decimal
+
+from sqlalchemy import select
+
+from igab.db.models import Liability
+from igab.repositories.liability_repo import LiabilityRepository
+from igab.services.liability_service import ensure_for_account, release_for_account
+
+from .factories import (
+    create_account,
+    create_budget,
+    create_category,
+    create_category_group,
+    create_liability,
+    create_liability_snapshot,
+    create_transaction,
+    create_user,
+)
+
+TODAY = date.today()
+
+
+async def _companion(db_session, account) -> Liability | None:
+    """The row linked to this account, deleted or not — the unique constraint
+    does not filter on is_deleted, so neither does this."""
+    return (
+        await db_session.execute(select(Liability).where(Liability.linked_account_id == account.id))
+    ).scalar_one_or_none()
+
+
+class TestEnsureForAccount:
+    async def test_creates_an_empty_companion(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        )
+
+        created = await ensure_for_account(db_session, loan)
+
+        assert created is not None
+        assert created.linked_account_id == loan.id
+        assert created.name == "Car Loan"
+        # Empty and inert: nothing is computed from absent terms, and a linked
+        # row's balance comes from the ledger, not from manual_balance.
+        assert created.interest_rate is None
+        assert created.minimum_payment is None
+        assert created.manual_balance is None
+
+    async def test_credit_cards_get_one_too(self, db_session):
+        """Presence, not nagging. A card does have an APR, so the page should
+        have a place for it whether or not the number is known."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        card = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+
+        created = await ensure_for_account(db_session, card)
+
+        assert created is not None
+        assert created.liability_type == "credit_card"
+
+    async def test_asset_accounts_get_nothing(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        for account_type in ("checking", "savings", "investment", "other_asset"):
+            account = await create_account(
+                db_session, budget, f"A {account_type}", account_type=account_type
+            )
+
+            assert await ensure_for_account(db_session, account) is None
+            assert await _companion(db_session, account) is None
+
+    async def test_is_idempotent(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        )
+
+        first = await ensure_for_account(db_session, loan)
+        second = await ensure_for_account(db_session, loan)
+
+        # None on the second call, so a caller counting what it made cannot
+        # double-count a row that already stood.
+        assert second is None
+        rows = (
+            (
+                await db_session.execute(
+                    select(Liability).where(Liability.linked_account_id == loan.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1 and rows[0].id == first.id
+
+    async def test_does_not_overwrite_an_existing_one(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Mortgage", account_type="loan", on_budget=False
+        )
+        existing = await create_liability(
+            db_session,
+            budget,
+            "Maple St Mortgage",
+            liability_type="mortgage",
+            linked_account_id=loan.id,
+            interest_rate=Decimal("6.25"),
+            minimum_payment=Decimal("1896.20"),
+        )
+
+        await ensure_for_account(db_session, loan)
+
+        assert existing.name == "Maple St Mortgage"
+        assert existing.interest_rate == Decimal("6.25")
+        assert existing.liability_type == "mortgage"
+
+    async def test_revives_a_soft_deleted_companion(self, db_session):
+        """linked_account_id is uniquely constrained without an is_deleted
+        filter, so a deleted row still occupies the slot — inserting beside it
+        would fail. Reviving is also the truthful outcome: the account still
+        exists and still classifies as debt, and the user's terms come back."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        )
+        buried = await create_liability(
+            db_session,
+            budget,
+            "Car Loan",
+            linked_account_id=loan.id,
+            interest_rate=Decimal("4.5"),
+            minimum_payment=Decimal("310.00"),
+        )
+        buried.is_deleted = True
+        await db_session.flush()
+
+        revived = await ensure_for_account(db_session, loan)
+
+        assert revived is not None and revived.id == buried.id
+        assert revived.is_deleted is False
+        assert revived.interest_rate == Decimal("4.5")
+
+    async def test_skips_a_deleted_account(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        )
+        loan.is_deleted = True
+        await db_session.flush()
+
+        assert await ensure_for_account(db_session, loan) is None
+
+
+class TestReleaseForAccount:
+    async def test_removes_a_companion_nobody_filled_in(self, db_session):
+        """Same rule the delete flow applies: only ask about something there is
+        something to lose."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        card = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        await ensure_for_account(db_session, card)
+
+        await release_for_account(db_session, card)
+
+        companion = await _companion(db_session, card)
+        assert companion is not None and companion.is_deleted is True
+
+    async def test_leaves_a_companion_with_real_terms(self, db_session):
+        """Managed debt becoming manually tracked debt is a conversion, and
+        converting silently is what this work decided not to do. It stays put
+        until the delete dialog can ask."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        )
+        await create_liability(
+            db_session,
+            budget,
+            "Car Loan",
+            linked_account_id=loan.id,
+            interest_rate=Decimal("4.5"),
+            minimum_payment=Decimal("310.00"),
+        )
+
+        await release_for_account(db_session, loan)
+
+        companion = await _companion(db_session, loan)
+        assert companion is not None and companion.is_deleted is False
+
+
+class TestCreationPaths:
+    async def test_creating_a_loan_account_through_the_api(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Car Loan", "account_type": "loan", "on_budget": False},
+        )
+
+        assert resp.status_code == 201, resp.text
+        liabilities = await LiabilityRepository(db_session).get_all(budget.id)
+        assert [item.name for item in liabilities] == ["Car Loan"]
+        assert liabilities[0].linked_account_id is not None
+
+    async def test_creating_a_checking_account_creates_nothing(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Everyday", "account_type": "checking", "on_budget": True},
+        )
+
+        assert resp.status_code == 201, resp.text
+        assert await LiabilityRepository(db_session).get_all(budget.id) == []
+
+    async def test_retyping_an_asset_into_a_liability(self, api_client, db_session):
+        """The account did not exist as debt when it was created, so the
+        companion has to follow the type across the line."""
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await create_account(db_session, budget, "Card", account_type="checking")
+
+        resp = await api_client.patch(
+            f"/api/v1/accounts/{account.id}",
+            json={"account_type": "credit_card"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert await _companion(db_session, account) is not None
+
+    async def test_retyping_away_drops_an_empty_companion(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        account = await create_account(db_session, budget, "Card", account_type="credit_card")
+        await ensure_for_account(db_session, account)
+
+        resp = await api_client.patch(
+            f"/api/v1/accounts/{account.id}",
+            json={"account_type": "checking"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert await LiabilityRepository(db_session).get_all(budget.id) == []
+
+
+class TestDeletingACompanionIsRefused:
+    """The row belongs to its account now, and everything written after this
+    point assumes it exists. Deleting it would put a Loan account back in the
+    dead-end state with nothing saying so."""
+
+    async def test_delete_is_409_while_the_account_stands(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        loan = await create_account(
+            db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        )
+        companion = await ensure_for_account(db_session, loan)
+        assert companion is not None
+
+        resp = await api_client.delete(f"/api/v1/{budget.id}/liabilities/{companion.id}")
+
+        assert resp.status_code == 409, resp.text
+        # The message has to name the action that does work, or a 409 is just
+        # a wall.
+        assert "account" in resp.json()["detail"].lower()
+        assert len(await LiabilityRepository(db_session).get_all(budget.id)) == 1
+
+    async def test_unmanaged_liabilities_still_delete(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        standalone = await create_liability(
+            db_session, budget, "Family Loan", manual_balance=Decimal("1200.00")
+        )
+
+        resp = await api_client.delete(f"/api/v1/{budget.id}/liabilities/{standalone.id}")
+
+        assert resp.status_code == 204, resp.text
+
+    async def test_a_liability_whose_account_is_gone_still_deletes(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        loan = await create_account(
+            db_session, budget, "Old Loan", account_type="loan", on_budget=False
+        )
+        companion = await ensure_for_account(db_session, loan)
+        assert companion is not None
+        loan.is_deleted = True
+        await db_session.flush()
+
+        resp = await api_client.delete(f"/api/v1/{budget.id}/liabilities/{companion.id}")
+
+        assert resp.status_code == 204, resp.text
+
+
+class TestTheCompanionChangesNoNumbers:
+    async def test_net_worth_does_not_double_count(self, db_session):
+        """_unmanaged_liabilities counts only rows with no linked account,
+        precisely because managed ones are already counted through theirs. A
+        companion is managed, so net worth must not move when it appears."""
+        from igab.services.liability_service import LiabilityService
+
+        from .factories import make_services
+
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        )
+        await create_transaction(db_session, budget, loan, "-9000.00", TODAY)
+        svc = LiabilityService(
+            LiabilityRepository(db_session),
+            services.account_repo,
+            services.category_repo,
+            services.transaction_repo,
+        )
+        before = await svc.unmanaged_total(budget.id)
+
+        await ensure_for_account(db_session, loan)
+
+        assert await svc.unmanaged_total(budget.id) == before
+
+    async def test_the_debt_becomes_visible_in_the_liabilities_report(self, db_session):
+        """The figure that DOES move, and the reason it should: a loan account
+        with no companion is absent from the rollup entirely today — its debt
+        real, on the ledger, and silently missing from the total."""
+        from igab.services.liability_service import LiabilityService
+
+        from .factories import make_services
+
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        loan = await create_account(
+            db_session, budget, "Car Loan", account_type="loan", on_budget=False
+        )
+        await create_transaction(db_session, budget, loan, "-9000.00", TODAY)
+        svc = LiabilityService(
+            LiabilityRepository(db_session),
+            services.account_repo,
+            services.category_repo,
+            services.transaction_repo,
+        )
+        assert (await svc.liabilities_report(budget.id))["total_balance"] == Decimal("0")
+
+        await ensure_for_account(db_session, loan)
+
+        report = await svc.liabilities_report(budget.id)
+        assert report["total_balance"] == Decimal("9000.00")
+        assert report["liabilities_missing_terms"] == 1
+
+
+class TestTheImporterPath:
+    async def test_a_mapped_loan_account_arrives_with_its_companion(self, db_session):
+        """The scenario the loan features were built for and never reached:
+        the importer maps accounts through a user-supplied type mapping and
+        never created a liability, so importing a budget with a mortgage put
+        you in the dead-end state by default."""
+        from igab.integrations.ynab.importer import YNABImporter
+        from igab.integrations.ynab.models import YNABBudget, YNABTransaction
+        from igab.repositories.category_repo import CategoryGroupRepository
+
+        from .factories import make_services
+
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        importer = YNABImporter(
+            session=db_session,
+            budget_id=budget.id,
+            account_repo=services.account_repo,
+            category_group_repo=CategoryGroupRepository(db_session),
+            category_repo=services.category_repo,
+            payee_repo=services.payee_repo,
+            transaction_repo=services.transaction_repo,
+            transaction_service=services.transactions,
+            assignment_repo=services.assignment_repo,
+            account_types={
+                "Maple St Mortgage": ("loan", False),
+                "Everyday": ("checking", True),
+            },
+        )
+
+        result = await importer.import_budget(
+            YNABBudget(
+                transactions=[
+                    YNABTransaction(
+                        account_name="Maple St Mortgage",
+                        date=TODAY,
+                        payee="Opening Balance",
+                        category_group=None,
+                        category=None,
+                        memo=None,
+                        amount=Decimal("-286000.00"),
+                        cleared="cleared",
+                    ),
+                    YNABTransaction(
+                        account_name="Everyday",
+                        date=TODAY,
+                        payee="Employer",
+                        category_group=None,
+                        category=None,
+                        memo=None,
+                        amount=Decimal("3000.00"),
+                        cleared="cleared",
+                    ),
+                ],
+            )
+        )
+        assert result.errors == [], result.errors
+
+        liabilities = await LiabilityRepository(db_session).get_all(budget.id)
+        assert [item.name for item in liabilities] == ["Maple St Mortgage"]
+        # Empty, so the import invents no terms — but present, so the account
+        # page has somewhere to put them.
+        assert liabilities[0].interest_rate is None
+
+
+class TestSnapshotsAndCategoriesCountAsFilledIn:
+    async def test_a_companion_with_snapshots_survives_release(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        card = await create_account(db_session, budget, "Visa", account_type="credit_card")
+        companion = await ensure_for_account(db_session, card)
+        assert companion is not None
+        await create_liability_snapshot(db_session, companion, TODAY, Decimal("400.00"))
+
+        await release_for_account(db_session, card)
+
+        # Snapshots are on an unmanaged path, so this is belt and braces —
+        # but "untouched" must mean untouched, not "no terms".
+        refreshed = await _companion(db_session, card)
+        assert refreshed is not None
+
+    async def test_a_companion_with_a_linked_category_survives_release(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        card = await create_account(db_session, budget, "Visa", account_type="credit_card")
+        companion = await ensure_for_account(db_session, card)
+        assert companion is not None
+        group = await create_category_group(db_session, budget, "Debt")
+        category = await create_category(db_session, budget, group, "Card Payment")
+        category.linked_liability_id = companion.id
+        await db_session.flush()
+
+        await release_for_account(db_session, card)
+
+        refreshed = await _companion(db_session, card)
+        assert refreshed is not None

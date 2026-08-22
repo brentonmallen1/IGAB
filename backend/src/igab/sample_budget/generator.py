@@ -44,6 +44,7 @@ from igab.sample_budget.spec import (
     ScheduledSpec,
     shift_months,
 )
+from igab.services.liability_service import ensure_for_account
 from igab.utils.clock import today_utc
 
 # Sanity ceilings per tier — a spec edit that blows past these is a mistake,
@@ -278,6 +279,15 @@ class SampleBudgetGenerator:
                     balance=snap.balance,
                     source="initial",
                 )
+
+        # After the specced ones, never before: these carry real terms and
+        # linked_account_id is uniquely constrained, so a companion created at
+        # account-creation time would occupy the slot the spec wants. Running
+        # last makes this fill gaps only — the sample's credit cards get the
+        # same empty companion a real user's would, which is the point.
+        for account in self._accounts.values():
+            if await ensure_for_account(self.session, account) is not None:
+                result.liabilities += 1
 
     # ─── Transactions ─────────────────────────────────────────────────────────
 

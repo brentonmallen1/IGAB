@@ -209,6 +209,120 @@ describe('roadmap integrity', () => {
     expect(bad).toEqual([])
   })
 
+  it('matches the source chart box for box, in order', () => {
+    // Locked against the r/personalfinance flowchart. If a node is added,
+    // removed or reordered, update the source map in roadmap.ts first and
+    // make sure the change is actually faithful — then update this list.
+    expect(allNodes.map((n) => n.id)).toEqual([
+      // Step 0 — budget and essentials
+      'create-budget',
+      'housing',
+      'groceries',
+      'essential-items',
+      'income-earning-expenses',
+      'health-care',
+      'minimum-payments',
+      // Step 1 — starter emergency fund
+      'starter-ef',
+      'nonessential-bills',
+      // Step 2 — employer match
+      'match-question',
+      'contribute-to-match',
+      // Step 3 — high interest debt
+      'high-interest-question',
+      'choose-payoff-method',
+      // Step 1 again — full emergency fund
+      'full-ef',
+      // Step 3 again — moderate interest debt
+      'moderate-interest-question',
+      'pay-moderate-debt',
+      // Step 4 — IRA and near-term needs
+      'roth-vs-traditional',
+      'large-purchase-question',
+      'save-for-purchase',
+      // Step 5 — 15% for retirement
+      'fifteen-percent-question',
+      'employer-plan-question',
+      'increase-contributions',
+      'self-employed-options',
+      // Step 6 — other goals
+      'hsa-question',
+      'max-hsa',
+      'college-question',
+      'college-savings',
+      'your-call',
+      'retire-early',
+      'immediate-goals',
+    ])
+  })
+
+  it('keeps each stage on the step number the source colours it', () => {
+    // Steps 1 and 3 each appear twice — the chart genuinely revisits the
+    // emergency fund and debt. That repetition is the content, not a bug.
+    expect(ROADMAP.map((s) => [s.id, s.step])).toEqual([
+      ['foundation', 0],
+      ['starter-emergency-fund', 1],
+      ['employer-match', 2],
+      ['high-interest-debt', 3],
+      ['full-emergency-fund', 1],
+      ['moderate-interest-debt', 3],
+      ['retirement-and-near-term', 4],
+      ['retirement-fifteen', 5],
+      ['other-goals', 6],
+    ])
+  })
+
+  it('routes every decision exactly as the source chart does', () => {
+    const route = (nodeId: string, answer: string) => {
+      const b = findNode(nodeId)!.node.branches!.find((x) => x.answer === answer)!
+      return b.toNode ?? b.toStage
+    }
+    // Employer match: yes -> contribute; no -> straight to high interest debt.
+    expect(route('match-question', 'Yes')).toBe('contribute-to-match')
+    expect(route('match-question', 'No')).toBe('high-interest-debt')
+    // High interest: yes -> payoff method; no -> grow the emergency fund.
+    expect(route('high-interest-question', 'Yes')).toBe('choose-payoff-method')
+    expect(route('high-interest-question', 'No')).toBe('full-emergency-fund')
+    // Moderate interest: no -> the IRA step.
+    expect(route('moderate-interest-question', 'Yes')).toBe('pay-moderate-debt')
+    expect(route('moderate-interest-question', 'No')).toBe('retirement-and-near-term')
+    // Large purchase: yes -> save it in cash; no -> the 15% question.
+    expect(route('large-purchase-question', 'Yes')).toBe('save-for-purchase')
+    expect(route('large-purchase-question', 'No')).toBe('retirement-fifteen')
+    // 15%: yes -> skip ahead to other goals; no -> check the employer plan.
+    expect(route('fifteen-percent-question', 'Yes')).toBe('other-goals')
+    expect(route('fifteen-percent-question', 'No')).toBe('employer-plan-question')
+    expect(route('employer-plan-question', 'Yes')).toBe('increase-contributions')
+    expect(route('employer-plan-question', 'No')).toBe('self-employed-options')
+    // Step 6 chain.
+    expect(route('hsa-question', 'Yes')).toBe('max-hsa')
+    expect(route('hsa-question', 'No')).toBe('college-question')
+    expect(route('college-question', 'Yes')).toBe('college-savings')
+    expect(route('college-question', 'No')).toBe('your-call')
+  })
+
+  it('states the source thresholds without inventing precision', () => {
+    const text = allNodes.map((n) => `${n.title} ${n.body} ${n.detail ?? ''}`).join(' ')
+    expect(text).toContain('10% or higher')       // high interest
+    expect(text).toContain('4–5%')                 // moderate interest
+    expect(text).toContain('15%')                  // retirement target
+    expect(text).toContain('three to six months')  // full emergency fund
+    expect(text).toContain('$1,000')               // starter emergency fund
+  })
+
+  it('never states a figure that changes yearly', () => {
+    // Contribution caps and tax brackets go stale and quietly become wrong.
+    // "the yearly limit" ages well; "$7,000" does not.
+    const offenders: string[] = []
+    for (const node of allNodes) {
+      const text = `${node.title} ${node.body} ${node.detail ?? ''}`
+      // Any dollar figure other than the source's fixed $1,000 starter fund.
+      const amounts = text.match(/\$[\d,]*\d/g) ?? []
+      for (const a of amounts) if (a !== '$1,000') offenders.push(`${node.id}: ${a}`)
+    }
+    expect(offenders).toEqual([])
+  })
+
   it('marks US-specific content so it can be regionalised later', () => {
     // Guards against a US account type being added without the flag, which is
     // the mistake that would make a future locale filter silently incomplete.

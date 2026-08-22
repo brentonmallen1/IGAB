@@ -138,17 +138,28 @@ async def test_generation_covers_every_entity_kind(db_session):
     visa_account = next(a for a in accounts if a.account_type == "credit_card")
     assert visa_payment.linked_account_id == visa_account.id
 
-    # Liabilities: one managed (linked to Car Loan account), one unmanaged (with snapshots)
+    # Liabilities: one managed (linked to Car Loan account), one unmanaged (with
+    # snapshots), plus the Visa's companion — every liability-classified account
+    # gets one, credit cards included, so the loan features are never a record
+    # the user has to know to create.
     liability_repo = LiabilityRepository(db_session)
     liabilities = await liability_repo.get_all(budget.id)
-    assert counts.liabilities == 2
-    assert len(liabilities) == 2
+    assert counts.liabilities == 3
+    assert len(liabilities) == 3
+    for account in accounts:
+        if account.classification == "liability":
+            assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
 
     car_loan_acct = next(a for a in accounts if a.name == "Car Loan")
-    managed = next(l for l in liabilities if l.linked_account_id is not None)
+    managed = next(l for l in liabilities if l.linked_account_id == car_loan_acct.id)
     assert managed.name == "Car Loan"
-    assert managed.linked_account_id == car_loan_acct.id
     assert managed.liability_type == "auto"
+    # The specced terms survive: the companion pass fills gaps, never overwrites
+    assert managed.interest_rate == Decimal("6.25")
+
+    visa = next(l for l in liabilities if l.linked_account_id == visa_account.id)
+    assert visa.interest_rate is None and visa.minimum_payment is None
+    assert visa.liability_type == "credit_card"
 
     unmanaged = next(l for l in liabilities if l.linked_account_id is None)
     assert unmanaged.name == "Dental Payment Plan"
@@ -242,7 +253,7 @@ async def test_endpoint_creates_and_auto_suffixes(api_client):
     assert body["budget"]["name"] == "Sample Budget"
     assert body["counts"]["transactions"] > 0
     assert body["counts"]["scheduled"] == 5
-    assert body["counts"]["liabilities"] == 2
+    assert body["counts"]["liabilities"] == 3
 
     second = await api_client.post("/api/v1/budgets/create-sample", json={})
     assert second.status_code == 201

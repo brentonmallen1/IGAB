@@ -48,7 +48,6 @@ async def _awkward_budget(db_session, owner):
     legacy = await create_account(
         db_session, budget, "Legacy Holdings", account_type="investment", on_budget=False
     )
-    legacy.classification = None  # pre-registry row
 
     inflow = await create_category_group(db_session, budget, "Inflow", is_system=True)
     rta = await create_category(db_session, budget, inflow, "Ready to Assign")

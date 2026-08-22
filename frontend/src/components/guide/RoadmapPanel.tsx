@@ -9,10 +9,12 @@ import { useGuideStore, type RoadmapView } from '../../stores/guideStore'
 import { stepColor } from './stepColor'
 import { RoadmapJourney } from './RoadmapJourney'
 import { RoadmapBrowse } from './RoadmapBrowse'
+import { RoadmapMap } from './RoadmapMap'
 
 const VIEWS: { id: RoadmapView; label: string; hint: string }[] = [
   { id: 'journey', label: 'Journey', hint: 'One step at a time' },
   { id: 'browse', label: 'Browse', hint: 'Read the whole thing' },
+  { id: 'map', label: 'Map', hint: 'The whole chart, as a chart' },
 ]
 
 export function RoadmapPanel() {
@@ -20,7 +22,7 @@ export function RoadmapPanel() {
   const setView = useGuideStore((s) => s.setRoadmapView)
 
   return (
-    <div className="guide-roadmap">
+    <div className={`guide-roadmap ${view === 'map' ? 'guide-roadmap--wide' : ''}`}>
       <header className="guide-roadmap__header">
         <div>
           <h2 className="guide-roadmap__title">The money roadmap</h2>
@@ -61,7 +63,9 @@ export function RoadmapPanel() {
         ))}
       </ol>
 
-      {view === 'journey' ? <RoadmapJourney /> : <RoadmapBrowse />}
+      {view === 'journey' && <RoadmapJourney />}
+      {view === 'browse' && <RoadmapBrowse />}
+      {view === 'map' && <RoadmapMap />}
 
       <footer className="guide-roadmap__footer">
         <p className="guide-roadmap__note">{DISCRETIONARY_NOTE}</p>

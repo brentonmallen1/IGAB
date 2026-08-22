@@ -16,7 +16,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from igab.db.models import Transaction
 from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass
@@ -67,11 +67,6 @@ async def _world(db_session):
     loan = await create_account(
         db_session, budget, "Car Loan", account_type="loan", on_budget=False
     )
-    unclassified = await create_account(
-        db_session, budget, "Legacy", account_type="investment", on_budget=False
-    )
-    unclassified.classification = None
-
     inflow = await create_category_group(db_session, budget, "Inflow", is_system=True)
     rta = await create_category(db_session, budget, inflow, "Ready to Assign")
     everyday = await create_category_group(db_session, budget, "Everyday")
@@ -93,7 +88,6 @@ async def _world(db_session):
         credit=credit,
         brokerage=brokerage,
         loan=loan,
-        unclassified=unclassified,
         rta=rta,
         groceries=groceries,
         fund=fund,
@@ -132,13 +126,11 @@ CASES = [
     ("to a tracked asset, uncategorized", "checking", "-500.00", None, "brokerage", SAVINGS),
     ("to a tracked debt, categorized", "checking", "-275.00", "groceries", "loan", DEBT),
     ("to a tracked debt, uncategorized", "checking", "-275.00", None, "loan", DEBT),
-    ("to an UNCLASSIFIED tracked account", "checking", "-500.00", None, "unclassified", SAVINGS),
     ("between two on-budget accounts", "checking", "-300.00", None, "on_budget_savings", INTERNAL),
     ("to an on-budget credit card", "checking", "-200.00", None, "credit", INTERNAL),
     # ─ activity inside tracked accounts ──────────────────────────────────
     ("dividend on a brokerage", "brokerage", "125.00", None, None, RETURN),
     ("fee on a brokerage", "brokerage", "-25.00", None, None, RETURN),
-    ("dividend on an unclassified tracked account", "unclassified", "80.00", None, None, RETURN),
     ("interest on a tracked loan", "loan", "-40.00", None, None, INTEREST),
 ]
 
@@ -180,6 +172,45 @@ class TestTheFarSideOfATransferIsNeverDoubleCounted:
         ).scalar_one()
 
         assert await _classify(db_session, partner) == INTERNAL.value
+
+
+class TestATransferLegAlwaysHasACounterpartToRead:
+    """Replaces the two retired NULL-classification cases.
+
+    `Account.classification` is NOT NULL as of b8c3e5a71f42, so the only way
+    left to fail to read a counterpart's classification is to have no
+    counterpart. These pin the structural reason that cannot happen — the same
+    reason `_counterpart_is_liability`'s coalesce is defence in depth rather
+    than load-bearing. If either guarantee is ever relaxed, both transfer arms
+    start declining on UNKNOWN and transfers quietly become spending.
+    """
+
+    async def test_deleting_the_partner_unlinks_rather_than_dangles(self, db_session):
+        """ondelete=SET NULL on transfer_id. A leg cannot point at nothing: it
+        stops being a transfer leg instead, and classifies on its own terms."""
+        w = await _world(db_session)
+        out = await _linked(db_session, w, w.checking, w.brokerage, "-500.00")
+        partner_id = out.transfer_id
+
+        await db_session.execute(delete(Transaction).where(Transaction.id == partner_id))
+        await db_session.flush()
+        await db_session.refresh(out)
+
+        assert out.transfer_id is None
+        assert await _classify(db_session, out) == SPENDING.value
+
+    async def test_a_soft_deleted_partner_still_resolves(self, db_session):
+        """Soft deletion does not sever the link, so the surviving leg keeps
+        describing the money movement it always did."""
+        w = await _world(db_session)
+        out = await _linked(db_session, w, w.checking, w.brokerage, "-500.00")
+        partner = (
+            await db_session.execute(select(Transaction).where(Transaction.id == out.transfer_id))
+        ).scalar_one()
+        partner.is_deleted = True
+        await db_session.flush()
+
+        assert await _classify(db_session, out) == SAVINGS.value
 
 
 class TestOrphanedLegsClassifyLikeLinkedOnes:

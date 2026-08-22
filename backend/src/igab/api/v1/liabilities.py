@@ -30,7 +30,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.services.amortization import AmortizationResult, amortization_schedule, quantize_cents
-from igab.services.liability_service import LiabilityService
+from igab.services.liability_service import LIABILITY_CLASSIFICATION, LiabilityService
 from igab.utils.clock import today_utc
 
 router = APIRouter()
@@ -244,8 +244,31 @@ async def delete_liability(
     current_user: CurrentUser,
     liability_repo: Annotated[LiabilityRepository, Depends(get_liability_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> None:
     liability = await _get_owned_liability(liability_repo, budget_id, liability_id)
+
+    # A companion row is not a separate thing the user opted into — it belongs
+    # to its account, and every consumer written after it assumes it exists.
+    # Deleting it would leave a Loan account back in the dead-end state with no
+    # way to notice. The real actions are on the account: retype it, or delete
+    # it (which asks what to do with the debt).
+    if liability.linked_account_id is not None:
+        account = await account_repo.get(liability.linked_account_id)
+        if (
+            account is not None
+            and not account.is_deleted
+            and account.classification == LIABILITY_CLASSIFICATION
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f'"{account.name}" is tracked as a liability account, so its loan '
+                    "details belong to it. Change the account's type or delete the "
+                    "account instead."
+                ),
+            )
+
     linked_category = await category_repo.get_by_linked_liability(liability.id)
     if linked_category is not None:
         await category_repo.update(linked_category.id, linked_liability_id=None)

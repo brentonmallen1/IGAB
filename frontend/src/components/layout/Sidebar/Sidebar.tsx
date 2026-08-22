@@ -114,7 +114,16 @@ export function Sidebar() {
   // Every debt exactly once: liability-classified accounts (tracker balance
   // when linked), managed liabilities whose account lives elsewhere, and
   // unmanaged liabilities. The header total is the sum of what's listed.
-  const liabilityRows = buildLiabilityRows(offBudgetLiabilityAccounts, liabilities)
+  // On-budget ids are passed so a credit card's companion doesn't list the
+  // card a second time down here — it already has a row above.
+  const onBudgetAccountIds = new Set(
+    (accounts ?? []).filter((a) => a.on_budget).map((a) => a.id)
+  )
+  const liabilityRows = buildLiabilityRows(
+    offBudgetLiabilityAccounts,
+    liabilities,
+    onBudgetAccountIds
+  )
   const liabilitiesTotal = liabilityHeaderTotal(liabilityRows)
 
   function handleAccountClick(account: Account) {

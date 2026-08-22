@@ -20,7 +20,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from igab.db.models import Liability
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from igab.db.models import Account, Liability
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
@@ -44,6 +47,111 @@ ZERO = Decimal("0")
 PAYMENT_LOOKBACK_MONTHS = 6
 
 BalanceSource = Literal["ledger", "manual", "manual_fallback"]
+
+LIABILITY_CLASSIFICATION = "liability"
+
+#: Account type → liability type for a companion row. Deliberately coarse:
+#: the account registry cannot tell a mortgage from an auto loan, and guessing
+#: from the account's name would be worse than saying "other". Phase 3 of this
+#: work derives the type from the linked account instead of storing it, at
+#: which point this map narrows to the credit-card case or disappears.
+_COMPANION_LIABILITY_TYPE: dict[str, str] = {
+    "credit_card": "credit_card",
+    "loan": "other",
+    "other_liability": "other",
+}
+
+
+async def ensure_for_account(session: AsyncSession, account: Account) -> Liability | None:
+    """Guarantee the companion Liability for a liability-classified account.
+
+    The invariant every consumer downstream of this leans on: if an account
+    classifies as a liability, a Liability row is attached to it. Without it,
+    creating a Loan account gets you a working ledger and none of the loan
+    features — no APR, no amortization, no payoff estimate — with nothing in
+    the product saying a second record is what's missing. That dead end is what
+    this closes, and it closes by construction rather than by prompting.
+
+    The row is created with NO terms. It contributes no numbers: `manual_balance`
+    is authoritative only when unlinked, and this row is linked, so its balance
+    comes from the account's ledger exactly as the account's own balance does.
+    Nothing is computed from the absent terms (see `get_status`). It is inert
+    until someone fills it in.
+
+    Idempotent, and it adopts a soft-deleted companion rather than inserting
+    beside it — `liabilities.linked_account_id` is plainly unique, so a deleted
+    row still occupies the slot. Reviving is also the truthful outcome: the
+    account still exists and still classifies as debt, so the companion should,
+    and the user's own terms come back with it.
+
+    Returns the row it created or revived, and None when there was nothing to
+    do — the account is not a liability, or its companion already stands. So
+    callers may fire and forget, and a caller that is counting what it made
+    can branch on the result without double-counting rows it did not create.
+    """
+    if account.classification != LIABILITY_CLASSIFICATION or account.is_deleted:
+        return None
+
+    # No is_deleted filter: the unique constraint does not have one either.
+    existing = (
+        await session.execute(select(Liability).where(Liability.linked_account_id == account.id))
+    ).scalar_one_or_none()
+    if existing is not None:
+        if not existing.is_deleted:
+            return None
+        existing.is_deleted = False
+        await session.flush()
+        return existing
+
+    liability = Liability(
+        budget_id=account.budget_id,
+        name=account.name,
+        liability_type=_COMPANION_LIABILITY_TYPE.get(account.account_type, "other"),
+        linked_account_id=account.id,
+        interest_rate=None,
+        minimum_payment=None,
+    )
+    session.add(liability)
+    await session.flush()
+    return liability
+
+
+async def release_for_account(session: AsyncSession, account: Account) -> None:
+    """An account has stopped classifying as a liability — retyped to an asset.
+
+    Only the empty case is handled here, and only because it is unambiguous:
+    a companion nobody filled in has nothing to lose, which is the same test
+    the delete flow applies. A companion carrying real terms, snapshots or a
+    linked category is a conversion — managed debt becoming manually tracked
+    debt — and converting silently is exactly what this work decided not to do.
+    That belongs with the account-deletion dialog that already asks the
+    question, so a populated companion is left linked here.
+
+    Left linked, it reads $0 owed rather than a wrong number: a managed balance
+    is `max(0, -account_balance)`, and an asset account in credit negates to
+    nothing.
+    """
+    companion = (
+        await session.execute(
+            select(Liability).where(
+                Liability.linked_account_id == account.id,
+                Liability.is_deleted == False,  # noqa: E712
+            )
+        )
+    ).scalar_one_or_none()
+    if companion is None:
+        return
+    untouched = (
+        companion.interest_rate is None
+        and companion.minimum_payment is None
+        and companion.origination_date is None
+        and companion.original_principal is None
+        and companion.promo_end_date is None
+        and companion.term_months is None
+    )
+    if untouched:
+        companion.is_deleted = True
+        await session.flush()
 
 
 def _month_start(d: date) -> date:

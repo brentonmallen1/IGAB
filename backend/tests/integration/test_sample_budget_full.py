@@ -140,7 +140,12 @@ async def test_full_tier_liabilities(db_session):
 
     liability_repo = LiabilityRepository(db_session)
     liabilities = {item.name: item for item in await liability_repo.get_all(budget.id)}
-    assert len(liabilities) == 4
+    # Four from the spec plus the Visa's companion: a liability-classified
+    # account without one is the dead-end state this model exists to remove.
+    assert len(liabilities) == 5
+    for account in await AccountRepository(db_session).get_all(budget.id, include_closed=True):
+        if account.classification == "liability":
+            assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
 
     mortgage = liabilities["Maple St Mortgage"]
     assert mortgage.linked_account_id is not None
@@ -208,4 +213,4 @@ async def test_endpoint_accepts_the_tier(api_client):
     counts = response.json()["counts"]
     assert counts["accounts"] == 16
     assert counts["transactions"] > 1500
-    assert counts["liabilities"] == 4
+    assert counts["liabilities"] == 5
