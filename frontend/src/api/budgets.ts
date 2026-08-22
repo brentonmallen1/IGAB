@@ -334,6 +334,13 @@ export interface YnabAccountPreview {
   transaction_count: number
   suggested_type: string
   suggested_on_budget: boolean
+  /** The account name gave no confident signal, so the suggestion is a
+   *  fallback the user should confirm. A tracked account (a house, a vehicle)
+   *  left on budget by mistake corrupts every budget total. */
+  needs_review: boolean
+  /** Sum of the account's register rows — the fastest way for a user to tell
+   *  a house from its mortgage. Serialized as a decimal string. */
+  implied_balance: string
 }
 
 export interface YnabPreviewResult {
