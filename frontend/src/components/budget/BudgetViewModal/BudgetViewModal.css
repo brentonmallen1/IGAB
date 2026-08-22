@@ -155,6 +155,12 @@
   padding: 3px var(--spacing-xs);
 }
 
+/* Effectively hidden — individually or by "Hide unassigned categories".
+   The row stays interactive: assigning a group is how it comes back. */
+.view-editor__row--hidden .view-editor__cat {
+  opacity: 0.5;
+}
+
 .view-editor__row:hover {
   background: var(--bg-hover);
 }

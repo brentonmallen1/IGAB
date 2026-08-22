@@ -24,6 +24,19 @@ type Assignment = Record<string, { group: string | null; hidden: boolean }>
 
 export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
   const { data: views } = useBudgetViews(budgetId)
+  // The form's state initializers read the view being edited exactly once, at
+  // mount. Mounting before the list has loaded would initialise an empty
+  // editor over a real view — and saving that would wipe it.
+  if (viewId && !views) return null
+  return <ViewEditor budgetId={budgetId} viewId={viewId} views={views} onClose={onClose} />
+}
+
+function ViewEditor({
+  budgetId,
+  viewId,
+  views,
+  onClose,
+}: Props & { views: ReturnType<typeof useBudgetViews>['data'] }) {
   const { data: groups = [] } = useCategoryGroups(budgetId, true)
   const { data: categories = [] } = useCategories(budgetId, true)
   const createView = useCreateBudgetView(budgetId)
@@ -267,8 +280,18 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
         <div className="view-editor__categories">
           {categories.map((cat) => {
             const a = assignment[cat.id]
+            // "Hide unassigned categories" claims every unplaced row. Render
+            // that claim on the row itself — a checked, disabled Hide box —
+            // or the flag looks like it did nothing.
+            const hiddenByFlag = hideUnassigned && !a?.group && !a?.hidden
+            const effectiveHidden = (a?.hidden ?? false) || hiddenByFlag
             return (
-              <div key={cat.id} className="view-editor__row">
+              <div
+                key={cat.id}
+                className={
+                  'view-editor__row' + (effectiveHidden ? ' view-editor__row--hidden' : '')
+                }
+              >
                 <span className="view-editor__cat">
                   {cat.name}
                   <span className="view-editor__cat-group">
@@ -287,10 +310,18 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
                     <option key={g} value={g}>{g}</option>
                   ))}
                 </select>
-                <label className="view-editor__hide" title="Leave this category out of this view">
+                <label
+                  className="view-editor__hide"
+                  title={
+                    hiddenByFlag
+                      ? 'Hidden by “Hide unassigned categories” — assign a group to bring it back'
+                      : 'Leave this category out of this view'
+                  }
+                >
                   <input
                     type="checkbox"
-                    checked={a?.hidden ?? false}
+                    checked={effectiveHidden}
+                    disabled={hiddenByFlag}
                     onChange={() => toggleHidden(cat.id)}
                   />
                   Hide
