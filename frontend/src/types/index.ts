@@ -360,11 +360,13 @@ export interface LiabilitiesReportItem {
   liability_type: string
   mode: 'managed' | 'unmanaged'
   current_balance: number
-  interest_rate: number
+  interest_rate: number | null
   baseline_payoff_date: string | null
   live_payoff_date: string | null
-  total_interest_remaining: number
+  /** Null when the terms are unset — no schedule, so no interest to project */
+  total_interest_remaining: number | null
   never_pays_off: boolean
+  terms_complete: boolean
 }
 
 export interface LiabilitiesBalancePoint {
@@ -376,7 +378,10 @@ export interface LiabilitiesBalancePoint {
 export interface LiabilitiesReport {
   items: LiabilitiesReportItem[]
   total_balance: number
+  /** Sums only the rows whose terms are known */
   total_interest_remaining: number
+  /** How many rows were left out of that total */
+  liabilities_missing_terms: number
   balance_over_time: LiabilitiesBalancePoint[]
 }
 

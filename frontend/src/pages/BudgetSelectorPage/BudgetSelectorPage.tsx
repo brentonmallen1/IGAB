@@ -120,6 +120,17 @@ export function BudgetSelectorPage() {
   const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
   const [showTypeInfo, setShowTypeInfo] = useState(false)
 
+  // Mapping an account to a debt type is now a bigger decision than a label:
+  // it is what gets that debt payoff tracking. Counted from the CURRENT
+  // choices, not the suggestions, so the number follows what the user does to
+  // the dropdowns.
+  const debtAccountCount = (previewAccounts ?? []).filter((a) => {
+    const choice = accountChoices[a.name]
+    if (choice?.skip) return false
+    const key = choice?.account_type ?? a.suggested_type
+    return ACCOUNT_TYPE_OPTIONS.find((o) => o.key === key)?.classification === 'liability'
+  }).length
+
   function updateChoice(name: string, patch: Partial<YnabAccountTypeChoice>) {
     setAccountChoices((prev) => ({ ...prev, [name]: { ...prev[name], ...patch } }))
   }
@@ -482,6 +493,15 @@ export function BudgetSelectorPage() {
                     (YNAB exports include archived accounts). Need something more specific
                     than these types? You can create custom account types after the import.
                   </span>
+                  {debtAccountCount > 0 && (
+                    <span className="ynab-mapping__hint">
+                      {' '}Mapping an account to a debt type — Mortgage, Auto Loan, Student
+                      Loan, Credit Card or Loan — also sets it up for payoff tracking.{' '}
+                      {debtAccountCount === 1 ? 'One account' : `${debtAccountCount} accounts`}{' '}
+                      will arrive with a place for the APR and minimum payment, ready to fill
+                      in whenever you have the numbers.
+                    </span>
+                  )}
                   {previewAccounts.some((a) => a.needs_review) && (
                     <span className="ynab-mapping__review-note">
                       We couldn't tell what{' '}

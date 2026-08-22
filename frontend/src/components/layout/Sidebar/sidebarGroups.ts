@@ -69,13 +69,20 @@ export interface LiabilityRow {
 /** Every debt, exactly once:
  * - off-budget liability-classified accounts — showing their Liability
  *   tracker's balance when linked, so an empty ledger doesn't read as $0 owed
- * - managed liabilities whose linked account isn't in that set (an on-budget
- *   or closed linked account previously made the liability render nowhere)
+ * - managed liabilities whose linked account is not rendered anywhere else
+ *   (a closed linked account previously made the liability render nowhere)
  * - unmanaged (manually tracked) liabilities
+ *
+ * `onBudgetAccountIds` is what keeps the count at "once". Every
+ * liability-classified account now carries a companion Liability, credit cards
+ * included, and an on-budget card already has a row of its own in the
+ * on-budget section — so its companion must not add a second one here, or the
+ * same debt appears twice and the header total double-counts it.
  */
 export function buildLiabilityRows(
   offBudgetLiabilityAccounts: Account[],
-  liabilities: LiabilitySummary[]
+  liabilities: LiabilitySummary[],
+  onBudgetAccountIds: ReadonlySet<string> = new Set()
 ): LiabilityRow[] {
   const rows: LiabilityRow[] = []
   const seenLiabilityIds = new Set<string>()
@@ -97,6 +104,7 @@ export function buildLiabilityRows(
 
   for (const liability of liabilities) {
     if (seenLiabilityIds.has(liability.id)) continue
+    if (liability.linked_account_id && onBudgetAccountIds.has(liability.linked_account_id)) continue
     rows.push({
       key: `liab-${liability.id}`,
       name: liability.name,

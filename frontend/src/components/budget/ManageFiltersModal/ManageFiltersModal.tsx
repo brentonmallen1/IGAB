@@ -28,7 +28,7 @@ const QUICK_FILTER_VARIANTS: Record<QuickFilter, string> = {
 export function ManageFiltersModal({ budgetId, onClose }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
   const deleteFilter = useDeleteBudgetFilter(budgetId)
-  const openFilterModal = useUIStore((s) => s.openFilterModal)
+  const openModal = useUIStore((s) => s.openModal)
   const quickFilterOrder = useUIStore((s) => s.quickFilterOrder)
   const reorderQuickFilters = useUIStore((s) => s.reorderQuickFilters)
   const activeFilterId = useUIStore((s) => s.activeFilterId)
@@ -82,12 +82,12 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
   }
 
   function handleEditFilter(id: string) {
-    openFilterModal(id)
+    openModal('filter', id)
     onClose()
   }
 
   function handleNewFilter() {
-    openFilterModal()
+    openModal('filter')
     onClose()
   }
 

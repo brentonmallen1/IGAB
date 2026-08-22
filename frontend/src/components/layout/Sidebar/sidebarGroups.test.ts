@@ -167,3 +167,100 @@ describe('assetsTotal', () => {
     expect(assetsTotal(p.offBudgetAssets)).toBeCloseTo(12_500.5)
   })
 })
+
+describe('buildLiabilityRows with a companion on every liability account', () => {
+  // The rule "every liability-classified account carries a Liability row" is
+  // new, and it makes a shape that used to be rare — a managed liability whose
+  // linked account is ON budget — the norm for credit cards. Each of these
+  // asserts against that fixture rather than trusting the older cases, which
+  // were all written when a companion was something a user opted into.
+
+  it('lists an on-budget card once, in the accounts section, not twice', () => {
+    const visa = acct({
+      id: 'visa',
+      name: 'Sapphire Visa',
+      account_type: 'credit_card',
+      on_budget: true,
+      classification: 'liability',
+      balance: -420,
+    })
+    const companion = liab({ name: 'Sapphire Visa', linked_account_id: 'visa', current_balance: 420 })
+    const { offBudgetLiabilityAccounts } = partitionAccounts([visa])
+
+    const rows = buildLiabilityRows(offBudgetLiabilityAccounts, [companion], new Set(['visa']))
+
+    expect(rows).toEqual([])
+  })
+
+  it('keeps the header total off the double count that would follow', () => {
+    const visa = acct({
+      id: 'visa',
+      account_type: 'credit_card',
+      on_budget: true,
+      classification: 'liability',
+      balance: -420,
+    })
+    const mortgage = acct({
+      id: 'mortgage',
+      name: 'Mortgage',
+      account_type: 'loan',
+      on_budget: false,
+      classification: 'liability',
+      balance: -286000,
+    })
+    const liabilities = [
+      liab({ name: 'Visa', linked_account_id: 'visa', current_balance: 420 }),
+      liab({ name: 'Maple St Mortgage', linked_account_id: 'mortgage', current_balance: 286000 }),
+    ]
+    const { offBudgetLiabilityAccounts } = partitionAccounts([visa, mortgage])
+
+    const rows = buildLiabilityRows(offBudgetLiabilityAccounts, liabilities, new Set(['visa']))
+
+    // The card's debt is counted in the on-budget total, so counting it here
+    // too would state the household owes $420 more than it does.
+    expect(liabilityHeaderTotal(rows)).toBe(-286000)
+  })
+
+  it('still renders an off-budget loan once, through its companion', () => {
+    const loan = acct({
+      id: 'loan',
+      name: 'Car Loan',
+      account_type: 'loan',
+      on_budget: false,
+      classification: 'liability',
+      balance: -9480,
+    })
+    const companion = liab({ name: 'Car Loan', linked_account_id: 'loan', current_balance: 9480 })
+    const { offBudgetLiabilityAccounts } = partitionAccounts([loan])
+
+    const rows = buildLiabilityRows(offBudgetLiabilityAccounts, [companion], new Set())
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].target).toEqual({ kind: 'liability', liabilityId: companion.id })
+    expect(rows[0].registerAccountId).toBe('loan')
+    expect(rows[0].balance).toBe(-9480)
+  })
+
+  it('still lists a liability whose linked account is closed and off budget', () => {
+    // The case the second loop exists for: nothing else renders it.
+    const orphaned = liab({
+      name: 'Old Store Card',
+      linked_account_id: 'closed-card',
+      current_balance: 250,
+    })
+
+    const rows = buildLiabilityRows([], [orphaned], new Set())
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].icon).toBe('managed')
+  })
+
+  it('still lists unmanaged liabilities', () => {
+    const manual = liab({ name: 'Family Loan', current_balance: 1200 })
+
+    const rows = buildLiabilityRows([], [manual], new Set(['some-other-account']))
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].icon).toBe('manual')
+  })
+})

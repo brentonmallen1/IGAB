@@ -1,61 +1,39 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Link2, PenLine, Plus } from 'lucide-react'
-import { useAccounts } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
 import {
   LiabilitySettingsModal,
-  type LiabilityPrefill,
 } from '../../components/liabilities/LiabilitySettingsModal'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
+import { useAccountTypes } from '../../api/accountTypes'
+import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
 import './LiabilitiesOverviewPage.css'
-
-const TYPE_LABELS: Record<string, string> = {
-  mortgage: 'Mortgage',
-  auto: 'Auto loan',
-  student: 'Student loan',
-  personal: 'Personal',
-  credit_card: 'Credit card',
-  medical: 'Medical',
-  other: 'Other',
-}
 
 export function LiabilitiesOverviewPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
+  const { data: accountTypes } = useAccountTypes(budgetId)
   const navigate = useNavigate()
   const { formatMoney, formatMonth } = useFormatters()
   const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
-  const { data: accounts = [] } = useAccounts(budgetId)
-  const { isLiabilityEditorOpen, editingLiabilityId, openLiabilityEditor, closeLiabilityEditor } =
-    useUIStore()
-
-  const [prefill, setPrefill] = useState<LiabilityPrefill | undefined>()
+  const activeModal = useUIStore((s) => s.activeModal)
+  const openModal = useUIStore((s) => s.openModal)
+  const closeModal = useUIStore((s) => s.closeModal)
 
   if (!budgetId) return null
 
-  const editingLiability = liabilities.find((d) => d.id === editingLiabilityId) ?? null
+  const editingLiability = liabilities.find((d) => d.id === activeModal?.editingId) ?? null
   const totalOwed = liabilities.reduce((sum, d) => sum + Number(d.current_balance), 0)
 
-  // Accounts that could be liabilities but aren't tracked yet
-  const linkedAccountIds = new Set(liabilities.map((l) => l.linked_account_id).filter(Boolean))
-  const suggestedAccounts = accounts.filter(
-    (a) => (a.account_type === 'loan' || a.account_type === 'credit_card') && !linkedAccountIds.has(a.id)
-  )
-
-  function handleSuggestTrack(account: (typeof accounts)[0]) {
-    setPrefill({
-      accountId: account.id,
-      accountName: account.name,
-      liabilityType: account.account_type === 'credit_card' ? 'credit_card' : 'auto',
-    })
-    openLiabilityEditor(null)
-  }
+  // The "these accounts could be tracked as liabilities" panel used to live
+  // here. It cannot have anything to suggest any more: every
+  // liability-classified account carries a companion from the moment it is
+  // created, so the set it drew from is always empty — and its copy was
+  // false besides, since those accounts ARE tracked.
 
   function handleClose() {
-    setPrefill(undefined)
-    closeLiabilityEditor()
+    closeModal()
   }
 
   return (
@@ -70,7 +48,7 @@ export function LiabilitiesOverviewPage() {
             </div>
           )}
         </div>
-        <button className="liabilities-page__add" onClick={() => openLiabilityEditor(null)}>
+        <button className="liabilities-page__add" onClick={() => openModal('liability')}>
           <Plus size={14} />
           Track a liability
         </button>
@@ -85,7 +63,7 @@ export function LiabilitiesOverviewPage() {
             Track a loan account you already have here, or a liability that lives entirely outside
             this budget — either way you get a payoff date, schedule, and paydown chart.
           </p>
-          <button className="liabilities-page__add" onClick={() => openLiabilityEditor(null)}>
+          <button className="liabilities-page__add" onClick={() => openModal('liability')}>
             <Plus size={14} />
             Track a liability
           </button>
@@ -108,14 +86,18 @@ export function LiabilitiesOverviewPage() {
                 <div className="liability-card__top">
                   <span className="liability-card__name">{liability.name}</span>
                   <span className="liability-card__type">
-                    {TYPE_LABELS[liability.liability_type] ?? 'Other'}
+                    {liabilityTypeLabel(liability.liability_type, accountTypes)}
                   </span>
                 </div>
                 <div className="liability-card__balance tabular">
                   {formatMoney(Number(liability.current_balance))}
                 </div>
                 <div className="liability-card__meta">
-                  <span>{Number(liability.interest_rate)}% APR</span>
+                  <span>
+                    {liability.interest_rate === null
+                      ? 'APR not set'
+                      : `${Number(liability.interest_rate)}% APR`}
+                  </span>
                   <span
                     className="liability-card__mode"
                     title={liability.mode === 'managed' ? 'Tracked from account' : 'Manually tracked'}
@@ -140,6 +122,8 @@ export function LiabilitiesOverviewPage() {
                         ? "Recent payments won't pay this off"
                         : "Minimum payment won't pay this off"}
                     </>
+                  ) : !liability.terms_complete ? (
+                    'Needs APR and minimum payment'
                   ) : payoffDate ? (
                     `Paid off ${formatMonth(payoffDate)}`
                   ) : (
@@ -160,39 +144,11 @@ export function LiabilitiesOverviewPage() {
         </div>
       )}
 
-      {suggestedAccounts.length > 0 && (
-        <div className="liabilities-page__suggestions">
-          <h2 className="liabilities-page__suggestions-title">From your accounts</h2>
-          <p className="liabilities-page__suggestions-sub">
-            These accounts could be tracked as liabilities to get payoff projections and charts.
-          </p>
-          <div className="liabilities-page__suggestions-list">
-            {suggestedAccounts.map((account) => (
-              <div key={account.id} className="liability-suggestion">
-                <div className="liability-suggestion__info">
-                  <span className="liability-suggestion__name">{account.name}</span>
-                  <span className="liability-suggestion__balance tabular">
-                    {formatMoney(Math.abs(Number(account.balance)))}
-                  </span>
-                </div>
-                <button
-                  className="liability-suggestion__track"
-                  onClick={() => handleSuggestTrack(account)}
-                >
-                  Track
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isLiabilityEditorOpen && (
+      {activeModal?.kind === 'liability' && (
         <LiabilitySettingsModal
           budgetId={budgetId}
           liability={editingLiability}
           onClose={handleClose}
-          prefill={prefill}
         />
       )}
     </div>

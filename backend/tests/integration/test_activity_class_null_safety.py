@@ -11,6 +11,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from igab.db.models import Transaction
 from igab.domain.activity_class import ACTIVITY_CLASS, ACTIVITY_REASON, ActivityClass
@@ -91,41 +92,34 @@ class TestNullPayeeDoesNotVanish:
         assert cls == ActivityClass.SPENDING
 
 
-class TestNullClassificationStillClassifies:
-    """`Account.classification` is nullable. A bare `== 'liability'` is NULL for
-    those rows, so the asset rule AND the liability rule both decline."""
+class TestNullClassificationIsUnreachable:
+    """This suite used to prove the classifier survived a NULL classification.
+    b8c3e5a71f42 made the column NOT NULL instead, which is the stronger claim:
+    the state that disabled four rules cannot be written in the first place.
+    What is left to pin is that the door is actually shut."""
 
-    async def test_transfer_to_an_unclassified_tracked_account_is_savings(self, db_session):
-        budget, checking = await _budget(db_session)
-        brokerage = await create_account(
-            db_session, budget, "Brokerage", account_type="investment", on_budget=False
-        )
-        brokerage.classification = None
-        group = await create_category_group(db_session, budget, "Everyday")
-        investing = await create_category(db_session, budget, group, "Investing")
-        payee = await create_payee(
-            db_session, budget, "Transfer : Brokerage", transfer_account_id=brokerage.id
-        )
-        txn = await create_transaction(
-            db_session, budget, checking, "-500.00", TODAY, category=investing, payee=payee
-        )
-        await db_session.flush()
-
-        cls, _ = await _classify(db_session, txn)
-
-        assert cls == ActivityClass.SAVINGS, "a NULL classification must default to asset"
-
-    async def test_activity_inside_an_unclassified_tracked_account(self, db_session):
+    async def test_the_column_refuses_null(self, db_session):
         budget, _ = await _budget(db_session)
         brokerage = await create_account(
             db_session, budget, "Brokerage", account_type="investment", on_budget=False
         )
-        brokerage.classification = None
+        brokerage.classification = None  # type: ignore[assignment]
+
+        with pytest.raises(IntegrityError):
+            await db_session.flush()
+
+    async def test_a_tracked_asset_still_classifies_from_its_type_row(self, db_session):
+        """The replacement guarantee: classification is derived from the type
+        registry for every account, so the rules always have a value to read."""
+        budget, _ = await _budget(db_session)
+        brokerage = await create_account(
+            db_session, budget, "Brokerage", account_type="investment", on_budget=False
+        )
         txn = await create_transaction(db_session, budget, brokerage, "800.00", TODAY)
         await db_session.flush()
 
+        assert brokerage.classification == "asset"
         cls, _ = await _classify(db_session, txn)
-
         assert cls == ActivityClass.INVESTMENT_RETURN
 
 

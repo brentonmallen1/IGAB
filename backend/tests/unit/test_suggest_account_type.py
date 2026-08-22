@@ -26,8 +26,11 @@ class TestRecognisedTypes:
         "name,expected",
         [
             ("Cedar Grove Property Loan", "loan"),
-            ("Vehicle A Loan", "loan"),
-            ("Sallie Mae Student", "loan"),
+            ("Vehicle A Loan", "auto_loan"),
+            ("Sallie Mae Student", "student_loan"),
+            ("Home Mortgage", "mortgage"),
+            ("Car Loan", "auto_loan"),
+            ("Student Loans", "student_loan"),
             ("Meridian Visa", "credit_card"),
             ("Northgate Amex", "credit_card"),
             ("Redwood CC", "credit_card"),
@@ -57,7 +60,23 @@ class TestRecognisedTypes:
     def test_explicit_debt_outranks_the_thing_it_is_secured_against(self):
         # "Cedar Grove Property Loan" contains both "property" and "loan".
         assert suggest_account_type("Cedar Grove Property Loan", NEG)[0] == "loan"
-        assert suggest_account_type("Vehicle A Loan", NEG)[0] == "loan"
+        assert suggest_account_type("Vehicle A Loan", NEG)[0] == "auto_loan"
+
+    def test_the_vehicle_is_not_the_vehicle_loan(self):
+        """The word "car" describes an asset; only the phrase says debt. Both
+        end up off budget, which is the part that protects to_be_assigned —
+        getting this wrong costs a label, not a budget number."""
+        assert suggest_account_type("Vehicle A", POS)[0] != "auto_loan"
+        assert suggest_account_type("Vehicle A Loan", NEG)[0] == "auto_loan"
+        assert suggest_account_type("Vehicle A", POS)[1] is False
+
+    def test_the_specific_loan_types_beat_the_generic(self):
+        """First match wins, so the generic `loan` rule has to come last —
+        "Student Loans" and "Car Loan" both contain the word."""
+        assert suggest_account_type("Sallie Mae Student Loans", NEG)[0] == "student_loan"
+        assert suggest_account_type("Car Loan", NEG)[0] == "auto_loan"
+        assert suggest_account_type("Mortgage Loan", NEG)[0] == "mortgage"
+        assert suggest_account_type("Boat Loan", NEG)[0] == "loan"
 
 
 class TestTrackedThings:
@@ -167,8 +186,8 @@ class TestInflectedForms:
     @pytest.mark.parametrize(
         "name,expected",
         [
-            ("Car Loans", "loan"),
-            ("Student Loan", "loan"),
+            ("Car Loans", "auto_loan"),
+            ("Student Loan", "student_loan"),
             ("Credit Cards", "credit_card"),
             ("Credit Card", "credit_card"),
         ],

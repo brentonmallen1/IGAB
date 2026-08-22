@@ -33,6 +33,9 @@ function groupLabel(type: string, registry?: { key: string; label: string }[]): 
     case 'savings': return 'Savings'
     case 'cash': return 'Cash'
     case 'credit_card': return 'Credit Cards'
+    case 'mortgage': return 'Mortgages'
+    case 'auto_loan': return 'Auto Loans'
+    case 'student_loan': return 'Student Loans'
     case 'loan': return 'Loans'
     case 'investment': return 'Investments'
     case 'other_asset': return 'Other Assets'
@@ -57,10 +60,9 @@ export function Sidebar() {
   const updateAvailable = useUpdateStatus().data?.update_available === true
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
-  const isAddAccountModalOpen = useUIStore((s) => s.isAddAccountModalOpen)
-  const openAddAccountModal = useUIStore((s) => s.openAddAccountModal)
-  const closeAddAccountModal = useUIStore((s) => s.closeAddAccountModal)
-  const openLiabilityEditor = useUIStore((s) => s.openLiabilityEditor)
+  const activeModal = useUIStore((s) => s.activeModal)
+  const openModal = useUIStore((s) => s.openModal)
+  const closeModal = useUIStore((s) => s.closeModal)
 
   const logout = useLogout()
   const { data: me } = useCurrentUser()
@@ -114,7 +116,16 @@ export function Sidebar() {
   // Every debt exactly once: liability-classified accounts (tracker balance
   // when linked), managed liabilities whose account lives elsewhere, and
   // unmanaged liabilities. The header total is the sum of what's listed.
-  const liabilityRows = buildLiabilityRows(offBudgetLiabilityAccounts, liabilities)
+  // On-budget ids are passed so a credit card's companion doesn't list the
+  // card a second time down here — it already has a row above.
+  const onBudgetAccountIds = new Set(
+    (accounts ?? []).filter((a) => a.on_budget).map((a) => a.id)
+  )
+  const liabilityRows = buildLiabilityRows(
+    offBudgetLiabilityAccounts,
+    liabilities,
+    onBudgetAccountIds
+  )
   const liabilitiesTotal = liabilityHeaderTotal(liabilityRows)
 
   function handleAccountClick(account: Account) {
@@ -221,7 +232,7 @@ export function Sidebar() {
           </button>
           <button
             className="sidebar__add-account"
-            onClick={openAddAccountModal}
+            onClick={() => openModal('add-account')}
             aria-label="Add account"
             title="Add account"
           >
@@ -316,7 +327,7 @@ export function Sidebar() {
               </span>
               <button
                 className="sidebar__add-liability"
-                onClick={() => { openLiabilityEditor(null); navigate('/liabilities') }}
+                onClick={() => { openModal('liability'); navigate('/liabilities') }}
                 aria-label="Add liability"
                 title="Add liability"
               >
@@ -393,7 +404,7 @@ export function Sidebar() {
           </button>
           <button
             className="sidebar__add-liability"
-            onClick={() => { openLiabilityEditor(null); navigate('/liabilities') }}
+            onClick={() => { openModal('liability'); navigate('/liabilities') }}
             aria-label="Add liability"
             title="Add liability"
           >
@@ -434,7 +445,7 @@ export function Sidebar() {
         </div>
       )}
 
-      {isAddAccountModalOpen && <AddAccountModal onClose={closeAddAccountModal} />}
+      {activeModal?.kind === 'add-account' && <AddAccountModal onClose={closeModal} />}
       {assetModalOpen && (
         <AddAccountModal
           initialTypeKey="investment"

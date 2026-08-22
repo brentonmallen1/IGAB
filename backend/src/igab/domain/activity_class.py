@@ -115,18 +115,30 @@ def _account_field(account_id, column):
     return select(column).where(Account.id == account_id).correlate(Transaction).scalar_subquery()
 
 
-def _is_liability(account_id):
-    """Coalesced: `classification` is nullable (pre-registry rows), and a bare
-    `== 'liability'` yields NULL for those — making *both* that test and its
-    negation fail, so the asset and liability rules would each decline to fire
-    and the row would fall through to the income/spending defaults. Every other
-    reader of this column already defends it the same way."""
-    return func.coalesce(_account_field(account_id, Account.classification), "asset") == _LIABILITY
-
-
 _own_on_budget = _account_field(Transaction.account_id, Account.on_budget)
-_counterpart_is_liability = _is_liability(COUNTERPART_ACCOUNT_ID)
-_own_is_liability = _is_liability(Transaction.account_id)
+
+#: The row's own account always resolves — `account_id` is NOT NULL behind an
+#: FK — and `classification` is NOT NULL since b8c3e5a71f42, so this is plainly
+#: two-valued. It used to be coalesced against pre-registry rows; that state no
+#: longer exists.
+_own_is_liability = _account_field(Transaction.account_id, Account.classification) == _LIABILITY
+
+#: The counterpart is read through a subquery that yields NULL when nothing
+#: resolves, whatever constraint the column carries — and an uncoalesced
+#: comparison would then be UNKNOWN, declining BOTH the asset arm and the
+#: liability arm below and dropping a transfer to the spending default.
+#:
+#: Two things currently make that unreachable, and neither is local to this
+#: file: `transfer_id` is an FK with ondelete=SET NULL, so a hard-deleted
+#: partner unlinks the leg rather than leaving it dangling; and the arms are
+#: guarded by `_TRACKED_COUNTERPART`, which is false when nothing resolves.
+#: The coalesce is kept because that is a four-step argument across three
+#: modules, and it costs nothing to make the expression two-valued by
+#: construction instead. `test_activity_class_matrix.py` pins the FK half.
+_counterpart_is_liability = (
+    func.coalesce(_account_field(COUNTERPART_ACCOUNT_ID, Account.classification), "asset")
+    == _LIABILITY
+)
 
 
 def _tagged(*system_keys: str):

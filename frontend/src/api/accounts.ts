@@ -52,9 +52,21 @@ export function useUpdateAccount(budgetId: string) {
 export function useDeleteAccount(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (accountId: string) => apiClient.delete(`/accounts/${accountId}`),
+    // `liability` decides what becomes of the debt a liability account was
+    // tracking: kept as a manually tracked one (the default and the
+    // non-destructive branch) or removed with the account.
+    mutationFn: ({
+      accountId,
+      liability = 'keep',
+    }: {
+      accountId: string
+      liability?: 'keep' | 'delete'
+    }) => apiClient.delete(`/accounts/${accountId}`, { params: { liability } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+      // Either disposition rewrites the companion, and both liability views
+      // read it — the sidebar's debt section included.
+      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
     },
   })
 }

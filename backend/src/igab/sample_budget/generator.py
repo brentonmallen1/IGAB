@@ -44,6 +44,7 @@ from igab.sample_budget.spec import (
     ScheduledSpec,
     shift_months,
 )
+from igab.services.liability_service import ensure_for_account
 from igab.utils.clock import today_utc
 
 # Sanity ceilings per tier — a spec edit that blows past these is a mistake,
@@ -258,7 +259,11 @@ class SampleBudgetGenerator:
             liability = await self.liability_repo.create(
                 budget_id=self.budget_id,
                 name=spec.name,
-                liability_type=spec.liability_type,
+                # Stored only when unmanaged — a linked liability reads its
+                # kind off the account, so storing one here would seed the
+                # reference dataset with the stale second copy this model
+                # exists to remove.
+                liability_type=None if linked_account_id else spec.liability_type,
                 interest_rate=spec.interest_rate,
                 minimum_payment=spec.minimum_payment,
                 linked_account_id=linked_account_id,
@@ -278,6 +283,15 @@ class SampleBudgetGenerator:
                     balance=snap.balance,
                     source="initial",
                 )
+
+        # After the specced ones, never before: these carry real terms and
+        # linked_account_id is uniquely constrained, so a companion created at
+        # account-creation time would occupy the slot the spec wants. Running
+        # last makes this fill gaps only — the sample's credit cards get the
+        # same empty companion a real user's would, which is the point.
+        for account in self._accounts.values():
+            if await ensure_for_account(self.session, account) is not None:
+                result.liabilities += 1
 
     # ─── Transactions ─────────────────────────────────────────────────────────
 

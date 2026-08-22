@@ -10,15 +10,34 @@ export type QuickFilter = 'overspent' | 'underfunded' | 'money-available' | 'ove
 
 export const ALL_QUICK_FILTERS: QuickFilter[] = ['overspent', 'underfunded', 'money-available', 'overfunded']
 
+/** Every dialog whose open/closed state is global rather than local to the
+ *  component that raises it. Promise-based questions (confirmStore) are not
+ *  here: they have one slot of their own and resolve to a value. */
+export type ModalKind =
+  | 'transaction'
+  | 'account'
+  | 'add-account'
+  | 'liability'
+  | 'view'
+  | 'manage-views'
+  | 'filter'
+  | 'manage-filters'
+
+export interface ActiveModal {
+  kind: ModalKind
+  /** The row being edited; null means "new". */
+  editingId: string | null
+}
+
 interface UIState {
   collapsedGroups: Set<string>
-  isTransactionEditorOpen: boolean
-  editingTransactionId: string | null
-  isAccountEditorOpen: boolean
-  editingAccountId: string | null
-  isAddAccountModalOpen: boolean
-  isLiabilityEditorOpen: boolean
-  editingLiabilityId: string | null
+  /** One slot, so opening a dialog closes whatever was open.
+   *
+   *  This was eight independent booleans, each with its own editing-id and its
+   *  own open/close pair — and nothing stopped two being true at once, so
+   *  raising the filter dialog while the view dialog stood rendered both,
+   *  stacked. Being able to represent that at all was the bug. */
+  activeModal: ActiveModal | null
   sidebarCollapsed: boolean
 
   // Mobile shell (bottom nav)
@@ -48,14 +67,8 @@ interface UIState {
   toggleGroupExpanded: (groupId: string) => void
   collapseAll: (groupIds: string[]) => void
   expandAll: () => void
-  openTransactionEditor: (transactionId?: string) => void
-  closeTransactionEditor: () => void
-  openAccountEditor: (accountId: string) => void
-  closeAccountEditor: () => void
-  openAddAccountModal: () => void
-  closeAddAccountModal: () => void
-  openLiabilityEditor: (liabilityId: string | null) => void
-  closeLiabilityEditor: () => void
+  openModal: (kind: ModalKind, editingId?: string | null) => void
+  closeModal: () => void
   toggleSidebarCollapsed: () => void
   toggleBudgetRowMode: () => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
@@ -86,18 +99,7 @@ interface UIState {
    *  those categories show. Both can be on at once. */
   activeViewId: string | null
   setActiveView: (viewId: string | null) => void
-  isViewModalOpen: boolean
-  editingViewId: string | null
-  openViewModal: (viewId?: string) => void
-  closeViewModal: () => void
-  isManageViewsModalOpen: boolean
-  openManageViewsModal: () => void
-  closeManageViewsModal: () => void
-  isFilterModalOpen: boolean
-  editingFilterId: string | null
   setActiveFilter: (filterId: string | null) => void
-  openFilterModal: (filterId?: string) => void
-  closeFilterModal: () => void
 
   // Quick filters
   activeQuickFilter: QuickFilter | null
@@ -108,11 +110,6 @@ interface UIState {
   // Category name filter (combines with filters/quick filters)
   categorySearch: string
   setCategorySearch: (query: string) => void
-
-  // Manage filters modal
-  isManageFiltersModalOpen: boolean
-  openManageFiltersModal: () => void
-  closeManageFiltersModal: () => void
 
   // Command palette
   isPaletteOpen: boolean
@@ -149,13 +146,7 @@ export const useUIStore = create<UIState>()(
   persist(
     (set, get) => ({
   collapsedGroups: new Set(),
-  isTransactionEditorOpen: false,
-  editingTransactionId: null,
-  isAccountEditorOpen: false,
-  editingAccountId: null,
-  isAddAccountModalOpen: false,
-  isLiabilityEditorOpen: false,
-  editingLiabilityId: null,
+  activeModal: null,
   sidebarCollapsed: false,
   budgetRowMode: 'expanded',
   selectedCategoryIds: new Set(),
@@ -186,18 +177,9 @@ export const useUIStore = create<UIState>()(
   collapseAll: (groupIds) => set({ collapsedGroups: new Set(groupIds) }),
   expandAll: () => set({ collapsedGroups: new Set() }),
 
-  openTransactionEditor: (transactionId) =>
-    set({ isTransactionEditorOpen: true, editingTransactionId: transactionId ?? null }),
-  closeTransactionEditor: () =>
-    set({ isTransactionEditorOpen: false, editingTransactionId: null }),
+  openModal: (kind, editingId) => set({ activeModal: { kind, editingId: editingId ?? null } }),
+  closeModal: () => set({ activeModal: null }),
 
-  openAccountEditor: (accountId) => set({ isAccountEditorOpen: true, editingAccountId: accountId }),
-  closeAccountEditor: () => set({ isAccountEditorOpen: false, editingAccountId: null }),
-  openAddAccountModal: () => set({ isAddAccountModalOpen: true }),
-  closeAddAccountModal: () => set({ isAddAccountModalOpen: false }),
-  openLiabilityEditor: (liabilityId) =>
-    set({ isLiabilityEditorOpen: true, editingLiabilityId: liabilityId }),
-  closeLiabilityEditor: () => set({ isLiabilityEditorOpen: false, editingLiabilityId: null }),
 
   toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
@@ -335,18 +317,7 @@ export const useUIStore = create<UIState>()(
   activeFilterId: null,
   activeViewId: null,
   setActiveView: (viewId) => set({ activeViewId: viewId }),
-  isViewModalOpen: false,
-  editingViewId: null,
-  openViewModal: (viewId) => set({ isViewModalOpen: true, editingViewId: viewId ?? null }),
-  closeViewModal: () => set({ isViewModalOpen: false, editingViewId: null }),
-  isManageViewsModalOpen: false,
-  openManageViewsModal: () => set({ isManageViewsModalOpen: true }),
-  closeManageViewsModal: () => set({ isManageViewsModalOpen: false }),
-  isFilterModalOpen: false,
-  editingFilterId: null,
   setActiveFilter: (filterId) => set({ activeFilterId: filterId, activeQuickFilter: null }),
-  openFilterModal: (filterId) => set({ isFilterModalOpen: true, editingFilterId: filterId ?? null }),
-  closeFilterModal: () => set({ isFilterModalOpen: false, editingFilterId: null }),
 
   activeQuickFilter: null,
   quickFilterOrder: [...ALL_QUICK_FILTERS],
@@ -356,9 +327,6 @@ export const useUIStore = create<UIState>()(
   categorySearch: '',
   setCategorySearch: (query) => set({ categorySearch: query }),
 
-  isManageFiltersModalOpen: false,
-  openManageFiltersModal: () => set({ isManageFiltersModalOpen: true }),
-  closeManageFiltersModal: () => set({ isManageFiltersModalOpen: false }),
 
   isPaletteOpen: false,
   openPalette: () => set({ isPaletteOpen: true }),
