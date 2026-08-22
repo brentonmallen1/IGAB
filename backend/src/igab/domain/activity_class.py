@@ -27,11 +27,14 @@ an opaque reclassification.
 from enum import StrEnum
 
 from sqlalchemy import and_, case, func, literal, or_, select
-from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
-from igab.db.models import Account, Category, CategoryGroup, Payee, Tag, Transaction, category_tags
-from igab.repositories.txn_filters import TRANSFER_LEG
+from igab.db.models import Account, Category, CategoryGroup, Tag, Transaction, category_tags
+from igab.repositories.txn_filters import (
+    COUNTERPART_ACCOUNT_ID,
+    COUNTERPART_OFF_BUDGET,
+    TRANSFER_LEG,
+)
 
 
 class ActivityClass(StrEnum):
@@ -107,48 +110,39 @@ CLASS_LABEL: dict[ActivityClass, str] = {
 
 _LIABILITY = "liability"
 
-_partner = aliased(Transaction)
-
-#: The account on the other side of a transfer. The partner link is preferred;
-#: an orphaned leg falls back to the account its transfer payee names, which is
-#: the same signal TRANSFER_LEG uses to recognise it at all.
-# `.correlate(Transaction)` is load-bearing, not decoration. These sit inside
-# another scalar subquery whose FROM is `accounts`, and SQLAlchemy only
-# auto-correlates against the immediately enclosing SELECT — so without it the
-# planner adds `transactions` to the inner FROM and the subquery cross-joins,
-# returning many rows where one is required.
-_counterpart_account_id = func.coalesce(
-    select(_partner.account_id)
-    .where(_partner.id == Transaction.transfer_id)
-    .correlate(Transaction)
-    .scalar_subquery(),
-    select(Payee.transfer_account_id)
-    .where(Payee.id == Transaction.payee_id)
-    .correlate(Transaction)
-    .scalar_subquery(),
-)
-
 
 def _account_field(account_id, column):
     return select(column).where(Account.id == account_id).correlate(Transaction).scalar_subquery()
 
 
-_counterpart_on_budget = _account_field(_counterpart_account_id, Account.on_budget)
-_counterpart_is_liability = (
-    _account_field(_counterpart_account_id, Account.classification) == _LIABILITY
-)
+def _is_liability(account_id):
+    """Coalesced: `classification` is nullable (pre-registry rows), and a bare
+    `== 'liability'` yields NULL for those — making *both* that test and its
+    negation fail, so the asset and liability rules would each decline to fire
+    and the row would fall through to the income/spending defaults. Every other
+    reader of this column already defends it the same way."""
+    return func.coalesce(_account_field(account_id, Account.classification), "asset") == _LIABILITY
+
+
 _own_on_budget = _account_field(Transaction.account_id, Account.on_budget)
-_own_is_liability = _account_field(Transaction.account_id, Account.classification) == _LIABILITY
+_counterpart_is_liability = _is_liability(COUNTERPART_ACCOUNT_ID)
+_own_is_liability = _is_liability(Transaction.account_id)
 
 
 def _tagged(*system_keys: str):
-    return Transaction.category_id.in_(
-        select(category_tags.c.category_id)
-        .join(Tag, Tag.id == category_tags.c.tag_id)
-        .where(
-            Tag.system_key.in_(system_keys),
-            Tag.is_deleted == False,  # noqa: E712
-        )
+    # Guarded by the NOT NULL test: `NULL IN (...)` is UNKNOWN, not FALSE, and
+    # a CASE arm evaluating to UNKNOWN differs from one evaluating FALSE only
+    # by luck of ordering. Keep every arm two-valued.
+    return and_(
+        Transaction.category_id.isnot(None),
+        Transaction.category_id.in_(
+            select(category_tags.c.category_id)
+            .join(Tag, Tag.id == category_tags.c.tag_id)
+            .where(
+                Tag.system_key.in_(system_keys),
+                Tag.is_deleted == False,  # noqa: E712
+            )
+        ),
     )
 
 
@@ -156,34 +150,44 @@ def _tagged(*system_keys: str):
 #: ordinary category is a refund, which nets against that category's spending —
 #: calling it income would double-count it and inflate a savings rate's
 #: denominator.
-_IN_SYSTEM_GROUP = Transaction.category_id.in_(
-    select(Category.id)
-    .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-    .where(CategoryGroup.is_system == True)  # noqa: E712
+_IN_SYSTEM_GROUP = and_(
+    Transaction.category_id.isnot(None),
+    Transaction.category_id.in_(
+        select(Category.id)
+        .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+        .where(CategoryGroup.is_system == True)  # noqa: E712
+    ),
 )
 
 _CATEGORIZED = Transaction.category_id.isnot(None)
-_TRACKED_COUNTERPART = _counterpart_on_budget == False  # noqa: E712
+_TRACKED_COUNTERPART = COUNTERPART_OFF_BUDGET
 
 #: (condition, class, reason) in priority order. Tags come first so a user's
 #: explicit statement always beats an inferred one.
 RULES: list[tuple[ColumnElement[bool], ActivityClass, ActivityReason]] = [
     (_tagged("savings", "long_term_expense"), ActivityClass.SAVINGS, ActivityReason.TAGGED_SAVINGS),
     (_tagged("debt_principal"), ActivityClass.DEBT_PRINCIPAL, ActivityReason.TAGGED_DEBT),
+    # Where the money went decides the class, not whether the user bothered to
+    # categorize it. An uncategorized transfer to a brokerage is still saving:
+    # it leaves the budget and stays in net worth. Requiring a category here
+    # meant those legs fell to the neutral bucket below and vanished from the
+    # savings rate — and YNAB exports are full of uncategorized
+    # tracking-account transfers.
     (
-        and_(TRANSFER_LEG, _CATEGORIZED, _TRACKED_COUNTERPART, ~_counterpart_is_liability),
+        and_(TRANSFER_LEG, _TRACKED_COUNTERPART, ~_counterpart_is_liability),
         ActivityClass.SAVINGS,
         ActivityReason.TRANSFER_TO_TRACKED_ASSET,
     ),
     (
-        and_(TRANSFER_LEG, _CATEGORIZED, _TRACKED_COUNTERPART, _counterpart_is_liability),
+        and_(TRANSFER_LEG, _TRACKED_COUNTERPART, _counterpart_is_liability),
         ActivityClass.DEBT_PRINCIPAL,
         ActivityReason.TRANSFER_TO_TRACKED_DEBT,
     ),
-    # Uncategorized legs are internal movement. A CATEGORIZED leg whose
-    # counterpart could not be resolved deliberately falls past this to the
-    # spending rules — it keeps the meaning its category gives it rather than
-    # disappearing into a neutral bucket.
+    # What remains is movement between two on-budget accounts (both legs sit
+    # inside the budget, so counting either double-counts), or a leg whose
+    # counterpart could not be resolved. A CATEGORIZED unresolvable leg falls
+    # past this to the spending rules — it keeps the meaning its category gives
+    # it rather than disappearing into a neutral bucket.
     (
         and_(TRANSFER_LEG, ~_CATEGORIZED),
         ActivityClass.TRANSFER_INTERNAL,
@@ -199,8 +203,11 @@ RULES: list[tuple[ColumnElement[bool], ActivityClass, ActivityReason]] = [
         ActivityClass.DEBT_INTEREST,
         ActivityReason.TRACKED_DEBT_ACTIVITY,
     ),
+    # An inflow category is income whichever way the money moved: a reversed or
+    # clawed-back paycheck is negative income, not spending. Sign still decides
+    # for UNcategorized rows, where it is the only signal available.
     (
-        and_(Transaction.amount > 0, or_(~_CATEGORIZED, _IN_SYSTEM_GROUP)),
+        or_(and_(Transaction.amount > 0, ~_CATEGORIZED), _IN_SYSTEM_GROUP),
         ActivityClass.INCOME,
         ActivityReason.UNCATEGORIZED_INFLOW,
     ),

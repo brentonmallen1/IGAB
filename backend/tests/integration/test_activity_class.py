@@ -123,15 +123,20 @@ class TestInternalTransfers:
         assert cls == ActivityClass.TRANSFER_INTERNAL
         assert reason == ActivityReason.INTERNAL_TRANSFER
 
-    async def test_uncategorized_leg_to_a_tracked_account_is_still_internal(self, db_session):
-        """Without a category there is no statement that this was saving — it
-        is just movement. The categorized version is what means savings."""
+    async def test_uncategorized_leg_to_a_tracked_account_is_savings(self, db_session):
+        """Reversed deliberately. This asserted that without a category there
+        was "no statement that this was saving" — but the account topology is
+        the statement: the money left the budget and stayed in an asset the
+        household owns. Treating the category as the signal made the savings
+        rate read 0% for anyone whose transfers are uncategorized, which is
+        most YNAB imports. Internal now means what it says: both legs inside
+        the budget."""
         w = await _world(db_session)
         payee = await _transfer_payee(db_session, w.budget, w.brokerage)
         txn = await create_transaction(
             db_session, w.budget, w.checking, "-500.00", TODAY, payee=payee
         )
-        assert (await _classify(db_session, txn))[0] == ActivityClass.TRANSFER_INTERNAL
+        assert (await _classify(db_session, txn))[0] == ActivityClass.SAVINGS
 
 
 class TestTrackedAccountActivity:
