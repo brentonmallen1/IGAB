@@ -82,10 +82,7 @@ async def assert_transfer_integrity(session: AsyncSession) -> None:
         .all()
     )
     by_id = {leg.id: leg for leg in legs}
-    accounts = {
-        a.id: a
-        for a in (await session.execute(select(Account))).scalars().all()
-    }
+    accounts = {a.id: a for a in (await session.execute(select(Account))).scalars().all()}
     for leg in legs:
         partner = by_id.get(leg.transfer_id)
         assert partner is not None, (
@@ -144,7 +141,67 @@ async def assert_money_conservation(session: AsyncSession, budget_id: uuid.UUID)
     )
 
 
+async def assert_activity_class_partition(session: AsyncSession, budget_id: uuid.UUID) -> None:
+    """Every posted leaf row classifies into exactly one ActivityClass, and the
+    per-class sums add back up to the ungrouped total.
+
+    This is the property that makes the taxonomy safe to build reports on. The
+    CASH_FLOW_ROW bug existed because "not cash flow" was an unnamed leftover
+    bucket, so a row could fall through it and be silently counted as income.
+    A partition cannot have leftovers: a rule that stops matching shows up here
+    as a failure rather than as a wrong number in a chart months later.
+
+    Written against the expression under test on purpose — the check here is
+    totality and conservation, which a re-implementation could not verify.
+    """
+    from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass
+
+    scope = and_(
+        Transaction.budget_id == budget_id,
+        Transaction.is_deleted == False,  # noqa: E712
+        Transaction.cleared != "pending",
+        Transaction.is_split == False,  # noqa: E712
+    )
+
+    total_row = (
+        await session.execute(
+            select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).where(scope)
+        )
+    ).one()
+    total_count, total_amount = total_row[0], Decimal(str(total_row[1]))
+
+    grouped = (
+        await session.execute(
+            select(
+                ACTIVITY_CLASS.label("cls"),
+                func.count(),
+                func.coalesce(func.sum(Transaction.amount), 0),
+            )
+            .where(scope)
+            .group_by(ACTIVITY_CLASS)
+        )
+    ).all()
+
+    by_class = {row.cls: (row[1], Decimal(str(row[2]))) for row in grouped}
+
+    unknown = set(by_class) - {c.value for c in ActivityClass}
+    assert not unknown, f"rows classified outside the enum: {unknown}"
+
+    classified_count = sum(count for count, _ in by_class.values())
+    classified_amount = sum((amount for _, amount in by_class.values()), Decimal("0"))
+
+    assert classified_count == total_count, (
+        f"activity-class partition is not total: {classified_count} classified "
+        f"of {total_count} posted leaf rows"
+    )
+    assert classified_amount == total_amount, (
+        f"activity-class sums do not conserve: {classified_amount} != {total_amount} "
+        f"(by class: { {k: str(v[1]) for k, v in by_class.items()} })"
+    )
+
+
 async def assert_financial_invariants(session: AsyncSession, budget_id: uuid.UUID) -> None:
     await assert_split_integrity(session)
     await assert_transfer_integrity(session)
     await assert_money_conservation(session, budget_id)
+    await assert_activity_class_partition(session, budget_id)
