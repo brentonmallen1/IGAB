@@ -28,7 +28,8 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         default_on_budget=True,
         description=(
             "Everyday spending account. On budget: its balance funds your "
-            "envelopes, and spending from it needs a category."
+            "envelopes, and spending from it needs a category. Moving money "
+            "between two on-budget accounts is neither income nor spending."
         ),
         sort_order=0,
     ),
@@ -39,7 +40,9 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         default_on_budget=True,
         description=(
             "Money set aside but still yours to plan with. On budget so it can "
-            "back envelopes like an emergency fund."
+            "back envelopes like an emergency fund. Because it is on budget, "
+            "moving money here is not counted as saving — the money never left "
+            "your budget. Tag a category as Savings if you want it counted."
         ),
         sort_order=1,
     ),
@@ -69,7 +72,9 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         default_on_budget=False,
         description=(
             "A mortgage, auto, student, or other loan. Usually off budget — "
-            "link a Liability record to it for payoff projections."
+            "link a Liability record to it for payoff projections. Money you "
+            "send here counts as paying down debt, not spending, so it stays "
+            "out of your spending reports."
         ),
         sort_order=4,
     ),
@@ -80,7 +85,10 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         default_on_budget=False,
         description=(
             "Brokerage, retirement (401k, IRA), HSA, or similar. Off budget: it "
-            "grows your net worth but isn't spendable envelope money."
+            "grows your net worth but isn't spendable envelope money. Money you "
+            "move here counts as saving rather than spending. Growth inside the "
+            "account — dividends, market movement — is not counted as saving, "
+            "because you didn't put it there."
         ),
         sort_order=5,
     ),
@@ -91,7 +99,8 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         default_on_budget=False,
         description=(
             "Anything else you own that counts toward net worth — property "
-            "value, crypto, a manually tracked balance."
+            "value, crypto, a manually tracked balance. Off budget, so money "
+            "moved here counts as saving rather than spending."
         ),
         sort_order=6,
     ),
@@ -102,7 +111,8 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         default_on_budget=False,
         description=(
             "Anything else you owe that counts against net worth but isn't "
-            "budgeted transaction by transaction."
+            "budgeted transaction by transaction. Money you send here counts as "
+            "paying down debt rather than spending."
         ),
         sort_order=7,
     ),

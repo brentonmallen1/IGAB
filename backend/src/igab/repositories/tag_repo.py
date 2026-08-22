@@ -9,10 +9,17 @@ from igab.repositories.base import BaseRepository
 
 TAG_COLOR_SLOTS = frozenset({"red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"})
 
+#: Tags IGAB gives meaning to. Beyond labelling, the money ones OVERRIDE how a
+#: transaction is classified (see igab.domain.activity_class): tagging a
+#: category Savings makes spending from it count as saving even when no
+#: transfer is involved, which is how a user says "I know better than the
+#: inferred answer". Seeding is backfilled for existing budgets on first read
+#: (api/v1/tags.py), so adding an entry here needs no migration.
 SYSTEM_TAGS = [
     ("subscription", "Subscription", "purple"),
     ("savings", "Savings", "green"),
     ("long_term_expense", "Long-term expense", "teal"),
+    ("debt_principal", "Debt principal", "orange"),
 ]
 
 

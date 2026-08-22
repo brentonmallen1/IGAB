@@ -97,6 +97,9 @@ export function AccountTypesPanel({ budgetId }: Props) {
           <div className="acct-types__hint">
             A type decides whether an account counts as an asset or a liability, and whether
             new accounts of that type start on budget. Built-in types can't be changed.
+            {' '}For accounts kept <em>off</em> budget, these two answers also decide how
+            money you move there is read: into an asset it counts as saving, toward a
+            liability it counts as paying down debt. Neither is spending.
           </div>
         </div>
         <button
@@ -168,6 +171,10 @@ export function AccountTypesPanel({ budgetId }: Props) {
               <option value="asset">Asset (you own it)</option>
               <option value="liability">Liability (you owe it)</option>
             </select>
+            <div className="acct-types__hint">
+              Off budget, an asset makes incoming money count as saving and a liability
+              makes it count as paying down debt. On budget, this only affects net worth.
+            </div>
             <label className="acct-types__checkbox">
               <input
                 type="checkbox"
