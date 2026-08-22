@@ -768,6 +768,107 @@ class BudgetFilterCategory(Base):
 # The default arrangement stays in category_groups. A view never edits it.
 
 
+# ─── Guide (education & planning) ─────────────────────────────────────────────
+
+
+class GuideBinding(Base):
+    """What the user says counts as a given roadmap concept.
+
+    The Guide asks questions the budget can usually answer for itself — how
+    much emergency fund is there, is any debt above 10%. Detection guesses,
+    and this table records the user overruling or extending that guess. Rows
+    are per budget rather than per user: a shared household budget has one
+    emergency fund, and a partner should not see a different roadmap.
+
+    `mode` says how a row participates, in resolution order:
+
+    ``manual``     these specific entities are what counts; detection stops.
+    ``external``   money that exists but is not in IGAB — another bank, a
+                   workplace 401(k). Additive to any manual rows, because half
+                   here and half elsewhere is the ordinary case. `amount` is
+                   optional: "I have this covered" is a complete answer, and
+                   demanding a figure invites an invented one.
+    ``dismissed``  do not track this concept at all. Distinct from external —
+                   "stop asking" is not "I have done it".
+    ``answer``     a yes/no fact nothing in the budget can supply, such as
+                   whether an employer matches contributions.
+    ``auto``       reserved; automatic detection stores nothing, so a concept
+                   with no rows is automatic by definition.
+
+    Self-reported amounts never leave the Guide. They must not reach net
+    worth, the savings-rate report, or any other total — IGAB's ledger is
+    derived from transactions, and an unverified number that can move a
+    reported balance is how the reports stop being trustworthy.
+    """
+
+    __tablename__ = "guide_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "budget_id",
+            "concept_key",
+            "entity_type",
+            "entity_id",
+            name="uq_guide_binding_concept_entity",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: Concept slug from igab.guide.concepts — e.g. 'emergency_fund'.
+    concept_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    #: 'manual' | 'external' | 'dismissed' | 'answer'
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: 'category' | 'account' | 'liability'. Null for external/dismissed/answer.
+    entity_type: Mapped[str | None] = mapped_column(String(20))
+    #: Deliberately not a foreign key: it points at three different tables
+    #: depending on entity_type. Deleted entities are filtered on read rather
+    #: than cascaded, so unbinding is never a side effect of tidying up.
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    #: For mode='answer' only.
+    answer: Mapped[bool | None] = mapped_column(Boolean)
+    #: For mode='external' only. Self-reported; see the class docstring.
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    #: When the user told us. IGAB cannot refresh a self-reported figure the
+    #: way it refreshes a balance, so the age of the claim is part of it.
+    as_of: Mapped[_PyDate | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class GuideState(Base):
+    """Per-budget Guide state that is not a binding: step progress and prefs.
+
+    A key-value table with a JSONB payload, following ChangeLog.before/after
+    and AIJob.payload for flexible shapes. Kept separate from AppSetting, which
+    is global, admin-write-gated and allowlisted — none of which suits per
+    budget user preference.
+
+    Keys in use:
+      ``prefs``               {"personalization": bool, "checkup": bool}
+      ``step:<stage_id>``     {"state": "done" | "skipped"}
+    """
+
+    __tablename__ = "guide_state"
+    __table_args__ = (UniqueConstraint("budget_id", "key", name="uq_guide_state_budget_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    key: Mapped[str] = mapped_column(String(60), nullable=False)
+    value: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class BudgetView(Base):
     __tablename__ = "budget_views"
     __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_view_budget_name"),)

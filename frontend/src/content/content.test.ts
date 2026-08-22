@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import {
   ROADMAP,
@@ -14,6 +17,17 @@ import { GLOSSARY, GLOSSARY_IDS, glossaryEntry, searchGlossary } from './glossar
  *  hits them. These tests are the proofreader. */
 
 const allNodes: RoadmapNode[] = ROADMAP.flatMap((s) => s.nodes)
+
+/** Every path App.tsx routes, parsed from the router itself.
+ *
+ * Parameterised segments are dropped — content links to concrete pages, and
+ * `/accounts/:accountId` is not somewhere a roadmap node can send anyone. */
+const APP_ROUTES: Set<string> = new Set(
+  [...readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'App.tsx'), 'utf8')
+    .matchAll(/path="([^"]+)"/g)]
+    .map((m) => m[1])
+    .filter((p) => p.startsWith('/') && !p.includes(':'))
+)
 
 describe('glossary integrity', () => {
   it('has an entry for every declared id', () => {
@@ -132,21 +146,27 @@ describe('roadmap integrity', () => {
     expect(dangling).toEqual([])
   })
 
-  it('points every app link at a real route', () => {
-    // Kept in sync by hand with App.tsx. A link to a route that does not exist
-    // renders a blank page, which is worse than no link at all.
-    const routes = new Set([
-      '/budget', '/accounts', '/transactions', '/liabilities', '/settings',
-      '/import', '/reports', '/scheduled', '/payees', '/guide', '/activity',
-      '/ai-activity',
-    ])
+  it('points every app link at a route App.tsx actually defines', () => {
+    // Read the router rather than keeping a copy of it here. A hand-maintained
+    // list passes happily while a route is deleted underneath it, and the link
+    // then renders a blank page — which is worse than no link at all. This
+    // caught nothing when written, but the liabilities rework moved exactly
+    // these routes around, and a stale list would not have noticed.
     const bad: string[] = []
     for (const node of allNodes) {
       for (const link of node.appLinks ?? []) {
-        if (!routes.has(link.to)) bad.push(`${node.id} -> ${link.to}`)
+        if (!APP_ROUTES.has(link.to)) bad.push(`${node.id} -> ${link.to}`)
       }
     }
     expect(bad).toEqual([])
+  })
+
+  it('reads a plausible set of routes out of App.tsx', () => {
+    // Guards the guard: a regex that silently stops matching would make the
+    // check above vacuous, passing for every link including broken ones.
+    expect(APP_ROUTES.size).toBeGreaterThan(8)
+    expect(APP_ROUTES).toContain('/guide')
+    expect(APP_ROUTES).toContain('/budget')
   })
 
   it('gives every node a title and a body', () => {
