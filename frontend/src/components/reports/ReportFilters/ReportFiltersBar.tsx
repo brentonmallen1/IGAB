@@ -5,7 +5,7 @@ import { useBudgetViews } from '../../../api/budgetViews'
 import { categoryOptions } from './categoryOptions'
 import { usePayees } from '../../../api/payees'
 import { useAccounts } from '../../../api/accounts'
-import { useReportStore, TAB_FILTER_SUPPORT, type GroupBy } from '../../../stores/reportStore'
+import { resolveGroupBy, useReportStore, TAB_FILTER_SUPPORT, type GroupBy } from '../../../stores/reportStore'
 import { DateRangePicker } from './DateRangePicker'
 import { MultiSelectCombobox } from './MultiSelectCombobox'
 import type { MultiSelectOption } from './MultiSelectCombobox'
@@ -108,10 +108,12 @@ export function ReportFiltersBar({ budgetId }: Props) {
         {support.groupBy && (
           <div className="rfb__groupby">
             <span className="rfb__groupby-label">Group by</span>
-            {GROUP_BY_OPTIONS.map((opt) => (
+            {GROUP_BY_OPTIONS.filter(
+              (opt) => !support.groupByModes || support.groupByModes.includes(opt.value)
+            ).map((opt) => (
               <button
                 key={opt.value}
-                className={`rfb__groupby-btn ${filters.groupBy === opt.value ? 'rfb__groupby-btn--active' : ''}`}
+                className={`rfb__groupby-btn ${resolveGroupBy(activeTab, filters.groupBy) === opt.value ? 'rfb__groupby-btn--active' : ''}`}
                 onClick={() => setFilters({ groupBy: opt.value })}
                 type="button"
               >

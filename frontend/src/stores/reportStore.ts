@@ -96,6 +96,10 @@ export interface TabFilterSupport {
   payees: boolean
   accounts: boolean
   groupBy: boolean
+  /** Which modes the tab can actually draw. Omitted = all three. The stored
+   *  groupBy is shared across tabs, so a mode picked on one tab can be one
+   *  another cannot draw — see resolveGroupBy. */
+  groupByModes?: GroupBy[]
 }
 
 /** Which shared filters each report actually consumes — the filter bar dims
@@ -115,7 +119,7 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'variance': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'volatility': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'pareto': { dates: true, categories: true, payees: true, accounts: true, groupBy: true, views: true },
-  'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true, views: true },
+  'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true, groupByModes: ['group', 'category'], views: true },
   'seasonality': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'subscriptions': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'savings': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
@@ -124,6 +128,21 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   'payees': { dates: true, categories: false, payees: true, accounts: true, groupBy: false },
   'day-patterns': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
   'timeline': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
+}
+
+/** The mode a tab actually draws for the stored preference.
+
+Tabs share one stored groupBy, so "Payee" picked on the pareto arrives at
+the treemap, which has no payee data. Before this resolver the treemap
+silently drew group tiles under a highlighted Payee button — group names
+where the user asked for payees. Fall back to the tab's first mode, and
+never write the fallback to the store: the preference should survive the
+detour and still mean payee when the user returns to a tab that can draw it. */
+export function resolveGroupBy(tab: ReportTab, groupBy: GroupBy): GroupBy {
+  const support = TAB_FILTER_SUPPORT[tab]
+  const modes = support.groupByModes
+  if (!support.groupBy || !modes || modes.includes(groupBy)) return groupBy
+  return modes[0]
 }
 
 export interface ReportFilters {

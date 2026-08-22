@@ -33,6 +33,7 @@ vi.mock('../../api/payees', () => ({ usePayees: () => ({ data: undefined }) }))
 vi.mock('../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }) }))
 vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 
+import { useReportStore } from '../../stores/reportStore'
 import { OverviewReport } from './OverviewReport'
 import { AccountCompositionReport } from './charts/AccountCompositionChart'
 import { AnomaliesReport } from './charts/AnomaliesReport'
@@ -201,6 +202,32 @@ describe('class-excluded note on the spending charts', () => {
     setQuery({ data: { ...dataWithExcluded, class_excluded: [] } })
     renderReport(<Report budgetId="b1" />)
     expect(screen.queryByText(/Not counted as spending here/)).not.toBeInTheDocument()
+  })
+})
+
+describe('treemap group-by fallback', () => {
+  it('draws group tiles — and says so — when the stored mode is payee', () => {
+    useReportStore.getState().setFilters({ groupBy: 'payee' })
+    try {
+      setQuery({
+        data: {
+          groups: [
+            { id: 'c1', name: 'Dining', parent_id: 'g1', parent_name: 'Everyday', total: 205, count: 3, pct: 100 },
+          ],
+          total: 205,
+          view_hidden_categories: 0,
+          view_hidden_total: '0',
+          class_excluded: [],
+        },
+      })
+      renderReport(<SpendingTreemapReport budgetId="b1" />)
+      // The breadcrumb only exists in group mode; before the resolver the
+      // payee mode landed here by accident with Payee still highlighted.
+      expect(screen.getByText('All Groups')).toBeInTheDocument()
+      expect(screen.getByText('Click a group to drill down into its categories.')).toBeInTheDocument()
+    } finally {
+      useReportStore.getState().setFilters({ groupBy: 'category' })
+    }
   })
 })
 

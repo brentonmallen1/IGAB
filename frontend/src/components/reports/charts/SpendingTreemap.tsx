@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { Treemap, ResponsiveContainer, Tooltip } from 'recharts'
 import { ChevronRight } from 'lucide-react'
-import { useReportStore } from '../../../stores/reportStore'
+import { resolveGroupBy, useReportStore } from '../../../stores/reportStore'
 import { useSpendingGroupedReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -30,7 +30,9 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(440)
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
-  const groupBy = filters.groupBy
+  // The stored mode can be 'payee' (picked on the pareto); this tab has no
+  // payee data, so draw the declared fallback instead.
+  const groupBy = resolveGroupBy('treemap', filters.groupBy)
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const [includeSavings, setIncludeSavings] = useState(false)
@@ -74,7 +76,6 @@ export function SpendingTreemapReport({ budgetId }: Props) {
 
   // groupBy=group → show only top-level groups (no drill-down)
   // groupBy=category → show all categories flat (colored by group)
-  // groupBy=payee → fall back to category (payee data not in this endpoint)
   const visibleItems: TreeNode[] = useMemo(() => {
     if (groupBy === 'category') {
       // flat: all categories colored by their group
