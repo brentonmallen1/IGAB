@@ -83,6 +83,9 @@ class YNABImportResult(BaseModel):
     #: Register rows belonging to those accounts — deliberately excluded,
     #: distinct from `skipped` (dedup/errors).
     transactions_excluded: int = 0
+    #: Transfer legs imported without their partner. Non-zero means some rows
+    #: that are really internal movement could not be identified as such.
+    transfer_legs_unpaired: int = 0
     errors: list[str]
 
 

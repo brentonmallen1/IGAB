@@ -179,6 +179,38 @@ class PayeeRepository(BaseRepository[Payee]):
             payee = await self.create(budget_id=budget_id, name=name)
         return payee
 
+    #: The name every transfer payee carries, in both the app's own transfer
+    #: flow and YNAB's register export. Kept here so the importer and the
+    #: transaction service agree on one spelling.
+    TRANSFER_PREFIX = "Transfer : "
+
+    @classmethod
+    def transfer_payee_name(cls, account_name: str) -> str:
+        return f"{cls.TRANSFER_PREFIX}{account_name}"
+
+    async def find_or_create_transfer(
+        self, budget_id: uuid.UUID, account_id: uuid.UUID, account_name: str
+    ) -> Payee:
+        """Resolve the "Transfer : <account>" payee, guaranteeing that
+        `transfer_account_id` points at the account it names.
+
+        A payee is what marks a row as transfer-shaped once its partner link is
+        gone, so the field has to be set for every transfer payee — not only the
+        ones the sample-budget generator makes. An existing row created before
+        this (or by an import) is adopted and backfilled rather than duplicated,
+        since `uq_payee_budget_name` allows only one payee per name.
+        """
+        name = self.transfer_payee_name(account_name)
+        payee = await self.find_by_name(budget_id, name)
+        if payee is None:
+            return await self.create(
+                budget_id=budget_id, name=name, transfer_account_id=account_id
+            )
+        if payee.transfer_account_id is None:
+            payee.transfer_account_id = account_id
+            await self.session.flush()
+        return payee
+
     async def find_or_create_batch(
         self, budget_id: uuid.UUID, names: list[str]
     ) -> dict[str, uuid.UUID]:

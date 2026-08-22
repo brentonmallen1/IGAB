@@ -19,6 +19,9 @@ export interface YnabImportResult {
   accounts_skipped: number
   /** Rows belonging to those accounts — distinct from `skipped` (dedup/errors). */
   transactions_excluded: number
+  /** Transfer legs imported without their partner. Non-zero means some rows
+   *  that are really internal money movement could not be identified as such. */
+  transfer_legs_unpaired: number
   errors: string[]
 }
 

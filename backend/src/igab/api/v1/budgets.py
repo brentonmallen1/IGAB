@@ -181,6 +181,7 @@ async def import_ynab_as_budget(
             assignments=result.assignments_imported,
             accounts_skipped=result.accounts_skipped,
             transactions_excluded=result.transactions_excluded,
+            transfer_legs_unpaired=result.transfer_legs_unpaired,
             errors=result.errors,
         ),
     )

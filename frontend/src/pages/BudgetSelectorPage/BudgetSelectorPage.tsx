@@ -235,6 +235,21 @@ export function BudgetSelectorPage() {
         )
       }
       toast.success(`Imported ${parts.join(', ')}`, { duration: 15000 })
+      // Unlinked transfer legs still balance the accounts they sit on, but they
+      // can't be told apart from real income and expense, so reports will read
+      // high. Warn rather than bury it in a count — it means the export wasn't
+      // shaped the way we expected, and the numbers can't be trusted until it's
+      // understood.
+      if (r.transfer_legs_unpaired > 0) {
+        const n = r.transfer_legs_unpaired.toLocaleString()
+        const leg = r.transfer_legs_unpaired === 1 ? 'transfer' : 'transfers'
+        toast(
+          `${n} ${leg} couldn't be matched to the other side. Account balances are ` +
+            `still correct, but these may show up as income or spending in reports. ` +
+            `This usually means an account was left out of the import.`,
+          { duration: 20000, icon: '⚠️' }
+        )
+      }
       if (r.errors.length > 0) {
         toast.error(
           `${r.errors.length} rows had problems — first: ${r.errors[0]}`,
