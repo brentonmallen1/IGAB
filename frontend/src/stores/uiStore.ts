@@ -80,6 +80,15 @@ interface UIState {
 
   // Budget filters
   activeFilterId: string | null
+  /** How categories are grouped on the budget page. Orthogonal to
+   *  activeFilterId: a view decides the arrangement, a filter decides which of
+   *  those categories show. Both can be on at once. */
+  activeViewId: string | null
+  setActiveView: (viewId: string | null) => void
+  isViewModalOpen: boolean
+  editingViewId: string | null
+  openViewModal: (viewId?: string) => void
+  closeViewModal: () => void
   isFilterModalOpen: boolean
   editingFilterId: string | null
   setActiveFilter: (filterId: string | null) => void
@@ -320,6 +329,12 @@ export const useUIStore = create<UIState>()(
   setTransactionSearch: (query) => set({ transactionSearchQuery: query }),
 
   activeFilterId: null,
+  activeViewId: null,
+  setActiveView: (viewId) => set({ activeViewId: viewId }),
+  isViewModalOpen: false,
+  editingViewId: null,
+  openViewModal: (viewId) => set({ isViewModalOpen: true, editingViewId: viewId ?? null }),
+  closeViewModal: () => set({ isViewModalOpen: false, editingViewId: null }),
   isFilterModalOpen: false,
   editingFilterId: null,
   setActiveFilter: (filterId) => set({ activeFilterId: filterId, activeQuickFilter: null }),
@@ -382,6 +397,7 @@ export const useUIStore = create<UIState>()(
       // reconciliation or editor is worse than losing it.
       partialize: (s) => ({
         activeFilterId: s.activeFilterId,
+        activeViewId: s.activeViewId,
         quickFilterOrder: s.quickFilterOrder,
       }),
     }

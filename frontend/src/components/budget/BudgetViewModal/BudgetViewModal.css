@@ -1,0 +1,247 @@
+.view-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  z-index: 100;
+}
+
+.view-editor {
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.view-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.view-editor__title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.view-editor__close {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.view-editor__close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.view-editor__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.view-editor__hint strong {
+  color: var(--text-secondary);
+}
+
+.view-editor__section-title {
+  margin-top: var(--spacing-xs);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.view-editor__input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--input-border, var(--border-color));
+  border-radius: var(--border-radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.view-editor__input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--input-focus-shadow);
+}
+
+.view-editor__input--inline {
+  width: 160px;
+}
+
+.view-editor__groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.view-editor__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+}
+
+.view-editor__chip-remove {
+  display: inline-flex;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.view-editor__chip-remove:hover {
+  color: var(--color-negative);
+}
+
+.view-editor__add-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.view-editor__add-btn {
+  display: inline-flex;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.view-editor__add-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.view-editor__categories {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-xs);
+}
+
+.view-editor__row {
+  display: grid;
+  grid-template-columns: 1fr 150px auto;
+  gap: var(--spacing-sm);
+  align-items: center;
+  padding: 3px var(--spacing-xs);
+}
+
+.view-editor__row:hover {
+  background: var(--bg-hover);
+}
+
+.view-editor__cat {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+/* Where the category lives in the budget's own arrangement — context for the
+   move, so the user is not guessing what they are rearranging. */
+.view-editor__cat-group {
+  margin-left: var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.view-editor__select {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--input-border, var(--border-color));
+  border-radius: var(--border-radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+}
+
+.view-editor__select:disabled {
+  opacity: 0.5;
+}
+
+.view-editor__hide {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.view-editor__error {
+  margin: 0;
+  color: var(--color-negative);
+  font-size: var(--font-size-xs);
+}
+
+.view-editor__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.view-editor__footer-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.view-editor__btn {
+  padding: 5px var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.view-editor__btn:hover {
+  background: var(--bg-hover);
+}
+
+.view-editor__btn--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--text-inverse);
+}
+
+.view-editor__btn--primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.view-editor__btn--danger {
+  color: var(--color-negative);
+}

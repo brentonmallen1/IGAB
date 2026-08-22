@@ -88,6 +88,34 @@ export interface BudgetFilter {
   updated_at: string
 }
 
+export interface BudgetViewGroup {
+  id: string
+  name: string
+  sort_order: number
+}
+
+export interface BudgetViewPlacement {
+  category_id: string
+  /** null = placed in the view but in no group; shown under Unassigned. */
+  group_id: string | null
+  sort_order: number
+  is_hidden: boolean
+}
+
+/** A different arrangement of the same categories. Unlike a BudgetFilter,
+ *  which narrows the set, a view regroups it — and never edits the budget's
+ *  own category groups. */
+export interface BudgetView {
+  id: string
+  budget_id: string
+  name: string
+  sort_order: number
+  groups: BudgetViewGroup[]
+  placements: BudgetViewPlacement[]
+  created_at: string
+  updated_at: string
+}
+
 export interface CategoryBalance {
   category_id: string
   month: string

@@ -19,9 +19,20 @@ interface Props {
   balanceMap: Map<string, CategoryBalance>
   budgetId: string
   month: string
+  /** Rendering a view's group, not the budget's own. Rename, hide, delete and
+   *  add-category all act on the default arrangement, which a view must never
+   *  edit — so they are suppressed rather than silently doing the wrong thing. */
+  readOnlyGroup?: boolean
 }
 
-export function CategoryGroupRow({ group, categories, balanceMap, budgetId, month }: Props) {
+export function CategoryGroupRow({
+  group,
+  categories,
+  balanceMap,
+  budgetId,
+  month,
+  readOnlyGroup = false,
+}: Props) {
   const { formatMoney } = useFormatters()
   const collapsedGroups = useUIStore((s) => s.collapsedGroups)
   const toggleGroup = useUIStore((s) => s.toggleGroupExpanded)
@@ -33,6 +44,7 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
   const allGroupSelected = categoryIds.length > 0 && categoryIds.every((id) => selectedCategoryIds.has(id))
   const someGroupSelected = categoryIds.some((id) => selectedCategoryIds.has(id))
   const isExpanded = !collapsedGroups.has(group.id)
+  const canEditGroup = !group.is_system && !readOnlyGroup
 
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -130,7 +142,7 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
         ) : (
           <span
             className="category-group-row__name"
-            onDoubleClick={!group.is_system ? startRename : undefined}
+            onDoubleClick={canEditGroup ? startRename : undefined}
           >
             {group.name}
           </span>
@@ -138,17 +150,17 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
 
         {!isRenaming && (
           <div className="category-group-row__actions">
-            {!group.is_system && (
+            {canEditGroup && (
               <button className="category-group-row__action-btn" onClick={startRename} aria-label={`Rename group ${group.name}`} title="Rename">
                 <Pencil size={12} />
               </button>
             )}
-            {!group.is_system && (
+            {canEditGroup && (
               <button className="category-group-row__action-btn" onClick={handleHide} aria-label={`Hide group ${group.name}`} title="Hide group">
                 <EyeOff size={12} />
               </button>
             )}
-            {!group.is_system && (
+            {canEditGroup && (
               confirmDelete ? (
                 <>
                   <button
@@ -179,9 +191,11 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
                 </button>
               )
             )}
-            <button className="category-group-row__action-btn" onClick={startAddCategory} aria-label={`Add category to ${group.name}`} title="Add category">
-              <Plus size={12} />
-            </button>
+            {!readOnlyGroup && (
+              <button className="category-group-row__action-btn" onClick={startAddCategory} aria-label={`Add category to ${group.name}`} title="Add category">
+                <Plus size={12} />
+              </button>
+            )}
           </div>
         )}
 
@@ -228,7 +242,7 @@ export function CategoryGroupRow({ group, categories, balanceMap, budgetId, mont
               />
             </div>
           )}
-          {!isAddingCategory && (
+          {!isAddingCategory && !readOnlyGroup && (
             <button className="category-group-row__add-cat-btn" onClick={startAddCategory}>
               <Plus size={11} /> Add Category
             </button>

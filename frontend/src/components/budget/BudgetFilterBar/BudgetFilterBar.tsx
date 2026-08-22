@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ListFilter, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
+import { ListFilter, Layers, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
+import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore } from '../../../stores/uiStore'
 import { targetStatus } from '../../../utils/targets'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
@@ -20,6 +21,10 @@ const RENAME_NOTICE_KEY = 'igab-filters-rename-seen'
 
 export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
+  const { data: views } = useBudgetViews(budgetId)
+  const activeViewId = useUIStore((s) => s.activeViewId)
+  const setActiveView = useUIStore((s) => s.setActiveView)
+  const openViewModal = useUIStore((s) => s.openViewModal)
   const [renameNoticeSeen, setRenameNoticeSeen] = useState(
     () => localStorage.getItem(RENAME_NOTICE_KEY) === '1'
   )
@@ -81,6 +86,8 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
   function handleMenuSelect(id: string) {
     if (id === 'new') openFilterModal()
     else if (id === 'manage') openManageFiltersModal()
+    else if (id === 'new-view') openViewModal()
+    else if (id === 'edit-view' && activeViewId) openViewModal(activeViewId)
   }
 
   function handleAllClick() {
@@ -92,6 +99,26 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
 
   return (
     <div className="budget-filter-bar">
+      {/* How categories are grouped. Separate control from the filter chips
+          because it is a separate question — a view decides the arrangement,
+          a filter decides which of those categories show. Both can be on. */}
+      {(views?.length ?? 0) > 0 && (
+        <select
+          className="budget-filter-bar__view-select"
+          value={activeViewId ?? ''}
+          onChange={(e) => setActiveView(e.target.value || null)}
+          title="How categories are grouped"
+          aria-label="Category view"
+        >
+          <option value="">Default groups</option>
+          {views!.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name}
+            </option>
+          ))}
+        </select>
+      )}
+
       <button
         className={`budget-filter-bar__btn ${isAllActive ? 'active' : ''}`}
         onClick={handleAllClick}
@@ -197,6 +224,10 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
               items={[
                 { id: 'new', label: 'New Filter', icon: Plus },
                 { id: 'manage', label: 'Manage Filters', icon: Settings2 },
+                { id: 'new-view', label: 'New View', icon: Layers },
+                ...(activeViewId
+                  ? [{ id: 'edit-view', label: 'Edit This View', icon: Settings2 }]
+                  : []),
               ]}
               onSelect={handleMenuSelect}
               onClose={() => setMenuOpen(false)}

@@ -209,3 +209,23 @@
   color: var(--text-primary);
   background: var(--bg-hover);
 }
+
+/* The grouping selector. Deliberately a select, not another chip: it answers a
+   different question from the filter chips beside it, and reads as a mode
+   rather than one more thing that can be toggled on. */
+.budget-filter-bar__view-select {
+  height: 24px;
+  padding: 0 var(--spacing-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.budget-filter-bar__view-select:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--input-focus-shadow);
+}

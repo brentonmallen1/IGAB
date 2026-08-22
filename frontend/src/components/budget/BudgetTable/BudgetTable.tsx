@@ -9,6 +9,8 @@ import {
   useCreateCategoryGroup,
 } from '../../../api/categories'
 import { useBudgetFilters } from '../../../api/budgetFilters'
+import { useBudgetViews } from '../../../api/budgetViews'
+import { groupByView } from './viewGrouping'
 import { useTargetsByBudget } from '../../../api/targets'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
@@ -24,6 +26,7 @@ export function BudgetTable() {
   const collapseAll = useUIStore((s) => s.collapseAll)
   const expandAll = useUIStore((s) => s.expandAll)
   const activeFilterId = useUIStore((s) => s.activeFilterId)
+  const activeViewId = useUIStore((s) => s.activeViewId)
   const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
   const categorySearch = useUIStore((s) => s.categorySearch)
 
@@ -36,6 +39,7 @@ export function BudgetTable() {
   const { data: categories, isLoading: catsLoading } = useCategories(budgetId, showHidden)
   const { data: budgetMonth, isLoading: monthLoading } = useBudgetMonth(budgetId, month)
   const { data: filters } = useBudgetFilters(budgetId)
+  const { data: views } = useBudgetViews(budgetId)
   const { data: targets } = useTargetsByBudget(budgetId)
   const createGroup = useCreateCategoryGroup(budgetId ?? '')
 
@@ -56,14 +60,14 @@ export function BudgetTable() {
 
   const targetMap = new Map((targets ?? []).map((t) => [t.category_id, t]))
 
-  const activeView = filters?.find((v) => v.id === activeFilterId) ?? null
-  const viewCategoryIds = activeView ? new Set(activeView.category_ids) : null
+  const activeFilter = filters?.find((f) => f.id === activeFilterId) ?? null
+  const filterCategoryIds = activeFilter ? new Set(activeFilter.category_ids) : null
 
   const groupNameById = new Map((groups ?? []).map((g) => [g.id, g.name]))
   const searchNeedle = categorySearch.trim().toLowerCase()
 
   function categoryMatchesFilter(catId: string): boolean {
-    if (viewCategoryIds) return viewCategoryIds.has(catId)
+    if (filterCategoryIds) return filterCategoryIds.has(catId)
     if (!activeQuickFilter) return true
     const balance = balanceMap.get(catId)
     const target = targetMap.get(catId)
@@ -91,17 +95,32 @@ export function BudgetTable() {
     return (groupNameById.get(cat.category_group_id) ?? '').toLowerCase().includes(searchNeedle)
   }
 
-  const catsByGroup = new Map<string, typeof categories>()
-  categories?.forEach((cat) => {
-    if (!categoryMatchesFilter(cat.id) || !categoryMatchesSearch(cat)) return
-    if (!catsByGroup.has(cat.category_group_id)) catsByGroup.set(cat.category_group_id, [])
-    catsByGroup.get(cat.category_group_id)!.push(cat)
-  })
+  // A view replaces how categories are grouped; a filter still decides which
+  // of them show. The two are independent axes and both can be active.
+  const activeView = views?.find((v) => v.id === activeViewId) ?? null
 
-  const isFiltered = viewCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
-  const visibleGroups = isFiltered
-    ? groups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
-    : groups
+  const matching = (categories ?? []).filter(
+    (cat) => categoryMatchesFilter(cat.id) && categoryMatchesSearch(cat)
+  )
+
+  const arranged = activeView ? groupByView(activeView, matching, budgetId) : null
+
+  const catsByGroup = new Map<string, typeof categories>()
+  if (arranged) {
+    arranged.byGroup.forEach((list, groupId) => catsByGroup.set(groupId, list))
+  } else {
+    matching.forEach((cat) => {
+      if (!catsByGroup.has(cat.category_group_id)) catsByGroup.set(cat.category_group_id, [])
+      catsByGroup.get(cat.category_group_id)!.push(cat)
+    })
+  }
+
+  const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
+  const sourceGroups = arranged?.groups ?? groups
+  const visibleGroups =
+    isFiltered || activeView
+      ? sourceGroups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
+      : sourceGroups
 
   const allGroupIds = visibleGroups?.map((g) => g.id) ?? []
   const allCollapsed = allGroupIds.length > 0 && allGroupIds.every((id) => collapsedGroups.has(id))
@@ -143,7 +162,10 @@ export function BudgetTable() {
               {allCollapsed ? <ChevronsUpDown size={11} /> : <ChevronsDownUp size={11} />}
               {allCollapsed ? 'Expand all' : 'Collapse all'}
             </button>
-            {isAddingGroup ? (
+            {/* Add Group creates a group in the budget's own arrangement. With
+                a view active that is not what the user is looking at, so it is
+                hidden rather than quietly editing the thing behind the view. */}
+            {activeView ? null : isAddingGroup ? (
               <input
                 ref={addGroupRef}
                 className="budget-table__add-group-input"
@@ -182,6 +204,7 @@ export function BudgetTable() {
             balanceMap={balanceMap}
             budgetId={budgetId}
             month={month}
+            readOnlyGroup={activeView != null}
           />
         ))}
       </div>
