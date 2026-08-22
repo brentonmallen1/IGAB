@@ -951,6 +951,7 @@ class ReportService:
                 Category.name.label("category_name"),
                 CategoryGroup.id.label("group_id"),
                 CategoryGroup.name.label("group_name"),
+                ACTIVITY_CLASS.label("activity_class"),
             )
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
@@ -976,6 +977,9 @@ class ReportService:
                 "links": [],
                 "total_income": Decimal("0"),
                 "total_expense": Decimal("0"),
+                "total_spending": Decimal("0"),
+                "total_savings": Decimal("0"),
+                "total_debt_principal": Decimal("0"),
                 "category_payees": {},
                 "group_categories": {},
             }
@@ -986,7 +990,22 @@ class ReportService:
         expense_rows = [r for r in rows if r.amount < 0 and not r.is_split]
 
         total_income = sum((r.amount for r in income_rows), Decimal("0"))
+        # Everything leaving the budget. Kept as one figure because the links
+        # off the budget node must sum to it — that flow conservation is what
+        # makes the diagram readable, and it holds however the branches split.
         total_expense = abs(sum((r.amount for r in expense_rows), Decimal("0")))
+
+        def _class_total(cls: ActivityClass) -> Decimal:
+            return abs(
+                sum(
+                    (r.amount for r in expense_rows if r.activity_class == cls.value),
+                    Decimal("0"),
+                )
+            )
+
+        total_spending = _class_total(ActivityClass.SPENDING)
+        total_savings = _class_total(ActivityClass.SAVINGS)
+        total_debt_principal = _class_total(ActivityClass.DEBT_PRINCIPAL)
 
         nodes: list[dict] = []
         links: list[dict] = []
@@ -1028,38 +1047,60 @@ class ReportService:
         # Expenses: budget -> category group -> category -> top payees.
         # Uncategorized spending flows through its own pseudo group/category so
         # the links always sum to total_expense (flow conservation).
+        # Keyed by (group, category), not category alone: with savings on its
+        # own branch, one category can legitimately appear under two trunks —
+        # ordinary spending in its real group, and a savings transfer filed to
+        # the same category under Savings. Keying by category would collapse
+        # them and break flow conservation.
         group_totals: dict[str, Decimal] = {}
-        cat_totals: dict[str, Decimal] = {}
-        cat_to_group: dict[str, tuple[str, str]] = {}
-        cat_names: dict[str, str] = {}
-        payee_by_cat: dict[str, dict[str, Decimal]] = {}
+        cat_totals: dict[tuple[str, str], Decimal] = {}
+        group_names: dict[str, str] = {}
+        cat_names: dict[tuple[str, str], str] = {}
+        payee_by_cat: dict[tuple[str, str], dict[str, Decimal]] = {}
+
+        # Saving and paying down debt leave the budget but are not spending, so
+        # they get their own branch off the budget node instead of sitting
+        # inside an expense group where they read as consumption. The real
+        # categories still hang beneath, so the detail is unchanged — only
+        # which trunk they belong to.
+        CLASS_BRANCH = {
+            ActivityClass.SAVINGS.value: ("__savings__", "Savings"),
+            ActivityClass.DEBT_PRINCIPAL.value: ("__debt_principal__", "Debt Payments"),
+        }
 
         for r in expense_rows:
+            branch = CLASS_BRANCH.get(r.activity_class)
             if r.category_id:
                 cat_id = str(r.category_id)
-                gid = str(r.group_id) if r.group_id else "__uncategorized__"
-                gname = r.group_name or "Uncategorized"
                 cname = r.category_name or cat_id
+                if branch:
+                    gid, gname = branch
+                else:
+                    gid = str(r.group_id) if r.group_id else "__uncategorized__"
+                    gname = r.group_name or "Uncategorized"
+            elif branch:
+                gid, gname = branch
+                cat_id, cname = gid, gname
             else:
                 cat_id = "__uncategorized__"
                 gid = "__uncategorized__"
                 gname = "Uncategorized"
                 cname = "Uncategorized"
 
+            slot = (gid, cat_id)
             group_totals[gid] = group_totals.get(gid, Decimal("0")) + abs(r.amount)
-            cat_totals[cat_id] = cat_totals.get(cat_id, Decimal("0")) + abs(r.amount)
-            cat_to_group[cat_id] = (gid, gname)
-            cat_names[cat_id] = cname
+            cat_totals[slot] = cat_totals.get(slot, Decimal("0")) + abs(r.amount)
+            group_names[gid] = gname
+            cat_names[slot] = cname
 
             pname = r.payee_name or "Unknown"
             pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
-            if cat_id not in payee_by_cat:
-                payee_by_cat[cat_id] = {}
-            payee_by_cat[cat_id][pid] = payee_by_cat[cat_id].get(pid, Decimal("0")) + abs(r.amount)
+            payee_by_cat.setdefault(slot, {})
+            payee_by_cat[slot][pid] = payee_by_cat[slot].get(pid, Decimal("0")) + abs(r.amount)
 
         for gid, total in sorted(group_totals.items(), key=lambda x: -x[1]):
-            gname = next((v[1] for k, v in cat_to_group.items() if v[0] == gid), gid)
-            get_node(f"g_{gid}", gname, "category_group")
+
+            get_node(f"g_{gid}", group_names.get(gid, gid), "category_group")
             links.append(
                 {
                     "source": "__budget__",
@@ -1074,32 +1115,32 @@ class ReportService:
             pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
             payee_names[pid] = pname
 
-        group_to_cats: dict[str, list[str]] = {}
+        group_to_cats: dict[str, list[tuple[str, str]]] = {}
 
         category_payees: dict[str, list[dict]] = {}
-        for cat_id, cat_payees in payee_by_cat.items():
-            gid, _ = cat_to_group[cat_id]
-            cat_name = cat_names[cat_id]
-            group_to_cats.setdefault(gid, []).append(cat_id)
-            get_node(f"c_{cat_id}", cat_name, "category")
+        for slot, cat_payees in payee_by_cat.items():
+            gid, cat_id = slot
+            node_id = f"c_{gid}_{cat_id}"
+            group_to_cats.setdefault(gid, []).append(slot)
+            get_node(node_id, cat_names[slot], "category")
             links.append(
                 {
                     "source": f"g_{gid}",
-                    "target": f"c_{cat_id}",
-                    "value": cat_totals[cat_id],
+                    "target": node_id,
+                    "value": cat_totals[slot],
                 }
             )
             top10 = sorted(cat_payees.items(), key=lambda x: -x[1])[:10]
-            category_payees[f"c_{cat_id}"] = [
+            category_payees[node_id] = [
                 {"name": payee_names.get(pid, "Unknown"), "total": ptotal} for pid, ptotal in top10
             ]
 
         group_categories: dict[str, list[dict]] = {}
-        for gid, cats in group_to_cats.items():
-            top10 = sorted(cats, key=lambda c: -cat_totals.get(c, Decimal("0")))[:10]
+        for gid, slots in group_to_cats.items():
+            top10 = sorted(slots, key=lambda sl: -cat_totals.get(sl, Decimal("0")))[:10]
             group_categories[f"g_{gid}"] = [
-                {"name": cat_names.get(c, c), "total": cat_totals.get(c, Decimal("0"))}
-                for c in top10
+                {"name": cat_names.get(sl, sl[1]), "total": cat_totals.get(sl, Decimal("0"))}
+                for sl in top10
             ]
 
         return {
@@ -1107,6 +1148,9 @@ class ReportService:
             "links": links,
             "total_income": total_income,
             "total_expense": total_expense,
+            "total_spending": total_spending,
+            "total_savings": total_savings,
+            "total_debt_principal": total_debt_principal,
             "category_payees": category_payees,
             "group_categories": group_categories,
         }
@@ -1904,6 +1948,12 @@ class ReportService:
                 Transaction.memo,
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
+                # Not filtered by class: a large transfer into savings really is
+                # one of the largest transactions, and a timeline that hid it
+                # would misrepresent what moved. But colouring by sign called it
+                # an expense — the same mislabelling this taxonomy exists to fix
+                # — so the class rides along and the chart labels it honestly.
+                ACTIVITY_CLASS.label("activity_class"),
             )
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
@@ -1935,6 +1985,7 @@ class ReportService:
                 "payee_name": r.payee_name,
                 "category_name": r.category_name,
                 "memo": r.memo,
+                "activity_class": r.activity_class,
             }
             for r in rows
         ]

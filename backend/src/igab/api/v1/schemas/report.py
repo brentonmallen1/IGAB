@@ -139,7 +139,14 @@ class CashFlowResponse(BaseModel):
     nodes: list[SankeyNode]
     links: list[SankeyLink]
     total_income: Decimal
+    #: Everything that left the budget. The links off the budget node sum to
+    #: this — flow conservation, whatever the branches are.
     total_expense: Decimal
+    #: How that outflow splits. Spent mode only; budgeted mode draws from
+    #: assignments, where activity class has no meaning.
+    total_spending: Decimal = Decimal("0")
+    total_savings: Decimal = Decimal("0")
+    total_debt_principal: Decimal = Decimal("0")
     category_payees: dict[str, list[CategoryPayee]]
     group_categories: dict[str, list[CategoryPayee]]
 
@@ -317,6 +324,10 @@ class TimelineTransaction(BaseModel):
     payee_name: str | None
     category_name: str | None
     memo: str | None
+    #: What this row counts as. A large transfer into savings belongs on a
+    #: timeline of large transactions, but calling it an expense because the
+    #: amount is negative is the mislabelling this taxonomy exists to fix.
+    activity_class: str = "spending"
 
 
 class TimelineResponse(BaseModel):

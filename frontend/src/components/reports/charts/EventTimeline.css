@@ -129,3 +129,29 @@
 .timeline__card--clickable:hover {
   border-color: var(--color-accent);
 }
+
+/* Money that left the budget but stayed yours — saving, or paying down a
+   tracked debt. Distinct from both spending and income because it is neither. */
+.timeline__dot--savings {
+  background-color: var(--chart-neutral);
+}
+
+.timeline__dot--neutral {
+  background-color: var(--text-muted);
+}
+
+.timeline__amount--savings {
+  color: var(--text-secondary);
+}
+
+.timeline__amount--neutral {
+  color: var(--text-muted);
+}
+
+/* Names what a row counts as, where "expense" would be the wrong read. */
+.timeline__class {
+  margin-left: var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs, var(--font-size-xs));
+  font-weight: 500;
+}

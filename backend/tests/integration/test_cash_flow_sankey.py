@@ -70,7 +70,8 @@ async def test_spent_mode_links_sum_to_total_expense(db_session):
     await create_transaction(
         db_session, budget, checking, "-100.00", TODAY - timedelta(days=4), category=gas
     )
-    # Categorized transfer to an off-budget account: real spending
+    # Categorized transfer to an off-budget account: leaves the budget, but as
+    # saving rather than spending — it gets its own branch off the budget node.
     await services.transactions.create(
         budget.id,
         TransactionCreate(
@@ -133,16 +134,27 @@ async def test_spent_mode_links_sum_to_total_expense(db_session):
     )
 
     assert sankey["total_income"] == Decimal("3000.00")
-    # 200 + 100 + 150 transfer + 100 split + 33.33 uncategorized
+    # Everything that left the budget: 200 + 100 + 150 transfer + 100 split
+    # + 33.33 uncategorized. total_expense stays the whole outflow, because the
+    # links off the budget node must sum to it.
     assert sankey["total_expense"] == Decimal("583.33")
+    # ...and how that outflow splits.
+    assert sankey["total_spending"] == Decimal("433.33")
+    assert sankey["total_savings"] == Decimal("150.00")
+    assert sankey["total_debt_principal"] == Decimal("0")
 
     links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
     assert links[(f"inc_{employer.id}", "__budget__")] == Decimal("3000.00")
-    assert links[("__budget__", f"g_{everyday.id}")] == Decimal("550.00")
-    assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("410.00")
-    assert links[(f"g_{everyday.id}", f"c_{gas.id}")] == Decimal("140.00")
+    # 400, not 550: the brokerage transfer left this group for the savings
+    # branch, even though its category still lives here.
+    assert links[("__budget__", f"g_{everyday.id}")] == Decimal("400.00")
+    assert links[("__budget__", "g___savings__")] == Decimal("150.00")
+    # Groceries keeps only its real spending; the 150 hangs under Savings.
+    assert links[(f"g_{everyday.id}", f"c_{everyday.id}_{groceries.id}")] == Decimal("260.00")
+    assert links[("g___savings__", f"c___savings___{groceries.id}")] == Decimal("150.00")
+    assert links[(f"g_{everyday.id}", f"c_{everyday.id}_{gas.id}")] == Decimal("140.00")
     assert links[("__budget__", "g___uncategorized__")] == Decimal("33.33")
-    assert links[("g___uncategorized__", "c___uncategorized__")] == Decimal("33.33")
+    assert links[("g___uncategorized__", "c___uncategorized_____uncategorized__")] == Decimal("33.33")
 
     # Flow conservation: budget outflows account for every expense dollar
     budget_outflows = sum(v for (src, _), v in links.items() if src == "__budget__")
@@ -151,12 +163,14 @@ async def test_spent_mode_links_sum_to_total_expense(db_session):
     names = {n["id"]: n["name"] for n in sankey["nodes"]}
     assert names["g___uncategorized__"] == "Uncategorized"
     grocery_payees = {
-        p["name"]: p["total"] for p in sankey["category_payees"][f"c_{groceries.id}"]
+        p["name"]: p["total"]
+        for p in sankey["category_payees"][f"c_{everyday.id}_{groceries.id}"]
     }
     assert grocery_payees["MegaMart"] == Decimal("200.00")
     assert grocery_payees["Superstore"] == Decimal("60.00")
     uncat_payees = {
-        p["name"]: p["total"] for p in sankey["category_payees"]["c___uncategorized__"]
+        p["name"]: p["total"]
+        for p in sankey["category_payees"]["c___uncategorized_____uncategorized__"]
     }
     assert uncat_payees["CornerStore"] == Decimal("33.33")
 

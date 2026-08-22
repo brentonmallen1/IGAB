@@ -1017,6 +1017,7 @@ class TestLargeTransactions:
                 payee_name="Landlord",
                 category_name="Rent",
                 memo="January rent",
+                activity_class="spending",
             )
         ]
         svc = ReportService(make_session(mock_result(rows)))
@@ -1029,6 +1030,24 @@ class TestLargeTransactions:
         assert t["payee_name"] == "Landlord"
         assert t["category_name"] == "Rent"
         assert t["memo"] == "January rent"
+
+    async def test_carries_the_activity_class(self):
+        """A big transfer into savings belongs on a timeline of large
+        transactions — it just must not be drawn as an expense."""
+        rows = [
+            row(
+                id=uuid.uuid4(),
+                date=date(2026, 1, 15),
+                amount=D("-5000.00"),
+                payee_name="Transfer : Brokerage",
+                category_name="Investments",
+                memo=None,
+                activity_class="savings",
+            )
+        ]
+        svc = ReportService(make_session(mock_result(rows)))
+        result = await svc.large_transactions(BUDGET, JAN, APR)
+        assert result[0]["activity_class"] == "savings"
 
     async def test_empty(self):
         svc = ReportService(make_session(mock_result([])))

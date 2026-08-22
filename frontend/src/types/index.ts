@@ -564,6 +564,10 @@ export interface TimelineTransaction {
   payee_name: string | null
   category_name: string | null
   memo: string | null
+  /** What this row counts as — 'savings', 'debt_principal', 'income', etc.
+   *  A large transfer into savings belongs on this timeline, but drawing it
+   *  as an expense because the amount is negative would misreport it. */
+  activity_class: string
 }
 
 export interface TimelineReport {
