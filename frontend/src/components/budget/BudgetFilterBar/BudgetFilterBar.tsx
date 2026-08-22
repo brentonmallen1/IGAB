@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { ListFilter, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
-import { useBudgetViews } from '../../../api/budgetViews'
+import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useUIStore } from '../../../stores/uiStore'
 import { targetStatus } from '../../../utils/targets'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
 import type { CategoryBalance, CategoryTarget } from '../../../types'
-import './BudgetViewBar.css'
+import './BudgetFilterBar.css'
 
 interface Props {
   budgetId: string
@@ -13,15 +13,28 @@ interface Props {
   targets: CategoryTarget[]
 }
 
-export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
-  const { data: views } = useBudgetViews(budgetId)
-  const activeBudgetViewId = useUIStore((s) => s.activeBudgetViewId)
+//: Shown once, to whoever had saved views before the rename. Renaming someone's
+//: saved things without a word reads as data loss, however much better the new
+//: name is. Keyed in localStorage so it is genuinely once, not once per reload.
+const RENAME_NOTICE_KEY = 'igab-filters-rename-seen'
+
+export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) {
+  const { data: filters } = useBudgetFilters(budgetId)
+  const [renameNoticeSeen, setRenameNoticeSeen] = useState(
+    () => localStorage.getItem(RENAME_NOTICE_KEY) === '1'
+  )
+  const showRenameNotice = !renameNoticeSeen && (filters?.length ?? 0) > 0
+  const dismissRenameNotice = () => {
+    localStorage.setItem(RENAME_NOTICE_KEY, '1')
+    setRenameNoticeSeen(true)
+  }
+  const activeFilterId = useUIStore((s) => s.activeFilterId)
   const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
   const quickFilterOrder = useUIStore((s) => s.quickFilterOrder)
-  const setActiveBudgetView = useUIStore((s) => s.setActiveBudgetView)
+  const setActiveFilter = useUIStore((s) => s.setActiveFilter)
   const setActiveQuickFilter = useUIStore((s) => s.setActiveQuickFilter)
-  const openViewModal = useUIStore((s) => s.openViewModal)
-  const openManageViewsModal = useUIStore((s) => s.openManageViewsModal)
+  const openFilterModal = useUIStore((s) => s.openFilterModal)
+  const openManageFiltersModal = useUIStore((s) => s.openManageFiltersModal)
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const toggleBudgetRowMode = useUIStore((s) => s.toggleBudgetRowMode)
   const categorySearch = useUIStore((s) => s.categorySearch)
@@ -66,21 +79,21 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
   }
 
   function handleMenuSelect(id: string) {
-    if (id === 'new') openViewModal()
-    else if (id === 'manage') openManageViewsModal()
+    if (id === 'new') openFilterModal()
+    else if (id === 'manage') openManageFiltersModal()
   }
 
   function handleAllClick() {
-    setActiveBudgetView(null)
+    setActiveFilter(null)
     setActiveQuickFilter(null)
   }
 
-  const isAllActive = activeBudgetViewId === null && activeQuickFilter === null
+  const isAllActive = activeFilterId === null && activeQuickFilter === null
 
   return (
-    <div className="budget-view-bar">
+    <div className="budget-filter-bar">
       <button
-        className={`budget-view-bar__btn ${isAllActive ? 'active' : ''}`}
+        className={`budget-filter-bar__btn ${isAllActive ? 'active' : ''}`}
         onClick={handleAllClick}
       >
         All
@@ -98,7 +111,7 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
         return (
           <button
             key={filter}
-            className={`budget-view-bar__btn budget-view-bar__btn--${variant} ${activeQuickFilter === filter ? 'active' : ''}`}
+            className={`budget-filter-bar__btn budget-filter-bar__btn--${variant} ${activeQuickFilter === filter ? 'active' : ''}`}
             onClick={() => setActiveQuickFilter(activeQuickFilter === filter ? null : filter)}
           >
             {label}
@@ -106,23 +119,38 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
         )
       })}
 
-      {views?.map((view) => (
+      {showRenameNotice && (
+        <span className="budget-filter-bar__notice" role="status">
+          Your saved <strong>views</strong> are now called <strong>filters</strong> — same
+          saved category sets, clearer name. Nothing was lost.
+          <button
+            type="button"
+            className="budget-filter-bar__notice-close"
+            onClick={dismissRenameNotice}
+            aria-label="Dismiss"
+          >
+            <X size={12} />
+          </button>
+        </span>
+      )}
+
+      {filters?.map((f) => (
         <button
-          key={view.id}
-          className={`budget-view-bar__btn ${activeBudgetViewId === view.id ? 'active' : ''}`}
-          onClick={() => setActiveBudgetView(view.id)}
-          onDoubleClick={() => openViewModal(view.id)}
+          key={filter.id}
+          className={`budget-filter-bar__btn ${activeFilterId === filter.id ? 'active' : ''}`}
+          onClick={() => setActiveFilter(filter.id)}
+          onDoubleClick={() => openFilterModal(filter.id)}
           title="Double-click to edit"
         >
-          {view.name}
+          {filter.name}
         </button>
       ))}
 
-      <div className={`budget-view-bar__search ${categorySearch ? 'has-value' : ''}`}>
-        <Search size={13} className="budget-view-bar__search-icon" />
+      <div className={`budget-filter-bar__search ${categorySearch ? 'has-value' : ''}`}>
+        <Search size={13} className="budget-filter-bar__search-icon" />
         <input
           ref={searchRef}
-          className="budget-view-bar__search-input"
+          className="budget-filter-bar__search-input"
           type="text"
           value={categorySearch}
           onChange={(e) => setCategorySearch(e.target.value)}
@@ -137,7 +165,7 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
         />
         {categorySearch && (
           <button
-            className="budget-view-bar__search-clear"
+            className="budget-filter-bar__search-clear"
             onClick={() => setCategorySearch('')}
             title="Clear filter"
           >
@@ -146,9 +174,9 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
         )}
       </div>
 
-      <div className="budget-view-bar__menu-wrap">
+      <div className="budget-filter-bar__menu-wrap">
         <button
-          className="budget-view-bar__menu-btn"
+          className="budget-filter-bar__menu-btn"
           onClick={toggleBudgetRowMode}
           title={budgetRowMode === 'expanded' ? 'Switch to compact rows' : 'Switch to expanded rows'}
         >
@@ -156,9 +184,9 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
         </button>
         <button
           ref={menuAnchorRef}
-          className="budget-view-bar__menu-btn"
+          className="budget-filter-bar__menu-btn"
           onClick={() => setMenuOpen((v) => !v)}
-          title="View options"
+          title="Filter options"
         >
           <ListFilter size={14} />
         </button>
@@ -167,8 +195,8 @@ export function BudgetViewBar({ budgetId, categoryBalances, targets }: Props) {
           return (
             <ContextMenu
               items={[
-                { id: 'new', label: 'New View', icon: Plus },
-                { id: 'manage', label: 'Manage Views', icon: Settings2 },
+                { id: 'new', label: 'New Filter', icon: Plus },
+                { id: 'manage', label: 'Manage Filters', icon: Settings2 },
               ]}
               onSelect={handleMenuSelect}
               onClose={() => setMenuOpen(false)}

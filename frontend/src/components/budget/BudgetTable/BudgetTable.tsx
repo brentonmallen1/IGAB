@@ -8,10 +8,10 @@ import {
   useCategoryGroups,
   useCreateCategoryGroup,
 } from '../../../api/categories'
-import { useBudgetViews } from '../../../api/budgetViews'
+import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useTargetsByBudget } from '../../../api/targets'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
-import { BudgetViewBar } from '../BudgetViewBar/BudgetViewBar'
+import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
 import type { CategoryBalance, CategoryGroup } from '../../../types'
 import './BudgetTable.css'
 import { targetStatus } from '../../../utils/targets'
@@ -23,7 +23,7 @@ export function BudgetTable() {
   const collapsedGroups = useUIStore((s) => s.collapsedGroups)
   const collapseAll = useUIStore((s) => s.collapseAll)
   const expandAll = useUIStore((s) => s.expandAll)
-  const activeBudgetViewId = useUIStore((s) => s.activeBudgetViewId)
+  const activeFilterId = useUIStore((s) => s.activeFilterId)
   const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
   const categorySearch = useUIStore((s) => s.categorySearch)
 
@@ -35,7 +35,7 @@ export function BudgetTable() {
   const { data: groups, isLoading: groupsLoading } = useCategoryGroups(budgetId, showHidden)
   const { data: categories, isLoading: catsLoading } = useCategories(budgetId, showHidden)
   const { data: budgetMonth, isLoading: monthLoading } = useBudgetMonth(budgetId, month)
-  const { data: views } = useBudgetViews(budgetId)
+  const { data: filters } = useBudgetFilters(budgetId)
   const { data: targets } = useTargetsByBudget(budgetId)
   const createGroup = useCreateCategoryGroup(budgetId ?? '')
 
@@ -56,7 +56,7 @@ export function BudgetTable() {
 
   const targetMap = new Map((targets ?? []).map((t) => [t.category_id, t]))
 
-  const activeView = views?.find((v) => v.id === activeBudgetViewId) ?? null
+  const activeView = filters?.find((v) => v.id === activeFilterId) ?? null
   const viewCategoryIds = activeView ? new Set(activeView.category_ids) : null
 
   const groupNameById = new Map((groups ?? []).map((g) => [g.id, g.name]))
@@ -126,7 +126,7 @@ export function BudgetTable() {
 
   return (
     <div className="budget-table">
-      <BudgetViewBar
+      <BudgetFilterBar
         budgetId={budgetId}
         categoryBalances={budgetMonth?.category_balances ?? []}
         targets={targets ?? []}

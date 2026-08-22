@@ -3,20 +3,20 @@ import uuid
 
 from pydantic import BaseModel, model_validator
 
-from igab.db.models import BudgetView
+from igab.db.models import BudgetFilter
 
 
-class BudgetViewCreate(BaseModel):
+class BudgetFilterCreate(BaseModel):
     name: str
     category_ids: list[uuid.UUID] = []
 
 
-class BudgetViewUpdate(BaseModel):
+class BudgetFilterUpdate(BaseModel):
     name: str | None = None
     category_ids: list[uuid.UUID] | None = None
 
 
-class BudgetViewResponse(BaseModel):
+class BudgetFilterResponse(BaseModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str
@@ -30,7 +30,7 @@ class BudgetViewResponse(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def extract_category_ids(cls, data: object) -> object:
-        if isinstance(data, BudgetView):
+        if isinstance(data, BudgetFilter):
             return {
                 "id": data.id,
                 "budget_id": data.budget_id,

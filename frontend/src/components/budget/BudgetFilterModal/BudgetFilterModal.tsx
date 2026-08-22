@@ -2,37 +2,37 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import {
-  useBudgetViews,
-  useCreateBudgetView,
-  useDeleteBudgetView,
-  useUpdateBudgetView,
-} from '../../../api/budgetViews'
+  useBudgetFilters,
+  useCreateBudgetFilter,
+  useDeleteBudgetFilter,
+  useUpdateBudgetFilter,
+} from '../../../api/budgetFilters'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
-import './BudgetViewModal.css'
+import './BudgetFilterModal.css'
 
 interface Props {
   budgetId: string
-  viewId: string | null
+  filterId: string | null
   onClose: () => void
 }
 
-export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
-  const { data: views } = useBudgetViews(budgetId)
+export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
+  const { data: filters } = useBudgetFilters(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId, true)
   const { data: categories = [] } = useCategories(budgetId, true)
-  const createView = useCreateBudgetView(budgetId)
-  const updateView = useUpdateBudgetView(budgetId)
-  const deleteView = useDeleteBudgetView(budgetId)
-  const setActiveBudgetView = useUIStore((s) => s.setActiveBudgetView)
-  const activeBudgetViewId = useUIStore((s) => s.activeBudgetViewId)
+  const createView = useCreateBudgetFilter(budgetId)
+  const updateView = useUpdateBudgetFilter(budgetId)
+  const deleteView = useDeleteBudgetFilter(budgetId)
+  const setActiveFilter = useUIStore((s) => s.setActiveFilter)
+  const activeFilterId = useUIStore((s) => s.activeFilterId)
 
-  const existingView = views?.find((v) => v.id === viewId) ?? null
-  const isEdit = !!existingView
+  const existingFilter = filters?.find((v) => v.id === filterId) ?? null
+  const isEdit = !!existingFilter
 
-  const [name, setName] = useState(existingView?.name ?? '')
+  const [name, setName] = useState(existingFilter?.name ?? '')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    new Set(existingView?.category_ids ?? [])
+    new Set(existingFilter?.category_ids ?? [])
   )
   const nameRef = useRef<HTMLInputElement>(null)
   const trapRef = useFocusTrap<HTMLFormElement>(onClose)
@@ -75,19 +75,19 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
     const trimmed = name.trim()
     if (!trimmed) return
     const categoryIds = Array.from(selectedIds)
-    if (isEdit && existingView) {
-      await updateView.mutateAsync({ id: existingView.id, name: trimmed, category_ids: categoryIds })
+    if (isEdit && existingFilter) {
+      await updateView.mutateAsync({ id: existingFilter.id, name: trimmed, category_ids: categoryIds })
     } else {
       const created = await createView.mutateAsync({ name: trimmed, category_ids: categoryIds })
-      setActiveBudgetView(created.id)
+      setActiveFilter(created.id)
     }
     onClose()
   }
 
   async function handleDelete() {
-    if (!existingView) return
-    await deleteView.mutateAsync(existingView.id)
-    if (activeBudgetViewId === existingView.id) setActiveBudgetView(null)
+    if (!existingFilter) return
+    await deleteView.mutateAsync(existingFilter.id)
+    if (activeFilterId === existingFilter.id) setActiveFilter(null)
     onClose()
   }
 
@@ -95,30 +95,30 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
 
   return (
     <div
-      className="view-modal-overlay"
+      className="filter-modal-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <form ref={trapRef} tabIndex={-1} className="view-modal" onSubmit={handleSubmit} role="dialog" aria-modal aria-labelledby="view-modal-title">
-        <div className="view-modal__header">
-          <span id="view-modal-title" className="view-modal__title">{isEdit ? 'Edit View' : 'New Custom View'}</span>
-          <button type="button" className="view-modal__close" onClick={onClose} aria-label="Close">
+      <form ref={trapRef} tabIndex={-1} className="filter-modal" onSubmit={handleSubmit} role="dialog" aria-modal aria-labelledby="filter-modal-title">
+        <div className="filter-modal__header">
+          <span id="filter-modal-title" className="filter-modal__title">{isEdit ? 'Edit View' : 'New Custom View'}</span>
+          <button type="button" className="filter-modal__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
-        <div className="view-modal__body">
-          <p className="view-modal__subtitle">
-            Choose a set of categories to include in this custom view.
+        <div className="filter-modal__body">
+          <p className="filter-modal__subtitle">
+            Choose a set of categories to include in this custom filter.
           </p>
 
-          <div className="view-modal__field">
-            <label className="view-modal__label" htmlFor="view-name">
+          <div className="filter-modal__field">
+            <label className="filter-modal__label" htmlFor="view-name">
               View Name
             </label>
             <input
               id="view-name"
               ref={nameRef}
-              className="view-modal__input"
+              className="filter-modal__input"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Keep 'em short & sweet!"
@@ -126,25 +126,25 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
             />
           </div>
 
-          <div className="view-modal__field">
-            <label className="view-modal__label">Select the categories below to include.</label>
-            <div className="view-modal__category-list">
+          <div className="filter-modal__field">
+            <label className="filter-modal__label">Select the categories below to include.</label>
+            <div className="filter-modal__category-list">
               {groups.map((group) => {
                 const groupCats = categories.filter((c) => c.category_group_id === group.id)
                 if (groupCats.length === 0) return null
                 const state = getGroupState(group.id)
                 return (
-                  <div key={group.id} className="view-modal__group">
-                    <label className="view-modal__group-header">
+                  <div key={group.id} className="filter-modal__group">
+                    <label className="filter-modal__group-header">
                       <IndeterminateCheckbox
                         checked={state === 'all'}
                         indeterminate={state === 'some'}
                         onChange={() => toggleGroup(group.id)}
                       />
-                      <span className="view-modal__group-name">{group.name}</span>
+                      <span className="filter-modal__group-name">{group.name}</span>
                     </label>
                     {groupCats.map((cat) => (
-                      <label key={cat.id} className="view-modal__cat-row">
+                      <label key={cat.id} className="filter-modal__cat-row">
                         <input
                           type="checkbox"
                           checked={selectedIds.has(cat.id)}
@@ -160,28 +160,28 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
           </div>
         </div>
 
-        <div className="view-modal__footer">
+        <div className="filter-modal__footer">
           {isEdit && (
             <button
               type="button"
-              className="view-modal__btn view-modal__btn--danger"
+              className="filter-modal__btn filter-modal__btn--danger"
               onClick={handleDelete}
               disabled={isPending}
             >
               Delete
             </button>
           )}
-          <div className="view-modal__footer-right">
+          <div className="filter-modal__footer-right">
             <button
               type="button"
-              className="view-modal__btn view-modal__btn--secondary"
+              className="filter-modal__btn filter-modal__btn--secondary"
               onClick={onClose}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="view-modal__btn view-modal__btn--primary"
+              className="filter-modal__btn filter-modal__btn--primary"
               disabled={isPending}
             >
               Save

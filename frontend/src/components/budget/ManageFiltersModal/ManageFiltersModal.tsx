@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { X, GripVertical, Pencil, Trash2, Plus, Lock, ChevronUp, ChevronDown } from 'lucide-react'
-import { useBudgetViews, useDeleteBudgetView } from '../../../api/budgetViews'
+import { useBudgetFilters, useDeleteBudgetFilter } from '../../../api/budgetFilters'
 import { useUIStore, ALL_QUICK_FILTERS } from '../../../stores/uiStore'
 import type { QuickFilter } from '../../../stores/uiStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
-import './ManageViewsModal.css'
+import './ManageFiltersModal.css'
 
 interface Props {
   budgetId: string
@@ -25,14 +25,14 @@ const QUICK_FILTER_VARIANTS: Record<QuickFilter, string> = {
   overfunded: 'positive',
 }
 
-export function ManageViewsModal({ budgetId, onClose }: Props) {
-  const { data: views } = useBudgetViews(budgetId)
-  const deleteView = useDeleteBudgetView(budgetId)
-  const openViewModal = useUIStore((s) => s.openViewModal)
+export function ManageFiltersModal({ budgetId, onClose }: Props) {
+  const { data: filters } = useBudgetFilters(budgetId)
+  const deleteView = useDeleteBudgetFilter(budgetId)
+  const openFilterModal = useUIStore((s) => s.openFilterModal)
   const quickFilterOrder = useUIStore((s) => s.quickFilterOrder)
   const reorderQuickFilters = useUIStore((s) => s.reorderQuickFilters)
-  const activeBudgetViewId = useUIStore((s) => s.activeBudgetViewId)
-  const setActiveBudgetView = useUIStore((s) => s.setActiveBudgetView)
+  const activeFilterId = useUIStore((s) => s.activeFilterId)
+  const setActiveFilter = useUIStore((s) => s.setActiveFilter)
 
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -76,66 +76,66 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
     setDragOverIndex(null)
   }
 
-  async function handleDeleteView(id: string) {
+  async function handleDeleteFilter(id: string) {
     await deleteView.mutateAsync(id)
-    if (activeBudgetViewId === id) setActiveBudgetView(null)
+    if (activeFilterId === id) setActiveFilter(null)
   }
 
-  function handleEditView(id: string) {
-    openViewModal(id)
+  function handleEditFilter(id: string) {
+    openFilterModal(id)
     onClose()
   }
 
   function handleNewView() {
-    openViewModal()
+    openFilterModal()
     onClose()
   }
 
   return (
     <div
-      className="manage-views-overlay"
+      className="manage-filters-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div ref={trapRef} tabIndex={-1} className="manage-views-modal" role="dialog" aria-modal aria-label="Manage views">
-        <div className="manage-views-modal__header">
-          <span className="manage-views-modal__title">Manage Views</span>
-          <button type="button" className="manage-views-modal__close" onClick={onClose} aria-label="Close">
+      <div ref={trapRef} tabIndex={-1} className="manage-filters-modal" role="dialog" aria-modal aria-label="Manage filters">
+        <div className="manage-filters-modal__header">
+          <span className="manage-filters-modal__title">Manage Filters</span>
+          <button type="button" className="manage-filters-modal__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
-        <div className="manage-views-modal__body">
-          <section className="manage-views-modal__section">
-            <div className="manage-views-modal__section-header">
+        <div className="manage-filters-modal__body">
+          <section className="manage-filters-modal__section">
+            <div className="manage-filters-modal__section-header">
               <span>Quick Filters</span>
-              <span className="manage-views-modal__section-hint">Drag or use arrows to reorder</span>
+              <span className="manage-filters-modal__section-hint">Drag or use arrows to reorder</span>
             </div>
-            <div className="manage-views-modal__list">
+            <div className="manage-filters-modal__list">
               {quickFilterOrder.map((filter, index) => (
                 <div
                   key={filter}
-                  className={`manage-views-modal__row manage-views-modal__row--quick ${dragOverIndex === index ? 'drag-over' : ''} ${dragIndex === index ? 'dragging' : ''}`}
+                  className={`manage-filters-modal__row manage-filters-modal__row--quick ${dragOverIndex === index ? 'drag-over' : ''} ${dragIndex === index ? 'dragging' : ''}`}
                   draggable
                   onDragStart={() => handleDragStart(index)}
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDrop={(e) => handleDrop(e, index)}
                   onDragEnd={handleDragEnd}
                 >
-                  <GripVertical size={14} className="manage-views-modal__grip" />
-                  <span className={`manage-views-modal__filter-badge manage-views-modal__filter-badge--${QUICK_FILTER_VARIANTS[filter]}`}>
+                  <GripVertical size={14} className="manage-filters-modal__grip" />
+                  <span className={`manage-filters-modal__filter-badge manage-filters-modal__filter-badge--${QUICK_FILTER_VARIANTS[filter]}`}>
                     {QUICK_FILTER_LABELS[filter]}
                   </span>
                   <span
-                    className="manage-views-modal__lock"
+                    className="manage-filters-modal__lock"
                     style={{ display: 'inline-flex' }}
                     title="Built-in filter — cannot be edited"
                   >
                     <Lock size={12} />
                   </span>
-                  <div className="manage-views-modal__row-actions">
+                  <div className="manage-filters-modal__row-actions">
                     <button
                       type="button"
-                      className="manage-views-modal__icon-btn"
+                      className="manage-filters-modal__icon-btn"
                       onClick={() => moveFilter(index, -1)}
                       disabled={index === 0}
                       aria-label={`Move ${QUICK_FILTER_LABELS[filter]} up`}
@@ -145,7 +145,7 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
                     </button>
                     <button
                       type="button"
-                      className="manage-views-modal__icon-btn"
+                      className="manage-filters-modal__icon-btn"
                       onClick={() => moveFilter(index, 1)}
                       disabled={index === quickFilterOrder.length - 1}
                       aria-label={`Move ${QUICK_FILTER_LABELS[filter]} down`}
@@ -157,51 +157,51 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
                 </div>
               ))}
               {ALL_QUICK_FILTERS.filter((f) => !quickFilterOrder.includes(f)).length > 0 && (
-                <p className="manage-views-modal__note">
+                <p className="manage-filters-modal__note">
                   Some filters are hidden because no categories match them.
                 </p>
               )}
             </div>
           </section>
 
-          <section className="manage-views-modal__section">
-            <div className="manage-views-modal__section-header">
-              <span>Custom Views</span>
+          <section className="manage-filters-modal__section">
+            <div className="manage-filters-modal__section-header">
+              <span>Saved Filters</span>
               <button
                 type="button"
-                className="manage-views-modal__add-btn"
+                className="manage-filters-modal__add-btn"
                 onClick={handleNewView}
               >
                 <Plus size={13} />
                 New View
               </button>
             </div>
-            {(!views || views.length === 0) ? (
-              <p className="manage-views-modal__empty">
-                No custom views yet. Create one to filter categories by a saved set.
+            {(!filters || filters.length === 0) ? (
+              <p className="manage-filters-modal__empty">
+                No custom filters yet. Create one to filter categories by a saved set.
               </p>
             ) : (
-              <div className="manage-views-modal__list">
-                {views.map((view) => (
-                  <div key={view.id} className="manage-views-modal__row">
-                    <span className="manage-views-modal__view-name">{view.name}</span>
-                    <div className="manage-views-modal__row-actions">
+              <div className="manage-filters-modal__list">
+                {filters.map((f) => (
+                  <div key={filter.id} className="manage-filters-modal__row">
+                    <span className="manage-filters-modal__view-name">{filter.name}</span>
+                    <div className="manage-filters-modal__row-actions">
                       <button
                         type="button"
-                        className="manage-views-modal__icon-btn"
-                        onClick={() => handleEditView(view.id)}
-                        aria-label={`Edit view ${view.name}`}
-                        title="Edit view"
+                        className="manage-filters-modal__icon-btn"
+                        onClick={() => handleEditFilter(filter.id)}
+                        aria-label={`Edit view ${filter.name}`}
+                        title="Edit filter"
                       >
                         <Pencil size={13} />
                       </button>
                       <button
                         type="button"
-                        className="manage-views-modal__icon-btn manage-views-modal__icon-btn--danger"
-                        onClick={() => handleDeleteView(view.id)}
+                        className="manage-filters-modal__icon-btn manage-filters-modal__icon-btn--danger"
+                        onClick={() => handleDeleteFilter(filter.id)}
                         disabled={deleteView.isPending}
-                        aria-label={`Delete view ${view.name}`}
-                        title="Delete view"
+                        aria-label={`Delete view ${filter.name}`}
+                        title="Delete filter"
                       >
                         <Trash2 size={13} />
                       </button>

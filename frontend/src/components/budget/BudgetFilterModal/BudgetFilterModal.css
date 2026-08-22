@@ -1,4 +1,4 @@
-.view-modal-overlay {
+.filter-modal-overlay {
   position: fixed;
   inset: 0;
   background-color: rgba(0, 0, 0, 0.55);
@@ -9,7 +9,7 @@
   z-index: var(--z-overlay);
 }
 
-.view-modal {
+.filter-modal {
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
@@ -21,7 +21,7 @@
   flex-direction: column;
 }
 
-.view-modal__header {
+.filter-modal__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -30,13 +30,13 @@
   flex-shrink: 0;
 }
 
-.view-modal__title {
+.filter-modal__title {
   font-size: var(--font-size-base);
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.view-modal__close {
+.filter-modal__close {
   color: var(--text-muted);
   padding: 4px;
   border-radius: var(--border-radius-sm);
@@ -45,11 +45,11 @@
   transition: color var(--transition-fast);
 }
 
-.view-modal__close:hover {
+.filter-modal__close:hover {
   color: var(--text-primary);
 }
 
-.view-modal__body {
+.filter-modal__body {
   padding: var(--spacing-lg);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -59,25 +59,25 @@
   gap: var(--spacing-md);
 }
 
-.view-modal__subtitle {
+.filter-modal__subtitle {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   margin: 0;
 }
 
-.view-modal__field {
+.filter-modal__field {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
 }
 
-.view-modal__label {
+.filter-modal__label {
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.view-modal__input {
+.filter-modal__input {
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
@@ -88,15 +88,15 @@
   transition: border-color var(--transition-fast);
 }
 
-.view-modal__input:focus {
+.filter-modal__input:focus {
   border-color: var(--color-accent);
 }
 
-.view-modal__input::placeholder {
+.filter-modal__input::placeholder {
   color: var(--text-muted);
 }
 
-.view-modal__category-list {
+.filter-modal__category-list {
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   background-color: var(--bg-secondary);
@@ -105,16 +105,16 @@
   overscroll-behavior: contain;
 }
 
-.view-modal__group {
+.filter-modal__group {
   padding: var(--spacing-sm) var(--spacing-md);
   border-bottom: 1px solid var(--border-color);
 }
 
-.view-modal__group:last-child {
+.filter-modal__group:last-child {
   border-bottom: none;
 }
 
-.view-modal__group-header {
+.filter-modal__group-header {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -126,11 +126,11 @@
   user-select: none;
 }
 
-.view-modal__group-name {
+.filter-modal__group-name {
   flex: 1;
 }
 
-.view-modal__cat-row {
+.filter-modal__cat-row {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -141,12 +141,12 @@
   user-select: none;
 }
 
-.view-modal__cat-row:hover,
-.view-modal__group-header:hover {
+.filter-modal__cat-row:hover,
+.filter-modal__group-header:hover {
   color: var(--text-primary);
 }
 
-.view-modal__footer {
+.filter-modal__footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -156,14 +156,14 @@
   gap: var(--spacing-sm);
 }
 
-.view-modal__footer-right {
+.filter-modal__footer-right {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   margin-left: auto;
 }
 
-.view-modal__btn {
+.filter-modal__btn {
   padding: var(--spacing-xs) var(--spacing-md);
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-sm);
@@ -172,34 +172,34 @@
   cursor: pointer;
 }
 
-.view-modal__btn:disabled {
+.filter-modal__btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.view-modal__btn--primary {
+.filter-modal__btn--primary {
   background-color: var(--color-accent);
   color: var(--text-inverse);
 }
 
-.view-modal__btn--primary:hover:not(:disabled) {
+.filter-modal__btn--primary:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--color-accent) 85%, black);
 }
 
-.view-modal__btn--secondary {
+.filter-modal__btn--secondary {
   background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
   color: var(--text-primary);
 }
 
-.view-modal__btn--secondary:hover:not(:disabled) {
+.filter-modal__btn--secondary:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
 }
 
-.view-modal__btn--danger {
+.filter-modal__btn--danger {
   color: var(--color-negative);
   background-color: color-mix(in srgb, var(--color-negative) 10%, transparent);
 }
 
-.view-modal__btn--danger:hover:not(:disabled) {
+.filter-modal__btn--danger:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--color-negative) 20%, transparent);
 }

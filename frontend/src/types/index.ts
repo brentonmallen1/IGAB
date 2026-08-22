@@ -78,7 +78,7 @@ export interface Category {
   tags?: TagSimple[]
 }
 
-export interface BudgetView {
+export interface BudgetFilter {
   id: string
   budget_id: string
   name: string

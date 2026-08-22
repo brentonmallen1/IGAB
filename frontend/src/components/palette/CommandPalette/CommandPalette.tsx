@@ -6,7 +6,7 @@ import { Landmark, Palette as PaletteIcon, Receipt, Search, User, Bookmark, X } 
 import { apiClient } from '../../../api/client'
 import { useAccounts } from '../../../api/accounts'
 import { usePayees } from '../../../api/payees'
-import { useBudgetViews } from '../../../api/budgetViews'
+import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
@@ -37,7 +37,7 @@ export function CommandPalette() {
   const setAssignPreviewStrategy = useUIStore((s) => s.setAssignPreviewStrategy)
   const setCoverOverspentOpen = useUIStore((s) => s.setCoverOverspentOpen)
   const setTbaDrawerOpen = useUIStore((s) => s.setTbaDrawerOpen)
-  const setActiveBudgetView = useUIStore((s) => s.setActiveBudgetView)
+  const setActiveFilter = useUIStore((s) => s.setActiveFilter)
 
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const selectedMonth = useAppStore((s) => s.selectedMonth)
@@ -69,7 +69,7 @@ export function CommandPalette() {
 
   const { data: accounts = [] } = useAccounts(open ? budgetId : null)
   const { data: payees = [] } = usePayees(open ? budgetId : null)
-  const { data: views = [] } = useBudgetViews(open ? budgetId : null)
+  const { data: filters = [] } = useBudgetFilters(open ? budgetId : null)
 
   const searchTerm = debounced.trim()
   const searchOn = open && !!budgetId && searchTerm.length >= 2
@@ -174,14 +174,14 @@ export function CommandPalette() {
                   </Command.Item>
                 ))}
               {section === 'Navigate' &&
-                views.map((v) => (
+                filters.map((v) => (
                   <Command.Item
                     key={v.id}
                     value={`view-${v.id}`}
                     keywords={['view', v.name]}
                     onSelect={() =>
                       run(() => {
-                        setActiveBudgetView(v.id)
+                        setActiveFilter(v.id)
                         navigate('/budget')
                       })
                     }

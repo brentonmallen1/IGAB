@@ -91,7 +91,9 @@ class Budget(Base):
         back_populates="budget", passive_deletes=True
     )
     payees: Mapped[list["Payee"]] = relationship(back_populates="budget", passive_deletes=True)
-    views: Mapped[list["BudgetView"]] = relationship(back_populates="budget", passive_deletes=True)
+    filters: Mapped[list["BudgetFilter"]] = relationship(
+        back_populates="budget", passive_deletes=True
+    )
 
 
 class BudgetMember(Base):
@@ -704,12 +706,16 @@ class ReconciliationSnapshot(Base):
     )
 
 
-# ─── Budget Views ─────────────────────────────────────────────────────────────
+# ─── Budget Filters ───────────────────────────────────────────────────────────
+#
+# A saved subset of categories to narrow the budget grid to. Called "views"
+# until it became clear that is all it does: it cannot regroup, reorder or hide.
+# The name is now reserved for the feature that does.
 
 
-class BudgetView(Base):
-    __tablename__ = "budget_views"
-    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_view_budget_name"),)
+class BudgetFilter(Base):
+    __tablename__ = "budget_filters"
+    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_filter_budget_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -725,19 +731,19 @@ class BudgetView(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    budget: Mapped["Budget"] = relationship(back_populates="views")
-    category_selections: Mapped[list["BudgetViewCategory"]] = relationship(
-        back_populates="view", cascade="all, delete-orphan"
+    budget: Mapped["Budget"] = relationship(back_populates="filters")
+    category_selections: Mapped[list["BudgetFilterCategory"]] = relationship(
+        back_populates="filter_", cascade="all, delete-orphan"
     )
 
 
-class BudgetViewCategory(Base):
-    __tablename__ = "budget_view_categories"
-    __table_args__ = (UniqueConstraint("view_id", "category_id", name="uq_view_category"),)
+class BudgetFilterCategory(Base):
+    __tablename__ = "budget_filter_categories"
+    __table_args__ = (UniqueConstraint("filter_id", "category_id", name="uq_filter_category"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    view_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("budget_views.id", ondelete="CASCADE"), nullable=False
+    filter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budget_filters.id", ondelete="CASCADE"), nullable=False
     )
     category_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -746,7 +752,7 @@ class BudgetViewCategory(Base):
         index=True,
     )
 
-    view: Mapped["BudgetView"] = relationship(back_populates="category_selections")
+    filter_: Mapped["BudgetFilter"] = relationship(back_populates="category_selections")
     category: Mapped["Category"] = relationship()
 
 
