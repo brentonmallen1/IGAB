@@ -266,6 +266,20 @@ class LiveProjection:
     average_payment: Decimal
 
 
+def average_recent_payment(recent_payments: list[Decimal]) -> Decimal | None:
+    """Mean of the months that saw a payment, or None below two of them.
+
+    One payment is an event, not a pace, so two is the floor everywhere this
+    average is used. Split out from `project_payoff` because the average is
+    observed history: it stays reportable when the contract terms a projection
+    needs are missing.
+    """
+    positive = [p for p in recent_payments if p > ZERO]
+    if len(positive) < 2:
+        return None
+    return quantize_cents(sum(positive, ZERO) / len(positive))
+
+
 def project_payoff(
     balance: Decimal,
     annual_rate: Decimal,
@@ -278,10 +292,9 @@ def project_payoff(
     falls back to the contractual schedule rather than fabricating a date
     from insufficient history.
     """
-    positive = [p for p in recent_payments if p > ZERO]
-    if len(positive) < 2:
+    average = average_recent_payment(recent_payments)
+    if average is None:
         return None
-    average = quantize_cents(sum(positive, ZERO) / len(positive))
     result = amortization_schedule(balance, annual_rate, average, as_of)
     return LiveProjection(
         payoff_date=result.payoff_date,

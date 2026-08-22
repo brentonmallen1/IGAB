@@ -14,16 +14,16 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
   const deleteView = useDeleteBudgetView(budgetId)
   const activeViewId = useUIStore((s) => s.activeViewId)
   const setActiveView = useUIStore((s) => s.setActiveView)
-  const openViewModal = useUIStore((s) => s.openViewModal)
+  const openModal = useUIStore((s) => s.openModal)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   function handleEdit(id: string) {
-    openViewModal(id)
+    openModal('view', id)
     onClose()
   }
 
   function handleNew() {
-    openViewModal()
+    openModal('view')
     onClose()
   }
 

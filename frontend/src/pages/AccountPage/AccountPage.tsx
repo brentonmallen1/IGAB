@@ -15,8 +15,11 @@ import { ReconcileModal } from '../../components/accounts/ReconcileModal'
 import { ReconcileStatusBar } from '../../components/accounts/ReconcileStatusBar'
 import { PendingReviewBanner } from '../../components/accounts/PendingReviewBanner'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
+import { LiabilityTermsHeader } from '../../components/liabilities/LiabilityTermsHeader'
+import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
 import { useAccounts } from '../../api/accounts'
+import { useLiabilities } from '../../api/liabilities'
 import {
   useSimpleFINConnections,
   useSyncSimpleFIN,
@@ -66,7 +69,10 @@ export function AccountPage() {
   const firstConnection = sfConnections?.[0] ?? null
   const sync = useSyncSimpleFIN(budgetId)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
-  const { isAccountEditorOpen, editingAccountId, openAccountEditor, closeAccountEditor } = useUIStore()
+  const activeModal = useUIStore((s) => s.activeModal)
+  const openModal = useUIStore((s) => s.openModal)
+  const closeModal = useUIStore((s) => s.closeModal)
+  const { data: liabilities = [] } = useLiabilities(budgetId)
   const { data: pendingMatches = [] } = usePendingMatches(budgetId)
   const [showMatchModal, setShowMatchModal] = useState(false)
 
@@ -194,7 +200,7 @@ export function AccountPage() {
         <div className="account-page__actions">
           <button
             className="account-page__action-btn"
-            onClick={() => openAccountEditor(accountId!)}
+            onClick={() => openModal('account', accountId!)}
             aria-label="Edit account"
             title="Edit account"
           >
@@ -225,6 +231,17 @@ export function AccountPage() {
       )}
 
       {showReconcileBar && accountId && <ReconcileStatusBar accountId={accountId} />}
+
+      {/* A debt account has APR and a minimum payment whether or not anyone has
+          entered them, so the page has a place for them either way. Cards get
+          the same header loans do — one pattern, no "add your APR" banner. */}
+      {account.classification === 'liability' && budgetId && accountId && (
+        <LiabilityTermsHeader
+          budgetId={budgetId}
+          accountId={accountId}
+          isLoan={!account.on_budget}
+        />
+      )}
 
       {!isReconcilingHere && budgetId && (
         <PendingReviewBanner budgetId={budgetId} accountId={accountId ?? undefined} onView={setTransactionSearch} />
@@ -258,8 +275,16 @@ export function AccountPage() {
         />
       </div>
 
-      {isAccountEditorOpen && editingAccountId && (
-        <AccountSettingsModal accountId={editingAccountId} onClose={closeAccountEditor} />
+      {activeModal?.kind === 'account' && activeModal.editingId && (
+        <AccountSettingsModal accountId={activeModal.editingId} onClose={closeModal} />
+      )}
+
+      {activeModal?.kind === 'liability' && activeModal.editingId && budgetId && (
+        <LiabilitySettingsModal
+          budgetId={budgetId}
+          liability={liabilities.find((l) => l.id === activeModal.editingId) ?? null}
+          onClose={closeModal}
+        />
       )}
     </div>
   )

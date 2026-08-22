@@ -383,11 +383,13 @@ class LiabilitiesReportItem(BaseModel):
     liability_type: str
     mode: str  # 'managed' | 'unmanaged'
     current_balance: Decimal
-    interest_rate: Decimal
+    interest_rate: Decimal | None
     baseline_payoff_date: date | None
     live_payoff_date: date | None
-    total_interest_remaining: Decimal
+    # Null when the terms are unset — no schedule, so no interest to project.
+    total_interest_remaining: Decimal | None
     never_pays_off: bool
+    terms_complete: bool
 
 
 class LiabilitiesBalancePoint(BaseModel):
@@ -399,7 +401,10 @@ class LiabilitiesBalancePoint(BaseModel):
 class LiabilitiesReportResponse(BaseModel):
     items: list[LiabilitiesReportItem]
     total_balance: Decimal
+    # Sums only the rows whose terms are known; liabilities_missing_terms says
+    # how many were left out, so a partial total can be labelled as one.
     total_interest_remaining: Decimal
+    liabilities_missing_terms: int
     balance_over_time: list[LiabilitiesBalancePoint]
 
 

@@ -305,8 +305,10 @@ async def create_liability(
     liability_type: str = "personal",
     linked_account_id: uuid.UUID | None = None,
     manual_balance: Decimal | None = None,
-    interest_rate: Decimal = Decimal("6.0000"),
-    minimum_payment: Decimal = Decimal("250.00"),
+    # None on either is the "terms not set" state a companion liability starts
+    # in — both are nullable columns.
+    interest_rate: Decimal | None = Decimal("6.0000"),
+    minimum_payment: Decimal | None = Decimal("250.00"),
     origination_date: date | None = None,
     original_principal: Decimal | None = None,
 ) -> Liability:

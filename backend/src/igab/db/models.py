@@ -183,8 +183,10 @@ class Account(Base):
     account_type: Mapped[str] = mapped_column(String(30), nullable=False)
     on_budget: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Mirror of the type row's classification ('asset' | 'liability') — set for
-    # every account, on-budget included. Nullable only for pre-registry rows.
-    classification: Mapped[str | None] = mapped_column(String(20))
+    # every account, on-budget included. NOT NULL since b8c3e5a71f42: a null
+    # here reads as UNKNOWN in SQL, which makes both `= 'liability'` and its
+    # negation decline, silently disabling every rule that branches on it.
+    classification: Mapped[str] = mapped_column(String(20), nullable=False)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
@@ -1148,17 +1150,24 @@ class Liability(Base):
         UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    # 'mortgage'|'auto'|'student'|'personal'|'credit_card'|'medical'|'other'
-    liability_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # Authoritative only when linked_account_id IS NULL — the same rule as
+    # manual_balance below. A managed liability's kind comes from its account's
+    # type, which is why a companion stores none at all.
+    # Unmanaged vocabulary: 'mortgage'|'auto'|'student'|'personal'|
+    # 'credit_card'|'medical'|'other'
+    liability_type: Mapped[str | None] = mapped_column(String(30))
     linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), unique=True
     )
     # Authoritative only when linked_account_id IS NULL
     manual_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
-    # Annual percent, e.g. 6.2500
-    interest_rate: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False)
-    # Contractual payment — drives the baseline schedule
-    minimum_payment: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    # Annual percent, e.g. 6.2500. Null = not known yet: a companion liability
+    # created alongside its account starts with no terms, and zero is not a
+    # stand-in — at zero the schedule reports never_pays_off. Both term columns
+    # move together; LiabilityService.terms_complete is the single gate.
+    interest_rate: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    # Contractual payment — drives the baseline schedule. Null as above.
+    minimum_payment: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     compounding: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
     origination_date: Mapped[_PyDate | None] = mapped_column(Date)
     original_principal: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))

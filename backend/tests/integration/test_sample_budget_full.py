@@ -86,8 +86,8 @@ async def test_full_tier_shape_and_texture(db_session):
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
     assert counts.accounts == 16
     types = {a.account_type for a in accounts}
-    assert {"checking", "savings", "cash", "credit_card", "loan", "investment",
-            "other_asset"} <= types
+    assert {"checking", "savings", "cash", "credit_card", "auto_loan", "mortgage",
+            "investment", "other_asset"} <= types
     assert sum(1 for a in accounts if a.is_closed) == 1
     assert sum(1 for a in accounts if not a.on_budget) >= 8
     # Every account has a classification (the sidebar/net-worth contract)
@@ -140,7 +140,12 @@ async def test_full_tier_liabilities(db_session):
 
     liability_repo = LiabilityRepository(db_session)
     liabilities = {item.name: item for item in await liability_repo.get_all(budget.id)}
-    assert len(liabilities) == 4
+    # Four from the spec plus the Visa's companion: a liability-classified
+    # account without one is the dead-end state this model exists to remove.
+    assert len(liabilities) == 5
+    for account in await AccountRepository(db_session).get_all(budget.id, include_closed=True):
+        if account.classification == "liability":
+            assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
 
     mortgage = liabilities["Maple St Mortgage"]
     assert mortgage.linked_account_id is not None
@@ -208,4 +213,4 @@ async def test_endpoint_accepts_the_tier(api_client):
     counts = response.json()["counts"]
     assert counts["accounts"] == 16
     assert counts["transactions"] > 1500
-    assert counts["liabilities"] == 4
+    assert counts["liabilities"] == 5

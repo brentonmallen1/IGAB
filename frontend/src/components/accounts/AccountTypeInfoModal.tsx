@@ -68,8 +68,10 @@ export function AccountTypeInfoModal({ onClose, types }: Props) {
             <div className="type-info__concept">
               <div className="type-info__concept-title">Loans &amp; payoff tracking</div>
               <p>
-                A loan account holds the ledger. Add a Liability record (APR, minimum payment)
-                and link it to the account for payoff projections and interest math.
+                Pick Mortgage, Auto Loan, Student Loan, Credit Card or Loan and the payoff
+                tracking comes with the account — no second record to create. Fill in the APR
+                and minimum payment on the account page for projections, an amortization
+                schedule and interest math. Until then you still get a working ledger.
               </p>
             </div>
           </div>

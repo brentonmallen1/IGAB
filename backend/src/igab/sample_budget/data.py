@@ -78,14 +78,14 @@ SAMPLE_BUDGET = SampleBudgetSpec(
         AccountSpec(SAVINGS, "savings", opening_balance=_d("3200.00"), sort_order=1),
         AccountSpec(VISA, "credit_card", opening_balance=_d("-420.00"), sort_order=2),
         AccountSpec(
-            CAR_LOAN, "loan", on_budget=False, opening_balance=_d("-9480.00"), sort_order=3
+            CAR_LOAN, "auto_loan", on_budget=False, opening_balance=_d("-9480.00"), sort_order=3
         ),
         AccountSpec(
             BROKERAGE, "investment", on_budget=False, opening_balance=_d("12000.00"), sort_order=4
         ),
         AccountSpec(
             MORTGAGE,
-            "loan",
+            "mortgage",
             on_budget=False,
             opening_balance=_d("-286000.00"),
             sort_order=5,

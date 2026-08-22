@@ -66,17 +66,58 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         sort_order=3,
     ),
     BuiltinAccountType(
+        key="mortgage",
+        label="Mortgage",
+        classification="liability",
+        default_on_budget=False,
+        description=(
+            "A home loan. Off budget, with APR, payment and payoff tracking "
+            "attached to the account itself. Money you send here counts as "
+            "paying down debt, not spending, so it stays out of your spending "
+            "reports — including the escrow portion, which is why the payoff "
+            "figures use the principal-and-interest amount."
+        ),
+        sort_order=4,
+    ),
+    BuiltinAccountType(
+        key="auto_loan",
+        label="Auto Loan",
+        classification="liability",
+        default_on_budget=False,
+        description=(
+            "A car, truck, or other vehicle loan. Off budget. Money you send "
+            "here counts as paying down debt rather than spending. Track the "
+            "vehicle's value separately as an Other Asset if you want it in "
+            "net worth."
+        ),
+        sort_order=5,
+    ),
+    BuiltinAccountType(
+        key="student_loan",
+        label="Student Loan",
+        classification="liability",
+        default_on_budget=False,
+        description=(
+            "An education loan. Off budget. Money you send here counts as "
+            "paying down debt, not spending. Several loans that are billed "
+            "together can be one account, or separate ones if their rates "
+            "differ enough to matter."
+        ),
+        sort_order=6,
+    ),
+    BuiltinAccountType(
         key="loan",
         label="Loan",
         classification="liability",
         default_on_budget=False,
         description=(
-            "A mortgage, auto, student, or other loan. Usually off budget — "
-            "link a Liability record to it for payoff projections. Money you "
-            "send here counts as paying down debt, not spending, so it stays "
-            "out of your spending reports."
+            "Any other loan — personal, medical, a line of credit. Off budget. "
+            "Money you send here counts as paying down debt, not spending, so "
+            "it stays out of your spending reports. Pick Mortgage, Auto Loan "
+            "or Student Loan instead when one fits: they read better "
+            "everywhere the debt is named."
         ),
-        sort_order=4,
+        sort_order=7,
     ),
     BuiltinAccountType(
         key="investment",
@@ -90,7 +131,7 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
             "account — dividends, market movement — is not counted as saving, "
             "because you didn't put it there."
         ),
-        sort_order=5,
+        sort_order=8,
     ),
     BuiltinAccountType(
         key="other_asset",
@@ -102,7 +143,7 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
             "value, crypto, a manually tracked balance. Off budget, so money "
             "moved here counts as saving rather than spending."
         ),
-        sort_order=6,
+        sort_order=9,
     ),
     BuiltinAccountType(
         key="other_liability",
@@ -114,7 +155,7 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
             "budgeted transaction by transaction. Money you send here counts as "
             "paying down debt rather than spending."
         ),
-        sort_order=7,
+        sort_order=10,
     ),
 )
 

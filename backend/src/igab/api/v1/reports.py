@@ -430,6 +430,7 @@ async def liabilities_report(
         items=[LiabilitiesReportItem.model_validate(i) for i in data["items"]],
         total_balance=data["total_balance"],
         total_interest_remaining=data["total_interest_remaining"],
+        liabilities_missing_terms=data["liabilities_missing_terms"],
         balance_over_time=[
             LiabilitiesBalancePoint.model_validate(p) for p in data["balance_over_time"]
         ],

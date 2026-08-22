@@ -20,29 +20,24 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
+import { useAccountTypes } from '../../api/accountTypes'
+import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
 import './LiabilityPage.css'
-
-const TYPE_LABELS: Record<string, string> = {
-  mortgage: 'Mortgage',
-  auto: 'Auto loan',
-  student: 'Student loan',
-  personal: 'Personal loan',
-  credit_card: 'Credit card',
-  medical: 'Medical',
-  other: 'Other',
-}
 
 export function LiabilityPage() {
   const { formatMoney, formatMonth } = useFormatters()
   const { liabilityId } = useParams<{ liabilityId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
+  const { data: accountTypes } = useAccountTypes(budgetId)
   const navigate = useNavigate()
   const isMobile = useIsMobile()
 
   const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
   const liability = liabilities.find((d) => d.id === liabilityId) ?? null
 
-  const { isLiabilityEditorOpen, editingLiabilityId, openLiabilityEditor, closeLiabilityEditor } = useUIStore()
+  const activeModal = useUIStore((s) => s.activeModal)
+  const openModal = useUIStore((s) => s.openModal)
+  const closeModal = useUIStore((s) => s.closeModal)
 
   const [chartMode, setChartMode] = useState<'now' | 'beginning'>('now')
   const [extraInput, setExtraInput] = useState('')
@@ -95,9 +90,13 @@ export function LiabilityPage() {
       !c.linked_account_id
   )
 
-  const monthsRemaining = amortization?.baseline_never_pays_off
-    ? null
-    : amortization?.baseline_schedule.length ?? null
+  // Unknown, not zero. With no terms on file the schedule is empty, and an
+  // empty schedule counted as months would read "0 months remaining" — paid
+  // off — which is the opposite of what is true.
+  const monthsRemaining =
+    !amortization || !amortization.terms_complete || amortization.baseline_never_pays_off
+      ? null
+      : amortization.baseline_schedule.length
 
   async function handleSaveBalance(e: React.FormEvent) {
     e.preventDefault()
@@ -145,13 +144,19 @@ export function LiabilityPage() {
     toast.success('Category unlinked')
   }
 
+  // "Sooner" and "saved" are both differences against the contractual
+  // baseline, so neither exists without terms to form one.
   const whatIfSavings =
-    amortization?.extra_schedule && !amortization.extra_never_pays_off && extraPayment > 0
+    amortization?.terms_complete &&
+    amortization.extra_schedule &&
+    !amortization.extra_never_pays_off &&
+    extraPayment > 0
       ? {
           monthsSooner: amortization.baseline_never_pays_off
             ? null
             : amortization.baseline_schedule.length - amortization.extra_schedule.length,
-          interestSaved: amortization.baseline_total_interest - (amortization.extra_total_interest ?? 0),
+          interestSaved:
+            (amortization.baseline_total_interest ?? 0) - (amortization.extra_total_interest ?? 0),
         }
       : null
 
@@ -160,13 +165,13 @@ export function LiabilityPage() {
       <div className="liability-page__header">
         <div className="liability-page__header-left">
           <h1 className="liability-page__name">{liability.name}</h1>
-          <span className="liability-page__badge">{TYPE_LABELS[liability.liability_type] ?? 'Other'}</span>
+          <span className="liability-page__badge">{liabilityTypeLabel(liability.liability_type, accountTypes)}</span>
           <span className="liability-page__badge liability-page__badge--muted">
             {liability.mode === 'managed' ? 'Managed' : 'Unmanaged'}
           </span>
           <button
             className="liability-page__settings"
-            onClick={() => openLiabilityEditor(liability.id)}
+            onClick={() => openModal('liability', liability.id)}
             aria-label="Liability settings"
             title="Liability settings"
           >
@@ -255,20 +260,28 @@ export function LiabilityPage() {
           value={formatMoney(Number(liability.current_balance))}
           accent
         />
-        <MetricCard label="Interest Rate" value={`${Number(liability.interest_rate)}%`} />
+        {/* 0% is a real rate here — promo cards have one — so an unset rate
+            has to read differently from zero, not as Number(null). */}
+        <MetricCard
+          label="Interest Rate"
+          value={liability.interest_rate === null ? 'Not set' : `${Number(liability.interest_rate)}%`}
+          sub={liability.interest_rate === null ? 'Add it for a payoff date' : undefined}
+        />
         <MetricCard
           label="Interest Remaining"
           value={
-            amortization
-              ? amortization.baseline_never_pays_off
+            !amortization
+              ? '…'
+              : !amortization.terms_complete || amortization.baseline_never_pays_off
                 ? '—'
                 : formatMoney(Number(amortization.baseline_total_interest))
-              : '…'
           }
           sub={
-            amortization?.baseline_never_pays_off
-              ? "Minimum doesn't cover interest"
-              : 'At minimum payment'
+            amortization && !amortization.terms_complete
+              ? 'Needs APR and minimum payment'
+              : amortization?.baseline_never_pays_off
+                ? "Minimum doesn't cover interest"
+                : 'At minimum payment'
           }
         />
         <MetricCard
@@ -407,6 +420,24 @@ export function LiabilityPage() {
         {amortization ? (
           Number(liability.current_balance) === 0 ? (
             <div className="liability-page__empty">Nothing left to pay down.</div>
+          ) : !amortization.terms_complete ? (
+            // The curve past today IS the projection. Without terms there is
+            // nothing to draw but the balance you already know, so say what is
+            // missing rather than render an almost-empty chart.
+            <div className="liability-page__empty">
+              <p>
+                A paydown curve needs the APR and minimum payment — they decide how much of
+                each payment is interest, and therefore when this is gone.
+              </p>
+              <button
+                type="button"
+                className="liability-page__empty-action"
+                onClick={() => openModal('liability', liability.id)}
+              >
+                <Settings size={13} />
+                Add the terms
+              </button>
+            </div>
           ) : (
             <PaydownChart amortization={amortization} mode={chartMode} isMobile={isMobile} />
           )
@@ -421,7 +452,20 @@ export function LiabilityPage() {
           <span className="liability-page__section-sub">At the minimum payment</span>
         </div>
         {amortization ? (
-          amortization.baseline_never_pays_off && amortization.baseline_schedule.length === 0 ? (
+          !amortization.terms_complete ? (
+            <div className="liability-page__empty">
+              <p>Add this liability&apos;s APR and minimum payment to see its schedule.</p>
+              <button
+                type="button"
+                className="liability-page__empty-action"
+                onClick={() => openModal('liability', liability.id)}
+              >
+                <Settings size={13} />
+                Add the terms
+              </button>
+            </div>
+          ) : amortization.baseline_never_pays_off &&
+            amortization.baseline_schedule.length === 0 ? (
             <div className="liability-page__empty">
               The minimum payment doesn't cover interest — there is no schedule to show.
             </div>
@@ -471,11 +515,11 @@ export function LiabilityPage() {
         </div>
       )}
 
-      {isLiabilityEditorOpen && editingLiabilityId === liability.id && (
+      {activeModal?.kind === 'liability' && activeModal.editingId === liability.id && (
         <LiabilitySettingsModal
           budgetId={budgetId}
           liability={liability}
-          onClose={closeLiabilityEditor}
+          onClose={closeModal}
           onDeleted={() => navigate('/liabilities')}
         />
       )}

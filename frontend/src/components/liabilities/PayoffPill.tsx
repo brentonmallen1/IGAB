@@ -27,6 +27,28 @@ export function PayoffPill({ liability }: Props) {
     )
   }
 
+  // Missing terms is a different absence from missing history, and the fix
+  // differs too: enter an APR and a minimum, rather than wait for payments.
+  // Every branch below reads a projection that does not exist yet.
+  if (!liability.terms_complete) {
+    const paying =
+      liability.average_recent_payment !== null
+        ? formatMoney(Number(liability.average_recent_payment))
+        : null
+    return (
+      <div className="payoff-pill">
+        <div>
+          <div className="payoff-pill__main">No payoff estimate yet</div>
+          <div className="payoff-pill__sub">
+            {paying
+              ? `You're paying about ${paying}/mo — add the APR and minimum payment for a payoff date`
+              : 'Add the APR and minimum payment for a payoff date'}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const liveNever = liability.has_live_projection && liability.live_never_pays_off
   const baselineNever = liability.baseline_never_pays_off
   const interestNow = formatMoney(Number(liability.monthly_interest_now))

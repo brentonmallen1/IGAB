@@ -1,0 +1,73 @@
+.choice-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: 0 var(--spacing-md) var(--spacing-md);
+}
+
+.choice-sheet__message {
+  white-space: pre-line;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  text-align: center;
+}
+
+/* Options in the order given, cancel last: the thumb rests nearest the bottom,
+   so the choice that undoes nothing is the one it lands on by default. */
+.choice-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.choice-sheet__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 48px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+/* Every option here is a real outcome, so none of them is styled as the
+   "primary" one — the accent is reserved for the border that says which is
+   focused, not for steering the answer. */
+.choice-sheet__option:hover {
+  border-color: var(--color-accent);
+}
+
+.choice-sheet__option:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.choice-sheet__option--destructive .choice-sheet__label {
+  color: var(--color-danger);
+}
+
+.choice-sheet__label {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.choice-sheet__description {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.choice-sheet__cancel {
+  min-height: 48px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+}

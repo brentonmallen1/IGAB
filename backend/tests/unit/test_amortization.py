@@ -15,6 +15,7 @@ import pytest
 from igab.services.amortization import (
     add_months,
     amortization_schedule,
+    average_recent_payment,
     project_payoff,
     quantize_cents,
 )
@@ -196,6 +197,34 @@ class TestAddMonths:
     def test_day_clamp_february(self):
         assert add_months(date(2026, 1, 30), 1) == date(2026, 2, 28)
         assert add_months(date(2024, 1, 30), 1) == date(2024, 2, 29)  # leap year
+
+
+class TestAverageRecentPayment:
+    """Split out of project_payoff so the pace survives missing contract terms:
+    a liability with no APR on file can still say what is being paid."""
+
+    def test_below_two_positives_is_unknown(self):
+        # One payment is an event, not a pace.
+        assert average_recent_payment([]) is None
+        assert average_recent_payment([D("400.00")]) is None
+        assert average_recent_payment([D("0"), D("400.00"), D("0")]) is None
+
+    def test_mean_of_the_months_that_saw_a_payment(self):
+        assert average_recent_payment([D("300.00"), D("500.00")]) == D("400.00")
+
+    def test_skipped_months_do_not_dilute_the_average(self):
+        # Zero months are absence of evidence, not evidence of a $0 payment —
+        # averaging them in would halve the apparent pace.
+        assert average_recent_payment([D("0"), D("300.00"), D("0"), D("500.00")]) == D("400.00")
+
+    def test_quantized_to_cents(self):
+        assert average_recent_payment([D("100.00"), D("100.00"), D("101.00")]) == D("100.33")
+
+    def test_agrees_with_the_projection_it_was_extracted_from(self):
+        payments = [D("300.00"), D("500.00")]
+        projection = project_payoff(D("1000.00"), D("12"), payments, START)
+        assert projection is not None
+        assert projection.average_payment == average_recent_payment(payments)
 
 
 class TestProjectPayoff:

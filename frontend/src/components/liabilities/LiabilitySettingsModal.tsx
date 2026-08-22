@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../api/accounts'
+import { useAccountTypes } from '../../api/accountTypes'
+import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
 import {
   useCreateLiability,
   useLiabilities,
@@ -24,18 +26,11 @@ const LIABILITY_TYPES: { value: LiabilityType; label: string }[] = [
   { value: 'other', label: 'Other' },
 ]
 
-export interface LiabilityPrefill {
-  accountId: string
-  accountName: string
-  liabilityType?: LiabilityType
-}
-
 interface Props {
   budgetId: string
   liability: Liability | null // null = create
   onClose: () => void
   onDeleted?: () => void
-  prefill?: LiabilityPrefill // for suggesting from an untracked account
 }
 
 /**
@@ -43,27 +38,35 @@ interface Props {
  * exclusivity obvious: a liability tracks EITHER a real account's ledger OR a
  * manually entered balance — never both.
  */
-export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted, prefill }: Props) {
+export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted }: Props) {
   const { data: accounts = [] } = useAccounts(budgetId)
+  const { data: accountTypes } = useAccountTypes(budgetId)
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const createLiability = useCreateLiability(budgetId)
   const updateLiability = useUpdateLiability(budgetId)
   const deleteLiability = useDeleteLiability(budgetId)
 
-  const [name, setName] = useState(liability?.name ?? prefill?.accountName ?? '')
+  const [name, setName] = useState(liability?.name ?? '')
+  // Only meaningful for an unmanaged liability. A managed one reads its kind
+  // from the linked account, and liability.liability_type is that resolved
+  // account-type key — not one of these options.
   const [liabilityType, setLiabilityType] = useState<LiabilityType>(
-    liability?.liability_type ?? prefill?.liabilityType ?? 'personal'
+    (liability?.mode === 'unmanaged' ? liability.liability_type : null) ?? 'personal'
   )
   const [mode, setMode] = useState<'managed' | 'unmanaged'>(
-    liability?.mode ?? (prefill ? 'managed' : 'unmanaged')
+    liability?.mode ?? 'unmanaged'
   )
-  const [accountId, setAccountId] = useState(liability?.linked_account_id ?? prefill?.accountId ?? '')
+  const [accountId, setAccountId] = useState(liability?.linked_account_id ?? '')
   const [balance, setBalance] = useState(
     liability && liability.mode === 'unmanaged' ? String(liability.current_balance) : ''
   )
-  const [rate, setRate] = useState(liability ? String(liability.interest_rate) : '')
+  // Nullable since the terms became optional: String(null) would have shown a
+  // literal "null" in the field a companion row is created to have filled in.
+  const [rate, setRate] = useState(
+    liability?.interest_rate != null ? String(liability.interest_rate) : ''
+  )
   const [minimumPayment, setMinimumPayment] = useState(
-    liability ? String(liability.minimum_payment) : ''
+    liability?.minimum_payment != null ? String(liability.minimum_payment) : ''
   )
   const [originationDate, setOriginationDate] = useState(liability?.origination_date ?? '')
   const [originalPrincipal, setOriginalPrincipal] = useState(
@@ -110,7 +113,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
 
     const shared = {
       name: name.trim(),
-      liability_type: liabilityType,
+      // Dropped server-side for a managed liability; omitted here so the two
+      // never disagree about what was asked for.
+      ...(mode === 'unmanaged' ? { liability_type: liabilityType } : {}),
       interest_rate: rateNum,
       minimum_payment: paymentNum,
       origination_date: originationDate || null,
@@ -196,19 +201,31 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
           </label>
 
           <div className="liability-modal__row">
-            <label className="liability-modal__field">
-              <span>Type</span>
-              <select
-                value={liabilityType}
-                onChange={(e) => setLiabilityType(e.target.value as LiabilityType)}
-              >
-                {LIABILITY_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {mode === 'unmanaged' ? (
+              <label className="liability-modal__field">
+                <span>Type</span>
+                <select
+                  value={liabilityType}
+                  onChange={(e) => setLiabilityType(e.target.value as LiabilityType)}
+                >
+                  {LIABILITY_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="liability-modal__field">
+                <span>Type</span>
+                <input
+                  type="text"
+                  value={liabilityTypeLabel(liability?.liability_type, accountTypes)}
+                  readOnly
+                  title="Set by the linked account's type — change it on the account"
+                />
+              </label>
+            )}
             <label className="liability-modal__field">
               <span>Interest rate (% / yr)</span>
               <input

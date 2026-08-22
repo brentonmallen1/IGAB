@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { RefreshCw, CloudOff, Plus, Pencil, Trash2, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts, useDeleteAccount } from '../../api/accounts'
+import { useLiabilities } from '../../api/liabilities'
+import { confirmAccountDeletion } from '../../utils/confirmAccountDeletion'
 import { useAccountTypes } from '../../api/accountTypes'
 import { accountTypeLabel } from '../../constants/accountTypes'
 import {
@@ -22,7 +24,6 @@ import { useAppStore } from '../../stores/appStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
-import { confirmAsync } from '../../stores/confirmStore'
 
 
 function formatSyncAge(lastSyncAt: string | null): string {
@@ -143,6 +144,7 @@ export function AccountsOverviewPage() {
   const { data: accounts } = useAccounts(budgetId, { includeClosed: showClosed })
   const { data: typeRows } = useAccountTypes(budgetId)
   const deleteAccount = useDeleteAccount(budgetId ?? '')
+  const { data: liabilities = [] } = useLiabilities(budgetId)
 
   const { data: connections = [] } = useSimpleFINConnections()
   const primaryConnection = connections[0] ?? null
@@ -215,16 +217,15 @@ export function AccountsOverviewPage() {
 
   async function handleDelete(account: Account, e: React.MouseEvent) {
     e.stopPropagation()
-    const ok = await confirmAsync({
-      title: `Delete "${account.name}"?`,
-      message: 'This will also delete all its transactions. This cannot be undone.',
-      confirmLabel: 'Delete',
-      destructive: true,
-    })
-    if (!ok) return
+    const choice = await confirmAccountDeletion(account, liabilities)
+    if (!choice.proceed) return
     try {
-      await deleteAccount.mutateAsync(account.id)
-      toast.success(`Deleted ${account.name}`)
+      await deleteAccount.mutateAsync({ accountId: account.id, liability: choice.liability })
+      toast.success(
+        choice.liability === 'keep' && liabilities.some((l) => l.linked_account_id === account.id)
+          ? `Deleted ${account.name} — the debt is still tracked`
+          : `Deleted ${account.name}`
+      )
     } catch {
       toast.error(`Failed to delete ${account.name}`)
     }
