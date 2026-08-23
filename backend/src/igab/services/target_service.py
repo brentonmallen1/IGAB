@@ -112,12 +112,27 @@ class TargetService:
     ) -> str:
         """Returns 'funded', 'underfunded', or 'overfunded'.
 
-        Derived from `needed_gross` so the pill and Fill Underfunded cannot
-        disagree about the duty. The 5% band is what separates "met it" from
-        "put more in than it asked for".
-        """
-        needed = self.needed_gross(target, available, today)
+        The pill exists to say what Fill Underfunded will do, so "underfunded"
+        means exactly that: `calculate_needed` would move money here. Derived
+        from it rather than restated, which is what makes the two unable to
+        contradict each other.
 
-        if assigned >= needed:
-            return "overfunded" if assigned > needed * Decimal("1.05") else "funded"
-        return "underfunded"
+        A savings-balance goal is judged on the BALANCE, not on what was
+        assigned this month. It used to compare `assigned` against a shortfall
+        expressed in `available`, so a category holding $600 against a $1,000
+        goal read "funded" the moment $400 was assigned — even though $400 of
+        that had been spent again and Fill Underfunded would top it up. The
+        other target types are funding duties and are still judged on
+        `assigned`; a dated needed-for-spending goal asks for a monthly pace,
+        not the whole balance, so it is not judged on the balance either.
+        """
+        if self.calculate_needed(target, assigned, available, today) > 0:
+            return "underfunded"
+
+        # Met. Overfunded is "more than it asked for", measured the same way.
+        if target.target_type == "savings_balance":
+            goal, measure = target.target_amount, available
+        else:
+            goal, measure = self.needed_gross(target, available, today), assigned
+
+        return "overfunded" if measure > goal * Decimal("1.05") else "funded"

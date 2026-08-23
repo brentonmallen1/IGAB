@@ -65,10 +65,22 @@ class TestCalculateStatus:
         target = make_target("savings_balance", "1000")
         assert self.svc.calculate_status(target, Decimal("0"), Decimal("500")) == "underfunded"
 
-    def test_savings_balance_assigned_covers_shortfall(self):
-        # available=600, target=1000, shortfall=400, assigned=400 → funded
+    def test_savings_balance_is_judged_on_the_balance_not_the_assignment(self):
+        # available=600 against a 1000 goal, 400 assigned this month. This read
+        # "funded" until the pill was tied to Fill Underfunded: 400 of what was
+        # assigned had been spent again, the balance is still 400 short, and
+        # Fill Underfunded moves 400 more. A pill that says funded there is
+        # predicting the opposite of what the button does.
         target = make_target("savings_balance", "1000")
-        assert self.svc.calculate_status(target, Decimal("400"), Decimal("600")) == "funded"
+        assert self.svc.calculate_status(target, Decimal("400"), Decimal("600")) == "underfunded"
+
+    def test_savings_balance_funded_once_the_balance_arrives(self):
+        target = make_target("savings_balance", "1000")
+        assert self.svc.calculate_status(target, Decimal("400"), Decimal("1000")) == "funded"
+
+    def test_savings_balance_overfunded_reads_the_balance_too(self):
+        target = make_target("savings_balance", "1000")
+        assert self.svc.calculate_status(target, Decimal("0"), Decimal("1100")) == "overfunded"
 
     def test_needed_for_spending_no_date_uses_full_amount(self):
         target = make_target("needed_for_spending", "300", target_date=None)
@@ -116,26 +128,15 @@ class TestThePillPredictsFillUnderfunded:
             needed = self.svc.calculate_needed(target, Decimal(assigned), Decimal(available))
         assert (status == "underfunded") == (needed > 0)
 
-    def test_a_savings_balance_goal_can_still_read_funded_while_short(self):
-        """KNOWN DIVERGENCE — deliberately pinned, not endorsed.
-
-        available=600 against a 1000 goal, with 400 assigned this month: the
-        pill reads "funded" because assigned covers the shortfall, while
-        calculate_needed still returns 400 and Fill Underfunded would move it.
-
-        The two are consistent about the *duty* now; what differs is the
-        measure the status compares it against — `assigned` for a goal whose
-        shortfall is expressed in `available`. Fixing it means deciding that
-        a savings-balance target is funded when the BALANCE is met, which
-        changes what the pill says on live budgets. Flagged rather than
-        changed here; `test_savings_balance_assigned_covers_shortfall` above
-        pins the current answer.
-        """
+    @pytest.mark.parametrize(
+        ("assigned", "available"),
+        [("0", "0"), ("400", "600"), ("0", "1000"), ("400", "1000"), ("0", "1100")],
+    )
+    def test_savings_balance_agrees(self, assigned, available):
         target = make_target("savings_balance", "1000")
-        assigned, available = Decimal("400"), Decimal("600")
-
-        assert self.svc.calculate_status(target, assigned, available) == "funded"
-        assert self.svc.calculate_needed(target, assigned, available) == Decimal("400")
+        status = self.svc.calculate_status(target, Decimal(assigned), Decimal(available))
+        needed = self.svc.calculate_needed(target, Decimal(assigned), Decimal(available))
+        assert (status == "underfunded") == (needed > 0)
 
 
 class TestNeededGrossIsTheOneDuty:
