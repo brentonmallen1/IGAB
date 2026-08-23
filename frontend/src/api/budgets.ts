@@ -341,6 +341,16 @@ export interface YnabAccountPreview {
   /** Sum of the account's register rows — the fastest way for a user to tell
    *  a house from its mortgage. Serialized as a decimal string. */
   implied_balance: string
+  /** Oldest and newest register dates (ISO), or null for an empty account.
+   *  A YNAB export carries no closed-account marker, so this is the only
+   *  signal that an account has been dormant for years. */
+  first_activity: string | null
+  last_activity: string | null
+  /** Accounts sharing a leading name fragment — an institution's accounts, or
+   *  something you own and the debt against it. A prompt to compare, never a
+   *  merge suggestion: measured on a real export, fuzzy similarity scores 100
+   *  for "Redwood" vs "Redwood CC", which are different accounts. */
+  related_group: string | null
 }
 
 export interface YnabPreviewResult {
@@ -355,6 +365,11 @@ export interface YnabAccountTypeChoice {
   /** Leave this account (and all its transactions) out of the import —
    * YNAB exports include archived accounts with no marker. */
   skip?: boolean
+  /** Import everything, then close the account. Prefer this to `skip` for a
+   * dormant account: it keeps the history (so net worth over time stays
+   * whole and transfers still pair up) and only hides the account from
+   * pickers and report filters. */
+  close?: boolean
 }
 
 /** Parse the export without importing — feeds the account-type mapping step */

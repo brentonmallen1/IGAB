@@ -133,7 +133,7 @@ async def import_ynab_as_budget(
 
     # Validate the mapping and the zip BEFORE creating the budget so a bad
     # request doesn't leave an empty budget behind.
-    type_map, skip_accounts = parse_account_types_form(account_types)
+    type_map, skip_accounts, close_accounts = parse_account_types_form(account_types)
     ynab_budget = await parse_uploaded_ynab_zip(file)
 
     budget_name = name.strip()
@@ -165,6 +165,7 @@ async def import_ynab_as_budget(
         assignment_repo=assignment_repo,
         account_types=type_map,
         skip_accounts=skip_accounts,
+        close_accounts=close_accounts,
     )
     # On failure this raises a 400; get_session rolls back, discarding the
     # budget created above along with every partial row.
@@ -180,6 +181,7 @@ async def import_ynab_as_budget(
             skipped=result.transactions_skipped,
             assignments=result.assignments_imported,
             accounts_skipped=result.accounts_skipped,
+            accounts_closed=result.accounts_closed,
             transactions_excluded=result.transactions_excluded,
             transfer_legs_unpaired=result.transfer_legs_unpaired,
             errors=result.errors,

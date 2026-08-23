@@ -71,6 +71,7 @@ def make_service(payee: MockPayee | None) -> TransactionService:
     payee_repo.update = AsyncMock()
 
     txn_repo = MagicMock()
+    txn_repo.refresh = AsyncMock()
     txn_repo.create = AsyncMock(return_value=txn)
     txn_repo.get_most_recent_category_for_payee = AsyncMock(return_value=None)
 

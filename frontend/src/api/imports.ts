@@ -17,6 +17,9 @@ export interface YnabImportResult {
   assignments: number
   /** Accounts the user chose to leave out (closed/archived YNAB accounts). */
   accounts_skipped: number
+  /** Imported in full, then closed at the user's request — every transaction
+   *  arrived, only the account is hidden from pickers and report filters. */
+  accounts_closed: number
   /** Rows belonging to those accounts — distinct from `skipped` (dedup/errors). */
   transactions_excluded: number
   /** Transfer legs imported without their partner. Non-zero means some rows

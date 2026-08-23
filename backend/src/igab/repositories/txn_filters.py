@@ -14,7 +14,7 @@ amounts are provisional (auth holds change at posting), so money moves exactly
 once — when the transaction posts. This mirrors AccountRepository.get_balance.
 """
 
-from sqlalchemy import Boolean, func, not_, or_, select
+from sqlalchemy import Boolean, and_, func, not_, or_, select
 from sqlalchemy.orm import aliased
 
 from igab.db.models import Account, Payee, Transaction
@@ -95,4 +95,72 @@ CASH_FLOW_ROW = or_(~TRANSFER_LEG, Transaction.category_id.isnot(None), COUNTERP
 # take an explicit account filter let the user's selection override this.
 ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
     select(Account.id).where(Account.on_budget == True)  # noqa: E712
+)
+
+
+#: A transfer leg whose partner never arrived: the payee names another account,
+#: but no row links back. Balances stay right — both sides were written — but
+#: nothing marks the row as internal movement, so reports read it as real
+#: income or spending until someone disbelieves a chart.
+#:
+#: A YNAB import produces these in bulk when an account is left out: the far
+#: leg is never created, so there is nothing to pair with. One real import
+#: made 1,117.
+#:
+#: Note this is NOT the existing `is_transfer` filter, which tests
+#: `transfer_id` alone — `is_transfer=false` returns every ordinary
+#: transaction as well as these.
+#:
+#: `category_id IS NULL` is the third condition and it is load-bearing. A
+#: *categorized* transfer leg is a YNAB spending transfer: deliberately
+#: unpaired, and correctly counted as spending because the category is the
+#: whole point. The importer knows this — it only ever tries to pair
+#: uncategorized legs (`importer.py`: `payee.startswith("Transfer : ") and
+#: category_id is None`) — so without this condition the predicate counts 169
+#: rows on a real export that the importer does not, and the hygiene panel
+#: promises a number the list it links to cannot show. Same definition, both
+#: sides; asserted against a real import in test_ynab_import.py.
+UNPAIRED_TRANSFER_LEG = and_(
+    TRANSFER_PAYEE,
+    Transaction.transfer_id.is_(None),
+    Transaction.category_id.is_(None),
+)
+
+
+#: A row the user still has to file: no category, and it is the kind of row a
+#: category is *for*.
+#:
+#: The three exclusions all matter, and each was wrong somewhere before this
+#: existed:
+#:
+#: - `LEAF` — a split parent carries no category by design; its legs do.
+#: - `ON_BUDGET_ACCOUNT` — off-budget rows (market movement, payroll
+#:   contributions, loan interest) are net-worth movement, not spending
+#:   awaiting a category.
+#: - `CASH_FLOW_ROW` — the load-bearing one. Testing `transfer_id IS NULL`
+#:   instead recognises only a *linked* transfer, so a leg whose partner never
+#:   turned up (a skipped account, an unmatched pair) was counted as needing a
+#:   category. A real YNAB import produced 1,117 of those. `CASH_FLOW_ROW`
+#:   reads TRANSFER_LEG, which knows a transfer by its payee as well as its
+#:   link — and it keeps the case that genuinely does need one: a transfer to
+#:   an OFF-budget account is a mortgage payment, and budgeting for it is the
+#:   whole point.
+#:
+#: Stated as an invariant: **needs a category** agrees with **counts as budget
+#: cash flow**. A row that does not count cannot need one; a row that counts
+#: and has none, does. `CASH_FLOW_ROW`'s middle arm (`category_id IS NOT NULL`)
+#: is dead here because of the first condition, so the two compose exactly.
+#: POSTED is deliberately NOT part of this. Whether a category applies to a row
+#: is a fact about the row; whether it is *work the user can do now* is a
+#: question the caller asks. Counters (the badge, the per-account count) add
+#: POSTED because a pending amount is provisional and often arrives with its
+#: payee. The Uncategorized filter does not, because a filter shows rows that
+#: match rather than tallying a workload. That divergence is intended, is
+#: bounded to exactly the pending uncategorized rows, and is pinned by a test —
+#: do not "fix" it into agreement.
+NEEDS_CATEGORY = and_(
+    Transaction.category_id.is_(None),
+    LEAF,
+    ON_BUDGET_ACCOUNT,
+    CASH_FLOW_ROW,
 )

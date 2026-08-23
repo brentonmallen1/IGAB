@@ -5,7 +5,8 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, update
+from sqlalchemy import Integer, Select, and_, case, cast, func, insert, or_, select, update
+from sqlalchemy.orm import with_expression
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import Payee, Transaction, TransactionAttachment
@@ -14,10 +15,11 @@ from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
+    NEEDS_CATEGORY,
     NOT_DELETED,
-    ON_BUDGET_ACCOUNT,
     PARENT_ROW,
     POSTED,
+    UNPAIRED_TRANSFER_LEG,
 )
 
 if TYPE_CHECKING:
@@ -54,6 +56,54 @@ def _search_predicate(search: str):
 class TransactionRepository(BaseRepository[Transaction]):
     model = Transaction
 
+    @staticmethod
+    def with_needs_category(stmt: Select[tuple[Transaction]]) -> Select[tuple[Transaction]]:
+        """Load `Transaction.needs_category` on a statement selecting Transaction.
+
+        Every path that serializes a `TransactionResponse` has to go through
+        here. The field is required in the schema, so a path that skips it
+        raises rather than reporting an unfiled row as filed — the failure
+        direction that matters when the number is a count of work the user
+        still owes.
+        """
+        return stmt.options(with_expression(Transaction.needs_category, NEEDS_CATEGORY))
+
+    async def get(self, id: uuid.UUID) -> Transaction | None:
+        # Overrides BaseRepository.get to carry needs_category. populate_existing
+        # is load-bearing: after a flush the row is already in the identity map,
+        # and SQLAlchemy leaves a with_expression attribute unset on an object
+        # it has seen before — which would surface as None on exactly the
+        # create/update responses, and only those.
+        stmt = self.with_needs_category(
+            select(Transaction).where(Transaction.id == id, NOT_DELETED)
+        ).execution_options(populate_existing=True)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def refresh(self, txn: Transaction) -> None:
+        """Reload post-flush state, keeping `needs_category` populated.
+
+        `Session.refresh()` takes no loader options, so it reloads the columns
+        and silently drops the with_expression value — the row then serializes
+        as None and the endpoint 500s. Re-selecting with the option costs the
+        same single round trip and cannot lose it.
+
+        No is_deleted filter: this refreshes an object already in hand, and a
+        soft-deleted row still has to be snapshot-able for the change log.
+        """
+        stmt = self.with_needs_category(
+            select(Transaction).where(Transaction.id == txn.id)
+        ).execution_options(populate_existing=True)
+        await self.session.execute(stmt)
+
+    async def create(self, **kwargs: Any) -> Transaction:
+        # Same round-trip count as the base implementation — it ends in a
+        # refresh(), which is also a SELECT. This one just asks for the
+        # expression too.
+        obj = Transaction(**kwargs)
+        self.session.add(obj)
+        await self.session.flush()
+        return await self.get_or_raise(obj.id)
+
     async def get_for_account(
         self,
         account_id: uuid.UUID,
@@ -74,8 +124,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         has_attachment: bool | None = None,
         direction: str | None = None,
         is_transfer: bool | None = None,
+        unpaired_transfers: bool = False,
     ) -> list[Transaction]:
-        q = select(Transaction).where(
+        q = self.with_needs_category(select(Transaction)).where(
             Transaction.account_id == account_id,
             Transaction.is_deleted == False,  # noqa: E712
             Transaction.parent_transaction_id.is_(None),
@@ -90,6 +141,11 @@ class TransactionRepository(BaseRepository[Transaction]):
                 if is_transfer
                 else Transaction.transfer_id.is_(None)
             )
+        # Supported here as well as budget-wide: the register sends the same
+        # parsed filters either way, and a filter the account view silently
+        # ignored would return every row under a heading promising otherwise.
+        if unpaired_transfers:
+            q = q.where(UNPAIRED_TRANSFER_LEG)
         if search:
             q = q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             q = q.where(_search_predicate(search))
@@ -97,22 +153,15 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(Transaction.cleared == cleared)
         if exclude_cleared:
             q = q.where(Transaction.cleared != exclude_cleared)
+        # NEEDS_CATEGORY, not a local spelling of it. This filter kept the
+        # pre-fix rule after every other site moved, so the account register's
+        # Uncategorized filter still listed unpaired transfer legs while the
+        # badge above it — counting the same thing — did not.
         if uncategorized and unapproved and is_or_mode:
-            q = q.where(
-                or_(
-                    and_(
-                        Transaction.category_id.is_(None),
-                        Transaction.is_split == False,  # noqa: E712
-                    ),
-                    Transaction.approved == False,  # noqa: E712
-                )
-            )
+            q = q.where(or_(NEEDS_CATEGORY, Transaction.approved == False))  # noqa: E712
         else:
             if uncategorized:
-                q = q.where(
-                    Transaction.category_id.is_(None),
-                    Transaction.is_split == False,  # noqa: E712
-                )
+                q = q.where(NEEDS_CATEGORY)
             if unapproved:
                 q = q.where(Transaction.approved == False)  # noqa: E712
         if start_date:
@@ -136,14 +185,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(attachment_exists if has_attachment else ~attachment_exists)
         priority_rank = case(
             (Transaction.cleared == "pending", 0),
-            (
-                and_(
-                    Transaction.category_id.is_(None),
-                    Transaction.transfer_id.is_(None),
-                    Transaction.is_split == False,  # noqa: E712
-                ),
-                1,
-            ),
+            (NEEDS_CATEGORY, 1),
             (Transaction.cleared == "uncleared", 2),
             else_=3,
         )
@@ -184,6 +226,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         amount_max: float | None = None,
         has_attachment: bool | None = None,
         is_transfer: bool | None = None,
+        unpaired_transfers: bool = False,
         order: str = "date",
         limit: int = 200,
         offset: int = 0,
@@ -238,10 +281,10 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(Transaction.cleared == cleared)
         if exclude_cleared:
             where.append(Transaction.cleared != exclude_cleared)
-        uncategorized_pred = and_(
-            Transaction.category_id.is_(None),
-            Transaction.is_split == False,  # noqa: E712
-        )
+        # The same rule the needs-attention badge counts. They disagreed: this
+        # excluded neither transfers nor off-budget rows, so pressing the badge
+        # opened a list longer than the badge promised.
+        uncategorized_pred = NEEDS_CATEGORY
         if uncategorized and unapproved and is_or_mode:
             where.append(or_(uncategorized_pred, Transaction.approved == False))  # noqa: E712
         else:
@@ -262,8 +305,13 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(attachment_exists if has_attachment else ~attachment_exists)
         if search:
             where.append(_search_predicate(search))
+        # Deliberately its own filter rather than a mode of `is_transfer`:
+        # that one tests transfer_id alone, so it cannot express "has a
+        # transfer payee but no partner" at all.
+        if unpaired_transfers:
+            where.append(UNPAIRED_TRANSFER_LEG)
 
-        rows_q = select(Transaction)
+        rows_q = self.with_needs_category(select(Transaction))
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
             Transaction
         )
@@ -278,17 +326,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         if order == "register":
             priority_rank = case(
                 (Transaction.cleared == "pending", 0),
-                (
-                    # Rows genuinely missing a category — off-budget accounts
-                    # don't use categories, so their rows never rank here
-                    and_(
-                        Transaction.category_id.is_(None),
-                        Transaction.transfer_id.is_(None),
-                        Transaction.is_split == False,  # noqa: E712
-                        ON_BUDGET_ACCOUNT,
-                    ),
-                    1,
-                ),
+                # Rows genuinely missing a category — off-budget accounts don't
+                # use categories, and a transfer between two on-budget accounts
+                # never needed one, linked or not.
+                (NEEDS_CATEGORY, 1),
                 (Transaction.cleared == "uncleared", 2),
                 else_=3,
             )
@@ -356,17 +397,19 @@ class TransactionRepository(BaseRepository[Transaction]):
         return result.scalar_one() or 0
 
     async def _count_pending_review(self, base_where) -> dict:
-        # Off-budget accounts don't use categories: their plain rows (market
-        # adjustments, payroll contributions) are net-worth movement, not
-        # spending waiting to be filed. Approval still applies everywhere.
-        needs_category = and_(
-            Transaction.category_id.is_(None),
-            Transaction.is_split == False,  # noqa: E712
-            Transaction.transfer_id.is_(None),
-            ON_BUDGET_ACCOUNT,
-        )
+        # Approval still applies everywhere; a category does not. See
+        # NEEDS_CATEGORY for which rows a category is actually for.
+        #
+        # POSTED is applied here and NOT inside NEEDS_CATEGORY, on purpose.
+        # This is a count of work the user can act on, and a pending row is not
+        # actionable — the amount is provisional and the payee often arrives
+        # with it. The Uncategorized *filter* deliberately keeps pending rows,
+        # because a filter answers "show me rows matching this" rather than
+        # "how much is waiting for me". So the badge and that filter can
+        # legitimately differ by the number of pending uncategorized rows, and
+        # only by that. Pinned in test_offbudget_categories.py.
+        needs_category = NEEDS_CATEGORY
         unapproved = Transaction.approved == False  # noqa: E712
-        not_pending = Transaction.cleared != "pending"
 
         result = await self.session.execute(
             select(
@@ -379,7 +422,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 func.sum(
                     cast(case((and_(~unapproved, needs_category), 1), else_=0), Integer)
                 ).label("uncategorized_only"),
-            ).where(and_(base_where, not_pending))
+            ).where(and_(base_where, POSTED))
         )
         row = result.one()
         both = row.both or 0

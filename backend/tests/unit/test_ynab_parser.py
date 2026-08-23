@@ -49,8 +49,36 @@ class TestParseCurrency:
     def test_zero(self):
         assert _parse_currency("$0.00") == Decimal("0")
 
-    def test_invalid(self):
-        assert _parse_currency("N/A") == Decimal("0")
+    def test_an_unreadable_amount_raises_instead_of_becoming_zero(self):
+        """This test used to assert the opposite, pinning the bug in place.
+
+        Returning Decimal("0") imported the transaction anyway with no money
+        in it: the row count still reconciled and only the balance was wrong,
+        which is the hardest kind of error to notice and the worst kind to
+        have in a ledger. Callers now skip the row and say which one."""
+        with pytest.raises(ValueError):
+            _parse_currency("N/A")
+
+    def test_an_ambiguous_european_decimal_is_rejected_not_guessed(self):
+        """ "1,50" is either one-fifty or one hundred and fifty. The old
+        parser stripped the comma and returned 150 — a hundredfold error, in
+        silence. The shared parser refuses to guess."""
+        with pytest.raises(ValueError):
+            _parse_currency("1,50")
+
+    def test_non_finite_and_absurd_magnitudes_are_rejected(self):
+        """What `domain/money.py` exists for: "a single NaN poisons every SUM
+        the app runs". This path went around validate_money entirely."""
+        for bad in ("NaN", "Infinity", "99999999999999"):
+            with pytest.raises(ValueError):
+                _parse_currency(bad)
+
+    def test_european_thousands_still_parse(self):
+        # Both separators present: the rightmost is the decimal point.
+        assert _parse_currency("1.234,56") == Decimal("1234.56")
+
+    def test_parenthesised_negatives_parse(self):
+        assert _parse_currency("($45.00)") == Decimal("-45.00")
 
 
 class TestParseDate:
@@ -69,8 +97,20 @@ class TestParseMonth:
         assert _parse_month("Apr 2026") == date(2026, 4, 1)
 
     def test_all_months(self):
-        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        months = [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
+        ]
         for i, abbr in enumerate(months, start=1):
             assert _parse_month(f"{abbr} 2025") == date(2025, i, 1)
 
@@ -310,3 +350,55 @@ class TestSplitReassembly:
         assert len(txns) == 1
         assert not txns[0].splits
         assert txns[0].memo == "Split (tentative) with Alex"
+
+
+class TestAnUnreadableAmountIsReportedNotInvented:
+    """A dropped row is visible in the counts. A row imported with a silently
+    invented zero is not: the count reconciles and only the balance is wrong.
+
+    This is the failure `domain/money.py` was written to prevent, and the YNAB
+    path went around it — the CSV path has always used `parse_csv_amount`.
+    """
+
+    def test_a_bad_register_row_is_skipped_and_recorded(self):
+        parser = YNABParser()
+        register = SPLIT_HEADER + _reg_row(outflow="N/A") + _reg_row(outflow="$12.00")
+
+        txns = parser.parse_register_csv(register)
+
+        assert len(txns) == 1, "the readable row still imports"
+        assert txns[0].amount == Decimal("-12.00")
+        assert len(parser.errors) == 1
+        assert "Checking" in parser.errors[0]
+
+    def test_a_bad_plan_row_is_skipped_and_recorded(self):
+        parser = YNABParser()
+        plan = (
+            '"Month","Category Group/Category","Category Group","Category",'
+            '"Assigned","Activity","Available"\n'
+            '"Apr 2026","Food: Groceries","Food","Groceries",N/A,$0.00,$0.00\n'
+            '"Apr 2026","Food: Restaurants","Food","Restaurants",$100.00,$0.00,$100.00\n'
+        )
+
+        entries = parser.parse_plan_csv(plan)
+
+        assert len(entries) == 1
+        assert entries[0].category == "Restaurants"
+        assert len(parser.errors) == 1
+
+    def test_the_errors_reach_the_parsed_budget(self, tmp_path: Path):
+        parser = YNABParser()
+        path = _make_zip(tmp_path, SPLIT_HEADER + _reg_row(outflow="N/A"))
+
+        budget = parser.parse_zip(path)
+
+        assert budget.transactions == []
+        assert len(budget.errors) == 1
+
+    def test_a_clean_export_reports_nothing(self, tmp_path: Path):
+        parser = YNABParser()
+        path = _make_zip(tmp_path, REGISTER_CSV, PLAN_CSV)
+
+        budget = parser.parse_zip(path)
+
+        assert budget.errors == []

@@ -38,3 +38,7 @@ class YNABBudgetEntry:
 class YNABBudget:
     transactions: list[YNABTransaction] = field(default_factory=list)
     budget_entries: list[YNABBudgetEntry] = field(default_factory=list)
+    #: Rows dropped at parse time because their amount could not be read. A
+    #: dropped row is visible in the counts; a row imported with a silently
+    #: invented zero is not.
+    errors: list[str] = field(default_factory=list)

@@ -161,6 +161,14 @@ export interface Transaction {
   bank_payee: string | null
   payee_id: string | null
   category_id: string | null
+  /**
+   * Does the user still have to file this row? Computed by the server from
+   * `NEEDS_CATEGORY` (backend/src/igab/repositories/txn_filters.py) — the
+   * single definition of the rule. Never re-derive it here: this file once
+   * carried a second implementation and the two disagreed, drawing ~930 rows
+   * as unfiled under a badge that counted 3.
+   */
+  needs_category: boolean
   memo: string | null
   cleared: ClearedStatus
   approved: boolean

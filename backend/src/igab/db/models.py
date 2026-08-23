@@ -24,7 +24,13 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    query_expression,
+    relationship,
+)
 
 
 class Base(DeclarativeBase):
@@ -461,6 +467,22 @@ class Transaction(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    #: Does the user still have to file this row? **Not a column** — no value is
+    #: stored, and none could be: the answer depends on the counterpart
+    #: account's `on_budget`, which changes without this row being touched.
+    #:
+    #: It exists so the rule has exactly one implementation. The register used
+    #: to re-derive it in TypeScript, and the two spent months disagreeing —
+    #: a badge counting 3 above a list drawing 930. The rule is
+    #: `NEEDS_CATEGORY` (repositories/txn_filters.py) and nothing else may
+    #: restate it; clients read this field.
+    #:
+    #: Populated only by queries that ask, via
+    #: `TransactionRepository.with_needs_category`. Left alone it reads `None`,
+    #: which `TransactionResponse` rejects — a path that forgets fails loudly
+    #: instead of quietly reporting everything as filed.
+    needs_category: Mapped[bool] = query_expression()
 
     account: Mapped["Account"] = relationship(
         back_populates="transactions", foreign_keys=[account_id]

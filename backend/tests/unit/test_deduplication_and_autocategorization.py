@@ -15,8 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from igab.api.v1.imports import _generate_import_id as csv_generate_import_id
-from igab.integrations.ynab.importer import _generate_import_id as ynab_generate_import_id
+from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 
 # ─── Import ID Generation Tests ──────────────────────────────────────────────
 
@@ -31,8 +30,8 @@ class TestImportIdGeneration:
         amount = Decimal("-25.50")
         payee = "Grocery Store"
 
-        id1 = csv_generate_import_id(account_id, txn_date, amount, payee)
-        id2 = csv_generate_import_id(account_id, txn_date, amount, payee)
+        id1 = generate_import_id(account_id, txn_date, amount, payee)
+        id2 = generate_import_id(account_id, txn_date, amount, payee)
 
         assert id1 == id2
         assert id1.startswith("csv:")
@@ -43,8 +42,8 @@ class TestImportIdGeneration:
         txn_date = date(2026, 4, 15)
         amount = Decimal("-25.50")
 
-        id1 = csv_generate_import_id(account_id, txn_date, amount, "Store A")
-        id2 = csv_generate_import_id(account_id, txn_date, amount, "Store B")
+        id1 = generate_import_id(account_id, txn_date, amount, "Store A")
+        id2 = generate_import_id(account_id, txn_date, amount, "Store B")
 
         assert id1 != id2
 
@@ -54,8 +53,8 @@ class TestImportIdGeneration:
         txn_date = date(2026, 4, 15)
         payee = "Store"
 
-        id1 = csv_generate_import_id(account_id, txn_date, Decimal("-25.50"), payee)
-        id2 = csv_generate_import_id(account_id, txn_date, Decimal("-25.51"), payee)
+        id1 = generate_import_id(account_id, txn_date, Decimal("-25.50"), payee)
+        id2 = generate_import_id(account_id, txn_date, Decimal("-25.51"), payee)
 
         assert id1 != id2
 
@@ -65,8 +64,8 @@ class TestImportIdGeneration:
         amount = Decimal("-25.50")
         payee = "Store"
 
-        id1 = csv_generate_import_id(account_id, date(2026, 4, 15), amount, payee)
-        id2 = csv_generate_import_id(account_id, date(2026, 4, 16), amount, payee)
+        id1 = generate_import_id(account_id, date(2026, 4, 15), amount, payee)
+        id2 = generate_import_id(account_id, date(2026, 4, 16), amount, payee)
 
         assert id1 != id2
 
@@ -76,10 +75,10 @@ class TestImportIdGeneration:
         amount = Decimal("-25.50")
         payee = "Store"
 
-        id1 = csv_generate_import_id(
+        id1 = generate_import_id(
             uuid.UUID("11111111-1111-1111-1111-111111111111"), txn_date, amount, payee
         )
-        id2 = csv_generate_import_id(
+        id2 = generate_import_id(
             uuid.UUID("22222222-2222-2222-2222-222222222222"), txn_date, amount, payee
         )
 
@@ -91,33 +90,76 @@ class TestImportIdGeneration:
         txn_date = date(2026, 4, 15)
         amount = Decimal("-25.50")
 
-        id1 = csv_generate_import_id(account_id, txn_date, amount, "")
+        id1 = generate_import_id(account_id, txn_date, amount, "")
         assert id1.startswith("csv:")
         assert len(id1) == 4 + 16  # "csv:" + 16 hex chars
 
-    def test_ynab_import_id_is_deterministic(self):
-        """YNAB import_id generation is also deterministic."""
-        account_name = "Checking"
+    def test_both_importers_derive_the_same_id_for_the_same_row(self):
+        """There used to be two of these functions, same name and same hash
+        construction, differing only in key material — CSV keyed on the
+        account UUID, YNAB on the account name. Both wrote the same column and
+        were checked by the same query, so a CSV import into a budget created
+        by a YNAB import never deduplicated against it.
+
+        There is one function now, and this asserts callers cannot drift
+        apart again by importing it from two places."""
+        from igab.api.v1 import imports as csv_importer
+        from igab.integrations.ynab import importer as ynab_importer
+
+        assert csv_importer.generate_import_id is generate_import_id
+        assert ynab_importer.generate_import_id is generate_import_id
+
+    def test_the_amount_is_quantized_before_hashing(self):
+        """`Decimal("10.00")` and `Decimal("10.0000")` are the same money.
+        Numeric(19,4) normalizes scale on the round trip, so an id computed
+        before insert would not match one recomputed after."""
+        account_id = uuid.UUID("12345678-1234-5678-1234-567812345678")
         txn_date = date(2026, 4, 15)
-        amount = Decimal("-25.50")
-        payee = "Grocery Store"
 
-        id1 = ynab_generate_import_id(account_name, txn_date, amount, payee)
-        id2 = ynab_generate_import_id(account_name, txn_date, amount, payee)
+        assert generate_import_id(
+            account_id, txn_date, Decimal("-25.50"), "Store"
+        ) == generate_import_id(account_id, txn_date, Decimal("-25.5000"), "Store")
 
-        assert id1 == id2
-        assert id1.startswith("csv:")
+    def test_renaming_an_account_does_not_change_its_transactions_identity(self):
+        """The key is the account id, which a rename does not touch. Keyed on
+        the name, every prior transaction would re-import as a duplicate."""
+        account_id = uuid.UUID("12345678-1234-5678-1234-567812345678")
+        args = (account_id, date(2026, 4, 15), Decimal("-25.50"), "Store")
+        assert generate_import_id(*args) == generate_import_id(*args)
 
-    def test_ynab_import_id_different_account_names(self):
-        """Different account names produce different import_ids."""
-        txn_date = date(2026, 4, 15)
-        amount = Decimal("-25.50")
-        payee = "Store"
 
-        id1 = ynab_generate_import_id("Checking", txn_date, amount, payee)
-        id2 = ynab_generate_import_id("Savings", txn_date, amount, payee)
+class TestInBatchDisambiguation:
+    """A real double charge shares (account, date, amount, payee) and hashes
+    identically. Both rows have to import, and the unique index has to hold."""
 
-        assert id1 != id2
+    def _rows(self, *ids: str) -> list[dict]:
+        return [{"import_id": i} for i in ids]
+
+    def test_repeats_get_a_numeric_suffix(self):
+        rows = self._rows("csv:aaa", "csv:aaa", "csv:aaa")
+        disambiguate_in_batch(rows)
+        assert [r["import_id"] for r in rows] == ["csv:aaa", "csv:aaa:1", "csv:aaa:2"]
+
+    def test_distinct_ids_are_untouched(self):
+        rows = self._rows("csv:aaa", "csv:bbb")
+        disambiguate_in_batch(rows)
+        assert [r["import_id"] for r in rows] == ["csv:aaa", "csv:bbb"]
+
+    def test_it_is_order_stable_so_a_re_import_still_dedups(self):
+        """The load-bearing property. If suffixes were assigned differently on
+        the second run, re-importing the same file would insert a parallel set
+        of rows rather than deduplicating."""
+        first = self._rows("csv:aaa", "csv:aaa")
+        second = self._rows("csv:aaa", "csv:aaa")
+        disambiguate_in_batch(first)
+        disambiguate_in_batch(second)
+        assert [r["import_id"] for r in first] == [r["import_id"] for r in second]
+
+    def test_rows_without_an_id_are_skipped(self):
+        rows = [{"import_id": None}, {"import_id": "csv:aaa"}]
+        disambiguate_in_batch(rows)
+        assert rows[0]["import_id"] is None
+        assert rows[1]["import_id"] == "csv:aaa"
 
 
 # ─── Amount Tolerance Tests ──────────────────────────────────────────────────
@@ -242,6 +284,7 @@ class TestHistoricalCategoryInference:
         ownership_result.scalar_one_or_none = MagicMock(return_value=MagicMock())
         session.execute = AsyncMock(return_value=ownership_result)
         txn_repo = MagicMock()
+        txn_repo.refresh = AsyncMock()
         account_repo = MagicMock()
         category_repo = MagicMock()
         payee_repo = MagicMock()
@@ -677,13 +720,17 @@ class TestDedupScoring:
     def test_dedup_score_same_day_same_payee(self):
         from igab.services.simplefin_service import _calculate_dedup_score
 
-        score = _calculate_dedup_score("Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 15))
+        score = _calculate_dedup_score(
+            "Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 15)
+        )
         assert score >= 0.95
 
     def test_dedup_score_two_days_apart_same_payee(self):
         from igab.services.simplefin_service import _calculate_dedup_score
 
-        score = _calculate_dedup_score("Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 17))
+        score = _calculate_dedup_score(
+            "Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 17)
+        )
         assert score >= DEDUP_AUTO_MATCH_THRESHOLD
 
     def test_dedup_score_same_day_different_payee(self):
@@ -696,7 +743,9 @@ class TestDedupScoring:
         from igab.services.simplefin_service import _calculate_dedup_score
 
         # Date beyond DEDUP_DATE_WINDOW_DAYS gets 0 date score; only payee contributes
-        score = _calculate_dedup_score("Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 25))
+        score = _calculate_dedup_score(
+            "Starbucks", date(2026, 4, 15), "Starbucks", date(2026, 4, 25)
+        )
         assert score < DEDUP_AUTO_MATCH_THRESHOLD
 
     async def test_sync_skips_when_score_above_threshold(self, mock_svc=None):
@@ -766,7 +815,10 @@ class TestDedupScoring:
 
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, budget_id)
 
@@ -792,7 +844,7 @@ class TestEdgeCases:
         amount = Decimal("-25.50")
         payee = "Café François"
 
-        import_id = csv_generate_import_id(account_id, txn_date, amount, payee)
+        import_id = generate_import_id(account_id, txn_date, amount, payee)
         assert import_id.startswith("csv:")
         assert len(import_id) == 20
 
@@ -803,7 +855,7 @@ class TestEdgeCases:
         amount = Decimal("-25.50")
         payee = "Store #123 @ Mall (Main St.)"
 
-        import_id = csv_generate_import_id(account_id, txn_date, amount, payee)
+        import_id = generate_import_id(account_id, txn_date, amount, payee)
         assert import_id.startswith("csv:")
         assert len(import_id) == 20
 
@@ -814,7 +866,7 @@ class TestEdgeCases:
         amount = Decimal("-25.50")
         payee = "A" * 1000  # Very long name
 
-        import_id = csv_generate_import_id(account_id, txn_date, amount, payee)
+        import_id = generate_import_id(account_id, txn_date, amount, payee)
         assert import_id.startswith("csv:")
         assert len(import_id) == 20  # Hash is fixed length
 
@@ -825,7 +877,7 @@ class TestEdgeCases:
         amount = Decimal("0.00")
         payee = "Refund"
 
-        import_id = csv_generate_import_id(account_id, txn_date, amount, payee)
+        import_id = generate_import_id(account_id, txn_date, amount, payee)
         assert import_id.startswith("csv:")
 
     def test_import_id_very_small_amount(self):
@@ -835,7 +887,7 @@ class TestEdgeCases:
         amount = Decimal("0.01")
         payee = "Penny"
 
-        import_id = csv_generate_import_id(account_id, txn_date, amount, payee)
+        import_id = generate_import_id(account_id, txn_date, amount, payee)
         assert import_id.startswith("csv:")
 
     def test_import_id_very_large_amount(self):
@@ -845,7 +897,7 @@ class TestEdgeCases:
         amount = Decimal("999999999.99")
         payee = "Big Purchase"
 
-        import_id = csv_generate_import_id(account_id, txn_date, amount, payee)
+        import_id = generate_import_id(account_id, txn_date, amount, payee)
         assert import_id.startswith("csv:")
 
     def test_tolerance_at_zero_amount(self):
@@ -865,7 +917,7 @@ class TestEdgeCases:
         amount = Decimal("-25.50")
         payee = "Old Store"
 
-        import_id = csv_generate_import_id(account_id, txn_date, amount, payee)
+        import_id = generate_import_id(account_id, txn_date, amount, payee)
         assert import_id.startswith("csv:")
 
     def test_future_date(self):
@@ -875,5 +927,5 @@ class TestEdgeCases:
         amount = Decimal("-25.50")
         payee = "Future Store"
 
-        import_id = csv_generate_import_id(account_id, txn_date, amount, payee)
+        import_id = generate_import_id(account_id, txn_date, amount, payee)
         assert import_id.startswith("csv:")

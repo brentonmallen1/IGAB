@@ -409,6 +409,25 @@ describe('is: inflow / outflow / transfer', () => {
     expect(parse('is:transfer').isTransfer).toBe(true)
   })
 
+  it('parses is: unpaired, spaced and compact', () => {
+    // The hygiene panel links here. A transfer leg whose partner never
+    // arrived is not expressible via is:transfer, which tests the partner
+    // link alone — so this is its own token rather than a mode of that one.
+    expect(parse('is: unpaired').unpairedTransfers).toBe(true)
+    expect(parse('is:unpaired').unpairedTransfers).toBe(true)
+  })
+
+  it('keeps is: unpaired distinct from is: transfer', () => {
+    expect(parse('is:unpaired').isTransfer).toBeUndefined()
+    expect(parse('is:transfer').unpairedTransfers).toBeUndefined()
+  })
+
+  it('counts is: unpaired as an active filter', () => {
+    // Without this the register would fetch a single unfiltered page and
+    // present it as the whole answer.
+    expect(hasActiveFilters({ unpairedTransfers: true })).toBe(true)
+  })
+
   it('parses NOT is: transfer as exclusion (spaced and compact)', () => {
     expect(parse('NOT is: transfer').isTransfer).toBe(false)
     expect(parse('NOT is:transfer').isTransfer).toBe(false)

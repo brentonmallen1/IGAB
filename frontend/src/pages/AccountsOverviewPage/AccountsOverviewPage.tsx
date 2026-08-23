@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AccountHygienePanel } from '../../components/accounts/AccountHygienePanel'
 import { useNavigate } from 'react-router-dom'
 import { RefreshCw, CloudOff, Plus, Pencil, Trash2, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -295,6 +296,8 @@ export function AccountsOverviewPage() {
           </button>
         </div>
       </div>
+
+      <AccountHygienePanel budgetId={budgetId} />
 
       <div className="accounts-overview__groups">
         {groups.map(({ key, label, accounts: typeAccounts }) => {

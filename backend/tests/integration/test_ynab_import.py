@@ -4,12 +4,13 @@ with per-leg cleared state preserved and both legs linked."""
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from igab.db.models import Transaction
+from igab.db.models import Account, Transaction
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.models import YNABBudget, YNABSplitLeg, YNABTransaction
 from igab.repositories.category_repo import CategoryGroupRepository
+from igab.repositories.txn_filters import UNPAIRED_TRANSFER_LEG
 
 from .factories import create_budget, create_user, make_services
 from .invariants import assert_financial_invariants
@@ -17,7 +18,9 @@ from .invariants import assert_financial_invariants
 JAN5 = date(2026, 1, 5)
 
 
-def _importer(services, db_session, budget, account_types=None, skip_accounts=None) -> YNABImporter:
+def _importer(
+    services, db_session, budget, account_types=None, skip_accounts=None, close_accounts=None
+) -> YNABImporter:
     return YNABImporter(
         session=db_session,
         budget_id=budget.id,
@@ -30,6 +33,7 @@ def _importer(services, db_session, budget, account_types=None, skip_accounts=No
         assignment_repo=services.assignment_repo,
         account_types=account_types,
         skip_accounts=skip_accounts,
+        close_accounts=close_accounts,
     )
 
 
@@ -106,9 +110,7 @@ async def test_unpaired_transfer_leg_imports_as_plain_row(db_session):
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
 
-    data = YNABBudget(
-        transactions=[_txn("Checking", "Transfer : Old Closed Account", "-75.00")]
-    )
+    data = YNABBudget(transactions=[_txn("Checking", "Transfer : Old Closed Account", "-75.00")])
     result = await _importer(services, db_session, budget).import_budget(data)
 
     assert result.transactions_imported == 1
@@ -203,9 +205,7 @@ def _split_txn(account, payee, legs, *, cleared="cleared"):
 
 
 async def _all_rows(db_session, account_id) -> list[Transaction]:
-    rows = await db_session.execute(
-        select(Transaction).where(Transaction.account_id == account_id)
-    )
+    rows = await db_session.execute(select(Transaction).where(Transaction.account_id == account_id))
     return list(rows.scalars().all())
 
 
@@ -263,9 +263,7 @@ async def test_split_imports_as_parent_plus_children(db_session):
     ]
 
     # Balances count the parent only — the bank sees one -154.90 charge
-    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal(
-        "-154.90"
-    )
+    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal("-154.90")
     await assert_financial_invariants(db_session, budget.id)
 
 
@@ -317,9 +315,7 @@ async def test_split_and_identical_flat_row_coexist(db_session):
                     ("-20.00", "Everyday", "Household", None),
                 ],
             ),
-            _txn(
-                "Checking", "Corner Market", "-50.00", group="Everyday", category="Groceries"
-            ),
+            _txn("Checking", "Corner Market", "-50.00", group="Everyday", category="Groceries"),
         ]
     )
     first = await _importer(services, db_session, budget).import_budget(data)
@@ -332,9 +328,7 @@ async def test_split_and_identical_flat_row_coexist(db_session):
     accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
     rows = await _all_rows(db_session, accounts["Checking"].id)
     assert len(rows) == 4, "split parent + 2 children + flat row"
-    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal(
-        "-100.00"
-    )
+    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal("-100.00")
     await assert_financial_invariants(db_session, budget.id)
 
 
@@ -368,7 +362,11 @@ class TestSkipAccounts:
         accounts = {a.name for a in await services.account_repo.get_all(budget.id)}
         assert accounts == {"Checking"}
         rows = (
-            (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+            (
+                await db_session.execute(
+                    select(Transaction).where(Transaction.budget_id == budget.id)
+                )
+            )
             .scalars()
             .all()
         )
@@ -398,7 +396,11 @@ class TestSkipAccounts:
         accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
         assert set(accounts) == {"Checking"}
         rows = (
-            (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+            (
+                await db_session.execute(
+                    select(Transaction).where(Transaction.budget_id == budget.id)
+                )
+            )
             .scalars()
             .all()
         )
@@ -487,9 +489,281 @@ class TestBulkChunkBoundaries:
         assert again.transactions_imported == 0
         assert again.transactions_skipped == len(data.transactions)
         count = (
-            await db_session.execute(
-                select(Transaction).where(Transaction.budget_id == budget.id)
+            (
+                await db_session.execute(
+                    select(Transaction).where(Transaction.budget_id == budget.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(count) == len(data.transactions)
         await assert_financial_invariants(db_session, budget.id)
+
+
+class TestImportAndClose:
+    """Closing beats skipping for a dormant account, and the difference is the
+    whole point: `skip` never creates the account, so its history does not
+    exist and transfers to it have nothing to pair with. `close` imports
+    everything and hides the account from pickers and report filters.
+
+    A real export carried 14 accounts with no activity since 2019–2021. Told
+    to skip them, a user loses the history that makes past months add up.
+    """
+
+    async def _budget(self, db_session):
+        user = await create_user(db_session)
+        return make_services(db_session), await create_budget(db_session, user)
+
+    async def test_a_closed_account_still_imports_every_transaction(self, db_session):
+        services, budget = await self._budget(db_session)
+        importer = _importer(services, db_session, budget, close_accounts={"Old Savings"})
+
+        result = await importer.import_budget(
+            YNABBudget(
+                transactions=[
+                    _txn("Old Savings", "Interest", "5.00", category="Income", group="Inflow"),
+                    _txn("Old Savings", "Interest", "6.00", category="Income", group="Inflow"),
+                ],
+                budget_entries=[],
+            )
+        )
+        await db_session.flush()
+
+        # Reported back, not silent: 14 accounts vanishing from the pickers
+        # with no mention of it in the confirmation reads like a bug.
+        assert result.accounts_closed == 1
+        assert result.accounts_skipped == 0, "closing is not skipping"
+        assert result.transactions_imported == 2
+
+        account = (
+            await db_session.execute(
+                select(Account).where(Account.budget_id == budget.id, Account.name == "Old Savings")
+            )
+        ).scalar_one()
+        assert account.is_closed is True
+        assert await services.transaction_repo.count_for_account(account.id) == 2
+        assert await services.account_repo.get_balance(account.id) == Decimal("11.00")
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_matching_is_case_insensitive_like_every_other_name_match(self, db_session):
+        services, budget = await self._budget(db_session)
+        importer = _importer(services, db_session, budget, close_accounts={"OLD SAVINGS"})
+
+        await importer.import_budget(
+            YNABBudget(transactions=[_txn("Old Savings", "Interest", "5.00")], budget_entries=[])
+        )
+        await db_session.flush()
+
+        account = (
+            await db_session.execute(
+                select(Account).where(Account.budget_id == budget.id, Account.name == "Old Savings")
+            )
+        ).scalar_one()
+        assert account.is_closed is True
+
+    async def test_an_account_not_named_arrives_open(self, db_session):
+        services, budget = await self._budget(db_session)
+        importer = _importer(services, db_session, budget, close_accounts={"Old Savings"})
+
+        await importer.import_budget(
+            YNABBudget(transactions=[_txn("Checking", "Shop", "-5.00")], budget_entries=[])
+        )
+        await db_session.flush()
+
+        account = (
+            await db_session.execute(
+                select(Account).where(Account.budget_id == budget.id, Account.name == "Checking")
+            )
+        ).scalar_one()
+        assert account.is_closed is False
+
+    async def test_a_transfer_to_a_closed_account_still_pairs(self, db_session):
+        """The reason close exists. Skipping the far side is what leaves a leg
+        unlinked and reading as real income or spending in reports."""
+        services, budget = await self._budget(db_session)
+        importer = _importer(services, db_session, budget, close_accounts={"Old Savings"})
+
+        await importer.import_budget(
+            YNABBudget(
+                transactions=[
+                    _txn("Checking", "Transfer : Old Savings", "-100.00"),
+                    _txn("Old Savings", "Transfer : Checking", "100.00"),
+                ],
+                budget_entries=[],
+            )
+        )
+        await db_session.flush()
+
+        legs = (
+            (
+                await db_session.execute(
+                    select(Transaction).where(
+                        Transaction.budget_id == budget.id, Transaction.transfer_id.isnot(None)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(legs) == 2, "both legs linked despite one side being closed"
+        await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_a_parse_error_reaches_the_import_summary(db_session):
+    """The parser drops a row it cannot read; the user has to be told.
+
+    Before this, an unreadable amount became Decimal("0") and the transaction
+    imported anyway with no money in it — the row count reconciled and only
+    the balance was wrong. `result.errors` is the only place a user would ever
+    learn a row did not make it.
+    """
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    importer = _importer(services, db_session, budget)
+
+    ynab = YNABBudget(
+        transactions=[_txn("Checking", "Shop", "-12.00")],
+        budget_entries=[],
+        errors=["Checking 04/15/2026: cannot parse amount 'N/A'"],
+    )
+    result = await importer.import_budget(ynab)
+
+    assert result.transactions_imported == 1
+    assert any("cannot parse amount" in e for e in result.errors)
+
+
+class TestTheUnpairedCountAgreesWithTheImporter:
+    """`UNPAIRED_TRANSFER_LEG` and `result.transfer_legs_unpaired` answer the
+    same question and must return the same number.
+
+    The hygiene panel reports the count and links to the rows. A panel that
+    promises 1,286 and opens a list of 1,117 is worse than no panel — that
+    exact disagreement is what made the needs-a-category badge untrustworthy.
+
+    The subtle half is the categorized leg: YNAB writes "Transfer : Savings"
+    with a category for a spending transfer, and the importer deliberately
+    never pairs those. Measured on the real 47-account export, counting them
+    made the predicate disagree with the importer by 169 rows. With the
+    category condition the two land on 1,117 exactly.
+    """
+
+    async def _import(self, db_session, transactions):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        importer = _importer(services, db_session, budget)
+        result = await importer.import_budget(
+            YNABBudget(transactions=transactions, budget_entries=[])
+        )
+        await db_session.flush()
+        return services, budget, result
+
+    async def _predicate_count(self, db_session, budget) -> int:
+        return (
+            await db_session.execute(
+                select(func.count())
+                .select_from(Transaction)
+                .where(
+                    Transaction.budget_id == budget.id,
+                    Transaction.is_deleted == False,  # noqa: E712
+                    UNPAIRED_TRANSFER_LEG,
+                )
+            )
+        ).scalar_one()
+
+    async def test_they_agree_on_a_leg_whose_partner_never_arrived(self, db_session):
+        """Both accounts exist; the legs simply never matched on date and
+        amount. This is what a real export produces in bulk — 1,117 of them."""
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn("Savings", "Interest", "1.00", category="Income", group="Inflow"),
+                _txn("Checking", "Transfer : Savings", "-500.00"),
+                _txn("Checking", "Corner Shop", "-12.00", category="Groceries", group="Everyday"),
+            ],
+        )
+
+        assert result.transfer_legs_unpaired == 1
+        assert await self._predicate_count(db_session, budget) == 1
+
+    async def test_they_agree_that_a_categorized_leg_is_not_a_problem(self, db_session):
+        """The 169. A categorized transfer leg is a spending transfer: it is
+        meant to be unpaired, and counting it as spending is correct."""
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn("Brokerage", "Dividend", "2.00", category="Income", group="Inflow"),
+                _txn(
+                    "Checking",
+                    "Transfer : Brokerage",
+                    "-500.00",
+                    category="Investing",
+                    group="Goals",
+                ),
+            ],
+        )
+
+        assert result.transfer_legs_unpaired == 0
+        assert await self._predicate_count(db_session, budget) == 0
+
+    async def test_they_agree_when_both_kinds_are_present(self, db_session):
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn("Savings", "Interest", "1.00", category="Income", group="Inflow"),
+                _txn("Brokerage", "Dividend", "2.00", category="Income", group="Inflow"),
+                _txn("Checking", "Transfer : Savings", "-500.00"),
+                _txn("Checking", "Transfer : Savings", "-25.00"),
+                _txn(
+                    "Checking",
+                    "Transfer : Brokerage",
+                    "-90.00",
+                    category="Investing",
+                    group="Goals",
+                ),
+            ],
+        )
+
+        assert result.transfer_legs_unpaired == 2, "the categorized leg is not a problem"
+        assert await self._predicate_count(db_session, budget) == 2
+
+    async def test_they_agree_on_a_properly_paired_transfer(self, db_session):
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn("Checking", "Transfer : Savings", "-300.00"),
+                _txn("Savings", "Transfer : Checking", "300.00"),
+            ],
+        )
+
+        assert result.transfer_legs_unpaired == 0
+        assert await self._predicate_count(db_session, budget) == 0
+
+    async def test_a_leg_naming_an_account_that_never_existed_is_a_different_problem(
+        self, db_session
+    ):
+        """Recorded rather than left to surprise someone.
+
+        When the named account is not in the import at all there is nothing
+        for the payee to point at, so the importer leaves it an ordinary payee
+        ("it stays an ordinary payee"). Nothing then marks the row as a
+        transfer, so it reads as ordinary spending and surfaces through the
+        needs-a-category badge instead — which is the right place for it: the
+        user has to decide what that money actually was.
+
+        So the two counts differ here by design. The importer matches on the
+        payee string and counts it; the predicate needs a resolved transfer
+        payee and does not. The real export produced three such rows against
+        1,117 of the ordinary kind.
+        """
+        services, budget, result = await self._import(
+            db_session, [_txn("Checking", "Transfer : Nowhere", "-500.00")]
+        )
+
+        assert result.transfer_legs_unpaired == 1, "the importer sees the payee string"
+        assert await self._predicate_count(db_session, budget) == 0, "no transfer payee exists"
+
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        assert review["uncategorized"] == 1, "it surfaces as a row needing a category instead"
