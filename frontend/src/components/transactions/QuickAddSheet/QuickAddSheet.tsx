@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { AlertTriangle, Camera, ChevronRight, FileText, Images, MessageSquareText, Sparkles, StickyNote, X } from 'lucide-react'
+import { AlertTriangle, Camera, ChevronRight, FileText, Images, MessageSquareText, Plus, Sparkles, Split, StickyNote, Trash2, X } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { SelectionSheet, type SelectionSheetOption } from '../../common/SelectionSheet/SelectionSheet'
 import { ConfirmSheet } from '../../common/ConfirmSheet/ConfirmSheet'
@@ -24,7 +24,10 @@ import {
   evaluateExpressionCents,
   expressionToCents,
   isAmountExpression,
+  sumExpressionsToCents,
 } from '../../../utils/amountExpression'
+import { randomUUID } from '../../../utils/uuid'
+import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today, yesterday } from '../../../utils/dates'
 import { hapticTick } from '../../../utils/haptics'
@@ -32,6 +35,18 @@ import './QuickAddSheet.css'
 import { apiErrorMessage } from '../../../api/client'
 
 type Direction = 'outflow' | 'inflow'
+
+/** Sentinel for the plain Category row, so one picker can also serve the
+ *  split legs, which address themselves by tempId. */
+const SINGLE_CATEGORY = '__single__'
+
+/** Two empty legs — a split of one is just a category. */
+function freshSplits(): SplitDraft[] {
+  return [
+    { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+    { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+  ]
+}
 
 /**
  * The bottom-nav ＋ flow: fastest possible transaction entry at the checkout
@@ -66,12 +81,17 @@ export function QuickAddSheet() {
   const [direction, setDirection] = useState<Direction>('outflow')
   const [payeeId, setPayeeId] = useState<string | null>(null)
   const [categoryId, setCategoryId] = useState<string | null>(null)
+  const [isSplit, setIsSplit] = useState(false)
+  const [splits, setSplits] = useState<SplitDraft[]>(() => freshSplits())
   const [accountId, setAccountId] = useState<string | null>(null)
   const [date, setDate] = useState(today())
   const [memo, setMemo] = useState('')
   const [memoOpen, setMemoOpen] = useState(false)
   const [payeeSheetOpen, setPayeeSheetOpen] = useState(false)
-  const [categorySheetOpen, setCategorySheetOpen] = useState(false)
+  // Which category picker is open: SINGLE_CATEGORY for the plain row, or a
+  // split leg's tempId. One sheet serves both — a second SelectionSheet
+  // mounted over the first fights it for the viewport on a phone.
+  const [categorySheetFor, setCategorySheetFor] = useState<string | null>(null)
   const [accountSheetOpen, setAccountSheetOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [nlEntryOpen, setNlEntryOpen] = useState(false)
@@ -106,6 +126,8 @@ export function QuickAddSheet() {
     setDirection('outflow')
     setPayeeId(null)
     setCategoryId(null)
+    setIsSplit(false)
+    setSplits(freshSplits())
     setMemo('')
     setMemoOpen(false)
     setDate(today())
@@ -285,17 +307,75 @@ export function QuickAddSheet() {
   // Expression-aware: "12.50+3.99" is valid the moment it's typed, no "=" needed
   const cents = expressionToCents(amount)
   const amountValid = !isNaN(cents) && cents > 0
-  const canSave = amountValid && !!accountId && !saving
+
+  // Integer cents throughout — summing the legs as floats rejects valid splits
+  // like 0.10 + 0.20. Same comparison the desktop editor makes.
+  const splitCents = sumExpressionsToCents(splits.map((sp) => sp.amount))
+  const remainingCents = (amountValid ? cents : 0) - splitCents
+  const splitIsValid =
+    !isSplit ||
+    (amountValid &&
+      remainingCents === 0 &&
+      splits.every((sp) => {
+        const legCents = expressionToCents(sp.amount)
+        return sp.categoryId && !isNaN(legCents) && legCents > 0
+      }))
+
+  const canSave = amountValid && !!accountId && !saving && splitIsValid
+
+  function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
+    setSplits((prev) => prev.map((sp) => (sp.tempId === tempId ? { ...sp, ...data } : sp)))
+  }
+
+  function addSplit() {
+    setSplits((prev) => [...prev, { tempId: randomUUID(), amount: '', categoryId: null, memo: '' }])
+  }
+
+  function removeSplit(tempId: string) {
+    setSplits((prev) => (prev.length > 2 ? prev.filter((sp) => sp.tempId !== tempId) : prev))
+  }
+
+  /** Start a split from whatever is already on screen: the chosen category
+   *  becomes the first leg, so tapping Split never throws away a pick. */
+  function beginSplit() {
+    hapticTick()
+    const [first, ...rest] = freshSplits()
+    setSplits([{ ...first, categoryId }, ...rest])
+    setCategoryId(null)
+    setIsSplit(true)
+  }
+
+  /** Symmetric with beginSplit: the first leg's category comes back out as the
+   *  single category, so starting a split and changing your mind costs nothing. */
+  function cancelSplit() {
+    setCategoryId(splits[0]?.categoryId ?? null)
+    setIsSplit(false)
+    setSplits(freshSplits())
+  }
 
   async function save(addAnother: boolean) {
     if (!canSave || !budgetId || !accountId) return
-    const signed = (cents / 100) * (direction === 'outflow' ? -1 : 1)
-    if (categoryId) {
-      const proceed = await confirmFutureOverspend(
-        budgetId,
-        [{ category_id: categoryId, date, amount_delta: signed }],
-        formatMoney
-      )
+    const sign = direction === 'outflow' ? -1 : 1
+    const signed = (cents / 100) * sign
+
+    // Legs carry the categories when split, so the overspend check has to ask
+    // about each of them rather than about a category the parent no longer has.
+    const splitList = isSplit
+      ? splits.map((sp) => ({
+          amount: (expressionToCents(sp.amount) / 100) * sign,
+          category_id: sp.categoryId ?? undefined,
+          memo: sp.memo || undefined,
+        }))
+      : null
+    const affected = splitList
+      ? splitList
+          .filter((sp) => sp.category_id)
+          .map((sp) => ({ category_id: sp.category_id!, date, amount_delta: sp.amount }))
+      : categoryId
+        ? [{ category_id: categoryId, date, amount_delta: signed }]
+        : []
+    if (affected.length > 0) {
+      const proceed = await confirmFutureOverspend(budgetId, affected, formatMoney)
       if (!proceed) return
     }
     setSaving(true)
@@ -305,7 +385,9 @@ export function QuickAddSheet() {
         date,
         amount: signed,
         payee_id: payeeId ?? undefined,
-        category_id: categoryId ?? undefined,
+        // A split parent carries no category of its own; the legs do.
+        category_id: splitList ? undefined : (categoryId ?? undefined),
+        ...(splitList ? { splits: splitList } : {}),
         memo: memo || undefined,
         cleared: 'uncleared',
         approved: true,
@@ -325,14 +407,21 @@ export function QuickAddSheet() {
         }
       }
 
+      const where = isSplit
+        ? ` · split ${splits.length} ways`
+        : categoryName
+          ? ` · ${categoryName}`
+          : ''
       toast.success(
-        `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}${categoryName ? ` · ${categoryName}` : ''}`
+        `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}${where}`
       )
       hapticTick()
       if (addAnother) {
         setAmount('')
         setPayeeId(null)
         setCategoryId(null)
+        setIsSplit(false)
+        setSplits(freshSplits())
         setMemo('')
         setMemoOpen(false)
         setPendingFiles([])
@@ -354,6 +443,7 @@ export function QuickAddSheet() {
     amount !== '' ||
     payeeId !== null ||
     categoryId !== null ||
+    isSplit ||
     memo !== '' ||
     pendingFiles.length > 0 ||
     date !== today()
@@ -489,13 +579,97 @@ export function QuickAddSheet() {
               <ChevronRight size={16} className="quick-add__row-chevron" />
             </button>
 
-            <button className="quick-add__row" onClick={() => setCategorySheetOpen(true)}>
-              <span className="quick-add__row-label">Category</span>
-              <span className={`quick-add__row-value ${categoryName ? '' : 'quick-add__row-value--empty'}`}>
-                {categoryName || 'Choose category'}
-              </span>
-              <ChevronRight size={16} className="quick-add__row-chevron" />
-            </button>
+            {isSplit ? (
+              <div className="quick-add__split">
+                <div className="quick-add__split-head">
+                  <span className="quick-add__row-label">Split</span>
+                  <button className="quick-add__split-cancel" onClick={cancelSplit}>
+                    <X size={13} />
+                    Cancel split
+                  </button>
+                </div>
+
+                {splits.map((sp, i) => {
+                  const legName = sp.categoryId
+                    ? (categories.find((c) => c.id === sp.categoryId)?.name ?? '')
+                    : ''
+                  return (
+                    <div key={sp.tempId} className="quick-add__split-leg">
+                      <button
+                        className="quick-add__split-category"
+                        onClick={() => setCategorySheetFor(sp.tempId)}
+                        aria-label={`Split ${i + 1} category`}
+                      >
+                        <span
+                          className={`quick-add__row-value ${legName ? '' : 'quick-add__row-value--empty'}`}
+                        >
+                          {legName || 'Choose category'}
+                        </span>
+                        <ChevronRight size={15} className="quick-add__row-chevron" />
+                      </button>
+                      <AmountInput
+                        className="quick-add__split-amount"
+                        value={sp.amount}
+                        onValueChange={(v) => updateSplit(sp.tempId, { amount: v })}
+                        placeholder="0.00"
+                        aria-label={`Split ${i + 1} amount`}
+                      />
+                      <button
+                        className="quick-add__split-remove"
+                        onClick={() => removeSplit(sp.tempId)}
+                        disabled={splits.length <= 2}
+                        aria-label={`Remove split ${i + 1}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )
+                })}
+
+                <div className="quick-add__split-foot">
+                  <button className="quick-add__split-add" onClick={addSplit}>
+                    <Plus size={13} />
+                    Add split
+                  </button>
+                  <span
+                    className={`quick-add__split-remaining ${
+                      remainingCents === 0 ? 'quick-add__split-remaining--done' : ''
+                    }`}
+                    role="status"
+                  >
+                    {remainingCents === 0
+                      ? 'Fully assigned'
+                      : `${formatMoney(Math.abs(remainingCents) / 100)} ${
+                          remainingCents > 0 ? 'left' : 'over'
+                        }`}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="quick-add__row quick-add__row--category">
+                <span className="quick-add__row-label">Category</span>
+                <button
+                  className="quick-add__row-pick"
+                  onClick={() => setCategorySheetFor(SINGLE_CATEGORY)}
+                  aria-label="Category"
+                >
+                  <span
+                    className={`quick-add__row-value ${categoryName ? '' : 'quick-add__row-value--empty'}`}
+                  >
+                    {categoryName || 'Choose category'}
+                  </span>
+                  <ChevronRight size={16} className="quick-add__row-chevron" />
+                </button>
+                <button
+                  className="quick-add__split-start"
+                  onClick={beginSplit}
+                  title="Split this across categories"
+                >
+                  <Split size={14} />
+                  <span className="sr-only">Split across categories</span>
+                </button>
+              </div>
+            )}
 
             <button className="quick-add__row" onClick={() => setAccountSheetOpen(true)}>
               <span className="quick-add__row-label">Account</span>
@@ -726,12 +900,19 @@ export function QuickAddSheet() {
       />
 
       <SelectionSheet
-        open={categorySheetOpen}
-        onClose={() => setCategorySheetOpen(false)}
-        title="Category"
+        open={categorySheetFor !== null}
+        onClose={() => setCategorySheetFor(null)}
+        title={categorySheetFor === SINGLE_CATEGORY ? 'Category' : 'Split category'}
         options={categoryOptions}
-        value={categoryId}
-        onChange={setCategoryId}
+        value={
+          categorySheetFor === SINGLE_CATEGORY
+            ? categoryId
+            : (splits.find((sp) => sp.tempId === categorySheetFor)?.categoryId ?? null)
+        }
+        onChange={(id) => {
+          if (categorySheetFor === SINGLE_CATEGORY) setCategoryId(id)
+          else if (categorySheetFor) updateSplit(categorySheetFor, { categoryId: id })
+        }}
         allowNone
         noneLabel="No category"
         placeholder="Search categories…"

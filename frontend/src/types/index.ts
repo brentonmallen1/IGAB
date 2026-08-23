@@ -600,6 +600,9 @@ export interface DayPatternItem {
 
 export interface DayPatternsReport {
   days: DayPatternItem[]
+  /** Savings / debt activity in the categories the user selected that this
+   *  chart will not count. Empty without a selection. */
+  class_excluded: SpendingClassExcluded[]
 }
 
 export interface TimelineTransaction {

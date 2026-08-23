@@ -1,28 +1,18 @@
 import { useState } from 'react'
 import { X, GripVertical, Pencil, Trash2, Plus, Lock, ChevronUp, ChevronDown } from 'lucide-react'
 import { useBudgetFilters, useDeleteBudgetFilter } from '../../../api/budgetFilters'
-import { useUIStore, ALL_QUICK_FILTERS } from '../../../stores/uiStore'
-import type { QuickFilter } from '../../../stores/uiStore'
+import {
+  useUIStore,
+  ALL_QUICK_FILTERS,
+  QUICK_FILTER_LABELS,
+  QUICK_FILTER_VARIANTS,
+} from '../../../stores/uiStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './ManageFiltersModal.css'
 
 interface Props {
   budgetId: string
   onClose: () => void
-}
-
-const QUICK_FILTER_LABELS: Record<QuickFilter, string> = {
-  overspent: 'Overspent',
-  underfunded: 'Underfunded',
-  'money-available': 'Money Available',
-  overfunded: 'Overfunded',
-}
-
-const QUICK_FILTER_VARIANTS: Record<QuickFilter, string> = {
-  overspent: 'negative',
-  underfunded: 'warning',
-  'money-available': 'positive',
-  overfunded: 'positive',
 }
 
 export function ManageFiltersModal({ budgetId, onClose }: Props) {

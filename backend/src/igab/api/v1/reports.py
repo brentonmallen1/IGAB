@@ -391,7 +391,12 @@ async def day_patterns_report(
     cat_ids = _parse_uuids(category_ids)
     acct_ids = _parse_uuids(account_ids)
     data = await report_svc.day_patterns(budget_id, start, end, cat_ids, acct_ids)
-    return DayPatternsResponse(days=[DayPatternItem.model_validate(d) for d in data])
+    return DayPatternsResponse(
+        days=[DayPatternItem.model_validate(d) for d in data["days"]],
+        class_excluded=[
+            SpendingClassExcluded.model_validate(c) for c in (data["class_excluded"] or [])
+        ],
+    )
 
 
 @router.get("/{budget_id}/reports/large-transactions", response_model=TimelineResponse)

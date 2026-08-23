@@ -335,6 +335,83 @@ class TestClassExcludedNote:
         assert notes["class_excluded"] is None
 
 
+class TestDayPatternsCarriesTheSameNote:
+    """Pareto and the treemap explained a debt-payment-only selection; Day
+    Patterns drew a flat week and said nothing, which reads as missing data.
+    Same note, same rule about when it fires."""
+
+    async def test_selecting_an_excluded_category_names_what_is_missing(self, db_session):
+        budget, c = await _world(db_session)
+        result = await ReportService(db_session).day_patterns(
+            budget.id, START, TODAY, category_ids=[c["car"].id]
+        )
+        assert sum(d["total"] for d in result["days"]) == Decimal("0"), "nothing to chart"
+        assert result["class_excluded"] == [
+            {
+                "activity_class": "debt_principal",
+                "label": "Debt payment",
+                "categories": 1,
+                "total": Decimal("275.00"),
+            }
+        ]
+
+    async def test_the_unfiltered_report_stays_calm(self, db_session):
+        budget, _ = await _world(db_session)
+        result = await ReportService(db_session).day_patterns(budget.id, START, TODAY)
+        assert result["class_excluded"] is None
+
+    async def test_spending_alongside_the_excluded_still_charts(self, db_session):
+        """The note is additive: a mixed selection draws its spending and
+        explains the rest, rather than choosing one or the other."""
+        budget, c = await _world(db_session)
+        result = await ReportService(db_session).day_patterns(
+            budget.id, START, TODAY, category_ids=[c["car"].id, c["rent"].id]
+        )
+        assert sum(d["total"] for d in result["days"]) == Decimal("1200.00")
+        assert result["class_excluded"] is not None
+        assert result["class_excluded"][0]["total"] == Decimal("275.00")
+
+    async def test_the_partition_matches_what_the_where_clause_used_to_keep(
+        self, db_session
+    ):
+        """Filtering by class moved from the WHERE into Python. The unfiltered
+        totals must be exactly what they were before that move."""
+        budget, _ = await _world(db_session)
+        result = await ReportService(db_session).day_patterns(budget.id, START, TODAY)
+        assert sum(d["total"] for d in result["days"]) == Decimal("1500.00")
+        assert sum(d["count"] for d in result["days"]) == 3
+
+    async def test_the_note_reaches_the_client(self, api_client, db_session):
+        budget, c = await _world(db_session, api_client.test_user)
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/reports/day-patterns",
+            params={
+                "start_date": START.isoformat(),
+                "end_date": TODAY.isoformat(),
+                "category_ids": str(c["car"].id),
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["days"]) == 7
+        assert body["class_excluded"] == [
+            {
+                "activity_class": "debt_principal",
+                "label": "Debt payment",
+                "categories": 1,
+                "total": "275.00",
+            }
+        ]
+
+    async def test_the_note_is_empty_without_a_selection(self, api_client, db_session):
+        budget, _ = await _world(db_session, api_client.test_user)
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/reports/day-patterns",
+            params={"start_date": START.isoformat(), "end_date": TODAY.isoformat()},
+        )
+        assert resp.json()["class_excluded"] == []
+
+
 class TestThroughTheApi:
     """The service returns plain dicts; the endpoint validates them against
     `SpendingGroupedResponse`. Every test above stops short of that boundary,

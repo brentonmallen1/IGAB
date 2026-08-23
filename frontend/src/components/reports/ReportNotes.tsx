@@ -1,5 +1,5 @@
 import { EyeOff, Info } from 'lucide-react'
-import type { SpendingGroupedReport, SpendingClassExcluded } from '../../types'
+import type { SpendingClassExcluded } from '../../types'
 import { useFormatters } from '../../hooks/useFormatters'
 import './ReportNotes.css'
 
@@ -11,10 +11,20 @@ const CLASS_PHRASE: Record<string, string> = {
   debt_interest: 'interest & fees',
 }
 
+/** The parts of a report this reads. Structural rather than a named response
+ *  type: three charts carry these notes and only one of them has a view. */
+export interface ReportNotesSource {
+  view_hidden_categories?: number
+  view_hidden_total?: number | string
+  class_excluded?: SpendingClassExcluded[] | null
+}
+
 interface Props {
-  report: SpendingGroupedReport | undefined
+  report: ReportNotesSource | undefined
   /** Whether the chart's "Include savings & debt payments" toggle is visible
-   *  and off — the one action from here that adds the money back. */
+   *  and off — the one action from here that adds the money back. Charts
+   *  without that toggle pass false; the sentence would name a control the
+   *  reader cannot find. */
   toggleAvailable: boolean
 }
 
@@ -32,7 +42,7 @@ export function ReportNotes({ report, toggleAvailable }: Props) {
   const { formatMoney } = useFormatters()
   if (!report) return null
 
-  const hidden = report.view_hidden_categories > 0
+  const hidden = (report.view_hidden_categories ?? 0) > 0
   const excluded: SpendingClassExcluded[] = report.class_excluded ?? []
   if (!hidden && excluded.length === 0) return null
 
@@ -68,4 +78,41 @@ export function ReportNotes({ report, toggleAvailable }: Props) {
       )}
     </div>
   )
+}
+
+
+/**
+ * The one control that adds savings and debt payments back into a spending
+ * chart. Shared because it was written twice, and the copies drifted: the
+ * treemap's label read "Hide tagged as savings" while its state fed
+ * `includeSavings`, so ticking "hide" added them. Label and meaning now
+ * travel together.
+ */
+export function IncludeSavingsToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <label className="report-toggle">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span title="Money moved into savings or used to pay down a tracked debt isn't spending, so it's left out by default. Tick to add it back.">
+        Include savings &amp; debt payments
+      </span>
+    </label>
+  )
+}
+
+/**
+ * What an empty spending chart says. A view that hides everything with
+ * spending is not the same as a window with no spending in it, and the
+ * distinction is the difference between "your filter did this" and "you
+ * spent nothing".
+ */
+export function emptySpendingMessage(viewHiddenCategories: number | undefined): string {
+  return (viewHiddenCategories ?? 0) > 0
+    ? 'Everything with spending in this window is hidden by the current view.'
+    : 'No spending data for this period.'
 }

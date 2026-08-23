@@ -56,6 +56,12 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-n auto"
+# SQLAlchemy warns rather than errors when a query has a cartesian product,
+# which is exactly what a report would produce if it used ACTIVITY_CLASS
+# without applying CLASS_JOINS — silently multiplying every total. Promoting it
+# turns "forgot the joins" into a loud failure at whichever test touches that
+# query, instead of a plausible-looking number in a chart.
+filterwarnings = ["error::sqlalchemy.exc.SAWarning"]
 
 [tool.uv]
 package = true

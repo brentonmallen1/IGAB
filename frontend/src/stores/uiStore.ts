@@ -10,6 +10,24 @@ export type QuickFilter = 'overspent' | 'underfunded' | 'money-available' | 'ove
 
 export const ALL_QUICK_FILTERS: QuickFilter[] = ['overspent', 'underfunded', 'money-available', 'overfunded']
 
+/** How a quick filter reads, and which state colour it carries. Here rather
+ *  than in either component that draws them: the bar and the manage modal
+ *  each had their own copy, so renaming a filter in one left the chip and its
+ *  settings row disagreeing about what the same filter is called. */
+export const QUICK_FILTER_LABELS: Record<QuickFilter, string> = {
+  overspent: 'Overspent',
+  underfunded: 'Underfunded',
+  'money-available': 'Money Available',
+  overfunded: 'Overfunded',
+}
+
+export const QUICK_FILTER_VARIANTS: Record<QuickFilter, string> = {
+  overspent: 'negative',
+  underfunded: 'warning',
+  'money-available': 'positive',
+  overfunded: 'positive',
+}
+
 /** Every dialog whose open/closed state is global rather than local to the
  *  component that raises it. Promise-based questions (confirmStore) are not
  *  here: they have one slot of their own and resolve to a value. */

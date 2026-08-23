@@ -74,7 +74,10 @@ class TestExpensesDrillMatchesTheBar:
         months = await ReportService(db_session).income_vs_expense(budget.id, months=1)
 
         drilled = await _drill_total(
-            db_session, budget, scope="leaf", direction="outflow",
+            db_session,
+            budget,
+            scope="leaf",
+            direction="outflow",
             activity_classes=["spending"],
         )
 
@@ -85,7 +88,10 @@ class TestExpensesDrillMatchesTheBar:
         months = await ReportService(db_session).income_vs_expense(budget.id, months=1)
 
         drilled = await _drill_total(
-            db_session, budget, scope="leaf", direction="inflow",
+            db_session,
+            budget,
+            scope="leaf",
+            direction="inflow",
             activity_classes=["income"],
         )
 
@@ -94,7 +100,10 @@ class TestExpensesDrillMatchesTheBar:
     async def test_including_savings_matches_the_toggled_chart(self, db_session):
         budget = await _world(db_session)
         drilled = await _drill_total(
-            db_session, budget, scope="leaf", direction="outflow",
+            db_session,
+            budget,
+            scope="leaf",
+            direction="outflow",
             activity_classes=["spending", "savings", "debt_principal"],
         )
         assert drilled == Decimal("1800.00")
@@ -108,6 +117,64 @@ class TestExpensesDrillMatchesTheBar:
             db_session, budget, scope="leaf", direction="outflow", activity_classes=None
         )
         assert a == b == Decimal("1800.00")
+
+
+class TestTheSummaryAgreesWithTheRows:
+    """`list_for_budget` returns a count and a total from a *second* query,
+    and that one carries the activity-class joins too. Every test above sums
+    the returned rows, so a fan-out in the aggregate would inflate the
+    register's "N transactions, $X" line while the list beneath it stayed
+    right — a wrong number that looks like a number.
+    """
+
+    async def _listing(self, db_session, budget, **kw):
+        return await TransactionRepository(db_session).list_for_budget(
+            budget.id,
+            start_date=MONTH_START,
+            end_date=TODAY,
+            posted_only=True,
+            cash_flow_only=True,
+            **kw,
+        )
+
+    async def test_count_and_total_match_the_rows_under_a_class_filter(self, db_session):
+        budget = await _world(db_session)
+        rows, count, total = await self._listing(
+            db_session,
+            budget,
+            scope="leaf",
+            direction="outflow",
+            activity_classes=["spending"],
+        )
+        assert count == len(rows) == 1
+        assert abs(total) == abs(sum((r.amount for r in rows), Decimal("0")))
+        assert abs(total) == Decimal("800.00")
+
+    async def test_a_multi_class_filter_does_not_duplicate_a_transfer_leg(self, db_session):
+        """The transfer leg is the row with the most to join against — a
+        partner transaction, a counterpart account, and a payee. If any of
+        those matched twice it would be counted twice here."""
+        budget = await _world(db_session)
+        rows, count, total = await self._listing(
+            db_session,
+            budget,
+            scope="leaf",
+            direction="outflow",
+            activity_classes=["spending", "savings", "debt_principal"],
+        )
+        assert count == len(rows) == 2
+        assert len({r.id for r in rows}) == len(rows), "a row came back twice"
+        assert abs(total) == Decimal("1800.00")
+
+    async def test_the_unfiltered_summary_is_unchanged_by_the_joins(self, db_session):
+        """No class filter means no joins at all — the ordinary register must
+        not have started paying for them, or changed."""
+        budget = await _world(db_session)
+        rows, count, total = await self._listing(
+            db_session, budget, scope="leaf", direction="outflow"
+        )
+        assert count == len(rows) == 2
+        assert abs(total) == Decimal("1800.00")
 
 
 class TestThroughTheApi:

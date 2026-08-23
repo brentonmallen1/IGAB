@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ListFilter, Layers, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
-import { useUIStore } from '../../../stores/uiStore'
+import { useUIStore, QUICK_FILTER_LABELS, QUICK_FILTER_VARIANTS } from '../../../stores/uiStore'
 import { targetStatus } from '../../../utils/targets'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
 import type { CategoryBalance, CategoryTarget } from '../../../types'
@@ -79,19 +79,6 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
     }).length,
   }
 
-  const FILTER_LABELS: Record<string, string> = {
-    overspent: 'Overspent',
-    underfunded: 'Underfunded',
-    'money-available': 'Money Available',
-    overfunded: 'Overfunded',
-  }
-  const FILTER_VARIANTS: Record<string, string> = {
-    overspent: 'negative',
-    underfunded: 'warning',
-    'money-available': 'positive',
-    overfunded: 'positive',
-  }
-
   function handleMenuSelect(id: string) {
     if (id === 'new') openModal('filter')
     else if (id === 'manage') openModal('manage-filters')
@@ -163,12 +150,12 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
       {quickFilterOrder.map((filter) => {
         const count = counts[filter]
         if (count === 0) return null
-        const variant = FILTER_VARIANTS[filter]
+        const variant = QUICK_FILTER_VARIANTS[filter]
         const label = filter === 'overspent'
           ? `${count} Overspent`
           : filter === 'underfunded'
           ? `${count} Underfunded`
-          : FILTER_LABELS[filter]
+          : QUICK_FILTER_LABELS[filter]
         return (
           <button
             key={filter}

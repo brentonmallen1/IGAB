@@ -29,6 +29,7 @@ from igab.domain.activity_class import (
     CLASS_LABEL,
     SPENDING_CLASSES,
     ActivityClass,
+    apply_class_joins,
 )
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
@@ -121,6 +122,13 @@ def _spending_classes(
 ):
     """WHERE clause limiting a spending query to the requested activity classes.
 
+    Returns a predicate, so the caller owns the query — which means the caller
+    must also apply `apply_class_joins` to it. This is the one place the class
+    is used without the joins visibly beside it, so it is the one place a new
+    caller could forget: a query with this predicate and no joins is a
+    cartesian product, which `pyproject.toml` promotes from a warning to a test
+    failure. All three callers today do apply them.
+
     Defaults to spending alone. That is the behaviour change derkus asked for:
     a transfer to a brokerage or a mortgage is money leaving the budget, but it
     is not money spent, and counting it as spending skews every average.
@@ -171,6 +179,17 @@ _EXPLAINED_EXCLUSIONS: frozenset[str] = frozenset(
 )
 
 
+def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
+    """An outflow class's total for one month, as a positive number.
+
+    Outflow rows are stored negative and every consumer reports magnitudes, so
+    every consumer flipped the sign itself — each with its own copy of the
+    comment explaining why. Three copies is three chances for one of them to
+    keep the sign through a refactor and quietly report a negative savings rate.
+    """
+    return -buckets.get(cls.value, Decimal("0"))
+
+
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -213,6 +232,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         result = await self.session.execute(q)
         rows = result.all()
 
@@ -261,21 +281,12 @@ class ReportService:
         Internal transfers between two on-budget accounts are excluded: they
         cancel, and showing them would double the apparent flow.
         """
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        start = _subtract_months(first_of_month, months - 1)
-
-        by_month = await self._monthly_class_totals(budget_id, start, today)
-
         results = []
-        for i in range(months - 1, -1, -1):
-            month_start = _subtract_months(first_of_month, i)
-            buckets = by_month.get(month_start, {})
+        for month_start, buckets in await self._class_series(budget_id, months):
             income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            # Outflow classes are stored negative; report magnitudes.
-            expenses = -buckets.get(ActivityClass.SPENDING.value, Decimal("0"))
-            savings = -buckets.get(ActivityClass.SAVINGS.value, Decimal("0"))
-            debt = -buckets.get(ActivityClass.DEBT_PRINCIPAL.value, Decimal("0"))
+            expenses = _magnitude(buckets, ActivityClass.SPENDING)
+            savings = _magnitude(buckets, ActivityClass.SAVINGS)
+            debt = _magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
             results.append(
                 {
                     "month": month_start,
@@ -484,16 +495,21 @@ class ReportService:
             )
             return Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
 
+        def _cls_magnitude(start: date, end: date, cls: ActivityClass) -> Decimal:
+            """Outflow classes are stored negative; these cards report
+            magnitudes. Same convention as `_magnitude`, over a window rather
+            than a month bucket."""
+            return -_cls_total(start, end, cls)
+
         income_this = _cls_total(start_date, end_date, ActivityClass.INCOME)
-        # Outflow classes are stored negative; these cards report magnitudes.
-        expenses_this = -_cls_total(start_date, end_date, ActivityClass.SPENDING)
-        savings_this = -_cls_total(start_date, end_date, ActivityClass.SAVINGS)
-        expenses_prev = -_cls_total(prev_start, prev_end, ActivityClass.SPENDING)
+        expenses_this = _cls_magnitude(start_date, end_date, ActivityClass.SPENDING)
+        savings_this = _cls_magnitude(start_date, end_date, ActivityClass.SAVINGS)
+        expenses_prev = _cls_magnitude(prev_start, prev_end, ActivityClass.SPENDING)
 
         # Burn rate is how fast money is consumed, so savings and debt
         # principal are out — matching the Burn Rate chart exactly.
-        burn_30 = -_cls_total(thirty_ago, today, ActivityClass.SPENDING)
-        burn_90 = -_cls_total(ninety_ago, today, ActivityClass.SPENDING) / 3
+        burn_30 = _cls_magnitude(thirty_ago, today, ActivityClass.SPENDING)
+        burn_90 = _cls_magnitude(ninety_ago, today, ActivityClass.SPENDING) / 3
 
         # savings / income, the same ratio the Savings Rate tab shows by
         # default. The old (income - expenses) / income counted a brokerage
@@ -782,6 +798,7 @@ class ReportService:
             # savings has not been burned.
             _spending_classes(),
         )
+        q = apply_class_joins(q)
         txns = (await self.session.execute(q)).all()
 
         results = []
@@ -997,6 +1014,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         if not rows:
@@ -1698,6 +1716,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         # `_view_arrangement` returns None for a view that does not exist or
@@ -1965,6 +1984,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         if not rows:
@@ -2058,9 +2078,21 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
-    ) -> list[dict]:
+    ) -> dict:
+        """Spending by day of week, and what the class filter left out of it.
+
+        Returns ``days`` plus ``class_excluded`` — the same note Pareto and the
+        treemap carry. Without it, filtering to a category whose activity is all
+        debt principal or savings drew the generic "no spending" empty state,
+        which reads as missing data rather than as a definition.
+        """
         # Leaf rows: with a category filter, split spending must be reachable
-        q = select(Transaction.date, Transaction.amount).where(
+        q = select(
+            Transaction.date,
+            Transaction.amount,
+            Transaction.category_id.label("id"),
+            ACTIVITY_CLASS.label("cls"),
+        ).where(
             Transaction.budget_id == budget_id,
             NOT_DELETED,
             POSTED,
@@ -2069,7 +2101,6 @@ class ReportService:
             Transaction.date <= end_date,
             LEAF,
             CASH_FLOW_ROW,
-            _spending_classes(scoped_accounts=bool(account_ids)),
         )
         if category_ids:
             q = q.where(Transaction.category_id.in_(category_ids))
@@ -2077,9 +2108,27 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
-        rows = (await self.session.execute(q)).all()
+        q = apply_class_joins(q)
+        scanned = (await self.session.execute(q)).all()
 
-        if not rows:
+        # Partitioned here rather than filtered in the WHERE: the complement is
+        # what the note is about, and re-querying for it would pay
+        # ACTIVITY_CLASS's per-row subqueries a second time. Same shape as
+        # `spending_grouped`, and the same widening for an explicit account
+        # selection — see `_spending_classes` for why that exists.
+        included = {c.value for c in SPENDING_CLASSES}
+        if account_ids:
+            included |= {
+                ActivityClass.INVESTMENT_RETURN.value,
+                ActivityClass.DEBT_INTEREST.value,
+            }
+        rows = [r for r in scanned if r.cls in included]
+        class_excluded = self._class_excluded_note(
+            [r for r in scanned if r.cls not in included],
+            scoped=bool(category_ids),
+        )
+
+        def _empty() -> list[dict]:
             return [
                 {
                     "day_of_week": i,
@@ -2090,6 +2139,11 @@ class ReportService:
                 }
                 for i in range(7)
             ]
+
+        # The all-excluded case still carries the note: an empty chart with no
+        # explanation is exactly the failure it exists to prevent.
+        if not rows:
+            return {"days": _empty(), "class_excluded": class_excluded}
 
         df = pl.DataFrame(
             {
@@ -2112,7 +2166,7 @@ class ReportService:
 
         dow_map = {row["dow"]: row for row in agg.iter_rows(named=True)}
 
-        return [
+        days = [
             {
                 "day_of_week": i,
                 "day_name": _DAY_NAMES[i],
@@ -2126,6 +2180,7 @@ class ReportService:
             }
             for i in range(7)
         ]
+        return {"days": days, "class_excluded": class_excluded}
 
     # ─── Large Transactions (Timeline) ────────────────────────────────────────
 
@@ -2173,6 +2228,7 @@ class ReportService:
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
         q = q.order_by(Transaction.amount).limit(limit)  # most negative first
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         return [
@@ -2352,18 +2408,20 @@ class ReportService:
         """
         rows = (
             await self.session.execute(
-                select(
-                    Transaction.date,
-                    Transaction.amount,
-                    ACTIVITY_CLASS.label("cls"),
-                ).where(
-                    Transaction.budget_id == budget_id,
-                    NOT_DELETED,
-                    POSTED,
-                    LEAF,
-                    Transaction.date >= start,
-                    Transaction.date <= end,
-                    ON_BUDGET_ACCOUNT,
+                apply_class_joins(
+                    select(
+                        Transaction.date,
+                        Transaction.amount,
+                        ACTIVITY_CLASS.label("cls"),
+                    ).where(
+                        Transaction.budget_id == budget_id,
+                        NOT_DELETED,
+                        POSTED,
+                        LEAF,
+                        Transaction.date >= start,
+                        Transaction.date <= end,
+                        ON_BUDGET_ACCOUNT,
+                    )
                 )
             )
         ).all()
@@ -2405,6 +2463,7 @@ class ReportService:
             )
             .group_by(month_col, ACTIVITY_CLASS)
         )
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         by_month: dict[date, dict[str, Decimal]] = {}
@@ -2412,6 +2471,28 @@ class ReportService:
             key = row.month.date() if hasattr(row.month, "date") else row.month
             by_month.setdefault(key, {})[row.cls] = Decimal(str(row.total))
         return by_month
+
+    async def _class_series(
+        self, budget_id: uuid.UUID, months: int
+    ) -> list[tuple[date, dict[str, Decimal]]]:
+        """The last `months` calendar months, oldest first, with class totals.
+
+        `income_vs_expense` and `savings_rate` each walked
+        `_monthly_class_totals` with their own copy of this reversed range, so
+        a change to the window — how a partial current month counts, say —
+        landed in one report and not the other. Months with no activity are
+        present with an empty bucket: a gap in the series is a gap in the
+        chart, not a shorter chart.
+        """
+        today = date.today()
+        first = today.replace(day=1)
+        by_month = await self._monthly_class_totals(
+            budget_id, _subtract_months(first, months - 1), today
+        )
+        return [
+            (month, by_month.get(month, {}))
+            for month in (_subtract_months(first, i) for i in range(months - 1, -1, -1))
+        ]
 
     async def _view_arrangement(self, budget_id: uuid.UUID, view_id: uuid.UUID):
         """Return `category_id -> (group_id, group_name)` for one view, or None
@@ -2492,11 +2573,6 @@ class ReportService:
         recorded" and "saved nothing" are different facts, and a chart should
         show a gap rather than a floor.
         """
-        today = date.today()
-        first = today.replace(day=1)
-        start = _subtract_months(first, months - 1)
-
-        by_month = await self._monthly_class_totals(budget_id, start, today)
 
         def _rate(numerator: Decimal, income: Decimal) -> float | None:
             if income <= 0:
@@ -2504,14 +2580,11 @@ class ReportService:
             return float(numerator / income)
 
         series: list[dict] = []
-        for i in range(months - 1, -1, -1):
-            month = _subtract_months(first, i)
-            buckets = by_month.get(month, {})
+        for month, buckets in await self._class_series(budget_id, months):
             income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            # Outflow classes are stored negative; report them as magnitudes.
-            savings = -buckets.get(ActivityClass.SAVINGS.value, Decimal("0"))
-            debt = -buckets.get(ActivityClass.DEBT_PRINCIPAL.value, Decimal("0"))
-            spending = -buckets.get(ActivityClass.SPENDING.value, Decimal("0"))
+            savings = _magnitude(buckets, ActivityClass.SAVINGS)
+            debt = _magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
+            spending = _magnitude(buckets, ActivityClass.SPENDING)
             series.append(
                 {
                     "month": month,
