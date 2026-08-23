@@ -398,3 +398,143 @@ async def test_every_finding_carries_its_reasoning(db_session, concept):
     found = await getattr(GuideDetection(db_session), concept)(budget.id)
     assert found.reason
     assert found.concept_key == concept
+
+
+class TestTheGuideReadsTheBudgetPagesNumber:
+    """The roadmap's figures decide what it tells someone about their money.
+
+    `_category_balance` was `SUM(assigned) + SUM(activity)` over all time —
+    no month buckets, no zero floor, no upper bound on the month. Every case
+    below produced a different number from the budget page, always lower for
+    overspending and higher for pre-assignment, and the emergency-fund verdict
+    is decided by comparing this figure against essential expenses.
+    """
+
+    async def _category_with_history(self, db_session, budget, history):
+        """history: list of (month, assigned, activity)."""
+        group = await create_category_group(db_session, budget, "Savings")
+        category = await create_category(db_session, budget, group, "Emergency Fund")
+        account = await create_account(db_session, budget, "Checking")
+        for month, assigned, activity in history:
+            if assigned is not None:
+                await create_budget_assignment(
+                    db_session, budget, category, month, Decimal(assigned)
+                )
+            if activity is not None:
+                await create_transaction(
+                    db_session,
+                    budget,
+                    account,
+                    activity,
+                    month,
+                    category=category,
+                    cleared="cleared",
+                )
+        return category
+
+    async def _both_numbers(self, db_session, budget, category):
+        from .factories import make_services
+
+        services = make_services(db_session)
+        detection = GuideDetection(db_session)
+        guide = await detection._category_balance(budget.id, [category.id])
+        page = await services.budgets.get_category_balance(category.id, THIS_MONTH)
+        return guide, page.available
+
+    async def test_a_covered_overspend_does_not_follow_the_category_forever(self, db_session):
+        # The headline case. January overspent by 50 and TBA covered it, so
+        # February starts at zero. A running total says 50 less, permanently.
+        budget = await _budget(db_session)
+        last = (THIS_MONTH - timedelta(days=1)).replace(day=1)
+        category = await self._category_with_history(
+            db_session, budget, [(last, "100.00", "-150.00"), (THIS_MONTH, "200.00", None)]
+        )
+
+        guide, page = await self._both_numbers(db_session, budget, category)
+
+        assert guide == page == Decimal("200.00")
+
+    async def test_an_assignment_for_a_future_month_is_not_money_you_have_now(self, db_session):
+        budget = await _budget(db_session)
+        october = (THIS_MONTH + timedelta(days=300)).replace(day=1)
+        category = await self._category_with_history(
+            db_session, budget, [(THIS_MONTH, "100.00", None), (october, "500.00", None)]
+        )
+
+        guide, page = await self._both_numbers(db_session, budget, category)
+
+        assert guide == page == Decimal("100.00")
+
+    async def test_they_agree_on_an_ordinary_history(self, db_session):
+        budget = await _budget(db_session)
+        last = (THIS_MONTH - timedelta(days=1)).replace(day=1)
+        category = await self._category_with_history(
+            db_session, budget, [(last, "300.00", "-120.00"), (THIS_MONTH, "150.00", "-40.00")]
+        )
+
+        guide, page = await self._both_numbers(db_session, budget, category)
+
+        assert guide == page == Decimal("290.00")
+
+    async def test_the_floor_is_per_category_not_across_the_total(self, db_session):
+        # Two categories, one 50 over and one 50 under. Flooring the sum gives
+        # 0; flooring each gives 50. The budget page floors each.
+        budget = await _budget(db_session)
+        last = (THIS_MONTH - timedelta(days=1)).replace(day=1)
+        group = await create_category_group(db_session, budget, "Savings")
+        account = await create_account(db_session, budget, "Checking")
+        over = await create_category(db_session, budget, group, "Over")
+        under = await create_category(db_session, budget, group, "Under")
+        await create_budget_assignment(db_session, budget, over, last, Decimal("0.00"))
+        await create_transaction(
+            db_session, budget, account, "-50.00", last, category=over, cleared="cleared"
+        )
+        await create_budget_assignment(db_session, budget, under, last, Decimal("50.00"))
+
+        detection = GuideDetection(db_session)
+        total = await detection._category_balance(budget.id, [over.id, under.id])
+
+        assert total == Decimal("50.00")
+
+
+class TestTheGuideReadsTheAccountBalanceEveryoneElseReads:
+    async def test_a_pending_row_is_not_money_yet(self, db_session):
+        budget = await _budget(db_session)
+        account = await create_account(db_session, budget, "Savings")
+        await create_transaction(db_session, budget, account, "1000.00", TODAY, cleared="cleared")
+        await create_transaction(db_session, budget, account, "-900.00", TODAY, cleared="pending")
+
+        from .factories import make_services
+
+        services = make_services(db_session)
+        detection = GuideDetection(db_session)
+
+        assert await detection._account_balance([account.id]) == Decimal("1000.00")
+        assert await services.account_repo.get_balance(account.id) == Decimal("1000.00")
+
+    async def test_a_split_totals_the_same_either_way(self, db_session):
+        # LEAF and PARENT_ROW both get this right; pinned so a future change to
+        # BALANCE_ROW cannot quietly start double-counting.
+        budget = await _budget(db_session)
+        account = await create_account(db_session, budget, "Savings")
+        parent = await create_transaction(
+            db_session, budget, account, "-100.00", TODAY, cleared="cleared", is_split=True
+        )
+        for amount in ("-60.00", "-40.00"):
+            await create_transaction(
+                db_session,
+                budget,
+                account,
+                amount,
+                TODAY,
+                cleared="cleared",
+                parent_transaction_id=parent.id,
+            )
+
+        from .factories import make_services
+
+        services = make_services(db_session)
+        detection = GuideDetection(db_session)
+
+        assert await detection._account_balance([account.id]) == Decimal("-100.00")
+        assert await services.account_repo.get_balance(account.id) == Decimal("-100.00")

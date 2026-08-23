@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, AccountType, Category, Liability, Transaction
 from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
+from igab.domain.carryover import available_through
+from igab.domain.dates import month_end, month_start
 from igab.guide.concepts import (
     HIGH_INTEREST_APR,
     MODERATE_INTEREST_APR,
@@ -28,6 +30,7 @@ from igab.guide.concepts import (
 )
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.txn_filters import (
+    BALANCE_ROW,
     COUNTERPART_ACCOUNT_ID,
     LEAF,
     NOT_DELETED,
@@ -417,44 +420,78 @@ class GuideDetection:
     async def _category_balance(
         self, budget_id: uuid.UUID, category_ids: list[uuid.UUID]
     ) -> Decimal:
-        """What has accumulated in these categories.
+        """What has accumulated in these categories, as the budget page reads it.
 
-        Assignments less activity, which is the balance a user would recognise
-        from the budget page.
+        This used to be `SUM(assigned) + SUM(activity)` over all time, which is
+        not the budget page's number and is not what a user would recognise: it
+        carried overspending forward that the budget had already covered from
+        To Be Assigned, and it counted assignments for months that have not
+        arrived. Any category that ever overspent read permanently low — and
+        this figure decides whether the roadmap tells someone they have no
+        emergency fund.
+
+        The simulation runs per category and the totals are summed after,
+        because the zero floor is per category: two categories, one $50 over
+        and one $50 under, carry $0 and $50 — not $0 between them.
         """
         if not category_ids:
             return Decimal("0")
         from igab.db.models import BudgetAssignment
 
-        assigned = (
-            await self.session.execute(
-                select(func.coalesce(func.sum(BudgetAssignment.assigned), 0)).where(
-                    BudgetAssignment.category_id.in_(category_ids)
+        month = month_start(date.today())
+        total = Decimal("0")
+        for category_id in category_ids:
+            assignments = (
+                await self.session.execute(
+                    select(BudgetAssignment.month, BudgetAssignment.assigned).where(
+                        BudgetAssignment.category_id == category_id,
+                        BudgetAssignment.month <= month,
+                    )
                 )
-            )
-        ).scalar_one()
-        activity = (
-            await self.session.execute(
-                select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                    Transaction.budget_id == budget_id,
-                    Transaction.category_id.in_(category_ids),
-                    NOT_DELETED,
-                    POSTED,
-                    LEAF,
+            ).all()
+            activity = (
+                await self.session.execute(
+                    select(
+                        func.date_trunc("month", Transaction.date).label("m"),
+                        func.coalesce(func.sum(Transaction.amount), 0),
+                    )
+                    .where(
+                        Transaction.budget_id == budget_id,
+                        Transaction.category_id == category_id,
+                        NOT_DELETED,
+                        POSTED,
+                        LEAF,
+                        Transaction.date <= month_end(month),
+                    )
+                    .group_by("m")
                 )
+            ).all()
+            total += available_through(
+                {m: Decimal(a) for m, a in assignments},
+                {r[0].date(): Decimal(r[1]) for r in activity},
+                month,
             )
-        ).scalar_one()
-        return _cents(Decimal(assigned) + Decimal(activity))
+        return _cents(total)
 
     async def _account_balance(self, account_ids: list[uuid.UUID]) -> Decimal:
+        """The same rows AccountRepository.get_balance sums.
+
+        Was NOT_DELETED + LEAF, which counted pending auth holds as real money
+        — nothing else in the app does, so the guide's account figure drifted
+        from the sidebar's by whatever was on hold.
+
+        LEAF and PARENT_ROW both total a split correctly (LEAF takes the
+        children and skips the parent; PARENT_ROW does the reverse), so that
+        half was never wrong. Using BALANCE_ROW is still what stops the two
+        answers from being arrived at separately.
+        """
         if not account_ids:
             return Decimal("0")
         total = (
             await self.session.execute(
                 select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                     Transaction.account_id.in_(account_ids),
-                    NOT_DELETED,
-                    LEAF,
+                    BALANCE_ROW,
                 )
             )
         ).scalar_one()

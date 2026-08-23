@@ -5,6 +5,7 @@ from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 from igab.db.models import Category
+from igab.domain.carryover import available_through
 from igab.domain.dates import month_end, month_start
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -197,29 +198,9 @@ class BudgetService:
 
         this_activity = activity_by_month.get(month_start, Decimal("0"))
 
-        # Month-by-month simulation flooring carryover at 0 between months.
-        # This matches YNAB: cash overspending in month M is deducted from TBA
-        # and the category starts month M+1 at zero rather than carrying negative.
-        assignments_by_month = {a.month: a.assigned for a in assignments}
-        all_months = sorted(set(assignments_by_month) | set(activity_by_month))
-        carryover = Decimal("0")
-        end_of_month = Decimal("0")
-        last_simulated: date | None = None
-        for m in all_months:
-            if m > month_start:
-                break
-            end_of_month = (
-                carryover
-                + assignments_by_month.get(m, Decimal("0"))
-                + activity_by_month.get(m, Decimal("0"))
-            )
-            # Floor the carryover into the next month; current month can show negative
-            carryover = max(Decimal("0"), end_of_month)
-            last_simulated = m
-
-        # Only the month with its own data may show negative; any later month
-        # starts from the floored carryover (overspending was absorbed by TBA).
-        available = end_of_month if last_simulated == month_start else carryover
+        available = available_through(
+            {a.month: a.assigned for a in assignments}, activity_by_month, month_start
+        )
 
         return CategoryBalance(
             category_id=category_id,
