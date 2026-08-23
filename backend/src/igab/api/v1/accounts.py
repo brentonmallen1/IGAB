@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,11 +9,13 @@ from igab.dependencies import (
     AccountAccess,
     BudgetAccess,
     CurrentUser,
+    SessionDep,
     get_account_repo,
     get_transaction_matching_service,
 )
 from igab.domain.exceptions import DuplicateError, NotFoundError
 from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
+from igab.services.account_hygiene import AccountHygieneService
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.liability_service import (
     LIABILITY_CLASSIFICATION,
@@ -44,6 +47,42 @@ async def list_accounts(
         resp.uncategorized_count = uncategorized
         result.append(resp)
     return result
+
+
+class HygieneFindingResponse(BaseModel):
+    kind: str
+    title: str
+    detail: str
+    action: str
+    account_ids: list[uuid.UUID] = []
+    transaction_count: int = 0
+
+
+class HygieneReportResponse(BaseModel):
+    findings: list[HygieneFindingResponse]
+    clean: bool
+
+
+@router.get("/{budget_id}/accounts/hygiene", response_model=HygieneReportResponse)
+async def account_hygiene(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> HygieneReportResponse:
+    """Things about this budget's accounts that are probably wrong.
+
+    Separate from `/integrity`, which reports invariant violations. Everything
+    here is a judgement call — a dormant account, a suspicious type — and a
+    clean integrity run has to keep meaning "the arithmetic is sound".
+
+    Declared above `/accounts/{account_id}` is unnecessary (the prefixes
+    differ) but the ordering is kept obvious anyway.
+    """
+    report = await AccountHygieneService(session).run(budget_id)
+    return HygieneReportResponse(
+        findings=[HygieneFindingResponse(**vars(f)) for f in report.findings],
+        clean=report.clean,
+    )
 
 
 @router.post(

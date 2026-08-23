@@ -19,6 +19,7 @@ from igab.repositories.txn_filters import (
     NOT_DELETED,
     PARENT_ROW,
     POSTED,
+    UNPAIRED_TRANSFER_LEG,
 )
 
 if TYPE_CHECKING:
@@ -123,6 +124,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         has_attachment: bool | None = None,
         direction: str | None = None,
         is_transfer: bool | None = None,
+        unpaired_transfers: bool = False,
     ) -> list[Transaction]:
         q = self.with_needs_category(select(Transaction)).where(
             Transaction.account_id == account_id,
@@ -139,6 +141,11 @@ class TransactionRepository(BaseRepository[Transaction]):
                 if is_transfer
                 else Transaction.transfer_id.is_(None)
             )
+        # Supported here as well as budget-wide: the register sends the same
+        # parsed filters either way, and a filter the account view silently
+        # ignored would return every row under a heading promising otherwise.
+        if unpaired_transfers:
+            q = q.where(UNPAIRED_TRANSFER_LEG)
         if search:
             q = q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             q = q.where(_search_predicate(search))
@@ -219,6 +226,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         amount_max: float | None = None,
         has_attachment: bool | None = None,
         is_transfer: bool | None = None,
+        unpaired_transfers: bool = False,
         order: str = "date",
         limit: int = 200,
         offset: int = 0,
@@ -297,6 +305,11 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(attachment_exists if has_attachment else ~attachment_exists)
         if search:
             where.append(_search_predicate(search))
+        # Deliberately its own filter rather than a mode of `is_transfer`:
+        # that one tests transfer_id alone, so it cannot express "has a
+        # transfer payee but no partner" at all.
+        if unpaired_transfers:
+            where.append(UNPAIRED_TRANSFER_LEG)
 
         rows_q = self.with_needs_category(select(Transaction))
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(

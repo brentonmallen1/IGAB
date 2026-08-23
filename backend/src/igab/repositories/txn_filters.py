@@ -98,6 +98,21 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
 )
 
 
+#: A transfer leg whose partner never arrived: the payee names another account,
+#: but no row links back. Balances stay right — both sides were written — but
+#: nothing marks the row as internal movement, so reports read it as real
+#: income or spending until someone disbelieves a chart.
+#:
+#: A YNAB import produces these in bulk when an account is left out: the far
+#: leg is never created, so there is nothing to pair with. One real import
+#: made 1,117.
+#:
+#: Note this is NOT the existing `is_transfer` filter, which tests
+#: `transfer_id` alone — `is_transfer=false` returns every ordinary
+#: transaction as well as these.
+UNPAIRED_TRANSFER_LEG = and_(TRANSFER_PAYEE, Transaction.transfer_id.is_(None))
+
+
 #: A row the user still has to file: no category, and it is the kind of row a
 #: category is *for*.
 #:

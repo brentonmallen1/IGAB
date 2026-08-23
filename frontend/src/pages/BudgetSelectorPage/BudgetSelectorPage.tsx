@@ -281,11 +281,13 @@ export function BudgetSelectorPage() {
       if (r.transfer_legs_unpaired > 0) {
         const n = r.transfer_legs_unpaired.toLocaleString()
         const leg = r.transfer_legs_unpaired === 1 ? 'transfer' : 'transfers'
+        // Shorter than it was, on purpose. A toast is the wrong home for a
+        // thousand-row reconciliation task: it explained the whole problem and
+        // then vanished, with no way to reach the rows. The Accounts page
+        // keeps the finding and links to them.
         toast(
-          `${n} ${leg} couldn't be matched to the other side. Account balances are ` +
-            `still correct, but these may show up as income or spending in reports. ` +
-            `This usually means an account was left out of the import.`,
-          { duration: 20000, icon: '⚠️' }
+          `${n} ${leg} couldn't be matched to the other side — see Accounts for the list.`,
+          { duration: 12000, icon: '⚠️' }
         )
       }
       if (r.errors.length > 0) {
