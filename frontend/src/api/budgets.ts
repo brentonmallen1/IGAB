@@ -137,7 +137,18 @@ export function useSetAssignment(budgetId: string) {
             )
           : [
               ...previous.category_balances,
-              { category_id: categoryId, month, assigned: amount, activity: 0, available: amount },
+              {
+                category_id: categoryId,
+                month,
+                assigned: amount,
+                activity: 0,
+                available: amount,
+                // The server owns the target verdict and has not answered yet.
+                // null hides the pill for one refetch rather than inventing a
+                // status here, which is the rule this field exists to enforce.
+                target_status: null,
+                needed_this_month: null,
+              },
             ]
         qc.setQueryData<BudgetMonth>(['budgetMonth', budgetId, month], {
           ...previous,

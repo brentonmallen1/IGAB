@@ -1,83 +1,26 @@
 /**
- * Target funding semantics — a deliberate mirror of the backend's
- * TargetService.calculate_status (backend/src/igab/services/target_service.py).
+ * Target *presentation* — bar geometry, and nothing that decides money.
  *
- * Every surface that says "funded"/"underfunded" (the row pill, the quick
- * filters, the view-bar counts) MUST go through this module. This code exists
- * because three components each hand-rolled `assigned >= target_amount`,
- * which is only right for monthly/weekly funding: a savings-balance target
- * measures AVAILABLE (the balance you are building), so a category whose
- * balance already met the goal showed a full progress bar next to an
- * "Underfunded" pill. If you change the rules here, change the backend to
- * match — Fill Underfunded (assign_service) uses the same math and the pill
- * must predict what it will do.
+ * This module used to mirror the backend's `TargetService.calculate_status`,
+ * with a docblock instructing the next reader to change both copies together.
+ * They drifted anyway, in three separate ways: the monthly-pace division was
+ * applied to the wrong target type, the month clamp differed, and
+ * `CategoryRow` grew a third implementation of the shortfall that contradicted
+ * both. A pill that predicts what Fill Underfunded will do cannot be computed
+ * from a second guess at the rule.
+ *
+ * The verdict and the amount now arrive on the row as `target_status` and
+ * `needed_this_month` (see `CategoryBalance`). What is left here is how far to
+ * fill a bar, which the server never decides and never needs to.
  */
 import type { CategoryTarget } from '../types'
-
-export type TargetStatus = 'funded' | 'underfunded' | 'overfunded'
-
-/** Whole months from `start` to `end`, minimum 1 — mirrors _months_between. */
-export function monthsBetween(start: Date, end: Date): number {
-  return Math.max(
-    1,
-    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
-  )
-}
-
-/**
- * The amount that must be ASSIGNED this month for the target to count as
- * funded. Can be negative (a dated goal already exceeded); callers that
- * display it should clamp at 0.
- *
- *  - monthly/weekly funding: the full amount, every period, rollover ignored
- *  - savings balance: the remaining shortfall (available counts)
- *  - needed for spending with a date: the shortfall spread over the months
- *    left — the monthly pace
- */
-export function targetNeededThisMonth(
-  target: Pick<CategoryTarget, 'target_type' | 'target_amount' | 'target_date'>,
-  available: number,
-  now: Date = new Date()
-): number {
-  const amount = Number(target.target_amount)
-  switch (target.target_type) {
-    case 'savings_balance':
-      return Math.max(0, amount - available)
-    case 'needed_for_spending':
-      if (target.target_date) {
-        const months = monthsBetween(now, new Date(target.target_date + 'T00:00:00'))
-        return (amount - available) / months
-      }
-      return amount
-    default:
-      // monthly_funding, weekly_funding, and any future type until it gets
-      // its own rule — same fallback the backend uses.
-      return amount
-  }
-}
-
-export function targetStatus(
-  target: Pick<CategoryTarget, 'target_type' | 'target_amount' | 'target_date'>,
-  assigned: number,
-  available: number,
-  now: Date = new Date()
-): TargetStatus {
-  const needed = targetNeededThisMonth(target, available, now)
-  if (assigned >= needed) {
-    // Same 5% grace as the backend before calling it overfunded.
-    return assigned > needed * 1.05 ? 'overfunded' : 'funded'
-  }
-  return 'underfunded'
-}
 
 /**
  * Progress toward the target's own measure, 0..1.
  *
  * Balance-shaped targets (savings balance, dated needed-for-spending) fill by
  * AVAILABLE — the bar answers "how much of the goal balance exists". Funding
- * targets fill by ASSIGNED — "how much of this month's duty is done". Using
- * the same measure as targetStatus is what keeps the bar and the pill from
- * ever disagreeing.
+ * targets fill by ASSIGNED — "how much of this month's duty is done".
  */
 export function targetProgress(
   target: Pick<CategoryTarget, 'target_type' | 'target_amount' | 'target_date'>,
@@ -90,7 +33,9 @@ export function targetProgress(
   return Math.min(Math.max(numerator / amount, 0), 1)
 }
 
-/** Whether the target is a balance goal (progress/remaining read AVAILABLE). */
+/** Whether the target is a balance goal (the bar fills by AVAILABLE).
+ *  Mirrors `TargetService.measures_balance`, and is only ever used to pick
+ *  which number fills a bar — never to decide an amount. */
 export function targetMeasuresBalance(
   target: Pick<CategoryTarget, 'target_type' | 'target_date'>
 ): boolean {
@@ -98,4 +43,18 @@ export function targetMeasuresBalance(
     target.target_type === 'savings_balance' ||
     (target.target_type === 'needed_for_spending' && !!target.target_date)
   )
+}
+
+/**
+ * Whole months from now until `isoDate`, floored at 1 — for the "$X/mo to
+ * goal" hint only.
+ *
+ * Presentational pacing, not a funding rule: it divides a shortfall the server
+ * computed to suggest a rate. Browser-local months can differ from the
+ * server's by one at a month boundary, which shifts the suggested rate
+ * slightly and contradicts no verdict.
+ */
+export function monthsUntil(isoDate: string, now: Date = new Date()): number {
+  const end = new Date(isoDate + 'T00:00:00')
+  return Math.max(1, (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth()))
 }

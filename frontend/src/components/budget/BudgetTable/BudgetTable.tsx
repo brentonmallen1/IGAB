@@ -11,12 +11,10 @@ import {
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { groupByView, visibleCategoryIds } from './viewGrouping'
-import { useTargetsByBudget } from '../../../api/targets'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
 import type { CategoryBalance, CategoryGroup } from '../../../types'
 import './BudgetTable.css'
-import { targetStatus } from '../../../utils/targets'
 
 export function BudgetTable() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -40,7 +38,6 @@ export function BudgetTable() {
   const { data: budgetMonth, isLoading: monthLoading } = useBudgetMonth(budgetId, month)
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: views } = useBudgetViews(budgetId)
-  const { data: targets } = useTargetsByBudget(budgetId)
   const createGroup = useCreateCategoryGroup(budgetId ?? '')
 
   if (!budgetId) {
@@ -58,8 +55,6 @@ export function BudgetTable() {
   const balanceMap = new Map<string, CategoryBalance>()
   budgetMonth?.category_balances.forEach((b) => balanceMap.set(b.category_id, b))
 
-  const targetMap = new Map((targets ?? []).map((t) => [t.category_id, t]))
-
   const activeFilter = filters?.find((f) => f.id === activeFilterId) ?? null
   const filterCategoryIds = activeFilter ? new Set(activeFilter.category_ids) : null
 
@@ -70,20 +65,13 @@ export function BudgetTable() {
     if (filterCategoryIds) return filterCategoryIds.has(catId)
     if (!activeQuickFilter) return true
     const balance = balanceMap.get(catId)
-    const target = targetMap.get(catId)
+    // The chip's count and the rows it filters read the same served field, so
+    // they cannot disagree — they were computed from two different lists.
     switch (activeQuickFilter) {
       case 'overspent': return (balance?.available ?? 0) < 0
-      case 'underfunded':
-        return (
-          target != null &&
-          targetStatus(target, balance?.assigned ?? 0, balance?.available ?? 0) === 'underfunded'
-        )
+      case 'underfunded': return balance?.target_status === 'underfunded'
       case 'money-available': return (balance?.available ?? 0) > 0
-      case 'overfunded':
-        return (
-          target != null &&
-          targetStatus(target, balance?.assigned ?? 0, balance?.available ?? 0) === 'overfunded'
-        )
+      case 'overfunded': return balance?.target_status === 'overfunded'
     }
   }
 
@@ -156,11 +144,7 @@ export function BudgetTable() {
 
   return (
     <div className="budget-table">
-      <BudgetFilterBar
-        budgetId={budgetId}
-        categoryBalances={chipBalances}
-        targets={targets ?? []}
-      />
+      <BudgetFilterBar budgetId={budgetId} categoryBalances={chipBalances} />
       <div className="budget-table__header">
         <div className="budget-table__col budget-table__col--name">
           Category

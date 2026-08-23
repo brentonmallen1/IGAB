@@ -277,8 +277,20 @@ async def get_budget_month(
     month: date,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    target_service: Annotated[TargetService, Depends(get_target_service)],
 ) -> BudgetMonthResponse:
     summary = await budget_service.get_budget_summary(budget_id, month)
+
+    # Targets are loaded here rather than inside get_budget_summary on purpose:
+    # AssignService._gather calls that method and loads targets itself, so
+    # folding them in would do the work twice on the strategies path.
+    targets = {
+        t.category_id: t
+        for t in await target_service.repo.get_by_category_ids(
+            [b.category_id for b in summary.category_balances]
+        )
+    }
+
     return BudgetMonthResponse(
         month=month,
         to_be_assigned=summary.to_be_assigned,
@@ -293,6 +305,16 @@ async def get_budget_month(
                 assigned=b.assigned,
                 activity=b.activity,
                 available=b.available,
+                target_status=(
+                    target_service.calculate_status(t, b.assigned, b.available)
+                    if (t := targets.get(b.category_id))
+                    else None
+                ),
+                needed_this_month=(
+                    target_service.calculate_needed(t, b.assigned, b.available)
+                    if (t := targets.get(b.category_id))
+                    else None
+                ),
             )
             for b in summary.category_balances
         ],

@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Literal
 
 # Account types are no longer a static enum: each budget carries an
 # account_types registry row per type (built-ins seeded from
@@ -26,6 +27,13 @@ class TargetType(StrEnum):
     SAVINGS_BALANCE = "savings_balance"
     MONTHLY_FUNDING = "monthly_funding"
     WEEKLY_FUNDING = "weekly_funding"
+
+
+#: The three answers the budget row's pill can show. A Literal rather than a
+#: StrEnum because it is a computed verdict that crosses the API to the client,
+#: not a stored column — TargetService produces it and the response schema
+#: declares it, and this is what stops the two drifting apart.
+TargetStatus = Literal["funded", "underfunded", "overfunded"]
 
 
 class ScheduleFrequency(StrEnum):

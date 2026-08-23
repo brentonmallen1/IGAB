@@ -5,7 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 
 from igab.api.v1.schemas.tag import TagOutSimple
-from igab.domain.enums import TargetType
+from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.money import Money
 
 
@@ -74,6 +74,18 @@ class CategoryBalance(BaseModel):
     assigned: Decimal
     activity: Decimal
     available: Decimal
+    #: The target verdict, computed by TargetService — the same function Fill
+    #: Underfunded asks. The budget row's pill renders this; it does not
+    #: recompute it. A second implementation in the client drifted from this
+    #: one in three separate ways before it was removed.
+    #:
+    #: None when the category has no target, which is a genuine third state
+    #: rather than a missing value — unlike `needs_category`, whose absence
+    #: could only ever mean a path forgot to load it.
+    target_status: TargetStatus | None = None
+    #: What still has to be assigned this month for the target to be met, and
+    #: exactly what Fill Underfunded would move. None when there is no target.
+    needed_this_month: Decimal | None = None
 
 
 class CategoryResponse(BaseModel):

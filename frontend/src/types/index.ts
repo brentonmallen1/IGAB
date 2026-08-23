@@ -119,12 +119,31 @@ export interface BudgetView {
   updated_at: string
 }
 
+/** The three answers the budget row's pill can show. Mirrors
+ *  `TargetStatus` in backend/src/igab/domain/enums.py. */
+export type TargetStatus = 'funded' | 'underfunded' | 'overfunded'
+
 export interface CategoryBalance {
   category_id: string
   month: string
   assigned: number
   activity: number
   available: number
+  /**
+   * The target verdict, computed by the server's TargetService — the same
+   * function Fill Underfunded asks. `null` when the category has no target.
+   *
+   * Never re-derive this. utils/targets.ts used to mirror `calculate_status`
+   * and CategoryRow re-implemented the shortfall a third time with the target
+   * types inverted relative to the mirror, so the pill and the "Save $X more"
+   * line rendered beside it were computed from different rules.
+   */
+  target_status: TargetStatus | null
+  /**
+   * What still has to be assigned this month for the target to be met, and
+   * exactly what Fill Underfunded would move. `null` when there is no target.
+   */
+  needed_this_month: number | null
 }
 
 export interface BudgetMonth {

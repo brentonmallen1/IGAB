@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from igab.db.models import CategoryTarget
 from igab.domain.dates import months_between
+from igab.domain.enums import TargetStatus
 from igab.repositories.target_repo import TargetRepository
 
 
@@ -109,7 +110,7 @@ class TargetService:
         assigned: Decimal,
         available: Decimal,
         today: date | None = None,
-    ) -> str:
+    ) -> TargetStatus:
         """Returns 'funded', 'underfunded', or 'overfunded'.
 
         The pill exists to say what Fill Underfunded will do, so "underfunded"
