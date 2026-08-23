@@ -8,7 +8,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const createMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ id: 'new-txn' })))
-const updateMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
+// Typed payload: the transfer tests assert on the ORDER and content of two
+// separate PATCHes (break, then edit), so the calls must stay inspectable.
+const updateMutate = vi.hoisted(() =>
+  vi.fn((_payload: Record<string, unknown>) => Promise.resolve({}))
+)
 const deleteMutate = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 const convertMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 const confirmOverspend = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
@@ -38,9 +42,13 @@ const CATEGORIES = vi.hoisted(() => [
 ])
 const ACCOUNTS = vi.hoisted(() => [
   { id: 'acc-1', name: 'Checking', on_budget: true, is_closed: false },
+  { id: 'acc-2', name: 'Savings', on_budget: true, is_closed: false },
+  { id: 'acc-3', name: 'Vacation Fund', on_budget: true, is_closed: false },
 ])
 
 let classificationData: unknown = undefined
+/** Rows in the target account that could be a transfer's far leg. */
+let transferCandidates: unknown[] = []
 
 vi.mock('../../../api/transactions', () => ({
   useCreateTransaction: () => ({ mutateAsync: createMutate, isPending: false }),
@@ -51,6 +59,7 @@ vi.mock('../../../api/transactions', () => ({
   usePayees: () => ({ data: [] }),
   useSimilarTransactions: () => ({ data: [] }),
   useTransactionClassification: () => ({ data: classificationData }),
+  useTransferCandidates: () => ({ data: transferCandidates }),
 }))
 vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: CATEGORIES }),
@@ -310,5 +319,116 @@ describe('TransactionEditor classification note', () => {
   it('says nothing for an unsaved draft', () => {
     renderEditor({ transaction: null })
     expect(screen.queryByText(/Counts as/)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Repairing a transfer by hand. This control existed but did nothing: the
+ * server dropped the field, and the editor never showed an existing
+ * transfer's destination — so the one manual fix for an unpaired leg was
+ * unreachable.
+ */
+describe('TransactionEditor transfers', () => {
+  const linkedLeg = {
+    id: 't-xfer',
+    account_id: 'acc-1',
+    date: '2026-08-20',
+    amount: -500,
+    category_id: null,
+    payee_id: 'p-transfer',
+    memo: null,
+    cleared: 'uncleared',
+    transfer_id: 't-far',
+    counterpart_account_id: 'acc-2',
+  } as unknown as Transaction
+
+  /** The importer's leftovers: transfer-shaped, but never linked. */
+  const orphanLeg = {
+    ...linkedLeg,
+    id: 't-orphan',
+    transfer_id: null,
+  } as unknown as Transaction
+
+  beforeEach(() => {
+    updateMutate.mockClear()
+    transferCandidates = []
+  })
+
+  it('opens an existing transfer showing where it goes', () => {
+    renderEditor({ transaction: linkedLeg })
+    const select = screen.getByRole('combobox', { name: 'To Account' })
+    expect((select as HTMLSelectElement).value).toBe('acc-2')
+  })
+
+  it('treats an unpaired leg as a transfer too', () => {
+    // transfer_id is null here — reading only that is what made the repair
+    // path invisible on exactly the rows that needed it.
+    renderEditor({ transaction: orphanLeg })
+    expect(screen.getByRole('combobox', { name: 'To Account' })).toBeInTheDocument()
+  })
+
+  it('sends the new destination when retargeted', async () => {
+    renderEditor({ transaction: linkedLeg })
+    fireEvent.change(screen.getByRole('combobox', { name: 'To Account' }), {
+      target: { value: 'acc-3' },
+    })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't-xfer', transfer_account_id: 'acc-3' })
+    )
+  })
+
+  it('breaks the link as its own step when the toggle goes off', async () => {
+    renderEditor({ transaction: linkedLeg })
+    fireEvent.click(screen.getByLabelText('Transfer to account'))
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(2))
+    // A linked leg's payee IS its destination, so the server refuses a payee
+    // and a link instruction in one request — break first, then edit.
+    expect(updateMutate.mock.calls[0][0]).toEqual({
+      id: 't-xfer',
+      transfer_account_id: null,
+    })
+    expect(updateMutate.mock.calls[1][0]).not.toHaveProperty('transfer_account_id')
+  })
+
+  it('asks which row is the far leg when more than one could be', async () => {
+    transferCandidates = [
+      { id: 'cand-1', date: '2026-08-20', amount: '500.00', memo: 'ACH credit', cleared: 'cleared' },
+      { id: 'cand-2', date: '2026-08-20', amount: '500.00', memo: 'Deposit', cleared: 'uncleared' },
+    ]
+    renderEditor({ transaction: orphanLeg })
+
+    expect(screen.getByText(/which transaction in savings/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: /ACH credit/ }))
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ transfer_partner_transaction_id: 'cand-1' })
+    )
+  })
+
+  it('can say none of these, write the missing one', async () => {
+    transferCandidates = [
+      { id: 'cand-1', date: '2026-08-20', amount: '500.00', memo: 'Unrelated', cleared: 'cleared' },
+    ]
+    renderEditor({ transaction: orphanLeg })
+
+    fireEvent.click(screen.getByRole('radio', { name: /None of these/ }))
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ transfer_create_partner: true })
+    )
+  })
+
+  it('asks nothing when there is no candidate to confuse it with', () => {
+    renderEditor({ transaction: orphanLeg })
+    expect(screen.queryByText(/which transaction in/i)).not.toBeInTheDocument()
   })
 })

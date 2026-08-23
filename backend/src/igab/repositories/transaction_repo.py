@@ -1,7 +1,7 @@
 import re
 import uuid
 from collections.abc import Collection, Mapping, Sequence
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
@@ -611,6 +611,49 @@ class TransactionRepository(BaseRepository[Transaction]):
             await self.session.execute(insert(Transaction).values(chunk))
         await self.session.flush()
         return len(transactions)
+
+    async def find_transfer_candidates(
+        self,
+        *,
+        account_id: uuid.UUID,
+        amount: Decimal,
+        counterpart_account_id: uuid.UUID | None = None,
+        on_date: date | None = None,
+        date_tolerance_days: int = 0,
+    ) -> list[Transaction]:
+        """Rows in `account_id` that could be the missing side of a transfer.
+
+        Always: live, unlinked, not part of a split, exactly `amount`.
+        `counterpart_account_id` narrows to legs whose transfer payee points
+        back at that account — the high-confidence shape auto-linking trusts.
+        Left None, plain rows qualify too (a bank-imported far leg whose payee
+        is "Online Transfer"), which is what the picker wants to offer.
+        Dates: exact `on_date`, widened by `date_tolerance_days` either side.
+        """
+        q = self.with_computed(select(Transaction)).where(
+            Transaction.account_id == account_id,
+            NOT_DELETED,
+            Transaction.parent_transaction_id.is_(None),
+            Transaction.is_split == False,  # noqa: E712
+            Transaction.transfer_id.is_(None),
+            Transaction.amount == amount,
+        )
+        if counterpart_account_id is not None:
+            q = q.join(Payee, Transaction.payee_id == Payee.id).where(
+                Payee.transfer_account_id == counterpart_account_id
+            )
+        if on_date is not None:
+            if date_tolerance_days:
+                q = q.where(
+                    Transaction.date.between(
+                        on_date - timedelta(days=date_tolerance_days),
+                        on_date + timedelta(days=date_tolerance_days),
+                    )
+                )
+            else:
+                q = q.where(Transaction.date == on_date)
+        q = q.order_by(Transaction.date, Transaction.created_at)
+        return list((await self.session.execute(q)).scalars().all())
 
     async def bulk_link_transfers(self, links: list[tuple[uuid.UUID, uuid.UUID]]) -> None:
         """Set transfer_id on already-inserted rows: (row_id, partner_id) pairs.

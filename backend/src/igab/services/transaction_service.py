@@ -68,6 +68,15 @@ class TransactionUpdate:
     memo: str | None = UNSET
     cleared: str | None = UNSET
     approved: bool | None = UNSET
+    #: Not a column. Set: make/repoint this row into a transfer to that
+    #: account (linking or creating the partner leg). Explicit None: break a
+    #: linked transfer, or clear an orphan leg's transfer payee.
+    transfer_account_id: uuid.UUID | None = UNSET
+    #: Not a column. With transfer_account_id: link exactly this existing row
+    #: as the partner (the user's pick among ambiguous candidates).
+    transfer_partner_transaction_id: uuid.UUID | None = UNSET
+    #: Not a column. Create the far leg even though candidates exist.
+    transfer_create_partner: bool = UNSET
     latitude: float | None = UNSET
     longitude: float | None = UNSET
 
@@ -299,9 +308,25 @@ class TransactionService:
             raise InvariantViolation("Cannot edit a reconciled transaction")
 
         changes = {k: v for k, v in vars(data).items() if v is not UNSET}
+        # Not columns — pulled out before the generic column update. Handled
+        # as their own recorded steps inside the same undo batch below.
+        transfer_requested = "transfer_account_id" in changes
+        transfer_account_id: uuid.UUID | None = changes.pop("transfer_account_id", None)
+        partner_pick: uuid.UUID | None = changes.pop("transfer_partner_transaction_id", None)
+        create_partner: bool = bool(changes.pop("transfer_create_partner", False))
         for field in _REQUIRED_FIELDS:
             if field in changes and changes[field] is None:
                 raise InvariantViolation(f"{field} cannot be empty")
+
+        if transfer_requested:
+            if txn.is_split or txn.parent_transaction_id is not None:
+                raise InvariantViolation(
+                    "A split (or one of its lines) cannot be linked as a transfer"
+                )
+            if {"amount", "date"} & changes.keys():
+                raise InvariantViolation(
+                    "Change the transfer link and money fields in separate edits"
+                )
 
         # Body-supplied category/payee ids bypass BudgetAccess; a re-point to
         # another budget's object must be rejected (also covers bulk-categorize).
@@ -337,7 +362,14 @@ class TransactionService:
         partner: Transaction | None = None
         if txn.transfer_id:
             partner = await self.transaction_repo.get(txn.transfer_id)
-            if changes.get("category_id") is not None:
+            if "payee_id" in changes:
+                # The payee of a linked leg IS its destination; changing it
+                # alone would make the name and the link disagree.
+                raise InvariantViolation(
+                    "This is a linked transfer — its payee is its destination. "
+                    "Change the transfer's account, or break the transfer first."
+                )
+            if changes.get("category_id") is not None and not transfer_requested:
                 own_account = await self.account_repo.get_or_raise(txn.account_id)
                 partner_account = (
                     await self.account_repo.get(partner.account_id) if partner is not None else None
@@ -361,10 +393,28 @@ class TransactionService:
                         "delete it and create a new transfer"
                     )
 
+        transfer_plan: dict[str, Any] | None = None
+        if transfer_requested:
+            transfer_plan = await self._plan_transfer_edit(
+                budget_id,
+                txn,
+                target_account_id=transfer_account_id,
+                partner_pick=partner_pick,
+                create_partner=create_partner,
+                # The category this row will END UP with — the on/off-budget
+                # rule has to judge the edit's result, not its starting point.
+                category_id=changes["category_id"] if "category_id" in changes else txn.category_id,
+            )
+
         before_self = snapshot("transaction", txn)
         with self.changes.batch():
+            if transfer_plan is not None:
+                # Merges the row's own transfer_id/payee_id into `changes`, so
+                # the pair moves in one recorded step per row and one undo.
+                changes.update(await self._apply_transfer_edit(budget_id, txn, transfer_plan))
+
             # Keep the transfer pair zero-sum and date-aligned.
-            if partner is not None:
+            if partner is not None and transfer_plan is None:
                 partner_changes: dict[str, Any] = {}
                 if "amount" in changes:
                     partner_changes["amount"] = -changes["amount"]
@@ -524,6 +574,190 @@ class TransactionService:
                 await self._record_txn(source, "create", refresh=False)
                 await self._record_txn(dest, "create")
         return source
+
+    async def _plan_transfer_edit(
+        self,
+        budget_id: uuid.UUID,
+        txn: Transaction,
+        *,
+        target_account_id: uuid.UUID | None,
+        partner_pick: uuid.UUID | None,
+        create_partner: bool,
+        category_id: uuid.UUID | None,
+    ) -> dict[str, Any]:
+        """Resolve a `transfer_account_id` edit into a concrete plan, or raise.
+
+        Every check lives here, before anything is written: an edit that
+        cannot be carried out must not leave one leg of a pair changed.
+
+        Actions: `retarget` (move a linked partner to another account),
+        `link` (adopt an existing row as the partner), `create` (write the far
+        leg), `break` (unlink a pair, both rows kept), `unmark` (drop an
+        orphan leg's transfer payee), `none`.
+        """
+        current_partner = (
+            await self.transaction_repo.get(txn.transfer_id) if txn.transfer_id else None
+        )
+
+        if target_account_id is None:
+            if current_partner is not None:
+                if current_partner.cleared == "reconciled":
+                    raise InvariantViolation(
+                        "The other side of this transfer is reconciled; unreconcile it first"
+                    )
+                # Both rows stay — breaking a link must never silently delete
+                # money. They keep their transfer payees, so they read as
+                # unpaired legs (`is:unpaired`) and can be relinked.
+                return {"action": "break", "partner": current_partner}
+            payee = await self.payee_repo.get(txn.payee_id) if txn.payee_id else None
+            if payee is not None and payee.transfer_account_id is not None:
+                return {"action": "unmark"}
+            return {"action": "none"}
+
+        target = await self.account_repo.get_or_raise(target_account_id)
+        if str(target.budget_id) != str(budget_id):
+            raise InvariantViolation("Transfer account does not belong to this budget")
+        if target.id == txn.account_id:
+            raise InvariantViolation("A transfer needs two different accounts")
+
+        own_account = await self.account_repo.get_or_raise(txn.account_id)
+        # Same rule as create: a categorized transfer is a YNAB spending
+        # transfer, and the category lives on the on-budget side of an
+        # on↔off pair. Categorizing any other transfer would count internal
+        # movement as spending.
+        if category_id is not None and not (own_account.on_budget and not target.on_budget):
+            raise InvariantViolation(
+                "Transfers can only be categorized on the on-budget side of an off-budget transfer"
+            )
+
+        if current_partner is not None:
+            if current_partner.account_id == target.id:
+                return {"action": "none"}
+            if current_partner.cleared == "reconciled":
+                raise InvariantViolation(
+                    "The other side of this transfer is reconciled; unreconcile it first"
+                )
+            return {"action": "retarget", "partner": current_partner, "target": target}
+
+        if partner_pick is not None:
+            chosen = await self.transaction_repo.get(partner_pick)
+            if chosen is None or str(chosen.budget_id) != str(budget_id):
+                raise InvariantViolation("The chosen transfer partner was not found")
+            if chosen.id == txn.id:
+                raise InvariantViolation("A transaction cannot be its own transfer partner")
+            if chosen.account_id != target.id:
+                raise InvariantViolation("The chosen partner is not in that account")
+            if chosen.transfer_id is not None:
+                raise InvariantViolation("The chosen partner is already part of a transfer")
+            if chosen.is_split or chosen.parent_transaction_id is not None:
+                raise InvariantViolation("A split cannot be a transfer partner")
+            if chosen.amount != -txn.amount:
+                # Linking rows of different sizes would claim two different
+                # amounts are the same movement of money.
+                raise InvariantViolation(
+                    "The chosen partner's amount is not the opposite of this one"
+                )
+            return {"action": "link", "partner": chosen, "target": target}
+
+        # High-confidence shape: an unlinked, opposite, same-date row in the
+        # target whose own transfer payee points back here.
+        matched = await self.transaction_repo.find_transfer_candidates(
+            account_id=target.id,
+            amount=-txn.amount,
+            counterpart_account_id=txn.account_id,
+            on_date=txn.date,
+        )
+        if len(matched) == 1:
+            return {"action": "link", "partner": matched[0], "target": target}
+        if len(matched) > 1 and not create_partner:
+            raise InvariantViolation(
+                f"{len(matched)} transactions in {target.name} could be the other side "
+                "of this transfer — choose which one to link"
+            )
+
+        if not create_partner:
+            # Nothing points back, but a plain row (a bank-imported far leg
+            # whose payee is "Online Transfer") may still BE the other side.
+            # Creating alongside it would double-count the money, so ask.
+            plain = [
+                c
+                for c in await self.transaction_repo.find_transfer_candidates(
+                    account_id=target.id, amount=-txn.amount, on_date=txn.date
+                )
+                if c.id != txn.id
+            ]
+            if plain:
+                raise InvariantViolation(
+                    f"{len(plain)} transaction{'s' if len(plain) > 1 else ''} in "
+                    f"{target.name} could be the other side of this transfer — "
+                    "choose one, or confirm you want a new one written"
+                )
+        return {"action": "create", "target": target}
+
+    async def _apply_transfer_edit(
+        self, budget_id: uuid.UUID, txn: Transaction, plan: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Carry out a plan from `_plan_transfer_edit`; caller is in a batch.
+
+        Returns the edited row's own field changes for the caller to merge
+        into its single update — the partner's are written here.
+        """
+        action = plan["action"]
+        if action == "none":
+            return {}
+        if action == "unmark":
+            return {"payee_id": None}
+
+        partner: Transaction | None = plan.get("partner")
+        if action == "break":
+            assert partner is not None
+            partner_before = snapshot("transaction", partner)
+            unlinked = await self.transaction_repo.update(partner.id, transfer_id=None)
+            await self._record_txn(unlinked, "update", before=partner_before)
+            return {"transfer_id": None}
+
+        target: Account = plan["target"]
+        own_account = await self.account_repo.get_or_raise(txn.account_id)
+        # Each leg's payee names the OTHER account — that is what a transfer
+        # payee means, and what the register renders.
+        own_payee = await self._get_transfer_payee(budget_id, target)
+        partner_payee = await self._get_transfer_payee(budget_id, own_account)
+
+        if action == "retarget":
+            assert partner is not None
+            partner_before = snapshot("transaction", partner)
+            moved = await self.transaction_repo.update(
+                partner.id, account_id=target.id, payee_id=partner_payee.id
+            )
+            await self._record_txn(moved, "update", before=partner_before)
+            return {"payee_id": own_payee.id}
+
+        if action == "link":
+            assert partner is not None
+            partner_before = snapshot("transaction", partner)
+            linked = await self.transaction_repo.update(
+                partner.id, transfer_id=txn.id, payee_id=partner_payee.id
+            )
+            await self._record_txn(linked, "update", before=partner_before)
+            return {"payee_id": own_payee.id, "transfer_id": partner.id}
+
+        # create: the far leg never existed (a skipped account at import).
+        # Uncleared, because nothing has confirmed it at the bank. No
+        # category: the plan rejects any pair where this row's category
+        # doesn't belong on this side.
+        created = await self.transaction_repo.create(
+            budget_id=budget_id,
+            account_id=target.id,
+            date=txn.date,
+            amount=-txn.amount,
+            payee_id=partner_payee.id,
+            memo=txn.memo,
+            cleared="uncleared",
+            approved=txn.approved,
+            transfer_id=txn.id,
+        )
+        await self._record_txn(created, "create")
+        return {"payee_id": own_payee.id, "transfer_id": created.id}
 
     async def _get_transfer_payee(self, budget_id: uuid.UUID, account: Account):
         """The "Transfer : <account>" payee, with transfer_account_id set.

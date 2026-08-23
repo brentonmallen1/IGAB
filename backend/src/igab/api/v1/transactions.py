@@ -41,6 +41,7 @@ from igab.dependencies import (
     PayeeAccess,
     SessionDep,
     TransactionAccess,
+    get_account_repo,
     get_ai_job_repo,
     get_change_recorder,
     get_payee_repo,
@@ -56,6 +57,7 @@ from igab.domain.activity_class import (
     explain,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
+from igab.repositories.account_repo import AccountRepository
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -381,6 +383,40 @@ async def get_transaction_classification(
         reason=row[2],
         explanation=explain(row[2]),
     )
+
+
+@router.get(
+    "/transactions/{transaction_id}/transfer-candidates",
+    response_model=list[TransactionResponse],
+)
+async def get_transfer_candidates(
+    transaction_id: TransactionAccess,
+    account_id: uuid.UUID,
+    current_user: CurrentUser,
+    budget_id: BudgetAccess,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    date_tolerance_days: int = Query(0, ge=0, le=14),
+) -> list[TransactionResponse]:
+    """Rows in `account_id` that could be this transaction's missing far leg.
+
+    Feeds the "which one is it?" picker, so it is deliberately broader than
+    what the save path auto-links: any live, unlinked, opposite-amount row in
+    range, whether or not its payee points back here. A bank-imported far leg
+    usually has an ordinary payee — that is exactly the row a user needs
+    offered, and exactly the row a blind create would duplicate.
+    """
+    txn = await txn_repo.get_or_raise(transaction_id)
+    account = await account_repo.get(account_id)
+    if account is None or str(account.budget_id) != str(budget_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    candidates = await txn_repo.find_transfer_candidates(
+        account_id=account_id,
+        amount=-txn.amount,
+        on_date=txn.date,
+        date_tolerance_days=date_tolerance_days,
+    )
+    return [TransactionResponse.model_validate(c) for c in candidates if c.id != transaction_id]
 
 
 @router.patch("/transactions/{transaction_id}", response_model=TransactionResponse)
