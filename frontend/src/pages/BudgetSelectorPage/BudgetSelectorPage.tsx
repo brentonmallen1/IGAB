@@ -29,6 +29,7 @@ import {
   classificationWarning,
   choiceForDisposition,
   dispositionOf,
+  dormantOpenCount,
   isDormant,
   type Disposition,
 } from './accountMapping'
@@ -127,6 +128,24 @@ export function BudgetSelectorPage() {
   const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
   const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
   const [showTypeInfo, setShowTypeInfo] = useState(false)
+
+  // Offered once rather than per row: a real export left 22 of 47 accounts
+  // dormant, and 22 identical notes is a wall to scroll past rather than a
+  // suggestion. Each row still shows when it last moved, and its own picker
+  // still wins for anyone who wants only some of them closed.
+  const dormantCount = dormantOpenCount(previewAccounts ?? [], accountChoices)
+
+  function closeDormantAccounts() {
+    setAccountChoices((prev) => {
+      const next = { ...prev }
+      for (const a of previewAccounts ?? []) {
+        if (dispositionOf(next[a.name]) === 'import' && isDormant(a.last_activity)) {
+          next[a.name] = { ...next[a.name], ...choiceForDisposition('close') }
+        }
+      }
+      return next
+    })
+  }
 
   function updateChoice(name: string, patch: Partial<YnabAccountTypeChoice>) {
     setAccountChoices((prev) => ({ ...prev, [name]: { ...prev[name], ...patch } }))
@@ -512,6 +531,20 @@ export function BudgetSelectorPage() {
                     by mistake throws off every total.
                   </p>
                 )}
+                {dormantCount > 0 && (
+                  <p className="ynab-mapping__note">
+                    {dormantCount} of these {dormantCount === 1 ? 'has' : 'have'} seen no activity
+                    in over a year.{' '}
+                    <button
+                      type="button"
+                      className="ynab-mapping__note-action"
+                      onClick={closeDormantAccounts}
+                    >
+                      Import &amp; close {dormantCount === 1 ? 'it' : 'them'}
+                    </button>{' '}
+                    to keep every transaction while leaving them out of your account pickers.
+                  </p>
+                )}
                 <div className="ynab-mapping" role="group" aria-labelledby="ynab-accounts-label">
                   {previewAccounts.map((a) => {
                     const choice = accountChoices[a.name]
@@ -525,7 +558,6 @@ export function BudgetSelectorPage() {
                             ?.classification,
                           ACCOUNT_TYPE_OPTIONS.find((o) => o.key === typeKey)?.classification
                         )
-                    const dormant = disposition === 'import' && isDormant(a.last_activity)
                     const lastSeen = activityLabel(a.last_activity)
                     return (
                       <div
@@ -599,21 +631,6 @@ export function BudgetSelectorPage() {
                           On budget
                         </label>
                         {warning && <p className="ynab-mapping__warn">{warning}</p>}
-                        {dormant && (
-                          <p className="ynab-mapping__note">
-                            Nothing since {lastSeen}.{' '}
-                            <button
-                              type="button"
-                              className="ynab-mapping__note-action"
-                              onClick={() =>
-                                updateChoice(a.name, choiceForDisposition('close'))
-                              }
-                            >
-                              Import &amp; close
-                            </button>{' '}
-                            keeps the history and hides the account.
-                          </p>
-                        )}
                       </div>
                     )
                   })}

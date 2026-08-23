@@ -82,6 +82,9 @@ describe('dormancy', () => {
   })
 
   it('counts only the dormant accounts still set to plain import', () => {
+    // What the bulk offer is keyed on: once an account is already marked
+    // "import & close" it must drop out of the count, or the line keeps
+    // offering to do something that is already done.
     const accounts = [
       preview({ name: 'Old A', last_activity: '2019-01-01' }),
       preview({ name: 'Old B', last_activity: '2019-01-01' }),
@@ -91,6 +94,19 @@ describe('dormancy', () => {
       'Old B': { account_type: 'savings', on_budget: true, close: true },
     }
     expect(dormantOpenCount(accounts, choices, A_YEAR_AGO)).toBe(1)
+  })
+
+  it('drops a dormant account that is being left out entirely', () => {
+    const accounts = [preview({ name: 'Old', last_activity: '2019-01-01' })]
+    const choices: Record<string, YnabAccountTypeChoice> = {
+      Old: { account_type: 'savings', on_budget: true, skip: true },
+    }
+    expect(dormantOpenCount(accounts, choices, A_YEAR_AGO)).toBe(0)
+  })
+
+  it('is zero when nothing is dormant, so the offer stays hidden', () => {
+    const accounts = [preview({ last_activity: '2026-08-01' })]
+    expect(dormantOpenCount(accounts, {}, A_YEAR_AGO)).toBe(0)
   })
 })
 
