@@ -17,11 +17,15 @@ interface Props {
   /** Registry rows when a budget exists (custom types included); the
    * built-ins cover the pre-budget contexts like the YNAB import mapping. */
   types?: TypeRow[]
+  /** 'import' adds the choices that only exist while mapping an export —
+   * what leaving an account out actually costs. Stated explicitly rather
+   * than inferred from `types` being absent, so the two stay independent. */
+  context?: 'import'
 }
 
 /** What each account type means and implies — mounted wherever a type is
  * chosen (add/edit account, YNAB import mapping). */
-export function AccountTypeInfoModal({ onClose, types }: Props) {
+export function AccountTypeInfoModal({ onClose, types, context }: Props) {
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   const rows = types && types.length > 0 ? types : BUILTIN_ACCOUNT_TYPES
 
@@ -40,7 +44,7 @@ export function AccountTypeInfoModal({ onClose, types }: Props) {
       >
         <div className="type-info__header">
           <span id="type-info-title" className="type-info__title">
-            Account types
+            {context === 'import' ? 'Account types & import choices' : 'Account types'}
           </span>
           <button className="type-info__close" onClick={onClose} aria-label="Close">
             <X size={16} />
@@ -75,6 +79,47 @@ export function AccountTypeInfoModal({ onClose, types }: Props) {
               </p>
             </div>
           </div>
+
+          {context === 'import' && (
+            <div className="type-info__concepts">
+              <div className="type-info__section-title">Import, close, or leave out</div>
+              <div className="type-info__concept">
+                <div className="type-info__concept-title">
+                  Imported &amp; closed — the safe choice for a dormant account
+                </div>
+                <p>
+                  Everything imports. Every transaction counts toward net worth, reports
+                  and history, and transfers to it still pair up. The account is only
+                  hidden from the account pickers and report filters, and you can reopen
+                  it whenever you like.
+                </p>
+                <p>
+                  This is what you want for an account that went quiet years ago — you
+                  get the tidy list without paying for it in lost history.
+                </p>
+              </div>
+              <div className="type-info__concept">
+                <div className="type-info__concept-title">Left out — its history goes too</div>
+                <p>
+                  The account and every transaction in it are never created. Your other
+                  accounts' balances stay correct, but net worth over time has a hole
+                  where that account should have been.
+                </p>
+                <p>
+                  It also breaks transfers. A transfer from an account you keep to one
+                  you leave out has nothing to pair with, so it arrives unlinked and
+                  reads as real income or spending in your reports. That is what the
+                  "transfers couldn't be matched" warning after an import is telling
+                  you — and leaving accounts out is what causes it.
+                </p>
+                <p>
+                  YNAB exports include accounts you closed years ago. Those are worth
+                  importing anyway: they carry the history that makes past months add
+                  up.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="type-info__list">
             {rows.map((t) => (

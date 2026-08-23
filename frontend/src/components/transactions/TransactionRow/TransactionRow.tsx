@@ -90,6 +90,9 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     a.approved !== b.approved ||
     a.is_split !== b.is_split ||
     a.transfer_id !== b.transfer_id ||
+    // The category cell renders from this, and it can change without any
+    // other field moving — reopening a counterpart account on budget flips it.
+    a.needs_category !== b.needs_category ||
     a.bank_amount !== b.bank_amount ||
     a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
@@ -493,13 +496,18 @@ export const TransactionRow = memo(function TransactionRow({
           <span className={`txn-cell-text ${txn.is_split ? 'txn-split-label' : ''}`}>
             {categoryName}
           </span>
-        ) : txn.transfer_id !== null ? (
-          // A category-less transfer leg is internal money movement, not a
-          // gap — the categorized side of a spending transfer lives on the
-          // on-budget leg
-          <span className="txn-cell-text">Transfer</span>
-        ) : accountOnBudget ? (
+        ) : txn.needs_category ? (
           <span className="txn-needs-category">Needs Category</span>
+        ) : accountOnBudget ? (
+          // No category and none needed, on a budget account: the only way
+          // that happens is a transfer between two on-budget accounts —
+          // internal money movement, not a gap. (The categorized side of a
+          // spending transfer lives on the on-budget leg.)
+          //
+          // This used to read `transfer_id !== null`, which recognises only a
+          // transfer whose partner also imported, so every unpaired leg wore
+          // the amber chip. The server decides now; see `needs_category`.
+          <span className="txn-cell-text">Transfer</span>
         ) : (
           // Off-budget accounts don't use categories at all
           <span className="txn-cell-text" title="Tracking accounts don't use categories">

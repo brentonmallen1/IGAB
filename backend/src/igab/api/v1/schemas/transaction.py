@@ -97,6 +97,11 @@ class TransactionResponse(BaseModel):
     bank_payee: str | None = None
     payee_id: uuid.UUID | None
     category_id: uuid.UUID | None
+    #: Server's answer to "does the user still have to file this?", so clients
+    #: never re-derive it. Required, not optional: a missing value must fail
+    #: here rather than reach the register as a quiet False. See
+    #: `Transaction.needs_category` and `NEEDS_CATEGORY`.
+    needs_category: bool
     memo: str | None
     cleared: str
     approved: bool

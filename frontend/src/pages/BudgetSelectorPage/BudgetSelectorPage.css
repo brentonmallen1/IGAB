@@ -397,11 +397,6 @@
   padding: var(--spacing-sm);
 }
 
-.ynab-mapping__hint {
-  color: var(--text-muted);
-  font-weight: normal;
-}
-
 .sample-tier {
   display: flex;
   flex-direction: column;
@@ -448,7 +443,6 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: var(--spacing-sm);
   padding: 0;
   border: none;
   background: none;
@@ -465,12 +459,22 @@
 
 .ynab-mapping__row {
   display: grid;
-  grid-template-columns: auto 1fr 130px auto;
-  gap: var(--spacing-sm);
+  /* First column holds the disposition picker rather than a checkbox: a row
+     now has three outcomes, and "import & close" is not the absence of a
+     tick. Fixed width so 47 rows line up. */
+  grid-template-columns: 120px 1fr 130px auto;
+  gap: var(--spacing-xs) var(--spacing-sm);
   align-items: center;
   /* Uniform gutter so the review marker below can sit in it without
      shifting flagged rows out of alignment with the rest. */
   padding-left: var(--spacing-xs);
+}
+
+/* Disposition picker — import / import & close / leave out. Reuses the shared
+   input styling so it matches the type picker beside it. */
+.ynab-mapping__disposition {
+  padding: 4px var(--spacing-xs);
+  font-size: var(--font-size-xs);
 }
 
 /* An account we couldn't identify from its name. Marked rather than blocked:
@@ -500,21 +504,77 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The label row: one uppercase word plus the help button, as siblings. They
+   used to be a text node and a button inside the same <label>, and JSX drops
+   the whitespace between them — which is where "AccountsWhat do these types
+   mean?" came from. */
+.ynab-mapping__heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+/* Prose, deliberately not label-styled. Anything longer than a few words
+   inside .selector-field__label inherits uppercase and 0.5px letter-spacing,
+   which is what made the import guidance impossible to read. */
+.ynab-mapping__guidance,
 .ynab-mapping__review-note {
-  display: block;
-  margin-top: var(--spacing-xs);
-  color: var(--text-secondary);
+  margin: 0;
+  font-size: var(--font-size-sm);
   font-weight: normal;
-  font-size: var(--font-size-xs);
+  text-transform: none;
+  letter-spacing: normal;
   line-height: 1.5;
 }
 
-/* Include-checkbox: unchecking excludes the account from the import entirely.
-   The row stays visible but reads as inert — the decision must stay
-   reviewable, not vanish. */
-.ynab-mapping__include {
+.ynab-mapping__guidance {
+  color: var(--text-muted);
+}
+
+.ynab-mapping__review-note {
+  color: var(--text-secondary);
+}
+
+/* Per-row remarks span the full grid so they read as prose under the row they
+   belong to rather than squeezing a column. */
+.ynab-mapping__warn,
+.ynab-mapping__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+/* The balance disagrees with the chosen type's classification. A remark, not
+   a gate — an overpaid loan is a real thing, and blocking it would be wrong. */
+.ynab-mapping__warn {
+  color: var(--color-warning);
+}
+
+.ynab-mapping__note {
+  color: var(--text-muted);
+}
+
+.ynab-mapping__note-action {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-accent);
   cursor: pointer;
-  accent-color: var(--color-accent);
+}
+
+.ynab-mapping__note-action:hover {
+  text-decoration: underline;
+}
+
+/* When an account last moved. A YNAB export has no closed-account marker, so
+   this is the only thing distinguishing a live account from one dormant
+   since 2019. */
+.ynab-mapping__activity {
+  margin-left: var(--spacing-xs);
+  white-space: nowrap;
 }
 
 .ynab-mapping__row--skipped .ynab-mapping__name,
@@ -560,4 +620,42 @@
   margin-top: var(--spacing-xs);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+}
+
+/* Related accounts — an institution's accounts, or something you own and the
+   debt secured against it. Putting them side by side is what makes a $27,704
+   vehicle typed as an auto loan visible.
+
+   Deliberately not called "duplicates", and deliberately offering no merge.
+   Measured on a real export, fuzzy name similarity scores 100 for
+   "Redwood" vs "Redwood CC" and "Vehicle A" vs "Vehicle A Loan" — every pair
+   a legitimately distinct account. A merge affordance here would invite
+   someone to destroy real data. */
+.ynab-mapping__family {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-sm) 0 var(--spacing-xs);
+  padding-left: var(--spacing-xs);
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--spacing-sm);
+}
+
+.ynab-mapping__family:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.ynab-mapping__family-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.ynab-mapping__family-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.45;
 }

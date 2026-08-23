@@ -9,11 +9,19 @@ including the "spending transfer missing its category" case.
 
 from datetime import date, timedelta
 
+from decimal import Decimal
+
+from igab.api.v1.schemas.transaction import TransactionResponse
+from igab.services.transaction_service import SplitSpec
+from igab.services.transaction_service import TransactionCreate as SvcTxnCreate
+from igab.services.transaction_service import TransactionUpdate
+
 from .factories import (
     create_account,
     create_budget,
     create_category,
     create_category_group,
+    create_payee,
     create_transaction,
     create_user,
     make_services,
@@ -61,8 +69,268 @@ async def test_offbudget_rows_never_count_as_uncategorized(db_session):
     assert await services.account_repo.get_uncategorized_count(checking.id) == 2
     assert await services.account_repo.get_uncategorized_count(brokerage.id) == 0
 
-    # Review inbox: only the on-budget plain row is "uncategorized"; the
-    # off-budget unapproved row still needs its approval
+    # Review inbox: the same two the badge counted, and no more. These used to
+    # disagree — the badge said 2, the inbox said 1 — because the inbox decided
+    # "is this a transfer" from `transfer_id` alone and so dropped the
+    # category-less spending transfer that genuinely does need filing. The
+    # off-budget unapproved row still needs its approval either way.
     review = await services.transaction_repo.count_pending_review(budget.id)
-    assert review["uncategorized"] == 1
+    assert review["uncategorized"] == 2
     assert review["unapproved"] == 1
+    assert review["uncategorized"] == await services.account_repo.get_uncategorized_count(
+        checking.id
+    ), "the badge and the review inbox must count the same rows"
+
+
+class TestAnUnpairedTransferLegIsStillATransfer:
+    """A YNAB import writes legs whose partner never arrives — the partner
+    account was skipped, or the pair never matched. Those rows keep the budget's
+    balances right and they are still transfers, but every "needs a category"
+    rule decided transfer-ness from `transfer_id` alone, so all of them were
+    counted as unfiled. One real import produced **1,117**.
+
+    The rule now goes through CASH_FLOW_ROW, which knows a transfer by its payee
+    as well as its link — while keeping the case that genuinely does need a
+    category: a transfer OUT of the budget is a mortgage payment, and budgeting
+    for it is the point.
+    """
+
+    async def _world(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking")
+        savings = await create_account(db_session, budget, "Savings")
+        loan = await create_account(
+            db_session, budget, "Mortgage", account_type="mortgage", on_budget=False
+        )
+        return services, budget, checking, savings, loan
+
+    async def _transfer_payee(self, db_session, budget, target):
+        return await create_payee(
+            db_session, budget, f"Transfer : {target.name}", transfer_account_id=target.id
+        )
+
+    async def test_an_unpaired_on_budget_leg_needs_nothing(self, db_session):
+        """The reported bug. The partner never imported, so there is no link —
+        but the payee still names an on-budget account, so it is internal
+        movement and no category will ever apply."""
+        services, budget, checking, savings, _ = await self._world(db_session)
+        to_savings = await self._transfer_payee(db_session, budget, savings)
+        await create_transaction(db_session, budget, checking, "-500.00", OLD, payee=to_savings)
+        await db_session.flush()
+
+        assert await services.account_repo.get_uncategorized_count(checking.id) == 0
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        assert review["uncategorized"] == 0
+
+    async def test_an_unpaired_leg_out_of_the_budget_still_needs_one(self, db_session):
+        """The case the fix must not swallow: money leaving the budget is
+        spending, and a mortgage payment is budgeted for. Missing link or not."""
+        services, budget, checking, _, loan = await self._world(db_session)
+        to_loan = await self._transfer_payee(db_session, budget, loan)
+        await create_transaction(db_session, budget, checking, "-1200.00", OLD, payee=to_loan)
+        await db_session.flush()
+
+        assert await services.account_repo.get_uncategorized_count(checking.id) == 1
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        assert review["uncategorized"] == 1
+
+    async def test_a_linked_on_budget_transfer_is_unchanged(self, db_session):
+        """The behaviour that already worked must keep working."""
+        services, budget, checking, savings, _ = await self._world(db_session)
+        out = await create_transaction(db_session, budget, checking, "-300.00", OLD)
+        back = await create_transaction(
+            db_session, budget, savings, "300.00", OLD, transfer_id=out.id
+        )
+        out.transfer_id = back.id
+        await db_session.flush()
+
+        assert await services.account_repo.get_uncategorized_count(checking.id) == 0
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        assert review["uncategorized"] == 0
+
+    async def test_an_ordinary_row_still_needs_one(self, db_session):
+        """The guard against over-correcting: a plain uncategorised purchase,
+        and one whose payee simply has no transfer account, both still count."""
+        services, budget, checking, _, _ = await self._world(db_session)
+        shop = await create_payee(db_session, budget, "Corner Shop")
+        await create_transaction(db_session, budget, checking, "-12.00", OLD, payee=shop)
+        await create_transaction(db_session, budget, checking, "-8.00", OLD)
+        await db_session.flush()
+
+        assert await services.account_repo.get_uncategorized_count(checking.id) == 2
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        assert review["uncategorized"] == 2
+
+    async def test_the_badge_and_the_transactions_filter_agree(self, db_session):
+        """The user-visible symptom: pressing the badge opened a list longer
+        than the badge promised, because the filter excluded neither transfers
+        nor off-budget rows."""
+        services, budget, checking, savings, loan = await self._world(db_session)
+        to_savings = await self._transfer_payee(db_session, budget, savings)
+        to_loan = await self._transfer_payee(db_session, budget, loan)
+        await create_transaction(db_session, budget, checking, "-500.00", OLD, payee=to_savings)
+        await create_transaction(db_session, budget, checking, "-1200.00", OLD, payee=to_loan)
+        await create_transaction(db_session, budget, checking, "-12.00", OLD)
+        await create_transaction(db_session, budget, savings, "9.00", OLD)
+        await db_session.flush()
+
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        rows, count, _ = await services.transaction_repo.list_for_budget(
+            budget.id, scope="leaf", posted_only=True, uncategorized=True
+        )
+        assert count == len(rows) == review["uncategorized"]
+        assert count == 3, "the mortgage leg and the two plain rows — not the savings leg"
+
+
+class TestTheServedFlagIsTheOnlyRule:
+    """`needs_category` on the API row *is* the rule, and the only copy of it.
+
+    The register used to re-derive it in TypeScript from `transfer_id`, and the
+    copies drifted: the badge counted 3 while the list below it drew 930 rows
+    as unfiled. Fixing one site never fixed the other, because nothing tied
+    them together. These tests are that tie — they assert the value the client
+    is handed agrees, row for row, with the numbers the counters produce.
+    """
+
+    async def _world(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking")
+        savings = await create_account(db_session, budget, "Savings")
+        loan = await create_account(
+            db_session, budget, "Mortgage", account_type="mortgage", on_budget=False
+        )
+        # An unpaired leg to an on-budget account (needs nothing), an unpaired
+        # leg out of the budget (a mortgage payment — still needs one), and a
+        # plain purchase (needs one).
+        to_savings = await create_payee(
+            db_session, budget, "Transfer : Savings", transfer_account_id=savings.id
+        )
+        to_loan = await create_payee(
+            db_session, budget, "Transfer : Mortgage", transfer_account_id=loan.id
+        )
+        await create_transaction(db_session, budget, checking, "-500.00", OLD, payee=to_savings)
+        await create_transaction(db_session, budget, checking, "-1200.00", OLD, payee=to_loan)
+        await create_transaction(db_session, budget, checking, "-12.00", OLD)
+        await db_session.flush()
+        return services, budget, checking
+
+    async def test_the_flag_matches_the_account_badge_row_for_row(self, db_session):
+        services, _, checking = await self._world(db_session)
+
+        rows = await services.transaction_repo.get_for_account(checking.id)
+        flagged = [t for t in rows if t.needs_category]
+
+        assert len(flagged) == 2, "the mortgage leg and the plain row, not the savings leg"
+        assert len(flagged) == await services.account_repo.get_uncategorized_count(checking.id)
+
+    async def test_the_account_register_filter_agrees_with_its_badge(self, db_session):
+        """The sixth site. Every other copy of the rule moved to NEEDS_CATEGORY;
+        this filter kept the old two-condition spelling, so the account
+        register's Uncategorized filter still listed unpaired transfer legs
+        under a badge that had stopped counting them."""
+        services, _, checking = await self._world(db_session)
+
+        filtered = await services.transaction_repo.get_for_account(checking.id, uncategorized=True)
+
+        assert len(filtered) == await services.account_repo.get_uncategorized_count(checking.id)
+        assert all(t.needs_category for t in filtered)
+
+    async def test_every_listing_path_carries_the_flag(self, db_session):
+        """A path that forgets `with_needs_category` leaves the attribute None,
+        which TransactionResponse rejects. Assert it is a real bool here so the
+        failure lands on this test rather than on a user's register."""
+        services, budget, checking = await self._world(db_session)
+
+        by_account = await services.transaction_repo.get_for_account(checking.id)
+        by_budget, _, _ = await services.transaction_repo.list_for_budget(budget.id, scope="leaf")
+        one = await services.transaction_repo.get_or_raise(by_account[0].id)
+
+        for row in [*by_account, *by_budget, one]:
+            assert isinstance(row.needs_category, bool), f"{row.id} came back unpopulated"
+
+    async def test_the_flag_survives_a_service_update(self, db_session):
+        """The sharp edge of computing this in the query: `Session.refresh()`
+        takes no loader options, so it reloads the columns and silently drops
+        the value. `_record_txn` refreshes before returning on every mutating
+        call, so a plain refresh would hand the endpoint None — and only on
+        create/update responses, never on a listing. Goes through the service
+        for that reason; calling the repo directly would not exercise it."""
+        services, budget, checking = await self._world(db_session)
+        rows = await services.transaction_repo.get_for_account(checking.id)
+        plain = next(t for t in rows if t.needs_category and t.payee_id is None)
+
+        updated = await services.transactions.update(
+            budget.id, plain.id, TransactionUpdate(memo="touched")
+        )
+
+        assert updated.needs_category is True
+
+    async def test_every_mutating_path_returns_a_serializable_row(self, db_session):
+        """The blunt guard. `TransactionResponse` requires `needs_category`, so
+        any service path that hands back a row without it 500s the endpoint —
+        and only that endpoint, which is how such a gap reaches a user rather
+        than CI. Exercised here rather than trusted, because merge in
+        particular has no test at the API layer.
+        """
+        services, budget, checking = await self._world(db_session)
+        rows = await services.transaction_repo.get_for_account(checking.id)
+        plain = next(t for t in rows if t.needs_category and t.payee_id is None)
+
+        created = await services.transactions.create(
+            budget.id,
+            SvcTxnCreate(account_id=checking.id, date=OLD, amount=Decimal("-3.00")),
+        )
+        updated = await services.transactions.update(
+            budget.id, plain.id, TransactionUpdate(memo="touched")
+        )
+        approved = await services.transactions.approve(plain.id, budget.id)
+        split = await services.transactions.convert_to_split(
+            budget.id, plain.id, [SplitSpec(amount=Decimal("-12.00"))]
+        )
+        merge_a = await create_transaction(db_session, budget, checking, "-40.00", OLD)
+        merge_b = await create_transaction(db_session, budget, checking, "-40.00", OLD)
+        await db_session.flush()
+        survivor = await services.transactions.merge(budget.id, [merge_a.id, merge_b.id])
+        adjustment = await services.reconciliation.create_adjustment(checking.id, Decimal("5.00"))
+
+        for label, txn in [
+            ("create", created),
+            ("update", updated),
+            ("approve", approved),
+            ("convert_to_split", split),
+            ("merge", survivor),
+            ("reconcile adjustment", adjustment),
+        ]:
+            assert isinstance(TransactionResponse.model_validate(txn).needs_category, bool), (
+                f"{label} returned a row the API cannot serialize"
+            )
+
+    async def test_a_pending_row_is_filterable_but_is_not_workload(self, db_session):
+        """The one place the badge and the Uncategorized filter are *meant* to
+        differ, so it is written down rather than left to look like drift.
+
+        A pending uncategorized row matches an Uncategorized search — it is
+        uncategorized, and hiding it from a filter makes the filter lie. It is
+        not counted by the badge, because the badge is a count of work the user
+        can act on and a pending amount is provisional. The gap between the two
+        is exactly the pending uncategorized rows and nothing else.
+        """
+        services, budget, checking = await self._world(db_session)
+        await create_transaction(db_session, budget, checking, "-30.00", TODAY, cleared="pending")
+        await db_session.flush()
+
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        _, filtered, _ = await services.transaction_repo.list_for_budget(
+            budget.id, scope="leaf", uncategorized=True
+        )
+        _, posted_only, _ = await services.transaction_repo.list_for_budget(
+            budget.id, scope="leaf", uncategorized=True, posted_only=True
+        )
+
+        assert filtered == 3, "the filter shows the pending row alongside the two posted ones"
+        assert review["uncategorized"] == 2, "the badge counts only what can be acted on"
+        assert posted_only == review["uncategorized"], "and they agree once pending is excluded"

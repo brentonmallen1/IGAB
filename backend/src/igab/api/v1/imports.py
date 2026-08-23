@@ -1,8 +1,8 @@
-import hashlib
 import io
 import json
 import re
 import uuid
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from typing import TypedDict
@@ -21,6 +21,7 @@ from igab.dependencies import (
     get_transaction_repo,
 )
 from igab.domain.account_types import BUILTIN_ACCOUNT_TYPE_KEYS
+from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.domain.money import parse_csv_amount
 from igab.integrations.ynab.importer import ImportResult as YNABRunResult
 from igab.integrations.ynab.importer import YNABImporter
@@ -58,11 +59,6 @@ class InsertRow(TypedDict):
     import_id: str
 
 
-def _generate_import_id(account_id: uuid.UUID, txn_date: date, amount: Decimal, payee: str) -> str:
-    content = f"{account_id}|{txn_date.isoformat()}|{amount}|{payee}"
-    return f"csv:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-
 class ImportResult(BaseModel):
     imported: int
     skipped: int
@@ -80,6 +76,9 @@ class YNABImportResult(BaseModel):
     assignments: int
     #: Accounts the user chose to leave out (closed/archived YNAB accounts).
     accounts_skipped: int = 0
+    #: Accounts imported in full and then closed at the user's request. Their
+    #: transactions all arrived; only the account is hidden from pickers.
+    accounts_closed: int = 0
     #: Register rows belonging to those accounts — deliberately excluded,
     #: distinct from `skipped` (dedup/errors).
     transactions_excluded: int = 0
@@ -102,6 +101,17 @@ class YNABAccountPreview(BaseModel):
     #: Sum of the account's register rows, shown next to the type picker so the
     #: user can tell a house from its mortgage at a glance.
     implied_balance: Decimal = Decimal("0")
+    #: Oldest and newest register dates. A YNAB export carries no closed-account
+    #: marker, so an account dormant since 2019 is indistinguishable from a
+    #: live one by name alone — and 14 of them arriving unannounced is what
+    #: made a real import read as "accounts appearing from nowhere". The dates
+    #: are already parsed on every row and were simply thrown away.
+    first_activity: date | None = None
+    last_activity: date | None = None
+    #: Accounts sharing a leading name fragment — an institution's accounts, or
+    #: an asset and the debt against it. A prompt to compare, never a merge
+    #: suggestion: see `assign_related_groups`.
+    related_group: str | None = None
 
 
 class YNABPreviewResult(BaseModel):
@@ -119,6 +129,11 @@ class YNABAccountTypeChoice(BaseModel):
     #: import entirely — YNAB exports carry archived accounts with no marker,
     #: so excluding them is a user decision made in the preview step.
     skip: bool = False
+    #: Import everything, then close the account. Prefer this to `skip` for a
+    #: dormant account: closing hides it from pickers and report filters while
+    #: keeping every transaction, so net worth over time stays whole and its
+    #: transfers still pair up. `skip` erases the history instead.
+    close: bool = False
 
 
 # YNAB register exports carry no account-type info — only names — so the
@@ -298,14 +313,17 @@ def suggest_account_type(
 
 def parse_account_types_form(
     account_types: str | None,
-) -> tuple[dict[str, tuple[str, bool]], set[str]]:
+) -> tuple[dict[str, tuple[str, bool]], set[str], set[str]]:
     """Decode the JSON `account_types` multipart form field:
     {"Account Name": {"account_type": "loan", "on_budget": false, "skip": false}, ...}
 
-    Returns (type_map, skip_accounts): the type/on-budget mapping for accounts
-    being imported, and the set of account names to exclude entirely."""
+    Returns (type_map, skip_accounts, close_accounts): the type/on-budget
+    mapping for accounts being imported, the set to exclude entirely, and the
+    set to import and then close. Skip and close are mutually exclusive by
+    construction — a skipped account is never created, so there is nothing to
+    close, and `skip` wins if a caller sends both."""
     if not account_types:
-        return {}, set()
+        return {}, set(), set()
     try:
         raw = json.loads(account_types)
         parsed = {name: YNABAccountTypeChoice.model_validate(v) for name, v in raw.items()}
@@ -329,18 +347,90 @@ def parse_account_types_form(
         if not choice.skip
     }
     skip_accounts = {name for name, choice in parsed.items() if choice.skip}
-    return type_map, skip_accounts
+    close_accounts = {name for name, choice in parsed.items() if choice.close and not choice.skip}
+    return type_map, skip_accounts, close_accounts
+
+
+#: How many leading tokens may form a related-account group.
+#:
+#: One is too coarse and two is the natural size of a thing's name: "Employer
+#: A", "Union Ridge", "Cedar Grove", "Vehicle A". At one token the two
+#: employers in a real export merge into a nine-account pile; unbounded, a
+#: six-account employer shatters into "Employer A ESPP", "Employer A HSA" and
+#: a remainder, which is grouping by product line rather than by the thing the
+#: user recognises.
+_RELATED_GROUP_MAX_TOKENS = 2
+
+
+def _tokens_preserving_case(name: str) -> list[str]:
+    """Same split as `_normalize_for_match`, with the original casing kept.
+
+    Aligns token-for-token with the normalized form, so a group matched on
+    "brightpath hsa" can be labelled from the source as "Brightpath HSA"
+    rather than title-cased into "Brightpath Hsa"."""
+    return [t for t in re.split(r"[^A-Za-z0-9]+", name) if t]
+
+
+def assign_related_groups(names: Sequence[str]) -> dict[str, str | None]:
+    """Group accounts sharing a leading name fragment: name → group label.
+
+    **Related, never duplicate, and never a merge suggestion.** Measured on a
+    real export, `rapidfuzz.token_set_ratio` returns 100 for "vehicle a" vs
+    "vehicle a loan", "redwood" vs "redwood cc" and "harborstone" vs
+    "harborstone savings" — every pair a legitimately distinct account. Acting
+    on similarity here would tell someone to destroy real data. A shared
+    leading fragment says only "these are probably about the same thing, look
+    at them together": an institution's accounts, or an asset and the debt
+    secured against it. Comparing those balances is exactly how a house typed
+    as a mortgage gets caught.
+
+    Longest shared prefix wins within the cap, so "Vehicle A" pairs with
+    "Vehicle A Loan" rather than landing in a bucket with "Vehicle B".
+    """
+    tokens = {name: _normalize_for_match(name).split() for name in names}
+    prefix_members: dict[tuple[str, ...], list[str]] = {}
+    for name, toks in tokens.items():
+        for k in range(1, min(len(toks), _RELATED_GROUP_MAX_TOKENS) + 1):
+            prefix_members.setdefault(tuple(toks[:k]), []).append(name)
+
+    groups: dict[str, str | None] = {}
+    for name, toks in tokens.items():
+        best: tuple[str, ...] | None = None
+        for k in range(min(len(toks), _RELATED_GROUP_MAX_TOKENS), 0, -1):
+            prefix = tuple(toks[:k])
+            if len(prefix_members[prefix]) > 1:
+                best = prefix
+                break
+        if best is None:
+            groups[name] = None
+            continue
+        # Label from whichever member spells it out, so acronyms survive.
+        source = min(prefix_members[best])
+        groups[name] = " ".join(_tokens_preserving_case(source)[: len(best)])
+    return groups
 
 
 def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
     counts: dict[str, int] = {}
     balances: dict[str, Decimal] = {}
+    first_seen: dict[str, date] = {}
+    last_seen: dict[str, date] = {}
     for txn in ynab_budget.transactions:
         counts[txn.account_name] = counts.get(txn.account_name, 0) + 1
         # Split parents carry the full amount and their legs are nested, so
         # summing top-level rows gives the account balance without double count.
         balances[txn.account_name] = balances.get(txn.account_name, Decimal("0")) + txn.amount
+        # min/max rather than first/last row: a YNAB export is not guaranteed
+        # to be in date order, and one out-of-order row would otherwise report
+        # a live account as dormant.
+        prev_first = first_seen.get(txn.account_name)
+        if prev_first is None or txn.date < prev_first:
+            first_seen[txn.account_name] = txn.date
+        prev_last = last_seen.get(txn.account_name)
+        if prev_last is None or txn.date > prev_last:
+            last_seen[txn.account_name] = txn.date
 
+    related = assign_related_groups(sorted(counts))
     accounts = []
     for name in sorted(counts):
         implied = balances.get(name, Decimal("0"))
@@ -353,6 +443,9 @@ def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
                 suggested_on_budget=suggested_on_budget,
                 needs_review=needs_review,
                 implied_balance=implied,
+                first_activity=first_seen.get(name),
+                last_activity=last_seen.get(name),
+                related_group=related.get(name),
             )
         )
     return YNABPreviewResult(
@@ -513,20 +606,11 @@ async def import_csv(
                 "import_batch_id": batch_id,
                 "is_split": False,
                 "is_deleted": False,
-                "import_id": _generate_import_id(account_id, txn_date, amount, payee_name),
+                "import_id": generate_import_id(account_id, txn_date, amount, payee_name),
             }
         )
 
-    # Two identical rows in one file (a real double charge) hash to the same
-    # import_id; suffix ":N" so both import and the unique index holds. The
-    # suffixing is order-stable, so re-importing the same file still dedups.
-    seen_ids: dict[str, int] = {}
-    for r in rows_to_insert:
-        base_id = r["import_id"]
-        count = seen_ids.get(base_id, 0)
-        if count > 0:
-            r["import_id"] = f"{base_id}:{count}"
-        seen_ids[base_id] = count + 1
+    disambiguate_in_batch(rows_to_insert)
 
     # Deduplicate against existing import_ids before inserting
     all_import_ids = [r["import_id"] for r in rows_to_insert if r.get("import_id")]

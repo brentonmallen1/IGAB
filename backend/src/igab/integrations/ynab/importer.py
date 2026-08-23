@@ -1,13 +1,11 @@
-import hashlib
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
-from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
+from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.integrations.ynab.models import YNABBudget
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -26,11 +24,6 @@ _YNAB_INFLOW_GROUP = "Inflow"
 _MAX_ERRORS = 50
 
 
-def _generate_import_id(account_name: str, txn_date: date, amount: Decimal, payee: str) -> str:
-    content = f"{account_name}|{txn_date.isoformat()}|{amount}|{payee}"
-    return f"csv:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-
 _SYSTEM_INCOME_GROUP = "Income"
 
 
@@ -45,6 +38,10 @@ class ImportResult:
     # User-chosen exclusions (closed/archived YNAB accounts) — separate from
     # transactions_skipped, which means dedup hits and row errors.
     accounts_skipped: int = 0
+    #: Imported in full, then closed at the user's request. Reported back so
+    #: the confirmation reflects the choice — 14 accounts quietly vanishing
+    #: from the pickers with no mention of it reads like a bug.
+    accounts_closed: int = 0
     transactions_excluded: int = 0
     #: Transfer legs whose partner leg never turned up, so they import
     #: unlinked. Balances stay right either way, but a non-zero count means the
@@ -70,6 +67,7 @@ class YNABImporter:
         assignment_repo: BudgetAssignmentRepository,
         account_types: dict[str, tuple[str, bool]] | None = None,
         skip_accounts: set[str] | None = None,
+        close_accounts: set[str] | None = None,
     ) -> None:
         self.session = session
         self.budget_id = budget_id
@@ -87,6 +85,12 @@ class YNABImporter:
         # _get_or_create_account). YNAB exports include archived accounts with
         # no marker, so exclusion is a per-account user decision.
         self.skip_accounts = {name.lower() for name in (skip_accounts or set())}
+        # Accounts to import in full and then close. Unlike skip_accounts this
+        # changes nothing about what is created: every transaction arrives and
+        # counts toward net worth, history and reports, and transfers still
+        # pair up. The account is simply hidden from pickers and report
+        # filters, which is what a 2019-dormant account wants.
+        self.close_accounts = {name.lower() for name in (close_accounts or set())}
         # name → Account
         self._account_cache: dict[str, Account] = {}
         # group name → CategoryGroup
@@ -96,6 +100,10 @@ class YNABImporter:
 
     async def import_budget(self, budget: YNABBudget) -> ImportResult:
         result = ImportResult()
+        # Rows the parser had to drop because their amount was unreadable.
+        # Carried through rather than swallowed: the import summary is the
+        # only place a user would ever learn a row did not make it.
+        result.errors.extend(budget.errors[:_MAX_ERRORS])
         await self._import_transactions(budget, result)
         await self._import_assignments(budget, result)
         return result
@@ -121,6 +129,7 @@ class YNABImporter:
             account = await self.account_repo.create(
                 budget_id=self.budget_id,
                 name=name,
+                is_closed=name.lower() in self.close_accounts,
                 **apply_type(type_row, on_budget),
             )
             # Importing a budget with a mortgage is the scenario the loan
@@ -128,6 +137,8 @@ class YNABImporter:
             # them: the importer creates accounts and never a liability.
             await ensure_for_account(self.session, account)
             result.accounts_imported += 1
+            if account.is_closed:
+                result.accounts_closed += 1
 
         self._account_cache[name] = account
         return account
@@ -298,8 +309,8 @@ class YNABImporter:
                         "is_deleted": False,
                         "transfer_id": None,
                         "parent_transaction_id": None,
-                        "import_id": _generate_import_id(
-                            txn.account_name, txn.date, txn.amount, txn.payee or ""
+                        "import_id": generate_import_id(
+                            account.id, txn.date, txn.amount, txn.payee or ""
                         ),
                     }
                     children: list[dict] = []
@@ -358,8 +369,8 @@ class YNABImporter:
                     "is_deleted": False,
                     "transfer_id": None,
                     "parent_transaction_id": None,
-                    "import_id": _generate_import_id(
-                        txn.account_name, txn.date, txn.amount, txn.payee or ""
+                    "import_id": generate_import_id(
+                        account.id, txn.date, txn.amount, txn.payee or ""
                     ),
                 }
                 rows.append(row)
@@ -394,15 +405,7 @@ class YNABImporter:
         result.accounts_skipped = len(skipped_account_names)
         result.transfer_legs_unpaired = sum(len(legs) for legs in unpaired_legs.values())
 
-        # Make import_ids unique within the batch: two transactions with identical
-        # (account, date, amount, payee) produce the same hash, so append ":N" for N>0.
-        seen_keys: dict[tuple[uuid.UUID, str], int] = {}
-        for row in rows:
-            key = (row["account_id"], row["import_id"])
-            count = seen_keys.get(key, 0)
-            if count > 0:
-                row["import_id"] = f"{row['import_id']}:{count}"
-            seen_keys[key] = count + 1
+        disambiguate_in_batch(rows)
 
         # Split children derive their import_ids from the parent's final
         # (uniquified) one. The ":s" prefix can't collide with the numeric

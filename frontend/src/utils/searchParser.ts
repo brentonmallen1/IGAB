@@ -18,6 +18,11 @@ export interface TransactionFilters {
   direction?: 'inflow' | 'outflow'
   /** true = only transfers; false = exclude transfers */
   isTransfer?: boolean
+  /** Transfer legs whose partner never arrived. Deliberately separate from
+   *  `isTransfer`, which tests the partner link alone and so cannot express
+   *  "names a transfer payee but has no partner". This is what the account
+   *  hygiene panel links to. */
+  unpairedTransfers?: boolean
   isOrMode?: boolean
 }
 
@@ -28,6 +33,7 @@ export function hasActiveFilters(f: TransactionFilters): boolean {
     f.excludeCleared ||
     f.uncategorized ||
     f.unapproved ||
+    f.unpairedTransfers ||
     (f.categoryIds?.length ?? 0) > 0 ||
     (f.payeeIds?.length ?? 0) > 0 ||
     (f.accountIds?.length ?? 0) > 0 ||
@@ -260,6 +266,7 @@ function applyIsValue(result: TransactionFilters, val: string): void {
   if (val === 'uncategorized') result.uncategorized = true
   else if (val === 'unapproved') result.unapproved = true
   else if (val === 'transfer') result.isTransfer = true
+  else if (val === 'unpaired') result.unpairedTransfers = true
   else if (DIRECTION_VALUES.has(val)) result.direction = val as 'inflow' | 'outflow'
   else if (CLEARED_VALUES.has(val)) result.cleared = val
 }
@@ -269,6 +276,7 @@ function isRecognizedIsValue(val: string): boolean {
     val === 'uncategorized' ||
     val === 'unapproved' ||
     val === 'transfer' ||
+    val === 'unpaired' ||
     DIRECTION_VALUES.has(val) ||
     CLEARED_VALUES.has(val)
   )
@@ -416,6 +424,7 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
   for (const seg of segments) {
     if (seg.unapproved) merged.unapproved = true
     if (seg.uncategorized) merged.uncategorized = true
+    if (seg.unpairedTransfers) merged.unpairedTransfers = true
     if (seg.cleared) merged.cleared = seg.cleared
     if (seg.text) textParts.push(seg.text)
     if (seg.categoryIds) allCategoryIds.push(...seg.categoryIds)
@@ -543,6 +552,7 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'is: inflow ', description: 'Money in (positive amounts)' },
   { syntax: 'is: outflow ', description: 'Money out (negative amounts)' },
   { syntax: 'is: transfer ', description: 'Transfers between accounts' },
+  { syntax: 'is: unpaired ', description: "Transfers whose other side never arrived" },
   { syntax: 'has: attachment ', description: 'Transactions with an image attached' },
   { syntax: 'NOT has: attachment ', description: 'Transactions without an image' },
   { syntax: 'category:', description: 'Filter by category name' },

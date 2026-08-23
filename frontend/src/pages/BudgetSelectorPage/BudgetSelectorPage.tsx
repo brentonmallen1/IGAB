@@ -24,6 +24,16 @@ import { SharingModal } from '../../components/budgets/SharingModal'
 import { useCurrentUser } from '../../api/auth'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
+import {
+  activityLabel,
+  classificationWarning,
+  choiceForDisposition,
+  dispositionOf,
+  dormantOpenCount,
+  groupAccounts,
+  isDormant,
+  type Disposition,
+} from './accountMapping'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
@@ -120,16 +130,23 @@ export function BudgetSelectorPage() {
   const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
   const [showTypeInfo, setShowTypeInfo] = useState(false)
 
-  // Mapping an account to a debt type is now a bigger decision than a label:
-  // it is what gets that debt payoff tracking. Counted from the CURRENT
-  // choices, not the suggestions, so the number follows what the user does to
-  // the dropdowns.
-  const debtAccountCount = (previewAccounts ?? []).filter((a) => {
-    const choice = accountChoices[a.name]
-    if (choice?.skip) return false
-    const key = choice?.account_type ?? a.suggested_type
-    return ACCOUNT_TYPE_OPTIONS.find((o) => o.key === key)?.classification === 'liability'
-  }).length
+  // Offered once rather than per row: a real export left 22 of 47 accounts
+  // dormant, and 22 identical notes is a wall to scroll past rather than a
+  // suggestion. Each row still shows when it last moved, and its own picker
+  // still wins for anyone who wants only some of them closed.
+  const dormantCount = dormantOpenCount(previewAccounts ?? [], accountChoices)
+
+  function closeDormantAccounts() {
+    setAccountChoices((prev) => {
+      const next = { ...prev }
+      for (const a of previewAccounts ?? []) {
+        if (dispositionOf(next[a.name]) === 'import' && isDormant(a.last_activity)) {
+          next[a.name] = { ...next[a.name], ...choiceForDisposition('close') }
+        }
+      }
+      return next
+    })
+  }
 
   function updateChoice(name: string, patch: Partial<YnabAccountTypeChoice>) {
     setAccountChoices((prev) => ({ ...prev, [name]: { ...prev[name], ...patch } }))
@@ -211,7 +228,12 @@ export function BudgetSelectorPage() {
         Object.fromEntries(
           preview.accounts.map((a) => [
             a.name,
-            { account_type: a.suggested_type, on_budget: a.suggested_on_budget, skip: false },
+            {
+              account_type: a.suggested_type,
+              on_budget: a.suggested_on_budget,
+              skip: false,
+              close: false,
+            },
           ])
         )
       )
@@ -240,6 +262,11 @@ export function BudgetSelectorPage() {
       ]
       if (r.assignments) parts.push(`${r.assignments.toLocaleString()} budget assignments`)
       if (r.skipped) parts.push(`${r.skipped.toLocaleString()} skipped`)
+      if (r.accounts_closed) {
+        parts.push(
+          `${r.accounts_closed} imported and closed`
+        )
+      }
       if (r.accounts_skipped) {
         parts.push(
           `${r.accounts_skipped} account${r.accounts_skipped !== 1 ? 's' : ''} left out as requested`
@@ -254,11 +281,13 @@ export function BudgetSelectorPage() {
       if (r.transfer_legs_unpaired > 0) {
         const n = r.transfer_legs_unpaired.toLocaleString()
         const leg = r.transfer_legs_unpaired === 1 ? 'transfer' : 'transfers'
+        // Shorter than it was, on purpose. A toast is the wrong home for a
+        // thousand-row reconciliation task: it explained the whole problem and
+        // then vanished, with no way to reach the rows. The Accounts page
+        // keeps the finding and links to them.
         toast(
-          `${n} ${leg} couldn't be matched to the other side. Account balances are ` +
-            `still correct, but these may show up as income or spending in reports. ` +
-            `This usually means an account was left out of the import.`,
-          { duration: 20000, icon: '⚠️' }
+          `${n} ${leg} couldn't be matched to the other side — see Accounts for the list.`,
+          { duration: 12000, icon: '⚠️' }
         )
       }
       if (r.errors.length > 0) {
@@ -478,8 +507,10 @@ export function BudgetSelectorPage() {
 
             {previewAccounts && (
               <div className="selector-field">
-                <label className="selector-field__label">
-                  Accounts
+                <div className="ynab-mapping__heading">
+                  <span className="selector-field__label" id="ynab-accounts-label">
+                    Accounts
+                  </span>
                   <button
                     type="button"
                     className="ynab-mapping__type-help"
@@ -487,35 +518,61 @@ export function BudgetSelectorPage() {
                   >
                     <HelpCircle size={12} /> What do these types mean?
                   </button>
-                  <span className="ynab-mapping__hint">
-                    {' '}— off-budget accounts (loans, investments) stay out of your budget
-                    totals; uncheck an account to leave it and its transactions out entirely
-                    (YNAB exports include archived accounts). Need something more specific
-                    than these types? You can create custom account types after the import.
-                  </span>
-                  {debtAccountCount > 0 && (
-                    <span className="ynab-mapping__hint">
-                      {' '}Mapping an account to a debt type — Mortgage, Auto Loan, Student
-                      Loan, Credit Card or Loan — also sets it up for payoff tracking.{' '}
-                      {debtAccountCount === 1 ? 'One account' : `${debtAccountCount} accounts`}{' '}
-                      will arrive with a place for the APR and minimum payment, ready to fill
-                      in whenever you have the numbers.
-                    </span>
-                  )}
-                  {previewAccounts.some((a) => a.needs_review) && (
-                    <span className="ynab-mapping__review-note">
-                      We couldn't tell what{' '}
-                      {previewAccounts.filter((a) => a.needs_review).length} of these are from
-                      their names — they're marked <strong>Check</strong> below. Their balance
-                      is shown to help: a large balance usually means a tracked thing (a house,
-                      a car, a brokerage) that should be <em>off</em> budget. An account left on
-                      budget by mistake throws off every total in your budget.
-                    </span>
-                  )}
-                </label>
-                <div className="ynab-mapping">
-                  {previewAccounts.map((a) => {
-                    const skipped = accountChoices[a.name]?.skip === true
+                </div>
+                <p className="ynab-mapping__guidance">
+                  Uncheck an account to leave it out — its transactions don't come with
+                  it, and transfers to it won't match up. Need a type that isn't listed?
+                  You can add custom ones after the import.
+                </p>
+                {previewAccounts.some((a) => a.needs_review) && (
+                  <p className="ynab-mapping__review-note">
+                    We couldn't tell what{' '}
+                    {previewAccounts.filter((a) => a.needs_review).length} of these are from
+                    their names — they're marked <strong>Check</strong> below. The balance is
+                    the clue: a large one usually means something you own (a house, a car, a
+                    brokerage), which belongs <em>off</em> budget. An account left on budget
+                    by mistake throws off every total.
+                  </p>
+                )}
+                {dormantCount > 0 && (
+                  <p className="ynab-mapping__note">
+                    {dormantCount} of these {dormantCount === 1 ? 'has' : 'have'} seen no activity
+                    in over a year.{' '}
+                    <button
+                      type="button"
+                      className="ynab-mapping__note-action"
+                      onClick={closeDormantAccounts}
+                    >
+                      Import &amp; close {dormantCount === 1 ? 'it' : 'them'}
+                    </button>{' '}
+                    to keep every transaction while leaving them out of your account pickers.
+                  </p>
+                )}
+                <div className="ynab-mapping" role="group" aria-labelledby="ynab-accounts-label">
+                  {groupAccounts(previewAccounts).map((section) => (
+                    <div key={section.label ?? `solo-${section.accounts[0].name}`}>
+                      {section.label && (
+                        <p className="ynab-mapping__family">
+                          <span className="ynab-mapping__family-name">{section.label}</span>
+                          <span className="ynab-mapping__family-hint">
+                            related — often an institution's accounts, or something you own and
+                            the debt against it. Compare their balances.
+                          </span>
+                        </p>
+                      )}
+                      {section.accounts.map((a) => {
+                    const choice = accountChoices[a.name]
+                    const disposition = dispositionOf(choice)
+                    const skipped = disposition === 'skip'
+                    const typeKey = choice?.account_type ?? a.suggested_type
+                    const warning = skipped
+                      ? null
+                      : classificationWarning(
+                          ACCOUNT_TYPE_OPTIONS.find((o) => o.key === a.suggested_type)
+                            ?.classification,
+                          ACCOUNT_TYPE_OPTIONS.find((o) => o.key === typeKey)?.classification
+                        )
+                    const lastSeen = activityLabel(a.last_activity)
                     return (
                       <div
                         key={a.name}
@@ -523,18 +580,21 @@ export function BudgetSelectorPage() {
                           a.needs_review && !skipped ? 'ynab-mapping__row--review' : ''
                         }`}
                       >
-                        <input
-                          type="checkbox"
-                          className="ynab-mapping__include"
-                          checked={!skipped}
-                          onChange={(e) => updateChoice(a.name, { skip: !e.target.checked })}
-                          aria-label={`Import ${a.name}`}
-                          title={
-                            skipped
-                              ? 'Excluded — this account and its transactions will not be imported'
-                              : 'Uncheck to leave this account out of the import'
+                        <select
+                          className="selector-field__input ynab-mapping__disposition"
+                          value={disposition}
+                          onChange={(e) =>
+                            updateChoice(
+                              a.name,
+                              choiceForDisposition(e.target.value as Disposition)
+                            )
                           }
-                        />
+                          aria-label={`What to do with ${a.name}`}
+                        >
+                          <option value="import">Import</option>
+                          <option value="close">Import &amp; close</option>
+                          <option value="skip">Leave out</option>
+                        </select>
                         <div className="ynab-mapping__name">
                           {a.name}
                           {a.needs_review && !skipped && (
@@ -550,11 +610,14 @@ export function BudgetSelectorPage() {
                             <span className="ynab-mapping__balance">
                               {formatMoney(Number(a.implied_balance))}
                             </span>
+                            {lastSeen && (
+                              <span className="ynab-mapping__activity">last activity {lastSeen}</span>
+                            )}
                           </span>
                         </div>
                         <select
                           className="selector-field__input ynab-mapping__type"
-                          value={accountChoices[a.name]?.account_type ?? a.suggested_type}
+                          value={typeKey}
                           onChange={(e) => {
                             // Picking a type resets the on-budget checkbox to
                             // that type's default; still user-overridable.
@@ -575,15 +638,18 @@ export function BudgetSelectorPage() {
                         <label className="ynab-mapping__budget-toggle">
                           <input
                             type="checkbox"
-                            checked={accountChoices[a.name]?.on_budget ?? a.suggested_on_budget}
+                            checked={choice?.on_budget ?? a.suggested_on_budget}
                             onChange={(e) => updateChoice(a.name, { on_budget: e.target.checked })}
                             disabled={skipped}
                           />
                           On budget
                         </label>
+                        {warning && <p className="ynab-mapping__warn">{warning}</p>}
                       </div>
                     )
                   })}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -670,7 +736,9 @@ export function BudgetSelectorPage() {
         </div>
 
       </div>
-      {showTypeInfo && <AccountTypeInfoModal onClose={() => setShowTypeInfo(false)} />}
+      {showTypeInfo && (
+        <AccountTypeInfoModal context="import" onClose={() => setShowTypeInfo(false)} />
+      )}
     </div>
   )
 }

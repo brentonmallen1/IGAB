@@ -127,3 +127,20 @@
   color: var(--text-secondary, var(--text-muted));
   margin: 4px 0 0;
 }
+
+/* Section heading inside the body — used when the modal covers more than the
+   type list (the import context adds what dropping an account costs). */
+.type-info__section-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-top: var(--spacing-xs);
+}
+
+/* Multi-paragraph concepts: the import notes need more than one sentence and
+   run together without this. */
+.type-info__concept p + p {
+  margin-top: var(--spacing-xs);
+}

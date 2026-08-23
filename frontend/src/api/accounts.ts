@@ -83,3 +83,34 @@ export function useScanDuplicates() {
     },
   })
 }
+
+
+/** One thing about this budget's accounts that is probably wrong. */
+export interface HygieneFinding {
+  /** Stable key, so the UI routes the fix without parsing prose. */
+  kind: string
+  title: string
+  detail: string
+  action: string
+  account_ids: string[]
+  transaction_count: number
+}
+
+export interface HygieneReport {
+  findings: HygieneFinding[]
+  clean: boolean
+}
+
+/**
+ * Post-import account hygiene. Separate from `/integrity`, which reports
+ * invariant violations — everything here is a judgement call the user can
+ * dismiss, and a clean integrity run has to keep meaning "the maths is sound".
+ */
+export function useAccountHygiene(budgetId: string | null) {
+  return useQuery({
+    queryKey: ['account-hygiene', budgetId],
+    queryFn: () =>
+      apiClient.get<HygieneReport>(`/${budgetId}/accounts/hygiene`).then((r) => r.data),
+    enabled: !!budgetId,
+  })
+}

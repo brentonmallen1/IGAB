@@ -101,6 +101,7 @@ async def list_account_transactions(
     has_attachment: bool | None = None,
     direction: Literal["inflow", "outflow"] | None = None,
     is_transfer: bool | None = None,
+    unpaired_transfers: bool = False,
 ) -> list[TransactionResponse]:
     parsed_cat_ids = [uuid.UUID(x) for x in category_ids.split(",") if x] if category_ids else None
     parsed_pay_ids = [uuid.UUID(x) for x in payee_ids.split(",") if x] if payee_ids else None
@@ -123,6 +124,7 @@ async def list_account_transactions(
         has_attachment=has_attachment,
         direction=direction,
         is_transfer=is_transfer,
+        unpaired_transfers=unpaired_transfers,
     )
     return [TransactionResponse.model_validate(t) for t in txns]
 
@@ -155,6 +157,10 @@ async def list_budget_transactions(
     amount_max: float | None = None,
     has_attachment: bool | None = None,
     is_transfer: bool | None = None,
+    #: Transfer legs whose partner never arrived. Not expressible via
+    #: `is_transfer`, which tests transfer_id alone — this is what the account
+    #: hygiene panel links to.
+    unpaired_transfers: bool = False,
     order: Literal["date", "register"] = "date",
     limit: int = Query(200, le=5000),
     offset: int = 0,
@@ -192,6 +198,7 @@ async def list_budget_transactions(
         amount_max=amount_max,
         has_attachment=has_attachment,
         is_transfer=is_transfer,
+        unpaired_transfers=unpaired_transfers,
         order=order,
         limit=limit,
         offset=offset,

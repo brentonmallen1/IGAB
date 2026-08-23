@@ -287,12 +287,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // see reviewSection.ts
   const [heldForReviewIds, setHeldForReviewIds] = useState<ReadonlySet<string>>(new Set())
   useEffect(() => {
-    setHeldForReviewIds((prev) => nextHeldForReview(prev, transactions, onBudgetAccountIds))
-  }, [transactions, onBudgetAccountIds])
+    setHeldForReviewIds((prev) => nextHeldForReview(prev, transactions))
+  }, [transactions])
 
   const isInReviewSection = useCallback(
-    (t: Transaction) => inReviewSection(t, onBudgetAccountIds, heldForReviewIds),
-    [onBudgetAccountIds, heldForReviewIds]
+    (t: Transaction) => inReviewSection(t, heldForReviewIds),
+    [heldForReviewIds]
   )
 
   // Partition into sections

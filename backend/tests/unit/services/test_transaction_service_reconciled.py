@@ -47,6 +47,7 @@ class MockTransaction:
 def make_service(txn: MockTransaction) -> TransactionService:
     """TransactionService with a minimal transaction repo mock for update/delete testing."""
     txn_repo = MagicMock()
+    txn_repo.refresh = AsyncMock()
     txn_repo.get_or_raise = AsyncMock(return_value=txn)
     txn_repo.update = AsyncMock(return_value=txn)
     txn_repo.soft_delete = AsyncMock()
@@ -227,6 +228,7 @@ class TestDeleteNonReconciled:
         child2 = MockTransaction(cleared="uncleared", parent_transaction_id=parent.id)
 
         txn_repo = MagicMock()
+        txn_repo.refresh = AsyncMock()
         txn_repo.get_or_raise = AsyncMock(return_value=parent)
         txn_repo.soft_delete = AsyncMock()
         txn_repo.get_splits = AsyncMock(return_value=[child1, child2])
