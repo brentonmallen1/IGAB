@@ -32,7 +32,7 @@ import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
-import { inReviewSection, nextHeldForReview } from './reviewSection'
+import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import './TransactionTable.css'
 
 interface Props {
@@ -241,9 +241,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const sentinelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!hasNextPage || isFetching) return
-    const loadedImportant = transactions.filter(
-      (t) => !t.approved || (!t.category_id && !t.transfer_id && !t.is_split)
-    ).length
+    const loadedImportant = transactions.filter(countsAsPendingReview).length
     const knownImportant = reviewCounts?.total ?? 0
     if (loadedImportant < knownImportant) fetchNextPage()
   }, [isFetching, hasNextPage, fetchNextPage, transactions, reviewCounts])
