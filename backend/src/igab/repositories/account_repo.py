@@ -13,6 +13,7 @@ from igab.db.models import (
     Transaction,
 )
 from igab.repositories.base import BaseRepository
+from igab.repositories.txn_filters import NEEDS_CATEGORY, NOT_DELETED, POSTED
 
 LiabilityDisposition = Literal["keep", "delete"]
 
@@ -70,9 +71,6 @@ class AccountRepository(BaseRepository[Account]):
         # uncategorized split child is a real gap the user should fill.
         # Transfer legs whose partner account is OFF-budget are spending and
         # need a category too; on-budget↔on-budget legs never do.
-        from sqlalchemy import or_
-        from sqlalchemy.orm import aliased
-
         # Off-budget accounts don't use categories at all — the categorized
         # side of a spending transfer lives on the on-budget leg, and plain
         # rows here are net-worth movement, not unfiled spending.
@@ -80,23 +78,18 @@ class AccountRepository(BaseRepository[Account]):
         if account is None or not account.on_budget:
             return 0
 
-        partner = aliased(Transaction)
-        partner_account = aliased(Account)
+        # Was a hand-rolled partner join reading `transfer_id IS NULL`, which
+        # counted an unpaired transfer leg as unfiled. NEEDS_CATEGORY reaches
+        # the counterpart through the transfer payee as well as the link, so a
+        # leg whose partner never imported is still recognised as a transfer.
         result = await self.session.execute(
             select(func.count(Transaction.id))
             .select_from(Transaction)
-            .outerjoin(partner, Transaction.transfer_id == partner.id)
-            .outerjoin(partner_account, partner.account_id == partner_account.id)
             .where(
                 Transaction.account_id == account_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.is_split == False,  # noqa: E712
-                Transaction.category_id.is_(None),
-                Transaction.cleared != "pending",
-                or_(
-                    Transaction.transfer_id.is_(None),
-                    partner_account.on_budget == False,  # noqa: E712
-                ),
+                NOT_DELETED,
+                POSTED,
+                NEEDS_CATEGORY,
             )
         )
         return result.scalar_one()

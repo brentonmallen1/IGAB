@@ -14,8 +14,8 @@ from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
+    NEEDS_CATEGORY,
     NOT_DELETED,
-    ON_BUDGET_ACCOUNT,
     PARENT_ROW,
     POSTED,
 )
@@ -136,14 +136,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(attachment_exists if has_attachment else ~attachment_exists)
         priority_rank = case(
             (Transaction.cleared == "pending", 0),
-            (
-                and_(
-                    Transaction.category_id.is_(None),
-                    Transaction.transfer_id.is_(None),
-                    Transaction.is_split == False,  # noqa: E712
-                ),
-                1,
-            ),
+            (NEEDS_CATEGORY, 1),
             (Transaction.cleared == "uncleared", 2),
             else_=3,
         )
@@ -238,10 +231,10 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(Transaction.cleared == cleared)
         if exclude_cleared:
             where.append(Transaction.cleared != exclude_cleared)
-        uncategorized_pred = and_(
-            Transaction.category_id.is_(None),
-            Transaction.is_split == False,  # noqa: E712
-        )
+        # The same rule the needs-attention badge counts. They disagreed: this
+        # excluded neither transfers nor off-budget rows, so pressing the badge
+        # opened a list longer than the badge promised.
+        uncategorized_pred = NEEDS_CATEGORY
         if uncategorized and unapproved and is_or_mode:
             where.append(or_(uncategorized_pred, Transaction.approved == False))  # noqa: E712
         else:
@@ -278,17 +271,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         if order == "register":
             priority_rank = case(
                 (Transaction.cleared == "pending", 0),
-                (
-                    # Rows genuinely missing a category — off-budget accounts
-                    # don't use categories, so their rows never rank here
-                    and_(
-                        Transaction.category_id.is_(None),
-                        Transaction.transfer_id.is_(None),
-                        Transaction.is_split == False,  # noqa: E712
-                        ON_BUDGET_ACCOUNT,
-                    ),
-                    1,
-                ),
+                # Rows genuinely missing a category — off-budget accounts don't
+                # use categories, and a transfer between two on-budget accounts
+                # never needed one, linked or not.
+                (NEEDS_CATEGORY, 1),
                 (Transaction.cleared == "uncleared", 2),
                 else_=3,
             )
@@ -356,15 +342,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         return result.scalar_one() or 0
 
     async def _count_pending_review(self, base_where) -> dict:
-        # Off-budget accounts don't use categories: their plain rows (market
-        # adjustments, payroll contributions) are net-worth movement, not
-        # spending waiting to be filed. Approval still applies everywhere.
-        needs_category = and_(
-            Transaction.category_id.is_(None),
-            Transaction.is_split == False,  # noqa: E712
-            Transaction.transfer_id.is_(None),
-            ON_BUDGET_ACCOUNT,
-        )
+        # Approval still applies everywhere; a category does not. See
+        # NEEDS_CATEGORY for which rows a category is actually for.
+        needs_category = NEEDS_CATEGORY
         unapproved = Transaction.approved == False  # noqa: E712
         not_pending = Transaction.cleared != "pending"
 

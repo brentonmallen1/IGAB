@@ -300,11 +300,18 @@ class TestCountQueryStructure:
     """Verify the SQL emitted by _count_pending_review has the correct structure."""
 
     @pytest.mark.asyncio
-    async def test_count_query_excludes_transfer_from_needs_category(self) -> None:
-        """
-        The 'needs_category' condition must include transfer_id IS NULL so that
-        transfer legs (which naturally have no category) are not counted as
-        needing categorization.
+    async def test_count_query_recognises_a_transfer_by_more_than_its_link(self) -> None:
+        """`needs_category` must not decide "is this a transfer" from
+        `transfer_id` alone.
+
+        This test used to assert the SQL contained `transfer_id IS NULL`, which
+        pinned the bug rather than the behaviour: a leg whose partner never
+        imported has a NULL link and is still a transfer, and a real YNAB
+        import produced 1,117 of them, every one counted as needing a category.
+        The predicate now goes through CASH_FLOW_ROW, which recognises a
+        transfer by its payee as well as its link — so the emitted SQL has to
+        show the payee test. Behaviour is covered in
+        tests/integration/test_offbudget_categories.py.
         """
         from sqlalchemy.dialects import sqlite
 
@@ -323,8 +330,9 @@ class TestCountQueryStructure:
         stmt = repo.session.execute.call_args[0][0]
         sql = str(stmt.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True}))
 
-        assert "transfer_id IS NULL" in sql, (
-            "needs_category condition must check transfer_id IS NULL to exclude transfer legs"
+        assert "transfer_account_id IS NOT NULL" in sql, (
+            "needs_category must reach TRANSFER_LEG's payee test, not just the "
+            "transfer_id link — an unpaired leg is still a transfer"
         )
 
     @pytest.mark.asyncio

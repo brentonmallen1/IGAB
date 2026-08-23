@@ -14,7 +14,7 @@ amounts are provisional (auth holds change at posting), so money moves exactly
 once — when the transaction posts. This mirrors AccountRepository.get_balance.
 """
 
-from sqlalchemy import Boolean, func, not_, or_, select
+from sqlalchemy import Boolean, and_, func, not_, or_, select
 from sqlalchemy.orm import aliased
 
 from igab.db.models import Account, Payee, Transaction
@@ -95,4 +95,35 @@ CASH_FLOW_ROW = or_(~TRANSFER_LEG, Transaction.category_id.isnot(None), COUNTERP
 # take an explicit account filter let the user's selection override this.
 ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
     select(Account.id).where(Account.on_budget == True)  # noqa: E712
+)
+
+
+#: A row the user still has to file: no category, and it is the kind of row a
+#: category is *for*.
+#:
+#: The three exclusions all matter, and each was wrong somewhere before this
+#: existed:
+#:
+#: - `LEAF` — a split parent carries no category by design; its legs do.
+#: - `ON_BUDGET_ACCOUNT` — off-budget rows (market movement, payroll
+#:   contributions, loan interest) are net-worth movement, not spending
+#:   awaiting a category.
+#: - `CASH_FLOW_ROW` — the load-bearing one. Testing `transfer_id IS NULL`
+#:   instead recognises only a *linked* transfer, so a leg whose partner never
+#:   turned up (a skipped account, an unmatched pair) was counted as needing a
+#:   category. A real YNAB import produced 1,117 of those. `CASH_FLOW_ROW`
+#:   reads TRANSFER_LEG, which knows a transfer by its payee as well as its
+#:   link — and it keeps the case that genuinely does need one: a transfer to
+#:   an OFF-budget account is a mortgage payment, and budgeting for it is the
+#:   whole point.
+#:
+#: Stated as an invariant: **needs a category** agrees with **counts as budget
+#: cash flow**. A row that does not count cannot need one; a row that counts
+#: and has none, does. `CASH_FLOW_ROW`'s middle arm (`category_id IS NOT NULL`)
+#: is dead here because of the first condition, so the two compose exactly.
+NEEDS_CATEGORY = and_(
+    Transaction.category_id.is_(None),
+    LEAF,
+    ON_BUDGET_ACCOUNT,
+    CASH_FLOW_ROW,
 )
