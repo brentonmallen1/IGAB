@@ -70,6 +70,7 @@ function renderRow(t: Transaction, accountOnBudget = true) {
           transaction={t}
           onEdit={vi.fn()}
           payeeMap={new Map()}
+          accountMap={new Map()}
           categoryMap={new Map([['c1', 'Groceries']])}
           payees={[]}
           categories={[]}

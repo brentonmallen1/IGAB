@@ -102,6 +102,15 @@ class TransactionResponse(BaseModel):
     #: here rather than reach the register as a quiet False. See
     #: `Transaction.needs_category` and `NEEDS_CATEGORY`.
     needs_category: bool
+    #: The account on the other side of a transfer, or None for a plain
+    #: transaction. Server-computed (`COUNTERPART_ACCOUNT_ID` in
+    #: txn_filters.py) because a linked leg's payee can be null or wrong and
+    #: the partner row may not be loaded client-side. Declared without a
+    #: default so the key always serializes — but since None is legal, a path
+    #: that skips the loader degrades silently to "not a transfer" instead of
+    #: raising like needs_category does. test_transfer_counterpart.py sweeps
+    #: the serializing paths for exactly that gap.
+    counterpart_account_id: uuid.UUID | None
     memo: str | None
     cleared: str
     approved: bool

@@ -14,6 +14,7 @@ from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
+    COUNTERPART_ACCOUNT_ID,
     LEAF,
     NEEDS_CATEGORY,
     NOT_DELETED,
@@ -57,16 +58,24 @@ class TransactionRepository(BaseRepository[Transaction]):
     model = Transaction
 
     @staticmethod
-    def with_needs_category(stmt: Select[tuple[Transaction]]) -> Select[tuple[Transaction]]:
-        """Load `Transaction.needs_category` on a statement selecting Transaction.
+    def with_computed(stmt: Select[tuple[Transaction]]) -> Select[tuple[Transaction]]:
+        """Load every served computed field on a statement selecting Transaction.
 
         Every path that serializes a `TransactionResponse` has to go through
-        here. The field is required in the schema, so a path that skips it
+        here. One helper for all of them, so a new computed field cannot be
+        forgotten on some listing path.
+
+        `needs_category` is required in the schema, so a path that skips this
         raises rather than reporting an unfiled row as filed — the failure
         direction that matters when the number is a count of work the user
-        still owes.
+        still owes. `counterpart_account_id` is nullable (a plain transaction
+        has none), so it cannot fail loudly the same way; the checklist suite
+        in test_transfer_counterpart.py sweeps the serializing paths instead.
         """
-        return stmt.options(with_expression(Transaction.needs_category, NEEDS_CATEGORY))
+        return stmt.options(
+            with_expression(Transaction.needs_category, NEEDS_CATEGORY),
+            with_expression(Transaction.counterpart_account_id, COUNTERPART_ACCOUNT_ID),
+        )
 
     async def get(self, id: uuid.UUID) -> Transaction | None:
         # Overrides BaseRepository.get to carry needs_category. populate_existing
@@ -74,7 +83,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         # and SQLAlchemy leaves a with_expression attribute unset on an object
         # it has seen before — which would surface as None on exactly the
         # create/update responses, and only those.
-        stmt = self.with_needs_category(
+        stmt = self.with_computed(
             select(Transaction).where(Transaction.id == id, NOT_DELETED)
         ).execution_options(populate_existing=True)
         return (await self.session.execute(stmt)).scalar_one_or_none()
@@ -90,7 +99,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         No is_deleted filter: this refreshes an object already in hand, and a
         soft-deleted row still has to be snapshot-able for the change log.
         """
-        stmt = self.with_needs_category(
+        stmt = self.with_computed(
             select(Transaction).where(Transaction.id == txn.id)
         ).execution_options(populate_existing=True)
         await self.session.execute(stmt)
@@ -126,7 +135,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         is_transfer: bool | None = None,
         unpaired_transfers: bool = False,
     ) -> list[Transaction]:
-        q = self.with_needs_category(select(Transaction)).where(
+        q = self.with_computed(select(Transaction)).where(
             Transaction.account_id == account_id,
             Transaction.is_deleted == False,  # noqa: E712
             Transaction.parent_transaction_id.is_(None),
@@ -311,7 +320,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         if unpaired_transfers:
             where.append(UNPAIRED_TRANSFER_LEG)
 
-        rows_q = self.with_needs_category(select(Transaction))
+        rows_q = self.with_computed(select(Transaction))
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
             Transaction
         )

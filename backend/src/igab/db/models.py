@@ -488,10 +488,26 @@ class Transaction(Base):
     #: restate it; clients read this field.
     #:
     #: Populated only by queries that ask, via
-    #: `TransactionRepository.with_needs_category`. Left alone it reads `None`,
+    #: `TransactionRepository.with_computed`. Left alone it reads `None`,
     #: which `TransactionResponse` rejects — a path that forgets fails loudly
     #: instead of quietly reporting everything as filed.
     needs_category: Mapped[bool] = query_expression()
+
+    #: The account on the other side of this transfer, or None for a plain
+    #: transaction. The rule is `COUNTERPART_ACCOUNT_ID`
+    #: (repositories/txn_filters.py): the linked partner's account when the
+    #: link exists, else the account the transfer payee names — the client
+    #: cannot compute this (a linked leg's payee can be null or wrong, and the
+    #: partner row may not be loaded), so the server serves it.
+    #:
+    #: Not a column: it is derived state (transfer_id + payee), and a stored
+    #: copy would go stale the moment either side is retargeted.
+    #: Populated by `TransactionRepository.with_computed`, alongside
+    #: needs_category. Unlike needs_category, None is a legal value here, so a
+    #: path that forgets the loader degrades to "not a transfer" instead of
+    #: raising — tests/integration/test_transfer_counterpart.py sweeps every
+    #: serializing path for exactly that.
+    counterpart_account_id: Mapped[uuid.UUID | None] = query_expression()
 
     account: Mapped["Account"] = relationship(
         back_populates="transactions", foreign_keys=[account_id]

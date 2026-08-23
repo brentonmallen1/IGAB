@@ -7,6 +7,7 @@ import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
+import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { Transaction } from '../../../types'
 import './CategoryTransactionsModal.css'
 
@@ -68,8 +69,8 @@ export function CategoryTransactionsModal({
   const totalCount = data?.total_count ?? 0
 
   function describePayee(t: Transaction): string {
-    if (t.payee_id) return payeeName.get(t.payee_id) ?? '—'
-    if (t.transfer_id) return 'Transfer'
+    const display = transactionDisplayPayee(t, payeeName, accountName)
+    if (display !== '—') return display
     return t.import_description ?? '—'
   }
 
