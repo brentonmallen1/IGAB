@@ -284,27 +284,59 @@ function isRecognizedIsValue(val: string): boolean {
 
 function parseSegment(
   tokens: string[],
+  origin: number[],
   categoryMap: Map<string, string>,
   payeeMap: Map<string, string>,
   accountMap: Map<string, string>,
-  now: Date
+  now: Date,
+  chips: SearchChip[],
+  literal: ReadonlySet<number>
 ): TransactionFilters {
   const result: TransactionFilters = {}
   const textParts: string[] = []
+  // A chip is emitted only where a filter was actually applied. The chips used
+  // to be produced by a second walk over the same tokens, and it disagreed:
+  // `category: zzz` matching nothing applied no filter but still drew a
+  // "Category: zzz" chip, so the register showed a filter it was not applying.
+  const emit = (label: string, from: number, count = 1) =>
+    chips.push({
+      key: `${origin[from]}:${label}`,
+      label,
+      indices: origin.slice(from, from + count),
+    })
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
     const lower = token.toLowerCase()
 
+    // Tokens an unrecognised NOT owns. They are searched as text and must not
+    // be recognised again here: `NOT is:uncategorized` used to drop the NOT
+    // and apply `is:uncategorized` positively — the opposite of the ask.
+    if (literal.has(origin[i])) {
+      textParts.push(token)
+      continue
+    }
+
     // is: value  (space-separated)  or  is:value  (compact)
     if (lower === 'is:') {
       const val = tokens[i + 1]?.toLowerCase()
-      if (val && isRecognizedIsValue(val)) { applyIsValue(result, val); i++ }
+      if (val && isRecognizedIsValue(val)) {
+        applyIsValue(result, val)
+        emit(IS_LABELS[val], i, 2)
+        i++
+      }
       continue
     }
     const isMatch = lower.match(/^is:(\w+)$/)
-    if (isMatch) {
+    if (isMatch && isRecognizedIsValue(isMatch[1])) {
       applyIsValue(result, isMatch[1])
+      emit(IS_LABELS[isMatch[1]], i)
+      continue
+    }
+    if (isMatch) {
+      // Unrecognised `is:` was swallowed here — no filter, no chip, and the
+      // token invisible. Falling through searches for it as text instead.
+      textParts.push(token)
       continue
     }
 
@@ -312,38 +344,56 @@ function parseSegment(
     // 'image' and 'receipt' accepted as synonyms
     if (lower === 'has:') {
       const val = tokens[i + 1]?.toLowerCase()
-      if (val && ATTACHMENT_VALUES.has(val)) { result.hasAttachment = true; i++; continue }
+      if (val && ATTACHMENT_VALUES.has(val)) {
+        result.hasAttachment = true
+        emit('Has attachment', i, 2)
+        i++
+        continue
+      }
       continue
     }
     const hasMatch = lower.match(/^has:(\w+)$/)
     if (hasMatch) {
-      if (ATTACHMENT_VALUES.has(hasMatch[1])) result.hasAttachment = true
+      if (ATTACHMENT_VALUES.has(hasMatch[1])) {
+        result.hasAttachment = true
+        emit('Has attachment', i)
+      }
       continue
     }
 
     // category: value  or  category:value
     const catPrefix = lower === 'category:' ? tokens[i + 1] : lower.match(/^category:(.+)$/)?.[1]
     if (catPrefix !== undefined) {
-      if (lower === 'category:') i++
+      const start = i
+      const spaced = lower === 'category:'
+      if (spaced) i++
       const catQuery = catPrefix.replace(/^"|"$/g, '').toLowerCase()
       const ids: string[] = []
       for (const [id, name] of categoryMap) {
         if (name.toLowerCase().includes(catQuery)) ids.push(id)
       }
-      if (ids.length) result.categoryIds = ids
+      if (ids.length) {
+        result.categoryIds = ids
+        emit(`Category: ${catQuery}`, start, spaced ? 2 : 1)
+      }
       continue
     }
 
     // payee: value  or  payee:value
     const payeePrefix = lower === 'payee:' ? tokens[i + 1] : lower.match(/^payee:(.+)$/)?.[1]
     if (payeePrefix !== undefined) {
-      if (lower === 'payee:') i++
+      const start = i
+      const spaced = lower === 'payee:'
+      if (spaced) i++
       const payeeQuery = payeePrefix.replace(/^"|"$/g, '').toLowerCase()
       const ids: string[] = []
       for (const [id, name] of payeeMap) {
         if (name.toLowerCase().includes(payeeQuery)) ids.push(id)
       }
-      if (ids.length) result.payeeIds = ids
+      if (ids.length) {
+        result.payeeIds = ids
+        emit(`Payee: ${payeeQuery}`, start, spaced ? 2 : 1)
+      }
       continue
     }
 
@@ -352,20 +402,28 @@ function parseSegment(
     // token falls through to free text
     const accountPrefix = lower === 'account:' ? tokens[i + 1] : lower.match(/^account:(.+)$/)?.[1]
     if (accountPrefix !== undefined && accountMap.size > 0) {
-      if (lower === 'account:') i++
+      const start = i
+      const spaced = lower === 'account:'
+      if (spaced) i++
       const accountQuery = accountPrefix.replace(/^"|"$/g, '').toLowerCase()
       const ids: string[] = []
       for (const [id, name] of accountMap) {
         if (name.toLowerCase().includes(accountQuery)) ids.push(id)
       }
-      if (ids.length) result.accountIds = ids
+      if (ids.length) {
+        result.accountIds = ids
+        emit(`Account: ${accountQuery}`, start, spaced ? 2 : 1)
+      }
       continue
     }
 
     // amount:>x  amount:<x  amount:x-y
     const amountExpr = lower === 'amount:' ? tokens[i + 1] : lower.match(/^amount:(.+)$/)?.[1]
     if (amountExpr !== undefined) {
-      if (lower === 'amount:') i++
+      const start = i
+      const spaced = lower === 'amount:'
+      if (spaced) i++
+      let recognised = true
       if (amountExpr?.startsWith('>')) result.amountMin = parseFloat(amountExpr.slice(1))
       else if (amountExpr?.startsWith('<')) result.amountMax = parseFloat(amountExpr.slice(1))
       else {
@@ -377,9 +435,12 @@ function parseSegment(
           if (exact) {
             const value = parseFloat(exact[1].replace(/,/g, ''))
             if (!isNaN(value)) { result.amountMin = value; result.amountMax = value }
-          }
+            else recognised = false
+          } else recognised = false
         }
       }
+      // `amount: abc` filtered nothing but still drew an "Amount: abc" chip.
+      if (recognised) emit(`Amount: ${amountExpr}`, start, spaced ? 2 : 1)
       continue
     }
 
@@ -388,6 +449,7 @@ function parseSegment(
     if (dateFilter) {
       if (dateFilter.startDate) result.startDate = dateFilter.startDate
       if (dateFilter.endDate) result.endDate = dateFilter.endDate
+      emit(dateFilter.label, i, dateFilter.consumed)
       i += dateFilter.consumed - 1
       continue
     }
@@ -402,6 +464,7 @@ function parseSegment(
     if (dateMatch) {
       result.startDate = dateMatch.startDate
       result.endDate = dateMatch.endDate
+      emit(dateMatch.label, i, dateMatch.consumed)
       i += dateMatch.consumed - 1
       continue
     }
@@ -447,21 +510,50 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
   return merged
 }
 
-export function parseTransactionSearch(
+interface ParsedSearch {
+  filters: TransactionFilters
+  chips: SearchChip[]
+}
+
+/**
+ * One walk over the tokens, producing both the filters and the chips.
+ *
+ * `describeSearchChips` used to be a second walk carrying its own copy of
+ * every recognizer, self-described as "mirrors parseTransactionSearch's token
+ * recognition". The two disagreed, and the chips were the half that lied: a
+ * `category:` matching nothing drew a chip while filtering nothing, and a
+ * `NOT` the parser could not read became a free-text search with no chip to
+ * say so. Chips are a projection of what was recognised now, so a chip exists
+ * exactly when a filter does.
+ *
+ * Token indices are carried through the NOT extraction and the OR split so a
+ * chip can still name the tokens it owns — `removeSearchChip` needs them.
+ */
+function parseSearch(
   query: string,
   categoryMap: Map<string, string>,
   payeeMap: Map<string, string>,
-  accountMap: Map<string, string> = new Map(),
-  now: Date = new Date()
-): TransactionFilters {
+  accountMap: Map<string, string>,
+  now: Date
+): ParsedSearch {
   const tokens = tokenize(query)
+  const chips: SearchChip[] = []
+  const emit = (label: string, indices: number[]) =>
+    chips.push({ key: `${indices[0]}:${label}`, label, indices })
 
   // Extract NOT modifiers globally before OR splitting — they apply to all results
   const exclusions: TransactionFilters = {}
   const positiveTokens: string[] = []
+  const positiveIdx: number[] = []
+  const literal = new Set<number>()
+  const keep = (idx: number) => {
+    positiveTokens.push(tokens[idx])
+    positiveIdx.push(idx)
+  }
 
   for (let i = 0; i < tokens.length; i++) {
     if (tokens[i].toUpperCase() === 'NOT') {
+      const notAt = i
       i++
       if (i >= tokens.length) continue
       const next = tokens[i]
@@ -470,55 +562,99 @@ export function parseTransactionSearch(
       // NOT is: value  (space-separated)
       if (nextLower === 'is:') {
         const val = tokens[i + 1]?.toLowerCase()
-        if (val && CLEARED_VALUES.has(val)) { exclusions.excludeCleared = val; i++ }
-        else if (val === 'transfer') { exclusions.isTransfer = false; i++ }
+        if (val && CLEARED_VALUES.has(val)) {
+          exclusions.excludeCleared = val
+          emit(`Not ${val}`, [notAt, i, i + 1])
+          i++
+        } else if (val === 'transfer') {
+          exclusions.isTransfer = false
+          emit('Not transfer', [notAt, i, i + 1])
+          i++
+        }
         continue
       }
       // NOT is:value  (compact)
       const isMatch = nextLower.match(/^is:(\w+)$/)
       if (isMatch && CLEARED_VALUES.has(isMatch[1])) {
         exclusions.excludeCleared = isMatch[1]
+        emit(`Not ${isMatch[1]}`, [notAt, i])
         continue
       }
       if (isMatch && isMatch[1] === 'transfer') {
         exclusions.isTransfer = false
+        emit('Not transfer', [notAt, i])
         continue
       }
       // NOT has: attachment — rows without an image
       if (nextLower === 'has:') {
         const val = tokens[i + 1]?.toLowerCase()
-        if (val && ATTACHMENT_VALUES.has(val)) { exclusions.hasAttachment = false; i++ }
+        if (val && ATTACHMENT_VALUES.has(val)) {
+          exclusions.hasAttachment = false
+          emit('No attachment', [notAt, i, i + 1])
+          i++
+        }
         continue
       }
       const hasMatch = nextLower.match(/^has:(\w+)$/)
       if (hasMatch && ATTACHMENT_VALUES.has(hasMatch[1])) {
         exclusions.hasAttachment = false
+        emit('No attachment', [notAt, i])
         continue
       }
-      // Unrecognised NOT — pass both tokens through as text
-      positiveTokens.push('NOT', tokens[i])
+      // Unrecognised NOT — pass both tokens through as text, and draw no chip.
+      // The register really is doing a text search for them. Marking them
+      // literal is what makes that true: without it the second token was
+      // recognised again downstream and the filter applied *positively*.
+      literal.add(notAt)
+      literal.add(i)
+      keep(notAt)
+      keep(i)
     } else {
-      positiveTokens.push(tokens[i])
+      keep(i)
     }
   }
 
-  // Split remaining tokens at OR keyword into segments
-  const segments: string[][] = []
-  let current: string[] = []
-  for (const token of positiveTokens) {
-    if (token.toUpperCase() === 'OR') {
+  // Split remaining tokens at OR keyword into segments, keeping origins
+  const segments: number[][] = []
+  let current: number[] = []
+  for (let k = 0; k < positiveTokens.length; k++) {
+    if (positiveTokens[k].toUpperCase() === 'OR') {
       segments.push(current)
       current = []
     } else {
-      current.push(token)
+      current.push(positiveIdx[k])
     }
   }
   segments.push(current)
 
-  const parsed = segments.map((seg) => parseSegment(seg, categoryMap, payeeMap, accountMap, now))
+  const parsed = segments.map((origin) =>
+    parseSegment(
+      origin.map((idx) => tokens[idx]),
+      origin,
+      categoryMap,
+      payeeMap,
+      accountMap,
+      now,
+      chips,
+      literal
+    )
+  )
   const positive = parsed.length === 1 ? parsed[0] : mergeWithOr(parsed)
 
-  return Object.keys(exclusions).length ? { ...positive, ...exclusions } : positive
+  return {
+    filters: Object.keys(exclusions).length ? { ...positive, ...exclusions } : positive,
+    chips: chips.sort((a, b) => a.indices[0] - b.indices[0]),
+  }
+}
+
+export function parseTransactionSearch(
+  query: string,
+  categoryMap: Map<string, string>,
+  payeeMap: Map<string, string>,
+  accountMap: Map<string, string> = new Map(),
+  now: Date = new Date()
+): TransactionFilters {
+  return parseSearch(query, categoryMap, payeeMap, accountMap, now).filters
 }
 
 function tokenize(query: string): string[] {
@@ -591,124 +727,27 @@ const IS_LABELS: Record<string, string> = {
   transfer: 'Transfer',
 }
 
-function stripQuotes(s: string): string {
-  return s.replace(/^"|"$/g, '')
-}
-
 /**
  * Describe each recognised filter construct in the query as a removable
  * chip. Mirrors parseTransactionSearch's token recognition; free text and
  * OR keywords produce no chips. Remove a chip with removeSearchChip.
  */
+/**
+ * Removable chips for each filter the parser actually recognised.
+ *
+ * Takes the same maps the parser takes, because a chip can only be honest
+ * about `category:`/`payee:`/`account:` if it knows whether those resolved.
+ * The old signature took only `accountMapSize`, which is why it had to
+ * re-implement recognition and why it could not tell a match from a miss.
+ */
 export function describeSearchChips(
   query: string,
-  accountMapSize = 0,
+  categoryMap: Map<string, string>,
+  payeeMap: Map<string, string>,
+  accountMap: Map<string, string> = new Map(),
   now: Date = new Date()
 ): SearchChip[] {
-  const tokens = tokenize(query)
-  const chips: SearchChip[] = []
-  const push = (label: string, indices: number[]) =>
-    chips.push({ key: `${indices[0]}:${label}`, label, indices })
-
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]
-    const lower = token.toLowerCase()
-
-    if (token.toUpperCase() === 'NOT') {
-      const nextLower = tokens[i + 1]?.toLowerCase()
-      if (nextLower === 'is:' || nextLower === 'has:') {
-        const val = tokens[i + 2]?.toLowerCase()
-        if (nextLower === 'is:' && val && (CLEARED_VALUES.has(val) || val === 'transfer')) {
-          push(`Not ${val}`, [i, i + 1, i + 2])
-          i += 2
-        } else if (nextLower === 'has:' && val && ATTACHMENT_VALUES.has(val)) {
-          push('No attachment', [i, i + 1, i + 2])
-          i += 2
-        }
-        continue
-      }
-      const isMatch = nextLower?.match(/^is:(\w+)$/)
-      if (isMatch && (CLEARED_VALUES.has(isMatch[1]) || isMatch[1] === 'transfer')) {
-        push(`Not ${isMatch[1]}`, [i, i + 1])
-        i++
-        continue
-      }
-      const hasMatch = nextLower?.match(/^has:(\w+)$/)
-      if (hasMatch && ATTACHMENT_VALUES.has(hasMatch[1])) {
-        push('No attachment', [i, i + 1])
-        i++
-      }
-      continue
-    }
-
-    if (lower === 'is:') {
-      const val = tokens[i + 1]?.toLowerCase()
-      if (val && isRecognizedIsValue(val)) {
-        push(IS_LABELS[val], [i, i + 1])
-        i++
-      }
-      continue
-    }
-    const isMatch = lower.match(/^is:(\w+)$/)
-    if (isMatch) {
-      if (isRecognizedIsValue(isMatch[1])) push(IS_LABELS[isMatch[1]], [i])
-      continue
-    }
-
-    if (lower === 'has:') {
-      const val = tokens[i + 1]?.toLowerCase()
-      if (val && ATTACHMENT_VALUES.has(val)) {
-        push('Has attachment', [i, i + 1])
-        i++
-      }
-      continue
-    }
-    const hasMatch = lower.match(/^has:(\w+)$/)
-    if (hasMatch) {
-      if (ATTACHMENT_VALUES.has(hasMatch[1])) push('Has attachment', [i])
-      continue
-    }
-
-    const dateFilter = matchDateFilterToken(tokens, i, now)
-    if (dateFilter) {
-      const indices = Array.from({ length: dateFilter.consumed }, (_, k) => i + k)
-      push(dateFilter.label, indices)
-      i += dateFilter.consumed - 1
-      continue
-    }
-
-    let prefixMatched = false
-    for (const [prefix, chipLabel] of [
-      ['category:', 'Category'],
-      ['payee:', 'Payee'],
-      ['account:', 'Account'],
-      ['amount:', 'Amount'],
-    ] as const) {
-      // account: only resolves on the all-accounts register (mirrors parser)
-      if (prefix === 'account:' && accountMapSize === 0) continue
-      const spaced = lower === prefix
-      const value = spaced
-        ? tokens[i + 1]
-        : lower.startsWith(prefix)
-          ? token.slice(prefix.length)
-          : undefined
-      if (!value) continue
-      push(`${chipLabel}: ${stripQuotes(value)}`, spaced ? [i, i + 1] : [i])
-      if (spaced) i++
-      prefixMatched = true
-      break
-    }
-    if (prefixMatched) continue
-
-    const dateMatch = matchDateTokens(tokens, i, now)
-    if (dateMatch) {
-      const indices = Array.from({ length: dateMatch.consumed }, (_, k) => i + k)
-      push(dateMatch.label, indices)
-      i += dateMatch.consumed - 1
-    }
-  }
-
-  return chips
+  return parseSearch(query, categoryMap, payeeMap, accountMap, now).chips
 }
 
 /**

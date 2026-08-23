@@ -5,15 +5,22 @@ import './SearchFilterChips.css'
 
 interface Props {
   query: string
-  /** Pass the account map size only on the all-accounts register, where
-   * account: tokens resolve; 0 elsewhere (mirrors the parser). */
-  accountMapSize: number
+  /** The same maps the register hands the parser. A chip can only be honest
+   *  about `category:`/`payee:`/`account:` if it knows whether they resolved,
+   *  and passing only a size is what forced the chips to guess. Pass an empty
+   *  accountMap off the all-accounts register, exactly as the parser is given. */
+  categoryMap: Map<string, string>
+  payeeMap: Map<string, string>
+  accountMap: Map<string, string>
   onChange: (query: string) => void
 }
 
 /** Removable chips for each recognised filter in the search query. */
-export function SearchFilterChips({ query, accountMapSize, onChange }: Props) {
-  const chips = useMemo(() => describeSearchChips(query, accountMapSize), [query, accountMapSize])
+export function SearchFilterChips({ query, categoryMap, payeeMap, accountMap, onChange }: Props) {
+  const chips = useMemo(
+    () => describeSearchChips(query, categoryMap, payeeMap, accountMap),
+    [query, categoryMap, payeeMap, accountMap]
+  )
   if (chips.length === 0) return null
 
   return (
