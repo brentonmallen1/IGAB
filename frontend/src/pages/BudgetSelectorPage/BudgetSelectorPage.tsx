@@ -26,7 +26,7 @@ import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
 import {
   activityLabel,
-  balanceWarning,
+  classificationWarning,
   choiceForDisposition,
   dispositionOf,
   isDormant,
@@ -520,9 +520,10 @@ export function BudgetSelectorPage() {
                     const typeKey = choice?.account_type ?? a.suggested_type
                     const warning = skipped
                       ? null
-                      : balanceWarning(
-                          ACCOUNT_TYPE_OPTIONS.find((o) => o.key === typeKey)?.classification,
-                          Number(a.implied_balance)
+                      : classificationWarning(
+                          ACCOUNT_TYPE_OPTIONS.find((o) => o.key === a.suggested_type)
+                            ?.classification,
+                          ACCOUNT_TYPE_OPTIONS.find((o) => o.key === typeKey)?.classification
                         )
                     const dormant = disposition === 'import' && isDormant(a.last_activity)
                     const lastSeen = activityLabel(a.last_activity)

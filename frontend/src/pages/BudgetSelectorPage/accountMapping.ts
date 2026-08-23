@@ -4,8 +4,8 @@
  *
  * The mapping step is where a real 47-account import went wrong: four assets
  * were given debt types, which subtracted ~$2.8M from net worth and spawned
- * four phantom liabilities. The suggester had them right and flagged all four
- * for review — nothing objected when the user overrode it. So this module is
+ * four phantom liabilities. The suggester had all four right and flagged them
+ * for review — nothing objected when they were overridden. So this module is
  * about *confirmation*, not guessing.
  */
 import type { YnabAccountPreview, YnabAccountTypeChoice } from '../../api/budgets'
@@ -18,15 +18,6 @@ export type Disposition = 'import' | 'close' | 'skip'
  *  clears seasonal accounts (an annual insurance payment, a holiday fund)
  *  while still catching the 2019–2021 group in a real export. */
 export const DORMANT_AFTER_MONTHS = 12
-
-/** How far a balance must sit on the wrong side of its type before we say so.
- *
- *  Not zero: a credit card paid in full often rests slightly positive, and a
- *  warning on every paid-off card is one people learn to ignore — which would
- *  cost us the warning that matters. $1,000 stays quiet there while still
- *  catching both real cases, the $1.2M house typed as a mortgage and the
- *  $6,111 overpaid auto loan. */
-export const SIGN_MISMATCH_FLOOR = 1000
 
 export function dispositionOf(choice: YnabAccountTypeChoice | undefined): Disposition {
   if (choice?.skip) return 'skip'
@@ -55,23 +46,35 @@ export function activityLabel(iso: string | null): string | null {
 }
 
 /**
- * Does the chosen type disagree with the balance's sign?
+ * Does the chosen type disagree with what the account looks like?
  *
- * Warns, never blocks. An overpaid loan is real — `Vehicle A Loan` genuinely
- * held +$6,111 — so this has to be a remark the user can walk past, not a
- * gate. Returns the sentence to show, or null.
+ * Keyed on disagreement with the *suggestion*, deliberately not on the sign of
+ * `implied_balance`. That figure is the sum of the register, and a YNAB export
+ * contains no account balance and no starting-balance row — so on a
+ * date-filtered export it is the sum of a *window*, not a balance. Measured on
+ * a real 47-account export beginning 01/01/2019: a sign test fires on ten
+ * correctly-typed accounts, among them a checking account summing to -$14,335
+ * and a savings to -$9,603, because the money that opened them predates the
+ * export. Ten false alarms out of forty-seven is how a warning becomes
+ * something people click past — and then the one that matters goes past too.
+ *
+ * Disagreement with the suggestion has none of that noise: it fires only when
+ * someone actively overrides the classification, which is rare and worth a
+ * glance. It still catches every case that went wrong for real — all four
+ * mistyped assets were suggested `other_asset`.
+ *
+ * Warns, never blocks. An overpaid loan is real, and so is a name we read
+ * wrongly. Returns the sentence to show, or null.
  */
-export function balanceWarning(
-  classification: 'asset' | 'liability' | undefined,
-  balance: number
+export function classificationWarning(
+  suggested: 'asset' | 'liability' | undefined,
+  chosen: 'asset' | 'liability' | undefined
 ): string | null {
-  if (classification === 'liability' && balance > SIGN_MISMATCH_FLOOR) {
-    return "This is a debt type, but the balance is positive — that usually means something you own. If it really is an overpaid debt, carry on."
+  if (!suggested || !chosen || suggested === chosen) return null
+  if (chosen === 'liability') {
+    return 'A debt type, but this reads as something you own. Worth checking the balance — an asset filed as a debt is subtracted from net worth instead of added, and arrives with a payoff record it does not need.'
   }
-  if (classification === 'asset' && balance < -SIGN_MISMATCH_FLOOR) {
-    return 'This is an asset type, but the balance is negative — that usually means something you owe.'
-  }
-  return null
+  return 'An asset type, but this reads as something you owe. Worth checking the balance — a debt filed as an asset is added to net worth instead of subtracted.'
 }
 
 /** Accounts that would arrive dormant-but-open, i.e. the ones worth offering

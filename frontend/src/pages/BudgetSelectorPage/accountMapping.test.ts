@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   activityLabel,
-  balanceWarning,
+  classificationWarning,
   choiceForDisposition,
   dispositionOf,
   dormantOpenCount,
@@ -94,37 +94,37 @@ describe('dormancy', () => {
   })
 })
 
-describe('balanceWarning', () => {
-  it('objects to a debt type holding a large positive balance', () => {
-    // The $1.2M house typed as a mortgage.
-    expect(balanceWarning('liability', 1219536)).toMatch(/debt type, but the balance is positive/)
+describe('classificationWarning', () => {
+  it('objects when a debt type is chosen for something we read as an asset', () => {
+    // The four real failures: a $1.2M house, a $143K property and two
+    // vehicles, all suggested other_asset and all given debt types by hand.
+    expect(classificationWarning('asset', 'liability')).toMatch(/debt type, but this reads as/)
   })
 
-  it('objects to an asset type holding a large negative balance', () => {
-    expect(balanceWarning('asset', -710000)).toMatch(/asset type, but the balance is negative/)
+  it('objects the other way too', () => {
+    expect(classificationWarning('liability', 'asset')).toMatch(/asset type, but this reads as/)
   })
 
-  it('still objects to a genuinely overpaid loan — it warns, it does not block', () => {
-    // Vehicle A Loan really did hold +$6,111. The user must be able to read
-    // this and carry on, so it has to be a remark rather than a gate.
-    expect(balanceWarning('liability', 6111)).not.toBeNull()
+  it('stays quiet when the choice agrees with the suggestion', () => {
+    // Which is every row the user never touches — the property that keeps
+    // this warning worth reading.
+    expect(classificationWarning('asset', 'asset')).toBeNull()
+    expect(classificationWarning('liability', 'liability')).toBeNull()
   })
 
-  it('stays quiet on a credit card paid slightly into credit', () => {
-    // The false positive that would cost us the warning above: a warning on
-    // every paid-off card is one people stop reading.
-    expect(balanceWarning('liability', 50)).toBeNull()
+  it('says nothing when either classification is unknown', () => {
+    expect(classificationWarning(undefined, 'liability')).toBeNull()
+    expect(classificationWarning('asset', undefined)).toBeNull()
   })
 
-  it('stays quiet when the sign agrees', () => {
-    expect(balanceWarning('liability', -3410)).toBeNull()
-    expect(balanceWarning('asset', 27704)).toBeNull()
-  })
-
-  it('stays quiet on a zero balance and on an unknown type', () => {
-    expect(balanceWarning('liability', 0)).toBeNull()
-    expect(balanceWarning('asset', 0)).toBeNull()
-    expect(balanceWarning(undefined, 1219536)).toBeNull()
+  it('is not keyed on the balance, which a YNAB export cannot supply', () => {
+    // The design point. `implied_balance` is the sum of the register, and a
+    // date-filtered export has no starting-balance rows, so a checking
+    // account can legitimately sum to -$14,335. Keying on that sign fired on
+    // ten of forty-seven correctly-typed accounts in the real export.
+    // Keeping a correct type is silent whatever the balance says.
+    expect(classificationWarning('asset', 'asset')).toBeNull()
+    expect(classificationWarning('liability', 'liability')).toBeNull()
   })
 })
 
