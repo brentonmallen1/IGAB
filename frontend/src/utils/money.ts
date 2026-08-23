@@ -126,6 +126,21 @@ export function parseAmountInput(value: string): number {
   return parseFloat(cleaned)
 }
 
+/**
+ * Parse a decimal string the SERVER sent — never a user keystroke.
+ *
+ * API amounts are canonical: plain `-1234.56`, already rounded, no grouping
+ * separators and no locale. `parseFloat` is correct for those and wrong for
+ * anything a person typed, where `parseFloat("1.234,56")` is `1.234` and
+ * `parseFloat("1,234.56")` is `1`. Use `parseAmountInput` for typed values.
+ *
+ * This exists so the two cases are told apart at the call site rather than
+ * looking identical — the lint rule that bans bare `parseFloat` points here.
+ */
+export function parseApiDecimal(value: string | number): number {
+  return typeof value === 'number' ? value : parseFloat(value)
+}
+
 // ── Cents-integer arithmetic ──────────────────────────────────────────────────
 // All client-side money math goes through integer cents: IEEE 754 makes
 // 999.99 - 999.89 !== 0.10, so float compares on sums are never safe.

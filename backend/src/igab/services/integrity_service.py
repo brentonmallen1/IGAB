@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from igab.db.models import Account, Transaction, TransactionMatch
+from igab.domain.splits import split_balances, split_sum
 from igab.utils.clock import today_utc
 
 STALE_PENDING_DAYS = 21
@@ -80,10 +81,10 @@ class IntegrityService:
                 .scalars()
                 .all()
             )
-            child_sum = sum((c.amount for c in children), Decimal("0"))
+            child_sum = split_sum(c.amount for c in children)
             if not children:
                 problems.append(f"split {parent.id} ({parent.date}) has no lines")
-            elif child_sum != parent.amount:
+            elif not split_balances(parent.amount, [c.amount for c in children]):
                 problems.append(
                     f"split {parent.id} ({parent.date}): total {parent.amount} "
                     f"!= lines sum {child_sum}"

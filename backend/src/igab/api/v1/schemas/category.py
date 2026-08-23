@@ -5,7 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 
 from igab.api.v1.schemas.tag import TagOutSimple
-from igab.domain.enums import TargetType
+from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.money import Money
 
 
@@ -74,6 +74,18 @@ class CategoryBalance(BaseModel):
     assigned: Decimal
     activity: Decimal
     available: Decimal
+    #: The target verdict, computed by TargetService — the same function Fill
+    #: Underfunded asks. The budget row's pill renders this; it does not
+    #: recompute it. A second implementation in the client drifted from this
+    #: one in three separate ways before it was removed.
+    #:
+    #: None when the category has no target, which is a genuine third state
+    #: rather than a missing value — unlike `needs_category`, whose absence
+    #: could only ever mean a path forgot to load it.
+    target_status: TargetStatus | None = None
+    #: What still has to be assigned this month for the target to be met, and
+    #: exactly what Fill Underfunded would move. None when there is no target.
+    needed_this_month: Decimal | None = None
 
 
 class CategoryResponse(BaseModel):
@@ -86,6 +98,21 @@ class CategoryResponse(BaseModel):
     note: str | None
     is_hidden: bool
     linked_account_id: uuid.UUID | None
+    #: The liability that owns this category, if any. Exposed because the
+    #: liability-binding screen's rule needs it: without it the client could
+    #: not tell a free category from one another liability already owns, and
+    #: offered both.
+    linked_liability_id: uuid.UUID | None
+    #: May money be budgeted or moved into this envelope? Computed by the
+    #: server from `IS_ASSIGNABLE` (repositories/category_filters.py).
+    #:
+    #: Required, not optional, for the same reason `needs_category` is: a path
+    #: that forgets to load it should raise rather than report every category
+    #: as ineligible, which would empty the move-money picker silently.
+    is_assignable: bool
+    #: May a transaction leg be filed here? Differs from is_assignable on
+    #: system groups — income is filed into one — and on linked categories.
+    is_categorizable: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
     tags: list[TagOutSimple] = []
@@ -99,6 +126,13 @@ class BudgetMonthResponse(BaseModel):
     total_assigned: Decimal
     total_activity: Decimal
     total_overspent: Decimal
+    #: How many categories make up total_overspent — counted server-side in the
+    #: same loop, so the count and the amount are always about the same set.
+    #:
+    #: Required, no default. A default of 0 would let a path that forgets it
+    #: report "nothing overspent" rather than raising, which is the wrong
+    #: failure direction for a number the user reads as a workload.
+    overspent_count: int
     # Committed to months after this one; already deducted from to_be_assigned
     assigned_in_future: Decimal = Decimal("0")
     category_balances: list[CategoryBalance]

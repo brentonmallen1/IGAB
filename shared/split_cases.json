@@ -1,0 +1,19 @@
+{
+  "_comment": "One rule, two languages. `cases` is run by BOTH frontend/src/utils/splits.test.ts and backend/tests/unit/test_split_predicate.py. A rule changed on one side only fails on the other. `backend_only` holds cases the frontend cannot express — see its own comment.",
+  "cases": [
+    { "total": "12.50", "legs": ["10.00", "2.50"], "balances": true, "note": "the ordinary case" },
+    { "total": "12.50", "legs": ["12.50"], "balances": true, "note": "a single leg is a valid split shape" },
+    { "total": "0.30", "legs": ["0.10", "0.20"], "balances": true, "note": "float summing gets this wrong" },
+    { "total": "100.00", "legs": ["33.33", "33.33", "33.34"], "balances": true, "note": "thirds, reconciled by hand" },
+    { "total": "12.50", "legs": ["10.00", "2.49"], "balances": false, "note": "one cent under" },
+    { "total": "12.50", "legs": ["10.00", "2.51"], "balances": false, "note": "one cent over" },
+    { "total": "12.50", "legs": [], "balances": false, "note": "a split with no lines is broken, not balanced" },
+    { "total": "1000000.00", "legs": ["999999.99", "0.01"], "balances": true, "note": "large amounts stay exact" },
+    { "total": "0.03", "legs": ["0.01", "0.01", "0.01"], "balances": true, "note": "smallest representable legs" }
+  ],
+  "_backend_only_comment": "Sub-cent amounts. Transaction.amount is Numeric(19,4), so the backend can hold and must reject these; the editors work in integer cents and round them to the nearest cent before they are ever compared, so the frontend cannot reproduce the case at all. Do not 'fix' the frontend to four decimal places to make these run there — the rounding happens at input, long before checkSplit sees it.",
+  "backend_only": [
+    { "total": "12.50", "legs": ["10.00", "2.4995"], "balances": false, "note": "the 0.001 tolerance used to accept this, and IntegrityService then flagged it forever" },
+    { "total": "12.50", "legs": ["10.00", "2.5005"], "balances": false, "note": "sub-cent drift the other way" }
+  ]
+}

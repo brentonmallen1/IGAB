@@ -1,3 +1,4 @@
+import { parseApiDecimal } from '../../utils/money'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -135,7 +136,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
     job.payload.text ??
     job.payload.original_filename ??
     (job.kind === 'receipt' ? 'Receipt' : 'Text entry')
-  const amount = draft ? parseFloat(draft.amount) : null
+  const amount = draft ? parseApiDecimal(draft.amount) : null
 
   async function handleReprocess() {
     try {

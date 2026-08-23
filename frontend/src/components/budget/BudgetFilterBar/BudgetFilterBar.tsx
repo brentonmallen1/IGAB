@@ -3,15 +3,13 @@ import { ChevronDown, ListFilter, Layers, Plus, Search, Settings2, AlignJustify,
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore, QUICK_FILTER_LABELS, QUICK_FILTER_VARIANTS } from '../../../stores/uiStore'
-import { targetStatus } from '../../../utils/targets'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
-import type { CategoryBalance, CategoryTarget } from '../../../types'
+import type { CategoryBalance } from '../../../types'
 import './BudgetFilterBar.css'
 
 interface Props {
   budgetId: string
   categoryBalances: CategoryBalance[]
-  targets: CategoryTarget[]
 }
 
 //: Shown once, to whoever had saved views before the rename. Renaming someone's
@@ -23,7 +21,7 @@ const RENAME_NOTICE_KEY = 'igab-filters-rename-seen'
 //: column for a notice that should disappear in a release or two.
 const RENAME_SHIPPED_AT = '2026-08-21'
 
-export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) {
+export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: views } = useBudgetViews(budgetId)
   const activeViewId = useUIStore((s) => s.activeViewId)
@@ -62,21 +60,14 @@ export function BudgetFilterBar({ budgetId, categoryBalances, targets }: Props) 
   // never comes back to a mysteriously short category list
   useEffect(() => () => useUIStore.getState().setCategorySearch(''), [])
 
-  const targetMap = new Map(targets.map((t) => [t.category_id, t]))
-
-  // Funding status via utils/targets — the same rules as the row pill and
-  // Fill Underfunded, so a chip's count always matches what the rows show.
+  // Funding status comes from the row, computed by the server's TargetService
+  // — the same function Fill Underfunded asks — so a chip's count always
+  // matches what the rows show and what the button will do.
   const counts = {
     overspent: categoryBalances.filter((b) => b.available < 0).length,
-    underfunded: categoryBalances.filter((b) => {
-      const t = targetMap.get(b.category_id)
-      return t != null && targetStatus(t, b.assigned, b.available) === 'underfunded'
-    }).length,
+    underfunded: categoryBalances.filter((b) => b.target_status === 'underfunded').length,
     'money-available': categoryBalances.filter((b) => b.available > 0).length,
-    overfunded: categoryBalances.filter((b) => {
-      const t = targetMap.get(b.category_id)
-      return t != null && targetStatus(t, b.assigned, b.available) === 'overfunded'
-    }).length,
+    overfunded: categoryBalances.filter((b) => b.target_status === 'overfunded').length,
   }
 
   function handleMenuSelect(id: string) {

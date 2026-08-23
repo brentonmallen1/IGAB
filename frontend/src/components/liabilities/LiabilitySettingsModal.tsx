@@ -1,3 +1,4 @@
+import { parseAmountInput } from '../../utils/money'
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -95,13 +96,15 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return setError('Give this liability a name')
-    const rateNum = parseFloat(rate)
+    // parseAmountInput, not parseFloat: a rate is typed by a person and so
+    // carries the same separator conventions money does — "5,5" is 5.5.
+    const rateNum = parseAmountInput(rate)
     if (isNaN(rateNum) || rateNum < 0) return setError('Enter a non-negative interest rate')
-    const paymentNum = parseFloat(minimumPayment)
+    const paymentNum = parseAmountInput(minimumPayment)
     if (isNaN(paymentNum) || paymentNum < 0) return setError('Enter the minimum monthly payment')
     if (mode === 'managed' && !accountId)
       return setError('Choose the account this liability lives in')
-    const balanceNum = parseFloat(balance)
+    const balanceNum = parseAmountInput(balance)
     if (mode === 'unmanaged' && (isNaN(balanceNum) || balanceNum < 0)) {
       return setError('Enter the current balance owed')
     }
@@ -119,7 +122,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       interest_rate: rateNum,
       minimum_payment: paymentNum,
       origination_date: originationDate || null,
-      original_principal: originalPrincipal ? parseFloat(originalPrincipal) : null,
+      original_principal: originalPrincipal ? parseAmountInput(originalPrincipal) : null,
       term_months: termMonths ? parseInt(termMonths, 10) : null,
       promo_end_date: promoEnabled ? promoEndDate : null,
       promo_deferred_interest: promoEnabled ? promoDeferred : false,

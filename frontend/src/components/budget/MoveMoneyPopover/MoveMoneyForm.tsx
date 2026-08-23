@@ -1,3 +1,4 @@
+import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { useState } from 'react'
 import { ArrowRightLeft } from 'lucide-react'
 import { useMoveHistory, useMoveMoney } from '../../../api/budgets'
@@ -37,17 +38,8 @@ export function MoveMoneyForm({ budgetId, month, category, available, onClose }:
   const [amount, setAmount] = useState(() => Math.abs(available).toFixed(2))
   const [error, setError] = useState<string | null>(null)
 
-  const systemGroupIds = new Set(groups.filter((g) => g.is_system).map((g) => g.id))
-  const otherCategories = categories.filter(
-    (c) => c.id !== category.id && !c.is_hidden && !systemGroupIds.has(c.category_group_id)
-  )
-  const groupedOthers = groups
-    .filter((g) => !g.is_system && !g.is_hidden)
-    .map((g) => ({
-      group: g,
-      cats: otherCategories.filter((c) => c.category_group_id === g.id),
-    }))
-    .filter((g) => g.cats.length > 0)
+  const otherCategories = categories.filter((c) => c.is_assignable && c.id !== category.id)
+  const groupedOthers = groupedCategorySections(otherCategories, groups)
   const nameOf = (id: string | null) =>
     id === null ? 'Ready to Assign' : (categories.find((c) => c.id === id)?.name ?? '—')
 

@@ -1,8 +1,9 @@
+import { parseAmountInput } from '../../utils/money'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useCategories, useCategoryGroups } from '../../api/categories'
+import { useCategories } from '../../api/categories'
 import {
   useCreateLiabilitySnapshot,
   useLiabilityAmortization,
@@ -48,7 +49,6 @@ export function LiabilityPage() {
   const [showLinkPicker, setShowLinkPicker] = useState(false)
 
   const { data: categories = [] } = useCategories(budgetId)
-  const { data: groups = [] } = useCategoryGroups(budgetId)
   const createSnapshot = useCreateLiabilitySnapshot(budgetId)
   const linkCategory = useLinkCategoryLiability(budgetId)
   const createTransaction = useCreateTransaction(budgetId ?? '')
@@ -56,7 +56,7 @@ export function LiabilityPage() {
   // Debounce the what-if input so typing doesn't spam the API
   useEffect(() => {
     const handle = setTimeout(() => {
-      const parsed = parseFloat(extraInput)
+      const parsed = parseAmountInput(extraInput)
       setExtraPayment(!isNaN(parsed) && parsed > 0 ? parsed : 0)
     }, 400)
     return () => clearTimeout(handle)
@@ -82,12 +82,14 @@ export function LiabilityPage() {
   }
 
   const linkedCategory = categories.find((c) => c.id === liability.linked_category_id) ?? null
-  const systemGroupIds = new Set(groups.filter((g) => g.is_system).map((g) => g.id))
+  // A liability may bind a category no account and no *other* liability owns.
+  // linked_liability_id was not exposed before, so this offered categories
+  // another liability already held.
   const linkableCategories = categories.filter(
     (c) =>
-      !c.is_hidden &&
-      !systemGroupIds.has(c.category_group_id) &&
-      !c.linked_account_id
+      c.is_assignable &&
+      !c.linked_account_id &&
+      (!c.linked_liability_id || c.linked_liability_id === liability.id)
   )
 
   // Unknown, not zero. With no terms on file the schedule is empty, and an
@@ -100,7 +102,7 @@ export function LiabilityPage() {
 
   async function handleSaveBalance(e: React.FormEvent) {
     e.preventDefault()
-    const parsed = parseFloat(newBalance)
+    const parsed = parseAmountInput(newBalance)
     if (isNaN(parsed) || parsed < 0) return
     await createSnapshot.mutateAsync({
       liabilityId: liability!.id,

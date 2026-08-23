@@ -1,3 +1,5 @@
+import { parseAmountInput } from '../../utils/money'
+import { groupedCategorySections } from '../../utils/categoryPickers'
 import { useState } from 'react'
 import { useCategories, useCategoryGroups } from '../../api/categories'
 import { useAccounts } from '../../api/accounts'
@@ -56,19 +58,27 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   const [categoryId, setCategoryId] = useState(existing?.category_id ?? initial?.category_id ?? '')
   const [memo, setMemo] = useState(existing?.memo ?? initial?.memo ?? '')
   const [autoCreate, setAutoCreate] = useState(existing?.auto_create ?? false)
+  const [error, setError] = useState<string | null>(null)
   const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
-  const groupedCategories = categoryGroups
-    .filter((g) => !g.is_hidden)
-    .map((g) => ({
-      group: g,
-      cats: categories.filter((c) => c.category_group_id === g.id && !c.is_hidden),
-    }))
-    .filter((g) => g.cats.length > 0)
+  // Was `!is_hidden` alone, which offered credit-card payment categories that
+  // no other surface does.
+  const groupedCategories = groupedCategorySections(
+    categories.filter((c) => c.is_categorizable),
+    categoryGroups
+  )
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const numAmount = parseFloat(amount) || 0
+    // Was `parseFloat(amount) || 0`, which scheduled a recurring $0.00
+    // transaction whenever the amount could not be read — including every
+    // "1.234,56" on a decimal-comma locale that utils/money supports.
+    const numAmount = parseAmountInput(amount)
+    if (isNaN(numAmount) || numAmount <= 0) {
+      setError('Enter an amount.')
+      return
+    }
+    setError(null)
     const finalAmount = isOutflow ? -numAmount : numAmount
     const payload = {
       account_id: accountId,
@@ -174,7 +184,8 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
           {existing ? (
             <button type="button" className="sched-editor__btn sched-editor__btn--danger" onClick={handleDelete}>Delete</button>
           ) : <span />}
-          <div style={{ display: 'flex', gap: '8px' }}>
+            {error && <div className="sched-editor__error" role="alert">{error}</div>}
+        <div style={{ display: 'flex', gap: '8px' }}>
             <button type="button" className="sched-editor__btn" onClick={onClose}>Cancel</button>
             <button type="submit" className="sched-editor__btn sched-editor__btn--primary">
               {existing ? 'Save' : 'Create'}

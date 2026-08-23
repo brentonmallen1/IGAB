@@ -1,3 +1,4 @@
+import { flatCategoryOptions } from '../../../utils/categoryPickers'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { AlertTriangle, Camera, ChevronRight, FileText, Images, MessageSquareText, Plus, Sparkles, Split, StickyNote, Trash2, X } from 'lucide-react'
@@ -24,8 +25,8 @@ import {
   evaluateExpressionCents,
   expressionToCents,
   isAmountExpression,
-  sumExpressionsToCents,
 } from '../../../utils/amountExpression'
+import { checkSplit } from '../../../utils/splits'
 import { randomUUID } from '../../../utils/uuid'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -169,12 +170,10 @@ export function QuickAddSheet() {
       .map((p) => ({ id: p.id, label: p.name }))
   }, [payees, nearbyPayees])
 
-  const categoryOptions = useMemo<SelectionSheetOption[]>(() => {
-    const groupName = new Map(categoryGroups.map((g) => [g.id, g.name]))
-    return categories
-      .filter((c) => !c.is_hidden && !c.linked_account_id)
-      .map((c) => ({ id: c.id, label: c.name, group: groupName.get(c.category_group_id) ?? '' }))
-  }, [categories, categoryGroups])
+  const categoryOptions = useMemo<SelectionSheetOption[]>(
+    () => flatCategoryOptions(categories.filter((c) => c.is_categorizable), categoryGroups),
+    [categories, categoryGroups]
+  )
 
   const accountOptions = useMemo<SelectionSheetOption[]>(
     () =>
@@ -308,18 +307,9 @@ export function QuickAddSheet() {
   const cents = expressionToCents(amount)
   const amountValid = !isNaN(cents) && cents > 0
 
-  // Integer cents throughout — summing the legs as floats rejects valid splits
-  // like 0.10 + 0.20. Same comparison the desktop editor makes.
-  const splitCents = sumExpressionsToCents(splits.map((sp) => sp.amount))
-  const remainingCents = (amountValid ? cents : 0) - splitCents
-  const splitIsValid =
-    !isSplit ||
-    (amountValid &&
-      remainingCents === 0 &&
-      splits.every((sp) => {
-        const legCents = expressionToCents(sp.amount)
-        return sp.categoryId && !isNaN(legCents) && legCents > 0
-      }))
+  const splitCheck = checkSplit(amountValid ? cents : 0, splits)
+  const remainingCents = splitCheck.remainingCents
+  const splitIsValid = !isSplit || splitCheck.isValid
 
   const canSave = amountValid && !!accountId && !saving && splitIsValid
 

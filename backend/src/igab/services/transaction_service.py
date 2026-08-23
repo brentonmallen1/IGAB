@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.splits import require_split_balances
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
@@ -198,11 +199,7 @@ class TransactionService:
         self, budget_id: uuid.UUID, header: TransactionCreate, splits: list[TransactionCreate]
     ) -> Transaction:
         """Create a split transaction: one parent + N children."""
-        total = sum(s.amount for s in splits)
-        if abs(total - header.amount) > Decimal("0.001"):
-            raise InvariantViolation(
-                f"Split amounts {total} do not sum to transaction amount {header.amount}"
-            )
+        require_split_balances(header.amount, [s.amount for s in splits])
 
         # Parent has no category (it's distributed across splits). Auto-
         # categorization in create() may have applied a payee default, so
@@ -253,11 +250,7 @@ class TransactionService:
         if txn.transfer_id is not None:
             raise InvariantViolation("Cannot split a transfer")
 
-        total = sum(s.amount for s in splits)
-        if abs(total - txn.amount) > Decimal("0.001"):
-            raise InvariantViolation(
-                f"Split amounts {total} do not sum to transaction amount {txn.amount}"
-            )
+        require_split_balances(txn.amount, [s.amount for s in splits])
 
         for split in splits:
             await require_in_budget(

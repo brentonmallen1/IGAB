@@ -1,3 +1,4 @@
+import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
@@ -29,12 +30,12 @@ import { Modal } from '../../common/Modal/Modal'
 import { isConfigFailure, scanFailureReason } from './scanFailure'
 import { today } from '../../../utils/dates'
 import { useToastUndo } from '../../../utils/toastUndo'
-import { fromCents, toCents } from '../../../utils/money'
+import { fromCents, parseApiDecimal, toCents } from '../../../utils/money'
 import {
   expressionToCents,
   parseAmountExpressionInput,
-  sumExpressionsToCents,
 } from '../../../utils/amountExpression'
+import { checkSplit } from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import type { Transaction, Payee } from '../../../types'
@@ -224,15 +225,10 @@ export function TransactionEditor({
     ? payees.filter((p) => p.name.toLowerCase().includes(payeeQuery.toLowerCase())).slice(0, 8)
     : payees.slice(0, 8)
 
-  const groupedCategories = categoryGroups
-    .filter((g) => !g.is_hidden)
-    .map((g) => ({
-      group: g,
-      cats: categories.filter(
-        (c) => c.category_group_id === g.id && !c.is_hidden && !c.linked_account_id
-      ),
-    }))
-    .filter((g) => g.cats.length > 0)
+  const groupedCategories = groupedCategorySections(
+    categories.filter((c) => c.is_categorizable),
+    categoryGroups
+  )
 
   const transferAccounts = accounts.filter((a) => a.id !== accountId)
   const transferTarget = accounts.find((a) => a.id === transferAccountId)
@@ -297,7 +293,7 @@ export function TransactionEditor({
         )
         return {
           tempId: randomUUID(),
-          amount: Math.abs(parseFloat(line.amount)).toFixed(2),
+          amount: Math.abs(parseApiDecimal(line.amount)).toFixed(2),
           categoryId: cat?.id ?? null,
           memo: '',
         }
@@ -480,19 +476,17 @@ export function TransactionEditor({
     transaction?.id ?? null,
   )
 
-  const splitIsValid = (() => {
-    if (!isSplit) return true
-    // Integer-cents comparison — float sums reject valid splits (0.10 issues)
-    const totalCents = Math.abs(toCents(parseAmountExpressionInput(outflow || inflow) || 0)) || 0
-    const splitCents = sumExpressionsToCents(splits.map((s) => s.amount))
-    return (
-      splitCents === totalCents &&
-      splits.every((s) => {
-        const cents = expressionToCents(s.amount)
-        return s.categoryId && !isNaN(cents) && cents > 0
-      })
-    )
+  // Derived exactly as handleSubmit derives the amount it saves. Picking the
+  // field with `outflow || inflow` validated the string "0" against a "50"
+  // inflow, so the editor checked one number and wrote another.
+  const editorTotalCents = (() => {
+    const outflowVal = parseAmountExpressionInput(outflow) || 0
+    const inflowVal = parseAmountExpressionInput(inflow) || 0
+    return Math.abs(toCents(outflowVal > 0 ? -outflowVal : inflowVal)) || 0
   })()
+
+  const splitCheck = checkSplit(editorTotalCents, splits)
+  const splitIsValid = !isSplit || splitCheck.isValid
 
   // Review handoff: when an AI job completes, render a nested TransactionEditor
   // in review mode with the newly created transaction.
@@ -863,17 +857,11 @@ export function TransactionEditor({
                   <button type="button" className="txn-editor__split-add" onClick={addSplit}>
                     <Plus size={12} /> Add split
                   </button>
-                  {(() => {
-                    const splitCents = sumExpressionsToCents(splits.map((s) => s.amount))
-                    const totalCents =
-                      Math.abs(toCents(parseAmountExpressionInput(outflow || inflow) || 0)) || 0
-                    const remainingCents = totalCents - splitCents
-                    return (
-                      <span className={`txn-editor__split-remaining ${remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}>
-                        {remainingCents === 0 ? 'Fully assigned' : `Remaining: $${fromCents(remainingCents).toFixed(2)}`}
-                      </span>
-                    )
-                  })()}
+                  <span className={`txn-editor__split-remaining ${splitCheck.remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}>
+                    {splitCheck.remainingCents === 0
+                      ? 'Fully assigned'
+                      : `Remaining: ${formatMoney(fromCents(splitCheck.remainingCents))}`}
+                  </span>
                 </div>
               </div>
             </div>

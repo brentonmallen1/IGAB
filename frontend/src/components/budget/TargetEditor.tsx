@@ -1,14 +1,8 @@
 import { useState } from 'react'
 import { useUpsertTarget, useDeleteTarget } from '../../api/targets'
 import type { CategoryTarget } from '../../types'
+import { TARGET_TYPES, buildTargetPayload } from './targetForm'
 import './TargetEditor.css'
-
-const TARGET_TYPES = [
-  { value: 'monthly_funding', label: 'Monthly Funding' },
-  { value: 'weekly_funding', label: 'Weekly Funding' },
-  { value: 'savings_balance', label: 'Savings Balance' },
-  { value: 'needed_for_spending', label: 'Needed for Spending' },
-]
 
 interface Props {
   categoryId: string
@@ -21,17 +15,20 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
   const [targetType, setTargetType] = useState(existing?.target_type ?? 'monthly_funding')
   const [amount, setAmount] = useState(existing ? String(existing.target_amount) : '')
   const [targetDate, setTargetDate] = useState(existing?.target_date ?? '')
+  const [error, setError] = useState<string | null>(null)
 
   const upsert = useUpsertTarget(categoryId)
   const del = useDeleteTarget(categoryId)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    await upsert.mutateAsync({
-      target_type: targetType,
-      target_amount: parseFloat(amount) || 0,
-      target_date: targetDate || null,
-    })
+    const result = buildTargetPayload(targetType, amount, targetDate)
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    setError(null)
+    await upsert.mutateAsync(result.payload)
     onClose()
   }
 
@@ -87,6 +84,7 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
             </label>
           )}
 
+          {error && <div className="target-editor__error" role="alert">{error}</div>}
           <div className="target-editor__actions">
             <button type="submit" className="target-editor__btn target-editor__btn--primary">
               Save

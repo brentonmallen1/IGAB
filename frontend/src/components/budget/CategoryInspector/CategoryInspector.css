@@ -603,3 +603,8 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
+
+.inspector-error {
+  font-size: var(--font-size-xs);
+  color: var(--color-negative);
+}

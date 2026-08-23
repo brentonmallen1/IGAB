@@ -1,5 +1,6 @@
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { CategoryBalance } from '../../../types'
+import { sumBalances } from '../budgetTotals'
 
 interface Props {
   balances: CategoryBalance[]
@@ -9,17 +10,22 @@ interface Props {
 
 export function AvailableBreakdown({ balances, prevBalances }: Props) {
   const { formatMoney } = useFormatters()
-  const totalAvailable = balances.reduce((s, b) => s + Number(b.available), 0)
-  const totalAssigned = balances.reduce((s, b) => s + Number(b.assigned), 0)
-  const totalActivity = balances.reduce((s, b) => s + Number(b.activity), 0)
-  const carriedOver = totalAvailable - totalAssigned - totalActivity
+  const {
+    available: totalAvailable,
+    assigned: totalAssigned,
+    activity: totalActivity,
+    carriedOver,
+  } = sumBalances(balances)
 
   const deltas = prevBalances
-    ? {
-        assigned: totalAssigned - prevBalances.reduce((s, b) => s + Number(b.assigned), 0),
-        activity: totalActivity - prevBalances.reduce((s, b) => s + Number(b.activity), 0),
-        available: totalAvailable - prevBalances.reduce((s, b) => s + Number(b.available), 0),
-      }
+    ? (() => {
+        const prev = sumBalances(prevBalances)
+        return {
+          assigned: totalAssigned - prev.assigned,
+          activity: totalActivity - prev.activity,
+          available: totalAvailable - prev.available,
+        }
+      })()
     : null
 
   const fmtDelta = (d: number) => (d > 0 ? `+${formatMoney(d)}` : formatMoney(d))

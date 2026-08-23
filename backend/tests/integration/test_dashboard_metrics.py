@@ -157,7 +157,7 @@ class TestFiguresPreservedFromTheOldSuite:
         assert card["income_this_month"] == Decimal("0")
         assert card["expenses_this_month"] == Decimal("0")
 
-    async def test_savings_rate_is_zero_without_income(self, db_session):
+    async def test_savings_rate_is_unknown_without_income(self, db_session):
         user = await create_user(db_session)
         budget = await create_budget(db_session, user)
         checking = await create_account(db_session, budget, "Checking", on_budget=True)
@@ -168,7 +168,11 @@ class TestFiguresPreservedFromTheOldSuite:
 
         card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
 
-        assert card["savings_rate"] == 0.0
+        # None, not 0.0. "No income recorded" and "saved nothing" are different
+        # facts, and this card sat beside a Savings Rate tab that already said
+        # so — the two carried one label and disagreed on exactly the months a
+        # new budget starts with.
+        assert card["savings_rate"] is None
 
     async def test_top_categories_sorted_by_spending(self, db_session):
         user = await create_user(db_session)

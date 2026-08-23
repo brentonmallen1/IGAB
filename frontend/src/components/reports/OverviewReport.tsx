@@ -37,7 +37,7 @@ export function OverviewReport({ budgetId }: Props) {
     Number(data.expenses_this_month),
     Number(data.expenses_prev_month),
   )
-  const savingsRate = clampedSavingsRate(Number(data.savings_rate))
+  const savingsRate = clampedSavingsRate(data.savings_rate)
   const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
 
   return (
@@ -47,7 +47,7 @@ export function OverviewReport({ budgetId }: Props) {
           <h2 className="report-section__title">Overview</h2>
           <ReportInfoButton title="Overview Dashboard">
             <p>A snapshot of your financial health at a glance. All metrics use the selected date range except burn rates, which use rolling windows from today.</p>
-            <p><strong>Burn Rate</strong>: average monthly spending over the last 30 or 90 days. <strong>Savings Rate</strong>: (Income − Expenses) ÷ Income. <strong>Days Until Zero</strong>: current net worth ÷ daily burn rate — how long your money would last at this pace.</p>
+            <p><strong>Burn Rate</strong>: average monthly spending over the last 30 or 90 days. <strong>Savings Rate</strong>: Savings ÷ Income — money moved into savings or investments, not simply money left over. Shows “—” for a window with no income. <strong>Days Until Zero</strong>: current net worth ÷ daily burn rate — how long your money would last at this pace.</p>
             <ReportScopeNote scope="overview" />
           </ReportInfoButton>
           <div className="flex-row ms-auto">
@@ -65,7 +65,7 @@ export function OverviewReport({ budgetId }: Props) {
                 { metric: 'net_worth', value: Number(data.net_worth) },
                 { metric: 'burn_rate_30', value: Number(data.burn_rate_30) },
                 { metric: 'burn_rate_90', value: Number(data.burn_rate_90) },
-                { metric: 'savings_rate_pct', value: savingsRate },
+                ...(savingsRate !== null ? [{ metric: 'savings_rate_pct', value: savingsRate }] : []),
                 ...(daysUntilZero !== null ? [{ metric: 'days_until_zero', value: daysUntilZero }] : []),
                 { metric: 'income_this_period', value: Number(data.income_this_month) },
                 { metric: 'spent_this_period', value: Number(data.expenses_this_month) },
@@ -95,8 +95,10 @@ export function OverviewReport({ budgetId }: Props) {
           />
           <MetricCard
             label="Savings Rate"
-            value={`${savingsRate.toFixed(1)}%`}
-            sub="(Income − Expenses) / Income"
+            // "—" rather than 0%: with no income recorded there is nothing to
+            // take a percentage of, and 0% reads as "saved nothing".
+            value={savingsRate === null ? '—' : `${savingsRate.toFixed(1)}%`}
+            sub={savingsRate === null ? 'No income recorded' : 'Savings / Income'}
           />
           {daysUntilZero !== null && (
             <MetricCard

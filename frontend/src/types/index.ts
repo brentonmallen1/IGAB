@@ -40,7 +40,11 @@ export interface Account {
   cleared_balance: number
   uncleared_balance: number
   last_reconciled_at: string | null
+  /** Always sent (may be null) — the balance the last reconciliation locked. */
+  last_reconciled_balance: number | null
   uncategorized_count: number
+  created_at: string
+  updated_at: string
 }
 
 // Account types are per-budget registry keys now (built-ins seeded for every
@@ -75,7 +79,24 @@ export interface Category {
   note: string | null
   is_hidden: boolean
   linked_account_id: string | null
+  /** The liability that owns this category, if any. */
+  linked_liability_id: string | null
+  /**
+   * May money be budgeted or moved into this envelope? Computed by the server
+   * from `IS_ASSIGNABLE` (backend/src/igab/repositories/category_filters.py).
+   * Never rebuild it here: six components each spelled their own version and
+   * they disagreed about system groups, hidden groups and linked categories.
+   */
+  is_assignable: boolean
+  /**
+   * May a transaction leg be filed here? Differs from `is_assignable` on
+   * system groups — income is filed into one, so excluding them here would
+   * remove the only place a paycheque can go.
+   */
+  is_categorizable: boolean
   tags?: TagSimple[]
+  created_at: string
+  updated_at: string
 }
 
 export interface BudgetFilter {
@@ -119,12 +140,31 @@ export interface BudgetView {
   updated_at: string
 }
 
+/** The three answers the budget row's pill can show. Mirrors
+ *  `TargetStatus` in backend/src/igab/domain/enums.py. */
+export type TargetStatus = 'funded' | 'underfunded' | 'overfunded'
+
 export interface CategoryBalance {
   category_id: string
   month: string
   assigned: number
   activity: number
   available: number
+  /**
+   * The target verdict, computed by the server's TargetService — the same
+   * function Fill Underfunded asks. `null` when the category has no target.
+   *
+   * Never re-derive this. utils/targets.ts used to mirror `calculate_status`
+   * and CategoryRow re-implemented the shortfall a third time with the target
+   * types inverted relative to the mirror, so the pill and the "Save $X more"
+   * line rendered beside it were computed from different rules.
+   */
+  target_status: TargetStatus | null
+  /**
+   * What still has to be assigned this month for the target to be met, and
+   * exactly what Fill Underfunded would move. `null` when there is no target.
+   */
+  needed_this_month: number | null
 }
 
 export interface BudgetMonth {
@@ -133,6 +173,10 @@ export interface BudgetMonth {
   total_assigned: number
   total_activity: number
   total_overspent: number
+  /** How many categories make up `total_overspent`, counted server-side in the
+   *  same loop — so the count and the amount are always about the same set,
+   *  and both match what Cover Overspent will act on. */
+  overspent_count: number
   /** Committed to months after this one; already deducted from to_be_assigned */
   assigned_in_future: number
   category_balances: CategoryBalance[]
@@ -334,7 +378,9 @@ export interface DashboardMetrics {
   net_worth_prev: number
   burn_rate_30: number
   burn_rate_90: number
-  savings_rate: number
+  /** null when no income was recorded in the window — a gap, not a floor.
+   *  "No income" and "saved nothing" are different facts. */
+  savings_rate: number | null
   days_until_zero: number | null
   income_this_month: number
   expenses_this_month: number

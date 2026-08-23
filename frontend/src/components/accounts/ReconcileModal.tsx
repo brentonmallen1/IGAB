@@ -1,3 +1,4 @@
+import { parseAmountInput } from '../../utils/money'
 import { useState, useRef, useEffect } from 'react'
 import { Landmark } from 'lucide-react'
 import { Modal } from '../common/Modal/Modal'
@@ -32,7 +33,12 @@ export function ReconcileModal({ accountId, accountName }: Props) {
   }, [showInput])
 
   function handleContinue() {
-    const balance = parseFloat(inputValue.replace(/[^0-9.-]/g, ''))
+    // Stripping to [0-9.-] first turned "1.234,56" into "1.234.56".
+    // parseAmountInput knows both separator conventions; the sign is
+    // recovered separately because a statement balance may be negative.
+    const negative = inputValue.trim().startsWith('-')
+    const magnitude = parseAmountInput(inputValue.replace('-', ''))
+    const balance = negative ? -magnitude : magnitude
     if (!isNaN(balance)) setReconcileStatementBalance(balance)
   }
 

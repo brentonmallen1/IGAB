@@ -107,13 +107,13 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
-      # `npm run lint` has never run in CI and starts from a red baseline
-      # (36 errors, mostly react-hooks/refs and set-state-in-effect). Reported
-      # but non-blocking so it can't wedge the Dependabot queue. Once the
-      # backlog is cleared, delete continue-on-error to make this a real gate.
+      # A real gate. The legacy react-hooks/react-refresh backlog is `warn` in
+      # eslint.config.js — visible and counted, not fatal — so the errors this
+      # blocks on are the ones worth blocking on, including the ban on bare
+      # parseFloat over money. The warning count is the debt: it should go
+      # down, never up.
       - name: Lint (eslint)
         working-directory: frontend
-        continue-on-error: true
         run: npm run lint
 
       # Includes src/themes/contrast.test.ts, which holds every palette to
