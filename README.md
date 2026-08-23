@@ -34,6 +34,10 @@ statements, and understand where your money actually goes — without a
 subscription, and without your financial history living on someone else's
 servers.
 
+It also tries to answer the question a ledger can't: **what should I do
+next?** A guided roadmap reads your real numbers to show where you stand,
+explains every inference it makes, and lets you correct any of it.
+
 Built for a small household (1–2 people) that budgets daily or weekly and
 wants a tool that is **steady, clear, and trustworthy** — not a fintech
 product trying to impress you.
@@ -92,6 +96,35 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
 - Move money between categories in place — cover overspending in two clicks
 - Auto-assign and quick-budget helpers for funding categories
 - Custom saved budget views (filter and arrange the grid the way you think)
+
+### Guidance & Tools
+- **A personal-finance roadmap that reads your budget** — the well-known
+  r/personalfinance spending flowchart, re-authored as data so it renders in
+  your theme, works on a phone, and can show you where you actually are. Three
+  ways in: follow it one step at a time, read the whole thing end to end, or
+  open the map and explore the shape of it, branches you won't take included
+- **Every inference is explained, correctable, and optional.** IGAB guesses
+  which of your categories or accounts is the emergency fund, and then shows
+  its working. If it guessed wrong, point it at the right one. If the money
+  lives somewhere IGAB can't see — another bank, a workplace 401(k) — say so
+  and it counts without ever being invented into your balances. If you'd
+  rather it didn't look at all, one switch in Settings turns personalization
+  off and no detection query runs
+- **A plain-language glossary** — sinking fund, APR, avalanche, TBA — each
+  entry saying what the term means *and* how it maps onto this app
+- **It never pushes.** No notifications, no email digests, no badge following
+  you around the nav. Guidance is somewhere you go, not something that
+  interrupts you
+- Educational only, and it says so: no advice, no market-return projections,
+  no single "financial health score" — only arithmetic IGAB can defend
+
+*Slated, not yet built:* a financial checkup (savings rate, emergency-fund
+runway, high-interest debt, chronic overspending — each against a stated
+target), scenario calculators (avalanche vs. snowball with a real rollover
+cascade, pay-off vs. save, loan comparison, emergency-fund sizing), and a
+wishlist — a counterweight to impulse spending rather than a shopping list,
+where a want gets attached to a real envelope and time decides whether it
+still matters. The tabs are in the app and describe themselves.
 
 ### Accounts & Transactions
 - On-budget and tracking accounts: checking, savings, cash, credit cards, loans, investments, and other assets/liabilities — plus your own custom account types per budget
@@ -155,7 +188,8 @@ general model.
   card layouts for the budget and transaction lists, long-press multi-select
 - **Quick-add** — the center ＋ opens amount-first entry built for the
   checkout line: payee memory prefills the category, the account sticks
-  between entries, "save & add another" chains purchases
+  between entries, "save & add another" chains purchases, and one receipt can
+  be split across categories without leaving the sheet
 - **Receipt camera** — snap a photo (or pick from the library) while adding a
   transaction; images are converted server-side to WebP with thumbnails, HEIC
   from iPhones included. Hand it to the scanner above and the transaction fills
@@ -460,8 +494,11 @@ just migrate                # single squashed migration (0001)
 ## Roadmap
 
 - Deeper mobile polish (chart touch interactions, per-page refinements)
+- The rest of the Guide — financial checkup, scenario calculators, wishlist.
+  The roadmap and glossary have shipped; see **Guidance & Tools** above
 - Extra-payment "what if" simulation for loans — amortization, interest, and
-  promo periods have shipped; the interactive simulator has not
+  promo periods have shipped; the interactive simulator has not. It lands as
+  the Guide's payoff planner, with a proper multi-debt rollover cascade
 - Bill reminders
 - YNAB-compatible export — an exit strategy from IGAB itself, because a tool
   you can leave is a tool you can trust
