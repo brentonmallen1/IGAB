@@ -38,6 +38,84 @@ Self-hosted YNAB-like envelope budgeting app. Single-user, zero-based budgeting.
 - Copy `.env.example` → `.env`; configure DB, JWT `SECRET_KEY`, ports
 - `VITE_API_URL` points frontend at backend API
 
+## Money Rules: One Implementation Each
+
+A money rule with two implementations will drift. It has, repeatedly — "needs a
+category" reached eight copies before it was consolidated, and the copies
+disagreed twice. Duplication becomes deviation, and deviation in a budgeting
+app becomes distrust: the badge says 3, the register draws 930, and the user
+stops believing any of the numbers.
+
+**The boundary rule.** Before writing a rule, decide where it lives:
+
+> A rule belongs on the **server** iff the server also decides it, or the client
+> is missing an input. A rule belongs in **one client module** iff it is pure
+> presentational composition of server-supplied facts, and the server never
+> decides it.
+
+`is_assignable` is a server field because the server assigns money. Which group
+headers to render stays on the client because the server never renders headers.
+**If you add a server field no backend path reads, you have crossed back.**
+
+Two traps this rule catches, both of which produced real bugs:
+
+- *"The client already has the fields."* Check. `CategoryResponse` did not
+  expose `linked_liability_id`, and `CategoryRepository.get_all` filters the
+  category's `is_hidden` but not the group's — so the client could not have
+  computed the answer it was computing.
+- *"I'll mirror it and keep the two in sync with a comment."* Every mirror in
+  this repo that carried such a comment had already drifted when it was found.
+  A comment is not a mechanism.
+
+**One home per rule kind:**
+
+| Kind | Home |
+|---|---|
+| SQL predicates over transactions | `backend/.../repositories/txn_filters.py` |
+| SQL predicates over categories | `backend/.../repositories/category_filters.py` |
+| Pure money/date functions | `backend/.../domain/` (`money`, `splits`, `carryover`, `dates`, `matching`) |
+| Frontend, cross-feature | `frontend/src/utils/` |
+| Frontend, feature-local | a colocated pure module (`reviewSection.ts`, `budgetTotals.ts`) |
+
+Anything in `services/` that is a *rule* rather than an *orchestration* belongs
+in one of those.
+
+**Serving a computed field** — the pattern, from `needs_category`:
+
+1. One expression constant in the relevant `*_filters.py`.
+2. `query_expression()` on the model, with a comment saying why it cannot be a
+   column.
+3. A `with_*` loader on the repository as the only way to populate it, plus
+   `get`/`refresh`/`create` overrides so mutations do not drop it.
+   `populate_existing=True` is load-bearing. Check `get_with_tags`-style
+   variants too — those are what the create/update endpoints serialize from.
+4. **Required, not optional**, on the response schema. A path that forgets must
+   raise, not report unfiled work as filed.
+5. Hand-add the field to `frontend/src/types/index.ts` with a comment pointing
+   home, and delete the client-side rule.
+6. Add it to any `memo` comparator — a served field can change with no other
+   field moving.
+7. Extend `tests/integration/test_offbudget_categories.py`'s checklist: every
+   listing path carries it, it survives a service update, every mutating
+   endpoint returns a serializable row.
+
+**Irreducible duplication.** Some rules must exist twice — the split editor does
+arithmetic while the user types, before any round-trip. Then: one
+implementation per side, and a shared fixture both suites run
+(`shared/split_cases.json`) or a differential test
+(`tests/integration/class_agreement.py`). Never a comment asking the next
+reader to keep two copies in step.
+
+**Deliberate divergence is fine, silence is not.** Where two numbers legitimately
+differ — the badge and the Uncategorized filter on `POSTED`, the header and
+reconcile on future-dated rows — say so at the definition, bound it, and pin it
+with a test that fails if the gap widens.
+
+**Money parsing.** `parseAmountInput` for anything a person typed;
+`parseApiDecimal` for a canonical server string. Never bare `parseFloat` — eslint
+enforces this. Never `|| 0` on a parsed amount: unparseable input must surface an
+error, never silently book zero.
+
 ## Code Quality
 - Before finishing any backend change: run `just quality` (ruff fix + format + ty)
 - Before finishing any frontend change: run `just typecheck` (tsc)
@@ -50,6 +128,9 @@ Self-hosted YNAB-like envelope budgeting app. Single-user, zero-based budgeting.
     compiles an empty program. The real check is `tsc -b` (`npm run typecheck`).
   - CI runs `ruff format --check src/`, which `just check-backend` includes but
     a bare `ruff check` does not. `just quality` formats for you.
+  - `npm run lint` is a real gate now (it was `continue-on-error` against a red
+    baseline). The legacy react-hooks/react-refresh backlog is `warn`; the
+    warning count is the debt and should go down, never up.
 
 ## Testing Requirements
 - Any code touching amount calculations, budget distribution, category assignment, or transaction reconciliation requires exhaustive test coverage — this is the core trust surface of the app
