@@ -52,6 +52,7 @@ from igab.domain.activity_class import (
     ACTIVITY_REASON,
     CLASS_LABEL,
     ActivityClass,
+    apply_class_joins,
     explain,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
@@ -355,18 +356,23 @@ async def get_transaction_classification(
     """
     row = (
         await session.execute(
-            select(ACTIVITY_CLASS, ACTIVITY_REASON).where(Transaction.id == transaction_id)
+            # Transaction.id is unused; the class joins chain from it.
+            apply_class_joins(
+                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
+                    Transaction.id == transaction_id
+                )
+            )
         )
     ).first()
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
-    activity_class = ActivityClass(row[0])
+    activity_class = ActivityClass(row[1])
     return TransactionClassification(
         activity_class=activity_class,
         label=CLASS_LABEL[activity_class],
-        reason=row[1],
-        explanation=explain(row[1]),
+        reason=row[2],
+        explanation=explain(row[2]),
     )
 
 

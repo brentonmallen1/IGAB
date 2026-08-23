@@ -29,6 +29,7 @@ from igab.domain.activity_class import (
     CLASS_LABEL,
     SPENDING_CLASSES,
     ActivityClass,
+    apply_class_joins,
 )
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
@@ -224,6 +225,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         result = await self.session.execute(q)
         rows = result.all()
 
@@ -789,6 +791,7 @@ class ReportService:
             # savings has not been burned.
             _spending_classes(),
         )
+        q = apply_class_joins(q)
         txns = (await self.session.execute(q)).all()
 
         results = []
@@ -1004,6 +1007,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         if not rows:
@@ -1705,6 +1709,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         # `_view_arrangement` returns None for a view that does not exist or
@@ -1972,6 +1977,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         if not rows:
@@ -2095,6 +2101,7 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
+        q = apply_class_joins(q)
         scanned = (await self.session.execute(q)).all()
 
         # Partitioned here rather than filtered in the WHERE: the complement is
@@ -2214,6 +2221,7 @@ class ReportService:
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
         q = q.order_by(Transaction.amount).limit(limit)  # most negative first
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         return [
@@ -2393,18 +2401,20 @@ class ReportService:
         """
         rows = (
             await self.session.execute(
-                select(
-                    Transaction.date,
-                    Transaction.amount,
-                    ACTIVITY_CLASS.label("cls"),
-                ).where(
-                    Transaction.budget_id == budget_id,
-                    NOT_DELETED,
-                    POSTED,
-                    LEAF,
-                    Transaction.date >= start,
-                    Transaction.date <= end,
-                    ON_BUDGET_ACCOUNT,
+                apply_class_joins(
+                    select(
+                        Transaction.date,
+                        Transaction.amount,
+                        ACTIVITY_CLASS.label("cls"),
+                    ).where(
+                        Transaction.budget_id == budget_id,
+                        NOT_DELETED,
+                        POSTED,
+                        LEAF,
+                        Transaction.date >= start,
+                        Transaction.date <= end,
+                        ON_BUDGET_ACCOUNT,
+                    )
                 )
             )
         ).all()
@@ -2446,6 +2456,7 @@ class ReportService:
             )
             .group_by(month_col, ACTIVITY_CLASS)
         )
+        q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
         by_month: dict[date, dict[str, Decimal]] = {}

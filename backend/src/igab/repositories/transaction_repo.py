@@ -9,7 +9,7 @@ from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, upd
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import Payee, Transaction, TransactionAttachment
-from igab.domain.activity_class import ACTIVITY_CLASS
+from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
@@ -267,6 +267,11 @@ class TransactionRepository(BaseRepository[Transaction]):
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
             Transaction
         )
+        if activity_classes:
+            # Only when the filter is in play: these are four LEFT JOINs, and
+            # the ordinary register listing has no reason to pay for them.
+            rows_q = apply_class_joins(rows_q)
+            totals_q = apply_class_joins(totals_q)
         if search:
             rows_q = rows_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             totals_q = totals_q.outerjoin(Payee, Transaction.payee_id == Payee.id)

@@ -18,6 +18,7 @@ from igab.domain.activity_class import (
     ACTIVITY_REASON,
     ActivityClass,
     ActivityReason,
+    apply_class_joins,
     explain,
 )
 from igab.repositories.payee_repo import PayeeRepository
@@ -64,10 +65,15 @@ async def _world(db_session):
 async def _classify(db_session, txn: Transaction) -> tuple[str, str]:
     row = (
         await db_session.execute(
-            select(ACTIVITY_CLASS, ACTIVITY_REASON).where(Transaction.id == txn.id)
+            # Transaction.id is not wanted; the class joins chain from it.
+            apply_class_joins(
+                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
+                    Transaction.id == txn.id
+                )
+            )
         )
     ).one()
-    return row[0], row[1]
+    return row[1], row[2]
 
 
 async def _transfer_payee(db_session, budget, account):

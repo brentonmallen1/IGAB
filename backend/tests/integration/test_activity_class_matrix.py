@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from igab.db.models import Transaction
-from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass
+from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
 from igab.repositories.tag_repo import TagRepository
 
 from .factories import (
@@ -96,9 +96,14 @@ async def _world(db_session):
 
 
 async def _classify(db_session, txn) -> str:
+    # Transaction.id is not wanted; the class joins chain from it.
     return (
-        await db_session.execute(select(ACTIVITY_CLASS).where(Transaction.id == txn.id))
-    ).scalar_one()
+        await db_session.execute(
+            apply_class_joins(
+                select(Transaction.id, ACTIVITY_CLASS).where(Transaction.id == txn.id)
+            )
+        )
+    ).one()[1]
 
 
 async def _linked(db_session, w, src, dst, amount, category=None):

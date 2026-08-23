@@ -20,7 +20,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, AccountType, Category, Liability, Transaction
-from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass
+from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
 from igab.guide.concepts import (
     HIGH_INTEREST_APR,
     MODERATE_INTEREST_APR,
@@ -183,7 +183,11 @@ class GuideDetection:
 
         total = (
             await self.session.execute(
-                select(func.coalesce(func.sum(Transaction.amount), 0)).where(*conditions)
+                apply_class_joins(
+                    select(func.coalesce(func.sum(Transaction.amount), 0))
+                    .select_from(Transaction)
+                    .where(*conditions)
+                )
             )
         ).scalar_one()
         monthly = _cents(abs(Decimal(total)) / 3)
@@ -345,30 +349,38 @@ class GuideDetection:
 
         contributed = (
             await self.session.execute(
-                select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                    Transaction.budget_id == budget_id,
-                    NOT_DELETED,
-                    POSTED,
-                    LEAF,
-                    Transaction.date >= since,
-                    or_(
-                        COUNTERPART_ACCOUNT_ID.in_(accounts),
-                        Transaction.account_id.in_(accounts),
-                    ),
-                    ACTIVITY_CLASS == ActivityClass.SAVINGS,
+                apply_class_joins(
+                    select(func.coalesce(func.sum(Transaction.amount), 0))
+                    .select_from(Transaction)
+                    .where(
+                        Transaction.budget_id == budget_id,
+                        NOT_DELETED,
+                        POSTED,
+                        LEAF,
+                        Transaction.date >= since,
+                        or_(
+                            COUNTERPART_ACCOUNT_ID.in_(accounts),
+                            Transaction.account_id.in_(accounts),
+                        ),
+                        ACTIVITY_CLASS == ActivityClass.SAVINGS,
+                    )
                 )
             )
         ).scalar_one()
 
         income = (
             await self.session.execute(
-                select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                    Transaction.budget_id == budget_id,
-                    NOT_DELETED,
-                    POSTED,
-                    LEAF,
-                    Transaction.date >= since,
-                    ACTIVITY_CLASS == ActivityClass.INCOME,
+                apply_class_joins(
+                    select(func.coalesce(func.sum(Transaction.amount), 0))
+                    .select_from(Transaction)
+                    .where(
+                        Transaction.budget_id == budget_id,
+                        NOT_DELETED,
+                        POSTED,
+                        LEAF,
+                        Transaction.date >= since,
+                        ACTIVITY_CLASS == ActivityClass.INCOME,
+                    )
                 )
             )
         ).scalar_one()
