@@ -14,6 +14,7 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.payee_repo import PayeeRepository
+from igab.repositories.tag_repo import TagRepository, seed_system_tags, suggest_system_tag
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.liability_service import ensure_for_account
@@ -56,6 +57,11 @@ class ImportResult:
     #: so the number the user is shown is the number of rows they can act on —
     #: they are repairable by hand from the register like any orphan leg.
     transfer_legs_in_splits: int = 0
+    #: Categories the import tagged from their names (Savings, Long-term
+    #: expense). Reported because a tag changes how that category's spending
+    #: is classified in reports — applying it silently would be a number
+    #: moving for a reason the user never saw.
+    categories_tagged: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -84,6 +90,7 @@ class YNABImporter:
         self.transaction_repo = transaction_repo
         self.transaction_service = transaction_service
         self.assignment_repo = assignment_repo
+        self.tag_repo = TagRepository(session)
         # account name → (account_type, on_budget) override; YNAB register
         # exports carry no type info, so callers may supply the mapping.
         self.account_types = account_types or {}
@@ -106,6 +113,10 @@ class YNABImporter:
 
     async def import_budget(self, budget: YNABBudget) -> ImportResult:
         result = ImportResult()
+        # Before any category exists, so the name-based tagging below has real
+        # tags to point at. A budget created by import otherwise reaches the
+        # tags endpoint (which backfills) only if the user opens Settings.
+        await seed_system_tags(self.session, self.budget_id)
         # Rows the parser had to drop because their amount was unreadable.
         # Carried through rather than swallowed: the import summary is the
         # only place a user would ever learn a row did not make it.
@@ -215,9 +226,30 @@ class YNABImporter:
                     name=category_name,
                 )
                 result.categories_imported += 1
+                await self._suggest_tag(category, group.name, result)
             self._category_cache[cache_key] = category
 
         return self._category_cache[cache_key]
+
+    async def _suggest_tag(self, category: Category, group_name: str, result: ImportResult) -> None:
+        """Tag a freshly created category when its name plainly says what it is.
+
+        Without this a YNAB import produces a savings report that is empty
+        forever: nothing else tags categories, and the only place to do it by
+        hand is a section of the category inspector the user has no reason to
+        open. Counted in the summary, because a tag that changes how money is
+        classified must not be applied silently.
+
+        New categories only — an existing category's tags are the user's.
+        """
+        system_key = suggest_system_tag(category.name, group_name)
+        if system_key is None:
+            return
+        tag = await self.tag_repo.get_system_tag(self.budget_id, system_key)
+        if tag is None:
+            return
+        await self.tag_repo.set_category_tags(category.id, [tag.id])
+        result.categories_tagged += 1
 
     async def _resolve_payees(
         self, budget: YNABBudget, payee_names: set[str], result: ImportResult
