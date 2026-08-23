@@ -5,12 +5,12 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
-from rapidfuzz import fuzz
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import SimpleFINConnection, Transaction
 from igab.domain.exceptions import IGABError
+from igab.domain.matching import date_proximity, payee_similarity
 from igab.integrations.simplefin.client import SimpleFINClient
 from igab.integrations.simplefin.encryption import decrypt, encrypt
 from igab.repositories.account_repo import AccountRepository
@@ -42,19 +42,21 @@ DEDUP_TIGHT_DATE_DAYS = 1
 DEDUP_TIEBREAK_MARGIN = 0.10
 
 
+#: What a missing payee counts for here. Neutral rather than zero: a SimpleFIN
+#: row often arrives before its payee is resolved, and scoring it zero would
+#: stop it deduplicating against a row it genuinely matches. Safe because
+#: 0.2 (max date) + 0.8 x 0.5 = 0.6, below the 0.80 auto threshold — a
+#: payee-less pair can never auto-merge on date evidence alone. Pinned in
+#: test_matching_scores.py.
+_UNKNOWN_PAYEE_SCORE = 0.5
+
+
 def _payee_similarity(a: str | None, b: str | None) -> float:
-    if not a or not b:
-        return 0.5  # Neutral when payee unknown
-    # WRatio combines ratio, partial_ratio, token_sort, and token_set variants,
-    # picking the best score — handles bank descriptions vs cleaned payee names.
-    return fuzz.WRatio(a.lower(), b.lower()) / 100.0
+    return payee_similarity(a, b, unknown=_UNKNOWN_PAYEE_SCORE)
 
 
 def _date_proximity_score(synced: date, existing: date) -> float:
-    delta = abs((synced - existing).days)
-    if delta > DEDUP_AUTO_DATE_MAX_DAYS:
-        return 0.0
-    return 1.0 - (delta / (DEDUP_AUTO_DATE_MAX_DAYS + 1))
+    return date_proximity(synced, existing, window_days=DEDUP_AUTO_DATE_MAX_DAYS)
 
 
 def _calculate_dedup_score(

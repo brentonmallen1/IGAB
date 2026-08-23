@@ -10,11 +10,11 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from rapidfuzz import fuzz
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Transaction
+from igab.domain.matching import date_proximity, payee_similarity
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -27,20 +27,20 @@ SCAN_REVIEW_THRESHOLD = 0.55
 SCAN_DATE_WINDOW_DAYS = 5
 
 
+#: What a missing payee counts for here. Zero rather than neutral: this scores
+#: a synced row against something the user typed, and a manual entry with no
+#: payee is not evidence of anything. Safe because 0.4 (amount) + 0.3 (date)
+#: = 0.7, below the 0.90 auto threshold. Pinned in test_matching_scores.py.
+_UNKNOWN_PAYEE_SCORE = 0.0
+
+
 def _payee_similarity(a: str, b: str) -> float:
-    if not a or not b:
-        return 0.0
-    return fuzz.WRatio(a.lower(), b.lower()) / 100.0
+    return payee_similarity(a, b, unknown=_UNKNOWN_PAYEE_SCORE)
 
 
 def _date_score(synced: date, manual: date) -> float:
     """1.0 for same day, decays linearly to 0 at DATE_WINDOW_DAYS+1."""
-    delta = abs((synced - manual).days)
-    if delta == 0:
-        return 1.0
-    if delta > DATE_WINDOW_DAYS:
-        return 0.0
-    return 1.0 - (delta / (DATE_WINDOW_DAYS + 1))
+    return date_proximity(synced, manual, window_days=DATE_WINDOW_DAYS)
 
 
 def _amount_score(synced: Decimal, manual: Decimal) -> float:
