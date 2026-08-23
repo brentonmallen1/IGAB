@@ -1,13 +1,11 @@
-import hashlib
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
-from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
+from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.integrations.ynab.models import YNABBudget
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -24,11 +22,6 @@ from igab.services.transaction_service import TransactionService
 _TRANSFER_PREFIX = "Transfer : "
 _YNAB_INFLOW_GROUP = "Inflow"
 _MAX_ERRORS = 50
-
-
-def _generate_import_id(account_name: str, txn_date: date, amount: Decimal, payee: str) -> str:
-    content = f"{account_name}|{txn_date.isoformat()}|{amount}|{payee}"
-    return f"csv:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
 _SYSTEM_INCOME_GROUP = "Income"
@@ -316,8 +309,8 @@ class YNABImporter:
                         "is_deleted": False,
                         "transfer_id": None,
                         "parent_transaction_id": None,
-                        "import_id": _generate_import_id(
-                            txn.account_name, txn.date, txn.amount, txn.payee or ""
+                        "import_id": generate_import_id(
+                            account.id, txn.date, txn.amount, txn.payee or ""
                         ),
                     }
                     children: list[dict] = []
@@ -376,8 +369,8 @@ class YNABImporter:
                     "is_deleted": False,
                     "transfer_id": None,
                     "parent_transaction_id": None,
-                    "import_id": _generate_import_id(
-                        txn.account_name, txn.date, txn.amount, txn.payee or ""
+                    "import_id": generate_import_id(
+                        account.id, txn.date, txn.amount, txn.payee or ""
                     ),
                 }
                 rows.append(row)
@@ -412,15 +405,7 @@ class YNABImporter:
         result.accounts_skipped = len(skipped_account_names)
         result.transfer_legs_unpaired = sum(len(legs) for legs in unpaired_legs.values())
 
-        # Make import_ids unique within the batch: two transactions with identical
-        # (account, date, amount, payee) produce the same hash, so append ":N" for N>0.
-        seen_keys: dict[tuple[uuid.UUID, str], int] = {}
-        for row in rows:
-            key = (row["account_id"], row["import_id"])
-            count = seen_keys.get(key, 0)
-            if count > 0:
-                row["import_id"] = f"{row['import_id']}:{count}"
-            seen_keys[key] = count + 1
+        disambiguate_in_batch(rows)
 
         # Split children derive their import_ids from the parent's final
         # (uniquified) one. The ":s" prefix can't collide with the numeric

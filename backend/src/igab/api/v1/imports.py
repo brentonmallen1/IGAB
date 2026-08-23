@@ -1,4 +1,3 @@
-import hashlib
 import io
 import json
 import re
@@ -22,6 +21,7 @@ from igab.dependencies import (
     get_transaction_repo,
 )
 from igab.domain.account_types import BUILTIN_ACCOUNT_TYPE_KEYS
+from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.domain.money import parse_csv_amount
 from igab.integrations.ynab.importer import ImportResult as YNABRunResult
 from igab.integrations.ynab.importer import YNABImporter
@@ -57,11 +57,6 @@ class InsertRow(TypedDict):
     is_split: bool
     is_deleted: bool
     import_id: str
-
-
-def _generate_import_id(account_id: uuid.UUID, txn_date: date, amount: Decimal, payee: str) -> str:
-    content = f"{account_id}|{txn_date.isoformat()}|{amount}|{payee}"
-    return f"csv:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
 class ImportResult(BaseModel):
@@ -611,20 +606,11 @@ async def import_csv(
                 "import_batch_id": batch_id,
                 "is_split": False,
                 "is_deleted": False,
-                "import_id": _generate_import_id(account_id, txn_date, amount, payee_name),
+                "import_id": generate_import_id(account_id, txn_date, amount, payee_name),
             }
         )
 
-    # Two identical rows in one file (a real double charge) hash to the same
-    # import_id; suffix ":N" so both import and the unique index holds. The
-    # suffixing is order-stable, so re-importing the same file still dedups.
-    seen_ids: dict[str, int] = {}
-    for r in rows_to_insert:
-        base_id = r["import_id"]
-        count = seen_ids.get(base_id, 0)
-        if count > 0:
-            r["import_id"] = f"{base_id}:{count}"
-        seen_ids[base_id] = count + 1
+    disambiguate_in_batch(rows_to_insert)
 
     # Deduplicate against existing import_ids before inserting
     all_import_ids = [r["import_id"] for r in rows_to_insert if r.get("import_id")]
