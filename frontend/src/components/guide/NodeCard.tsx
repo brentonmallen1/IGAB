@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight, CornerDownRight, HelpCircle, MinusCircle } from 'lucide-react'
 import type { RoadmapNode } from '../../content/roadmap'
+import type { ConceptInfo, Signal } from '../../api/guide'
 import { GlossaryChips } from './GlossaryChips'
+import { SignalNote } from './SignalNote'
 
 export type NodeState = 'visible' | 'pending' | 'skipped'
 
@@ -17,6 +19,10 @@ interface Props {
   onClearAnswer?: () => void
   detailOpen?: boolean
   onToggleDetail?: () => void
+  /** What the app worked out about this node's concept, when there is one. */
+  signal?: Signal
+  concept?: ConceptInfo
+  onCorrectSignal?: () => void
 }
 
 /**
@@ -38,6 +44,9 @@ export function NodeCard({
   onClearAnswer,
   detailOpen = false,
   onToggleDetail,
+  signal,
+  concept,
+  onCorrectSignal,
 }: Props) {
   // Pending and skipped nodes collapse to a single line. They stay on the page
   // — a reader who answered "No" can still see what "Yes" would have led to —
@@ -127,6 +136,10 @@ export function NodeCard({
             </div>
           )}
         </>
+      )}
+
+      {signal && onCorrectSignal && (
+        <SignalNote signal={signal} concept={concept} onCorrect={onCorrectSignal} />
       )}
 
       {node.glossary && node.glossary.length > 0 && <GlossaryChips terms={node.glossary} />}

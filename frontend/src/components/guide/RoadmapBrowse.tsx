@@ -3,6 +3,9 @@ import { ROADMAP } from '../../content/roadmap'
 import { useGuideStore } from '../../stores/guideStore'
 import { stepColor } from './stepColor'
 import { NodeCard } from './NodeCard'
+import { SignalBindingSheet } from './SignalBindingSheet'
+import { useGuideSignalMap } from './useGuideSignalMap'
+import type { SignalKey } from '../../content/roadmap'
 
 /**
  * The whole roadmap, open, in reading order — including both sides of every
@@ -20,6 +23,9 @@ export function RoadmapBrowse() {
   // Browse opens everything by default; this only tracks stages the reader has
   // deliberately folded away to get them out of the way.
   const [collapsed, setCollapsed] = useState<string[]>([])
+  const guide = useGuideSignalMap()
+  const [correcting, setCorrecting] = useState<SignalKey | null>(null)
+  const concept = correcting ? guide.concepts.get(correcting) : undefined
 
   return (
     <div className="guide-browse">
@@ -60,11 +66,22 @@ export function RoadmapBrowse() {
                   showAllBranches
                   detailOpen={expandedDetails.includes(node.id)}
                   onToggleDetail={() => toggleDetail(node.id)}
+                  signal={node.signal ? guide.signals.get(node.signal) : undefined}
+                  concept={node.signal ? guide.concepts.get(node.signal) : undefined}
+                  onCorrectSignal={node.signal ? () => setCorrecting(node.signal!) : undefined}
                 />
               ))}
           </section>
         )
       })}
+      {concept && guide.budgetId && (
+        <SignalBindingSheet
+          budgetId={guide.budgetId}
+          concept={concept}
+          signal={guide.signals.get(concept.key)}
+          onClose={() => setCorrecting(null)}
+        />
+      )}
     </div>
   )
 }

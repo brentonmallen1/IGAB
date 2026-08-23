@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RoadmapMap } from './RoadmapMap'
 import { ROADMAP } from '../../content/roadmap'
 import { buildFlow } from './flowLayout'
@@ -20,10 +21,17 @@ beforeAll(() => {
 })
 
 function renderMap() {
+  // The map reads guide signals, so it needs a query client. Retries off so a
+  // failed fetch surfaces immediately instead of stalling the test.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   return render(
-    <MemoryRouter>
-      <RoadmapMap />
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <RoadmapMap />
+      </MemoryRouter>
+    </QueryClientProvider>
   )
 }
 

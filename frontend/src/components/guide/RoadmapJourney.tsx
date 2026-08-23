@@ -1,9 +1,13 @@
+import { useState } from 'react'
 import { ChevronDown, ChevronRight, Check, ArrowDown } from 'lucide-react'
 import { ROADMAP, findStage, type RoadmapStage } from '../../content/roadmap'
 import { useGuideStore } from '../../stores/guideStore'
 import { stagePath, stageAnswered } from './journeyPath'
 import { stepColor } from './stepColor'
 import { NodeCard, type NodeState } from './NodeCard'
+import { SignalBindingSheet } from './SignalBindingSheet'
+import { useGuideSignalMap } from './useGuideSignalMap'
+import type { SignalKey } from '../../content/roadmap'
 
 /**
  * The roadmap as a path you walk — one stage at a time, collapsed by default.
@@ -17,20 +21,35 @@ export function RoadmapJourney() {
   const toggleStage = useGuideStore((s) => s.toggleStage)
   const openStage = useGuideStore((s) => s.openStage)
   const answers = useGuideStore((s) => s.answers)
+  const guide = useGuideSignalMap()
+  const [correcting, setCorrecting] = useState<SignalKey | null>(null)
+
+  const concept = correcting ? guide.concepts.get(correcting) : undefined
 
   return (
-    <ol className="guide-journey">
-      {ROADMAP.map((stage) => (
-        <StageRow
-          key={stage.id}
-          stage={stage}
-          open={expandedStages.includes(stage.id)}
-          onToggle={() => toggleStage(stage.id)}
-          onGoToStage={openStage}
-          answers={answers}
+    <>
+      <ol className="guide-journey">
+        {ROADMAP.map((stage) => (
+          <StageRow
+            key={stage.id}
+            stage={stage}
+            open={expandedStages.includes(stage.id)}
+            onToggle={() => toggleStage(stage.id)}
+            onGoToStage={openStage}
+            answers={answers}
+            onCorrect={setCorrecting}
+          />
+        ))}
+      </ol>
+      {concept && guide.budgetId && (
+        <SignalBindingSheet
+          budgetId={guide.budgetId}
+          concept={concept}
+          signal={guide.signals.get(concept.key)}
+          onClose={() => setCorrecting(null)}
         />
-      ))}
-    </ol>
+      )}
+    </>
   )
 }
 
@@ -40,18 +59,21 @@ function StageRow({
   onToggle,
   onGoToStage,
   answers,
+  onCorrect,
 }: {
   stage: RoadmapStage
   open: boolean
   onToggle: () => void
   onGoToStage: (id: RoadmapStage['id']) => void
   answers: Record<string, string>
+  onCorrect: (key: SignalKey) => void
 }) {
   const toggleDetail = useGuideStore((s) => s.toggleDetail)
   const expandedDetails = useGuideStore((s) => s.expandedDetails)
   const answer = useGuideStore((s) => s.answer)
   const clearAnswer = useGuideStore((s) => s.clearAnswer)
 
+  const guide = useGuideSignalMap()
   const path = stagePath(stage, answers)
   const done = stageAnswered(stage, answers) && stage.nodes.some((n) => n.kind === 'decision')
   const bodyId = `stage-${stage.id}`
@@ -109,6 +131,9 @@ function StageRow({
                 onClearAnswer={() => clearAnswer(node.id)}
                 detailOpen={expandedDetails.includes(node.id)}
                 onToggleDetail={() => toggleDetail(node.id)}
+                signal={node.signal ? guide.signals.get(node.signal) : undefined}
+                concept={node.signal ? guide.concepts.get(node.signal) : undefined}
+                onCorrectSignal={node.signal ? () => onCorrect(node.signal!) : undefined}
               />
             ))}
 

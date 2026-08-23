@@ -6,6 +6,9 @@ import { GuideDialog } from './GuideDialog'
 import { NodeCard } from './NodeCard'
 import { stepColor } from './stepColor'
 import { buildFlow, NODE_W, NODE_H, ROW_GAP, type FlowEdge } from './flowLayout'
+import { useGuideSignalMap } from './useGuideSignalMap'
+import { SignalBindingSheet } from './SignalBindingSheet'
+import type { SignalKey } from '../../content/roadmap'
 
 const MIN_SCALE = 0.35
 const MAX_SCALE = 1.8
@@ -24,6 +27,7 @@ const MAX_SCALE = 1.8
 export function RoadmapMap() {
   const [collapsedStages, setCollapsedStages] = useState<StageId[]>([])
   const [selected, setSelected] = useState<string | null>(null)
+  const [correcting, setCorrecting] = useState<SignalKey | null>(null)
   const [scale, setScale] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
 
@@ -32,6 +36,7 @@ export function RoadmapMap() {
 
   const expandedDetails = useGuideStore((s) => s.expandedDetails)
   const toggleDetail = useGuideStore((s) => s.toggleDetail)
+  const guide = useGuideSignalMap()
 
   const flow = useMemo(() => buildFlow(collapsedStages), [collapsedStages])
 
@@ -121,6 +126,8 @@ export function RoadmapMap() {
   }
 
   const selectedNode = selected ? flow.byId.get(selected) : undefined
+  const correctingConcept =
+    correcting && guide.budgetId ? guide.concepts.get(correcting) : undefined
 
   const detail = selectedNode && (
     <NodeCard
@@ -128,6 +135,21 @@ export function RoadmapMap() {
       showAllBranches
       detailOpen={expandedDetails.includes(selectedNode.node.id)}
       onToggleDetail={() => toggleDetail(selectedNode.node.id)}
+      signal={selectedNode.node.signal ? guide.signals.get(selectedNode.node.signal) : undefined}
+      concept={
+        selectedNode.node.signal ? guide.concepts.get(selectedNode.node.signal) : undefined
+      }
+      onCorrectSignal={
+        selectedNode.node.signal
+          ? () => {
+              // Swap dialogs rather than stacking them — a sheet inside a
+              // sheet traps focus in the wrong one and has no sensible back.
+              const key = selectedNode.node.signal!
+              setSelected(null)
+              setCorrecting(key)
+            }
+          : undefined
+      }
     />
   )
 
@@ -266,6 +288,15 @@ export function RoadmapMap() {
 
       {/* Reading a box uses the same component the other views render, so a
           node's content is defined in exactly one place. */}
+      {correctingConcept && (
+        <SignalBindingSheet
+          budgetId={guide.budgetId!}
+          concept={correctingConcept}
+          signal={guide.signals.get(correctingConcept.key)}
+          onClose={() => setCorrecting(null)}
+        />
+      )}
+
       {selectedNode && (
         <GuideDialog
           title={`Step ${selectedNode.stage.step} — ${selectedNode.stage.title}`}
