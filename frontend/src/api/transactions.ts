@@ -24,6 +24,44 @@ function reportBulkFailures(result: BulkActionResult, actionLabel: string) {
 const PAGE_SIZE = 100
 const FILTERED_LIMIT = 2000
 
+/**
+ * Filters → query params, for both registers.
+ *
+ * These were fifteen near-identical lines in each hook, differing by one:
+ * `account_ids`, which only the all-accounts register can use. That difference
+ * was correct and unmarked, so every new filter had to be remembered in two
+ * places and the omission would have looked exactly like the intended one.
+ *
+ * `account_ids` is emitted unconditionally now — the per-account register
+ * never sets `accountIds`, so there is nothing to omit, and the endpoint
+ * scopes by its path parameter regardless.
+ *
+ * `hasActiveFilters` is the third list that has to agree with this one: it
+ * picks FILTERED_LIMIT over PAGE_SIZE, so a filter missing from it makes a
+ * register stop at 100 rows while claiming to be complete.
+ */
+function transactionFilterParams(filters: TransactionFilters): Record<string, unknown> {
+  const params: Record<string, unknown> = {}
+  if (filters.text) params.search = filters.text
+  if (filters.cleared) params.cleared = filters.cleared
+  if (filters.uncategorized) params.uncategorized = true
+  if (filters.unapproved) params.unapproved = true
+  if (filters.isOrMode) params.is_or_mode = true
+  if (filters.categoryIds?.length) params.category_ids = filters.categoryIds.join(',')
+  if (filters.payeeIds?.length) params.payee_ids = filters.payeeIds.join(',')
+  if (filters.accountIds?.length) params.account_ids = filters.accountIds.join(',')
+  if (filters.amountMin != null) params.amount_min = filters.amountMin
+  if (filters.amountMax != null) params.amount_max = filters.amountMax
+  if (filters.hasAttachment != null) params.has_attachment = filters.hasAttachment
+  if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
+  if (filters.startDate) params.start_date = filters.startDate
+  if (filters.endDate) params.end_date = filters.endDate
+  if (filters.direction) params.direction = filters.direction
+  if (filters.isTransfer != null) params.is_transfer = filters.isTransfer
+  if (filters.unpairedTransfers) params.unpaired_transfers = true
+  return params
+}
+
 export function useInfiniteTransactions(accountId: string | null, filters: TransactionFilters = {}) {
   const filtered = hasActiveFilters(filters)
   const limit = filtered ? FILTERED_LIMIT : PAGE_SIZE
@@ -32,22 +70,7 @@ export function useInfiniteTransactions(accountId: string | null, filters: Trans
     queryKey: ['transactions', accountId, filters],
     queryFn: async ({ pageParam }) => {
       const params: Record<string, unknown> = { limit, offset: pageParam }
-      if (filters.text) params.search = filters.text
-      if (filters.cleared) params.cleared = filters.cleared
-      if (filters.uncategorized) params.uncategorized = true
-      if (filters.unapproved) params.unapproved = true
-      if (filters.isOrMode) params.is_or_mode = true
-      if (filters.categoryIds?.length) params.category_ids = filters.categoryIds.join(',')
-      if (filters.payeeIds?.length) params.payee_ids = filters.payeeIds.join(',')
-      if (filters.amountMin != null) params.amount_min = filters.amountMin
-      if (filters.amountMax != null) params.amount_max = filters.amountMax
-      if (filters.hasAttachment != null) params.has_attachment = filters.hasAttachment
-      if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
-      if (filters.startDate) params.start_date = filters.startDate
-      if (filters.endDate) params.end_date = filters.endDate
-      if (filters.direction) params.direction = filters.direction
-      if (filters.isTransfer != null) params.is_transfer = filters.isTransfer
-      if (filters.unpairedTransfers) params.unpaired_transfers = true
+      Object.assign(params, transactionFilterParams(filters))
       const { data } = await apiClient.get<Transaction[]>(`/accounts/${accountId}/transactions`, { params })
       return data
     },
@@ -74,23 +97,7 @@ export function useInfiniteBudgetTransactions(
     queryKey: ['all-transactions', budgetId, filters],
     queryFn: async ({ pageParam }) => {
       const params: Record<string, unknown> = { limit, offset: pageParam, order: 'register' }
-      if (filters.text) params.search = filters.text
-      if (filters.cleared) params.cleared = filters.cleared
-      if (filters.uncategorized) params.uncategorized = true
-      if (filters.unapproved) params.unapproved = true
-      if (filters.isOrMode) params.is_or_mode = true
-      if (filters.categoryIds?.length) params.category_ids = filters.categoryIds.join(',')
-      if (filters.payeeIds?.length) params.payee_ids = filters.payeeIds.join(',')
-      if (filters.accountIds?.length) params.account_ids = filters.accountIds.join(',')
-      if (filters.amountMin != null) params.amount_min = filters.amountMin
-      if (filters.amountMax != null) params.amount_max = filters.amountMax
-      if (filters.hasAttachment != null) params.has_attachment = filters.hasAttachment
-      if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
-      if (filters.startDate) params.start_date = filters.startDate
-      if (filters.endDate) params.end_date = filters.endDate
-      if (filters.direction) params.direction = filters.direction
-      if (filters.isTransfer != null) params.is_transfer = filters.isTransfer
-      if (filters.unpairedTransfers) params.unpaired_transfers = true
+      Object.assign(params, transactionFilterParams(filters))
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
         { params },

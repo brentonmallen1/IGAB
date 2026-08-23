@@ -1,3 +1,4 @@
+import { sumBalances } from '../budgetTotals'
 import { useState } from 'react'
 import { ChevronDown, Clock, Zap } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
@@ -72,12 +73,17 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
   // Get just the month name from the full month string
   const monthLabel = formatMonth(month).split(' ')[settings.dateFormat === 'ymd' ? 1 : 0]
 
-  const totalAssigned = Number(budgetMonth?.total_assigned ?? 0)
-  const totalActivity = Number(budgetMonth?.total_activity ?? 0)
-  const totalAvailable = (budgetMonth?.category_balances ?? []).reduce(
-    (s, b) => s + Number(b.available), 0
-  )
-  const leftOver = totalAvailable - totalAssigned - totalActivity
+  // All four figures from one set of balances. This used to subtract the
+  // server's total_assigned/total_activity from a client-summed available, so
+  // anything the server leaves out of those totals but includes in
+  // category_balances — system groups, hidden categories, credit-card payment
+  // categories — landed entirely in "left over".
+  const {
+    assigned: totalAssigned,
+    activity: totalActivity,
+    available: totalAvailable,
+    carriedOver: leftOver,
+  } = sumBalances(budgetMonth?.category_balances ?? [])
 
   function aggregate(field: keyof CategoryHistory) {
     if (!histories?.length) return 0
