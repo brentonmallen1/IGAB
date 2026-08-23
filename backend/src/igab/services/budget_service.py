@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from igab.db.models import Category
 from igab.domain.carryover import available_through
 from igab.domain.dates import month_end, month_start
+from igab.domain.money import quantize_cents
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -495,8 +496,8 @@ class BudgetService:
             category_id=category_id,
             last_month_assigned=last_assigned,
             last_month_spent=last_spent,
-            average_assigned=avg_assigned.quantize(Decimal("0.01")),
-            average_spent=avg_spent.quantize(Decimal("0.01")),
+            average_assigned=quantize_cents(avg_assigned),
+            average_spent=quantize_cents(avg_spent),
             months_included=n,
         )
 

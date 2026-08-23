@@ -95,3 +95,53 @@ class TestAmountEdges:
     def test_a_negative_assignment_is_honoured(self):
         # Pulling money back out of a category is a real operation.
         assert available_through({JAN: D("100"), FEB: D("-40")}, {}, FEB) == D("60")
+
+
+class TestQuantizeCents:
+    """The rounding convention, named rather than inherited.
+
+    Twenty-two sites took their rounding mode from the global decimal context.
+    That gave the right answer — half-even is the default — but by accident:
+    anything setting `getcontext().rounding` would have moved money display
+    across every report with nothing to notice it.
+    """
+
+    def test_rounds_half_to_even(self):
+        from igab.domain.money import quantize_cents
+
+        # The property that makes it unbiased over a long column of figures.
+        assert quantize_cents(D("0.125")) == D("0.12")
+        assert quantize_cents(D("0.135")) == D("0.14")
+
+    def test_does_not_drag_upward_like_half_up(self):
+        from igab.domain.money import quantize_cents
+
+        halves = [D("0.005"), D("0.015"), D("0.025"), D("0.035")]
+        # Half-up would total 0.10; half-even splits the ties.
+        assert sum((quantize_cents(v) for v in halves), D("0")) == D("0.08")
+
+    def test_leaves_exact_cents_alone(self):
+        from igab.domain.money import quantize_cents
+
+        for value in ("0.00", "1.23", "-4.56", "999999.99"):
+            assert quantize_cents(D(value)) == D(value)
+
+    def test_handles_negatives_symmetrically(self):
+        from igab.domain.money import quantize_cents
+
+        assert quantize_cents(D("-0.125")) == D("-0.12")
+        assert quantize_cents(D("-0.135")) == D("-0.14")
+
+    def test_is_independent_of_the_global_context(self):
+        import decimal
+
+        from igab.domain.money import quantize_cents
+
+        original = decimal.getcontext().rounding
+        try:
+            decimal.getcontext().rounding = decimal.ROUND_UP
+            # The bare `.quantize(Decimal("0.01"))` this replaced would return
+            # 0.13 here. That is the hazard being removed.
+            assert quantize_cents(D("0.125")) == D("0.12")
+        finally:
+            decimal.getcontext().rounding = original

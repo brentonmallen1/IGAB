@@ -37,6 +37,7 @@ from igab.domain.activity_class import (
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.dates import add_months
+from igab.domain.money import quantize_cents
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -1544,9 +1545,7 @@ class ReportService:
             chronic = recent_over >= 3
             if chronic:
                 chronic_count += 1
-            avg_overspend = (
-                (over_total / months_over).quantize(Decimal("0.01")) if months_over else zero
-            )
+            avg_overspend = quantize_cents(over_total / months_over) if months_over else zero
             categories.append(
                 {
                     "category_id": entry["category_id"],
@@ -1861,7 +1860,7 @@ class ReportService:
                     "label": CLASS_LABEL[ActivityClass(cls)],
                     "categories": len(v["categories"]),
                     # Storage is 4dp; the note is user-facing copy, so cents.
-                    "total": v["total"].quantize(Decimal("0.01")),
+                    "total": quantize_cents(v["total"]),
                 }
                 for cls, v in by_class.items()
             ),
@@ -2385,8 +2384,8 @@ class ReportService:
                     "payee_name": payee_name,
                     "monthly_amounts": monthly_amounts,
                     "total": total,
-                    "avg_monthly": avg_monthly.quantize(Decimal("0.01")),
-                    "avg_per_charge": avg_per_charge.quantize(Decimal("0.01")),
+                    "avg_monthly": quantize_cents(avg_monthly),
+                    "avg_per_charge": quantize_cents(avg_per_charge),
                     "last_charge_date": last_charge,
                     "transaction_count": txn_count,
                 }
@@ -2402,8 +2401,8 @@ class ReportService:
         return {
             "subscriptions": subscriptions,
             "summary": {
-                "total_monthly": total_monthly.quantize(Decimal("0.01")),
-                "total_annual": total_annual.quantize(Decimal("0.01")),
+                "total_monthly": quantize_cents(total_monthly),
+                "total_annual": quantize_cents(total_annual),
                 "active_count": len(subscriptions),
             },
             "months": month_list,
@@ -2806,7 +2805,7 @@ class ReportService:
             "summary": {
                 "total_balance": total_balance,
                 "total_inflow": total_inflow,
-                "avg_monthly_inflow": avg_monthly.quantize(Decimal("0.01")),
+                "avg_monthly_inflow": quantize_cents(avg_monthly),
                 "category_count": len(categories),
             },
             "months": month_list,
@@ -2913,11 +2912,11 @@ class ReportService:
                             "category_name": cat_name,
                             "group_name": group_name,
                             "month": month,
-                            "actual": Decimal(str(actual)).quantize(Decimal("0.01")),
-                            "baseline_mean": Decimal(str(mean)).quantize(Decimal("0.01")),
+                            "actual": quantize_cents(Decimal(str(actual))),
+                            "baseline_mean": quantize_cents(Decimal(str(mean))),
                             "z_score": round(z_score, 2),
                             "direction": "high" if z_score > 0 else "low",
-                            "history": [Decimal(str(h)).quantize(Decimal("0.01")) for h in history],
+                            "history": [quantize_cents(Decimal(str(h))) for h in history],
                         }
                     )
 
@@ -3046,11 +3045,11 @@ class ReportService:
             vals = offset_totals[offset]
             avg_spend = sum(vals) / len(vals) if vals else 0
             days_result.append(
-                {"offset": offset, "avg_spend": Decimal(str(avg_spend)).quantize(Decimal("0.01"))}
+                {"offset": offset, "avg_spend": quantize_cents(Decimal(str(avg_spend)))}
             )
 
         baseline_daily = (
-            Decimal(str(sum(baseline_days) / len(baseline_days))).quantize(Decimal("0.01"))
+            quantize_cents(Decimal(str(sum(baseline_days) / len(baseline_days))))
             if baseline_days
             else Decimal("0")
         )
@@ -3272,12 +3271,12 @@ class ReportService:
             points.append(
                 {
                     "date": d,
-                    "p10": Decimal(str(p10)).quantize(Decimal("0.01")),
-                    "p25": Decimal(str(p25)).quantize(Decimal("0.01")),
-                    "p50": Decimal(str(p50)).quantize(Decimal("0.01")),
-                    "p75": Decimal(str(p75)).quantize(Decimal("0.01")),
-                    "p90": Decimal(str(p90)).quantize(Decimal("0.01")),
-                    "deterministic": det_path[offset].quantize(Decimal("0.01")),
+                    "p10": quantize_cents(Decimal(str(p10))),
+                    "p25": quantize_cents(Decimal(str(p25))),
+                    "p50": quantize_cents(Decimal(str(p50))),
+                    "p75": quantize_cents(Decimal(str(p75))),
+                    "p90": quantize_cents(Decimal(str(p90))),
+                    "deterministic": quantize_cents(det_path[offset]),
                 }
             )
 

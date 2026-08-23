@@ -64,6 +64,7 @@ from igab.domain.activity_class import (
     explain,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
+from igab.domain.money import quantize_cents
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -467,7 +468,7 @@ async def get_category_classification(
         CategoryClassSlice(
             activity_class=cls,
             label=CLASS_LABEL[ActivityClass(cls)],
-            total=v["total"].quantize(Decimal("0.01")),
+            total=quantize_cents(v["total"]),
             count=v["count"],
         )
         for cls, v in ordered

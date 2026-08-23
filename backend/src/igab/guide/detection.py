@@ -14,7 +14,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from igab.db.models import Account, AccountType, Category, Liability, Transactio
 from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
 from igab.domain.carryover import available_through
 from igab.domain.dates import month_end, month_start
+from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     HIGH_INTEREST_APR,
     MODERATE_INTEREST_APR,
@@ -42,8 +43,13 @@ TWO_PLACES = Decimal("0.01")
 
 
 def _cents(value: Decimal) -> Decimal:
-    """Round to cents, half-up — the convention the money code uses."""
-    return value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    """Round to cents.
+
+    Was half-up, with a docstring claiming that was "the convention the money
+    code uses". It was not — every other sum in the app rounds half-even, so
+    the guide could report a figure one cent off the page it says it mirrors.
+    """
+    return quantize_cents(value)
 
 
 #: Names that suggest an emergency fund. Deliberately narrow — a false match

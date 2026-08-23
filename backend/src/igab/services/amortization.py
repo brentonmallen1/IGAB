@@ -12,9 +12,10 @@ extra test surface.
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import Decimal
 
 from igab.domain.dates import add_months
+from igab.domain.money import quantize_cents
 
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
@@ -22,10 +23,6 @@ CENT = Decimal("0.01")
 # 50 years of monthly payments — far beyond any real consumer debt; a
 # schedule still open after this is reported as never paying off.
 DEFAULT_CAP_MONTHS = 600
-
-
-def quantize_cents(amount: Decimal) -> Decimal:
-    return amount.quantize(CENT, rounding=ROUND_HALF_EVEN)
 
 
 @dataclass(frozen=True)

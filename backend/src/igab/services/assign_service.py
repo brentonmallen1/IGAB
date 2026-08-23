@@ -20,6 +20,7 @@ from datetime import date
 from decimal import Decimal
 
 from igab.db.models import Category, CategoryTarget
+from igab.domain.money import quantize_cents
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.services.budget_service import (
@@ -104,7 +105,7 @@ def distribute_fill(
     for cat_id, needed in shortfalls.items():
         if total_shortfall > ZERO:
             proportion = needed / total_shortfall
-            proposed = min(needed, (proportion * available_tba).quantize(Decimal("0.01")))
+            proposed = min(needed, quantize_cents(proportion * available_tba))
         else:
             proposed = ZERO
         result[cat_id] = proposed
