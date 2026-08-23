@@ -110,7 +110,21 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
 #: Note this is NOT the existing `is_transfer` filter, which tests
 #: `transfer_id` alone — `is_transfer=false` returns every ordinary
 #: transaction as well as these.
-UNPAIRED_TRANSFER_LEG = and_(TRANSFER_PAYEE, Transaction.transfer_id.is_(None))
+#:
+#: `category_id IS NULL` is the third condition and it is load-bearing. A
+#: *categorized* transfer leg is a YNAB spending transfer: deliberately
+#: unpaired, and correctly counted as spending because the category is the
+#: whole point. The importer knows this — it only ever tries to pair
+#: uncategorized legs (`importer.py`: `payee.startswith("Transfer : ") and
+#: category_id is None`) — so without this condition the predicate counts 169
+#: rows on a real export that the importer does not, and the hygiene panel
+#: promises a number the list it links to cannot show. Same definition, both
+#: sides; asserted against a real import in test_ynab_import.py.
+UNPAIRED_TRANSFER_LEG = and_(
+    TRANSFER_PAYEE,
+    Transaction.transfer_id.is_(None),
+    Transaction.category_id.is_(None),
+)
 
 
 #: A row the user still has to file: no category, and it is the kind of row a

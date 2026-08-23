@@ -4,12 +4,13 @@ with per-leg cleared state preserved and both legs linked."""
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from igab.db.models import Account, Transaction
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.models import YNABBudget, YNABSplitLeg, YNABTransaction
 from igab.repositories.category_repo import CategoryGroupRepository
+from igab.repositories.txn_filters import UNPAIRED_TRANSFER_LEG
 
 from .factories import create_budget, create_user, make_services
 from .invariants import assert_financial_invariants
@@ -631,3 +632,138 @@ async def test_a_parse_error_reaches_the_import_summary(db_session):
 
     assert result.transactions_imported == 1
     assert any("cannot parse amount" in e for e in result.errors)
+
+
+class TestTheUnpairedCountAgreesWithTheImporter:
+    """`UNPAIRED_TRANSFER_LEG` and `result.transfer_legs_unpaired` answer the
+    same question and must return the same number.
+
+    The hygiene panel reports the count and links to the rows. A panel that
+    promises 1,286 and opens a list of 1,117 is worse than no panel — that
+    exact disagreement is what made the needs-a-category badge untrustworthy.
+
+    The subtle half is the categorized leg: YNAB writes "Transfer : Savings"
+    with a category for a spending transfer, and the importer deliberately
+    never pairs those. Measured on the real 47-account export, counting them
+    made the predicate disagree with the importer by 169 rows. With the
+    category condition the two land on 1,117 exactly.
+    """
+
+    async def _import(self, db_session, transactions):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        importer = _importer(services, db_session, budget)
+        result = await importer.import_budget(
+            YNABBudget(transactions=transactions, budget_entries=[])
+        )
+        await db_session.flush()
+        return services, budget, result
+
+    async def _predicate_count(self, db_session, budget) -> int:
+        return (
+            await db_session.execute(
+                select(func.count())
+                .select_from(Transaction)
+                .where(
+                    Transaction.budget_id == budget.id,
+                    Transaction.is_deleted == False,  # noqa: E712
+                    UNPAIRED_TRANSFER_LEG,
+                )
+            )
+        ).scalar_one()
+
+    async def test_they_agree_on_a_leg_whose_partner_never_arrived(self, db_session):
+        """Both accounts exist; the legs simply never matched on date and
+        amount. This is what a real export produces in bulk — 1,117 of them."""
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn("Savings", "Interest", "1.00", category="Income", group="Inflow"),
+                _txn("Checking", "Transfer : Savings", "-500.00"),
+                _txn("Checking", "Corner Shop", "-12.00", category="Groceries", group="Everyday"),
+            ],
+        )
+
+        assert result.transfer_legs_unpaired == 1
+        assert await self._predicate_count(db_session, budget) == 1
+
+    async def test_they_agree_that_a_categorized_leg_is_not_a_problem(self, db_session):
+        """The 169. A categorized transfer leg is a spending transfer: it is
+        meant to be unpaired, and counting it as spending is correct."""
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn("Brokerage", "Dividend", "2.00", category="Income", group="Inflow"),
+                _txn(
+                    "Checking",
+                    "Transfer : Brokerage",
+                    "-500.00",
+                    category="Investing",
+                    group="Goals",
+                ),
+            ],
+        )
+
+        assert result.transfer_legs_unpaired == 0
+        assert await self._predicate_count(db_session, budget) == 0
+
+    async def test_they_agree_when_both_kinds_are_present(self, db_session):
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn("Savings", "Interest", "1.00", category="Income", group="Inflow"),
+                _txn("Brokerage", "Dividend", "2.00", category="Income", group="Inflow"),
+                _txn("Checking", "Transfer : Savings", "-500.00"),
+                _txn("Checking", "Transfer : Savings", "-25.00"),
+                _txn(
+                    "Checking",
+                    "Transfer : Brokerage",
+                    "-90.00",
+                    category="Investing",
+                    group="Goals",
+                ),
+            ],
+        )
+
+        assert result.transfer_legs_unpaired == 2, "the categorized leg is not a problem"
+        assert await self._predicate_count(db_session, budget) == 2
+
+    async def test_they_agree_on_a_properly_paired_transfer(self, db_session):
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn("Checking", "Transfer : Savings", "-300.00"),
+                _txn("Savings", "Transfer : Checking", "300.00"),
+            ],
+        )
+
+        assert result.transfer_legs_unpaired == 0
+        assert await self._predicate_count(db_session, budget) == 0
+
+    async def test_a_leg_naming_an_account_that_never_existed_is_a_different_problem(
+        self, db_session
+    ):
+        """Recorded rather than left to surprise someone.
+
+        When the named account is not in the import at all there is nothing
+        for the payee to point at, so the importer leaves it an ordinary payee
+        ("it stays an ordinary payee"). Nothing then marks the row as a
+        transfer, so it reads as ordinary spending and surfaces through the
+        needs-a-category badge instead — which is the right place for it: the
+        user has to decide what that money actually was.
+
+        So the two counts differ here by design. The importer matches on the
+        payee string and counts it; the predicate needs a resolved transfer
+        payee and does not. The real export produced three such rows against
+        1,117 of the ordinary kind.
+        """
+        services, budget, result = await self._import(
+            db_session, [_txn("Checking", "Transfer : Nowhere", "-500.00")]
+        )
+
+        assert result.transfer_legs_unpaired == 1, "the importer sees the payee string"
+        assert await self._predicate_count(db_session, budget) == 0, "no transfer payee exists"
+
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        assert review["uncategorized"] == 1, "it surfaces as a row needing a category instead"
