@@ -68,6 +68,7 @@ async def list_backups(current_user: AdminUser) -> BackupsOverview:
         agent_online=online,
         agent_last_seen=last_seen,
         maintenance=backup_service.maintenance_active(),
+        queued=backup_service.command_pending(),
         job=BackupJob(**job) if job else None,
         files=[BackupFile(**f) for f in backup_service.list_backup_files()],
     )
@@ -83,6 +84,7 @@ async def backup_status(
     return BackupStatus(
         agent_online=online,
         maintenance=backup_service.maintenance_active(),
+        queued=backup_service.command_pending(),
         job=BackupJob(**job) if job else None,
     )
 

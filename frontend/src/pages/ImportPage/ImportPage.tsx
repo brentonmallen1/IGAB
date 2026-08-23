@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../../stores/appStore'
 import { useAccounts } from '../../api/accounts'
 import { importCsv, type CsvImportResult } from '../../api/imports'
+import { invalidateAfterImport } from '../../api/invalidateAfterImport'
 import { useToastUndo } from '../../utils/toastUndo'
 import './ImportPage.css'
 
@@ -33,11 +34,7 @@ export function ImportPage() {
       if (result.batch_id && result.imported > 0) {
         showUndo(result.batch_id, `Imported ${result.imported} transaction${result.imported > 1 ? 's' : ''}`)
       }
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['accounts'] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
+      invalidateAfterImport(qc, budgetId)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Import failed'
       setCsvError(msg)

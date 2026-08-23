@@ -24,6 +24,11 @@ class BackupsOverview(BaseModel):
     agent_online: bool
     agent_last_seen: datetime | None
     maintenance: bool
+    #: A command is written but the agent hasn't picked it up yet — it polls
+    #: every ~10s, and `job` still describes the PREVIOUS job for that whole
+    #: window. Without this the client can't tell "queued" from "idle", so a
+    #: click on Back up now looked like it did nothing.
+    queued: bool
     job: BackupJob | None
     files: list[BackupFile]
 
@@ -31,6 +36,7 @@ class BackupsOverview(BaseModel):
 class BackupStatus(BaseModel):
     agent_online: bool
     maintenance: bool
+    queued: bool
     job: BackupJob | None
 
 
