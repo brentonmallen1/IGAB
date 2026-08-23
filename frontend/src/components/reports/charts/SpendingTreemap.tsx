@@ -8,7 +8,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
-import { ReportNotes } from '../ReportNotes'
+import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 
@@ -143,16 +143,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             )}
           </div>
         )}
-        <label className="report-toggle">
-          <input
-            type="checkbox"
-            checked={includeSavings}
-            onChange={(e) => setIncludeSavings(e.target.checked)}
-          />
-          <span title="Money moved into savings or used to pay down a tracked debt isn't spending, so it's left out by default. Tick to add it back.">
-            Include savings &amp; debt payments
-          </span>
-        </label>
+        <IncludeSavingsToggle checked={includeSavings} onChange={setIncludeSavings} />
         <div className="ms-auto">
           <ReportExportButton
             reportId="treemap"
@@ -182,9 +173,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
 
       {visibleItems.length === 0 ? (
         <div className="reports-empty">
-          {(data?.view_hidden_categories ?? 0) > 0
-            ? 'Everything with spending in this window is hidden by the current view.'
-            : 'No spending data for this period.'}
+          {emptySpendingMessage(data?.view_hidden_categories)}
         </div>
       ) : (
         <div ref={captureRef} className="report-capture">

@@ -14,7 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from igab.db.models import Transaction
-from igab.domain.activity_class import ACTIVITY_CLASS, ACTIVITY_REASON, ActivityClass
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    ACTIVITY_REASON,
+    ActivityClass,
+    apply_class_joins,
+)
 from igab.services.report_service import ReportService
 
 from .factories import (
@@ -34,10 +39,15 @@ MONTH_START = TODAY.replace(day=1)
 async def _classify(db_session, txn):
     row = (
         await db_session.execute(
-            select(ACTIVITY_CLASS, ACTIVITY_REASON).where(Transaction.id == txn.id)
+            # Transaction.id is not wanted; the class joins chain from it.
+            apply_class_joins(
+                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
+                    Transaction.id == txn.id
+                )
+            )
         )
     ).first()
-    return row[0], row[1]
+    return row[1], row[2]
 
 
 async def _budget(db_session):

@@ -86,4 +86,12 @@ describe('categoryOptions', () => {
     const v = view([['need', 'Need']], [{ category_id: 'c1', group_id: 'need' }])
     expect(categoryOptions([hidden], GROUPS, v)).toEqual([])
   })
+
+  // Composing groupByView rather than restating it: a placement pointing at a
+  // group the view no longer has is dropped by the grid, so the picker drops it
+  // too. It used to be offered under Unassigned — selectable, and undrawable.
+  it('does not offer a category placed in a group the view no longer has', () => {
+    const v = view([['need', 'Need']], [{ category_id: 'c1', group_id: 'ghost' }])
+    expect(categoryOptions([cat('c1', 'Rent')], GROUPS, v)).toEqual([])
+  })
 })

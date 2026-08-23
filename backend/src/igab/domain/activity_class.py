@@ -24,12 +24,24 @@ The rules are ordered and first-match-wins, so each one also carries a stable
 an opaque reclassification.
 """
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
-from sqlalchemy import and_, case, func, literal, or_, select
+from sqlalchemy import Select, and_, case, func, literal, not_, or_, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
-from igab.db.models import Account, Category, CategoryGroup, Tag, Transaction, category_tags
+from igab.db.models import (
+    Account,
+    Category,
+    CategoryGroup,
+    Payee,
+    Tag,
+    Transaction,
+    category_tags,
+)
 from igab.repositories.txn_filters import (
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
@@ -174,58 +186,170 @@ _IN_SYSTEM_GROUP = and_(
 _CATEGORIZED = Transaction.category_id.isnot(None)
 _TRACKED_COUNTERPART = COUNTERPART_OFF_BUDGET
 
-#: (condition, class, reason) in priority order. Tags come first so a user's
-#: explicit statement always beats an inferred one.
-RULES: list[tuple[ColumnElement[bool], ActivityClass, ActivityReason]] = [
-    (_tagged("savings", "long_term_expense"), ActivityClass.SAVINGS, ActivityReason.TAGGED_SAVINGS),
-    (_tagged("debt_principal"), ActivityClass.DEBT_PRINCIPAL, ActivityReason.TAGGED_DEBT),
-    # Where the money went decides the class, not whether the user bothered to
-    # categorize it. An uncategorized transfer to a brokerage is still saving:
-    # it leaves the budget and stays in net worth. Requiring a category here
-    # meant those legs fell to the neutral bucket below and vanished from the
-    # savings rate — and YNAB exports are full of uncategorized
-    # tracking-account transfers.
-    (
-        and_(TRANSFER_LEG, _TRACKED_COUNTERPART, ~_counterpart_is_liability),
-        ActivityClass.SAVINGS,
-        ActivityReason.TRANSFER_TO_TRACKED_ASSET,
-    ),
-    (
-        and_(TRANSFER_LEG, _TRACKED_COUNTERPART, _counterpart_is_liability),
-        ActivityClass.DEBT_PRINCIPAL,
-        ActivityReason.TRANSFER_TO_TRACKED_DEBT,
-    ),
-    # What remains is movement between two on-budget accounts (both legs sit
-    # inside the budget, so counting either double-counts), or a leg whose
-    # counterpart could not be resolved. A CATEGORIZED unresolvable leg falls
-    # past this to the spending rules — it keeps the meaning its category gives
-    # it rather than disappearing into a neutral bucket.
-    (
-        and_(TRANSFER_LEG, ~_CATEGORIZED),
-        ActivityClass.TRANSFER_INTERNAL,
-        ActivityReason.INTERNAL_TRANSFER,
-    ),
-    (
-        and_(_own_on_budget == False, ~_own_is_liability),  # noqa: E712
-        ActivityClass.INVESTMENT_RETURN,
-        ActivityReason.TRACKED_ASSET_ACTIVITY,
-    ),
-    (
-        and_(_own_on_budget == False, _own_is_liability),  # noqa: E712
-        ActivityClass.DEBT_INTEREST,
-        ActivityReason.TRACKED_DEBT_ACTIVITY,
-    ),
-    # An inflow category is income whichever way the money moved: a reversed or
-    # clawed-back paycheck is negative income, not spending. Sign still decides
-    # for UNcategorized rows, where it is the only signal available.
-    (
-        or_(and_(Transaction.amount > 0, ~_CATEGORIZED), _IN_SYSTEM_GROUP),
-        ActivityClass.INCOME,
-        ActivityReason.UNCATEGORIZED_INFLOW,
-    ),
-]
 
-#: The class of a transaction row. Use in select(), group_by() and where().
+@dataclass(frozen=True)
+class _Inputs:
+    """Where the rules read the columns they cannot get from `transactions`.
+
+    The rules below are written once against this, so the two ways of reaching
+    those columns — correlated subqueries and LEFT JOINs — cannot drift into
+    disagreeing about *what* the rules are. All a differential test then has to
+    prove is that the two ways of reading a column agree, which is a far
+    smaller claim than "these two rule sets behave identically".
+    """
+
+    # `Any` because the two implementations supply genuinely different types
+    # for the same thing — a mapped column attribute on one side, a built SQL
+    # expression on the other — and they share no common supertype narrower
+    # than this. What matters is that both answer the boolean operators the
+    # rules apply to them, which the differential test verifies for real.
+    own_on_budget: Any
+    own_is_liability: Any
+    counterpart_is_liability: Any
+    tracked_counterpart: Any
+    transfer_leg: Any
+
+
+Rule = tuple[ColumnElement[bool], ActivityClass, ActivityReason]
+
+
+def _rules(c: _Inputs) -> list[Rule]:
+    """(condition, class, reason) in priority order. Tags come first so a
+    user's explicit statement always beats an inferred one."""
+    return [
+        (
+            _tagged("savings", "long_term_expense"),
+            ActivityClass.SAVINGS,
+            ActivityReason.TAGGED_SAVINGS,
+        ),
+        (_tagged("debt_principal"), ActivityClass.DEBT_PRINCIPAL, ActivityReason.TAGGED_DEBT),
+        # Where the money went decides the class, not whether the user bothered to
+        # categorize it. An uncategorized transfer to a brokerage is still saving:
+        # it leaves the budget and stays in net worth. Requiring a category here
+        # meant those legs fell to the neutral bucket below and vanished from the
+        # savings rate — and YNAB exports are full of uncategorized
+        # tracking-account transfers.
+        (
+            and_(c.transfer_leg, c.tracked_counterpart, ~c.counterpart_is_liability),
+            ActivityClass.SAVINGS,
+            ActivityReason.TRANSFER_TO_TRACKED_ASSET,
+        ),
+        (
+            and_(c.transfer_leg, c.tracked_counterpart, c.counterpart_is_liability),
+            ActivityClass.DEBT_PRINCIPAL,
+            ActivityReason.TRANSFER_TO_TRACKED_DEBT,
+        ),
+        # What remains is movement between two on-budget accounts (both legs sit
+        # inside the budget, so counting either double-counts), or a leg whose
+        # counterpart could not be resolved. A CATEGORIZED unresolvable leg falls
+        # past this to the spending rules — it keeps the meaning its category gives
+        # it rather than disappearing into a neutral bucket.
+        (
+            and_(c.transfer_leg, ~_CATEGORIZED),
+            ActivityClass.TRANSFER_INTERNAL,
+            ActivityReason.INTERNAL_TRANSFER,
+        ),
+        (
+            and_(c.own_on_budget == False, ~c.own_is_liability),  # noqa: E712
+            ActivityClass.INVESTMENT_RETURN,
+            ActivityReason.TRACKED_ASSET_ACTIVITY,
+        ),
+        (
+            and_(c.own_on_budget == False, c.own_is_liability),  # noqa: E712
+            ActivityClass.DEBT_INTEREST,
+            ActivityReason.TRACKED_DEBT_ACTIVITY,
+        ),
+        # An inflow category is income whichever way the money moved: a reversed or
+        # clawed-back paycheck is negative income, not spending. Sign still decides
+        # for UNcategorized rows, where it is the only signal available.
+        (
+            or_(and_(Transaction.amount > 0, ~_CATEGORIZED), _IN_SYSTEM_GROUP),
+            ActivityClass.INCOME,
+            ActivityReason.UNCATEGORIZED_INFLOW,
+        ),
+    ]
+
+
+#: How the shipped expression reaches those columns: correlated subqueries,
+#: evaluated per row.
+_SUBQUERY_INPUTS = _Inputs(
+    own_on_budget=_own_on_budget,
+    own_is_liability=_own_is_liability,
+    counterpart_is_liability=_counterpart_is_liability,
+    tracked_counterpart=_TRACKED_COUNTERPART,
+    transfer_leg=TRANSFER_LEG,
+)
+
+
+# ─── The same rules, reading joined columns ──────────────────────────────────
+#
+# Every join below is to a primary key, so each matches at most once and the
+# result stays one row per transaction. That is load-bearing rather than
+# incidental: a join matching twice would multiply every total computed through
+# the expression while still looking like a number. `class_agreement.py` checks
+# it directly, and `assert_activity_class_partition` checks it at 48 more sites.
+
+_own_acct = aliased(Account, name="own_acct")
+_partner_txn = aliased(Transaction, name="partner_txn")
+_transfer_payee = aliased(Payee, name="xfer_payee")
+_counterpart_acct = aliased(Account, name="counterpart_acct")
+
+#: The counterpart account id, joined rather than looked up twice per row. Same
+#: precedence as COUNTERPART_ACCOUNT_ID: the partner link is the strong signal,
+#: an orphaned leg falls back to the account its transfer payee names.
+_joined_counterpart_id = func.coalesce(_partner_txn.account_id, _transfer_payee.transfer_account_id)
+
+#: NULL when the join found nothing, which is the same three-valued hazard the
+#: subquery version documents — so both ends are coalesced identically. An
+#: unresolvable counterpart reads as on-budget (so not "tracked") and as an
+#: asset, exactly as before.
+_joined_counterpart_on_budget = func.coalesce(_counterpart_acct.on_budget, True)
+
+_JOINED_INPUTS = _Inputs(
+    own_on_budget=_own_acct.on_budget,
+    own_is_liability=_own_acct.classification == _LIABILITY,
+    counterpart_is_liability=(
+        func.coalesce(_counterpart_acct.classification, "asset") == _LIABILITY
+    ),
+    tracked_counterpart=not_(_joined_counterpart_on_budget),
+    # `transfer_account_id IS NOT NULL` on the joined payee is exactly what the
+    # TRANSFER_PAYEE EXISTS asks, and is two-valued for the same reason.
+    transfer_leg=or_(
+        Transaction.transfer_id.isnot(None),
+        _transfer_payee.transfer_account_id.isnot(None),
+    ),
+)
+
+#: The shipped rules, reading joined columns.
+RULES: list[Rule] = _rules(_JOINED_INPUTS)
+
+
+def apply_class_joins(stmt: Select) -> Select:
+    """Bring in the columns ACTIVITY_CLASS reads.
+
+    Must be applied to any query that selects, filters or groups by the class
+    or reason expressions. Forgetting leaves the aliased tables unjoined in the
+    FROM, which is a cartesian product: SQLAlchemy warns, and pyproject
+    promotes that warning to an error so it fails a test rather than inflating
+    a total.
+
+    The statement must already be anchored on `transactions` — selecting at
+    least one Transaction column, or having it as the explicit FROM — since
+    these joins chain from it. Every consumer does; a query that selected only
+    the CASE would not, which is a real way to get a cartesian product while
+    doing everything else right.
+    """
+    return (
+        stmt.outerjoin(_own_acct, _own_acct.id == Transaction.account_id)
+        .outerjoin(_partner_txn, _partner_txn.id == Transaction.transfer_id)
+        .outerjoin(_transfer_payee, _transfer_payee.id == Transaction.payee_id)
+        .outerjoin(_counterpart_acct, _counterpart_acct.id == _joined_counterpart_id)
+    )
+
+
+#: The class of a transaction row. Use in select(), group_by() and where() —
+#: and apply CLASS_JOINS to the same query, or the aliased tables it reads land
+#: in the FROM unjoined and every total multiplies.
 ACTIVITY_CLASS = case(
     *[(condition, literal(cls.value)) for condition, cls, _ in RULES],
     else_=literal(ActivityClass.SPENDING.value),
@@ -236,6 +360,44 @@ ACTIVITY_REASON = case(
     *[(condition, literal(reason.value)) for condition, _, reason in RULES],
     else_=literal(ActivityReason.DEFAULT_SPENDING.value),
 )
+
+#: Joins a query must apply before it can use the expressions above.
+#:
+#: A separate symbol rather than something callers just remember, because one
+#: caller cannot remember: `tests/integration/invariants.py` asserts that the
+#: classes partition every posted leaf row, and it counts rows to do it — which
+#: is exactly the check that catches a join matching more than once. That check
+#: is only worth anything if it builds its query the way the reports build
+#: theirs, and it has no other way to know how they do. Reading this keeps the
+#: two in step across all 48 of its call sites.
+CLASS_JOINS: Callable[[Select], Select] | None = apply_class_joins
+
+
+# ─── The previous implementation, kept as a test oracle ──────────────────────
+#
+# Correlated scalar subqueries: the same rules reading the same columns, one
+# lookup per row per rule. Replaced because the CASE short-circuits, so the
+# common row — ordinary spending, matching no rule — fell through every arm and
+# paid the maximum number of subplan executions. Over a 41k-row register a
+# three-year monthly aggregate cost 342 ms against 13 ms for the joined form.
+#
+# Kept, and only ever imported by tests, because it is the thing that makes the
+# joined version checkable: `tests/integration/class_agreement.py` requires the
+# two to classify every row of a realistic budget identically, class and reason
+# both. Delete this and that test has nothing left to compare against.
+
+RULES_SUBQUERY: list[Rule] = _rules(_SUBQUERY_INPUTS)
+
+ACTIVITY_CLASS_SUBQUERY = case(
+    *[(condition, literal(cls.value)) for condition, cls, _ in RULES_SUBQUERY],
+    else_=literal(ActivityClass.SPENDING.value),
+)
+
+ACTIVITY_REASON_SUBQUERY = case(
+    *[(condition, literal(reason.value)) for condition, _, reason in RULES_SUBQUERY],
+    else_=literal(ActivityReason.DEFAULT_SPENDING.value),
+)
+
 
 #: The classes a spending report means by "spending" — everything a household
 #: would call money going out, and nothing that merely moves or grows it.

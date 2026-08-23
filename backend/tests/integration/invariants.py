@@ -153,8 +153,15 @@ async def assert_activity_class_partition(session: AsyncSession, budget_id: uuid
 
     Written against the expression under test on purpose — the check here is
     totality and conservation, which a re-implementation could not verify.
+
+    The row count is doing a second job. If the expression ever needs joins to
+    reach the columns it reads, a join that matches more than once per
+    transaction inflates `classified_count` above `total_count` and fails here
+    — and this runs at 48 call sites across the suite, over YNAB imports,
+    reconciliations and split edits. That only holds while this query is built
+    the way the reports build theirs, which is what CLASS_JOINS is for.
     """
-    from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass
+    from igab.domain.activity_class import ACTIVITY_CLASS, CLASS_JOINS, ActivityClass
 
     scope = and_(
         Transaction.budget_id == budget_id,
@@ -170,17 +177,18 @@ async def assert_activity_class_partition(session: AsyncSession, budget_id: uuid
     ).one()
     total_count, total_amount = total_row[0], Decimal(str(total_row[1]))
 
-    grouped = (
-        await session.execute(
-            select(
-                ACTIVITY_CLASS.label("cls"),
-                func.count(),
-                func.coalesce(func.sum(Transaction.amount), 0),
-            )
-            .where(scope)
-            .group_by(ACTIVITY_CLASS)
+    grouped_q = (
+        select(
+            ACTIVITY_CLASS.label("cls"),
+            func.count(),
+            func.coalesce(func.sum(Transaction.amount), 0),
         )
-    ).all()
+        .where(scope)
+        .group_by(ACTIVITY_CLASS)
+    )
+    if CLASS_JOINS is not None:
+        grouped_q = CLASS_JOINS(grouped_q)
+    grouped = (await session.execute(grouped_q)).all()
 
     by_class = {row.cls: (row[1], Decimal(str(row[2]))) for row in grouped}
 

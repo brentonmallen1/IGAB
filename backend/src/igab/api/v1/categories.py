@@ -60,6 +60,7 @@ from igab.domain.activity_class import (
     ACTIVITY_REASON,
     CLASS_LABEL,
     ActivityClass,
+    apply_class_joins,
     explain,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
@@ -409,11 +410,15 @@ async def get_category_classification(
     window_start = date.today() - timedelta(days=365)
     rows = (
         await session.execute(
-            select(
-                ACTIVITY_CLASS.label("cls"),
-                ACTIVITY_REASON.label("reason"),
-                func.sum(func.abs(Transaction.amount)).label("total"),
-                func.count().label("count"),
+            apply_class_joins(
+                # select_from, not a stray Transaction column: this aggregates,
+                # so an extra column would have to join the GROUP BY.
+                select(
+                    ACTIVITY_CLASS.label("cls"),
+                    ACTIVITY_REASON.label("reason"),
+                    func.sum(func.abs(Transaction.amount)).label("total"),
+                    func.count().label("count"),
+                ).select_from(Transaction)
             )
             .where(
                 Transaction.category_id == category_id,

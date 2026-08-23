@@ -392,53 +392,96 @@ class TestSpendingGrouped:
 
 # ─── day_patterns ─────────────────────────────────────────────────────────────
 
+def spend_row(**kwargs):
+    """A day-patterns row. The class filter moved out of the WHERE and into a
+    Python partition, so every row now carries its class and category."""
+    kwargs.setdefault("cls", "spending")
+    kwargs.setdefault("id", uuid.uuid4())
+    return row(**kwargs)
+
+
 class TestDayPatterns:
     async def test_seven_days_always_returned(self):
         svc = ReportService(make_session(mock_result([])))
-        result = await svc.day_patterns(BUDGET, JAN, APR)
-        assert len(result) == 7
-        assert {r["day_of_week"] for r in result} == set(range(7))
+        days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
+        assert len(days) == 7
+        assert {r["day_of_week"] for r in days} == set(range(7))
 
     async def test_day_names_correct(self):
         svc = ReportService(make_session(mock_result([])))
-        result = await svc.day_patterns(BUDGET, JAN, APR)
-        by_idx = {r["day_of_week"]: r["day_name"] for r in result}
+        days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
+        by_idx = {r["day_of_week"]: r["day_name"] for r in days}
         assert by_idx[0] == "Monday"
         assert by_idx[6] == "Sunday"
 
     async def test_aggregation_by_weekday(self):
         # 2026-01-05 is a Monday, 2026-01-06 is Tuesday
         rows = [
-            row(date=date(2026, 1, 5), amount=D("-100.00")),
-            row(date=date(2026, 1, 5), amount=D("-50.00")),
-            row(date=date(2026, 1, 6), amount=D("-200.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-50.00")),
+            spend_row(date=date(2026, 1, 6), amount=D("-200.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.day_patterns(BUDGET, JAN, APR)
+        days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
 
-        monday = next(r for r in result if r["day_name"] == "Monday")
-        tuesday = next(r for r in result if r["day_name"] == "Tuesday")
+        monday = next(r for r in days if r["day_name"] == "Monday")
+        tuesday = next(r for r in days if r["day_name"] == "Tuesday")
         assert monday["total"] == D("150.0")
         assert monday["count"] == 2
         assert tuesday["total"] == D("200.0")
 
     async def test_avg_transaction(self):
         rows = [
-            row(date=date(2026, 1, 5), amount=D("-100.00")),
-            row(date=date(2026, 1, 5), amount=D("-200.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-200.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.day_patterns(BUDGET, JAN, APR)
-        monday = next(r for r in result if r["day_name"] == "Monday")
+        days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
+        monday = next(r for r in days if r["day_name"] == "Monday")
         assert monday["avg_transaction"] == pytest.approx(D("150.0"), rel=D("0.01"))
 
     async def test_empty_days_return_zero_not_missing(self):
-        rows = [row(date=date(2026, 1, 5), amount=D("-100.00"))]  # Monday only
+        rows = [spend_row(date=date(2026, 1, 5), amount=D("-100.00"))]  # Monday only
         svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.day_patterns(BUDGET, JAN, APR)
-        sunday = next(r for r in result if r["day_name"] == "Sunday")
+        days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
+        sunday = next(r for r in days if r["day_name"] == "Sunday")
         assert sunday["total"] == D("0")
         assert sunday["count"] == 0
+
+    async def test_a_savings_row_is_partitioned_out_of_the_chart(self):
+        """The class filter used to be a WHERE clause, so these rows never
+        arrived. They arrive now, and must not be charted as spending."""
+        cat = uuid.uuid4()
+        rows = [
+            spend_row(date=date(2026, 1, 5), amount=D("-100.00")),
+            spend_row(date=date(2026, 1, 5), amount=D("-900.00"), cls="savings", id=cat),
+        ]
+        svc = ReportService(make_session(mock_result(rows)))
+        days = (await svc.day_patterns(BUDGET, JAN, APR))["days"]
+        monday = next(r for r in days if r["day_name"] == "Monday")
+        assert monday["total"] == D("100.0")
+        assert monday["count"] == 1
+
+    async def test_the_note_only_fires_for_a_category_selection(self):
+        cat = uuid.uuid4()
+        rows = [spend_row(date=date(2026, 1, 5), amount=D("-900.00"), cls="savings", id=cat)]
+
+        unscoped = await ReportService(make_session(mock_result(rows))).day_patterns(
+            BUDGET, JAN, APR
+        )
+        assert unscoped["class_excluded"] is None
+
+        scoped = await ReportService(make_session(mock_result(rows))).day_patterns(
+            BUDGET, JAN, APR, category_ids=[cat]
+        )
+        assert scoped["class_excluded"] == [
+            {
+                "activity_class": "savings",
+                "label": "Savings",
+                "categories": 1,
+                "total": D("900.00"),
+            }
+        ]
 
 
 # ─── payee_analysis ───────────────────────────────────────────────────────────
