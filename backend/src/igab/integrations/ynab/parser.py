@@ -3,9 +3,10 @@ import io
 import re
 import zipfile
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 
+from igab.domain.money import parse_csv_amount
 from igab.integrations.ynab.models import (
     YNABBudget,
     YNABBudgetEntry,
@@ -40,11 +41,21 @@ _MONTH_ABBREVS = {
 
 
 def _parse_currency(val: str) -> Decimal:
-    cleaned = val.replace("$", "").replace(",", "").strip()
-    try:
-        return Decimal(cleaned)
-    except InvalidOperation:
-        return Decimal("0")
+    """Parse a YNAB money string, or raise.
+
+    Routed through `parse_csv_amount`, the documented single entry point for
+    turning imported text into money — the CSV importer has always used it.
+    This used to hand back `Decimal("0")` on anything it could not read, which
+    imported the transaction anyway with zero money: the row count looked
+    right and the balance was quietly wrong. `domain/money.py` exists to stop
+    exactly that ("a single NaN poisons every SUM the app runs"), and this
+    path went around it — no `validate_money`, so Infinity, NaN and 10^14
+    magnitudes all passed, and "1,50" became 150 where the shared parser
+    rejects it as an ambiguous European decimal.
+
+    Raises ValueError; callers skip the row and record why.
+    """
+    return parse_csv_amount(val)
 
 
 def _parse_date(val: str) -> date | None:
@@ -140,6 +151,11 @@ def _reassemble_splits(
 
 
 class YNABParser:
+    def __init__(self) -> None:
+        #: Rows dropped because their amount could not be read. Surfaced to the
+        #: user through ImportResult.errors rather than swallowed.
+        self.errors: list[str] = []
+
     def parse_zip(self, path: Path) -> YNABBudget:
         with zipfile.ZipFile(path) as zf:
             register_content: str | None = None
@@ -160,7 +176,11 @@ class YNABParser:
 
         transactions = self.parse_register_csv(register_content)
         budget_entries = self.parse_plan_csv(plan_content) if plan_content else []
-        return YNABBudget(transactions=transactions, budget_entries=budget_entries)
+        return YNABBudget(
+            transactions=transactions,
+            budget_entries=budget_entries,
+            errors=list(self.errors),
+        )
 
     def parse_register_csv(self, content: str) -> list[YNABTransaction]:
         reader = csv.DictReader(io.StringIO(content))
@@ -183,8 +203,15 @@ class YNABParser:
             if txn_date is None:
                 continue
 
-            outflow = _parse_currency(raw_outflow) if raw_outflow else Decimal("0")
-            inflow = _parse_currency(raw_inflow) if raw_inflow else Decimal("0")
+            try:
+                outflow = _parse_currency(raw_outflow) if raw_outflow else Decimal("0")
+                inflow = _parse_currency(raw_inflow) if raw_inflow else Decimal("0")
+            except ValueError as e:
+                # Skipping loses one row and says so. Importing a zero loses
+                # the money and says nothing, which is worse: the count still
+                # reconciles and only the balance is wrong.
+                self.errors.append(f"{account} {raw_date}: {e}")
+                continue
             amount = inflow - outflow
 
             cleared = _CLEARED_MAP.get(cleared_raw, "uncleared")
@@ -229,7 +256,11 @@ class YNABParser:
             if month is None:
                 continue
 
-            assigned = _parse_currency(raw_assigned) if raw_assigned else Decimal("0")
+            try:
+                assigned = _parse_currency(raw_assigned) if raw_assigned else Decimal("0")
+            except ValueError as e:
+                self.errors.append(f"{category_group}/{category} {raw_month}: {e}")
+                continue
             if assigned == 0:
                 continue
 

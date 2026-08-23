@@ -607,3 +607,27 @@ class TestImportAndClose:
         )
         assert len(legs) == 2, "both legs linked despite one side being closed"
         await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_a_parse_error_reaches_the_import_summary(db_session):
+    """The parser drops a row it cannot read; the user has to be told.
+
+    Before this, an unreadable amount became Decimal("0") and the transaction
+    imported anyway with no money in it — the row count reconciled and only
+    the balance was wrong. `result.errors` is the only place a user would ever
+    learn a row did not make it.
+    """
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    importer = _importer(services, db_session, budget)
+
+    ynab = YNABBudget(
+        transactions=[_txn("Checking", "Shop", "-12.00")],
+        budget_entries=[],
+        errors=["Checking 04/15/2026: cannot parse amount 'N/A'"],
+    )
+    result = await importer.import_budget(ynab)
+
+    assert result.transactions_imported == 1
+    assert any("cannot parse amount" in e for e in result.errors)

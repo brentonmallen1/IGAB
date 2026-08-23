@@ -107,6 +107,10 @@ class YNABImporter:
 
     async def import_budget(self, budget: YNABBudget) -> ImportResult:
         result = ImportResult()
+        # Rows the parser had to drop because their amount was unreadable.
+        # Carried through rather than swallowed: the import summary is the
+        # only place a user would ever learn a row did not make it.
+        result.errors.extend(budget.errors[:_MAX_ERRORS])
         await self._import_transactions(budget, result)
         await self._import_assignments(budget, result)
         return result
