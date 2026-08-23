@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiClient } from './client'
+import toast from 'react-hot-toast'
+import { apiClient, apiErrorMessage } from './client'
 import type { Category, CategoryGroup, CategoryClassification } from '../types'
 
 export function useCategoryGroups(budgetId: string | null, includeHidden = false) {
@@ -113,6 +114,47 @@ export function useUpdateCategoryGroup(budgetId: string) {
       apiClient.patch<CategoryGroup>(`/category-groups/${id}`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
+    },
+  })
+}
+
+/** Set the order of every category group in one request.
+ *
+ *  One request rather than a PATCH per group: a drag that half-applies leaves
+ *  an order the user did not choose. The server refuses a list that does not
+ *  name every live group exactly once, so a stale client fails loudly instead
+ *  of shuffling rows it never showed. */
+export function useReorderCategoryGroups(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (groupIds: string[]) =>
+      apiClient.post(`/${budgetId}/category-groups/reorder`, { group_ids: groupIds }),
+    onMutate: async (groupIds) => {
+      // Optimistic: a drag that snaps back for a round trip reads as a failed
+      // drag. Kept as the previous list so an error can restore it.
+      await qc.cancelQueries({ queryKey: ['categoryGroups', budgetId] })
+      const previous = qc.getQueryData<CategoryGroup[]>(['categoryGroups', budgetId])
+      if (previous) {
+        const byId = new Map(previous.map((g) => [g.id, g]))
+        const reordered = groupIds
+          .map((id, i) => {
+            const g = byId.get(id)
+            return g ? { ...g, sort_order: i } : null
+          })
+          .filter((g): g is CategoryGroup => g !== null)
+        qc.setQueryData(['categoryGroups', budgetId], reordered)
+      }
+      return { previous }
+    },
+    onError: (err, _ids, ctx) => {
+      if (ctx?.previous) qc.setQueryData(['categoryGroups', budgetId], ctx.previous)
+      toast.error(apiErrorMessage(err, 'Could not save the new order'))
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
+      // Group order is part of how the month reads, so anything caching the
+      // grid's shape has to follow.
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
     },
   })
 }

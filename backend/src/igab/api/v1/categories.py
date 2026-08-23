@@ -22,6 +22,7 @@ from igab.api.v1.schemas.category import (
     CategoryClassSlice,
     CategoryCreate,
     CategoryGroupCreate,
+    CategoryGroupReorder,
     CategoryGroupResponse,
     CategoryGroupUpdate,
     CategoryHistoryBatchRequest,
@@ -117,6 +118,24 @@ async def create_category_group(
         after=snapshot("category_group", group),
     )
     return CategoryGroupResponse.model_validate(group)
+
+
+@router.post("/{budget_id}/category-groups/reorder", status_code=status.HTTP_204_NO_CONTENT)
+async def reorder_category_groups(
+    budget_id: BudgetAccess,
+    body: CategoryGroupReorder,
+    current_user: CurrentUser,
+    group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
+) -> None:
+    """Set the order of the budget's category groups in one request.
+
+    One request rather than a PATCH per group: a drag that half-applies leaves
+    an order the user did not choose and cannot see the shape of.
+    """
+    try:
+        await group_repo.reorder(budget_id, body.group_ids)
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.patch("/category-groups/{group_id}", response_model=CategoryGroupResponse)

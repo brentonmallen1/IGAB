@@ -3,16 +3,48 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.orm import selectinload, with_expression
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup
+from igab.domain.exceptions import InvariantViolation
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import IS_ASSIGNABLE, IS_CATEGORIZABLE
 
 
 class CategoryGroupRepository(BaseRepository[CategoryGroup]):
     model = CategoryGroup
+
+    async def reorder(self, budget_id: uuid.UUID, group_ids: list[uuid.UUID]) -> None:
+        """Set every group's sort_order from its position in `group_ids`.
+
+        The list must name each of the budget's live groups exactly once. A
+        partial list would look like it worked and then interleave the
+        unnamed groups at whatever numbers they already held — so a stale
+        client (a group added in another tab) is refused rather than allowed
+        to shuffle rows the user never saw.
+        """
+        existing = {
+            g.id
+            for g in (
+                await self.session.execute(
+                    select(CategoryGroup).where(
+                        CategoryGroup.budget_id == budget_id,
+                        CategoryGroup.is_deleted == False,  # noqa: E712
+                    )
+                )
+            ).scalars()
+        }
+        given = set(group_ids)
+        if len(group_ids) != len(given) or given != existing:
+            raise InvariantViolation("Reorder must list each of this budget's groups exactly once")
+        for position, group_id in enumerate(group_ids):
+            await self.session.execute(
+                update(CategoryGroup)
+                .where(CategoryGroup.id == group_id)
+                .values(sort_order=position)
+            )
+        await self.session.flush()
 
     async def get_all(
         self, budget_id: uuid.UUID, include_hidden: bool = False

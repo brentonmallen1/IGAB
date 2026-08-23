@@ -65,6 +65,8 @@ function ViewEditor({
     () => existing?.groups.map((g) => g.name) ?? []
   )
   const [newGroup, setNewGroup] = useState('')
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
   const [hideUnassigned, setHideUnassigned] = useState(existing?.hide_unassigned ?? false)
   const [assignment, setAssignment] = useState<Assignment>(() => {
     if (!existing) return {}
@@ -118,6 +120,16 @@ function ViewEditor({
       )
     )
     return true
+  }
+
+  /** Move a group to a position. Order is what the view saves, so this is
+   *  the whole feature — no ids, no extra request. */
+  function moveGroupTo(name: string, index: number) {
+    setGroupNames((current) => {
+      const next = current.filter((n) => n !== name)
+      next.splice(index, 0, name)
+      return next
+    })
   }
 
   function removeGroup(target: string) {
@@ -276,10 +288,33 @@ function ViewEditor({
           </span>
         </label>
 
-        <div className="view-editor__section-title">Groups in this view</div>
+        <div className="view-editor__section-title">
+          Groups in this view
+          {groupNames.length > 1 && (
+            <span className="view-editor__section-hint"> — drag to reorder</span>
+          )}
+        </div>
         <div className="view-editor__groups">
-          {groupNames.map((g) => (
-            <span key={g} className="view-editor__chip">
+          {groupNames.map((g, index) => (
+            <span
+              key={g}
+              className={
+                'view-editor__chip' + (dragOver === g ? ' view-editor__chip--drag-over' : '')
+              }
+              // A view's group order is its array order (the server assigns
+              // sort_order from position), so reordering here needs no extra
+              // persistence — only a way to say it.
+              draggable
+              onDragStart={() => setDragging(g)}
+              onDragEnd={() => { setDragging(null); setDragOver(null) }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(g) }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (dragging && dragging !== g) moveGroupTo(dragging, index)
+                setDragging(null)
+                setDragOver(null)
+              }}
+            >
               {/* Editable in place: a group name is the whole label the user
                   reads on the budget page, and getting it wrong should not
                   mean deleting the group and reassigning everything in it. */}

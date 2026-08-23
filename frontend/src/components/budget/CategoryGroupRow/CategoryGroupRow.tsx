@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, EyeOff, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, EyeOff, GripVertical, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useUIStore } from '../../../stores/uiStore'
 import {
   useCreateCategory,
@@ -23,6 +23,20 @@ interface Props {
    *  add-category all act on the default arrangement, which a view must never
    *  edit — so they are suppressed rather than silently doing the wrong thing. */
   readOnlyGroup?: boolean
+  /** Present only where reordering is meaningful: the budget's own
+   *  arrangement, unfiltered, showing every group. Absent under a filter, a
+   *  search or a view, where a drop would reorder against a list the user
+   *  cannot see. */
+  reorder?: {
+    isDragging: boolean
+    isDragOver: boolean
+    onDragStart: () => void
+    onDragOver: () => void
+    onDrop: () => void
+    onDragEnd: () => void
+    onMoveUp?: () => void
+    onMoveDown?: () => void
+  }
 }
 
 export function CategoryGroupRow({
@@ -32,6 +46,7 @@ export function CategoryGroupRow({
   budgetId,
   month,
   readOnlyGroup = false,
+  reorder,
 }: Props) {
   const { formatMoney } = useFormatters()
   const collapsedGroups = useUIStore((s) => s.collapsedGroups)
@@ -109,7 +124,57 @@ export function CategoryGroupRow({
 
   return (
     <div className={`category-group-row ${budgetRowMode === 'compressed' ? 'category-group-row--compressed' : ''}`}>
-      <div className="category-group-row__header">
+      <div
+        className={
+          'category-group-row__header' +
+          (reorder?.isDragging ? ' category-group-row__header--dragging' : '') +
+          (reorder?.isDragOver ? ' category-group-row__header--drag-over' : '')
+        }
+        // Only the handle starts a drag: making the whole header draggable
+        // turns every attempt to select the name into a drag.
+        onDragOver={
+          reorder
+            ? (e) => {
+                e.preventDefault()
+                reorder.onDragOver()
+              }
+            : undefined
+        }
+        onDrop={
+          reorder
+            ? (e) => {
+                e.preventDefault()
+                reorder.onDrop()
+              }
+            : undefined
+        }
+      >
+        {reorder && (
+          <span
+            className="category-group-row__drag"
+            draggable
+            onDragStart={reorder.onDragStart}
+            onDragEnd={reorder.onDragEnd}
+            // Keyboard path to the same outcome — the order of a budget is
+            // not a pointer-only decision.
+            tabIndex={0}
+            role="button"
+            aria-label={`Reorder ${group.name}. Use the arrow keys to move it.`}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowUp' && reorder.onMoveUp) {
+                e.preventDefault()
+                reorder.onMoveUp()
+              }
+              if (e.key === 'ArrowDown' && reorder.onMoveDown) {
+                e.preventDefault()
+                reorder.onMoveDown()
+              }
+            }}
+            title="Drag to reorder, or use the arrow keys"
+          >
+            <GripVertical size={12} />
+          </span>
+        )}
         <button
           className="category-group-row__toggle"
           onClick={() => toggleGroup(group.id)}
