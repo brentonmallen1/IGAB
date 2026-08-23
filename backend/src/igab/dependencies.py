@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import User
 from igab.db.session import get_session
 from igab.domain.exceptions import AuthenticationError
+from igab.guide.service import GuideService
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.account_type_repo import AccountTypeRepository
 from igab.repositories.ai_job_repo import AIJobRepository
@@ -95,6 +96,10 @@ def get_account_repo(session: SessionDep) -> AccountRepository:
 
 def get_account_type_repo(session: SessionDep) -> AccountTypeRepository:
     return AccountTypeRepository(session)
+
+
+def get_guide_service(session: SessionDep) -> GuideService:
+    return GuideService(session)
 
 
 def get_attachment_repo(session: SessionDep) -> AttachmentRepository:

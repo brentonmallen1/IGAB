@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAppStore, THEMES, FONT_SCALES, type Theme, type FontScale } from '../../stores/appStore'
 import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '../../api/accounts'
+import { useGuideOverview, useSetGuidePreferences } from '../../api/guide'
 import { useLiabilities } from '../../api/liabilities'
 import { confirmAccountDeletion } from '../../utils/confirmAccountDeletion'
 import { useBudgets, useUpdateBudget } from '../../api/budgets'
@@ -138,10 +139,16 @@ export function SettingsPage() {
   // Track active section for nav highlighting
   const [activeSection, setActiveSection] = useState<string>('appearance')
 
+  const guideOverview = useGuideOverview(budgetId)
+  const setGuidePrefs = useSetGuidePreferences(budgetId ?? '')
+  // Both default on; the server is the source of truth once it answers.
+  const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true }
+
   const sections = [
     { id: 'appearance', label: 'Appearance' },
     { id: 'budget', label: 'Budget' },
     ...(budgetId ? [{ id: 'tags', label: 'Tags' }] : []),
+    ...(budgetId ? [{ id: 'guide', label: 'Guide' }] : []),
     { id: 'mobile', label: 'Mobile' },
     ...(budgetId ? [{ id: 'accounts', label: 'Accounts' }] : []),
     ...(budgetId ? [{ id: 'integrity', label: 'Data Integrity' }] : []),
@@ -387,6 +394,51 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Guide */}
+      {budgetId && (
+        <div className="settings-section" id="guide">
+          <div className="settings-section__header">
+            <div className="settings-section__title">Guide</div>
+          </div>
+          <div className="settings-section__body">
+            <div className="settings-row">
+              <div>
+                <div className="settings-row__label">Personalise the roadmap</div>
+                <div className="settings-row__desc">
+                  Use your budget to show where you are on the roadmap. Every figure it
+                  works out is explained, and you can correct or switch off any of them.
+                  Turn this off and the roadmap becomes plain reading — nothing is
+                  calculated at all.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={guidePrefs.personalization}
+                disabled={setGuidePrefs.isPending}
+                onChange={(e) => setGuidePrefs.mutate({ personalization: e.target.checked })}
+              />
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <div className="settings-row__label">Financial health reviews</div>
+                <div className="settings-row__desc">
+                  {guidePrefs.personalization
+                    ? 'Show a quiet marker on any roadmap step worth a look, and offer a health report you can run when you want it. IGAB never sends you a notification about your money.'
+                    : 'Unavailable while the roadmap is not personalised — health reviews are built from the same figures.'}
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={guidePrefs.checkup}
+                disabled={!guidePrefs.personalization || setGuidePrefs.isPending}
+                onChange={(e) => setGuidePrefs.mutate({ checkup: e.target.checked })}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tags */}
       {budgetId && (

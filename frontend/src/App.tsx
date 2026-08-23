@@ -26,6 +26,7 @@ const AccountsOverviewPage = lazy(() => import('./pages/AccountsOverviewPage/Acc
 const AIActivityPage = lazy(() => import('./pages/AIActivityPage/AIActivityPage').then((m) => ({ default: m.AIActivityPage })))
 const ActivityPage = lazy(() => import('./pages/ActivityPage/ActivityPage').then((m) => ({ default: m.ActivityPage })))
 const LiabilitiesOverviewPage = lazy(() => import('./pages/LiabilitiesOverviewPage/LiabilitiesOverviewPage').then((m) => ({ default: m.LiabilitiesOverviewPage })))
+const GuidePage = lazy(() => import('./pages/GuidePage/GuidePage').then((m) => ({ default: m.GuidePage })))
 const LiabilityPage = lazy(() => import('./pages/LiabilityPage/LiabilityPage').then((m) => ({ default: m.LiabilityPage })))
 
 const queryClient = new QueryClient({
@@ -116,6 +117,7 @@ function App() {
                 <Route path="/settings" element={page(<SettingsPage />)} />
                 <Route path="/import" element={page(<ImportPage />)} />
                 <Route path="/reports" element={page(<ReportsPage />)} />
+                <Route path="/guide" element={page(<GuidePage />)} />
                 <Route path="/scheduled" element={page(<ScheduledTransactionsPage />)} />
                 <Route path="/payees" element={page(<PayeesPage />)} />
                 <Route path="/ai-activity" element={page(<AIActivityPage />)} />
