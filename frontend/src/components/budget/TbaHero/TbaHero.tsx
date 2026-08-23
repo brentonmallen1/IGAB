@@ -1,7 +1,6 @@
-import { useMemo, useRef } from 'react'
+import { useRef } from 'react'
 import { CalendarRange, ChevronDown, Wand2 } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
-import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -26,8 +25,6 @@ interface Props {
  */
 export function TbaHero({ budgetId, month }: Props) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
-  const { data: categories = [] } = useCategories(budgetId)
-  const { data: groups = [] } = useCategoryGroups(budgetId)
   const isMobile = useIsMobile()
   const { formatMoney } = useFormatters()
 
@@ -47,15 +44,11 @@ export function TbaHero({ budgetId, month }: Props) {
   const assignedInFuture = Number(budgetMonth?.assigned_in_future ?? 0)
   const tbaClass = tba > 0 ? 'positive' : tba < 0 ? 'negative' : 'zero'
 
-  const overspentCount = useMemo(() => {
-    const systemGroupIds = new Set(groups.filter((g) => g.is_system).map((g) => g.id))
-    const nonSystemIds = new Set(
-      categories.filter((c) => !systemGroupIds.has(c.category_group_id)).map((c) => c.id)
-    )
-    return (budgetMonth?.category_balances ?? []).filter(
-      (b) => b.available < 0 && nonSystemIds.has(b.category_id)
-    ).length
-  }, [budgetMonth, categories, groups])
+  // Counted server-side beside total_overspent, over the same set. Rebuilt
+  // here it read the client's category list, which excludes hidden categories
+  // — so the count undercounted next to an amount that included them, and next
+  // to a Cover Overspent that would act on them.
+  const overspentCount = budgetMonth?.overspent_count ?? 0
 
   function handlePickStrategy(strategy: AssignStrategy) {
     setAssignOpen(false)

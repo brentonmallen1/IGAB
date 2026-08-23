@@ -167,6 +167,10 @@ export interface BudgetMonth {
   total_assigned: number
   total_activity: number
   total_overspent: number
+  /** How many categories make up `total_overspent`, counted server-side in the
+   *  same loop — so the count and the amount are always about the same set,
+   *  and both match what Cover Overspent will act on. */
+  overspent_count: number
   /** Committed to months after this one; already deducted from to_be_assigned */
   assigned_in_future: number
   category_balances: CategoryBalance[]

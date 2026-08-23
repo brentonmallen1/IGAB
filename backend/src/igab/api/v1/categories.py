@@ -297,6 +297,7 @@ async def get_budget_month(
         total_assigned=summary.total_assigned,
         total_activity=summary.total_activity,
         total_overspent=summary.total_overspent,
+        overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,
         category_balances=[
             CategoryBalance(

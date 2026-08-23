@@ -110,9 +110,14 @@ export function BudgetTable() {
   const viewVisibleIds = activeView
     ? visibleCategoryIds(activeView, categories ?? [], budgetId)
     : null
-  const chipBalances = viewVisibleIds
-    ? (budgetMonth?.category_balances ?? []).filter((b) => viewVisibleIds.has(b.category_id))
-    : (budgetMonth?.category_balances ?? [])
+  // A chip's count and the rows clicking it produces must be the same set.
+  // These spanned every balance the month returned — including system and
+  // hidden categories the table never renders — so the chip promised rows it
+  // could not show.
+  const renderableIds = new Set((categories ?? []).map((c) => c.id))
+  const chipBalances = (budgetMonth?.category_balances ?? []).filter(
+    (b) => renderableIds.has(b.category_id) && (!viewVisibleIds || viewVisibleIds.has(b.category_id))
+  )
 
   const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
   const sourceGroups = arranged?.groups ?? groups

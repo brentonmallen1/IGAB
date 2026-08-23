@@ -126,6 +126,9 @@ class BudgetMonthResponse(BaseModel):
     total_assigned: Decimal
     total_activity: Decimal
     total_overspent: Decimal
+    #: How many categories make up total_overspent — counted server-side in the
+    #: same loop, so the count and the amount are always about the same set.
+    overspent_count: int = 0
     # Committed to months after this one; already deducted from to_be_assigned
     assigned_in_future: Decimal = Decimal("0")
     category_balances: list[CategoryBalance]

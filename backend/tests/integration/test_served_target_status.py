@@ -169,3 +169,72 @@ class TestTheServedFieldIsTheOnlyRule:
                 continue
             needed = Decimal(str(row["needed_this_month"]))
             assert (row["target_status"] == "underfunded") == (needed > 0), row
+
+
+class TestOverspentCountMatchesItsAmount:
+    """The hero shows an amount and a count side by side. They were computed
+    from different populations — the amount server-side over non-system
+    categories including hidden ones, the count client-side from a category
+    list that excludes hidden — so a hidden overspent category made the two
+    disagree, and Cover Overspent then acted on a category the count denied.
+    """
+
+    async def test_the_count_and_the_amount_cover_the_same_categories(
+        self, db_session, api_client
+    ):
+        services, budget, group, account = await _setup(db_session, api_client.test_user)
+        for i, spend in enumerate(["-50.00", "-30.00"]):
+            category = await create_category(db_session, budget, group, f"Over{i}")
+            await create_transaction(
+                db_session, budget, account, spend, MONTH, category=category, cleared="cleared"
+            )
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/months/{MONTH.isoformat()}")
+        data = resp.json()
+
+        assert data["overspent_count"] == 2
+        assert Decimal(str(data["total_overspent"])) == Decimal("80.00")
+
+    async def test_a_hidden_overspent_category_is_counted_because_it_is_covered(
+        self, db_session, api_client
+    ):
+        from igab.repositories.category_repo import CategoryRepository
+
+        services, budget, group, account = await _setup(db_session, api_client.test_user)
+        category = await create_category(db_session, budget, group, "Hidden")
+        await create_transaction(
+            db_session, budget, account, "-25.00", MONTH, category=category, cleared="cleared"
+        )
+        await CategoryRepository(db_session).update(category.id, is_hidden=True)
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/months/{MONTH.isoformat()}")
+        data = resp.json()
+
+        # Hidden categories still hold money and still overspend, so Cover
+        # Overspent acts on them — the count has to agree with that.
+        assert data["overspent_count"] == 1
+        assert Decimal(str(data["total_overspent"])) == Decimal("25.00")
+
+    async def test_a_system_category_is_not_overspending(self, db_session, api_client):
+        from igab.repositories.category_repo import CategoryGroupRepository
+
+        services, budget, group, account = await _setup(db_session, api_client.test_user)
+        income = await create_category_group(db_session, budget, "Income")
+        await CategoryGroupRepository(db_session).update(income.id, is_system=True)
+        category = await create_category(db_session, budget, income, "Paycheque")
+        await create_transaction(
+            db_session, budget, account, "-40.00", MONTH, category=category, cleared="cleared"
+        )
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/months/{MONTH.isoformat()}")
+
+        assert resp.json()["overspent_count"] == 0
+
+    async def test_nothing_overspent_is_zero(self, db_session, api_client):
+        services, budget, group, _ = await _setup(db_session, api_client.test_user)
+        await create_category(db_session, budget, group, "Groceries")
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/months/{MONTH.isoformat()}")
+
+        assert resp.json()["overspent_count"] == 0
+        assert Decimal(str(resp.json()["total_overspent"])) == Decimal("0")

@@ -71,6 +71,12 @@ class BudgetSummary:
     total_assigned: Decimal
     total_activity: Decimal
     total_overspent: Decimal
+    #: How many categories make up total_overspent. Counted in the same loop,
+    #: over the same population, so the amount and the count cannot disagree —
+    #: and both match what Cover Overspent will act on. The hero rebuilt this
+    #: from the client's category list, which excludes hidden categories, so it
+    #: undercounted next to an amount that included them.
+    overspent_count: int
     # Dollars already committed to months after the viewed month; deducted
     # from to_be_assigned so the same dollars can't be assigned twice.
     assigned_in_future: Decimal
@@ -275,6 +281,7 @@ class BudgetService:
         total_assigned = Decimal("0")
         total_activity = Decimal("0")
         total_overspent = Decimal("0")
+        overspent_count = 0
 
         for cat in categories:
             bal = balance_map[cat.id]
@@ -284,6 +291,7 @@ class BudgetService:
                 total_category_balance += bal.available
                 if bal.available < 0:
                     total_overspent += -bal.available
+                    overspent_count += 1
             total_assigned += bal.assigned
             total_activity += bal.activity
 
@@ -295,6 +303,7 @@ class BudgetService:
             total_assigned=total_assigned,
             total_activity=total_activity,
             total_overspent=total_overspent,
+            overspent_count=overspent_count,
             assigned_in_future=assigned_in_future,
             category_balances=balances,
         )
