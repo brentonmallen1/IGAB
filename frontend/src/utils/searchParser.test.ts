@@ -710,3 +710,58 @@ describe('removeSearchChip', () => {
     expect(removeByLabel('is:transfer', 'Transfer')).toBe('')
   })
 })
+
+describe('chip provenance round-trips', () => {
+  // The chips carry token indices through a NOT extraction and an OR split.
+  // If an index is off by one, removeSearchChip deletes the wrong token —
+  // silently, producing a query that still parses. These walk every chip of
+  // every shape and assert the removal is exact.
+  const CATS = new Map([['cat-1', 'Groceries']])
+  const PAYEES = new Map([['p-1', 'Starbucks']])
+  const ACCTS = new Map([['a-1', 'Checking']])
+
+  const QUERIES = [
+    'is: cleared',
+    'is:cleared',
+    'has:attachment coffee',
+    'NOT is: pending',
+    'NOT is:pending category: groc',
+    'category: groc payee:star',
+    'category:groc OR payee:star',
+    'is: cleared OR is: pending OR is:reconciled',
+    'account:checking amount:>100',
+    'today category: groc',
+    'last month is:unapproved coffee',
+    'NOT has:attachment OR is:transfer',
+    'amount:10-20 payee: star march 2025',
+  ]
+
+  for (const query of QUERIES) {
+    it(`every chip in "${query}" removes exactly its own tokens`, () => {
+      const chips = describeSearchChips(query, CATS, PAYEES, ACCTS, NOW)
+      expect(chips.length).toBeGreaterThan(0)
+
+      for (const chip of chips) {
+        const after = removeSearchChip(query, chip)
+        // The removed chip is gone...
+        const remaining = describeSearchChips(after, CATS, PAYEES, ACCTS, NOW)
+        expect(remaining.map((c) => c.label)).not.toContain(chip.label)
+        // ...and every other chip survives.
+        const others = chips.filter((c) => c.key !== chip.key).map((c) => c.label)
+        for (const label of others) expect(remaining.map((c) => c.label)).toContain(label)
+      }
+    })
+  }
+
+  it('removing every chip leaves only free text', () => {
+    const query = 'is: cleared coffee category: groc NOT is:pending'
+    let current = query
+    for (;;) {
+      const chips = describeSearchChips(current, CATS, PAYEES, ACCTS, NOW)
+      if (chips.length === 0) break
+      current = removeSearchChip(current, chips[0])
+    }
+    expect(current.trim()).toBe('coffee')
+    expect(parseTransactionSearch(current, CATS, PAYEES, ACCTS, NOW).text).toBe('coffee')
+  })
+})

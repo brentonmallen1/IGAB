@@ -326,6 +326,31 @@ async def test_system_and_hidden_categories_are_excluded(db_session):
         assert "Dining" not in names, strategy
 
 
+async def test_a_category_in_a_hidden_group_is_excluded_too(db_session):
+    """Hiding the group hides the categories, and assign must agree.
+
+    The eligibility set was rebuilt here from `get_all(include_hidden=False)`,
+    which filters the *category's* is_hidden and not the *group's*. So a
+    visible category inside a hidden group stayed a Fill/Assign target while
+    the budget table could not render it — the group list is filtered and the
+    category list is not, so the row had no group to be drawn under. Money
+    landed somewhere the user could not see or reach.
+
+    IS_ASSIGNABLE reads both flags, so this and the picker agree.
+    """
+    services, budget, checking, groceries, dining = await _history_setup(db_session)
+    group = await services.category_group_repo.get(dining.category_group_id)
+    group.is_hidden = True
+    await db_session.flush()
+    assign = make_assign(db_session, services)
+
+    for strategy in ASSIGN_STRATEGIES:
+        preview = await assign.preview(budget.id, MONTH, strategy)
+        names = {i.category_name for i in preview.items}
+        assert "Dining" not in names, strategy
+        assert "Groceries" not in names, strategy
+
+
 async def _underfunded_setup(db_session, *, income: str):
     services = make_services(db_session)
     user = await create_user(db_session)

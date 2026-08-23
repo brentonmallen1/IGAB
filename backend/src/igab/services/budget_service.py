@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING
 
 from igab.db.models import Category
 from igab.domain.carryover import available_through
-from igab.domain.dates import month_end, month_start
+
+# Aliased: `month_start` is also a local variable throughout this module
+# (`month_start = first_of_month(month)`), and one name meaning two things
+# is how the shadowing bug in report_service started.
+from igab.domain.dates import month_end as _month_end
+from igab.domain.dates import month_start as _month_start
 from igab.domain.money import quantize_cents
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -40,11 +45,11 @@ def _months_back(d: date, n: int) -> list[date]:
 
 
 def first_of_month(d: date) -> date:
-    return month_start(d)
+    return _month_start(d)
 
 
 def last_of_month(d: date) -> date:
-    return month_end(d)
+    return _month_end(d)
 
 
 @dataclass
