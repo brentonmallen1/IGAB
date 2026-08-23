@@ -30,6 +30,7 @@ import {
   choiceForDisposition,
   dispositionOf,
   dormantOpenCount,
+  groupAccounts,
   isDormant,
   type Disposition,
 } from './accountMapping'
@@ -546,7 +547,18 @@ export function BudgetSelectorPage() {
                   </p>
                 )}
                 <div className="ynab-mapping" role="group" aria-labelledby="ynab-accounts-label">
-                  {previewAccounts.map((a) => {
+                  {groupAccounts(previewAccounts).map((section) => (
+                    <div key={section.label ?? `solo-${section.accounts[0].name}`}>
+                      {section.label && (
+                        <p className="ynab-mapping__family">
+                          <span className="ynab-mapping__family-name">{section.label}</span>
+                          <span className="ynab-mapping__family-hint">
+                            related — often an institution's accounts, or something you own and
+                            the debt against it. Compare their balances.
+                          </span>
+                        </p>
+                      )}
+                      {section.accounts.map((a) => {
                     const choice = accountChoices[a.name]
                     const disposition = dispositionOf(choice)
                     const skipped = disposition === 'skip'
@@ -634,6 +646,8 @@ export function BudgetSelectorPage() {
                       </div>
                     )
                   })}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

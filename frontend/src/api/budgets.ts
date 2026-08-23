@@ -346,6 +346,11 @@ export interface YnabAccountPreview {
    *  signal that an account has been dormant for years. */
   first_activity: string | null
   last_activity: string | null
+  /** Accounts sharing a leading name fragment — an institution's accounts, or
+   *  something you own and the debt against it. A prompt to compare, never a
+   *  merge suggestion: measured on a real export, fuzzy similarity scores 100
+   *  for "Redwood" vs "Redwood CC", which are different accounts. */
+  related_group: string | null
 }
 
 export interface YnabPreviewResult {

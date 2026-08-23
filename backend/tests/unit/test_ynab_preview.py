@@ -16,7 +16,11 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 
-from igab.api.v1.imports import build_ynab_preview, parse_account_types_form
+from igab.api.v1.imports import (
+    assign_related_groups,
+    build_ynab_preview,
+    parse_account_types_form,
+)
 from igab.integrations.ynab.models import YNABBudget, YNABTransaction
 
 
@@ -124,3 +128,85 @@ class TestTheImportChoice:
                 json.dumps({"X": {"account_type": "nonsense", "on_budget": True}})
             )
         assert exc.value.status_code == 400
+
+
+class TestRelatedAccounts:
+    """Grouping is a prompt to compare, never a merge suggestion.
+
+    Measured on the real export, `rapidfuzz.token_set_ratio` scores 100 for
+    "vehicle a" vs "vehicle a loan", "redwood" vs "redwood cc" and
+    "harborstone" vs "harborstone savings" — every pair a legitimately
+    distinct account. A dedupe feature built on similarity would have told
+    the user to destroy real data. A shared leading fragment claims much
+    less: these are probably about the same thing, look at them together.
+    """
+
+    def _groups(self, *names: str) -> dict[str, str | None]:
+        return assign_related_groups(list(names))
+
+    def test_an_asset_groups_with_the_debt_against_it(self):
+        """The pair worth putting side by side — comparing their balances is
+        how a $27,704 vehicle typed as an auto loan gets noticed."""
+        g = self._groups("Vehicle A", "Vehicle A Loan")
+        assert g["Vehicle A"] == g["Vehicle A Loan"] == "Vehicle A"
+
+    def test_the_longest_shared_prefix_wins(self):
+        """Vehicle A and Vehicle B are different vehicles. Grouping on the
+        first token alone would pile all four into one 'Vehicle' bucket and
+        lose the pairing that matters."""
+        g = self._groups("Vehicle A", "Vehicle A Loan", "Vehicle B", "Vehicle B Loan")
+        assert g["Vehicle A"] == g["Vehicle A Loan"] == "Vehicle A"
+        assert g["Vehicle B"] == g["Vehicle B Loan"] == "Vehicle B"
+
+    def test_an_institution_keeps_its_accounts_together(self):
+        g = self._groups("Redwood", "Redwood CC", "Redwood MM", "Redwood Savings")
+        assert set(g.values()) == {"Redwood"}
+
+    def test_two_employers_do_not_merge(self):
+        """The reason the cap is not one token: at one, these nine accounts
+        become a single 'Employer' pile."""
+        g = self._groups(
+            "Employer A 401k", "Employer A Stock", "Employer B 401k", "Employer B Co-invest"
+        )
+        assert g["Employer A 401k"] == g["Employer A Stock"] == "Employer A"
+        assert g["Employer B 401k"] == g["Employer B Co-invest"] == "Employer B"
+
+    def test_one_employer_does_not_shatter_into_product_lines(self):
+        """The reason the cap exists at all: unbounded, the longest shared
+        prefix splits one employer into ESPP, HSA and a remainder."""
+        g = self._groups(
+            "Employer A ESPP Cash",
+            "Employer A ESPP Stock",
+            "Employer A HSA Bank",
+            "Employer A HSA Fidelity",
+            "Employer A 401k",
+        )
+        assert set(g.values()) == {"Employer A"}
+
+    def test_a_name_shared_by_nobody_is_not_grouped(self):
+        g = self._groups("Cash", "Crypto", "TreasuryDirect")
+        assert set(g.values()) == {None}
+
+    def test_a_single_account_is_never_a_group_of_one(self):
+        assert self._groups("Redwood") == {"Redwood": None}
+
+    def test_the_label_keeps_the_source_casing(self):
+        """Title-casing the matched fragment would render this 'Brightpath
+        Hsa'. The label is sliced from a member's own name instead."""
+        g = self._groups("Brightpath HSA", "Brightpath HSA Investment")
+        assert set(g.values()) == {"Brightpath HSA"}
+
+    def test_matching_ignores_case_and_punctuation(self):
+        g = self._groups("Employer B 401k - fidelity", "employer b 401k - insperity")
+        assert len(set(g.values())) == 1
+        assert None not in g.values()
+
+    def test_grouping_reaches_the_preview(self):
+        accounts = _preview(
+            _txn("Redwood", date(2020, 1, 1)),
+            _txn("Redwood CC", date(2020, 1, 1)),
+            _txn("Cash", date(2020, 1, 1)),
+        )
+        assert accounts["Redwood"].related_group == "Redwood"
+        assert accounts["Redwood CC"].related_group == "Redwood"
+        assert accounts["Cash"].related_group is None

@@ -621,3 +621,41 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
+
+/* Related accounts — an institution's accounts, or something you own and the
+   debt secured against it. Putting them side by side is what makes a $27,704
+   vehicle typed as an auto loan visible.
+
+   Deliberately not called "duplicates", and deliberately offering no merge.
+   Measured on a real export, fuzzy name similarity scores 100 for
+   "Redwood" vs "Redwood CC" and "Vehicle A" vs "Vehicle A Loan" — every pair
+   a legitimately distinct account. A merge affordance here would invite
+   someone to destroy real data. */
+.ynab-mapping__family {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-sm) 0 var(--spacing-xs);
+  padding-left: var(--spacing-xs);
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--spacing-sm);
+}
+
+.ynab-mapping__family:first-child {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.ynab-mapping__family-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.ynab-mapping__family-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.45;
+}

@@ -3,6 +3,7 @@ import io
 import json
 import re
 import uuid
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from typing import TypedDict
@@ -112,6 +113,10 @@ class YNABAccountPreview(BaseModel):
     #: are already parsed on every row and were simply thrown away.
     first_activity: date | None = None
     last_activity: date | None = None
+    #: Accounts sharing a leading name fragment — an institution's accounts, or
+    #: an asset and the debt against it. A prompt to compare, never a merge
+    #: suggestion: see `assign_related_groups`.
+    related_group: str | None = None
 
 
 class YNABPreviewResult(BaseModel):
@@ -351,6 +356,65 @@ def parse_account_types_form(
     return type_map, skip_accounts, close_accounts
 
 
+#: How many leading tokens may form a related-account group.
+#:
+#: One is too coarse and two is the natural size of a thing's name: "Employer
+#: A", "Union Ridge", "Cedar Grove", "Vehicle A". At one token the two
+#: employers in a real export merge into a nine-account pile; unbounded, a
+#: six-account employer shatters into "Employer A ESPP", "Employer A HSA" and
+#: a remainder, which is grouping by product line rather than by the thing the
+#: user recognises.
+_RELATED_GROUP_MAX_TOKENS = 2
+
+
+def _tokens_preserving_case(name: str) -> list[str]:
+    """Same split as `_normalize_for_match`, with the original casing kept.
+
+    Aligns token-for-token with the normalized form, so a group matched on
+    "brightpath hsa" can be labelled from the source as "Brightpath HSA"
+    rather than title-cased into "Brightpath Hsa"."""
+    return [t for t in re.split(r"[^A-Za-z0-9]+", name) if t]
+
+
+def assign_related_groups(names: Sequence[str]) -> dict[str, str | None]:
+    """Group accounts sharing a leading name fragment: name → group label.
+
+    **Related, never duplicate, and never a merge suggestion.** Measured on a
+    real export, `rapidfuzz.token_set_ratio` returns 100 for "vehicle a" vs
+    "vehicle a loan", "redwood" vs "redwood cc" and "harborstone" vs
+    "harborstone savings" — every pair a legitimately distinct account. Acting
+    on similarity here would tell someone to destroy real data. A shared
+    leading fragment says only "these are probably about the same thing, look
+    at them together": an institution's accounts, or an asset and the debt
+    secured against it. Comparing those balances is exactly how a house typed
+    as a mortgage gets caught.
+
+    Longest shared prefix wins within the cap, so "Vehicle A" pairs with
+    "Vehicle A Loan" rather than landing in a bucket with "Vehicle B".
+    """
+    tokens = {name: _normalize_for_match(name).split() for name in names}
+    prefix_members: dict[tuple[str, ...], list[str]] = {}
+    for name, toks in tokens.items():
+        for k in range(1, min(len(toks), _RELATED_GROUP_MAX_TOKENS) + 1):
+            prefix_members.setdefault(tuple(toks[:k]), []).append(name)
+
+    groups: dict[str, str | None] = {}
+    for name, toks in tokens.items():
+        best: tuple[str, ...] | None = None
+        for k in range(min(len(toks), _RELATED_GROUP_MAX_TOKENS), 0, -1):
+            prefix = tuple(toks[:k])
+            if len(prefix_members[prefix]) > 1:
+                best = prefix
+                break
+        if best is None:
+            groups[name] = None
+            continue
+        # Label from whichever member spells it out, so acronyms survive.
+        source = min(prefix_members[best])
+        groups[name] = " ".join(_tokens_preserving_case(source)[: len(best)])
+    return groups
+
+
 def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
     counts: dict[str, int] = {}
     balances: dict[str, Decimal] = {}
@@ -371,6 +435,7 @@ def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
         if prev_last is None or txn.date > prev_last:
             last_seen[txn.account_name] = txn.date
 
+    related = assign_related_groups(sorted(counts))
     accounts = []
     for name in sorted(counts):
         implied = balances.get(name, Decimal("0"))
@@ -385,6 +450,7 @@ def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
                 implied_balance=implied,
                 first_activity=first_seen.get(name),
                 last_activity=last_seen.get(name),
+                related_group=related.get(name),
             )
         )
     return YNABPreviewResult(

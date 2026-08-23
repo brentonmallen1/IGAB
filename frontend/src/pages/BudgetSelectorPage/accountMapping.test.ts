@@ -14,6 +14,7 @@ import {
   choiceForDisposition,
   dispositionOf,
   dormantOpenCount,
+  groupAccounts,
   isDormant,
 } from './accountMapping'
 import type { YnabAccountPreview, YnabAccountTypeChoice } from '../../api/budgets'
@@ -30,6 +31,7 @@ function preview(over: Partial<YnabAccountPreview> = {}): YnabAccountPreview {
     implied_balance: '100.00',
     first_activity: '2020-01-01',
     last_activity: '2026-08-01',
+    related_group: null,
     ...over,
   }
 }
@@ -151,5 +153,52 @@ describe('activityLabel', () => {
 
   it('says nothing when there is no activity', () => {
     expect(activityLabel(null)).toBeNull()
+  })
+})
+
+describe('groupAccounts', () => {
+  const a = (name: string, related_group: string | null = null) => preview({ name, related_group })
+
+  it('captions a family and leaves the rest alone', () => {
+    const sections = groupAccounts([
+      a('Apple Wallet'),
+      a('Redwood', 'Redwood'),
+      a('Redwood CC', 'Redwood'),
+      a('TreasuryDirect'),
+    ])
+    expect(sections.map((s) => s.label)).toEqual([null, 'Redwood', null])
+    expect(sections[1].accounts.map((x) => x.name)).toEqual(['Redwood', 'Redwood CC'])
+  })
+
+  it('keeps the alphabetical order it was given', () => {
+    // Bucketing would hoist Apple Wallet and TreasuryDirect together and put
+    // the families after them, which is harder to scan, not easier.
+    const sections = groupAccounts([
+      a('Apple Wallet'),
+      a('Vehicle A', 'Vehicle A'),
+      a('Vehicle A Loan', 'Vehicle A'),
+      a('Vehicle B', 'Vehicle B'),
+      a('Vehicle B Loan', 'Vehicle B'),
+    ])
+    expect(sections.flatMap((s) => s.accounts.map((x) => x.name))).toEqual([
+      'Apple Wallet',
+      'Vehicle A',
+      'Vehicle A Loan',
+      'Vehicle B',
+      'Vehicle B Loan',
+    ])
+  })
+
+  it('does not merge two families that sit next to each other', () => {
+    const sections = groupAccounts([
+      a('Vehicle A', 'Vehicle A'),
+      a('Vehicle A Loan', 'Vehicle A'),
+      a('Vehicle B', 'Vehicle B'),
+    ])
+    expect(sections.map((s) => s.label)).toEqual(['Vehicle A', 'Vehicle B'])
+  })
+
+  it('handles an empty preview', () => {
+    expect(groupAccounts([])).toEqual([])
   })
 })

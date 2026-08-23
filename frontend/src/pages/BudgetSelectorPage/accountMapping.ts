@@ -88,3 +88,31 @@ export function dormantOpenCount(
     (a) => dispositionOf(choices[a.name]) === 'import' && isDormant(a.last_activity, monthsAgoISO)
   ).length
 }
+
+/** A run of consecutive rows sharing a related-account label. */
+export interface AccountSection {
+  label: string | null
+  accounts: YnabAccountPreview[]
+}
+
+/**
+ * Split the preview into captioned runs.
+ *
+ * Runs rather than buckets, so the list stays in the backend's alphabetical
+ * order and a caption appears where a family starts. Bucketing would hoist
+ * every ungrouped account to wherever the first one happened to fall, which
+ * makes a 47-row list harder to scan, not easier.
+ */
+export function groupAccounts(accounts: YnabAccountPreview[]): AccountSection[] {
+  const sections: AccountSection[] = []
+  for (const a of accounts) {
+    const label = a.related_group ?? null
+    const last = sections[sections.length - 1]
+    if (last && last.label === label) {
+      last.accounts.push(a)
+    } else {
+      sections.push({ label, accounts: [a] })
+    }
+  }
+  return sections
+}
