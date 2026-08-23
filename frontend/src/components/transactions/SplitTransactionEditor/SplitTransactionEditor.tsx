@@ -4,7 +4,8 @@ import { useCreateTransaction, useDeleteTransaction } from '../../../api/transac
 import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { fromCents, toCents } from '../../../utils/money'
-import { expressionToCents, sumExpressionsToCents } from '../../../utils/amountExpression'
+import { checkSplit } from '../../../utils/splits'
+import { expressionToCents } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import type { Category, CategoryGroup, Transaction } from '../../../types'
@@ -26,16 +27,9 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   if (!splitEditing || splitEditing.transactionId !== txn.id) return null
 
   const { totalAmount, splits } = splitEditing
-  // Integer-cents math: float sums would reject valid splits (0.10 problems)
-  const assignedCents = sumExpressionsToCents(splits.map((s) => s.amount))
-  const remainingCents = Math.abs(toCents(totalAmount)) - assignedCents
+  const check = checkSplit(Math.abs(toCents(totalAmount)), splits)
+  const { remainingCents, isValid } = check
   const remaining = fromCents(remainingCents)
-  const isValid =
-    remainingCents === 0 &&
-    splits.every((s) => {
-      const cents = expressionToCents(s.amount)
-      return s.categoryId && !isNaN(cents) && cents > 0
-    })
 
   const categoryOptions: ComboboxOption[] = categories.map((c) => {
     const group = categoryGroups.find((g) => g.id === c.category_group_id)

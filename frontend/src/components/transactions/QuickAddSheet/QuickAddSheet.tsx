@@ -24,8 +24,8 @@ import {
   evaluateExpressionCents,
   expressionToCents,
   isAmountExpression,
-  sumExpressionsToCents,
 } from '../../../utils/amountExpression'
+import { checkSplit } from '../../../utils/splits'
 import { randomUUID } from '../../../utils/uuid'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -308,18 +308,9 @@ export function QuickAddSheet() {
   const cents = expressionToCents(amount)
   const amountValid = !isNaN(cents) && cents > 0
 
-  // Integer cents throughout — summing the legs as floats rejects valid splits
-  // like 0.10 + 0.20. Same comparison the desktop editor makes.
-  const splitCents = sumExpressionsToCents(splits.map((sp) => sp.amount))
-  const remainingCents = (amountValid ? cents : 0) - splitCents
-  const splitIsValid =
-    !isSplit ||
-    (amountValid &&
-      remainingCents === 0 &&
-      splits.every((sp) => {
-        const legCents = expressionToCents(sp.amount)
-        return sp.categoryId && !isNaN(legCents) && legCents > 0
-      }))
+  const splitCheck = checkSplit(amountValid ? cents : 0, splits)
+  const remainingCents = splitCheck.remainingCents
+  const splitIsValid = !isSplit || splitCheck.isValid
 
   const canSave = amountValid && !!accountId && !saving && splitIsValid
 
