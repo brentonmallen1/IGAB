@@ -326,6 +326,15 @@ class Category(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
+    #: May money be budgeted or moved into this envelope? Not a column, and
+    #: none could be: it reads the *group's* is_system and is_hidden, which
+    #: change without this row being touched. Populated only by
+    #: `CategoryRepository.with_eligibility`; left alone it reads None.
+    is_assignable: Mapped[bool] = query_expression()
+    #: May a transaction leg be filed here? Differs from is_assignable on
+    #: system groups — income is filed into one — and on linked categories.
+    is_categorizable: Mapped[bool] = query_expression()
+
     group: Mapped["CategoryGroup"] = relationship(back_populates="categories")
     budget: Mapped["Budget"] = relationship(back_populates="categories")
     linked_account: Mapped["Account | None"] = relationship(

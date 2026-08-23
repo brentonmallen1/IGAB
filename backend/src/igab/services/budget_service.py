@@ -169,6 +169,24 @@ class BudgetService:
             after=snapshot("assignment", assignment),
         )
 
+    async def _budget_math_category_ids(self, budget_id: uuid.UUID) -> set[uuid.UUID]:
+        """Categories that participate in the TBA arithmetic.
+
+        Non-system only: income adds to To Be Assigned rather than reducing it,
+        so a system-group category must not count against it.
+
+        **This is not `is_assignable`, and must not be replaced by it.** Hidden
+        categories are included here on purpose — they still hold money and
+        still overspend, so leaving them out would make TBA wrong and make
+        Cover Overspent unable to zero the budget. `is_assignable` answers a
+        different question: what a picker may *offer*, which a hidden category
+        never is.
+        """
+        groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
+        system_group_ids = {g.id for g in groups if g.is_system}
+        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
+        return {c.id for c in categories if c.category_group_id not in system_group_ids}
+
     async def get_category_balance(
         self,
         category_id: uuid.UUID,
@@ -562,10 +580,7 @@ class BudgetService:
         categories. Hidden categories are included on purpose — they participate
         in the TBA math, so covering them is required to zero out overspending."""
         summary = await self.get_budget_summary(budget_id, month)
-        groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
-        system_group_ids = {g.id for g in groups if g.is_system}
-        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
-        non_system_ids = {c.id for c in categories if c.category_group_id not in system_group_ids}
+        non_system_ids = await self._budget_math_category_ids(budget_id)
         shortfalls = {
             b.category_id: -b.available
             for b in summary.category_balances

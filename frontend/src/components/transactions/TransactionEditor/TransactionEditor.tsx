@@ -1,3 +1,4 @@
+import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
@@ -224,15 +225,10 @@ export function TransactionEditor({
     ? payees.filter((p) => p.name.toLowerCase().includes(payeeQuery.toLowerCase())).slice(0, 8)
     : payees.slice(0, 8)
 
-  const groupedCategories = categoryGroups
-    .filter((g) => !g.is_hidden)
-    .map((g) => ({
-      group: g,
-      cats: categories.filter(
-        (c) => c.category_group_id === g.id && !c.is_hidden && !c.linked_account_id
-      ),
-    }))
-    .filter((g) => g.cats.length > 0)
+  const groupedCategories = groupedCategorySections(
+    categories.filter((c) => c.is_categorizable),
+    categoryGroups
+  )
 
   const transferAccounts = accounts.filter((a) => a.id !== accountId)
   const transferTarget = accounts.find((a) => a.id === transferAccountId)

@@ -19,6 +19,9 @@ function cat(id: string, name: string, group = 'g-real'): Category {
     note: null,
     is_hidden: false,
     linked_account_id: null,
+    linked_liability_id: null,
+    is_assignable: true,
+    is_categorizable: true,
   }
 }
 

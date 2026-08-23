@@ -1,3 +1,4 @@
+import { groupedCategorySections } from '../../utils/categoryPickers'
 import { useState } from 'react'
 import { useCategories, useCategoryGroups } from '../../api/categories'
 import { useAccounts } from '../../api/accounts'
@@ -58,13 +59,12 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   const [autoCreate, setAutoCreate] = useState(existing?.auto_create ?? false)
   const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
-  const groupedCategories = categoryGroups
-    .filter((g) => !g.is_hidden)
-    .map((g) => ({
-      group: g,
-      cats: categories.filter((c) => c.category_group_id === g.id && !c.is_hidden),
-    }))
-    .filter((g) => g.cats.length > 0)
+  // Was `!is_hidden` alone, which offered credit-card payment categories that
+  // no other surface does.
+  const groupedCategories = groupedCategorySections(
+    categories.filter((c) => c.is_categorizable),
+    categoryGroups
+  )
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

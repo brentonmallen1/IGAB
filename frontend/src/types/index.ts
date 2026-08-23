@@ -75,6 +75,21 @@ export interface Category {
   note: string | null
   is_hidden: boolean
   linked_account_id: string | null
+  /** The liability that owns this category, if any. */
+  linked_liability_id: string | null
+  /**
+   * May money be budgeted or moved into this envelope? Computed by the server
+   * from `IS_ASSIGNABLE` (backend/src/igab/repositories/category_filters.py).
+   * Never rebuild it here: six components each spelled their own version and
+   * they disagreed about system groups, hidden groups and linked categories.
+   */
+  is_assignable: boolean
+  /**
+   * May a transaction leg be filed here? Differs from `is_assignable` on
+   * system groups — income is filed into one, so excluding them here would
+   * remove the only place a paycheque can go.
+   */
+  is_categorizable: boolean
   tags?: TagSimple[]
 }
 

@@ -1,3 +1,4 @@
+import { flatCategoryOptions } from '../../../utils/categoryPickers'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { AlertTriangle, Camera, ChevronRight, FileText, Images, MessageSquareText, Plus, Sparkles, Split, StickyNote, Trash2, X } from 'lucide-react'
@@ -169,12 +170,10 @@ export function QuickAddSheet() {
       .map((p) => ({ id: p.id, label: p.name }))
   }, [payees, nearbyPayees])
 
-  const categoryOptions = useMemo<SelectionSheetOption[]>(() => {
-    const groupName = new Map(categoryGroups.map((g) => [g.id, g.name]))
-    return categories
-      .filter((c) => !c.is_hidden && !c.linked_account_id)
-      .map((c) => ({ id: c.id, label: c.name, group: groupName.get(c.category_group_id) ?? '' }))
-  }, [categories, categoryGroups])
+  const categoryOptions = useMemo<SelectionSheetOption[]>(
+    () => flatCategoryOptions(categories.filter((c) => c.is_categorizable), categoryGroups),
+    [categories, categoryGroups]
+  )
 
   const accountOptions = useMemo<SelectionSheetOption[]>(
     () =>

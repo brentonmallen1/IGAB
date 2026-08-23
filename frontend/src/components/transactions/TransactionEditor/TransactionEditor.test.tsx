@@ -21,8 +21,20 @@ const CATEGORIES = vi.hoisted(() => [
     name: 'Groceries',
     is_hidden: false,
     linked_account_id: null,
+    linked_liability_id: null,
+    is_assignable: true,
+    is_categorizable: true,
   },
-  { id: 'cat-2', category_group_id: 'g1', name: 'Fun', is_hidden: false, linked_account_id: null },
+  {
+    id: 'cat-2',
+    category_group_id: 'g1',
+    name: 'Fun',
+    is_hidden: false,
+    linked_account_id: null,
+    linked_liability_id: null,
+    is_assignable: true,
+    is_categorizable: true,
+  },
 ])
 const ACCOUNTS = vi.hoisted(() => [
   { id: 'acc-1', name: 'Checking', on_budget: true, is_closed: false },

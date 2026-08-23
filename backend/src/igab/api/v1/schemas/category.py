@@ -98,6 +98,21 @@ class CategoryResponse(BaseModel):
     note: str | None
     is_hidden: bool
     linked_account_id: uuid.UUID | None
+    #: The liability that owns this category, if any. Exposed because the
+    #: liability-binding screen's rule needs it: without it the client could
+    #: not tell a free category from one another liability already owns, and
+    #: offered both.
+    linked_liability_id: uuid.UUID | None
+    #: May money be budgeted or moved into this envelope? Computed by the
+    #: server from `IS_ASSIGNABLE` (repositories/category_filters.py).
+    #:
+    #: Required, not optional, for the same reason `needs_category` is: a path
+    #: that forgets to load it should raise rather than report every category
+    #: as ineligible, which would empty the move-money picker silently.
+    is_assignable: bool
+    #: May a transaction leg be filed here? Differs from is_assignable on
+    #: system groups — income is filed into one — and on linked categories.
+    is_categorizable: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
     tags: list[TagOutSimple] = []
