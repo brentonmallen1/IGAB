@@ -242,6 +242,7 @@ class TestHistoricalCategoryInference:
         ownership_result.scalar_one_or_none = MagicMock(return_value=MagicMock())
         session.execute = AsyncMock(return_value=ownership_result)
         txn_repo = MagicMock()
+        txn_repo.refresh = AsyncMock()
         account_repo = MagicMock()
         category_repo = MagicMock()
         payee_repo = MagicMock()

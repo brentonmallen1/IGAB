@@ -121,7 +121,7 @@ class TransactionService:
         """Record a change with the transaction's final (post-flush) state, so
         undo's changed-since checks compare against what the DB will return."""
         if refresh:
-            await self.session.refresh(txn)
+            await self.transaction_repo.refresh(txn)
         after = None if action == "delete" else snapshot("transaction", txn)
         # A PATCH that changes nothing is not a user-visible event.
         if action == "update" and before is not None and after is not None:
@@ -223,7 +223,7 @@ class TransactionService:
             split.approved = header.approved
             children.append(await self.create(budget_id, split, record=False))
 
-        await self.session.refresh(parent)
+        await self.transaction_repo.refresh(parent)
         # Recorded after the is_split flip so the snapshots hold final state.
         with self.changes.batch():
             await self._record_txn(parent, "create", refresh=False)
@@ -287,7 +287,7 @@ class TransactionService:
                 )
             )
 
-        await self.session.refresh(txn)
+        await self.transaction_repo.refresh(txn)
         # One batch: undoing it deletes the children and restores the parent's
         # pre-split category and is_split flag.
         with self.changes.batch():
@@ -523,7 +523,7 @@ class TransactionService:
 
         # Link source → dest
         await self.transaction_repo.update(source.id, transfer_id=dest.id)
-        await self.session.refresh(source)
+        await self.transaction_repo.refresh(source)
         if record:
             # Recorded after linking so both snapshots carry their transfer_id;
             # one batch, so the pair is undone together.
@@ -663,7 +663,7 @@ class TransactionService:
         if self.match_repo is not None:
             await self.match_repo.cancel_pending_for_transaction(deleted.id)
 
-        await self.session.refresh(survivor)
+        await self.transaction_repo.refresh(survivor)
         with self.changes.batch():
             await self._record_txn(deleted, "delete", before=deleted_before, refresh=False)
             await self._record_txn(survivor, "update", before=survivor_before, refresh=False)

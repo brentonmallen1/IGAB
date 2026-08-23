@@ -32,7 +32,7 @@ import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
-import { inReviewSection, nextHeldForReview, transferTargets } from './reviewSection'
+import { inReviewSection, nextHeldForReview } from './reviewSection'
 import './TransactionTable.css'
 
 interface Props {
@@ -177,9 +177,6 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const { splitEditing, startSplitEditing } = useTransactionEditStore()
 
   const payeeMap = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
-  // A transfer leg is known by its payee as well as by its partner link —
-  // an import writes legs whose partner never arrives. See needsCategory.
-  const transferTargetByPayee = useMemo(() => transferTargets(payees), [payees])
   const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
   const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts])
   // Stable palette slot per account (position in the accounts list), so an
@@ -290,15 +287,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // see reviewSection.ts
   const [heldForReviewIds, setHeldForReviewIds] = useState<ReadonlySet<string>>(new Set())
   useEffect(() => {
-    setHeldForReviewIds((prev) =>
-      nextHeldForReview(prev, transactions, onBudgetAccountIds, transferTargetByPayee)
-    )
-  }, [transactions, onBudgetAccountIds, transferTargetByPayee])
+    setHeldForReviewIds((prev) => nextHeldForReview(prev, transactions))
+  }, [transactions])
 
   const isInReviewSection = useCallback(
-    (t: Transaction) =>
-      inReviewSection(t, onBudgetAccountIds, heldForReviewIds, transferTargetByPayee),
-    [onBudgetAccountIds, heldForReviewIds, transferTargetByPayee]
+    (t: Transaction) => inReviewSection(t, heldForReviewIds),
+    [heldForReviewIds]
   )
 
   // Partition into sections

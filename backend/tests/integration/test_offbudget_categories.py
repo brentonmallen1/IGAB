@@ -9,6 +9,13 @@ including the "spending transfer missing its category" case.
 
 from datetime import date, timedelta
 
+from decimal import Decimal
+
+from igab.api.v1.schemas.transaction import TransactionResponse
+from igab.services.transaction_service import SplitSpec
+from igab.services.transaction_service import TransactionCreate as SvcTxnCreate
+from igab.services.transaction_service import TransactionUpdate
+
 from .factories import (
     create_account,
     create_budget,
@@ -175,3 +182,129 @@ class TestAnUnpairedTransferLegIsStillATransfer:
         )
         assert count == len(rows) == review["uncategorized"]
         assert count == 3, "the mortgage leg and the two plain rows — not the savings leg"
+
+
+class TestTheServedFlagIsTheOnlyRule:
+    """`needs_category` on the API row *is* the rule, and the only copy of it.
+
+    The register used to re-derive it in TypeScript from `transfer_id`, and the
+    copies drifted: the badge counted 3 while the list below it drew 930 rows
+    as unfiled. Fixing one site never fixed the other, because nothing tied
+    them together. These tests are that tie — they assert the value the client
+    is handed agrees, row for row, with the numbers the counters produce.
+    """
+
+    async def _world(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking")
+        savings = await create_account(db_session, budget, "Savings")
+        loan = await create_account(
+            db_session, budget, "Mortgage", account_type="mortgage", on_budget=False
+        )
+        # An unpaired leg to an on-budget account (needs nothing), an unpaired
+        # leg out of the budget (a mortgage payment — still needs one), and a
+        # plain purchase (needs one).
+        to_savings = await create_payee(
+            db_session, budget, "Transfer : Savings", transfer_account_id=savings.id
+        )
+        to_loan = await create_payee(
+            db_session, budget, "Transfer : Mortgage", transfer_account_id=loan.id
+        )
+        await create_transaction(db_session, budget, checking, "-500.00", OLD, payee=to_savings)
+        await create_transaction(db_session, budget, checking, "-1200.00", OLD, payee=to_loan)
+        await create_transaction(db_session, budget, checking, "-12.00", OLD)
+        await db_session.flush()
+        return services, budget, checking
+
+    async def test_the_flag_matches_the_account_badge_row_for_row(self, db_session):
+        services, _, checking = await self._world(db_session)
+
+        rows = await services.transaction_repo.get_for_account(checking.id)
+        flagged = [t for t in rows if t.needs_category]
+
+        assert len(flagged) == 2, "the mortgage leg and the plain row, not the savings leg"
+        assert len(flagged) == await services.account_repo.get_uncategorized_count(checking.id)
+
+    async def test_the_account_register_filter_agrees_with_its_badge(self, db_session):
+        """The sixth site. Every other copy of the rule moved to NEEDS_CATEGORY;
+        this filter kept the old two-condition spelling, so the account
+        register's Uncategorized filter still listed unpaired transfer legs
+        under a badge that had stopped counting them."""
+        services, _, checking = await self._world(db_session)
+
+        filtered = await services.transaction_repo.get_for_account(checking.id, uncategorized=True)
+
+        assert len(filtered) == await services.account_repo.get_uncategorized_count(checking.id)
+        assert all(t.needs_category for t in filtered)
+
+    async def test_every_listing_path_carries_the_flag(self, db_session):
+        """A path that forgets `with_needs_category` leaves the attribute None,
+        which TransactionResponse rejects. Assert it is a real bool here so the
+        failure lands on this test rather than on a user's register."""
+        services, budget, checking = await self._world(db_session)
+
+        by_account = await services.transaction_repo.get_for_account(checking.id)
+        by_budget, _, _ = await services.transaction_repo.list_for_budget(budget.id, scope="leaf")
+        one = await services.transaction_repo.get_or_raise(by_account[0].id)
+
+        for row in [*by_account, *by_budget, one]:
+            assert isinstance(row.needs_category, bool), f"{row.id} came back unpopulated"
+
+    async def test_the_flag_survives_a_service_update(self, db_session):
+        """The sharp edge of computing this in the query: `Session.refresh()`
+        takes no loader options, so it reloads the columns and silently drops
+        the value. `_record_txn` refreshes before returning on every mutating
+        call, so a plain refresh would hand the endpoint None — and only on
+        create/update responses, never on a listing. Goes through the service
+        for that reason; calling the repo directly would not exercise it."""
+        services, budget, checking = await self._world(db_session)
+        rows = await services.transaction_repo.get_for_account(checking.id)
+        plain = next(t for t in rows if t.needs_category and t.payee_id is None)
+
+        updated = await services.transactions.update(
+            budget.id, plain.id, TransactionUpdate(memo="touched")
+        )
+
+        assert updated.needs_category is True
+
+    async def test_every_mutating_path_returns_a_serializable_row(self, db_session):
+        """The blunt guard. `TransactionResponse` requires `needs_category`, so
+        any service path that hands back a row without it 500s the endpoint —
+        and only that endpoint, which is how such a gap reaches a user rather
+        than CI. Exercised here rather than trusted, because merge in
+        particular has no test at the API layer.
+        """
+        services, budget, checking = await self._world(db_session)
+        rows = await services.transaction_repo.get_for_account(checking.id)
+        plain = next(t for t in rows if t.needs_category and t.payee_id is None)
+
+        created = await services.transactions.create(
+            budget.id,
+            SvcTxnCreate(account_id=checking.id, date=OLD, amount=Decimal("-3.00")),
+        )
+        updated = await services.transactions.update(
+            budget.id, plain.id, TransactionUpdate(memo="touched")
+        )
+        approved = await services.transactions.approve(plain.id, budget.id)
+        split = await services.transactions.convert_to_split(
+            budget.id, plain.id, [SplitSpec(amount=Decimal("-12.00"))]
+        )
+        merge_a = await create_transaction(db_session, budget, checking, "-40.00", OLD)
+        merge_b = await create_transaction(db_session, budget, checking, "-40.00", OLD)
+        await db_session.flush()
+        survivor = await services.transactions.merge(budget.id, [merge_a.id, merge_b.id])
+        adjustment = await services.reconciliation.create_adjustment(checking.id, Decimal("5.00"))
+
+        for label, txn in [
+            ("create", created),
+            ("update", updated),
+            ("approve", approved),
+            ("convert_to_split", split),
+            ("merge", survivor),
+            ("reconcile adjustment", adjustment),
+        ]:
+            assert isinstance(TransactionResponse.model_validate(txn).needs_category, bool), (
+                f"{label} returned a row the API cannot serialize"
+            )

@@ -3,13 +3,15 @@
  * leave the section immediately, which is exactly when the user still wants
  * it in reach to add a memo — so the transitions matter more than the
  * steady states.
+ *
+ * Note what is no longer tested here: whether a row needs a category. That
+ * rule has one implementation, in the backend (`NEEDS_CATEGORY`), and its
+ * cases live with it — see `test_offbudget_categories.py`. The two tests at
+ * the bottom of this file exist to keep it that way.
  */
 import { describe, expect, it } from 'vitest'
-import { inReviewSection, needsCategory, nextHeldForReview } from './reviewSection'
+import { inReviewSection, nextHeldForReview } from './reviewSection'
 import type { Transaction } from '../../../types'
-
-const ON_BUDGET = new Set(['a1'])
-const OFF_BUDGET_ACCOUNT = 'a2'
 
 function txn(overrides: Partial<Transaction> = {}): Transaction {
   return {
@@ -22,108 +24,77 @@ function txn(overrides: Partial<Transaction> = {}): Transaction {
     is_split: false,
     cleared: 'uncleared',
     approved: false,
+    needs_category: true,
     ...overrides,
   } as unknown as Transaction
 }
 
-// payee p-on transfers to an on-budget account, p-off to a tracked one
-const TRANSFER_TARGETS = new Map([
-  ['p-on', 'a1'],
-  ['p-off', OFF_BUDGET_ACCOUNT],
-])
-
-describe('needsCategory', () => {
-  it('flags an uncategorized row on a budget account', () => {
-    expect(needsCategory(txn(), ON_BUDGET)).toBe(true)
-  })
-
-  it('ignores rows on off-budget accounts, which do not use categories', () => {
-    expect(needsCategory(txn({ account_id: OFF_BUDGET_ACCOUNT }), ON_BUDGET)).toBe(false)
-  })
-
-  it('ignores pending, split, transfer and categorized rows', () => {
-    expect(needsCategory(txn({ cleared: 'pending' }), ON_BUDGET)).toBe(false)
-    expect(needsCategory(txn({ is_split: true }), ON_BUDGET)).toBe(false)
-    expect(needsCategory(txn({ transfer_id: 'x' }), ON_BUDGET)).toBe(false)
-    expect(needsCategory(txn({ category_id: 'c1' }), ON_BUDGET)).toBe(false)
-  })
-})
-
-describe('a transfer whose partner never imported', () => {
-  // The reported bug: a YNAB export writes legs whose partner never arrives,
-  // so `transfer_id` is null. They are still transfers. Before this, a real
-  // import drew 930 of them as rows waiting to be filed.
-  it('is recognised by its payee, not only by its partner link', () => {
-    const leg = txn({ payee_id: 'p-on', transfer_id: null })
-    expect(needsCategory(leg, ON_BUDGET, TRANSFER_TARGETS)).toBe(false)
-  })
-
-  it('still needs a category when the money leaves the budget', () => {
-    // A mortgage payment. Budgeting for it is the whole point.
-    const leg = txn({ payee_id: 'p-off', transfer_id: null })
-    expect(needsCategory(leg, ON_BUDGET, TRANSFER_TARGETS)).toBe(true)
-  })
-
-  it('does not mistake an ordinary payee for a transfer', () => {
-    const shop = txn({ payee_id: 'p-shop' })
-    expect(needsCategory(shop, ON_BUDGET, TRANSFER_TARGETS)).toBe(true)
-  })
-
-  it('treats an unresolvable counterpart as on-budget, like the backend', () => {
-    // A linked leg with no transfer payee: nothing says the money left, so
-    // it is internal movement rather than something to file.
-    const leg = txn({ transfer_id: 'x', payee_id: null })
-    expect(needsCategory(leg, ON_BUDGET, TRANSFER_TARGETS)).toBe(false)
-  })
-
-  it('keeps an unpaired leg out of the review section entirely', () => {
-    const leg = txn({ payee_id: 'p-on', transfer_id: null })
-    const held = nextHeldForReview(new Set(), [leg], ON_BUDGET, TRANSFER_TARGETS)
-    expect(held.size).toBe(0)
-    expect(inReviewSection(leg, ON_BUDGET, held, TRANSFER_TARGETS)).toBe(false)
-  })
-})
-
 describe('holding a row through categorization', () => {
-  it('holds an unapproved uncategorized row', () => {
-    const held = nextHeldForReview(new Set(), [txn()], ON_BUDGET)
+  it('holds an unapproved row that needs a category', () => {
+    const held = nextHeldForReview(new Set(), [txn()])
     expect(held.has('t1')).toBe(true)
   })
 
   it('keeps the row in the section once it gains a category', () => {
-    const held = nextHeldForReview(new Set(), [txn()], ON_BUDGET)
-    const categorized = txn({ category_id: 'c1' })
+    const held = nextHeldForReview(new Set(), [txn()])
+    const categorized = txn({ category_id: 'c1', needs_category: false })
 
-    expect(needsCategory(categorized, ON_BUDGET)).toBe(false)
-    expect(inReviewSection(categorized, ON_BUDGET, held)).toBe(true)
+    expect(inReviewSection(categorized, held)).toBe(true)
   })
 
   it('releases the row when it is approved', () => {
-    const held = nextHeldForReview(new Set(), [txn()], ON_BUDGET)
-    const approved = txn({ category_id: 'c1', approved: true })
-    const after = nextHeldForReview(held, [approved], ON_BUDGET)
+    const held = nextHeldForReview(new Set(), [txn()])
+    const approved = txn({ category_id: 'c1', needs_category: false, approved: true })
+    const after = nextHeldForReview(held, [approved])
 
     expect(after.has('t1')).toBe(false)
-    expect(inReviewSection(approved, ON_BUDGET, after)).toBe(false)
+    expect(inReviewSection(approved, after)).toBe(false)
   })
 
   it('does not hold rows that were already approved', () => {
-    const held = nextHeldForReview(new Set(), [txn({ approved: true })], ON_BUDGET)
+    const held = nextHeldForReview(new Set(), [txn({ approved: true })])
     expect(held.has('t1')).toBe(false)
   })
 
-  it('still shows an approved-but-uncategorized row in the section', () => {
-    const t = txn({ approved: true })
-    expect(inReviewSection(t, ON_BUDGET, new Set())).toBe(true)
+  it('still shows an approved row that needs a category', () => {
+    expect(inReviewSection(txn({ approved: true }), new Set())).toBe(true)
   })
 
   it('returns the same set when nothing moved, so state stays stable', () => {
-    const held = nextHeldForReview(new Set(), [txn()], ON_BUDGET)
-    expect(nextHeldForReview(held, [txn()], ON_BUDGET)).toBe(held)
+    const held = nextHeldForReview(new Set(), [txn()])
+    expect(nextHeldForReview(held, [txn()])).toBe(held)
+  })
+})
+
+describe('pending rows', () => {
+  it('are never held — those have their own section', () => {
+    const held = nextHeldForReview(new Set(), [txn({ cleared: 'pending' })])
+    expect(held.has('t1')).toBe(false)
   })
 
-  it('never holds a pending row — those have their own section', () => {
-    const held = nextHeldForReview(new Set(), [txn({ cleared: 'pending' })], ON_BUDGET)
-    expect(held.has('t1')).toBe(false)
+  it('never enter the review section, even flagged', () => {
+    expect(inReviewSection(txn({ cleared: 'pending' }), new Set(['t1']))).toBe(false)
+  })
+})
+
+describe('the server owns the rule', () => {
+  // These two are the guard rails. They describe rows whose fields would make
+  // any locally-rebuilt rule disagree with `needs_category`, and assert the
+  // section follows the field. If someone reintroduces a client-side
+  // derivation, one of them fails.
+  it('does not second-guess a false flag on a row that looks unfiled', () => {
+    // Uncategorized, unsplit, not a linked transfer, on a budget account —
+    // the old local rule said "needs a category". The server says no, because
+    // it can see the payee is a transfer to another on-budget account.
+    const unpairedLeg = txn({ category_id: null, transfer_id: null, needs_category: false })
+    expect(nextHeldForReview(new Set(), [unpairedLeg]).size).toBe(0)
+    expect(inReviewSection(unpairedLeg, new Set())).toBe(false)
+  })
+
+  it('does not second-guess a true flag on a row that looks filed', () => {
+    // A categorized row the server still wants filed is not a state the
+    // register gets to argue with.
+    const flagged = txn({ category_id: 'c1', needs_category: true })
+    expect(inReviewSection(flagged, new Set())).toBe(true)
   })
 })

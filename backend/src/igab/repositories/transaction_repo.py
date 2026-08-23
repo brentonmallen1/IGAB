@@ -5,7 +5,8 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Integer, and_, case, cast, func, insert, or_, select, update
+from sqlalchemy import Integer, Select, and_, case, cast, func, insert, or_, select, update
+from sqlalchemy.orm import with_expression
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import Payee, Transaction, TransactionAttachment
@@ -54,6 +55,54 @@ def _search_predicate(search: str):
 class TransactionRepository(BaseRepository[Transaction]):
     model = Transaction
 
+    @staticmethod
+    def with_needs_category(stmt: Select[tuple[Transaction]]) -> Select[tuple[Transaction]]:
+        """Load `Transaction.needs_category` on a statement selecting Transaction.
+
+        Every path that serializes a `TransactionResponse` has to go through
+        here. The field is required in the schema, so a path that skips it
+        raises rather than reporting an unfiled row as filed — the failure
+        direction that matters when the number is a count of work the user
+        still owes.
+        """
+        return stmt.options(with_expression(Transaction.needs_category, NEEDS_CATEGORY))
+
+    async def get(self, id: uuid.UUID) -> Transaction | None:
+        # Overrides BaseRepository.get to carry needs_category. populate_existing
+        # is load-bearing: after a flush the row is already in the identity map,
+        # and SQLAlchemy leaves a with_expression attribute unset on an object
+        # it has seen before — which would surface as None on exactly the
+        # create/update responses, and only those.
+        stmt = self.with_needs_category(
+            select(Transaction).where(Transaction.id == id, NOT_DELETED)
+        ).execution_options(populate_existing=True)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def refresh(self, txn: Transaction) -> None:
+        """Reload post-flush state, keeping `needs_category` populated.
+
+        `Session.refresh()` takes no loader options, so it reloads the columns
+        and silently drops the with_expression value — the row then serializes
+        as None and the endpoint 500s. Re-selecting with the option costs the
+        same single round trip and cannot lose it.
+
+        No is_deleted filter: this refreshes an object already in hand, and a
+        soft-deleted row still has to be snapshot-able for the change log.
+        """
+        stmt = self.with_needs_category(
+            select(Transaction).where(Transaction.id == txn.id)
+        ).execution_options(populate_existing=True)
+        await self.session.execute(stmt)
+
+    async def create(self, **kwargs: Any) -> Transaction:
+        # Same round-trip count as the base implementation — it ends in a
+        # refresh(), which is also a SELECT. This one just asks for the
+        # expression too.
+        obj = Transaction(**kwargs)
+        self.session.add(obj)
+        await self.session.flush()
+        return await self.get_or_raise(obj.id)
+
     async def get_for_account(
         self,
         account_id: uuid.UUID,
@@ -75,7 +124,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         direction: str | None = None,
         is_transfer: bool | None = None,
     ) -> list[Transaction]:
-        q = select(Transaction).where(
+        q = self.with_needs_category(select(Transaction)).where(
             Transaction.account_id == account_id,
             Transaction.is_deleted == False,  # noqa: E712
             Transaction.parent_transaction_id.is_(None),
@@ -97,22 +146,15 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(Transaction.cleared == cleared)
         if exclude_cleared:
             q = q.where(Transaction.cleared != exclude_cleared)
+        # NEEDS_CATEGORY, not a local spelling of it. This filter kept the
+        # pre-fix rule after every other site moved, so the account register's
+        # Uncategorized filter still listed unpaired transfer legs while the
+        # badge above it — counting the same thing — did not.
         if uncategorized and unapproved and is_or_mode:
-            q = q.where(
-                or_(
-                    and_(
-                        Transaction.category_id.is_(None),
-                        Transaction.is_split == False,  # noqa: E712
-                    ),
-                    Transaction.approved == False,  # noqa: E712
-                )
-            )
+            q = q.where(or_(NEEDS_CATEGORY, Transaction.approved == False))  # noqa: E712
         else:
             if uncategorized:
-                q = q.where(
-                    Transaction.category_id.is_(None),
-                    Transaction.is_split == False,  # noqa: E712
-                )
+                q = q.where(NEEDS_CATEGORY)
             if unapproved:
                 q = q.where(Transaction.approved == False)  # noqa: E712
         if start_date:
@@ -256,7 +298,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         if search:
             where.append(_search_predicate(search))
 
-        rows_q = select(Transaction)
+        rows_q = self.with_needs_category(select(Transaction))
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
             Transaction
         )
