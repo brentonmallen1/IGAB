@@ -147,6 +147,15 @@ describe('reaching the split editor', () => {
     expect(screen.getByTitle('Split this across categories')).toBeTruthy()
   })
 
+  it('cancelling hands the first leg\'s category back, not nothing', () => {
+    // Symmetric with the carry-in above. Without this, pick a category, tap
+    // split, change your mind, and the pick is silently gone.
+    startSplit('10.00')
+    pickLegCategory(0, 'Household')
+    fireEvent.click(screen.getByRole('button', { name: /Cancel split/ }))
+    expect(screen.getByLabelText('Category').textContent).toContain('Household')
+  })
+
   it('will not drop below two legs', () => {
     startSplit('10.00')
     expect(screen.getByLabelText('Remove split 1').hasAttribute('disabled')).toBe(true)
@@ -292,3 +301,75 @@ describe('what gets sent', () => {
     expect(payload.category_id).toBe('c1')
   })
 })
+
+describe('the arithmetic that decides whether Save is reachable', () => {
+  // Two different functions read the leg amounts: sumExpressionsToCents for the
+  // remaining counter, expressionToCents for the payload. If they ever disagree
+  // the UI says "Fully assigned" and sends something else — the worst shape a
+  // money bug can take, because nothing on screen looks wrong.
+  it('accepts an unevaluated expression in a leg', () => {
+    startSplit('10.00')
+    pickLegCategory(0, 'Groceries')
+    pickLegCategory(1, 'Household')
+    setLeg(0, '3.50+2.50')
+    setLeg(1, '4.00')
+    expect(screen.getByRole('status').textContent).toBe('Fully assigned')
+    expect(save().hasAttribute('disabled')).toBe(false)
+  })
+
+  it('sends what the counter promised when a leg was an expression', async () => {
+    startSplit('10.00')
+    pickLegCategory(0, 'Groceries')
+    pickLegCategory(1, 'Household')
+    setLeg(0, '3.50+2.50')
+    setLeg(1, '4.00')
+    fireEvent.click(save())
+    await waitFor(() => expect(createMutate).toHaveBeenCalled())
+    expect(lastCreate().splits).toEqual([
+      { amount: -6, category_id: 'c1', memo: undefined },
+      { amount: -4, category_id: 'c2', memo: undefined },
+    ])
+  })
+
+  it('an expression in the total is honoured by the remainder too', () => {
+    startSplit('4+6')
+    pickLegCategory(0, 'Groceries')
+    pickLegCategory(1, 'Household')
+    setLeg(0, '6.00')
+    setLeg(1, '4.00')
+    expect(screen.getByRole('status').textContent).toBe('Fully assigned')
+  })
+
+  it('re-opens the gap when the total is corrected after the legs are set', () => {
+    // A real sequence: enter the amount, split it, then notice the total was
+    // wrong. Save must go back to disabled rather than sending mismatched legs.
+    startSplit('10.00')
+    pickLegCategory(0, 'Groceries')
+    pickLegCategory(1, 'Household')
+    setLeg(0, '6.00')
+    setLeg(1, '4.00')
+    expect(save().hasAttribute('disabled')).toBe(false)
+
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '12.00' } })
+    expect(screen.getByRole('status').textContent).toContain('left')
+    expect(save().hasAttribute('disabled')).toBe(true)
+  })
+})
+
+describe('leaving mid-split', () => {
+  it('asks before discarding a split in progress', () => {
+    startSplit('10.00')
+    pickLegCategory(0, 'Groceries')
+    fireEvent.click(screen.getByLabelText('Cancel'))
+    expect(screen.getByText('Discard this transaction?')).toBeTruthy()
+    expect(closeQuickAdd).not.toHaveBeenCalled()
+  })
+
+  it('treats an empty split as dirty — it was still a deliberate act', () => {
+    render(<QuickAddSheet />)
+    fireEvent.click(screen.getByTitle('Split this across categories'))
+    fireEvent.click(screen.getByLabelText('Cancel'))
+    expect(screen.getByText('Discard this transaction?')).toBeTruthy()
+  })
+})
+

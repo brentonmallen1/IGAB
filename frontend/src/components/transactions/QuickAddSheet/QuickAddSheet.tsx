@@ -345,7 +345,10 @@ export function QuickAddSheet() {
     setIsSplit(true)
   }
 
+  /** Symmetric with beginSplit: the first leg's category comes back out as the
+   *  single category, so starting a split and changing your mind costs nothing. */
   function cancelSplit() {
+    setCategoryId(splits[0]?.categoryId ?? null)
     setIsSplit(false)
     setSplits(freshSplits())
   }

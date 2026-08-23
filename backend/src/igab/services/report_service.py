@@ -122,6 +122,13 @@ def _spending_classes(
 ):
     """WHERE clause limiting a spending query to the requested activity classes.
 
+    Returns a predicate, so the caller owns the query — which means the caller
+    must also apply `apply_class_joins` to it. This is the one place the class
+    is used without the joins visibly beside it, so it is the one place a new
+    caller could forget: a query with this predicate and no joins is a
+    cartesian product, which `pyproject.toml` promotes from a warning to a test
+    failure. All three callers today do apply them.
+
     Defaults to spending alone. That is the behaviour change derkus asked for:
     a transfer to a brokerage or a mortgage is money leaving the budget, but it
     is not money spent, and counting it as spending skews every average.
