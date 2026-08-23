@@ -24,9 +24,10 @@ The rules are ordered and first-match-wins, so each one also carries a stable
 an opaque reclassification.
 """
 
+from collections.abc import Callable
 from enum import StrEnum
 
-from sqlalchemy import and_, case, func, literal, or_, select
+from sqlalchemy import Select, and_, case, func, literal, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import Account, Category, CategoryGroup, Tag, Transaction, category_tags
@@ -236,6 +237,22 @@ ACTIVITY_REASON = case(
     *[(condition, literal(reason.value)) for condition, _, reason in RULES],
     else_=literal(ActivityReason.DEFAULT_SPENDING.value),
 )
+
+#: Joins a query must apply before it can use the expressions above, or None
+#: when they are self-contained. `None` today: every column they read is
+#: reached through a correlated subquery, which needs nothing from the
+#: enclosing FROM.
+#:
+#: The seam exists because that is the thing most likely to change. Replacing
+#: the subqueries with LEFT JOINs is the standing performance idea, and the
+#: hazard there is not that it breaks loudly — it is that a join matching more
+#: than once per transaction multiplies every total while still looking like a
+#: number. `tests/integration/invariants.py` counts rows to catch exactly that,
+#: and it can only do so if it builds its query the way the reports build
+#: theirs. Reading this symbol is what keeps those two in step: set it here and
+#: the partition check follows the reports across, at all 48 of its call sites,
+#: without any of them changing.
+CLASS_JOINS: Callable[[Select], Select] | None = None
 
 #: The classes a spending report means by "spending" — everything a household
 #: would call money going out, and nothing that merely moves or grows it.
