@@ -1,5 +1,5 @@
 import { EyeOff, Info } from 'lucide-react'
-import type { SpendingGroupedReport, SpendingClassExcluded } from '../../types'
+import type { SpendingClassExcluded } from '../../types'
 import { useFormatters } from '../../hooks/useFormatters'
 import './ReportNotes.css'
 
@@ -11,10 +11,20 @@ const CLASS_PHRASE: Record<string, string> = {
   debt_interest: 'interest & fees',
 }
 
+/** The parts of a report this reads. Structural rather than a named response
+ *  type: three charts carry these notes and only one of them has a view. */
+export interface ReportNotesSource {
+  view_hidden_categories?: number
+  view_hidden_total?: number | string
+  class_excluded?: SpendingClassExcluded[] | null
+}
+
 interface Props {
-  report: SpendingGroupedReport | undefined
+  report: ReportNotesSource | undefined
   /** Whether the chart's "Include savings & debt payments" toggle is visible
-   *  and off — the one action from here that adds the money back. */
+   *  and off — the one action from here that adds the money back. Charts
+   *  without that toggle pass false; the sentence would name a control the
+   *  reader cannot find. */
   toggleAvailable: boolean
 }
 
@@ -32,7 +42,7 @@ export function ReportNotes({ report, toggleAvailable }: Props) {
   const { formatMoney } = useFormatters()
   if (!report) return null
 
-  const hidden = report.view_hidden_categories > 0
+  const hidden = (report.view_hidden_categories ?? 0) > 0
   const excluded: SpendingClassExcluded[] = report.class_excluded ?? []
   if (!hidden && excluded.length === 0) return null
 

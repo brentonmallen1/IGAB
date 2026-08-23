@@ -72,10 +72,10 @@ class TestExplicitAccountScopeBeatsTheClassFilter:
 
     async def test_day_patterns_shows_tracked_activity(self, db_session):
         budget, _, brokerage, _ = await self._world(db_session)
-        days = await ReportService(db_session).day_patterns(
+        result = await ReportService(db_session).day_patterns(
             budget.id, MONTH_START, TODAY, None, [brokerage.id]
         )
-        assert sum(d["total"] for d in days) == Decimal("50.00")
+        assert sum(d["total"] for d in result["days"]) == Decimal("50.00")
 
     async def test_the_default_scope_still_excludes_them(self, db_session):
         """The widening must apply only to an explicit selection — the

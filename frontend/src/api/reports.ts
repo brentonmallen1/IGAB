@@ -18,7 +18,6 @@ import type {
   SavingsReport,
   SeasonalityReport,
   SpendingGroupedReport,
-  SpendingReport,
   SubscriptionsReport,
   TimelineReport,
   VarianceReport,
@@ -37,27 +36,10 @@ function params(obj: Record<string, string | number | undefined | null>) {
 
 // ─── Existing ──────────────────────────────────────────────────────────────
 
-export function useSpendingReport(
-  budgetId: string | null,
-  startDate?: string,
-  endDate?: string,
-  categoryIds?: string[],
-  accountIds?: string[],
-) {
-  const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
-  const acctParam = accountIds?.length ? accountIds.join(',') : undefined
-  return useQuery({
-    queryKey: ['reports', 'spending', budgetId, startDate, endDate, catParam, acctParam],
-    queryFn: async () => {
-      const { data } = await apiClient.get<SpendingReport>(`/${budgetId}/reports/spending`, {
-        params: params({ start_date: startDate, end_date: endDate, category_ids: catParam, account_ids: acctParam }),
-      })
-      return data
-    },
-    enabled: !!budgetId,
-    staleTime: STALE,
-  })
-}
+// `useSpendingReport` lived here, unused: /reports/spending is served but no
+// component asks for it — spending-grouped supersedes it. It was the third
+// site missing the class-excluded note, and a note nothing renders is not a
+// fix. Removed rather than patched; the endpoint stays for API consumers.
 
 export function useIncomeExpenseReport(budgetId: string | null, months = 12) {
   return useQuery({

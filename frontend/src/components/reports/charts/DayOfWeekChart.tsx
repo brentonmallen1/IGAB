@@ -12,6 +12,7 @@ import { MetricCard } from '../MetricCard'
 import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportNotes } from '../ReportNotes'
 
 interface Props { budgetId: string }
 
@@ -33,6 +34,11 @@ export function DayPatternsReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const days = data?.days ?? []
+  // The API always returns seven rows, zeroed when nothing matched — so
+  // `days.length` never reports emptiness. Filter to a category whose activity
+  // is all debt principal and this is the difference between "no spending" and
+  // a flat week captioned "Highest Spending Day — Sunday, $0.00".
+  const hasSpending = days.some((d) => Number(d.total) > 0)
 
   const maxDay = days.reduce((best, d) => (Number(d.total) > Number(best.total) ? d : best), days[0])
   const minDay = days.reduce((least, d) => (Number(d.total) < Number(least.total) ? d : least), days[0])
@@ -103,14 +109,19 @@ export function DayPatternsReport({ budgetId }: Props) {
         </p>
 
         <div ref={captureRef} className="report-capture">
-        {days.length > 0 && maxDay && minDay && (
+        {hasSpending && maxDay && minDay && (
           <div className="report-metrics">
             <MetricCard label="Highest Spending Day" value={maxDay.day_name} sub={formatMoney(Number(maxDay.total))} />
             <MetricCard label="Lowest Spending Day" value={minDay.day_name} sub={formatMoney(Number(minDay.total))} />
           </div>
         )}
 
-        {chartData.length === 0 ? (
+        {/* Before the empty state, not after: when the selection is all savings
+            or debt the week is genuinely blank, and the note is the answer to
+            why rather than a footnote under a chart that never drew. */}
+        <ReportNotes report={data} toggleAvailable={false} />
+
+        {!hasSpending ? (
           <div className="reports-empty">No spending data for this period.</div>
         ) : (
           <ResponsiveContainer width="100%" height={chartHeight}>

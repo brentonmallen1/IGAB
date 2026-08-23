@@ -347,6 +347,10 @@ class DayPatternItem(BaseModel):
 
 class DayPatternsResponse(BaseModel):
     days: list[DayPatternItem]
+    #: Present only when the user selected categories. Filtering to a category
+    #: whose activity is all savings or debt payments otherwise draws an empty
+    #: week with nothing to say why.
+    class_excluded: list[SpendingClassExcluded] = []
 
 
 # ─── Large Transactions (Timeline) ────────────────────────────────────────────

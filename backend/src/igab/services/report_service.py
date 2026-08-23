@@ -2058,9 +2058,21 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
-    ) -> list[dict]:
+    ) -> dict:
+        """Spending by day of week, and what the class filter left out of it.
+
+        Returns ``days`` plus ``class_excluded`` — the same note Pareto and the
+        treemap carry. Without it, filtering to a category whose activity is all
+        debt principal or savings drew the generic "no spending" empty state,
+        which reads as missing data rather than as a definition.
+        """
         # Leaf rows: with a category filter, split spending must be reachable
-        q = select(Transaction.date, Transaction.amount).where(
+        q = select(
+            Transaction.date,
+            Transaction.amount,
+            Transaction.category_id.label("id"),
+            ACTIVITY_CLASS.label("cls"),
+        ).where(
             Transaction.budget_id == budget_id,
             NOT_DELETED,
             POSTED,
@@ -2069,7 +2081,6 @@ class ReportService:
             Transaction.date <= end_date,
             LEAF,
             CASH_FLOW_ROW,
-            _spending_classes(scoped_accounts=bool(account_ids)),
         )
         if category_ids:
             q = q.where(Transaction.category_id.in_(category_ids))
@@ -2077,9 +2088,26 @@ class ReportService:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
-        rows = (await self.session.execute(q)).all()
+        scanned = (await self.session.execute(q)).all()
 
-        if not rows:
+        # Partitioned here rather than filtered in the WHERE: the complement is
+        # what the note is about, and re-querying for it would pay
+        # ACTIVITY_CLASS's per-row subqueries a second time. Same shape as
+        # `spending_grouped`, and the same widening for an explicit account
+        # selection — see `_spending_classes` for why that exists.
+        included = {c.value for c in SPENDING_CLASSES}
+        if account_ids:
+            included |= {
+                ActivityClass.INVESTMENT_RETURN.value,
+                ActivityClass.DEBT_INTEREST.value,
+            }
+        rows = [r for r in scanned if r.cls in included]
+        class_excluded = self._class_excluded_note(
+            [r for r in scanned if r.cls not in included],
+            scoped=bool(category_ids),
+        )
+
+        def _empty() -> list[dict]:
             return [
                 {
                     "day_of_week": i,
@@ -2090,6 +2118,11 @@ class ReportService:
                 }
                 for i in range(7)
             ]
+
+        # The all-excluded case still carries the note: an empty chart with no
+        # explanation is exactly the failure it exists to prevent.
+        if not rows:
+            return {"days": _empty(), "class_excluded": class_excluded}
 
         df = pl.DataFrame(
             {
@@ -2112,7 +2145,7 @@ class ReportService:
 
         dow_map = {row["dow"]: row for row in agg.iter_rows(named=True)}
 
-        return [
+        days = [
             {
                 "day_of_week": i,
                 "day_name": _DAY_NAMES[i],
@@ -2126,6 +2159,7 @@ class ReportService:
             }
             for i in range(7)
         ]
+        return {"days": days, "class_excluded": class_excluded}
 
     # ─── Large Transactions (Timeline) ────────────────────────────────────────
 
