@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from igab.db.models import Account, Category, Payee, ScheduledTransaction
+from igab.domain.dates import add_months
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
 from igab.services.ownership import require_in_budget
 from igab.services.transaction_service import TransactionCreate, TransactionService
@@ -153,19 +154,9 @@ def calculate_next(sched: ScheduledTransaction) -> date:
 
         return current + timedelta(weeks=2)
     elif freq == "monthly":
-        m = current.month + 1
-        y = current.year
-        if m > 12:
-            m = 1
-            y += 1
-        day = min(current.day, _days_in_month(y, m))
-        return current.replace(year=y, month=m, day=day)
+        return add_months(current, 1)
     elif freq == "yearly":
-        return current.replace(year=current.year + 1)
+        # add_months, not `replace(year=...)`: a schedule dated 29 February
+        # raised ValueError every leap year and stalled the run.
+        return add_months(current, 12)
     return current
-
-
-def _days_in_month(year: int, month: int) -> int:
-    import calendar
-
-    return calendar.monthrange(year, month)[1]

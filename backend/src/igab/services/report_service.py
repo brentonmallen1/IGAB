@@ -31,6 +31,12 @@ from igab.domain.activity_class import (
     ActivityClass,
     apply_class_joins,
 )
+
+# CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
+# transfers to off-budget accounts count as real income/expense; internal
+# uncategorized transfers never do). For category-scoped queries the
+# predicate is vacuously true, keeping one uniform rule.
+from igab.domain.dates import add_months
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -39,12 +45,6 @@ from igab.repositories.txn_filters import (
     PARENT_ROW,
     POSTED,
 )
-
-# CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
-# transfers to off-budget accounts count as real income/expense; internal
-# uncategorized transfers never do). For category-scoped queries the
-# predicate is vacuously true, keeping one uniform rule.
-from igab.services.amortization import add_months
 
 # Report payload shapes.
 #
@@ -3366,15 +3366,14 @@ def _months_in_range(start_date: date, end_date: date) -> list[date]:
 
 
 def _subtract_months(d: date, months: int) -> date:
-    month = d.month - months
-    year = d.year
-    while month <= 0:
-        month += 12
-        year -= 1
-    while month > 12:
-        month -= 12
-        year += 1
-    return d.replace(year=year, month=month, day=1)
+    """The start of the month `months` before `d`'s.
+
+    Discarding the day is deliberate — every caller here is keying a month
+    bucket. `add_months` is the one that preserves it.
+    """
+    # `replace(day=1)` rather than domain.dates.month_start: `month_start` is
+    # a loop variable throughout this module and importing the name shadows it.
+    return add_months(d.replace(day=1), -months)
 
 
 def _last_day(d: date) -> date:

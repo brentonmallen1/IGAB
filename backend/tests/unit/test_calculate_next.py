@@ -67,6 +67,15 @@ class TestCalculateNextYearly:
     def test_end_of_year(self):
         assert calculate_next(sched("yearly", date(2024, 12, 31))) == date(2025, 12, 31)
 
+    def test_leap_day_does_not_raise(self):
+        # `current.replace(year=current.year + 1)` raised ValueError here, so a
+        # yearly schedule dated 29 February stalled its run every time — and
+        # the failure was a 500, not a skipped occurrence.
+        assert calculate_next(sched("yearly", date(2024, 2, 29))) == date(2025, 2, 28)
+
+    def test_leap_day_to_leap_day(self):
+        assert calculate_next(sched("yearly", date(2023, 2, 28))) == date(2024, 2, 28)
+
 
 class TestCalculateNextUnknown:
     def test_unknown_frequency_is_noop(self):

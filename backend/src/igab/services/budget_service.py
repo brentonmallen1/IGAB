@@ -5,6 +5,7 @@ from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 from igab.db.models import Category
+from igab.domain.dates import month_end, month_start
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -37,14 +38,11 @@ def _months_back(d: date, n: int) -> list[date]:
 
 
 def first_of_month(d: date) -> date:
-    return d.replace(day=1)
+    return month_start(d)
 
 
 def last_of_month(d: date) -> date:
-    import calendar
-
-    last_day = calendar.monthrange(d.year, d.month)[1]
-    return d.replace(day=last_day)
+    return month_end(d)
 
 
 @dataclass

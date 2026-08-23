@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Liability
+from igab.domain.dates import add_months
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
@@ -32,7 +33,6 @@ from igab.services.amortization import (
     AmortizationResult,
     LiveProjection,
     PromoOutlook,
-    add_months,
     amortization_schedule,
     amortization_schedule_with_promo,
     average_recent_payment,
