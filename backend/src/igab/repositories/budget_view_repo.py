@@ -75,10 +75,16 @@ class BudgetViewRepository(BaseRepository[BudgetView]):
         by_name = {g.name: g for g in existing}
         wanted = list(dict.fromkeys(n.strip() for n in names if n.strip()))
 
-        for gone in [g for g in existing if g.name not in wanted]:
+        removed = [g for g in existing if g.name not in wanted]
+        for gone in removed:
             # Placements fall back to Unassigned rather than disappearing —
             # the FK is SET NULL for exactly this.
             await self.session.delete(gone)
+        if removed:
+            # SQLAlchemy flushes INSERTs before DELETEs; a rename that reuses a
+            # removed group's name would trip uq_budget_view_group_name unless
+            # the deletes land first.
+            await self.session.flush()
 
         out: list[BudgetViewGroup] = []
         for order, name in enumerate(wanted):

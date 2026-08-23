@@ -748,7 +748,17 @@ class ReconciliationSnapshot(Base):
 
 class BudgetFilter(Base):
     __tablename__ = "budget_filters"
-    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_filter_budget_name"),)
+    __table_args__ = (
+        # Unique among LIVE filters only — same soft-delete name-burn as
+        # budget_views, fixed the same way.
+        Index(
+            "uq_budget_filter_budget_name_live",
+            "budget_id",
+            "name",
+            unique=True,
+            postgresql_where=text("NOT is_deleted"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -902,7 +912,18 @@ class GuideState(Base):
 
 class BudgetView(Base):
     __tablename__ = "budget_views"
-    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_budget_view_budget_name"),)
+    __table_args__ = (
+        # Unique among LIVE views only: deletes are soft, and a full constraint
+        # burned every deleted view's name forever — "already exists" against a
+        # list showing nothing.
+        Index(
+            "uq_budget_view_budget_name_live",
+            "budget_id",
+            "name",
+            unique=True,
+            postgresql_where=text("NOT is_deleted"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(

@@ -41,8 +41,11 @@ async def create_budget_view(
     view = await repo.create(
         budget_id=budget_id, name=body.name, hide_unassigned=body.hide_unassigned
     )
+    # Groups first: placements may reference them by name.
     if body.groups:
         await repo.set_groups(view.id, body.groups)
+    if body.placements:
+        await repo.set_placements(view.id, [p.model_dump() for p in body.placements])
     return BudgetViewResponse.model_validate(await repo.get_full(view.id))
 
 
@@ -82,7 +85,12 @@ async def update_budget_view(
             await repo.set_placements(view_id, [p.model_dump() for p in body.placements])
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
-    return BudgetViewResponse.model_validate(await repo.get_full(view_id))
+    view = await repo.get_full(view_id)
+    if view is None:
+        # The guard filters is_deleted too, so this is a mid-request delete —
+        # still a 404, never model_validate(None) → 500.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="View not found")
+    return BudgetViewResponse.model_validate(view)
 
 
 @router.delete("/views/{view_id}", status_code=status.HTTP_204_NO_CONTENT)
