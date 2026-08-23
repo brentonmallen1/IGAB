@@ -236,3 +236,41 @@ async def test_budget_creation_flow_respects_skip(api_client, db_session):
     account_repo = AccountRepository(db_session)
     accounts = {a.name for a in await account_repo.get_all(uuid.UUID(body["budget"]["id"]))}
     assert accounts == {"Checking", "Home Mortgage"}
+
+
+class TestImportAlwaysMakesANewBudget:
+    """Importing an export on top of an existing budget is not offered, and
+    must not become offerable.
+
+    The import-id dedupe is keyed on account UUIDs the import itself creates,
+    so a second pass over the same export cannot recognise the first pass's
+    rows: every transaction would import again and every balance would double.
+    The route creating its own budget is what makes that unreachable.
+    """
+
+    async def test_the_only_import_route_creates_a_budget(self, api_client):
+        before = (await api_client.get("/api/v1/budgets")).json()
+        resp = await api_client.post(
+            "/api/v1/budgets/import-ynab",
+            files={"file": ("export.zip", _ynab_zip(), "application/zip")},
+            data={"name": "Imported"},
+        )
+        assert resp.status_code == 201
+        after = (await api_client.get("/api/v1/budgets")).json()
+        assert len(after) == len(before) + 1
+        assert resp.json()["budget"]["id"] not in {b["id"] for b in before}
+
+    async def test_reusing_a_budget_name_is_refused(self, api_client):
+        first = await api_client.post(
+            "/api/v1/budgets/import-ynab",
+            files={"file": ("export.zip", _ynab_zip(), "application/zip")},
+            data={"name": "Imported"},
+        )
+        assert first.status_code == 201
+        again = await api_client.post(
+            "/api/v1/budgets/import-ynab",
+            files={"file": ("export.zip", _ynab_zip(), "application/zip")},
+            data={"name": "Imported"},
+        )
+        assert again.status_code == 409
+        assert "already exists" in again.json()["detail"]
