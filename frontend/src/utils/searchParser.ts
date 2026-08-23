@@ -430,8 +430,14 @@ function parseSegment(
         const range = amountExpr?.match(/^([\d.]+)-([\d.]+)$/)
         if (range) { result.amountMin = parseFloat(range[1]); result.amountMax = parseFloat(range[2]) }
         else {
-          // Bare value is an exact amount — a zero-width range
-          const exact = amountExpr?.match(/^\$?([\d,]*\.?\d+)$/)
+          // Bare value is an exact amount — a zero-width range.
+          // A TRAILING dot is accepted ("12." → 12): it is a half-typed
+          // amount, and rejecting it blanked the register mid-keystroke,
+          // which reads as "typing a dot breaks search". Kept in step with
+          // _AMOUNT_SEARCH_RE in backend/repositories/transaction_repo.py —
+          // irreducible duplication (this one runs before any round-trip),
+          // so both suites carry the same cases: 12, 12., 12.34, .34, $1,200.
+          const exact = amountExpr?.match(/^\$?([\d,]+\.?\d*|[\d,]*\.\d+)$/)
           if (exact) {
             const value = parseFloat(exact[1].replace(/,/g, ''))
             if (!isNaN(value)) { result.amountMin = value; result.amountMax = value }
@@ -706,6 +712,43 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'NOT is: pending ', description: 'Exclude pending transactions (global, works with OR)' },
   { syntax: 'NOT is: transfer ', description: 'Exclude transfers' },
 ]
+
+export interface MatchedSuggestion {
+  syntax: string
+  description: string
+  /** How many characters at the end of the query this suggestion completes,
+   *  so accepting it replaces exactly that much and nothing the user typed
+   *  before it. */
+  matchedLen: number
+}
+
+/**
+ * The suggestions worth offering for a half-typed query.
+ *
+ * Syntaxes span several tokens ("is: unapproved", "NOT has: attachment"), so
+ * this matches a trailing RUN of tokens rather than the last word alone —
+ * otherwise the list empties the moment a user types the space in "is: ".
+ *
+ * Shared by the register's search box and the command palette: one place that
+ * decides what the search language advertises, so the palette cannot quietly
+ * offer a smaller vocabulary than the box that taught it.
+ */
+export function matchSuggestions(query: string): MatchedSuggestion[] {
+  const tokens = query.trimEnd() ? query.trimEnd().split(' ') : []
+  if (tokens.length === 0) return SEARCH_SUGGESTIONS.map((s) => ({ ...s, matchedLen: 0 }))
+  return SEARCH_SUGGESTIONS.map((s) => {
+    const lower = s.syntax.toLowerCase()
+    let matchedLen = 0
+    for (let n = Math.min(3, tokens.length); n >= 1; n--) {
+      const tail = tokens.slice(-n).join(' ')
+      if (lower.startsWith(tail.toLowerCase())) {
+        matchedLen = tail.length
+        break
+      }
+    }
+    return { ...s, matchedLen }
+  }).filter((s) => s.matchedLen > 0)
+}
 
 export interface SearchChip {
   /** Stable identity for React keys */

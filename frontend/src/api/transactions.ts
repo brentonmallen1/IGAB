@@ -40,7 +40,7 @@ const FILTERED_LIMIT = 2000
  * picks FILTERED_LIMIT over PAGE_SIZE, so a filter missing from it makes a
  * register stop at 100 rows while claiming to be complete.
  */
-function transactionFilterParams(filters: TransactionFilters): Record<string, unknown> {
+export function transactionFilterParams(filters: TransactionFilters): Record<string, unknown> {
   const params: Record<string, unknown> = {}
   if (filters.text) params.search = filters.text
   if (filters.cleared) params.cleared = filters.cleared

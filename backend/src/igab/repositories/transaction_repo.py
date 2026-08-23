@@ -27,7 +27,11 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-_AMOUNT_SEARCH_RE = re.compile(r"\d*\.?\d+")
+# A trailing dot is a half-typed amount, not a non-amount: "12." is what the
+# user's keyboard holds for one keystroke on the way to "12.34". Rejecting it
+# blanked the results mid-word, which reads as "typing a dot breaks search".
+# `\d+\.?\d*` accepts 12, 12., 12.34; `\.\d+` keeps bare ".34" working.
+_AMOUNT_SEARCH_RE = re.compile(r"\d+\.?\d*|\.\d+")
 
 
 def _amount_from_search(search: str) -> Decimal | None:

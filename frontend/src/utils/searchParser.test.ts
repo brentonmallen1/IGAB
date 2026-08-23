@@ -141,6 +141,33 @@ describe('amount filters', () => {
   it('leaves a bare number as free text for the backend to match', () => {
     expect(parse('12.34').text).toBe('12.34')
   })
+
+  /**
+   * The shared amount vocabulary. The backend has its own matcher for the
+   * same strings (_AMOUNT_SEARCH_RE in repositories/transaction_repo.py) —
+   * irreducible, since this one runs while the user types and that one runs
+   * over SQL — so both suites carry these exact cases. A trailing dot is the
+   * one that mattered: "12." is a half-typed amount, and rejecting it blanked
+   * the results mid-keystroke, which reads as "typing a dot breaks search".
+   */
+  it.each([
+    ['12', 12],
+    ['12.', 12],
+    ['12.34', 12.34],
+    ['.34', 0.34],
+    ['$1,200', 1200],
+    ['$1,200.', 1200],
+  ])('reads %s as the amount %s', (input, expected) => {
+    const result = parse(`amount:${input}`)
+    expect(result.amountMin).toBe(expected)
+    expect(result.amountMax).toBe(expected)
+  })
+
+  it.each([['abc'], ['12.34.56'], ['']])('does not read %s as an amount', (input) => {
+    const result = parse(`amount:${input}`)
+    expect(result.amountMin).toBeUndefined()
+    expect(result.amountMax).toBeUndefined()
+  })
 })
 
 describe('date: filters (now = Tue 2026-08-11)', () => {
