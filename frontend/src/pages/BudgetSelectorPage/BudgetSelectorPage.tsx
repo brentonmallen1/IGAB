@@ -120,17 +120,6 @@ export function BudgetSelectorPage() {
   const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
   const [showTypeInfo, setShowTypeInfo] = useState(false)
 
-  // Mapping an account to a debt type is now a bigger decision than a label:
-  // it is what gets that debt payoff tracking. Counted from the CURRENT
-  // choices, not the suggestions, so the number follows what the user does to
-  // the dropdowns.
-  const debtAccountCount = (previewAccounts ?? []).filter((a) => {
-    const choice = accountChoices[a.name]
-    if (choice?.skip) return false
-    const key = choice?.account_type ?? a.suggested_type
-    return ACCOUNT_TYPE_OPTIONS.find((o) => o.key === key)?.classification === 'liability'
-  }).length
-
   function updateChoice(name: string, patch: Partial<YnabAccountTypeChoice>) {
     setAccountChoices((prev) => ({ ...prev, [name]: { ...prev[name], ...patch } }))
   }
@@ -478,8 +467,10 @@ export function BudgetSelectorPage() {
 
             {previewAccounts && (
               <div className="selector-field">
-                <label className="selector-field__label">
-                  Accounts
+                <div className="ynab-mapping__heading">
+                  <span className="selector-field__label" id="ynab-accounts-label">
+                    Accounts
+                  </span>
                   <button
                     type="button"
                     className="ynab-mapping__type-help"
@@ -487,33 +478,23 @@ export function BudgetSelectorPage() {
                   >
                     <HelpCircle size={12} /> What do these types mean?
                   </button>
-                  <span className="ynab-mapping__hint">
-                    {' '}— off-budget accounts (loans, investments) stay out of your budget
-                    totals; uncheck an account to leave it and its transactions out entirely
-                    (YNAB exports include archived accounts). Need something more specific
-                    than these types? You can create custom account types after the import.
-                  </span>
-                  {debtAccountCount > 0 && (
-                    <span className="ynab-mapping__hint">
-                      {' '}Mapping an account to a debt type — Mortgage, Auto Loan, Student
-                      Loan, Credit Card or Loan — also sets it up for payoff tracking.{' '}
-                      {debtAccountCount === 1 ? 'One account' : `${debtAccountCount} accounts`}{' '}
-                      will arrive with a place for the APR and minimum payment, ready to fill
-                      in whenever you have the numbers.
-                    </span>
-                  )}
-                  {previewAccounts.some((a) => a.needs_review) && (
-                    <span className="ynab-mapping__review-note">
-                      We couldn't tell what{' '}
-                      {previewAccounts.filter((a) => a.needs_review).length} of these are from
-                      their names — they're marked <strong>Check</strong> below. Their balance
-                      is shown to help: a large balance usually means a tracked thing (a house,
-                      a car, a brokerage) that should be <em>off</em> budget. An account left on
-                      budget by mistake throws off every total in your budget.
-                    </span>
-                  )}
-                </label>
-                <div className="ynab-mapping">
+                </div>
+                <p className="ynab-mapping__guidance">
+                  Uncheck an account to leave it out — its transactions don't come with
+                  it, and transfers to it won't match up. Need a type that isn't listed?
+                  You can add custom ones after the import.
+                </p>
+                {previewAccounts.some((a) => a.needs_review) && (
+                  <p className="ynab-mapping__review-note">
+                    We couldn't tell what{' '}
+                    {previewAccounts.filter((a) => a.needs_review).length} of these are from
+                    their names — they're marked <strong>Check</strong> below. The balance is
+                    the clue: a large one usually means something you own (a house, a car, a
+                    brokerage), which belongs <em>off</em> budget. An account left on budget
+                    by mistake throws off every total.
+                  </p>
+                )}
+                <div className="ynab-mapping" role="group" aria-labelledby="ynab-accounts-label">
                   {previewAccounts.map((a) => {
                     const skipped = accountChoices[a.name]?.skip === true
                     return (
@@ -670,7 +651,9 @@ export function BudgetSelectorPage() {
         </div>
 
       </div>
-      {showTypeInfo && <AccountTypeInfoModal onClose={() => setShowTypeInfo(false)} />}
+      {showTypeInfo && (
+        <AccountTypeInfoModal context="import" onClose={() => setShowTypeInfo(false)} />
+      )}
     </div>
   )
 }

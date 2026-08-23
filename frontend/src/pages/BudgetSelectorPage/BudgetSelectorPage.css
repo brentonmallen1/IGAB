@@ -397,11 +397,6 @@
   padding: var(--spacing-sm);
 }
 
-.ynab-mapping__hint {
-  color: var(--text-muted);
-  font-weight: normal;
-}
-
 .sample-tier {
   display: flex;
   flex-direction: column;
@@ -448,7 +443,6 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: var(--spacing-sm);
   padding: 0;
   border: none;
   background: none;
@@ -500,13 +494,36 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The label row: one uppercase word plus the help button, as siblings. They
+   used to be a text node and a button inside the same <label>, and JSX drops
+   the whitespace between them — which is where "AccountsWhat do these types
+   mean?" came from. */
+.ynab-mapping__heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+/* Prose, deliberately not label-styled. Anything longer than a few words
+   inside .selector-field__label inherits uppercase and 0.5px letter-spacing,
+   which is what made the import guidance impossible to read. */
+.ynab-mapping__guidance,
 .ynab-mapping__review-note {
-  display: block;
-  margin-top: var(--spacing-xs);
-  color: var(--text-secondary);
+  margin: 0;
+  font-size: var(--font-size-sm);
   font-weight: normal;
-  font-size: var(--font-size-xs);
+  text-transform: none;
+  letter-spacing: normal;
   line-height: 1.5;
+}
+
+.ynab-mapping__guidance {
+  color: var(--text-muted);
+}
+
+.ynab-mapping__review-note {
+  color: var(--text-secondary);
 }
 
 /* Include-checkbox: unchecking excludes the account from the import entirely.
