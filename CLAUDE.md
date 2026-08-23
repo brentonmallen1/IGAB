@@ -131,6 +131,8 @@ error, never silently book zero.
   - `npm run lint` is a real gate now (it was `continue-on-error` against a red
     baseline). The legacy react-hooks/react-refresh backlog is `warn`; the
     warning count is the debt and should go down, never up.
+    `react-hooks/rules-of-hooks` is deliberately NOT in that backlog — a
+    component whose hook count changes between renders is broken, not untidy.
 
 ## Testing Requirements
 - Any code touching amount calculations, budget distribution, category assignment, or transaction reconciliation requires exhaustive test coverage — this is the core trust surface of the app

@@ -96,10 +96,6 @@ export function PayeesPage() {
 
   const headerCheckboxRef = useRef<HTMLInputElement>(null)
 
-  if (!budgetId) {
-    return <div className="payees-page"><div className="payees-empty">Select a budget to manage payees.</div></div>
-  }
-
   const filtered = useMemo(() => {
     const term = search.toLowerCase()
     return payees
@@ -118,6 +114,20 @@ export function PayeesPage() {
         return sortDirection === 'asc' ? cmp : -cmp
       })
   }, [payees, search, sortColumn, sortDirection])
+
+  // Below the hooks, not above them. This guard used to sit before the useMemo
+  // above, so the number of hooks this component called changed with
+  // budgetId — React's rules-of-hooks violation, and the kind that only shows
+  // up when a budget is selected after the page has already rendered without
+  // one. Every hook above already handles a null budgetId.
+  if (!budgetId) {
+    return (
+      <div className="payees-page">
+        <div className="payees-empty">Select a budget to manage payees.</div>
+      </div>
+    )
+  }
+
 
   const totalPayees = payees.filter((p) => !p.transfer_account_id).length
   const filteredIds = filtered.map((p) => p.id)

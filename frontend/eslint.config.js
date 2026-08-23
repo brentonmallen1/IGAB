@@ -14,13 +14,15 @@ import { defineConfig, globalIgnores } from 'eslint/config'
  * The warning count is the debt; it should go down, never up.
  */
 const LEGACY_WARNINGS = {
-  // 22 set-state-in-effect, 6 refs, 2 exhaustive-deps, 1 rules-of-hooks.
-  // rules-of-hooks (PayeesPage: a conditional useMemo) is a real correctness
-  // risk and worth fixing on its own; it is not this pass's subject.
+  // 22 set-state-in-effect, 6 refs, 2 exhaustive-deps.
+  //
+  // rules-of-hooks is NOT among them: it is a correctness rule, not a style
+  // one — a component whose hook count changes between renders is broken, not
+  // untidy. Its single violation (PayeesPage guarded on budgetId above a
+  // useMemo) is fixed, so it stays an error and cannot come back.
   'react-hooks/set-state-in-effect': 'warn',
   'react-hooks/refs': 'warn',
   'react-hooks/exhaustive-deps': 'warn',
-  'react-hooks/rules-of-hooks': 'warn',
   // 7 files export a helper beside a component; only affects Fast Refresh.
   'react-refresh/only-export-components': 'warn',
 }
