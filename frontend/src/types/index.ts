@@ -372,7 +372,9 @@ export interface DashboardMetrics {
   net_worth_prev: number
   burn_rate_30: number
   burn_rate_90: number
-  savings_rate: number
+  /** null when no income was recorded in the window — a gap, not a floor.
+   *  "No income" and "saved nothing" are different facts. */
+  savings_rate: number | null
   days_until_zero: number | null
   income_this_month: number
   expenses_this_month: number

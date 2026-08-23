@@ -401,15 +401,6 @@ class ReportService:
         )
         all_txns = (await self.session.execute(q)).all()
 
-        # Account info for on_budget classification
-        acct_q = select(
-            Account.id, Account.on_budget, Account.account_type, Account.is_deleted
-        ).where(
-            Account.budget_id == budget_id,
-            Account.is_deleted == False,  # noqa: E712
-        )
-        accounts = {str(r.id): r for r in (await self.session.execute(acct_q)).all()}
-
         # Category info for spending
         cat_q = (
             select(Category.id, Category.name, CategoryGroup.name.label("group_name"))
@@ -446,17 +437,14 @@ class ReportService:
             },
         )
 
-        on_budget_ids = {aid for aid, a in accounts.items() if a.on_budget}
-        df = df.with_columns(
-            # Budget cash flow: ON-BUDGET rows that are non-transfers or
-            # CATEGORIZED transfer legs (spending transfers to off-budget
-            # accounts). Plain activity inside tracking accounts (dividends,
-            # market adjustments) moves net worth, never income/expense.
-            (
-                pl.col("account_id").is_in(list(on_budget_ids))
-                & (~pl.col("is_transfer") | (pl.col("category_id") != ""))
-            ).alias("cash_flow"),
-        )
+        # A `cash_flow` column used to be derived here — a Polars restatement of
+        # CASH_FLOW_ROW that had drifted from it twice over: it knew a transfer
+        # only by `transfer_id`, so every unpaired YNAB leg read as ordinary
+        # spending (the 1,117-row bug txn_filters.py documents), and it dropped
+        # the counterpart-off-budget arm, so an uncategorized mortgage transfer
+        # was excluded from cash flow when that case is the arm's whole point.
+        # Nothing read it. Dead code encoding a wrong rule is worse than no
+        # code, because the next reader will use it.
 
         # Parent rows carry the account-level amounts (split children would
         # double-count); leaf rows carry the categories.
@@ -506,15 +494,37 @@ class ReportService:
         savings_this = _cls_magnitude(start_date, end_date, ActivityClass.SAVINGS)
         expenses_prev = _cls_magnitude(prev_start, prev_end, ActivityClass.SPENDING)
 
-        # Burn rate is how fast money is consumed, so savings and debt
-        # principal are out — matching the Burn Rate chart exactly.
-        burn_30 = _cls_magnitude(thirty_ago, today, ActivityClass.SPENDING)
-        burn_90 = _cls_magnitude(ninety_ago, today, ActivityClass.SPENDING) / 3
+        # Burn rate is how fast money is consumed, so savings and debt principal
+        # are out. This claimed to match the Burn Rate chart "exactly" and did
+        # not: the chart also filters `amount < 0`, so a refund posted to a
+        # spending category lowered the card and not the chart.
+        #
+        # The chart's other extra clause, CASH_FLOW_ROW, is implied here rather
+        # than missing: a row is outside cash flow only when it is a transfer
+        # leg, uncategorized, and pointed at another on-budget account, and
+        # ACTIVITY_CLASS never calls that SPENDING. Asserted in
+        # test_dashboard_matches_charts.py rather than assumed.
+        def _burn(start: date, end: date) -> Decimal:
+            window = cdf.filter(
+                (pl.col("date") >= start)
+                & (pl.col("date") <= end)
+                & (pl.col("cls") == ActivityClass.SPENDING.value)
+                & (pl.col("amount") < 0)
+            )
+            return -Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
+
+        burn_30 = _burn(thirty_ago, today)
+        burn_90 = _burn(ninety_ago, today) / 3
 
         # savings / income, the same ratio the Savings Rate tab shows by
         # default. The old (income - expenses) / income counted a brokerage
         # transfer as an expense and so reported 0% for a household saving 40%.
-        savings_rate = float(savings_this / income_this) if income_this > 0 else 0.0
+        #
+        # None, not 0.0, when nothing came in — the same answer the Savings Rate
+        # tab gives, for the reason its docstring states: "no income recorded"
+        # and "saved nothing" are different facts. The two carried the same
+        # label and disagreed on exactly the months a new budget starts with.
+        savings_rate = float(savings_this / income_this) if income_this > 0 else None
 
         # Days until zero
         daily_burn = float(burn_30) / 30 if burn_30 > 0 else 0
