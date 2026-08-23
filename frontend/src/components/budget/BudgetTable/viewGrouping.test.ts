@@ -18,6 +18,8 @@ function cat(id: string, name: string, group = 'real-group'): Category {
     linked_liability_id: null,
     is_assignable: true,
     is_categorizable: true,
+    created_at: '2026-08-01T00:00:00Z',
+    updated_at: '2026-08-01T00:00:00Z',
   }
 }
 

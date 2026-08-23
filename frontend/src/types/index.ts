@@ -40,7 +40,11 @@ export interface Account {
   cleared_balance: number
   uncleared_balance: number
   last_reconciled_at: string | null
+  /** Always sent (may be null) — the balance the last reconciliation locked. */
+  last_reconciled_balance: number | null
   uncategorized_count: number
+  created_at: string
+  updated_at: string
 }
 
 // Account types are per-budget registry keys now (built-ins seeded for every
@@ -91,6 +95,8 @@ export interface Category {
    */
   is_categorizable: boolean
   tags?: TagSimple[]
+  created_at: string
+  updated_at: string
 }
 
 export interface BudgetFilter {
