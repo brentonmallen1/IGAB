@@ -308,3 +308,29 @@ class TestTheServedFlagIsTheOnlyRule:
             assert isinstance(TransactionResponse.model_validate(txn).needs_category, bool), (
                 f"{label} returned a row the API cannot serialize"
             )
+
+    async def test_a_pending_row_is_filterable_but_is_not_workload(self, db_session):
+        """The one place the badge and the Uncategorized filter are *meant* to
+        differ, so it is written down rather than left to look like drift.
+
+        A pending uncategorized row matches an Uncategorized search — it is
+        uncategorized, and hiding it from a filter makes the filter lie. It is
+        not counted by the badge, because the badge is a count of work the user
+        can act on and a pending amount is provisional. The gap between the two
+        is exactly the pending uncategorized rows and nothing else.
+        """
+        services, budget, checking = await self._world(db_session)
+        await create_transaction(db_session, budget, checking, "-30.00", TODAY, cleared="pending")
+        await db_session.flush()
+
+        review = await services.transaction_repo.count_pending_review(budget.id)
+        _, filtered, _ = await services.transaction_repo.list_for_budget(
+            budget.id, scope="leaf", uncategorized=True
+        )
+        _, posted_only, _ = await services.transaction_repo.list_for_budget(
+            budget.id, scope="leaf", uncategorized=True, posted_only=True
+        )
+
+        assert filtered == 3, "the filter shows the pending row alongside the two posted ones"
+        assert review["uncategorized"] == 2, "the badge counts only what can be acted on"
+        assert posted_only == review["uncategorized"], "and they agree once pending is excluded"

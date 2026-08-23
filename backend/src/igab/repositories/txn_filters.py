@@ -121,6 +121,14 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
 #: cash flow**. A row that does not count cannot need one; a row that counts
 #: and has none, does. `CASH_FLOW_ROW`'s middle arm (`category_id IS NOT NULL`)
 #: is dead here because of the first condition, so the two compose exactly.
+#: POSTED is deliberately NOT part of this. Whether a category applies to a row
+#: is a fact about the row; whether it is *work the user can do now* is a
+#: question the caller asks. Counters (the badge, the per-account count) add
+#: POSTED because a pending amount is provisional and often arrives with its
+#: payee. The Uncategorized filter does not, because a filter shows rows that
+#: match rather than tallying a workload. That divergence is intended, is
+#: bounded to exactly the pending uncategorized rows, and is pinned by a test —
+#: do not "fix" it into agreement.
 NEEDS_CATEGORY = and_(
     Transaction.category_id.is_(None),
     LEAF,

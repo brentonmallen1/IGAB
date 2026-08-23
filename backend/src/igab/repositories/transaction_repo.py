@@ -386,9 +386,17 @@ class TransactionRepository(BaseRepository[Transaction]):
     async def _count_pending_review(self, base_where) -> dict:
         # Approval still applies everywhere; a category does not. See
         # NEEDS_CATEGORY for which rows a category is actually for.
+        #
+        # POSTED is applied here and NOT inside NEEDS_CATEGORY, on purpose.
+        # This is a count of work the user can act on, and a pending row is not
+        # actionable — the amount is provisional and the payee often arrives
+        # with it. The Uncategorized *filter* deliberately keeps pending rows,
+        # because a filter answers "show me rows matching this" rather than
+        # "how much is waiting for me". So the badge and that filter can
+        # legitimately differ by the number of pending uncategorized rows, and
+        # only by that. Pinned in test_offbudget_categories.py.
         needs_category = NEEDS_CATEGORY
         unapproved = Transaction.approved == False  # noqa: E712
-        not_pending = Transaction.cleared != "pending"
 
         result = await self.session.execute(
             select(
@@ -401,7 +409,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 func.sum(
                     cast(case((and_(~unapproved, needs_category), 1), else_=0), Integer)
                 ).label("uncategorized_only"),
-            ).where(and_(base_where, not_pending))
+            ).where(and_(base_where, POSTED))
         )
         row = result.one()
         both = row.both or 0
