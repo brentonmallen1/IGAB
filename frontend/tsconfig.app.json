@@ -21,5 +21,11 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+
+  /* Tests are checked by tsconfig.test.json, not here — the production build
+   * runs this project inside an image that has no repo root, and the split
+   * fixture `shared/split_cases.json` lives above `frontend/`. See the header
+   * of tsconfig.test.json. */
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test-utils"]
 }
