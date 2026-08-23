@@ -386,3 +386,133 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
 }
+
+/* ─── Split ────────────────────────────────────────────────────────────────
+   The quick-add is the only way to enter a transaction on a phone, so it has
+   to be able to do the thing that needs doing at the till: one receipt, two
+   envelopes. Kept collapsed to a single icon until asked for — the fast path
+   is still one category and out. */
+
+.quick-add__row-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  background: none;
+  text-align: left;
+}
+
+.quick-add__split-start {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  margin-right: calc(var(--spacing-md) * -1);
+  border: none;
+  background: none;
+  color: var(--color-accent);
+}
+
+.quick-add__split {
+  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+}
+
+.quick-add__split-head {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+
+.quick-add__split-cancel,
+.quick-add__split-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--tap-min);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--font-size-sm);
+}
+
+.quick-add__split-cancel {
+  margin-left: auto;
+}
+
+.quick-add__split-leg {
+  display: grid;
+  grid-template-columns: 1fr 96px var(--tap-min);
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.quick-add__split-category {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: var(--tap-min);
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+}
+
+.quick-add__split-amount {
+  min-height: var(--tap-min);
+  padding: 6px var(--spacing-sm);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  /* 16px or iOS zooms the whole viewport on focus and never zooms back */
+  font-size: 16px;
+  text-align: right;
+  width: 100%;
+}
+
+.quick-add__split-amount:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.quick-add__split-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+}
+
+.quick-add__split-remove:disabled {
+  opacity: 0.35;
+}
+
+.quick-add__split-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.quick-add__split-remaining {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  /* The one number that decides whether Save is reachable, so it carries
+     state colour: amber while the legs don't add up, positive when they do. */
+  color: var(--color-warning);
+}
+
+.quick-add__split-remaining--done {
+  color: var(--color-positive);
+}
