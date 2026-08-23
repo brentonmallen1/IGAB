@@ -79,3 +79,40 @@ export function ReportNotes({ report, toggleAvailable }: Props) {
     </div>
   )
 }
+
+
+/**
+ * The one control that adds savings and debt payments back into a spending
+ * chart. Shared because it was written twice, and the copies drifted: the
+ * treemap's label read "Hide tagged as savings" while its state fed
+ * `includeSavings`, so ticking "hide" added them. Label and meaning now
+ * travel together.
+ */
+export function IncludeSavingsToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <label className="report-toggle">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span title="Money moved into savings or used to pay down a tracked debt isn't spending, so it's left out by default. Tick to add it back.">
+        Include savings &amp; debt payments
+      </span>
+    </label>
+  )
+}
+
+/**
+ * What an empty spending chart says. A view that hides everything with
+ * spending is not the same as a window with no spending in it, and the
+ * distinction is the difference between "your filter did this" and "you
+ * spent nothing".
+ */
+export function emptySpendingMessage(viewHiddenCategories: number | undefined): string {
+  return (viewHiddenCategories ?? 0) > 0
+    ? 'Everything with spending in this window is hidden by the current view.'
+    : 'No spending data for this period.'
+}

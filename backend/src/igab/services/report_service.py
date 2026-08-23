@@ -171,6 +171,17 @@ _EXPLAINED_EXCLUSIONS: frozenset[str] = frozenset(
 )
 
 
+def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
+    """An outflow class's total for one month, as a positive number.
+
+    Outflow rows are stored negative and every consumer reports magnitudes, so
+    every consumer flipped the sign itself — each with its own copy of the
+    comment explaining why. Three copies is three chances for one of them to
+    keep the sign through a refactor and quietly report a negative savings rate.
+    """
+    return -buckets.get(cls.value, Decimal("0"))
+
+
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -261,21 +272,12 @@ class ReportService:
         Internal transfers between two on-budget accounts are excluded: they
         cancel, and showing them would double the apparent flow.
         """
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        start = _subtract_months(first_of_month, months - 1)
-
-        by_month = await self._monthly_class_totals(budget_id, start, today)
-
         results = []
-        for i in range(months - 1, -1, -1):
-            month_start = _subtract_months(first_of_month, i)
-            buckets = by_month.get(month_start, {})
+        for month_start, buckets in await self._class_series(budget_id, months):
             income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            # Outflow classes are stored negative; report magnitudes.
-            expenses = -buckets.get(ActivityClass.SPENDING.value, Decimal("0"))
-            savings = -buckets.get(ActivityClass.SAVINGS.value, Decimal("0"))
-            debt = -buckets.get(ActivityClass.DEBT_PRINCIPAL.value, Decimal("0"))
+            expenses = _magnitude(buckets, ActivityClass.SPENDING)
+            savings = _magnitude(buckets, ActivityClass.SAVINGS)
+            debt = _magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
             results.append(
                 {
                     "month": month_start,
@@ -484,16 +486,21 @@ class ReportService:
             )
             return Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
 
+        def _cls_magnitude(start: date, end: date, cls: ActivityClass) -> Decimal:
+            """Outflow classes are stored negative; these cards report
+            magnitudes. Same convention as `_magnitude`, over a window rather
+            than a month bucket."""
+            return -_cls_total(start, end, cls)
+
         income_this = _cls_total(start_date, end_date, ActivityClass.INCOME)
-        # Outflow classes are stored negative; these cards report magnitudes.
-        expenses_this = -_cls_total(start_date, end_date, ActivityClass.SPENDING)
-        savings_this = -_cls_total(start_date, end_date, ActivityClass.SAVINGS)
-        expenses_prev = -_cls_total(prev_start, prev_end, ActivityClass.SPENDING)
+        expenses_this = _cls_magnitude(start_date, end_date, ActivityClass.SPENDING)
+        savings_this = _cls_magnitude(start_date, end_date, ActivityClass.SAVINGS)
+        expenses_prev = _cls_magnitude(prev_start, prev_end, ActivityClass.SPENDING)
 
         # Burn rate is how fast money is consumed, so savings and debt
         # principal are out — matching the Burn Rate chart exactly.
-        burn_30 = -_cls_total(thirty_ago, today, ActivityClass.SPENDING)
-        burn_90 = -_cls_total(ninety_ago, today, ActivityClass.SPENDING) / 3
+        burn_30 = _cls_magnitude(thirty_ago, today, ActivityClass.SPENDING)
+        burn_90 = _cls_magnitude(ninety_ago, today, ActivityClass.SPENDING) / 3
 
         # savings / income, the same ratio the Savings Rate tab shows by
         # default. The old (income - expenses) / income counted a brokerage
@@ -2447,6 +2454,28 @@ class ReportService:
             by_month.setdefault(key, {})[row.cls] = Decimal(str(row.total))
         return by_month
 
+    async def _class_series(
+        self, budget_id: uuid.UUID, months: int
+    ) -> list[tuple[date, dict[str, Decimal]]]:
+        """The last `months` calendar months, oldest first, with class totals.
+
+        `income_vs_expense` and `savings_rate` each walked
+        `_monthly_class_totals` with their own copy of this reversed range, so
+        a change to the window — how a partial current month counts, say —
+        landed in one report and not the other. Months with no activity are
+        present with an empty bucket: a gap in the series is a gap in the
+        chart, not a shorter chart.
+        """
+        today = date.today()
+        first = today.replace(day=1)
+        by_month = await self._monthly_class_totals(
+            budget_id, _subtract_months(first, months - 1), today
+        )
+        return [
+            (month, by_month.get(month, {}))
+            for month in (_subtract_months(first, i) for i in range(months - 1, -1, -1))
+        ]
+
     async def _view_arrangement(self, budget_id: uuid.UUID, view_id: uuid.UUID):
         """Return `category_id -> (group_id, group_name)` for one view, or None
         for a category the view leaves out.
@@ -2526,11 +2555,6 @@ class ReportService:
         recorded" and "saved nothing" are different facts, and a chart should
         show a gap rather than a floor.
         """
-        today = date.today()
-        first = today.replace(day=1)
-        start = _subtract_months(first, months - 1)
-
-        by_month = await self._monthly_class_totals(budget_id, start, today)
 
         def _rate(numerator: Decimal, income: Decimal) -> float | None:
             if income <= 0:
@@ -2538,14 +2562,11 @@ class ReportService:
             return float(numerator / income)
 
         series: list[dict] = []
-        for i in range(months - 1, -1, -1):
-            month = _subtract_months(first, i)
-            buckets = by_month.get(month, {})
+        for month, buckets in await self._class_series(budget_id, months):
             income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            # Outflow classes are stored negative; report them as magnitudes.
-            savings = -buckets.get(ActivityClass.SAVINGS.value, Decimal("0"))
-            debt = -buckets.get(ActivityClass.DEBT_PRINCIPAL.value, Decimal("0"))
-            spending = -buckets.get(ActivityClass.SPENDING.value, Decimal("0"))
+            savings = _magnitude(buckets, ActivityClass.SAVINGS)
+            debt = _magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
+            spending = _magnitude(buckets, ActivityClass.SPENDING)
             series.append(
                 {
                     "month": month,

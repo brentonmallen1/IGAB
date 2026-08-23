@@ -13,7 +13,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
 import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
-import { ReportNotes } from '../ReportNotes'
+import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -176,16 +176,7 @@ export function ParetoReport({ budgetId }: Props) {
           <SpendingClassNote />
         </ReportInfoButton>
         {groupBy !== 'payee' && (
-          <label className="report-toggle">
-            <input
-              type="checkbox"
-              checked={includeSavings}
-              onChange={(e) => setIncludeSavings(e.target.checked)}
-            />
-            <span title="Money moved into savings or used to pay down a tracked debt isn't spending, so it's left out by default. Tick to add it back.">
-              Include savings &amp; debt payments
-            </span>
-          </label>
+          <IncludeSavingsToggle checked={includeSavings} onChange={setIncludeSavings} />
         )}
         <div className="flex-row ms-auto">
           <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
@@ -229,9 +220,9 @@ export function ParetoReport({ budgetId }: Props) {
 
       {chartData.length === 0 ? (
         <div className="reports-empty">
-          {groupBy !== 'payee' && (spendingQ.data?.view_hidden_categories ?? 0) > 0
-            ? 'Everything with spending in this window is hidden by the current view.'
-            : 'No spending data for this period.'}
+          {emptySpendingMessage(
+            groupBy === 'payee' ? 0 : spendingQ.data?.view_hidden_categories
+          )}
         </div>
       ) : (
         <>
