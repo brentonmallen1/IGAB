@@ -18,6 +18,7 @@ Precedence, highest first:
 ``auto``       no rows at all — detection speaks for itself.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -62,12 +63,18 @@ class Resolution:
         return self.source != "dismissed"
 
     @property
-    def uses_detection(self) -> bool:
-        """Whether detection should still run and be counted."""
-        return self.source in ("auto", "external")
+    def runs_detection(self) -> bool:
+        """Whether detection should be consulted at all.
+
+        True even for a manual binding: pointing the app at the right category
+        does not mean "stop measuring", it means "measure *this*". Detection
+        takes the bound entities and reports on them. Only a dismissal or a
+        stored yes/no answer takes detection out of the picture entirely.
+        """
+        return self.source not in ("dismissed", "answer")
 
 
-def resolve(concept_key: str, rows: list[BindingRow]) -> Resolution:
+def resolve(concept_key: str, rows: Sequence[BindingRow]) -> Resolution:
     """Fold every stored row for one concept into a single answer."""
     mine = [r for r in rows if r.concept_key == concept_key]
     if not mine:
@@ -127,5 +134,5 @@ def resolve(concept_key: str, rows: list[BindingRow]) -> Resolution:
     )
 
 
-def resolve_all(concept_keys: list[str], rows: list[BindingRow]) -> dict[str, Resolution]:
-    return {key: resolve(key, rows) for key in concept_keys}
+def resolve_all(keys: Sequence[str], rows: Sequence[BindingRow]) -> dict[str, Resolution]:
+    return {key: resolve(key, rows) for key in keys}

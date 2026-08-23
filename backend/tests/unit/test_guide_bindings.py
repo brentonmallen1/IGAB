@@ -39,7 +39,7 @@ class TestNoRows:
         r = resolve("emergency_fund", [])
         assert r.source == "auto"
         assert r.tracked is True
-        assert r.uses_detection is True
+        assert r.runs_detection is True
         assert r.external_amount is None
 
     def test_rows_for_other_concepts_are_ignored(self):
@@ -52,7 +52,7 @@ class TestDismissed:
         r = resolve("emergency_fund", [Row(mode="dismissed")])
         assert r.source == "dismissed"
         assert r.tracked is False
-        assert r.uses_detection is False
+        assert r.runs_detection is False
 
     def test_dismissed_beats_everything_else(self):
         # Leftover rows must not resurrect a claim the user switched off.
@@ -71,7 +71,7 @@ class TestAnswer:
         r = resolve("employer_match", [Row(concept_key="employer_match", mode="answer", answer=True)])
         assert r.source == "answer"
         assert r.answer is True
-        assert r.uses_detection is False
+        assert r.runs_detection is False
 
     def test_a_no_is_not_mistaken_for_unanswered(self):
         r = resolve("employer_match", [Row(concept_key="employer_match", mode="answer", answer=False)])
@@ -94,8 +94,9 @@ class TestManual:
         ])
         assert r.source == "manual"
         assert r.entities == {"category": (cat,), "account": (acct,)}
-        # Detection must stop guessing once the user has pointed at something.
-        assert r.uses_detection is False
+        # Pointing the app at a category does not mean "stop measuring", it
+        # means "measure this one" — so detection still runs, scoped to it.
+        assert r.runs_detection is True
 
     def test_several_entities_of_one_type(self):
         a, b = uuid4(), uuid4()
@@ -134,7 +135,7 @@ class TestExternal:
     def test_external_keeps_detection_running(self):
         # Half here and half elsewhere is the ordinary case.
         r = resolve("emergency_fund", [external("9000")])
-        assert r.uses_detection is True
+        assert r.runs_detection is True
 
     def test_newest_as_of_wins(self):
         r = resolve("emergency_fund", [
@@ -155,8 +156,9 @@ class TestCombined:
         assert r.source == "manual+external"
         assert r.entities == {"category": (cat,)}
         assert r.external_amount == Decimal("9000")
-        # Manual entities are counted by the caller, so detection stays off.
-        assert r.uses_detection is False
+        # Both halves count: the bound category is measured and the declared
+        # amount is added on top.
+        assert r.runs_detection is True
 
     def test_answer_beats_manual_and_external(self):
         r = resolve("employer_match", [
