@@ -575,6 +575,85 @@ class TransactionService:
                 await self._record_txn(dest, "create")
         return source
 
+    async def repair_transfers(
+        self, budget_id: uuid.UUID, *, date_tolerance_days: int = 0
+    ) -> dict[str, int]:
+        """Link the transfer legs already in the budget whose partner is plain.
+
+        Fixing the importer only helps the next import; a budget already
+        carrying a thousand orphan legs needs the pass. Idempotent: it links
+        only rows that are unlinked now, so running it twice links nothing the
+        second time.
+
+        Deliberately conservative — it writes no money and creates no rows.
+        Linking changes only `transfer_id`, so amounts, categories and
+        reconciled state are untouched and even a reconciled leg is safe to
+        pair. Where more than one row could be the partner it links NOTHING
+        and reports the cluster as ambiguous: the register's picker is where a
+        person answers that, and a wrong guess here is a wrong number in a
+        report nobody would think to question.
+
+        Returns {linked, ambiguous, remaining} — pairs made, legs left for a
+        person to decide, and legs with no candidate at all.
+        """
+        legs = await self.transaction_repo.list_unpaired_transfer_legs(budget_id)
+        # (leg id, partner account) → the payee's target. Both directions of a
+        # pair appear in this list, so each pair is seen twice; `claimed`
+        # keeps the second sighting from re-linking or double-counting it.
+        claimed: set[uuid.UUID] = set()
+        # Every row in a cluster the pass refuses to resolve. The whole cluster
+        # goes off limits, not just the leg that noticed: with one row in
+        # checking and two candidates in savings, each of THOSE sees only one
+        # candidate, so a per-leg rule would cheerfully link one of them from
+        # the other side — the arbitrary guess this exists to avoid.
+        contested: set[uuid.UUID] = set()
+        linked = 0
+
+        with self.changes.batch():
+            for leg in legs:
+                if leg.id in claimed or leg.id in contested:
+                    continue
+                target_id = leg.counterpart_account_id
+                if target_id is None:
+                    continue
+                candidates = [
+                    c
+                    for c in await self.transaction_repo.find_transfer_candidates(
+                        account_id=target_id,
+                        amount=-leg.amount,
+                        counterpart_account_id=leg.account_id,
+                        on_date=leg.date,
+                        date_tolerance_days=date_tolerance_days,
+                    )
+                    if c.id != leg.id and c.id not in claimed and c.id not in contested
+                ]
+                if not candidates:
+                    continue
+                if len(candidates) > 1:
+                    contested.add(leg.id)
+                    contested.update(c.id for c in candidates)
+                    continue
+
+                partner = candidates[0]
+                leg_before = snapshot("transaction", leg)
+                partner_before = snapshot("transaction", partner)
+                updated_leg = await self.transaction_repo.update(leg.id, transfer_id=partner.id)
+                updated_partner = await self.transaction_repo.update(partner.id, transfer_id=leg.id)
+                await self._record_txn(updated_leg, "update", before=leg_before)
+                await self._record_txn(updated_partner, "update", before=partner_before)
+                claimed.update({leg.id, partner.id})
+                linked += 1
+
+        # Counted over the legs the hygiene panel counts, so the three numbers
+        # account for exactly the rows it reported: every leg is linked,
+        # contested, or left with no candidate at all.
+        leg_ids = {leg.id for leg in legs}
+        return {
+            "linked": linked,
+            "ambiguous": len(contested & leg_ids),
+            "remaining": len(leg_ids - claimed - contested),
+        }
+
     async def _plan_transfer_edit(
         self,
         budget_id: uuid.UUID,

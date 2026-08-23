@@ -539,3 +539,158 @@ class TestUndo:
         repo = TransactionRepository(db_session)
         assert (await repo.get_or_raise(near.id)).transfer_id is None
         assert (await repo.get_or_raise(far.id)).transfer_id is None
+
+
+class TestRepairPass:
+    """Repairing history the fixed importer can't reach.
+
+    A budget imported before the pairing fix carries orphan legs in bulk (one
+    real export left 1,117). The pass links the unmistakable ones and refuses
+    the rest. It writes no money and creates no rows — only `transfer_id` —
+    so every balance in the budget must be identical afterwards.
+    """
+
+    async def _orphan_pair(self, db_session, budget, checking, savings, amount, on=TODAY):
+        to_savings = await _transfer_payee(db_session, budget, savings)
+        to_checking = await _transfer_payee(db_session, budget, checking)
+        near = await create_transaction(
+            db_session, budget, checking, f"-{amount}", on, payee=to_savings
+        )
+        far = await create_transaction(db_session, budget, savings, amount, on, payee=to_checking)
+        return near, far
+
+    async def test_links_the_unmistakable_pairs_and_moves_no_money(self, db_session):
+        budget, checking, savings = await _setup(db_session)
+        a_near, a_far = await self._orphan_pair(db_session, budget, checking, savings, "500.00")
+        b_near, b_far = await self._orphan_pair(db_session, budget, checking, savings, "25.00")
+        before = (await _balance(db_session, checking), await _balance(db_session, savings))
+
+        services = make_services(db_session)
+        result = await services.transactions.repair_transfers(budget.id)
+
+        assert result == {"linked": 2, "ambiguous": 0, "remaining": 0}
+        repo = TransactionRepository(db_session)
+        assert (await repo.get_or_raise(a_near.id)).transfer_id == a_far.id
+        assert (await repo.get_or_raise(b_far.id)).transfer_id == b_near.id
+        assert (await _balance(db_session, checking), await _balance(db_session, savings)) == before
+
+    async def test_running_it_twice_links_nothing_the_second_time(self, db_session):
+        budget, checking, savings = await _setup(db_session)
+        await self._orphan_pair(db_session, budget, checking, savings, "500.00")
+
+        services = make_services(db_session)
+        first = await services.transactions.repair_transfers(budget.id)
+        second = await services.transactions.repair_transfers(budget.id)
+
+        assert first["linked"] == 1
+        assert second == {"linked": 0, "ambiguous": 0, "remaining": 0}
+
+    async def test_ambiguous_clusters_are_left_for_a_person(self, db_session):
+        """Two identical candidates. Guessing would link the wrong money and
+        nothing downstream would ever question it."""
+        budget, checking, savings = await _setup(db_session)
+        to_savings = await _transfer_payee(db_session, budget, savings)
+        to_checking = await _transfer_payee(db_session, budget, checking)
+        near = await create_transaction(
+            db_session, budget, checking, "-500.00", TODAY, payee=to_savings
+        )
+        for _ in range(2):
+            await create_transaction(
+                db_session, budget, savings, "500.00", TODAY, payee=to_checking
+            )
+
+        services = make_services(db_session)
+        result = await services.transactions.repair_transfers(budget.id)
+
+        assert result["linked"] == 0
+        assert result["ambiguous"] >= 1
+        assert (await TransactionRepository(db_session).get_or_raise(near.id)).transfer_id is None
+
+    async def test_a_leg_with_no_far_side_is_reported_not_invented(self, db_session):
+        budget, checking, savings = await _setup(db_session)
+        to_savings = await _transfer_payee(db_session, budget, savings)
+        await create_transaction(db_session, budget, checking, "-500.00", TODAY, payee=to_savings)
+        before = await _balance(db_session, savings)
+
+        services = make_services(db_session)
+        result = await services.transactions.repair_transfers(budget.id)
+
+        assert result == {"linked": 0, "ambiguous": 0, "remaining": 1}
+        assert await _balance(db_session, savings) == before, "the pass never writes a row"
+
+    async def test_a_day_apart_links_only_within_the_tolerance_asked_for(self, db_session):
+        budget, checking, savings = await _setup(db_session)
+        await self._orphan_pair(db_session, budget, checking, savings, "500.00")
+        # Shift the far leg a day so the exact-date pass cannot claim it.
+        far = (
+            await TransactionRepository(db_session).find_transfer_candidates(
+                account_id=savings.id, amount=Decimal("500.00")
+            )
+        )[0]
+        far.date = TODAY + timedelta(days=1)
+        await db_session.flush()
+
+        services = make_services(db_session)
+        assert (await services.transactions.repair_transfers(budget.id))["linked"] == 0
+        widened = await services.transactions.repair_transfers(budget.id, date_tolerance_days=1)
+        assert widened["linked"] == 1
+
+    async def test_a_reconciled_leg_may_still_be_linked(self, db_session):
+        """Linking writes only transfer_id — no amount, no cleared state — so
+        a reconciliation the user already signed off stays valid."""
+        budget, checking, savings = await _setup(db_session)
+        to_savings = await _transfer_payee(db_session, budget, savings)
+        to_checking = await _transfer_payee(db_session, budget, checking)
+        near = await create_transaction(
+            db_session, budget, checking, "-500.00", TODAY, payee=to_savings, cleared="reconciled"
+        )
+        far = await create_transaction(
+            db_session, budget, savings, "500.00", TODAY, payee=to_checking, cleared="reconciled"
+        )
+
+        services = make_services(db_session)
+        assert (await services.transactions.repair_transfers(budget.id))["linked"] == 1
+        repo = TransactionRepository(db_session)
+        assert (await repo.get_or_raise(near.id)).transfer_id == far.id
+        assert (await repo.get_or_raise(near.id)).cleared == "reconciled"
+
+    async def test_the_whole_pass_undoes_as_one_batch(self, db_session):
+        budget, checking, savings = await _setup(db_session)
+        near, far = await self._orphan_pair(db_session, budget, checking, savings, "500.00")
+
+        services = make_services(db_session)
+        await services.transactions.repair_transfers(budget.id)
+        await db_session.flush()
+
+        changes = list(
+            (
+                await db_session.execute(
+                    select(ChangeLog)
+                    .where(ChangeLog.budget_id == budget.id, ChangeLog.entity_type == "transaction")
+                    .order_by(ChangeLog.seq)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len({c.batch_id for c in changes}) == 1, "one undo, not one per row"
+        await UndoService(db_session).undo_batch(budget.id, changes[0].batch_id)
+
+        db_session.expunge_all()
+        repo = TransactionRepository(db_session)
+        assert (await repo.get_or_raise(near.id)).transfer_id is None
+        assert (await repo.get_or_raise(far.id)).transfer_id is None
+
+    async def test_it_does_not_reach_into_another_budget(self, db_session):
+        budget, checking, savings = await _setup(db_session)
+        await self._orphan_pair(db_session, budget, checking, savings, "500.00")
+        other_budget, other_checking, other_savings = await _setup(db_session)
+        other_near, _ = await self._orphan_pair(
+            db_session, other_budget, other_checking, other_savings, "500.00"
+        )
+
+        services = make_services(db_session)
+        assert (await services.transactions.repair_transfers(budget.id))["linked"] == 1
+        assert (
+            await TransactionRepository(db_session).get_or_raise(other_near.id)
+        ).transfer_id is None

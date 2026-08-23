@@ -612,6 +612,25 @@ class TransactionRepository(BaseRepository[Transaction]):
         await self.session.flush()
         return len(transactions)
 
+    async def list_unpaired_transfer_legs(self, budget_id: uuid.UUID) -> list[Transaction]:
+        """Every leg the hygiene panel counts, oldest first.
+
+        Same predicate as the count and the `is:unpaired` filter — the number,
+        the list and the repair pass must be looking at one rule.
+        """
+        q = (
+            self.with_computed(select(Transaction))
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.is_split == False,  # noqa: E712
+                UNPAIRED_TRANSFER_LEG,
+            )
+            .order_by(Transaction.date, Transaction.created_at)
+        )
+        return list((await self.session.execute(q)).scalars().all())
+
     async def find_transfer_candidates(
         self,
         *,
