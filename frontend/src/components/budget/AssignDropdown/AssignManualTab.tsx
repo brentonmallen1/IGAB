@@ -1,3 +1,4 @@
+import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useMoveMoney } from '../../../api/budgets'
@@ -24,13 +25,8 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
   const [categoryId, setCategoryId] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const systemGroupIds = new Set(groups.filter((g) => g.is_system).map((g) => g.id))
-  const eligibleGroups = groups.filter((g) => !g.is_system && !g.is_hidden)
-  const categoriesByGroup = (groupId: string) =>
-    categories.filter((c) => c.category_group_id === groupId && !c.is_hidden)
-  const eligible = categories.filter(
-    (c) => !c.is_hidden && !systemGroupIds.has(c.category_group_id)
-  )
+  const eligible = categories.filter((c) => c.is_assignable)
+  const eligibleSections = groupedCategorySections(eligible, groups)
 
   const cents = toCents(amount)
   const exceedsTba = !isNaN(cents) && cents / 100 > tba
@@ -84,11 +80,7 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
           <option value="" disabled>
             Choose a category…
           </option>
-          <GroupedCategoryOptions
-            groups={eligibleGroups
-              .map((g) => ({ group: g, cats: categoriesByGroup(g.id) }))
-              .filter(({ cats }) => cats.length > 0)}
-          />
+          <GroupedCategoryOptions groups={eligibleSections} />
         </select>
       </label>
       {exceedsTba && (

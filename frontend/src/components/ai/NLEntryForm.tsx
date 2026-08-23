@@ -1,3 +1,4 @@
+import { parseApiDecimal } from '../../utils/money'
 import { useEffect, useRef, useState } from 'react'
 import { Mic, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -9,7 +10,7 @@ import type { EditorDraft } from '../transactions/TransactionEditor/TransactionE
 import './NLEntryForm.css'
 
 export function draftToEditorDraft(draft: NLDraft, jobId: string): EditorDraft {
-  const amount = parseFloat(draft.amount)
+  const amount = parseApiDecimal(draft.amount)
   const abs = Math.abs(amount).toFixed(2)
   return {
     date: draft.date,

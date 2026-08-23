@@ -297,3 +297,87 @@ async def test_adjustment_never_inherits_a_category_from_an_earlier_one(db_sessi
 
     assert second.category_id is None
     assert second.payee_id == first.payee_id, "same adjustment payee, no inherited category"
+
+
+class TestTheHeaderAndReconcileDifferOnlyOnFutureRows:
+    """Two numbers are labelled "cleared balance", and they are allowed to
+    differ — but by exactly one thing.
+
+    The header reports a partition: balance = cleared + uncleared. Reconcile
+    asks what today's statement should say. Applying reconcile's date cutoff
+    to the header would not remove a future-dated cleared row from it; it
+    would move that row into *uncleared*, which is a worse answer. So the
+    divergence is intended, and these tests bound it — see `not_future` in
+    txn_filters.py.
+    """
+
+    async def test_they_agree_when_nothing_is_future_dated(self, db_session):
+        services, budget, checking = await _setup(db_session)
+        await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
+        await create_transaction(
+            db_session, budget, checking, "-120.00", TODAY, cleared="reconciled"
+        )
+        await create_transaction(db_session, budget, checking, "-30.00", TODAY, cleared="uncleared")
+
+        header = await services.account_repo.get_cleared_balance(checking.id)
+        status = await services.reconciliation.get_status(checking.id)
+
+        assert header == Decimal("380.00")
+        assert Decimal(str(status["cleared_balance"])) == header
+
+    async def test_they_differ_by_exactly_the_future_dated_cleared_rows(self, db_session):
+        services, budget, checking = await _setup(db_session)
+        await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
+        future = today_utc() + timedelta(days=10)
+        await create_transaction(db_session, budget, checking, "250.00", future, cleared="cleared")
+
+        header = await services.account_repo.get_cleared_balance(checking.id)
+        status = await services.reconciliation.get_status(checking.id)
+
+        assert header == Decimal("750.00")
+        assert Decimal(str(status["cleared_balance"])) == Decimal("500.00")
+        assert header - Decimal(str(status["cleared_balance"])) == Decimal("250.00")
+
+    async def test_a_future_dated_cleared_row_is_never_reported_as_uncleared(self, db_session):
+        # The failure mode of "just add the cutoff to get_cleared_balance":
+        # uncleared_balance is derived as balance - cleared, so cutting only
+        # the cleared term relabels the row rather than excluding it.
+        services, budget, checking = await _setup(db_session)
+        await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
+        future = today_utc() + timedelta(days=10)
+        await create_transaction(db_session, budget, checking, "250.00", future, cleared="cleared")
+
+        balance = await services.account_repo.get_balance(checking.id)
+        cleared = await services.account_repo.get_cleared_balance(checking.id)
+
+        assert balance == Decimal("750.00")
+        assert balance - cleared == Decimal("0.00")
+
+    async def test_the_header_partition_holds_with_a_pending_row_present(self, db_session):
+        # Pending is excluded from balance entirely, so it belongs to neither
+        # term. The partition is over posted rows only.
+        services, budget, checking = await _setup(db_session)
+        await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
+        await create_transaction(db_session, budget, checking, "-40.00", TODAY, cleared="uncleared")
+        await create_transaction(db_session, budget, checking, "-999.00", TODAY, cleared="pending")
+
+        balance = await services.account_repo.get_balance(checking.id)
+        cleared = await services.account_repo.get_cleared_balance(checking.id)
+
+        assert balance == Decimal("460.00")
+        assert cleared == Decimal("500.00")
+        assert balance - cleared == Decimal("-40.00")
+
+    async def test_the_adjustment_is_sized_against_the_statement_question(self, db_session):
+        # The consequence that matters: even while the header shows a larger
+        # number, finish() must not manufacture an adjustment for a statement
+        # that already agrees.
+        services, budget, checking = await _setup(db_session)
+        await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
+        future = today_utc() + timedelta(days=10)
+        await create_transaction(db_session, budget, checking, "250.00", future, cleared="cleared")
+
+        snapshot = await services.reconciliation.finish(checking.id, Decimal("500.00"))
+
+        assert snapshot.adjustment_transaction_id is None
+        await assert_financial_invariants(db_session, budget.id)

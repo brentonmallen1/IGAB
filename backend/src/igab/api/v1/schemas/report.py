@@ -52,7 +52,9 @@ class DashboardMetrics(BaseModel):
     net_worth_prev: Decimal
     burn_rate_30: Decimal
     burn_rate_90: Decimal
-    savings_rate: float
+    #: None when no income was recorded in the window — the Savings Rate tab's
+    #: convention, and a gap rather than a floor on the chart.
+    savings_rate: float | None
     days_until_zero: float | None
     income_this_month: Decimal
     expenses_this_month: Decimal

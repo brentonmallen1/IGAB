@@ -23,6 +23,9 @@ import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
+
+/** Stable empty map: a fresh `new Map()` per render would defeat the memo. */
+const EMPTY_ACCOUNT_MAP = new Map<string, string>()
 import { useToastUndo } from '../../../utils/toastUndo'
 import { useHistoryStore } from '../../../stores/historyStore'
 import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simplefin'
@@ -32,7 +35,7 @@ import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
-import { inReviewSection, nextHeldForReview } from './reviewSection'
+import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import './TransactionTable.css'
 
 interface Props {
@@ -241,9 +244,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const sentinelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!hasNextPage || isFetching) return
-    const loadedImportant = transactions.filter(
-      (t) => !t.approved || (!t.category_id && !t.transfer_id && !t.is_split)
-    ).length
+    const loadedImportant = transactions.filter(countsAsPendingReview).length
     const knownImportant = reviewCounts?.total ?? 0
     if (loadedImportant < knownImportant) fetchNextPage()
   }, [isFetching, hasNextPage, fetchNextPage, transactions, reviewCounts])
@@ -798,7 +799,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
       <SearchFilterChips
         query={transactionSearchQuery}
-        accountMapSize={allAccounts ? accountMap.size : 0}
+        categoryMap={categoryMap}
+        payeeMap={payeeMap}
+        accountMap={allAccounts ? accountMap : EMPTY_ACCOUNT_MAP}
         onChange={setTransactionSearch}
       />
 

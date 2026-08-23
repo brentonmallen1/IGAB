@@ -16,7 +16,7 @@ export function MoveHistoryList({ budgetId, moves }: Props) {
     id === null ? 'Ready to Assign' : (categories.find((c) => c.id === id)?.name ?? '—')
   const dayOf = (iso: string) => {
     const d = formatDate(iso.slice(0, 10))
-    const parts = d.split(/[\s/\-]/)
+    const parts = d.split(/[\s/-]/)
     return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : d
   }
 

@@ -49,3 +49,26 @@ export function inReviewSection(t: Transaction, heldIds: ReadonlySet<string>): b
   if (isPending(t)) return false
   return t.needs_category || (!t.approved && heldIds.has(t.id))
 }
+
+/**
+ * Does this row count toward the pending-review badge?
+ *
+ * Composed only from facts the server supplies. `needs_category` is the served
+ * rule and is read, never rebuilt — the register's auto-paginate loop used to
+ * spell it `!category_id && !transfer_id && !is_split`, which recognised only a
+ * *paired* transfer and so counted every unpaired YNAB leg as unfiled work.
+ *
+ * The other two clauses mirror the *population* that
+ * `TransactionRepository._count_pending_review` counts over — POSTED and
+ * PARENT_ROW — because the loop compares its result against that count's
+ * `total`, and a comparison between two different populations is meaningless.
+ *
+ * This is a mirror of a population, not of a money rule. It is the one place
+ * it is spelled on the client, and `reviewSection.test.ts` pins all four
+ * clauses. If the badge's population changes, this must change with it.
+ */
+export function countsAsPendingReview(t: Transaction): boolean {
+  if (isPending(t)) return false // POSTED
+  if (t.parent_transaction_id) return false // PARENT_ROW
+  return !t.approved || t.needs_category
+}

@@ -64,6 +64,7 @@ from igab.domain.activity_class import (
     explain,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
+from igab.domain.money import quantize_cents
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -277,14 +278,27 @@ async def get_budget_month(
     month: date,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    target_service: Annotated[TargetService, Depends(get_target_service)],
 ) -> BudgetMonthResponse:
     summary = await budget_service.get_budget_summary(budget_id, month)
+
+    # Targets are loaded here rather than inside get_budget_summary on purpose:
+    # AssignService._gather calls that method and loads targets itself, so
+    # folding them in would do the work twice on the strategies path.
+    targets = {
+        t.category_id: t
+        for t in await target_service.repo.get_by_category_ids(
+            [b.category_id for b in summary.category_balances]
+        )
+    }
+
     return BudgetMonthResponse(
         month=month,
         to_be_assigned=summary.to_be_assigned,
         total_assigned=summary.total_assigned,
         total_activity=summary.total_activity,
         total_overspent=summary.total_overspent,
+        overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,
         category_balances=[
             CategoryBalance(
@@ -293,6 +307,16 @@ async def get_budget_month(
                 assigned=b.assigned,
                 activity=b.activity,
                 available=b.available,
+                target_status=(
+                    target_service.calculate_status(t, b.assigned, b.available)
+                    if (t := targets.get(b.category_id))
+                    else None
+                ),
+                needed_this_month=(
+                    target_service.calculate_needed(t, b.assigned, b.available)
+                    if (t := targets.get(b.category_id))
+                    else None
+                ),
             )
             for b in summary.category_balances
         ],
@@ -444,7 +468,7 @@ async def get_category_classification(
         CategoryClassSlice(
             activity_class=cls,
             label=CLASS_LABEL[ActivityClass(cls)],
-            total=v["total"].quantize(Decimal("0.01")),
+            total=quantize_cents(v["total"]),
             count=v["count"],
         )
         for cls, v in ordered

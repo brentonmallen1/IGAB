@@ -20,6 +20,7 @@ from datetime import date
 from decimal import Decimal
 
 from igab.db.models import Category, CategoryTarget
+from igab.domain.money import quantize_cents
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.services.budget_service import (
@@ -104,7 +105,7 @@ def distribute_fill(
     for cat_id, needed in shortfalls.items():
         if total_shortfall > ZERO:
             proportion = needed / total_shortfall
-            proposed = min(needed, (proportion * available_tba).quantize(Decimal("0.01")))
+            proposed = min(needed, quantize_cents(proportion * available_tba))
         else:
             proposed = ZERO
         result[cat_id] = proposed
@@ -171,10 +172,14 @@ class AssignService:
         summary = await self.budget_service.get_budget_summary(budget_id, month_start)
         balances = {b.category_id: b for b in summary.category_balances}
 
-        groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
-        system_group_ids = {g.id for g in groups if g.is_system}
+        # `is_assignable` is served by IS_ASSIGNABLE (category_filters.py) — the
+        # same rule the move-money and assign pickers read, so what the client
+        # offers and what this endpoint acts on cannot drift. It also closes a
+        # gap the group-set rebuild had: get_all filters the category's
+        # is_hidden but not the group's, so a hidden group's categories were
+        # still eligible here.
         categories = await self.category_repo.get_all(budget_id, include_hidden=False)
-        eligible = [c for c in categories if c.category_group_id not in system_group_ids]
+        eligible = [c for c in categories if c.is_assignable]
 
         histories = {
             c.id: await self.budget_service.get_category_history(budget_id, c.id, month_start)

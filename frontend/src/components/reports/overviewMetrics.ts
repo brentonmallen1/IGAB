@@ -18,8 +18,11 @@ export function spendingDelta(current: number, prev: number): number {
 
 /** Savings rate as a display percentage, clamped at 0 (an overspent period
  * reads as 0%, not a negative rate). */
-export function clampedSavingsRate(rate: number): number {
-  return Math.max(0, rate * 100)
+export function clampedSavingsRate(rate: number | null | undefined): number | null {
+  // null passes through: the server says null when no income was recorded, and
+  // showing 0% there claims the household saved nothing rather than that there
+  // was nothing to save from.
+  return rate == null ? null : Math.max(0, rate * 100)
 }
 
 /** Whole-day display value; null passes through (no runway to show). */

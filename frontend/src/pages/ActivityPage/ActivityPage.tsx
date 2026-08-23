@@ -1,3 +1,4 @@
+import { parseApiDecimal } from '../../utils/money'
 import { useState } from 'react'
 import { Undo2, Package, RefreshCw, Trash2, Edit3, Plus, CheckCircle, FileUp, GitMerge } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
@@ -225,7 +226,7 @@ function summarizeAfter(change: Change): string {
     const amount = after.amount as string | undefined
     const memo = after.memo as string | undefined
     if (amount) {
-      const amtNum = parseFloat(amount)
+      const amtNum = parseApiDecimal(amount)
       const formatted = Math.abs(amtNum).toFixed(2)
       return `${amtNum < 0 ? '-' : '+'}$${formatted}${memo ? ` – ${memo}` : ''}`
     }
@@ -242,7 +243,7 @@ function summarizeAfter(change: Change): string {
   if (change.entity_type === 'assignment') {
     const assigned = after.assigned as string | undefined
     if (assigned) {
-      return `Assigned $${parseFloat(assigned).toFixed(2)}`
+      return `Assigned $${parseApiDecimal(assigned).toFixed(2)}`
     }
   }
 
@@ -257,7 +258,7 @@ function summarizeBefore(change: Change): string {
     const amount = before.amount as string | undefined
     const memo = before.memo as string | undefined
     if (amount) {
-      const amtNum = parseFloat(amount)
+      const amtNum = parseApiDecimal(amount)
       const formatted = Math.abs(amtNum).toFixed(2)
       return `${amtNum < 0 ? '-' : '+'}$${formatted}${memo ? ` – ${memo}` : ''}`
     }
@@ -295,12 +296,12 @@ function summarizeUpdate(change: Change): string {
     if (field === 'approved') return 'Marked approved'
     if (field === 'cleared') return `Cleared: ${after.cleared}`
     if (field === 'amount') {
-      const a = parseFloat(after.amount as string)
+      const a = parseApiDecimal(after.amount as string)
       return `Amount → ${a < 0 ? '-' : '+'}$${Math.abs(a).toFixed(2)}`
     }
     if (field === 'name') return `Renamed to "${after.name}"`
     if (field === 'assigned') {
-      return `Assigned → $${parseFloat(after.assigned as string).toFixed(2)}`
+      return `Assigned → $${parseApiDecimal(after.assigned as string).toFixed(2)}`
     }
     return `Changed ${field}`
   }

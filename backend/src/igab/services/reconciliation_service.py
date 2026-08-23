@@ -10,6 +10,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.repositories.txn_filters import BALANCE_ROW, CLEARED, not_future
 from igab.services.transaction_service import TransactionCreate, TransactionService
 from igab.utils.clock import today_utc
 
@@ -46,10 +47,9 @@ class ReconciliationService:
         cleared_result = await self.session.execute(
             select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                 Transaction.account_id == account_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.cleared.in_(["cleared", "reconciled"]),
-                Transaction.date <= as_of,
+                BALANCE_ROW,
+                CLEARED,
+                not_future(as_of),
             )
         )
         cleared_balance = Decimal(str(cleared_result.scalar_one()))

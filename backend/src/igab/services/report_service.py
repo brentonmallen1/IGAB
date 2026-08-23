@@ -31,6 +31,13 @@ from igab.domain.activity_class import (
     ActivityClass,
     apply_class_joins,
 )
+
+# CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
+# transfers to off-budget accounts count as real income/expense; internal
+# uncategorized transfers never do). For category-scoped queries the
+# predicate is vacuously true, keeping one uniform rule.
+from igab.domain.dates import add_months
+from igab.domain.money import quantize_cents
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -39,12 +46,6 @@ from igab.repositories.txn_filters import (
     PARENT_ROW,
     POSTED,
 )
-
-# CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
-# transfers to off-budget accounts count as real income/expense; internal
-# uncategorized transfers never do). For category-scoped queries the
-# predicate is vacuously true, keeping one uniform rule.
-from igab.services.amortization import add_months
 
 # Report payload shapes.
 #
@@ -401,15 +402,6 @@ class ReportService:
         )
         all_txns = (await self.session.execute(q)).all()
 
-        # Account info for on_budget classification
-        acct_q = select(
-            Account.id, Account.on_budget, Account.account_type, Account.is_deleted
-        ).where(
-            Account.budget_id == budget_id,
-            Account.is_deleted == False,  # noqa: E712
-        )
-        accounts = {str(r.id): r for r in (await self.session.execute(acct_q)).all()}
-
         # Category info for spending
         cat_q = (
             select(Category.id, Category.name, CategoryGroup.name.label("group_name"))
@@ -446,17 +438,14 @@ class ReportService:
             },
         )
 
-        on_budget_ids = {aid for aid, a in accounts.items() if a.on_budget}
-        df = df.with_columns(
-            # Budget cash flow: ON-BUDGET rows that are non-transfers or
-            # CATEGORIZED transfer legs (spending transfers to off-budget
-            # accounts). Plain activity inside tracking accounts (dividends,
-            # market adjustments) moves net worth, never income/expense.
-            (
-                pl.col("account_id").is_in(list(on_budget_ids))
-                & (~pl.col("is_transfer") | (pl.col("category_id") != ""))
-            ).alias("cash_flow"),
-        )
+        # A `cash_flow` column used to be derived here — a Polars restatement of
+        # CASH_FLOW_ROW that had drifted from it twice over: it knew a transfer
+        # only by `transfer_id`, so every unpaired YNAB leg read as ordinary
+        # spending (the 1,117-row bug txn_filters.py documents), and it dropped
+        # the counterpart-off-budget arm, so an uncategorized mortgage transfer
+        # was excluded from cash flow when that case is the arm's whole point.
+        # Nothing read it. Dead code encoding a wrong rule is worse than no
+        # code, because the next reader will use it.
 
         # Parent rows carry the account-level amounts (split children would
         # double-count); leaf rows carry the categories.
@@ -506,15 +495,37 @@ class ReportService:
         savings_this = _cls_magnitude(start_date, end_date, ActivityClass.SAVINGS)
         expenses_prev = _cls_magnitude(prev_start, prev_end, ActivityClass.SPENDING)
 
-        # Burn rate is how fast money is consumed, so savings and debt
-        # principal are out — matching the Burn Rate chart exactly.
-        burn_30 = _cls_magnitude(thirty_ago, today, ActivityClass.SPENDING)
-        burn_90 = _cls_magnitude(ninety_ago, today, ActivityClass.SPENDING) / 3
+        # Burn rate is how fast money is consumed, so savings and debt principal
+        # are out. This claimed to match the Burn Rate chart "exactly" and did
+        # not: the chart also filters `amount < 0`, so a refund posted to a
+        # spending category lowered the card and not the chart.
+        #
+        # The chart's other extra clause, CASH_FLOW_ROW, is implied here rather
+        # than missing: a row is outside cash flow only when it is a transfer
+        # leg, uncategorized, and pointed at another on-budget account, and
+        # ACTIVITY_CLASS never calls that SPENDING. Asserted in
+        # test_dashboard_matches_charts.py rather than assumed.
+        def _burn(start: date, end: date) -> Decimal:
+            window = cdf.filter(
+                (pl.col("date") >= start)
+                & (pl.col("date") <= end)
+                & (pl.col("cls") == ActivityClass.SPENDING.value)
+                & (pl.col("amount") < 0)
+            )
+            return -Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
+
+        burn_30 = _burn(thirty_ago, today)
+        burn_90 = _burn(ninety_ago, today) / 3
 
         # savings / income, the same ratio the Savings Rate tab shows by
         # default. The old (income - expenses) / income counted a brokerage
         # transfer as an expense and so reported 0% for a household saving 40%.
-        savings_rate = float(savings_this / income_this) if income_this > 0 else 0.0
+        #
+        # None, not 0.0, when nothing came in — the same answer the Savings Rate
+        # tab gives, for the reason its docstring states: "no income recorded"
+        # and "saved nothing" are different facts. The two carried the same
+        # label and disagreed on exactly the months a new budget starts with.
+        savings_rate = float(savings_this / income_this) if income_this > 0 else None
 
         # Days until zero
         daily_burn = float(burn_30) / 30 if burn_30 > 0 else 0
@@ -1534,9 +1545,7 @@ class ReportService:
             chronic = recent_over >= 3
             if chronic:
                 chronic_count += 1
-            avg_overspend = (
-                (over_total / months_over).quantize(Decimal("0.01")) if months_over else zero
-            )
+            avg_overspend = quantize_cents(over_total / months_over) if months_over else zero
             categories.append(
                 {
                     "category_id": entry["category_id"],
@@ -1851,7 +1860,7 @@ class ReportService:
                     "label": CLASS_LABEL[ActivityClass(cls)],
                     "categories": len(v["categories"]),
                     # Storage is 4dp; the note is user-facing copy, so cents.
-                    "total": v["total"].quantize(Decimal("0.01")),
+                    "total": quantize_cents(v["total"]),
                 }
                 for cls, v in by_class.items()
             ),
@@ -2375,8 +2384,8 @@ class ReportService:
                     "payee_name": payee_name,
                     "monthly_amounts": monthly_amounts,
                     "total": total,
-                    "avg_monthly": avg_monthly.quantize(Decimal("0.01")),
-                    "avg_per_charge": avg_per_charge.quantize(Decimal("0.01")),
+                    "avg_monthly": quantize_cents(avg_monthly),
+                    "avg_per_charge": quantize_cents(avg_per_charge),
                     "last_charge_date": last_charge,
                     "transaction_count": txn_count,
                 }
@@ -2392,8 +2401,8 @@ class ReportService:
         return {
             "subscriptions": subscriptions,
             "summary": {
-                "total_monthly": total_monthly.quantize(Decimal("0.01")),
-                "total_annual": total_annual.quantize(Decimal("0.01")),
+                "total_monthly": quantize_cents(total_monthly),
+                "total_annual": quantize_cents(total_annual),
                 "active_count": len(subscriptions),
             },
             "months": month_list,
@@ -2796,7 +2805,7 @@ class ReportService:
             "summary": {
                 "total_balance": total_balance,
                 "total_inflow": total_inflow,
-                "avg_monthly_inflow": avg_monthly.quantize(Decimal("0.01")),
+                "avg_monthly_inflow": quantize_cents(avg_monthly),
                 "category_count": len(categories),
             },
             "months": month_list,
@@ -2903,11 +2912,11 @@ class ReportService:
                             "category_name": cat_name,
                             "group_name": group_name,
                             "month": month,
-                            "actual": Decimal(str(actual)).quantize(Decimal("0.01")),
-                            "baseline_mean": Decimal(str(mean)).quantize(Decimal("0.01")),
+                            "actual": quantize_cents(Decimal(str(actual))),
+                            "baseline_mean": quantize_cents(Decimal(str(mean))),
                             "z_score": round(z_score, 2),
                             "direction": "high" if z_score > 0 else "low",
-                            "history": [Decimal(str(h)).quantize(Decimal("0.01")) for h in history],
+                            "history": [quantize_cents(Decimal(str(h))) for h in history],
                         }
                     )
 
@@ -3036,11 +3045,11 @@ class ReportService:
             vals = offset_totals[offset]
             avg_spend = sum(vals) / len(vals) if vals else 0
             days_result.append(
-                {"offset": offset, "avg_spend": Decimal(str(avg_spend)).quantize(Decimal("0.01"))}
+                {"offset": offset, "avg_spend": quantize_cents(Decimal(str(avg_spend)))}
             )
 
         baseline_daily = (
-            Decimal(str(sum(baseline_days) / len(baseline_days))).quantize(Decimal("0.01"))
+            quantize_cents(Decimal(str(sum(baseline_days) / len(baseline_days))))
             if baseline_days
             else Decimal("0")
         )
@@ -3262,12 +3271,12 @@ class ReportService:
             points.append(
                 {
                     "date": d,
-                    "p10": Decimal(str(p10)).quantize(Decimal("0.01")),
-                    "p25": Decimal(str(p25)).quantize(Decimal("0.01")),
-                    "p50": Decimal(str(p50)).quantize(Decimal("0.01")),
-                    "p75": Decimal(str(p75)).quantize(Decimal("0.01")),
-                    "p90": Decimal(str(p90)).quantize(Decimal("0.01")),
-                    "deterministic": det_path[offset].quantize(Decimal("0.01")),
+                    "p10": quantize_cents(Decimal(str(p10))),
+                    "p25": quantize_cents(Decimal(str(p25))),
+                    "p50": quantize_cents(Decimal(str(p50))),
+                    "p75": quantize_cents(Decimal(str(p75))),
+                    "p90": quantize_cents(Decimal(str(p90))),
+                    "deterministic": quantize_cents(det_path[offset]),
                 }
             )
 
@@ -3366,15 +3375,14 @@ def _months_in_range(start_date: date, end_date: date) -> list[date]:
 
 
 def _subtract_months(d: date, months: int) -> date:
-    month = d.month - months
-    year = d.year
-    while month <= 0:
-        month += 12
-        year -= 1
-    while month > 12:
-        month -= 12
-        year += 1
-    return d.replace(year=year, month=month, day=1)
+    """The start of the month `months` before `d`'s.
+
+    Discarding the day is deliberate — every caller here is keying a month
+    bucket. `add_months` is the one that preserves it.
+    """
+    # `replace(day=1)` rather than domain.dates.month_start: `month_start` is
+    # a loop variable throughout this module and importing the name shadows it.
+    return add_months(d.replace(day=1), -months)
 
 
 def _last_day(d: date) -> date:

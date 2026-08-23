@@ -1,12 +1,14 @@
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import Select, func, select
+from sqlalchemy.orm import selectinload, with_expression
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup
 from igab.repositories.base import BaseRepository
+from igab.repositories.category_filters import IS_ASSIGNABLE, IS_CATEGORIZABLE
 
 
 class CategoryGroupRepository(BaseRepository[CategoryGroup]):
@@ -29,9 +31,45 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
 class CategoryRepository(BaseRepository[Category]):
     model = Category
 
+    @staticmethod
+    def with_eligibility(stmt: Select[tuple[Category]]) -> Select[tuple[Category]]:
+        """Load `is_assignable` and `is_categorizable` on a Category statement.
+
+        Every path that serializes a `CategoryResponse` has to go through here.
+        The fields are required in the schema, so a path that skips one raises
+        rather than quietly reporting every category as ineligible — which
+        would empty the move-money picker with no explanation.
+        """
+        return stmt.options(
+            with_expression(Category.is_assignable, IS_ASSIGNABLE),
+            with_expression(Category.is_categorizable, IS_CATEGORIZABLE),
+        )
+
+    async def get(self, id: uuid.UUID) -> Category | None:
+        # Overrides BaseRepository.get to carry the eligibility flags.
+        # populate_existing is load-bearing: after a flush the row is already
+        # in the identity map, and SQLAlchemy leaves a with_expression
+        # attribute unset on an object it has seen before — which would
+        # surface as None on exactly the create/update responses.
+        stmt = self.with_eligibility(
+            select(Category).where(
+                Category.id == id,
+                Category.is_deleted == False,  # noqa: E712
+            )
+        ).execution_options(populate_existing=True)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def create(self, **kwargs: Any) -> Category:
+        # BaseRepository.create ends in session.refresh(), which takes no
+        # loader options and would drop the expressions. Same round-trip count.
+        obj = Category(**kwargs)
+        self.session.add(obj)
+        await self.session.flush()
+        return await self.get_or_raise(obj.id)
+
     async def get_all(self, budget_id: uuid.UUID, include_hidden: bool = False) -> list[Category]:
         q = (
-            select(Category)
+            self.with_eligibility(select(Category))
             .options(selectinload(Category.tags))
             .where(
                 Category.budget_id == budget_id,
@@ -52,6 +90,10 @@ class CategoryRepository(BaseRepository[Category]):
         disambiguated."""
         q = (
             select(Category, CategoryGroup.name)
+            .options(
+                with_expression(Category.is_assignable, IS_ASSIGNABLE),
+                with_expression(Category.is_categorizable, IS_CATEGORIZABLE),
+            )
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Category.budget_id == budget_id,
@@ -65,9 +107,13 @@ class CategoryRepository(BaseRepository[Category]):
         return [(row[0], row[1]) for row in result.all()]
 
     async def get_with_tags(self, category_id: uuid.UUID) -> Category | None:
+        # The eligibility expressions belong here too: this is the method the
+        # create and update endpoints use to build a CategoryResponse, and the
+        # response fields are required, so without them those endpoints 500.
         result = await self.session.execute(
-            select(Category)
+            self.with_eligibility(select(Category))
             .options(selectinload(Category.tags))
+            .execution_options(populate_existing=True)
             .where(
                 Category.id == category_id,
                 Category.is_deleted == False,  # noqa: E712

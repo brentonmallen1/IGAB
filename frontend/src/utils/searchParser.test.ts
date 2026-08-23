@@ -555,8 +555,14 @@ describe('date tokens (now = Tue 2026-08-11)', () => {
 // ─── Filter chips ──────────────────────────────────────────────────────────────
 
 describe('describeSearchChips', () => {
-  function chips(query: string, accountMapSize = 0) {
-    return describeSearchChips(query, accountMapSize, NOW)
+  // A chip now exists exactly when a filter does, so these need the same maps
+  // the parser gets — that is the whole point of the change.
+  const CATS = new Map([['cat-1', 'Groceries']])
+  const PAYEES = new Map([['p-1', 'Starbucks']])
+  const ACCOUNTS = new Map([['a-1', 'Checking'], ['a-2', 'Savings']])
+
+  function chips(query: string, accounts: Map<string, string> = EMPTY_MAP) {
+    return describeSearchChips(query, CATS, PAYEES, accounts, NOW)
   }
 
   it('returns no chips for plain text', () => {
@@ -580,7 +586,7 @@ describe('describeSearchChips', () => {
 
   it('describes account filters only with an account map', () => {
     expect(chips('account:checking').map((c) => c.label)).toEqual([])
-    expect(chips('account:checking', 2).map((c) => c.label)).toEqual(['Account: checking'])
+    expect(chips('account:checking', ACCOUNTS).map((c) => c.label)).toEqual(['Account: checking'])
   })
 
   it('describes date tokens with friendly labels', () => {
@@ -594,9 +600,87 @@ describe('describeSearchChips', () => {
   })
 })
 
+describe('a chip exists exactly when a filter does', () => {
+  // The chips were a second walk over the tokens with their own copy of every
+  // recognizer, and they disagreed with the parser. Each case below drew a
+  // chip for a filter that was not applied, or hid a token that was silently
+  // dropped. The pairing is the invariant: same query, both answers.
+  const CATS = new Map([['cat-1', 'Groceries']])
+  const PAYEES = new Map([['p-1', 'Starbucks']])
+
+  const both = (query: string, accounts = EMPTY_MAP) => ({
+    filters: parseTransactionSearch(query, CATS, PAYEES, accounts, NOW),
+    labels: describeSearchChips(query, CATS, PAYEES, accounts, NOW).map((c) => c.label),
+  })
+
+  it('a category that matches nothing draws no chip', () => {
+    const { filters, labels } = both('category: zzz')
+    expect(filters.categoryIds).toBeUndefined()
+    expect(labels).toEqual([])
+  })
+
+  it('a category that matches does draw one', () => {
+    const { filters, labels } = both('category: groc')
+    expect(filters.categoryIds).toEqual(['cat-1'])
+    expect(labels).toEqual(['Category: groc'])
+  })
+
+  it('a payee that matches nothing draws no chip', () => {
+    const { filters, labels } = both('payee: nobody')
+    expect(filters.payeeIds).toBeUndefined()
+    expect(labels).toEqual([])
+  })
+
+  it('an unreadable amount draws no chip', () => {
+    const { filters, labels } = both('amount: abc')
+    expect(filters.amountMin).toBeUndefined()
+    expect(filters.amountMax).toBeUndefined()
+    expect(labels).toEqual([])
+  })
+
+  it('an unrecognised is: value is searched as text rather than swallowed', () => {
+    // It used to vanish: no filter, no chip, and the token dropped, so the
+    // register quietly ignored what the user typed.
+    const { filters, labels } = both('is:bogus')
+    expect(labels).toEqual([])
+    expect(filters.text).toBe('is:bogus')
+  })
+
+  it('an unrecognised NOT is a text search, and says so by drawing no chip', () => {
+    const { filters, labels } = both('NOT is:uncategorized')
+    expect(labels).toEqual([])
+    expect(filters.text).toBe('NOT is:uncategorized')
+  })
+
+  it('an account filter off the all-accounts register draws no chip', () => {
+    const { filters, labels } = both('account:checking')
+    expect(filters.accountIds).toBeUndefined()
+    expect(labels).toEqual([])
+  })
+
+  it('chips survive an OR split with the right token indices', () => {
+    const query = 'is: cleared OR is: pending'
+    const chips = describeSearchChips(query, CATS, PAYEES, EMPTY_MAP, NOW)
+    expect(chips.map((c) => c.label)).toEqual(['Cleared', 'Pending'])
+    expect(removeSearchChip(query, chips[0])).toBe('is: pending')
+  })
+
+  it('chips survive a NOT that precedes other filters', () => {
+    const query = 'NOT is: pending category: groc'
+    const chips = describeSearchChips(query, CATS, PAYEES, EMPTY_MAP, NOW)
+    expect(chips.map((c) => c.label)).toEqual(['Not pending', 'Category: groc'])
+    expect(removeSearchChip(query, chips[1])).toBe('NOT is: pending')
+  })
+})
+
 describe('removeSearchChip', () => {
-  function removeByLabel(query: string, label: string, accountMapSize = 0) {
-    const chip = describeSearchChips(query, accountMapSize, NOW).find((c) => c.label === label)
+  const CATS = new Map([['cat-1', 'Groceries']])
+  const PAYEES = new Map([['p-1', 'Starbucks']])
+
+  function removeByLabel(query: string, label: string, accounts: Map<string, string> = EMPTY_MAP) {
+    const chip = describeSearchChips(query, CATS, PAYEES, accounts, NOW).find(
+      (c) => c.label === label
+    )
     expect(chip).toBeDefined()
     return removeSearchChip(query, chip!)
   }
@@ -624,5 +708,60 @@ describe('removeSearchChip', () => {
 
   it('removing the only chip empties the query', () => {
     expect(removeByLabel('is:transfer', 'Transfer')).toBe('')
+  })
+})
+
+describe('chip provenance round-trips', () => {
+  // The chips carry token indices through a NOT extraction and an OR split.
+  // If an index is off by one, removeSearchChip deletes the wrong token —
+  // silently, producing a query that still parses. These walk every chip of
+  // every shape and assert the removal is exact.
+  const CATS = new Map([['cat-1', 'Groceries']])
+  const PAYEES = new Map([['p-1', 'Starbucks']])
+  const ACCTS = new Map([['a-1', 'Checking']])
+
+  const QUERIES = [
+    'is: cleared',
+    'is:cleared',
+    'has:attachment coffee',
+    'NOT is: pending',
+    'NOT is:pending category: groc',
+    'category: groc payee:star',
+    'category:groc OR payee:star',
+    'is: cleared OR is: pending OR is:reconciled',
+    'account:checking amount:>100',
+    'today category: groc',
+    'last month is:unapproved coffee',
+    'NOT has:attachment OR is:transfer',
+    'amount:10-20 payee: star march 2025',
+  ]
+
+  for (const query of QUERIES) {
+    it(`every chip in "${query}" removes exactly its own tokens`, () => {
+      const chips = describeSearchChips(query, CATS, PAYEES, ACCTS, NOW)
+      expect(chips.length).toBeGreaterThan(0)
+
+      for (const chip of chips) {
+        const after = removeSearchChip(query, chip)
+        // The removed chip is gone...
+        const remaining = describeSearchChips(after, CATS, PAYEES, ACCTS, NOW)
+        expect(remaining.map((c) => c.label)).not.toContain(chip.label)
+        // ...and every other chip survives.
+        const others = chips.filter((c) => c.key !== chip.key).map((c) => c.label)
+        for (const label of others) expect(remaining.map((c) => c.label)).toContain(label)
+      }
+    })
+  }
+
+  it('removing every chip leaves only free text', () => {
+    const query = 'is: cleared coffee category: groc NOT is:pending'
+    let current = query
+    for (;;) {
+      const chips = describeSearchChips(current, CATS, PAYEES, ACCTS, NOW)
+      if (chips.length === 0) break
+      current = removeSearchChip(current, chips[0])
+    }
+    expect(current.trim()).toBe('coffee')
+    expect(parseTransactionSearch(current, CATS, PAYEES, ACCTS, NOW).text).toBe('coffee')
   })
 })

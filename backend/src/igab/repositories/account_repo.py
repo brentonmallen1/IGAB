@@ -13,7 +13,13 @@ from igab.db.models import (
     Transaction,
 )
 from igab.repositories.base import BaseRepository
-from igab.repositories.txn_filters import NEEDS_CATEGORY, NOT_DELETED, POSTED
+from igab.repositories.txn_filters import (
+    BALANCE_ROW,
+    CLEARED,
+    NEEDS_CATEGORY,
+    NOT_DELETED,
+    POSTED,
+)
 
 LiabilityDisposition = Literal["keep", "delete"]
 
@@ -48,20 +54,25 @@ class AccountRepository(BaseRepository[Account]):
         result = await self.session.execute(
             select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                 Transaction.account_id == account_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.cleared != "pending",
+                BALANCE_ROW,
             )
         )
         return result.scalar_one()
 
     async def get_cleared_balance(self, account_id: uuid.UUID) -> Decimal:
+        """The confirmed part of `get_balance`, over the same rows.
+
+        No date cutoff, on purpose: this is one term of the header's
+        partition (balance = cleared + uncleared), and cutting only this term
+        would relabel a future-dated cleared row as uncleared rather than
+        excluding it. Reconciliation asks a narrower question and adds
+        `not_future` itself — see that function for why the two differ.
+        """
         result = await self.session.execute(
             select(func.coalesce(func.sum(Transaction.amount), 0)).where(
                 Transaction.account_id == account_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.cleared.in_(["cleared", "reconciled"]),
+                BALANCE_ROW,
+                CLEARED,
             )
         )
         return result.scalar_one()

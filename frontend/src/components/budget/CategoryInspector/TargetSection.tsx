@@ -2,13 +2,7 @@ import { useState } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useTarget, useUpsertTarget, useDeleteTarget } from '../../../api/targets'
 import { useFormatters } from '../../../hooks/useFormatters'
-
-const TARGET_TYPES = [
-  { value: 'monthly_funding', label: 'Monthly Funding' },
-  { value: 'weekly_funding', label: 'Weekly Funding' },
-  { value: 'savings_balance', label: 'Savings Balance' },
-  { value: 'needed_for_spending', label: 'Needed for Spending' },
-]
+import { TARGET_TYPES, buildTargetPayload } from '../targetForm'
 
 interface Props {
   categoryId: string
@@ -20,6 +14,7 @@ export function TargetSection({ categoryId }: Props) {
   const [targetType, setTargetType] = useState('monthly_funding')
   const [amount, setAmount] = useState('')
   const [targetDate, setTargetDate] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   const { data: target } = useTarget(categoryId)
   const upsert = useUpsertTarget(categoryId)
@@ -34,11 +29,13 @@ export function TargetSection({ categoryId }: Props) {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    await upsert.mutateAsync({
-      target_type: targetType,
-      target_amount: parseFloat(amount) || 0,
-      target_date: targetDate || null,
-    })
+    const result = buildTargetPayload(targetType, amount, targetDate)
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    setError(null)
+    await upsert.mutateAsync(result.payload)
     setIsEditing(false)
   }
 
@@ -88,6 +85,7 @@ export function TargetSection({ categoryId }: Props) {
               />
             </label>
           )}
+          {error && <div className="inspector-error" role="alert">{error}</div>}
           <div className="inspector-target-form__actions">
             <button type="submit" className="inspector-btn inspector-btn--primary" disabled={upsert.isPending}>
               Save

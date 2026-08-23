@@ -18,10 +18,17 @@ from typing import Any, cast
 
 from igab.db.models import Transaction
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.splits import split_balances
 from igab.services.category_matching import Candidate, canonical_label, match_category
 from igab.services.transaction_service import TransactionCreate, TransactionService
 
 _CENT = Decimal("0.01")
+#: How far a model's own arithmetic may be off before we refuse its split.
+#: This is slack for the MODEL, not for the ledger: a split that survives it
+#: is repaired to sum exactly before it is offered, so what reaches
+#: TransactionService always satisfies require_split_balances. The ledger
+#: invariant has no tolerance — see domain/splits.py.
+_LLM_ROUNDING_SLACK = Decimal("0.01")
 # Tolerant fallbacks for models that ignore the YYYY-MM-DD instruction
 _DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d")
 
@@ -108,10 +115,18 @@ def _as_candidates(
 def _parse_split(
     raw_split: object, total: Decimal, candidates: Sequence[Candidate]
 ) -> list[SplitLine] | None:
-    """Validate a suggested split. Offerable only when every line's category
-    resolves against the budget and the lines sum to the total (within one
-    cent). Anything else returns None — the raw line_items stay in the job
-    result for display, but we never offer a split we can't apply."""
+    """Validate a suggested split.
+
+    Offerable only when every line's category resolves against the budget and
+    the lines sum to the total within `_LLM_ROUNDING_SLACK`. Anything else
+    returns None — the raw line_items stay in the job result for display, but
+    we never offer a split we can't apply.
+
+    A surviving split whose lines are a cent out is repaired here rather than
+    passed along: the residual is absorbed into the last line so the result
+    sums exactly. Offering a split that TransactionService would then reject
+    is a button that lies, and offering one it would *accept* on a tolerance
+    is a row IntegrityService flags forever."""
     if not isinstance(raw_split, list) or len(raw_split) < 2:
         return None
     lines: list[SplitLine] = []
@@ -134,7 +149,17 @@ def _parse_split(
         signed = -line_amount.copy_abs() if total < 0 else line_amount.copy_abs()
         running += signed
         lines.append(SplitLine(category_name=canonical_label(matched, candidates), amount=signed))
-    if (running - total).copy_abs() > _CENT:
+    if (running - total).copy_abs() > _LLM_ROUNDING_SLACK:
+        return None
+
+    # Absorb the model's rounding residual into the last line, then hold the
+    # result to the ledger's exact rule.
+    residual = total - running
+    if residual != 0:
+        lines[-1] = SplitLine(
+            category_name=lines[-1].category_name, amount=lines[-1].amount + residual
+        )
+    if not split_balances(total, [line.amount for line in lines]):
         return None
     return lines
 

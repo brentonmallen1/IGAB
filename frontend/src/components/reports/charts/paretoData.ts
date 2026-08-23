@@ -1,6 +1,7 @@
 /** Pure math for the Pareto report: sorting/aggregation per group-by mode,
  * cumulative percentages, and the 80%-line insight. Extracted from
  * ParetoChart so the concentration math is unit-testable. */
+import { parseApiDecimal } from '../../../utils/money'
 import type { GroupBy } from '../../../stores/reportStore'
 
 export interface ParetoItem {
@@ -121,7 +122,7 @@ export function paretoAdherence(
   totalItemCount: number,
 ): { adherent: boolean; pct: number; message: string } | null {
   if (!pct80coverage || totalItemCount < 3) return null
-  const pct = parseFloat(pct80coverage)
+  const pct = parseApiDecimal(pct80coverage)
   if (pct <= 30) {
     return {
       adherent: true,

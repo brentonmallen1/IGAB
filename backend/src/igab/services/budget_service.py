@@ -5,6 +5,14 @@ from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 from igab.db.models import Category
+from igab.domain.carryover import available_through
+
+# Aliased: `month_start` is also a local variable throughout this module
+# (`month_start = first_of_month(month)`), and one name meaning two things
+# is how the shadowing bug in report_service started.
+from igab.domain.dates import month_end as _month_end
+from igab.domain.dates import month_start as _month_start
+from igab.domain.money import quantize_cents
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -37,14 +45,11 @@ def _months_back(d: date, n: int) -> list[date]:
 
 
 def first_of_month(d: date) -> date:
-    return d.replace(day=1)
+    return _month_start(d)
 
 
 def last_of_month(d: date) -> date:
-    import calendar
-
-    last_day = calendar.monthrange(d.year, d.month)[1]
-    return d.replace(day=last_day)
+    return _month_end(d)
 
 
 @dataclass
@@ -72,6 +77,12 @@ class BudgetSummary:
     total_assigned: Decimal
     total_activity: Decimal
     total_overspent: Decimal
+    #: How many categories make up total_overspent. Counted in the same loop,
+    #: over the same population, so the amount and the count cannot disagree —
+    #: and both match what Cover Overspent will act on. The hero rebuilt this
+    #: from the client's category list, which excludes hidden categories, so it
+    #: undercounted next to an amount that included them.
+    overspent_count: int
     # Dollars already committed to months after the viewed month; deducted
     # from to_be_assigned so the same dollars can't be assigned twice.
     assigned_in_future: Decimal
@@ -170,6 +181,24 @@ class BudgetService:
             after=snapshot("assignment", assignment),
         )
 
+    async def _budget_math_category_ids(self, budget_id: uuid.UUID) -> set[uuid.UUID]:
+        """Categories that participate in the TBA arithmetic.
+
+        Non-system only: income adds to To Be Assigned rather than reducing it,
+        so a system-group category must not count against it.
+
+        **This is not `is_assignable`, and must not be replaced by it.** Hidden
+        categories are included here on purpose — they still hold money and
+        still overspend, so leaving them out would make TBA wrong and make
+        Cover Overspent unable to zero the budget. `is_assignable` answers a
+        different question: what a picker may *offer*, which a hidden category
+        never is.
+        """
+        groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
+        system_group_ids = {g.id for g in groups if g.is_system}
+        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
+        return {c.id for c in categories if c.category_group_id not in system_group_ids}
+
     async def get_category_balance(
         self,
         category_id: uuid.UUID,
@@ -199,29 +228,9 @@ class BudgetService:
 
         this_activity = activity_by_month.get(month_start, Decimal("0"))
 
-        # Month-by-month simulation flooring carryover at 0 between months.
-        # This matches YNAB: cash overspending in month M is deducted from TBA
-        # and the category starts month M+1 at zero rather than carrying negative.
-        assignments_by_month = {a.month: a.assigned for a in assignments}
-        all_months = sorted(set(assignments_by_month) | set(activity_by_month))
-        carryover = Decimal("0")
-        end_of_month = Decimal("0")
-        last_simulated: date | None = None
-        for m in all_months:
-            if m > month_start:
-                break
-            end_of_month = (
-                carryover
-                + assignments_by_month.get(m, Decimal("0"))
-                + activity_by_month.get(m, Decimal("0"))
-            )
-            # Floor the carryover into the next month; current month can show negative
-            carryover = max(Decimal("0"), end_of_month)
-            last_simulated = m
-
-        # Only the month with its own data may show negative; any later month
-        # starts from the floored carryover (overspending was absorbed by TBA).
-        available = end_of_month if last_simulated == month_start else carryover
+        available = available_through(
+            {a.month: a.assigned for a in assignments}, activity_by_month, month_start
+        )
 
         return CategoryBalance(
             category_id=category_id,
@@ -278,6 +287,7 @@ class BudgetService:
         total_assigned = Decimal("0")
         total_activity = Decimal("0")
         total_overspent = Decimal("0")
+        overspent_count = 0
 
         for cat in categories:
             bal = balance_map[cat.id]
@@ -287,6 +297,7 @@ class BudgetService:
                 total_category_balance += bal.available
                 if bal.available < 0:
                     total_overspent += -bal.available
+                    overspent_count += 1
             total_assigned += bal.assigned
             total_activity += bal.activity
 
@@ -298,6 +309,7 @@ class BudgetService:
             total_assigned=total_assigned,
             total_activity=total_activity,
             total_overspent=total_overspent,
+            overspent_count=overspent_count,
             assigned_in_future=assigned_in_future,
             category_balances=balances,
         )
@@ -489,8 +501,8 @@ class BudgetService:
             category_id=category_id,
             last_month_assigned=last_assigned,
             last_month_spent=last_spent,
-            average_assigned=avg_assigned.quantize(Decimal("0.01")),
-            average_spent=avg_spent.quantize(Decimal("0.01")),
+            average_assigned=quantize_cents(avg_assigned),
+            average_spent=quantize_cents(avg_spent),
             months_included=n,
         )
 
@@ -583,10 +595,7 @@ class BudgetService:
         categories. Hidden categories are included on purpose — they participate
         in the TBA math, so covering them is required to zero out overspending."""
         summary = await self.get_budget_summary(budget_id, month)
-        groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
-        system_group_ids = {g.id for g in groups if g.is_system}
-        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
-        non_system_ids = {c.id for c in categories if c.category_group_id not in system_group_ids}
+        non_system_ids = await self._budget_math_category_ids(budget_id)
         shortfalls = {
             b.category_id: -b.available
             for b in summary.category_balances

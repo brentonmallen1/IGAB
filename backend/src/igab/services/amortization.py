@@ -10,10 +10,12 @@ daily-vs-monthly differences are pennies at consumer rates, not worth the
 extra test surface.
 """
 
-import calendar
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import Decimal
+
+from igab.domain.dates import add_months
+from igab.domain.money import quantize_cents
 
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
@@ -21,19 +23,6 @@ CENT = Decimal("0.01")
 # 50 years of monthly payments — far beyond any real consumer debt; a
 # schedule still open after this is reported as never paying off.
 DEFAULT_CAP_MONTHS = 600
-
-
-def quantize_cents(amount: Decimal) -> Decimal:
-    return amount.quantize(CENT, rounding=ROUND_HALF_EVEN)
-
-
-def add_months(d: date, months: int) -> date:
-    """Shift by whole months, clamping the day to the target month length."""
-    total = d.year * 12 + (d.month - 1) + months
-    year, month = divmod(total, 12)
-    month += 1
-    day = min(d.day, calendar.monthrange(year, month)[1])
-    return date(year, month, day)
 
 
 @dataclass(frozen=True)

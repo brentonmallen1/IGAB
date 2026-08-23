@@ -14,6 +14,8 @@ amounts are provisional (auth holds change at posting), so money moves exactly
 once — when the transaction posts. This mirrors AccountRepository.get_balance.
 """
 
+from datetime import date
+
 from sqlalchemy import Boolean, and_, func, not_, or_, select
 from sqlalchemy.orm import aliased
 
@@ -23,6 +25,46 @@ NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
 LEAF = Transaction.is_split == False  # noqa: E712
 PARENT_ROW = Transaction.parent_transaction_id.is_(None)
+
+#: Rows that carry account-balance meaning. Composed rather than respelled:
+#: every balance sum in the app wants exactly these three, and spelling them
+#: by hand is how `get_balance` and the guide's `_account_balance` came to
+#: disagree about whether a pending auth hold is money.
+BALANCE_ROW = and_(NOT_DELETED, PARENT_ROW, POSTED)
+
+#: The bank has confirmed this row. Implies POSTED — 'pending' is not in the
+#: set — but the two are kept separate because they answer different
+#: questions: POSTED is "has this moved", CLEARED is "has the bank agreed".
+CLEARED = Transaction.cleared.in_(("cleared", "reconciled"))
+
+
+def not_future(as_of: date):
+    """Rows dated on or before `as_of`.
+
+    A function, not a constant: a module-level `Transaction.date <= today()`
+    would freeze the date at import time and quietly go stale in a
+    long-running process.
+
+    **This is deliberately NOT part of CLEARED, and the two callers of
+    CLEARED differ by exactly this predicate.** They are asking different
+    questions, and forcing them into agreement would break one of them:
+
+    - The account header reports a partition — `balance`, `cleared_balance`
+      and `uncleared_balance`, where the first is the sum of the other two.
+      Applying a cutoff to only one term does not remove a future-dated
+      cleared row from the header; it relabels it as *uncleared*, which is a
+      worse answer than the one it replaced. Applying it to all three hides
+      a transaction the register plainly shows.
+    - Reconciliation asks what today's bank statement should say, and a
+      statement cannot reflect what has not happened. `get_status` therefore
+      adds this cutoff, and `finish()` sizes its adjustment against the
+      result — so the adjustment is correct even while the header differs.
+
+    The divergence is bounded to exactly the future-dated cleared rows, and
+    is pinned by a test. Do not "fix" it into agreement.
+    """
+    return Transaction.date <= as_of
+
 
 # A transfer leg, by either of the two signals that mark one. The partner link
 # is the strong signal, but it is not always present: a YNAB import writes legs

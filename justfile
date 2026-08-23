@@ -204,6 +204,7 @@ ci:
     echo "── backend: pytest ──"            && uv run pytest
     cd ../frontend
     echo "── frontend: typecheck ──"        && npm run typecheck
+    echo "── frontend: eslint ──"           && npm run lint
     echo "── frontend: vitest ──"           && npm test
     echo
     echo "All CI checks passed."

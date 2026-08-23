@@ -99,7 +99,6 @@ export function Combobox({
       inputRef.current?.select()
       measureAndOpen()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFocus])
 
   useEffect(() => {
