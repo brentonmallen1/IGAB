@@ -82,9 +82,24 @@ export function AccountTypeInfoModal({ onClose, types, context }: Props) {
 
           {context === 'import' && (
             <div className="type-info__concepts">
-              <div className="type-info__section-title">Leaving an account out</div>
+              <div className="type-info__section-title">Import, close, or leave out</div>
               <div className="type-info__concept">
-                <div className="type-info__concept-title">Its history goes with it</div>
+                <div className="type-info__concept-title">
+                  Imported &amp; closed — the safe choice for a dormant account
+                </div>
+                <p>
+                  Everything imports. Every transaction counts toward net worth, reports
+                  and history, and transfers to it still pair up. The account is only
+                  hidden from the account pickers and report filters, and you can reopen
+                  it whenever you like.
+                </p>
+                <p>
+                  This is what you want for an account that went quiet years ago — you
+                  get the tidy list without paying for it in lost history.
+                </p>
+              </div>
+              <div className="type-info__concept">
+                <div className="type-info__concept-title">Left out — its history goes too</div>
                 <p>
                   The account and every transaction in it are never created. Your other
                   accounts' balances stay correct, but net worth over time has a hole

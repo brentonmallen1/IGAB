@@ -459,12 +459,22 @@
 
 .ynab-mapping__row {
   display: grid;
-  grid-template-columns: auto 1fr 130px auto;
-  gap: var(--spacing-sm);
+  /* First column holds the disposition picker rather than a checkbox: a row
+     now has three outcomes, and "import & close" is not the absence of a
+     tick. Fixed width so 47 rows line up. */
+  grid-template-columns: 120px 1fr 130px auto;
+  gap: var(--spacing-xs) var(--spacing-sm);
   align-items: center;
   /* Uniform gutter so the review marker below can sit in it without
      shifting flagged rows out of alignment with the rest. */
   padding-left: var(--spacing-xs);
+}
+
+/* Disposition picker — import / import & close / leave out. Reuses the shared
+   input styling so it matches the type picker beside it. */
+.ynab-mapping__disposition {
+  padding: 4px var(--spacing-xs);
+  font-size: var(--font-size-xs);
 }
 
 /* An account we couldn't identify from its name. Marked rather than blocked:
@@ -526,12 +536,45 @@
   color: var(--text-secondary);
 }
 
-/* Include-checkbox: unchecking excludes the account from the import entirely.
-   The row stays visible but reads as inert — the decision must stay
-   reviewable, not vanish. */
-.ynab-mapping__include {
+/* Per-row remarks span the full grid so they read as prose under the row they
+   belong to rather than squeezing a column. */
+.ynab-mapping__warn,
+.ynab-mapping__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+/* The balance disagrees with the chosen type's classification. A remark, not
+   a gate — an overpaid loan is a real thing, and blocking it would be wrong. */
+.ynab-mapping__warn {
+  color: var(--color-warning);
+}
+
+.ynab-mapping__note {
+  color: var(--text-muted);
+}
+
+.ynab-mapping__note-action {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-accent);
   cursor: pointer;
-  accent-color: var(--color-accent);
+}
+
+.ynab-mapping__note-action:hover {
+  text-decoration: underline;
+}
+
+/* When an account last moved. A YNAB export has no closed-account marker, so
+   this is the only thing distinguishing a live account from one dormant
+   since 2019. */
+.ynab-mapping__activity {
+  margin-left: var(--spacing-xs);
+  white-space: nowrap;
 }
 
 .ynab-mapping__row--skipped .ynab-mapping__name,

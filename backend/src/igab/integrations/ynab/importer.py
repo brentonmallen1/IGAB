@@ -45,6 +45,10 @@ class ImportResult:
     # User-chosen exclusions (closed/archived YNAB accounts) — separate from
     # transactions_skipped, which means dedup hits and row errors.
     accounts_skipped: int = 0
+    #: Imported in full, then closed at the user's request. Reported back so
+    #: the confirmation reflects the choice — 14 accounts quietly vanishing
+    #: from the pickers with no mention of it reads like a bug.
+    accounts_closed: int = 0
     transactions_excluded: int = 0
     #: Transfer legs whose partner leg never turned up, so they import
     #: unlinked. Balances stay right either way, but a non-zero count means the
@@ -70,6 +74,7 @@ class YNABImporter:
         assignment_repo: BudgetAssignmentRepository,
         account_types: dict[str, tuple[str, bool]] | None = None,
         skip_accounts: set[str] | None = None,
+        close_accounts: set[str] | None = None,
     ) -> None:
         self.session = session
         self.budget_id = budget_id
@@ -87,6 +92,12 @@ class YNABImporter:
         # _get_or_create_account). YNAB exports include archived accounts with
         # no marker, so exclusion is a per-account user decision.
         self.skip_accounts = {name.lower() for name in (skip_accounts or set())}
+        # Accounts to import in full and then close. Unlike skip_accounts this
+        # changes nothing about what is created: every transaction arrives and
+        # counts toward net worth, history and reports, and transfers still
+        # pair up. The account is simply hidden from pickers and report
+        # filters, which is what a 2019-dormant account wants.
+        self.close_accounts = {name.lower() for name in (close_accounts or set())}
         # name → Account
         self._account_cache: dict[str, Account] = {}
         # group name → CategoryGroup
@@ -121,6 +132,7 @@ class YNABImporter:
             account = await self.account_repo.create(
                 budget_id=self.budget_id,
                 name=name,
+                is_closed=name.lower() in self.close_accounts,
                 **apply_type(type_row, on_budget),
             )
             # Importing a budget with a mortgage is the scenario the loan
@@ -128,6 +140,8 @@ class YNABImporter:
             # them: the importer creates accounts and never a liability.
             await ensure_for_account(self.session, account)
             result.accounts_imported += 1
+            if account.is_closed:
+                result.accounts_closed += 1
 
         self._account_cache[name] = account
         return account

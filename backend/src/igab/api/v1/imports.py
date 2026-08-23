@@ -80,6 +80,9 @@ class YNABImportResult(BaseModel):
     assignments: int
     #: Accounts the user chose to leave out (closed/archived YNAB accounts).
     accounts_skipped: int = 0
+    #: Accounts imported in full and then closed at the user's request. Their
+    #: transactions all arrived; only the account is hidden from pickers.
+    accounts_closed: int = 0
     #: Register rows belonging to those accounts — deliberately excluded,
     #: distinct from `skipped` (dedup/errors).
     transactions_excluded: int = 0
@@ -102,6 +105,13 @@ class YNABAccountPreview(BaseModel):
     #: Sum of the account's register rows, shown next to the type picker so the
     #: user can tell a house from its mortgage at a glance.
     implied_balance: Decimal = Decimal("0")
+    #: Oldest and newest register dates. A YNAB export carries no closed-account
+    #: marker, so an account dormant since 2019 is indistinguishable from a
+    #: live one by name alone — and 14 of them arriving unannounced is what
+    #: made a real import read as "accounts appearing from nowhere". The dates
+    #: are already parsed on every row and were simply thrown away.
+    first_activity: date | None = None
+    last_activity: date | None = None
 
 
 class YNABPreviewResult(BaseModel):
@@ -119,6 +129,11 @@ class YNABAccountTypeChoice(BaseModel):
     #: import entirely — YNAB exports carry archived accounts with no marker,
     #: so excluding them is a user decision made in the preview step.
     skip: bool = False
+    #: Import everything, then close the account. Prefer this to `skip` for a
+    #: dormant account: closing hides it from pickers and report filters while
+    #: keeping every transaction, so net worth over time stays whole and its
+    #: transfers still pair up. `skip` erases the history instead.
+    close: bool = False
 
 
 # YNAB register exports carry no account-type info — only names — so the
@@ -298,14 +313,17 @@ def suggest_account_type(
 
 def parse_account_types_form(
     account_types: str | None,
-) -> tuple[dict[str, tuple[str, bool]], set[str]]:
+) -> tuple[dict[str, tuple[str, bool]], set[str], set[str]]:
     """Decode the JSON `account_types` multipart form field:
     {"Account Name": {"account_type": "loan", "on_budget": false, "skip": false}, ...}
 
-    Returns (type_map, skip_accounts): the type/on-budget mapping for accounts
-    being imported, and the set of account names to exclude entirely."""
+    Returns (type_map, skip_accounts, close_accounts): the type/on-budget
+    mapping for accounts being imported, the set to exclude entirely, and the
+    set to import and then close. Skip and close are mutually exclusive by
+    construction — a skipped account is never created, so there is nothing to
+    close, and `skip` wins if a caller sends both."""
     if not account_types:
-        return {}, set()
+        return {}, set(), set()
     try:
         raw = json.loads(account_types)
         parsed = {name: YNABAccountTypeChoice.model_validate(v) for name, v in raw.items()}
@@ -329,17 +347,29 @@ def parse_account_types_form(
         if not choice.skip
     }
     skip_accounts = {name for name, choice in parsed.items() if choice.skip}
-    return type_map, skip_accounts
+    close_accounts = {name for name, choice in parsed.items() if choice.close and not choice.skip}
+    return type_map, skip_accounts, close_accounts
 
 
 def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
     counts: dict[str, int] = {}
     balances: dict[str, Decimal] = {}
+    first_seen: dict[str, date] = {}
+    last_seen: dict[str, date] = {}
     for txn in ynab_budget.transactions:
         counts[txn.account_name] = counts.get(txn.account_name, 0) + 1
         # Split parents carry the full amount and their legs are nested, so
         # summing top-level rows gives the account balance without double count.
         balances[txn.account_name] = balances.get(txn.account_name, Decimal("0")) + txn.amount
+        # min/max rather than first/last row: a YNAB export is not guaranteed
+        # to be in date order, and one out-of-order row would otherwise report
+        # a live account as dormant.
+        prev_first = first_seen.get(txn.account_name)
+        if prev_first is None or txn.date < prev_first:
+            first_seen[txn.account_name] = txn.date
+        prev_last = last_seen.get(txn.account_name)
+        if prev_last is None or txn.date > prev_last:
+            last_seen[txn.account_name] = txn.date
 
     accounts = []
     for name in sorted(counts):
@@ -353,6 +383,8 @@ def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
                 suggested_on_budget=suggested_on_budget,
                 needs_review=needs_review,
                 implied_balance=implied,
+                first_activity=first_seen.get(name),
+                last_activity=last_seen.get(name),
             )
         )
     return YNABPreviewResult(

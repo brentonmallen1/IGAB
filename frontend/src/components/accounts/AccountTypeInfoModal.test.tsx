@@ -21,7 +21,7 @@ describe('AccountTypeInfoModal', () => {
 
   it('keeps the import notes out of the ordinary account context', () => {
     render(<AccountTypeInfoModal onClose={vi.fn()} />)
-    expect(screen.queryByText('Leaving an account out')).not.toBeInTheDocument()
+    expect(screen.queryByText('Import, close, or leave out')).not.toBeInTheDocument()
   })
 
   describe('in the import context', () => {
@@ -32,8 +32,16 @@ describe('AccountTypeInfoModal', () => {
 
     it('says what leaving an account out costs', () => {
       render(<AccountTypeInfoModal context="import" onClose={vi.fn()} />)
-      expect(screen.getByText('Leaving an account out')).toBeInTheDocument()
+      expect(screen.getByText('Import, close, or leave out')).toBeInTheDocument()
       expect(screen.getByText(/net worth over time has a hole/)).toBeInTheDocument()
+    })
+
+    it('offers closing as the alternative that keeps the history', () => {
+      render(<AccountTypeInfoModal context="import" onClose={vi.fn()} />)
+      expect(
+        screen.getByText(/Imported & closed — the safe choice for a dormant account/)
+      ).toBeInTheDocument()
+      expect(screen.getByText(/transfers to it still pair up/)).toBeInTheDocument()
     })
 
     it('names dropping an account as the cause of unmatched transfers', () => {

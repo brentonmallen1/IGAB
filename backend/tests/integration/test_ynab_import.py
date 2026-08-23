@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from igab.db.models import Transaction
+from igab.db.models import Account, Transaction
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.models import YNABBudget, YNABSplitLeg, YNABTransaction
 from igab.repositories.category_repo import CategoryGroupRepository
@@ -17,7 +17,9 @@ from .invariants import assert_financial_invariants
 JAN5 = date(2026, 1, 5)
 
 
-def _importer(services, db_session, budget, account_types=None, skip_accounts=None) -> YNABImporter:
+def _importer(
+    services, db_session, budget, account_types=None, skip_accounts=None, close_accounts=None
+) -> YNABImporter:
     return YNABImporter(
         session=db_session,
         budget_id=budget.id,
@@ -30,6 +32,7 @@ def _importer(services, db_session, budget, account_types=None, skip_accounts=No
         assignment_repo=services.assignment_repo,
         account_types=account_types,
         skip_accounts=skip_accounts,
+        close_accounts=close_accounts,
     )
 
 
@@ -106,9 +109,7 @@ async def test_unpaired_transfer_leg_imports_as_plain_row(db_session):
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
 
-    data = YNABBudget(
-        transactions=[_txn("Checking", "Transfer : Old Closed Account", "-75.00")]
-    )
+    data = YNABBudget(transactions=[_txn("Checking", "Transfer : Old Closed Account", "-75.00")])
     result = await _importer(services, db_session, budget).import_budget(data)
 
     assert result.transactions_imported == 1
@@ -203,9 +204,7 @@ def _split_txn(account, payee, legs, *, cleared="cleared"):
 
 
 async def _all_rows(db_session, account_id) -> list[Transaction]:
-    rows = await db_session.execute(
-        select(Transaction).where(Transaction.account_id == account_id)
-    )
+    rows = await db_session.execute(select(Transaction).where(Transaction.account_id == account_id))
     return list(rows.scalars().all())
 
 
@@ -263,9 +262,7 @@ async def test_split_imports_as_parent_plus_children(db_session):
     ]
 
     # Balances count the parent only — the bank sees one -154.90 charge
-    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal(
-        "-154.90"
-    )
+    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal("-154.90")
     await assert_financial_invariants(db_session, budget.id)
 
 
@@ -317,9 +314,7 @@ async def test_split_and_identical_flat_row_coexist(db_session):
                     ("-20.00", "Everyday", "Household", None),
                 ],
             ),
-            _txn(
-                "Checking", "Corner Market", "-50.00", group="Everyday", category="Groceries"
-            ),
+            _txn("Checking", "Corner Market", "-50.00", group="Everyday", category="Groceries"),
         ]
     )
     first = await _importer(services, db_session, budget).import_budget(data)
@@ -332,9 +327,7 @@ async def test_split_and_identical_flat_row_coexist(db_session):
     accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
     rows = await _all_rows(db_session, accounts["Checking"].id)
     assert len(rows) == 4, "split parent + 2 children + flat row"
-    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal(
-        "-100.00"
-    )
+    assert await services.account_repo.get_balance(accounts["Checking"].id) == Decimal("-100.00")
     await assert_financial_invariants(db_session, budget.id)
 
 
@@ -368,7 +361,11 @@ class TestSkipAccounts:
         accounts = {a.name for a in await services.account_repo.get_all(budget.id)}
         assert accounts == {"Checking"}
         rows = (
-            (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+            (
+                await db_session.execute(
+                    select(Transaction).where(Transaction.budget_id == budget.id)
+                )
+            )
             .scalars()
             .all()
         )
@@ -398,7 +395,11 @@ class TestSkipAccounts:
         accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
         assert set(accounts) == {"Checking"}
         rows = (
-            (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+            (
+                await db_session.execute(
+                    select(Transaction).where(Transaction.budget_id == budget.id)
+                )
+            )
             .scalars()
             .all()
         )
@@ -487,9 +488,122 @@ class TestBulkChunkBoundaries:
         assert again.transactions_imported == 0
         assert again.transactions_skipped == len(data.transactions)
         count = (
-            await db_session.execute(
-                select(Transaction).where(Transaction.budget_id == budget.id)
+            (
+                await db_session.execute(
+                    select(Transaction).where(Transaction.budget_id == budget.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(count) == len(data.transactions)
+        await assert_financial_invariants(db_session, budget.id)
+
+
+class TestImportAndClose:
+    """Closing beats skipping for a dormant account, and the difference is the
+    whole point: `skip` never creates the account, so its history does not
+    exist and transfers to it have nothing to pair with. `close` imports
+    everything and hides the account from pickers and report filters.
+
+    A real export carried 14 accounts with no activity since 2019–2021. Told
+    to skip them, a user loses the history that makes past months add up.
+    """
+
+    async def _budget(self, db_session):
+        user = await create_user(db_session)
+        return make_services(db_session), await create_budget(db_session, user)
+
+    async def test_a_closed_account_still_imports_every_transaction(self, db_session):
+        services, budget = await self._budget(db_session)
+        importer = _importer(services, db_session, budget, close_accounts={"Old Savings"})
+
+        result = await importer.import_budget(
+            YNABBudget(
+                transactions=[
+                    _txn("Old Savings", "Interest", "5.00", category="Income", group="Inflow"),
+                    _txn("Old Savings", "Interest", "6.00", category="Income", group="Inflow"),
+                ],
+                budget_entries=[],
+            )
+        )
+        await db_session.flush()
+
+        # Reported back, not silent: 14 accounts vanishing from the pickers
+        # with no mention of it in the confirmation reads like a bug.
+        assert result.accounts_closed == 1
+        assert result.accounts_skipped == 0, "closing is not skipping"
+        assert result.transactions_imported == 2
+
+        account = (
+            await db_session.execute(
+                select(Account).where(Account.budget_id == budget.id, Account.name == "Old Savings")
+            )
+        ).scalar_one()
+        assert account.is_closed is True
+        assert await services.transaction_repo.count_for_account(account.id) == 2
+        assert await services.account_repo.get_balance(account.id) == Decimal("11.00")
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_matching_is_case_insensitive_like_every_other_name_match(self, db_session):
+        services, budget = await self._budget(db_session)
+        importer = _importer(services, db_session, budget, close_accounts={"OLD SAVINGS"})
+
+        await importer.import_budget(
+            YNABBudget(transactions=[_txn("Old Savings", "Interest", "5.00")], budget_entries=[])
+        )
+        await db_session.flush()
+
+        account = (
+            await db_session.execute(
+                select(Account).where(Account.budget_id == budget.id, Account.name == "Old Savings")
+            )
+        ).scalar_one()
+        assert account.is_closed is True
+
+    async def test_an_account_not_named_arrives_open(self, db_session):
+        services, budget = await self._budget(db_session)
+        importer = _importer(services, db_session, budget, close_accounts={"Old Savings"})
+
+        await importer.import_budget(
+            YNABBudget(transactions=[_txn("Checking", "Shop", "-5.00")], budget_entries=[])
+        )
+        await db_session.flush()
+
+        account = (
+            await db_session.execute(
+                select(Account).where(Account.budget_id == budget.id, Account.name == "Checking")
+            )
+        ).scalar_one()
+        assert account.is_closed is False
+
+    async def test_a_transfer_to_a_closed_account_still_pairs(self, db_session):
+        """The reason close exists. Skipping the far side is what leaves a leg
+        unlinked and reading as real income or spending in reports."""
+        services, budget = await self._budget(db_session)
+        importer = _importer(services, db_session, budget, close_accounts={"Old Savings"})
+
+        await importer.import_budget(
+            YNABBudget(
+                transactions=[
+                    _txn("Checking", "Transfer : Old Savings", "-100.00"),
+                    _txn("Old Savings", "Transfer : Checking", "100.00"),
+                ],
+                budget_entries=[],
+            )
+        )
+        await db_session.flush()
+
+        legs = (
+            (
+                await db_session.execute(
+                    select(Transaction).where(
+                        Transaction.budget_id == budget.id, Transaction.transfer_id.isnot(None)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(legs) == 2, "both legs linked despite one side being closed"
         await assert_financial_invariants(db_session, budget.id)

@@ -24,6 +24,14 @@ import { SharingModal } from '../../components/budgets/SharingModal'
 import { useCurrentUser } from '../../api/auth'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
+import {
+  activityLabel,
+  balanceWarning,
+  choiceForDisposition,
+  dispositionOf,
+  isDormant,
+  type Disposition,
+} from './accountMapping'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
@@ -200,7 +208,12 @@ export function BudgetSelectorPage() {
         Object.fromEntries(
           preview.accounts.map((a) => [
             a.name,
-            { account_type: a.suggested_type, on_budget: a.suggested_on_budget, skip: false },
+            {
+              account_type: a.suggested_type,
+              on_budget: a.suggested_on_budget,
+              skip: false,
+              close: false,
+            },
           ])
         )
       )
@@ -229,6 +242,11 @@ export function BudgetSelectorPage() {
       ]
       if (r.assignments) parts.push(`${r.assignments.toLocaleString()} budget assignments`)
       if (r.skipped) parts.push(`${r.skipped.toLocaleString()} skipped`)
+      if (r.accounts_closed) {
+        parts.push(
+          `${r.accounts_closed} imported and closed`
+        )
+      }
       if (r.accounts_skipped) {
         parts.push(
           `${r.accounts_skipped} account${r.accounts_skipped !== 1 ? 's' : ''} left out as requested`
@@ -496,7 +514,18 @@ export function BudgetSelectorPage() {
                 )}
                 <div className="ynab-mapping" role="group" aria-labelledby="ynab-accounts-label">
                   {previewAccounts.map((a) => {
-                    const skipped = accountChoices[a.name]?.skip === true
+                    const choice = accountChoices[a.name]
+                    const disposition = dispositionOf(choice)
+                    const skipped = disposition === 'skip'
+                    const typeKey = choice?.account_type ?? a.suggested_type
+                    const warning = skipped
+                      ? null
+                      : balanceWarning(
+                          ACCOUNT_TYPE_OPTIONS.find((o) => o.key === typeKey)?.classification,
+                          Number(a.implied_balance)
+                        )
+                    const dormant = disposition === 'import' && isDormant(a.last_activity)
+                    const lastSeen = activityLabel(a.last_activity)
                     return (
                       <div
                         key={a.name}
@@ -504,18 +533,21 @@ export function BudgetSelectorPage() {
                           a.needs_review && !skipped ? 'ynab-mapping__row--review' : ''
                         }`}
                       >
-                        <input
-                          type="checkbox"
-                          className="ynab-mapping__include"
-                          checked={!skipped}
-                          onChange={(e) => updateChoice(a.name, { skip: !e.target.checked })}
-                          aria-label={`Import ${a.name}`}
-                          title={
-                            skipped
-                              ? 'Excluded — this account and its transactions will not be imported'
-                              : 'Uncheck to leave this account out of the import'
+                        <select
+                          className="selector-field__input ynab-mapping__disposition"
+                          value={disposition}
+                          onChange={(e) =>
+                            updateChoice(
+                              a.name,
+                              choiceForDisposition(e.target.value as Disposition)
+                            )
                           }
-                        />
+                          aria-label={`What to do with ${a.name}`}
+                        >
+                          <option value="import">Import</option>
+                          <option value="close">Import &amp; close</option>
+                          <option value="skip">Leave out</option>
+                        </select>
                         <div className="ynab-mapping__name">
                           {a.name}
                           {a.needs_review && !skipped && (
@@ -531,11 +563,14 @@ export function BudgetSelectorPage() {
                             <span className="ynab-mapping__balance">
                               {formatMoney(Number(a.implied_balance))}
                             </span>
+                            {lastSeen && (
+                              <span className="ynab-mapping__activity">last activity {lastSeen}</span>
+                            )}
                           </span>
                         </div>
                         <select
                           className="selector-field__input ynab-mapping__type"
-                          value={accountChoices[a.name]?.account_type ?? a.suggested_type}
+                          value={typeKey}
                           onChange={(e) => {
                             // Picking a type resets the on-budget checkbox to
                             // that type's default; still user-overridable.
@@ -556,12 +591,28 @@ export function BudgetSelectorPage() {
                         <label className="ynab-mapping__budget-toggle">
                           <input
                             type="checkbox"
-                            checked={accountChoices[a.name]?.on_budget ?? a.suggested_on_budget}
+                            checked={choice?.on_budget ?? a.suggested_on_budget}
                             onChange={(e) => updateChoice(a.name, { on_budget: e.target.checked })}
                             disabled={skipped}
                           />
                           On budget
                         </label>
+                        {warning && <p className="ynab-mapping__warn">{warning}</p>}
+                        {dormant && (
+                          <p className="ynab-mapping__note">
+                            Nothing since {lastSeen}.{' '}
+                            <button
+                              type="button"
+                              className="ynab-mapping__note-action"
+                              onClick={() =>
+                                updateChoice(a.name, choiceForDisposition('close'))
+                              }
+                            >
+                              Import &amp; close
+                            </button>{' '}
+                            keeps the history and hides the account.
+                          </p>
+                        )}
                       </div>
                     )
                   })}
