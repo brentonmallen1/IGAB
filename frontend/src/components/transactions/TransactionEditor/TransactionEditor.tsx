@@ -30,7 +30,7 @@ import { Modal } from '../../common/Modal/Modal'
 import { isConfigFailure, scanFailureReason } from './scanFailure'
 import { today } from '../../../utils/dates'
 import { useToastUndo } from '../../../utils/toastUndo'
-import { fromCents, toCents } from '../../../utils/money'
+import { fromCents, parseApiDecimal, toCents } from '../../../utils/money'
 import {
   expressionToCents,
   parseAmountExpressionInput,
@@ -293,7 +293,7 @@ export function TransactionEditor({
         )
         return {
           tempId: randomUUID(),
-          amount: Math.abs(parseFloat(line.amount)).toFixed(2),
+          amount: Math.abs(parseApiDecimal(line.amount)).toFixed(2),
           categoryId: cat?.id ?? null,
           memo: '',
         }

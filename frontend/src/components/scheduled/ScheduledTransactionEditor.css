@@ -155,3 +155,9 @@
     min-height: 44px;
   }
 }
+
+.sched-editor__error {
+  font-size: var(--font-size-xs);
+  color: var(--color-negative);
+  align-self: center;
+}

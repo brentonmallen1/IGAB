@@ -1,3 +1,4 @@
+import { parseAmountInput } from '../../utils/money'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Settings } from 'lucide-react'
@@ -55,7 +56,7 @@ export function LiabilityPage() {
   // Debounce the what-if input so typing doesn't spam the API
   useEffect(() => {
     const handle = setTimeout(() => {
-      const parsed = parseFloat(extraInput)
+      const parsed = parseAmountInput(extraInput)
       setExtraPayment(!isNaN(parsed) && parsed > 0 ? parsed : 0)
     }, 400)
     return () => clearTimeout(handle)
@@ -101,7 +102,7 @@ export function LiabilityPage() {
 
   async function handleSaveBalance(e: React.FormEvent) {
     e.preventDefault()
-    const parsed = parseFloat(newBalance)
+    const parsed = parseAmountInput(newBalance)
     if (isNaN(parsed) || parsed < 0) return
     await createSnapshot.mutateAsync({
       liabilityId: liability!.id,

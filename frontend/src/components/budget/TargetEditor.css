@@ -105,3 +105,8 @@
     min-height: var(--tap-min);
   }
 }
+
+.target-editor__error {
+  font-size: var(--font-size-xs);
+  color: var(--color-negative);
+}
