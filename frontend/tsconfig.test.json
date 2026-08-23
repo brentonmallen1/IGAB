@@ -1,0 +1,26 @@
+{
+  /* The test suite, checked with the same strictness as the app.
+   *
+   * It is a separate project because the production build must not depend on
+   * it. `frontend/Dockerfile` and `Dockerfile.aio` both COPY only `frontend/`,
+   * so the image has no repo root — and `src/utils/splits.test.ts` reads
+   * `../../../shared/split_cases.json`, the fixture it shares with
+   * `backend/tests/unit/test_split_predicate.py`. Type-checking that file
+   * inside the image resolves nothing and fails the build, which is how
+   * v2026.08.x died at `RUN npm run build` on a green CI.
+   *
+   * `npm run build` therefore builds tsconfig.app.json + tsconfig.node.json;
+   * this project is checked by `npm run typecheck` (all three), which CI and
+   * `just ci` run with the whole repo — and the fixture — on disk.
+   *
+   * `include` is all of `src`, not just the tests: without project references
+   * (none of these are `composite`) the tests need their imports in the same
+   * program. The duplicated work costs a few seconds.
+   */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": []
+}

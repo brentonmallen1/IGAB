@@ -14,6 +14,15 @@
 # amd64 only and never pushes. This answers "does it still build", not "does
 # the arm64 manifest assemble" — release-images.yml owns that, on a tag.
 #
+# `shared/**` and `frontend/tsconfig*.json` are in the filter because the
+# frontend build sees less than CI does: both Dockerfiles COPY only
+# `frontend/`, so anything the build reads from the repo root exists on a
+# runner and not in the image. A shared fixture landed on a green CI and the
+# release tag then died at `RUN npm run build`. Those two paths cover how that
+# gap gets opened; a `frontend/src` file that reaches outside `frontend/` on
+# its own still would not trip this — tsconfig.test.json keeps the tests, the
+# only files with a reason to, out of the build.
+#
 # Once this has proven stable, add `docker-build (<image>)` to the main branch
 # ruleset's required checks and relax the base-image `ignore` rules in
 # dependabot.yml: those bumps can flow normally once something verifies them.
@@ -28,6 +37,8 @@ on:
       - "backend/uv.lock"
       - "frontend/package.json"
       - "frontend/package-lock.json"
+      - "frontend/tsconfig*.json"
+      - "shared/**"
       - "docker-compose*.yml"
       - ".github/workflows/docker-build.yml"
   push:
@@ -38,6 +49,8 @@ on:
       - "backend/uv.lock"
       - "frontend/package.json"
       - "frontend/package-lock.json"
+      - "frontend/tsconfig*.json"
+      - "shared/**"
       - "docker-compose*.yml"
       - ".github/workflows/docker-build.yml"
   workflow_dispatch:
