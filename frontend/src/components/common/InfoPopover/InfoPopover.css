@@ -24,17 +24,22 @@
   border-color: var(--accent-color);
 }
 
+/* Fixed, and portalled to <body>: absolutely positioned it was clipped by the
+   app shell's overflow long before z-index mattered. Position, width and
+   max-height all arrive inline from measurePanel() — the only place that knows
+   where the trigger is. */
 .info-pop__panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
   z-index: var(--z-dropdown);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  width: 320px;
-  max-width: 90vw;
+  /* The header stays put and only the explanation scrolls when the measured
+     max-height bites. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .info-pop__header {
@@ -43,6 +48,7 @@
   justify-content: space-between;
   padding: var(--spacing-sm) var(--spacing-md);
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .info-pop__title {
@@ -66,12 +72,19 @@
 }
 
 .info-pop__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--spacing-md);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  line-height: 1.55;
+  /* 13px x 1.5 = ~20px between lines. Every gap below is chosen against that
+     number, because proximity is measured against the leading, not against
+     zero. */
+  line-height: 1.5;
   display: flex;
   flex-direction: column;
+  /* Sibling paragraphs of one explanation: closer than the leading, so they
+     read as continuous prose. */
   gap: var(--spacing-sm);
 }
 
@@ -83,8 +96,66 @@
   color: var(--text-primary);
 }
 
-/* The standard "which accounts does this count" line */
-.info-pop__scope {
+/* Examples read as things you can type, not as prose. */
+.info-pop__body code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius-sm);
+  padding: 1px 4px;
+  white-space: nowrap;
+}
+
+/* --- Sections ------------------------------------------------------------
+   The one number that does the work: a section opens 24px below the last one,
+   which is wider than the ~20px leading inside it. Under that threshold the
+   gap between two topics is *smaller* than the gap between two lines of the
+   same sentence, and the eye correctly reads the whole panel as one block —
+   the failure this fixes. The 8px above stays for prose. */
+.info-pop__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.info-pop__section:not(:first-child) {
+  margin-top: calc(var(--spacing-lg) - var(--spacing-sm));
+}
+
+.info-pop__section-title {
+  margin: 0;
+}
+
+/* --- Term/definition reference -------------------------------------------
+   A vocabulary is a table, and prose bullets hide that. One grid for the
+   whole list (not per row) so the keyword column aligns down the panel and
+   the eye can run the terms without reading the definitions. */
+.info-pop__terms {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  margin: 0;
+  align-items: baseline;
+}
+
+.info-pop__terms dt {
+  /* The keyword itself is the entry point — no chip needed, it is already in
+     the mono face and its own column. */
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--color-accent);
+}
+
+.info-pop__terms dd {
+  margin: 0;
+  font-size: var(--font-size-xs);
+}
+
+/* A closing aside of a different kind than the body above it — a rule earns
+   its place here precisely because the change is one of kind, not of topic. */
+.info-pop__note {
+  margin-top: calc(var(--spacing-lg) - var(--spacing-sm));
   padding-top: var(--spacing-sm);
   border-top: 1px solid var(--border-color);
   font-size: var(--font-size-xs);

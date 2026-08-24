@@ -1,5 +1,4 @@
 import { InfoPopover } from '../common/InfoPopover/InfoPopover'
-import './ReportInfoButton.css'
 
 interface Props {
   title: string
@@ -55,7 +54,7 @@ const SCOPE_COPY: Record<ReportScope, string> = {
  * report considers — the scoping is deliberate and should never be a
  * surprise the user has to reverse-engineer from the numbers. */
 export function ReportScopeNote({ scope }: { scope: ReportScope }) {
-  return <p className="report-info__scope">{SCOPE_COPY[scope]}</p>
+  return <p className="info-pop__note">{SCOPE_COPY[scope]}</p>
 }
 
 /** Stated on every report that now means spending in the narrow sense. Moving
@@ -64,7 +63,7 @@ export function ReportScopeNote({ scope }: { scope: ReportScope }) {
  *  loud rather than being noticed later and distrusted. */
 export function SpendingClassNote() {
   return (
-    <p className="report-info__scope">
+    <p className="info-pop__note">
       Counts spending only. Money moved into savings or investments, or used to
       pay down a tracked debt, leaves your budget but stays yours — so it is not
       counted here. Open any transaction to see how it is classified and why.

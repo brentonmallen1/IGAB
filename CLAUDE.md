@@ -38,13 +38,60 @@ Self-hosted YNAB-like envelope budgeting app. Single-user, zero-based budgeting.
 - Copy `.env.example` → `.env`; configure DB, JWT `SECRET_KEY`, ports
 - `VITE_API_URL` points frontend at backend API
 
-## Money Rules: One Implementation Each
+## One Implementation Each — Not Negotiable
 
-A money rule with two implementations will drift. It has, repeatedly — "needs a
-category" reached eight copies before it was consolidated, and the copies
-disagreed twice. Duplication becomes deviation, and deviation in a budgeting
-app becomes distrust: the badge says 3, the register draws 930, and the user
-stops believing any of the numbers.
+**A rule with two implementations is a bug that has not surfaced yet.** Not a
+smell, not tech debt to schedule: a defect with a delay fuse. Every duplicate
+in this repo's history has drifted, without exception, and each one was
+plausible when it was written.
+
+The receipts:
+
+- "Needs a category" reached **eight** copies before it was consolidated. Two
+  of them disagreed. The badge said 3 while the register drew 930, and a
+  budgeting app that contradicts itself is one the user stops believing.
+- Anchored-dropdown geometry reached **five** copies. Only two clamped to the
+  viewport, so three ran off the right edge; only one flipped upward, so a
+  combobox opened near the bottom of the register drew its list below the
+  fold. Nobody decided that. It is what five people solving one problem on
+  five days produces.
+- TagPicker wrote its three size limits **twice** — once inline, once in CSS.
+  The inline copy silently won every time, so the stylesheet's copy was free
+  to say anything at all.
+
+Note the second and third: **this rule is not about money.** Money is where
+drift costs trust, which is why the boundary rule below is written in those
+terms — but geometry, formatting, validation, and CSS constants rot exactly
+the same way.
+
+### When you find a duplicate
+
+**Fix it in the change you are already making.** Not in a follow-up, not in a
+TODO, not in a comment asking the next reader to keep the copies in step —
+every such comment in this repo's history was attached to something that had
+*already* drifted. A comment is not a mechanism.
+
+The procedure, in order:
+
+1. **Count the copies before you touch one.** `grep` the constant, the
+   arithmetic, the predicate. You are looking for the number, not an example —
+   the fifth copy is the one that tells you this is systemic.
+2. **Diff them.** The differences are the bug list. Write them down; each one
+   is either a defect to fix or a deliberate variation to express as a
+   parameter. There is no third category.
+3. **Extract to the home named in the table below** — pure logic separate from
+   the wiring, so it is testable without a browser or a database.
+4. **Convert every call site.** All of them. A consolidation that leaves one
+   copy behind has raised the copy count by one.
+5. **Test the differences from step 2 by name.** Each divergence becomes a
+   test case that says which component used to get it wrong.
+
+**If you are about to copy code, you have found a duplicate** — at the only
+moment it is still free to fix. Extract first, then use it twice.
+
+**Never widen a rule's footprint to avoid touching a caller.** Adding a
+parameter that only one caller passes, or a second function beside the first
+"for now", is how three copies become five.
 
 **The boundary rule.** Before writing a rule, decide where it lives:
 
@@ -76,9 +123,17 @@ Two traps this rule catches, both of which produced real bugs:
 | Pure money/date functions | `backend/.../domain/` (`money`, `splits`, `carryover`, `dates`, `matching`) |
 | Frontend, cross-feature | `frontend/src/utils/` |
 | Frontend, feature-local | a colocated pure module (`reviewSection.ts`, `budgetTotals.ts`) |
+| Frontend UI geometry | `frontend/src/utils/anchoredPosition.ts` + `hooks/useAnchoredPosition.ts` |
+| A constant two layers both need | one of the above, never once in TS and again in CSS |
 
 Anything in `services/` that is a *rule* rather than an *orchestration* belongs
 in one of those.
+
+**Split pure from wired.** `anchoredPosition.ts` takes the viewport as an
+argument instead of reading `window`, so every branch is a one-line test; the
+hook beside it does the measuring and the listeners. Logic that can only be
+exercised by mounting a component will not get the tests that keep copies from
+re-appearing.
 
 **Serving a computed field** — the pattern, from `needs_category`:
 

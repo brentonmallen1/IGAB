@@ -31,11 +31,10 @@
   color: var(--text-secondary);
 }
 
+/* Width and max-height arrive inline from useAnchoredPosition — it is the
+   only thing that knows how much room the viewport is actually offering. */
 .tag-picker__dropdown {
   position: fixed;
-  min-width: 200px;
-  max-width: 280px;
-  max-height: 300px;
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--bg-elevated);

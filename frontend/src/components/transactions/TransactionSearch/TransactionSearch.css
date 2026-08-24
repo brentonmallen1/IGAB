@@ -6,11 +6,31 @@
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   padding: 0 var(--spacing-xs);
-  min-width: 200px;
-  transition: border-color var(--transition-fast);
+
+  /* One number for how wide this search gets: the focused field and the
+     suggestions panel below it both read it, so they stay the same width and
+     the panel reads as the field continuing rather than a separate object. */
+  --txn-search-wide: 620px;
+
+  /* Takes the toolbar's spare room rather than a fixed 200px, up to a resting
+     cap — queries here are long (`category:"Dining Out" date: march..june`)
+     and a field that shows six characters of one is a field you compose
+     blind. The vw term keeps it honest on a narrow desktop window, where a
+     flat 22rem would crowd the Add Transaction button. */
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(22rem, 40vw);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    max-width var(--transition-base);
 }
 
+/* Room to read the whole query arrives when you are actually typing one, and
+   leaves when you are done — at rest the register is what matters, not the
+   box above it. */
 .txn-search--focused {
+  max-width: min(var(--txn-search-wide), 62vw);
   border-color: var(--color-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
@@ -56,7 +76,15 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  right: 0;
+  /* The panel is a reference table, not a copy of the input. Sized to its own
+     contents so `NOT has: attachment` and its description sit on one line,
+     never narrower than the box it hangs off, and capped so it stays a
+     dropdown. It opens from the toolbar's left edge, so growing rightward has
+     the whole toolbar to grow into. */
+  right: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(var(--txn-search-wide), calc(100vw - 2 * var(--spacing-md)));
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
@@ -64,8 +92,15 @@
   z-index: var(--z-page-chrome);
   /* Cap the list so the full syntax reference doesn't cover the register */
   max-height: min(320px, 45vh);
-  overflow-y: auto;
+  /* Explicitly hidden, not left to compute from `visible`: paired auto axes
+     put a scrollbar corner in the bottom-right that looks like a resize grip.
+     Nothing here needs to scroll sideways — the width above sees to that. */
+  overflow: hidden auto;
   overscroll-behavior: contain;
+  /* Width of the syntax column; rows share it so descriptions line up. Kept
+     in ems of the chip's own size, not px, so it still fits the longest
+     syntax when the font-size setting scales --font-size-xs up. */
+  --txn-search-syntax-col: calc(var(--font-size-xs) * 13);
 }
 
 .txn-search__suggestions-header {
@@ -78,9 +113,13 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/* Two columns rather than a flex run: the syntax chips vary from `OR` to
+   `NOT has: attachment`, and a ragged left edge on the descriptions makes the
+   list read as prose instead of a reference. */
 .txn-search__suggestion {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: var(--txn-search-syntax-col) 1fr;
+  align-items: baseline;
   gap: var(--spacing-sm);
   width: 100%;
   padding: 6px var(--spacing-sm);
@@ -95,6 +134,8 @@
 }
 
 .txn-search__syntax {
+  /* Holds the column open without stretching the chip across it. */
+  justify-self: start;
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--color-accent);
@@ -110,9 +151,33 @@
 }
 
 @media (max-width: 768px) {
+  /* Already the full width of the toolbar, so there is nothing to expand into
+     — and a field that resized under the thumb as the keyboard came up would
+     read as a glitch. Fixed width, both states. */
   .txn-search {
     flex: 1;
     min-width: 0;
+    max-width: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+
+  .txn-search--focused {
+    max-width: none;
+  }
+
+  /* No room to grow, and no toolbar to grow into: back to the input's width,
+     with the syntax stacked above its description rather than squeezed. */
+  .txn-search__suggestions {
+    right: 0;
+    width: auto;
+    max-width: none;
+  }
+
+  .txn-search__suggestion {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 2px;
+    padding: var(--spacing-xs) var(--spacing-sm);
   }
 
   .txn-search__input {
