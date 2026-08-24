@@ -128,3 +128,18 @@
     padding: var(--spacing-sm);
   }
 }
+
+/* The ⓘ sits inside the box, after the clear button. Muted so it never
+   competes with the input itself — it is there for the first few uses. */
+.txn-search__help {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+.txn-search__help .info-pop__btn {
+  width: 18px;
+  height: 18px;
+  border: none;
+}

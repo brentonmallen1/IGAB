@@ -19,6 +19,16 @@
   white-space: nowrap;
 }
 
+/* A part of the query that applied no filter. Warning-coloured rather than
+   accent-coloured because it is not describing what the results ARE — it is
+   saying the results are wider than the query looks. */
+.search-chips__chip--unrecognized {
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+  border-style: dashed;
+}
+
 .search-chips__remove {
   display: flex;
   align-items: center;

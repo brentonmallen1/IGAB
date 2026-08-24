@@ -45,3 +45,44 @@ describe('TransactionSearch suggestions', () => {
     expect(screen.getByText('Search syntax')).toBeInTheDocument()
   })
 })
+
+/**
+ * The syntax dropdown teaches tokens to someone already looking for them.
+ * This teaches that a query language exists at all — the gap that made the
+ * whole feature invisible unless you happened to click into the box.
+ */
+describe('search help', () => {
+  it('offers help without having to focus the field first', () => {
+    setup()
+    expect(screen.getByLabelText('How to search transactions')).toBeInTheDocument()
+    // Not open until asked: a panel that greets everyone is one people learn
+    // to dismiss without reading.
+    expect(screen.queryByText('Searching transactions')).not.toBeInTheDocument()
+  })
+
+  it('explains the concepts the token list cannot', () => {
+    setup()
+    fireEvent.click(screen.getByLabelText('How to search transactions'))
+    expect(screen.getByText('Searching transactions')).toBeInTheDocument()
+    expect(screen.getByText(/narrows/)).toBeInTheDocument()
+    expect(screen.getByText(/to widen instead of narrow/)).toBeInTheDocument()
+    expect(screen.getByText(/remove one to drop just/)).toBeInTheDocument()
+  })
+
+  it('closes on Escape and gives focus back to the button', () => {
+    setup()
+    const trigger = screen.getByLabelText('How to search transactions')
+    fireEvent.click(trigger)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByText('Searching transactions')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('opening help does not pop the syntax dropdown open', () => {
+    // They are different answers to different questions, and stacking both
+    // over the register hides the thing being searched.
+    setup()
+    fireEvent.click(screen.getByLabelText('How to search transactions'))
+    expect(screen.queryByText('Search syntax')).not.toBeInTheDocument()
+  })
+})

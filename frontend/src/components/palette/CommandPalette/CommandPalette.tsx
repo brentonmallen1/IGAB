@@ -19,6 +19,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
 import { THEMES } from '../../../stores/appStore'
 import { STATIC_COMMANDS, type CommandCtx } from '../commands'
+import { SearchHelp } from '../../transactions/TransactionSearch/SearchHelp'
 import type { BudgetTransactionsResponse } from '../../../types'
 import './CommandPalette.css'
 
@@ -179,6 +180,12 @@ export function CommandPalette() {
             autoFocus
             enterKeyHint="go"
           />
+          {/* The same explanation as the register's search box — the palette
+              accepts the same query language, so it must be as findable
+              here. */}
+          <span className="palette__help">
+            <SearchHelp />
+          </span>
           {/* Mobile-only (CSS): the backdrop is a sliver on a full-width
               sheet, and a standalone PWA has no browser back button. */}
           <button

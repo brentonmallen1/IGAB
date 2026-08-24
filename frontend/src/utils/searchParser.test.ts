@@ -171,6 +171,103 @@ describe('amount filters', () => {
 })
 
 describe('date: filters (now = Tue 2026-08-11)', () => {
+  /**
+   * Years, months and days are all just spans of different widths, so the
+   * same words work as a value, as a bound and as either side of a range.
+   * They did not before: `date: 2025-03-15` worked while `date: 2025-03`
+   * silently returned everything, and `date:>march` did nothing at all.
+   */
+  describe('whole years and months', () => {
+    it('reads a year', () => {
+      const r = parse('date:2025')
+      expect([r.startDate, r.endDate]).toEqual(['2025-01-01', '2025-12-31'])
+    })
+
+    it('reads a year-month, with or without the date: prefix', () => {
+      for (const q of ['date: 2025-03', '2025-03', 'date: 2025/03']) {
+        const r = parse(q)
+        expect([r.startDate, r.endDate], q).toEqual(['2025-03-01', '2025-03-31'])
+      }
+    })
+
+    it('leaves a BARE year as free text, because it is also an amount', () => {
+      // 2025 is how you search for $2,025. `date:2025` is how you ask for
+      // the year — the prefix is what disambiguates them.
+      const r = parse('2025')
+      expect(r.startDate).toBeUndefined()
+      expect(r.text).toBe('2025')
+    })
+
+    it('reads a month and year in every form of the token', () => {
+      // `date:march 2025` used to read March of the CURRENT year and leave
+      // "2025" behind to be matched as an amount. The spaced form was right
+      // and the compact one wrong, which is the worst kind of difference:
+      // invisible. A month name is a valid date on its own, so the rule is
+      // that the LONGER reading wins.
+      for (const q of ['date:march 2025', 'date: march 2025', 'march 2025']) {
+        const r = parse(q)
+        expect([r.startDate, r.endDate], q).toEqual(['2025-03-01', '2025-03-31'])
+        expect(r.text, q).toBeUndefined()
+      }
+    })
+
+    it('still reads a lone month name as the most recent one', () => {
+      const r = parse('date: march')
+      expect([r.startDate, r.endDate]).toEqual(['2026-03-01', '2026-03-31'])
+    })
+
+    it('reads "last month" after the prefix, in both forms', () => {
+      for (const q of ['date: last month', 'date:last month']) {
+        const r = parse(q)
+        expect([r.startDate, r.endDate], q).toEqual(['2026-07-01', '2026-07-31'])
+      }
+    })
+
+    it('handles a short month and a leap February', () => {
+      expect(parse('date: 2025-02').endDate).toBe('2025-02-28')
+      expect(parse('date: 2024-02').endDate).toBe('2024-02-29')
+      expect(parse('date: 2025-04').endDate).toBe('2025-04-30')
+    })
+  })
+
+  describe('spans as bounds and ranges', () => {
+    it('takes the outer edge of the span it names', () => {
+      expect(parse('date:>2025').startDate).toBe('2025-01-01')
+      expect(parse('date:<2025').endDate).toBe('2025-12-31')
+      expect(parse('date:>march').startDate).toBe('2026-03-01')
+      expect(parse('date:<march').endDate).toBe('2026-03-31')
+      expect(parse('date:>2025-03').startDate).toBe('2025-03-01')
+    })
+
+    it('runs a range from the first span to the end of the last', () => {
+      const r = parse('date: march..june')
+      expect([r.startDate, r.endDate]).toEqual(['2026-03-01', '2026-06-30'])
+    })
+
+    it('reads a year range written with a dash', () => {
+      const r = parse('date: 2024-2025')
+      expect([r.startDate, r.endDate]).toEqual(['2024-01-01', '2025-12-31'])
+    })
+
+    it('mixes forms on either side of a range', () => {
+      const r = parse('date: 2025-03..2025-06-15')
+      expect([r.startDate, r.endDate]).toEqual(['2025-03-01', '2025-06-15'])
+    })
+
+    it('still reads an ISO day as a day, not as a year range', () => {
+      // The dashes inside 2025-03-15 must not be mistaken for a range.
+      const r = parse('date: 2025-03-15')
+      expect([r.startDate, r.endDate]).toEqual(['2025-03-15', '2025-03-15'])
+    })
+
+    it('combines two bounds into a range', () => {
+      // The documented way to bound with multi-word phrases, which a single
+      // token cannot express.
+      const r = parse('date:>2026-07-01 date:<2026-08-11')
+      expect([r.startDate, r.endDate]).toEqual(['2026-07-01', '2026-08-11'])
+    })
+  })
+
   it('parses a bare M/D as a single day in the current year', () => {
     const result = parse('date: 3/15')
     expect(result.startDate).toBe('2026-03-15')
@@ -627,11 +724,15 @@ describe('describeSearchChips', () => {
   })
 })
 
-describe('a chip exists exactly when a filter does', () => {
+describe('a chip tells the truth about whether a filter applied', () => {
   // The chips were a second walk over the tokens with their own copy of every
   // recognizer, and they disagreed with the parser. Each case below drew a
   // chip for a filter that was not applied, or hid a token that was silently
   // dropped. The pairing is the invariant: same query, both answers.
+  //
+  // A chip may say one of two things, never neither: "this filter is applied"
+  // or "this part was ignored". The second kind is why `date:2025` no longer
+  // answers with the entire register while looking like a successful search.
   const CATS = new Map([['cat-1', 'Groceries']])
   const PAYEES = new Map([['p-1', 'Starbucks']])
 
@@ -658,11 +759,36 @@ describe('a chip exists exactly when a filter does', () => {
     expect(labels).toEqual([])
   })
 
-  it('an unreadable amount draws no chip', () => {
+  it('an unreadable amount says so instead of vanishing', () => {
     const { filters, labels } = both('amount: abc')
     expect(filters.amountMin).toBeUndefined()
     expect(filters.amountMax).toBeUndefined()
-    expect(labels).toEqual([])
+    expect(labels).toEqual([`Couldn't read “amount: abc”`])
+  })
+
+  it('an unreadable date says so instead of returning everything quietly', () => {
+    // The failure this exists for: no filter, no chip, and a register showing
+    // every transaction — indistinguishable from a search that worked.
+    const { filters, labels } = both('date: q1')
+    expect(filters.startDate).toBeUndefined()
+    expect(filters.endDate).toBeUndefined()
+    expect(labels).toEqual([`Couldn't read “date: q1”`])
+  })
+
+  it('marks the unreadable chip so it can be shown as a warning', () => {
+    const [chip] = describeSearchChips('date: q1', CATS, PAYEES, EMPTY_MAP, NOW)
+    expect(chip.unrecognized).toBe(true)
+  })
+
+  it('a readable date draws an ordinary chip, not a warning', () => {
+    const [chip] = describeSearchChips('date: 2025-03', CATS, PAYEES, EMPTY_MAP, NOW)
+    expect(chip.label).toBe('March 2025')
+    expect(chip.unrecognized).toBeUndefined()
+  })
+
+  it('removing an unreadable chip takes the whole token with it', () => {
+    const [chip] = describeSearchChips('coffee date: q1', CATS, PAYEES, EMPTY_MAP, NOW)
+    expect(removeSearchChip('coffee date: q1', chip)).toBe('coffee')
   })
 
   it('an unrecognised is: value is searched as text rather than swallowed', () => {

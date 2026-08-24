@@ -9,7 +9,7 @@
  * answer. ("12" only survived because those digits appear inside a hex uuid.)
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -151,5 +151,32 @@ describe('CommandPalette search syntax help', () => {
     await userEvent.click(screen.getByText('amount:>'))
     expect(screen.getByPlaceholderText(/Search commands/)).toHaveValue('amount:>')
     expect(navigate).not.toHaveBeenCalled()
+  })
+})
+
+describe('CommandPalette help', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    apiGet.mockReset()
+    apiGet.mockResolvedValue({ data: { transactions: [], total_count: 0, total_amount: '0' } })
+    useAppStore.setState({ currentBudgetId: 'b1' })
+    useUIStore.setState({ isPaletteOpen: true })
+  })
+
+  it('explains the query language from inside the palette', async () => {
+    renderPalette()
+    await userEvent.click(screen.getByLabelText('How to search transactions'))
+    expect(screen.getByText('Searching transactions')).toBeInTheDocument()
+  })
+
+  it('Escape closes the help without closing the palette underneath it', async () => {
+    // Both listen for Escape. One press should dismiss the explanation the
+    // user just opened, not the thing they were reading it about.
+    renderPalette()
+    await userEvent.click(screen.getByLabelText('How to search transactions'))
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.queryByText('Searching transactions')).not.toBeInTheDocument()
+    expect(useUIStore.getState().isPaletteOpen).toBe(true)
   })
 })

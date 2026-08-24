@@ -149,6 +149,23 @@ function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch
     }
   }
 
+  // A bare year-month: unambiguous, so it needs no `date:` prefix, exactly
+  // like `march` or `today`. A bare YEAR deliberately does NOT join them —
+  // "2025" is also how you search for $2,025, and that is the older and more
+  // common reading. `date:2025` is how you ask for the year.
+  const yearMonth = lower.match(/^(\d{4})[-/](\d{1,2})$/)
+  if (yearMonth) {
+    const span = resolveDateSpan(lower, now)
+    if (span) {
+      return {
+        startDate: toIsoDate(span.start),
+        endDate: toIsoDate(span.end),
+        label: span.label,
+        consumed: 1,
+      }
+    }
+  }
+
   if (lower in MONTH_NAMES) {
     const month = MONTH_NAMES[lower]
     const yearToken = tokens[i + 1]?.match(/^\d{4}$/) ? Number(tokens[i + 1]) : null
@@ -187,6 +204,73 @@ function formatDay(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`
 }
 
+interface DateSpan {
+  start: Date
+  end: Date
+  label: string
+}
+
+const MONTH_LABELS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+/**
+ * One date-ish word, as the SPAN it covers.
+ *
+ * A year is a year, a month is a month, a day is a day — the difference
+ * between them is only how wide the span is, so bounds and ranges can be
+ * built from the same vocabulary instead of each supporting its own subset.
+ * That asymmetry is what made `date: 2025-03-15` work while `date: 2025-03`
+ * silently did nothing.
+ *
+ * Deliberately NOT here: multi-word phrases ("last month"). Tokens split on
+ * spaces, so a range can only see one word per side; `date:>2026-07-01
+ * date:<2026-08-23` is the two-token way to say the same thing.
+ */
+function resolveDateSpan(text: string, now: Date): DateSpan | null {
+  const raw = text.replace(/^"|"$/g, '').toLowerCase()
+
+  const year = raw.match(/^(\d{4})$/)
+  if (year) {
+    const y = Number(year[1])
+    return { start: new Date(y, 0, 1), end: new Date(y, 11, 31), label: String(y) }
+  }
+
+  // Either separator: someone who writes 2025/03 means the same month as
+  // 2025-03, and being told only one spelling counts is a puzzle, not a rule.
+  const yearMonth = raw.match(/^(\d{4})[-/](\d{1,2})$/)
+  if (yearMonth) {
+    const y = Number(yearMonth[1])
+    const m = Number(yearMonth[2]) - 1
+    if (m < 0 || m > 11) return null
+    return {
+      start: new Date(y, m, 1),
+      end: new Date(y, m + 1, 0),
+      label: `${MONTH_LABELS[m]} ${y}`,
+    }
+  }
+
+  const day = parseExplicitDay(raw, now)
+  if (day) return { start: day, end: day, label: formatDay(day) }
+
+  if (raw === 'today' || raw === 'yesterday') {
+    const offset = raw === 'today' ? 0 : -1
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset)
+    return { start: d, end: d, label: capitalize(raw) }
+  }
+
+  if (raw in MONTH_NAMES) {
+    const m = MONTH_NAMES[raw]
+    // The most recent occurrence, matching how a bare month name reads
+    // everywhere else: a month later than this one means last year.
+    const y = m > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear()
+    return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0), label: `${MONTH_LABELS[m]} ${y}` }
+  }
+
+  return null
+}
+
 interface DateExprMatch {
   startDate?: string
   endDate?: string
@@ -201,35 +285,48 @@ interface DateExprMatch {
 function matchExplicitDateExpr(expr: string, now: Date): DateExprMatch | null {
   const raw = expr.replace(/^"|"$/g, '')
 
+  // Bounds take the outer edge of whatever span they name: on or after
+  // MARCH means from the 1st, on or before 2025 means through 31 December.
   if (raw.startsWith('>')) {
-    const d = parseExplicitDay(raw.replace(/^>=?/, ''), now)
-    return d ? { startDate: toIsoDate(d), label: `On or after ${formatDay(d)}` } : null
+    const span = resolveDateSpan(raw.replace(/^>=?/, ''), now)
+    return span ? { startDate: toIsoDate(span.start), label: `On or after ${span.label}` } : null
   }
   if (raw.startsWith('<')) {
-    const d = parseExplicitDay(raw.replace(/^<=?/, ''), now)
-    return d ? { endDate: toIsoDate(d), label: `On or before ${formatDay(d)}` } : null
+    const span = resolveDateSpan(raw.replace(/^<=?/, ''), now)
+    return span ? { endDate: toIsoDate(span.end), label: `On or before ${span.label}` } : null
   }
 
-  // Ranges: '..' separates any two forms; a bare '-' only when both sides
-  // are slash dates, so ISO dates (which contain dashes) stay intact.
+  // Ranges: '..' separates any two forms and the sides may differ
+  // (march..2025-06-30). A bare '-' is only read as a range between two
+  // slash dates or two years — ISO dates contain dashes of their own.
   let parts: string[] | null = null
   if (raw.includes('..')) parts = raw.split('..')
   else {
     const slashRange = raw.match(
       /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)-(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)$/
     )
+    const yearRange = raw.match(/^(\d{4})-(\d{4})$/)
     if (slashRange) parts = [slashRange[1], slashRange[2]]
+    else if (yearRange) parts = [yearRange[1], yearRange[2]]
   }
   if (parts) {
     if (parts.length !== 2) return null
-    const a = parseExplicitDay(parts[0], now)
-    const b = parseExplicitDay(parts[1], now)
+    const a = resolveDateSpan(parts[0], now)
+    const b = resolveDateSpan(parts[1], now)
     if (!a || !b) return null
-    return { startDate: toIsoDate(a), endDate: toIsoDate(b), label: `${formatDay(a)} – ${formatDay(b)}` }
+    // First span's start to last span's end, so march..june is the whole of
+    // both months rather than their first days.
+    return {
+      startDate: toIsoDate(a.start),
+      endDate: toIsoDate(b.end),
+      label: `${a.label} – ${b.label}`,
+    }
   }
 
-  const day = parseExplicitDay(raw, now)
-  return day ? { startDate: toIsoDate(day), endDate: toIsoDate(day), label: formatDay(day) } : null
+  const span = resolveDateSpan(raw, now)
+  return span
+    ? { startDate: toIsoDate(span.start), endDate: toIsoDate(span.end), label: span.label }
+    : null
 }
 
 /**
@@ -245,20 +342,28 @@ function matchDateFilterToken(
   const lower = tokens[i].toLowerCase()
   const compact = lower.match(/^date:(.+)$/)?.[1]
 
+  // A natural-language reading that spans MORE than one token wins over the
+  // single-token explicit one. "march" and "march 2025" are both valid
+  // readings of the same input, and the longer one is what the user typed —
+  // preferring the shorter gave `date:march 2025` March of the CURRENT year
+  // and left "2025" behind to be matched as an amount.
   if (compact !== undefined) {
+    // The compact value stands in for index 0, so `consumed` already counts it.
+    const natural = matchDateTokens([compact, ...tokens.slice(i + 1)], 0, now)
+    if (natural && natural.consumed > 1) return { ...natural, consumed: natural.consumed }
     const explicit = matchExplicitDateExpr(compact, now)
     if (explicit) return { ...explicit, consumed: 1 }
-    const natural = matchDateTokens([compact], 0, now)
-    return natural ? { ...natural, consumed: 1 } : null
+    return natural ? { ...natural, consumed: natural.consumed } : null
   }
 
   if (lower !== 'date:') return null
 
   const next = tokens[i + 1]
   if (!next) return null
+  const natural = matchDateTokens(tokens, i + 1, now)
+  if (natural && natural.consumed > 1) return { ...natural, consumed: natural.consumed + 1 }
   const explicit = matchExplicitDateExpr(next, now)
   if (explicit) return { ...explicit, consumed: 2 }
-  const natural = matchDateTokens(tokens, i + 1, now)
   return natural ? { ...natural, consumed: natural.consumed + 1 } : null
 }
 
@@ -298,11 +403,12 @@ function parseSegment(
   // to be produced by a second walk over the same tokens, and it disagreed:
   // `category: zzz` matching nothing applied no filter but still drew a
   // "Category: zzz" chip, so the register showed a filter it was not applying.
-  const emit = (label: string, from: number, count = 1) =>
+  const emit = (label: string, from: number, count = 1, unrecognized = false) =>
     chips.push({
       key: `${origin[from]}:${label}`,
       label,
       indices: origin.slice(from, from + count),
+      ...(unrecognized ? { unrecognized: true } : {}),
     })
 
   for (let i = 0; i < tokens.length; i++) {
@@ -445,8 +551,12 @@ function parseSegment(
           } else recognised = false
         }
       }
-      // `amount: abc` filtered nothing but still drew an "Amount: abc" chip.
+      // A chip either reports a filter that IS applied or says plainly that
+      // it is not. `amount: abc` used to draw a confident "Amount: abc" over
+      // an unfiltered register; then it drew nothing at all, which reads the
+      // same way to anyone looking at the results.
       if (recognised) emit(`Amount: ${amountExpr}`, start, spaced ? 2 : 1)
+      else emit(`Couldn't read “amount: ${amountExpr}”`, start, spaced ? 2 : 1, true)
       continue
     }
 
@@ -460,8 +570,14 @@ function parseSegment(
       continue
     }
     if (lower === 'date:' || lower.startsWith('date:')) {
-      // Unparseable date token — swallow it rather than searching for "date:"
-      if (lower === 'date:') i++
+      // Unparseable date token. Not searched as text (nobody means to look
+      // for the literal "date:"), but not swallowed either: with no filter
+      // and no chip, `date:q1` returned the entire register and looked like
+      // it had worked.
+      const spaced = lower === 'date:'
+      const shown = spaced ? `date: ${tokens[i + 1] ?? ''}`.trim() : tokens[i]
+      emit(`Couldn't read “${shown}”`, i, spaced && tokens[i + 1] ? 2 : 1, true)
+      if (spaced) i++
       continue
     }
 
@@ -702,9 +818,11 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'amount: ', description: 'Exact amount or range (amount: 12.34, amount: 10-20) — typing 12.34 alone works too' },
   { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },
   { syntax: 'amount:<', description: 'Amount less than (e.g. amount:<50)' },
-  { syntax: 'date: ', description: 'On a date or range (date: 3/15, date: 3/1-3/15, date: 2025-03-15)' },
-  { syntax: 'date:>', description: 'On or after a date (e.g. date:>3/1)' },
-  { syntax: 'date:<', description: 'On or before a date (e.g. date:<3/15)' },
+  { syntax: 'date: ', description: 'A day, month or year (date: 3/15, date: 2025-03, date: 2025)' },
+  { syntax: 'date: 2025-03', description: 'A whole month — or a whole year with date: 2025' },
+  { syntax: 'date: march..june', description: 'A range between any two spans (also 3/1-3/15, 2024-2025)' },
+  { syntax: 'date:>', description: 'On or after a day, month or year (e.g. date:>2025-03)' },
+  { syntax: 'date:<', description: 'On or before a day, month or year (e.g. date:<3/15)' },
   { syntax: 'today ', description: 'Dated today (also: yesterday, last week, last month)' },
   { syntax: 'last month ', description: 'Dated in the previous calendar month' },
   { syntax: 'march ', description: 'Dated in a month (add a year: march 2025, or a range: jan-mar)' },
@@ -756,6 +874,16 @@ export interface SearchChip {
   label: string
   /** Indices into tokenize(query) that this chip owns */
   indices: number[]
+  /**
+   * A `date:`/`amount:` token the parser could not read.
+   *
+   * It applies no filter, and it used to be swallowed in silence — so the
+   * register answered `date:2025` with every transaction you own, looking
+   * exactly like a successful search whose filter happened to match
+   * everything. A wrong answer that looks right is worse than an obvious
+   * one, so the token comes back as a chip that says it did nothing.
+   */
+  unrecognized?: boolean
 }
 
 const IS_LABELS: Record<string, string> = {
