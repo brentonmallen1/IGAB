@@ -147,8 +147,11 @@ export function TagPicker({
         top: dropdownPos.top,
         bottom: dropdownPos.bottom,
         left: dropdownPos.left,
-        minWidth: dropdownPos.width,
-        maxWidth: DROPDOWN.maxWidth,
+        // The one width resolveWidth computed and clamped `left` against.
+        // Painting min/max here instead let shrink-to-fit grow the panel past
+        // the edge the math had already respected — the exact bug class this
+        // util consolidates. min/max are inputs (DROPDOWN), never styles.
+        width: dropdownPos.width,
         maxHeight: dropdownPos.maxHeight,
       }}
     >
