@@ -206,6 +206,18 @@ export interface Transaction {
   payee_id: string | null
   category_id: string | null
   /**
+   * What this row was filed in before that category was deleted. Provenance,
+   * in the spirit of `entered_date` and `bank_payee` — set by
+   * `CategoryService` (backend/src/igab/services/category_service.py).
+   *
+   * DISPLAY ONLY. Never treat it as a category: this row is uncategorized,
+   * and `needs_category` below is the field that says so. Anything that
+   * counts, filters or groups by `prior_category_id` rebuilds the exact bug
+   * these columns replaced.
+   */
+  prior_category_id: string | null
+  prior_category_name: string | null
+  /**
    * Does the user still have to file this row? Computed by the server from
    * `NEEDS_CATEGORY` (backend/src/igab/repositories/txn_filters.py) — the
    * single definition of the rule. Never re-derive it here: this file once

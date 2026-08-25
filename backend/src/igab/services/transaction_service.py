@@ -179,7 +179,13 @@ class TransactionService:
                 budget_id, payee.id
             )
             if not category_id and payee.default_category_id:
-                category_id = payee.default_category_id
+                # Liveness-checked for the same reason the lookup above joins
+                # `categories`: the delete clears these, but a default set
+                # before that shipped (or restored by an undo mid-flight) must
+                # not file a brand-new row into a deleted envelope.
+                default = await self.category_repo.get(payee.default_category_id)
+                if default is not None:
+                    category_id = default.id
 
         txn = await self.transaction_repo.create(
             budget_id=budget_id,

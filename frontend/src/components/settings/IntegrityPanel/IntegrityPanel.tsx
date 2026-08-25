@@ -1,6 +1,11 @@
 import { useState } from 'react'
-import { CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { CheckCircle, AlertTriangle, ShieldCheck, Wrench } from 'lucide-react'
 import { apiClient } from '../../../api/client'
+import { useRepairOrphanedCategories } from '../../../api/categories'
+import { useAppStore } from '../../../stores/appStore'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { parseApiDecimal } from '../../../utils/money'
 import './IntegrityPanel.css'
 
 interface IntegrityCheck {
@@ -24,6 +29,51 @@ export function IntegrityPanel({ budgetId }: Props) {
   const [report, setReport] = useState<IntegrityReport | null>(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const month = useAppStore((s) => s.selectedMonth)
+  const { formatMoney } = useFormatters()
+  const repairOrphans = useRepairOrphanedCategories(budgetId, month)
+
+  /**
+   * Finish the job on categories deleted before deleting was a real operation.
+   *
+   * An action rather than a migration, deliberately: it returns money stranded
+   * on a deleted category to Ready to Assign, and a change to the user's
+   * numbers belongs somewhere they can watch it happen — which is here, in
+   * front of the check that just told them about it.
+   */
+  async function repair() {
+    let result
+    try {
+      result = await repairOrphans.mutateAsync()
+    } catch {
+      return // the mutation's onError toast has already said so
+    }
+    const released = parseApiDecimal(result.released)
+    const parts = [`${result.categories_repaired} categories tidied`]
+    if (result.transactions_uncategorized > 0) {
+      parts.push(`${result.transactions_uncategorized} transactions now need a category`)
+    }
+    if (released !== 0) parts.push(`${formatMoney(released)} back in Ready to Assign`)
+    // "Restores": undoing a repair from Activity brings the category back to
+    // the budget, live — pinned server-side; re-orphaning would recreate the
+    // stranded money the repair just fixed.
+    if (result.categories_repaired > 0) {
+      parts.push('undo from Activity restores a category to your budget')
+    }
+    toast.success(parts.join(' · '))
+    if (result.categories_under_deleted_groups > 0) {
+      // Not repairable from here: restoring the group and deleting the
+      // categories deliberately are both defensible, and this has no basis
+      // for choosing between them.
+      toast(
+        `${result.categories_under_deleted_groups} categories sit under a deleted group — ` +
+          'they still hold money but the budget page cannot draw them. Delete them from the ' +
+          'grid with "Show hidden", or restore the group from Activity.',
+        { duration: 9000 }
+      )
+    }
+    await runChecks()
+  }
 
   async function runChecks() {
     setRunning(true)
@@ -96,6 +146,17 @@ export function IntegrityPanel({ budgetId }: Props) {
                           <li key={i}>{d}</li>
                         ))}
                       </ul>
+                      {check.name === 'orphaned_categories' && (
+                        <button
+                          type="button"
+                          className="integrity-panel__fix-btn"
+                          onClick={repair}
+                          disabled={repairOrphans.isPending}
+                        >
+                          <Wrench size={13} />
+                          {repairOrphans.isPending ? 'Tidying…' : 'Tidy these up'}
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

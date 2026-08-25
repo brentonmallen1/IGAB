@@ -20,6 +20,95 @@ class CategoryGroupReorder(BaseModel):
     group_ids: list[uuid.UUID]
 
 
+class CategoryDeletePreviewResponse(BaseModel):
+    """What deleting these categories is about to do.
+
+    The dialog states these numbers before the user commits, and a differential
+    test pins them against what the delete then actually does — a confirmation
+    that misreports money is worse than no confirmation.
+    """
+
+    category_ids: list[uuid.UUID]
+    category_names: list[str]
+    transaction_count: int
+    #: Of those, how many are reconciled. Called out because those rows cannot
+    #: be re-filed by hand afterwards without unreconciling them first.
+    reconciled_count: int
+    available: Decimal
+    future_assigned: Decimal
+    payee_count: int
+    scheduled_count: int
+    #: Net posted spending filed here over the categories' whole life
+    #: (positive = outflow). Moving hands it to the destination along with the
+    #: assignment that covered it, so the destination's balance is unchanged;
+    #: uncategorizing sends it out of category-keyed reports until re-filed.
+    #: Required, not optional — the dialog states it either way.
+    moving_activity: Decimal
+    #: What Ready to Assign gains in the viewed month, one figure per mode —
+    #: they differ when activity dated after the viewed month moves (its
+    #: cover is a future assignment the viewed month's TBA already counts).
+    #: The dialog shows the one for the selected mode; it never derives money.
+    released_if_moved: Decimal
+    released_if_uncategorized: Decimal
+    #: Reasons the delete would be refused outright (a linked payment or debt
+    #: category). Non-empty means the confirm button stays disabled.
+    blocked_by: list[str]
+    #: Nothing to decide — the client may delete without showing the dialog.
+    is_empty: bool
+
+
+class CategoryDeleteResultResponse(BaseModel):
+    #: The single change-log row this delete produced; undo it to reverse the
+    #: whole operation.
+    change_id: uuid.UUID
+    category_ids: list[uuid.UUID]
+    transactions_moved: int
+    transactions_uncategorized: int
+    assignments_removed: int
+    released: Decimal
+
+
+class CategoryDeleteRequest(BaseModel):
+    """Delete one or many categories as a single operation.
+
+    A list rather than a call per category: the budget page deletes
+    multi-selections, and N separate deletes would write N change rows for
+    what the user experienced as one action — N cards in Activity, N undo
+    clicks to reverse it, and N chances for one of them to fail halfway.
+    """
+
+    category_ids: list[uuid.UUID]
+    #: Re-file their transactions here. Null leaves the rows genuinely
+    #: uncategorized, carrying provenance so the register can say what they
+    #: used to be.
+    move_to: uuid.UUID | None = None
+    #: The month whose Ready to Assign the reported figures refer to.
+    month: datetime.date | None = None
+
+
+class CategoryDeletePreviewRequest(BaseModel):
+    category_ids: list[uuid.UUID]
+    month: datetime.date | None = None
+
+
+class RepairOrphansResponse(BaseModel):
+    """What the hygiene repair found and fixed."""
+
+    categories_repaired: int
+    transactions_uncategorized: int
+    assignments_removed: int
+    #: Money returning to Ready to Assign — a visible change to the user's
+    #: numbers, so the toast states it rather than letting them find it.
+    released: Decimal
+    #: One per repaired category, each independently undoable.
+    change_ids: list[uuid.UUID]
+    #: Live categories sitting under a deleted group: invisible on the budget
+    #: page but still in the summary arithmetic. Reported rather than repaired
+    #: — the fix is to restore the group or delete them deliberately, and this
+    #: action has no basis for choosing.
+    categories_under_deleted_groups: int
+
+
 class CategoryGroupUpdate(BaseModel):
     name: str | None = None
     sort_order: int | None = None

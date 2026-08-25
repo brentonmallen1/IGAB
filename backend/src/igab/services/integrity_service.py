@@ -16,8 +16,17 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from igab.db.models import Account, Transaction, TransactionMatch
+from igab.db.models import (
+    Account,
+    BudgetAssignment,
+    Category,
+    Payee,
+    ScheduledTransaction,
+    Transaction,
+    TransactionMatch,
+)
 from igab.domain.splits import split_balances, split_sum
+from igab.repositories.category_filters import UNDER_DELETED_GROUP
 from igab.utils.clock import today_utc
 
 STALE_PENDING_DAYS = 21
@@ -49,9 +58,113 @@ class IntegrityService:
             await self._check_transfer_integrity(budget_id),
             await self._check_money_conservation(budget_id),
             await self._check_orphaned_matches(budget_id),
+            await self._check_orphaned_categories(budget_id),
             await self._check_stale_pendings(budget_id),
         ]
         return IntegrityReport(all_passed=all(c.passed for c in checks), checks=checks)
+
+    async def _check_orphaned_categories(self, budget_id: uuid.UUID) -> IntegrityCheck:
+        """Anything still pointing at a deleted category.
+
+        This is the one place that watches for the whole class, rather than
+        adding a `Category.is_deleted` filter to each of the twelve report
+        queries that join categories. Before deleting became a real operation
+        it left every referrer dangling, and the results disagreed by
+        construction: a transaction reported `needs_category = False` while
+        rendering as unfiled, Spending by Category still listed the deleted
+        name, Budget vs Actual showed the same money as "Unknown", and a
+        future-month assignment stayed subtracted from an earlier month's
+        Ready to Assign.
+
+        Anything found here predates that fix (or came in through a path that
+        bypasses `CategoryService`); the hygiene repair action clears it.
+        """
+        problems: list[str] = []
+
+        async def _names(stmt) -> list[str]:
+            return [str(r) for r in (await self.session.execute(stmt)).scalars().all()]
+
+        dead = (
+            select(Category.id)
+            .where(
+                Category.budget_id == budget_id,
+                Category.is_deleted == True,  # noqa: E712
+            )
+            .scalar_subquery()
+        )
+
+        txns = await _names(
+            select(func.count())
+            .select_from(Transaction)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                Transaction.category_id.in_(dead),
+            )
+        )
+        if txns and int(txns[0]) > 0:
+            problems.append(f"{txns[0]} transactions filed in a deleted category")
+
+        assignments = await _names(
+            select(func.count())
+            .select_from(BudgetAssignment)
+            .where(
+                BudgetAssignment.budget_id == budget_id,
+                BudgetAssignment.category_id.in_(dead),
+            )
+        )
+        if assignments and int(assignments[0]) > 0:
+            problems.append(
+                f"{assignments[0]} assignments on a deleted category "
+                "(money deducted from Ready to Assign with no envelope holding it)"
+            )
+
+        payees = await _names(
+            select(func.count())
+            .select_from(Payee)
+            .where(
+                Payee.budget_id == budget_id,
+                Payee.is_deleted == False,  # noqa: E712
+                Payee.default_category_id.in_(dead),
+            )
+        )
+        if payees and int(payees[0]) > 0:
+            problems.append(f"{payees[0]} payees defaulting to a deleted category")
+
+        scheduled = await _names(
+            select(func.count())
+            .select_from(ScheduledTransaction)
+            .where(
+                ScheduledTransaction.budget_id == budget_id,
+                ScheduledTransaction.is_deleted == False,  # noqa: E712
+                ScheduledTransaction.category_id.in_(dead),
+            )
+        )
+        if scheduled and int(scheduled[0]) > 0:
+            problems.append(f"{scheduled[0]} scheduled transactions on a deleted category")
+
+        # A live category under a deleted group: gone from the grid, which
+        # renders only groups it was given, but still in the budget summary.
+        stranded = await _names(
+            select(func.count())
+            .select_from(Category)
+            .where(
+                Category.budget_id == budget_id,
+                Category.is_deleted == False,  # noqa: E712
+                UNDER_DELETED_GROUP,
+            )
+        )
+        if stranded and int(stranded[0]) > 0:
+            problems.append(
+                f"{stranded[0]} live categories under a deleted group "
+                "(invisible on the budget page, still reducing Ready to Assign)"
+            )
+
+        return self._result(
+            "orphaned_categories",
+            "Nothing still points at a deleted category",
+            problems,
+        )
 
     async def _check_split_integrity(self, budget_id: uuid.UUID) -> IntegrityCheck:
         problems: list[str] = []

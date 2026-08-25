@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Check, Eye, EyeOff, Pencil, Trash2, X } from 'lucide-react'
-import { useDeleteCategory, useUpdateCategory } from '../../../api/categories'
+import { useUpdateCategory } from '../../../api/categories'
+import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import type { Category } from '../../../types'
 import './CategoryMobileActions.css'
-import { confirmAsync } from '../../../stores/confirmStore'
 
 interface Props {
   budgetId: string
@@ -18,7 +18,7 @@ interface Props {
  */
 export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
   const updateCategory = useUpdateCategory(budgetId)
-  const deleteCategory = useDeleteCategory(budgetId)
+  const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(budgetId, onDone)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(category.name)
   const [subtitleValue, setSubtitleValue] = useState(category.subtitle ?? '')
@@ -33,16 +33,8 @@ export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
     setIsRenaming(false)
   }
 
-  async function handleDelete() {
-    const ok = await confirmAsync({
-      title: `Delete ${category.name}?`,
-      message: 'Transactions will lose their category.',
-      confirmLabel: 'Delete',
-      destructive: true,
-    })
-    if (!ok) return
-    deleteCategory.mutate(category.id)
-    onDone()
+  function handleDelete() {
+    requestDelete({ kind: 'categories', ids: [category.id], name: category.name })
   }
 
   if (isRenaming) {
@@ -112,6 +104,7 @@ export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
         <Trash2 size={14} />
         Delete
       </button>
+      {deleteModal}
     </div>
   )
 }

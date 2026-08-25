@@ -49,6 +49,7 @@ async def test_clean_budget_reports_all_green(api_client, db_session):
         "transfer_integrity",
         "money_conservation",
         "orphaned_matches",
+        "orphaned_categories",
         "stale_pendings",
     }
 

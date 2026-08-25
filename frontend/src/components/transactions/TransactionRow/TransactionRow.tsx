@@ -99,6 +99,10 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     a.needs_category !== b.needs_category ||
     // Served field; a repair/retarget changes it with no other field moving.
     a.counterpart_account_id !== b.counterpart_account_id ||
+    // Deleting a category writes this and clears category_id in one bulk
+    // update, and undoing clears it again — both without touching anything
+    // else on the row, so the chip's "was …" would go stale without this.
+    a.prior_category_name !== b.prior_category_name ||
     a.bank_amount !== b.bank_amount ||
     a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
@@ -503,7 +507,16 @@ export const TransactionRow = memo(function TransactionRow({
             {categoryName}
           </span>
         ) : txn.needs_category ? (
-          <span className="txn-needs-category">Needs Category</span>
+          // `prior_category_name` is provenance, never a category: this row
+          // IS uncategorized and the chip says so. The hint only answers
+          // "why did this suddenly need filing?" for rows a category delete
+          // emptied — without it they look like a gap the user forgot about.
+          <span className="txn-needs-category">
+            Needs Category
+            {txn.prior_category_name && (
+              <span className="txn-needs-category__was">was {txn.prior_category_name}</span>
+            )}
+          </span>
         ) : accountOnBudget ? (
           // No category and none needed, on a budget account: the only way
           // that happens is a transfer between two on-budget accounts —
