@@ -44,6 +44,11 @@ class MockPayee:
 
 
 @dataclass
+class MockCategory:
+    id: uuid.UUID = DEFAULT_CAT_ID
+
+
+@dataclass
 class MockTransaction:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     budget_id: uuid.UUID = BUDGET_ID
@@ -75,6 +80,19 @@ def make_service(payee: MockPayee | None) -> TransactionService:
     txn_repo.create = AsyncMock(return_value=txn)
     txn_repo.get_most_recent_category_for_payee = AsyncMock(return_value=None)
 
+    # The default-category fallback is liveness-checked, so a deleted category
+    # can never be handed to a brand-new transaction. Return the category the
+    # payee names; the deleted case (get -> None) is covered end to end in
+    # tests/integration/test_category_delete.py.
+    category_repo = MagicMock()
+    category_repo.get = AsyncMock(
+        return_value=(
+            MockCategory(id=payee.default_category_id)
+            if payee is not None and payee.default_category_id is not None
+            else None
+        )
+    )
+
     session = AsyncMock()
     session.get = AsyncMock(return_value=payee)
     # require_in_budget runs session.execute(...).scalar_one_or_none(); return a
@@ -87,7 +105,7 @@ def make_service(payee: MockPayee | None) -> TransactionService:
         session=session,
         transaction_repo=txn_repo,
         account_repo=account_repo,
-        category_repo=MagicMock(),
+        category_repo=category_repo,
         payee_repo=payee_repo,
     )
 

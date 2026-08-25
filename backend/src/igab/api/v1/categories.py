@@ -21,6 +21,8 @@ from igab.api.v1.schemas.category import (
     CategoryClassification,
     CategoryClassSlice,
     CategoryCreate,
+    CategoryDeletePreviewResponse,
+    CategoryDeleteResultResponse,
     CategoryGroupCreate,
     CategoryGroupReorder,
     CategoryGroupResponse,
@@ -39,6 +41,7 @@ from igab.api.v1.schemas.category import (
     FutureOverspendWarningOut,
     MoveMoneyRequest,
     RecentPayeeResponse,
+    RepairOrphansResponse,
 )
 from igab.db.models import CategoryGroup, Transaction
 from igab.dependencies import (
@@ -51,6 +54,7 @@ from igab.dependencies import (
     get_budget_service,
     get_category_group_repo,
     get_category_repo,
+    get_category_service,
     get_change_recorder,
     get_target_repo,
     get_target_service,
@@ -72,6 +76,11 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
 from igab.services.assign_service import AssignPreview, AssignService
 from igab.services.budget_service import BudgetService
+from igab.services.category_service import (
+    CategoryDeletePreview,
+    CategoryDeleteResult,
+    CategoryService,
+)
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import require_in_budget
 from igab.services.target_service import TargetService
@@ -165,28 +174,64 @@ async def update_category_group(
     return CategoryGroupResponse.model_validate(group)
 
 
-@router.delete("/category-groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def _group_budget_id(group_repo: CategoryGroupRepository, group_id: uuid.UUID) -> uuid.UUID:
+    """The group's own budget, rather than a `budget_id` the caller must repeat.
+
+    `CategoryGroupAccess` has already checked membership, so nothing is gained
+    by also demanding the id in the query string — and demanding it would break
+    every existing caller of `DELETE /category-groups/{id}`.
+    """
+    group = await group_repo.get(group_id)
+    if group is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Category group not found"
+        )
+    return group.budget_id
+
+
+@router.get(
+    "/category-groups/{group_id}/delete-preview", response_model=CategoryDeletePreviewResponse
+)
+async def preview_delete_category_group(
+    group_id: CategoryGroupAccess,
+    current_user: CurrentUser,
+    group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+    month: date | None = None,
+) -> CategoryDeletePreviewResponse:
+    budget_id = await _group_budget_id(group_repo, group_id)
+    preview = await category_service.preview_delete_group(
+        budget_id, group_id, month or date.today()
+    )
+    return _preview_out(preview)
+
+
+@router.delete("/category-groups/{group_id}", response_model=CategoryDeleteResultResponse)
 async def delete_category_group(
     group_id: CategoryGroupAccess,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
-    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
-) -> None:
-    group = await group_repo.get_or_raise(group_id)
-    if group.is_system:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete system category groups",
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+    move_to: uuid.UUID | None = None,
+    month: date | None = None,
+) -> CategoryDeleteResultResponse:
+    """Delete a group and everything in it.
+
+    Cascades on purpose. Soft-deleting the group alone left its categories
+    live: gone from the grid, which renders only the groups it was given, but
+    still counted in the budget summary — envelopes off screen whose balances
+    went on reducing Ready to Assign.
+    """
+    budget_id = await _group_budget_id(group_repo, group_id)
+    try:
+        result = await category_service.delete_group(
+            budget_id, group_id, move_to=move_to, month=month
         )
-    before = snapshot("category_group", group)
-    await group_repo.soft_delete(group_id)
-    await recorder.record(
-        budget_id=group.budget_id,
-        entity_type="category_group",
-        entity_id=group_id,
-        action="delete",
-        before=before,
-    )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return _result_out(result)
 
 
 # ─── Categories ───────────────────────────────────────────────────────────────
@@ -269,23 +314,112 @@ async def update_category(
     return CategoryResponse.model_validate(await category_repo.get_with_tags(category_id))
 
 
-@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def _preview_out(preview: CategoryDeletePreview) -> CategoryDeletePreviewResponse:
+    return CategoryDeletePreviewResponse(
+        category_ids=preview.category_ids,
+        category_names=preview.category_names,
+        transaction_count=preview.transaction_count,
+        reconciled_count=preview.reconciled_count,
+        available=preview.available,
+        future_assigned=preview.future_assigned,
+        payee_count=preview.payee_count,
+        scheduled_count=preview.scheduled_count,
+        blocked_by=preview.blocked_by,
+        is_empty=preview.is_empty,
+    )
+
+
+def _result_out(result: CategoryDeleteResult) -> CategoryDeleteResultResponse:
+    return CategoryDeleteResultResponse(
+        change_id=result.change_id,
+        category_ids=result.category_ids,
+        transactions_moved=result.transactions_moved,
+        transactions_uncategorized=result.transactions_uncategorized,
+        assignments_removed=result.assignments_removed,
+        released=result.released,
+    )
+
+
+@router.post(
+    "/{budget_id}/categories/hygiene/repair-orphans",
+    response_model=RepairOrphansResponse,
+)
+async def repair_orphaned_categories(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+    month: date | None = None,
+) -> RepairOrphansResponse:
+    """Finish the job on categories deleted before deleting was a real operation.
+
+    An action rather than a migration on purpose: it returns stranded
+    assignment money to Ready to Assign, and a change to the user's numbers
+    belongs somewhere they can watch it happen and undo it. Idempotent — a
+    second run finds nothing.
+    """
+    results = await category_service.repair_orphans(budget_id, month)
+    stranded = await category_service.count_orphaned_categories_under_deleted_groups(budget_id)
+    return RepairOrphansResponse(
+        categories_repaired=len(results),
+        transactions_uncategorized=sum(r.transactions_uncategorized for r in results),
+        assignments_removed=sum(r.assignments_removed for r in results),
+        released=sum((r.released for r in results), Decimal("0")),
+        change_ids=[r.change_id for r in results],
+        categories_under_deleted_groups=stranded,
+    )
+
+
+async def _category_budget_id(
+    category_repo: CategoryRepository, category_id: uuid.UUID
+) -> uuid.UUID:
+    """The category's own budget — see `_group_budget_id`."""
+    cat = await category_repo.get(category_id)
+    if cat is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    return cat.budget_id
+
+
+@router.get(
+    "/categories/{category_id}/delete-preview", response_model=CategoryDeletePreviewResponse
+)
+async def preview_delete_category(
+    category_id: CategoryAccess,
+    current_user: CurrentUser,
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+    month: date | None = None,
+) -> CategoryDeletePreviewResponse:
+    budget_id = await _category_budget_id(category_repo, category_id)
+    preview = await category_service.preview_delete(budget_id, [category_id], month or date.today())
+    return _preview_out(preview)
+
+
+@router.delete("/categories/{category_id}", response_model=CategoryDeleteResultResponse)
 async def delete_category(
     category_id: CategoryAccess,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
-    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
-) -> None:
-    cat = await category_repo.get_or_raise(category_id)
-    before = snapshot("category", cat)
-    await category_repo.soft_delete(category_id)
-    await recorder.record(
-        budget_id=cat.budget_id,
-        entity_type="category",
-        entity_id=category_id,
-        action="delete",
-        before=before,
-    )
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+    move_to: uuid.UUID | None = None,
+    month: date | None = None,
+) -> CategoryDeleteResultResponse:
+    """Delete a category, deciding what becomes of everything pointing at it.
+
+    `move_to` re-files its transactions into another envelope; omitting it
+    leaves them genuinely uncategorized, carrying provenance so the register
+    can say what they used to be. Either way the assignments go and their
+    money returns to Ready to Assign — see `CategoryService`.
+    """
+    budget_id = await _category_budget_id(category_repo, category_id)
+    try:
+        result = await category_service.delete_categories(
+            budget_id, [category_id], move_to=move_to, month=month
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return _result_out(result)
 
 
 # ─── Budget Month / Assignments ───────────────────────────────────────────────

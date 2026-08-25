@@ -20,6 +20,60 @@ class CategoryGroupReorder(BaseModel):
     group_ids: list[uuid.UUID]
 
 
+class CategoryDeletePreviewResponse(BaseModel):
+    """What deleting these categories is about to do.
+
+    The dialog states these numbers before the user commits, and a differential
+    test pins them against what the delete then actually does — a confirmation
+    that misreports money is worse than no confirmation.
+    """
+
+    category_ids: list[uuid.UUID]
+    category_names: list[str]
+    transaction_count: int
+    #: Of those, how many are reconciled. Called out because those rows cannot
+    #: be re-filed by hand afterwards without unreconciling them first.
+    reconciled_count: int
+    available: Decimal
+    future_assigned: Decimal
+    payee_count: int
+    scheduled_count: int
+    #: Reasons the delete would be refused outright (a linked payment or debt
+    #: category). Non-empty means the confirm button stays disabled.
+    blocked_by: list[str]
+    #: Nothing to decide — the client may delete without showing the dialog.
+    is_empty: bool
+
+
+class CategoryDeleteResultResponse(BaseModel):
+    #: The single change-log row this delete produced; undo it to reverse the
+    #: whole operation.
+    change_id: uuid.UUID
+    category_ids: list[uuid.UUID]
+    transactions_moved: int
+    transactions_uncategorized: int
+    assignments_removed: int
+    released: Decimal
+
+
+class RepairOrphansResponse(BaseModel):
+    """What the hygiene repair found and fixed."""
+
+    categories_repaired: int
+    transactions_uncategorized: int
+    assignments_removed: int
+    #: Money returning to Ready to Assign — a visible change to the user's
+    #: numbers, so the toast states it rather than letting them find it.
+    released: Decimal
+    #: One per repaired category, each independently undoable.
+    change_ids: list[uuid.UUID]
+    #: Live categories sitting under a deleted group: invisible on the budget
+    #: page but still in the summary arithmetic. Reported rather than repaired
+    #: — the fix is to restore the group or delete them deliberately, and this
+    #: action has no basis for choosing.
+    categories_under_deleted_groups: int
+
+
 class CategoryGroupUpdate(BaseModel):
     name: str | None = None
     sort_order: int | None = None
