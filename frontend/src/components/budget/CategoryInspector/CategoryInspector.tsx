@@ -2,8 +2,9 @@ import { ChevronRight, Eye, EyeOff, Trash2, X } from 'lucide-react'
 import { useUIStore } from '../../../stores/uiStore'
 import { useAppStore } from '../../../stores/appStore'
 import { useBudgetMonth } from '../../../api/budgets'
-import { useCategories, useDeleteCategory, useUpdateCategory } from '../../../api/categories'
+import { useCategories, useUpdateCategory } from '../../../api/categories'
 import { confirmAsync } from '../../../stores/confirmStore'
+import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import { addMonths } from '../../../utils/dates'
 import { AvailableBreakdown } from './AvailableBreakdown'
 import { TargetSection } from './TargetSection'
@@ -37,7 +38,10 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const { data: prevBudgetMonth } = useBudgetMonth(budgetId, addMonths(month, -1))
   const { data: categories } = useCategories(budgetId)
   const updateCategory = useUpdateCategory(budgetId)
-  const deleteCategory = useDeleteCategory(budgetId)
+  const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(
+    budgetId,
+    clearCategorySelection
+  )
 
   const selectedIds = Array.from(selectedCategoryIds)
   const count = selectedIds.length
@@ -70,18 +74,12 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
     clearCategorySelection()
   }
 
-  async function handleDeleteSelected() {
-    const ok = await confirmAsync({
-      title: isSingle
-        ? `Delete ${singleCategory?.name ?? 'category'}?`
-        : `Delete ${count} categories?`,
-      message: 'Transactions will lose their category.',
-      confirmLabel: 'Delete',
-      destructive: true,
+  function handleDeleteSelected() {
+    requestDelete({
+      kind: 'categories',
+      ids: selectedIds,
+      name: isSingle ? (singleCategory?.name ?? 'category') : `${count} categories`,
     })
-    if (!ok) return
-    await Promise.all(selectedIds.map((id) => deleteCategory.mutateAsync(id)))
-    clearCategorySelection()
   }
 
   const headerTitle = count === 0
@@ -187,6 +185,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
           </div>
         </>
       )}
+      {deleteModal}
     </div>
   )
 }

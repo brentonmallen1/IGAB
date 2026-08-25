@@ -797,8 +797,13 @@ async def test_category_group_crud_recorded_and_delete_undoable(api_client, db_s
     )
     assert resp.status_code == 200
 
+    # 200 with a body, not 204: deleting a group is now a real operation that
+    # reports what it did and hands back the single change row to undo it.
+    # An empty group has nothing to cascade over, so it still records a plain
+    # category_group delete.
     resp = await api_client.delete(f"/api/v1/category-groups/{group_id}")
-    assert resp.status_code == 204
+    assert resp.status_code == 200
+    assert resp.json()["category_ids"] == []
 
     changes = await changes_for(db_session, budget.id, "category_group")
     assert [c.action for c in changes] == ["create", "update", "delete"]

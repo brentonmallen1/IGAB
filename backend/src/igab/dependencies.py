@@ -38,6 +38,7 @@ from igab.services.assign_service import AssignService
 from igab.services.attachment_service import AttachmentService
 from igab.services.auth_service import AuthService
 from igab.services.budget_service import BudgetService
+from igab.services.category_service import CategoryService
 from igab.services.change_log import ChangeRecorder
 from igab.services.liability_service import LiabilityService
 from igab.services.reconciliation_service import ReconciliationService
@@ -213,6 +214,23 @@ def get_budget_service(
     # constructs its own recorder internally, so stamp it here — the one
     # layer where CurrentUser exists. (Worker/scheduler code builds services
     # directly, never through this factory, and stays actor-less.)
+    service.changes.actor_user_id = current_user.id
+    return service
+
+
+def get_category_service(
+    session: SessionDep,
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    assignment_repo: Annotated[BudgetAssignmentRepository, Depends(get_assignment_repo)],
+    current_user: "CurrentUser",
+) -> CategoryService:
+    service = CategoryService(
+        session, category_repo, group_repo, budget_service, transaction_repo, assignment_repo
+    )
+    # Same actor stamping as get_budget_service — see there.
     service.changes.actor_user_id = current_user.id
     return service
 
@@ -534,7 +552,13 @@ async def require_category_access(
 ) -> uuid.UUID:
     from igab.db.models import Category
 
-    return await _require_budget_child(session, Category, category_id, current_user.id, "Category")
+    # live_only: a deleted category must 404 everywhere, not just on the routes
+    # whose repository happens to filter. `PATCH /categories/{id}/assignment`
+    # went through `get_or_create` and answered 204 on a deleted category,
+    # writing an assignment nothing would ever show.
+    return await _require_budget_child(
+        session, Category, category_id, current_user.id, "Category", live_only=True
+    )
 
 
 async def require_category_group_access(

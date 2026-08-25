@@ -5,7 +5,17 @@
  *   const showUndo = useToastUndo(budgetId, accountId)
  *   showUndo(batchId, 'Transaction deleted')
  *
+ *   const showUndo = useToastUndoChange(budgetId)
+ *   showUndo(changeId, 'Groceries deleted')
+ *
  * Clicking Undo calls the undo endpoint and invalidates the standard caches.
+ *
+ * Two entry points because compound operations are recorded two ways. Most
+ * write a change row per affected entity sharing a batch_id. A category
+ * delete writes exactly one row carrying its own bookkeeping — a batch of one
+ * row per transaction would be thousands of rows and thousands of undo buttons
+ * — so it is addressed by change id. The endpoints converge: undoing a change
+ * that belongs to a batch undoes the batch.
  */
 import { useCallback } from 'react'
 import toast from 'react-hot-toast'
@@ -13,7 +23,21 @@ import { useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../api/client'
 import { invalidateAfterUndo, changesKeys } from '../api/changes'
 
+/** Undo one change row by id (`/changes/{id}/undo`). */
+export function useToastUndoChange(budgetId: string, accountId?: string | null) {
+  return useUndoToast(budgetId, accountId, (id) => `/${budgetId}/changes/${id}/undo`)
+}
+
+/** Undo a whole batch by batch id (`/changes/batch/{id}/undo`). */
 export function useToastUndo(budgetId: string, accountId?: string | null) {
+  return useUndoToast(budgetId, accountId, (id) => `/${budgetId}/changes/batch/${id}/undo`)
+}
+
+function useUndoToast(
+  budgetId: string,
+  accountId: string | null | undefined,
+  path: (id: string) => string
+) {
   const qc = useQueryClient()
 
   return useCallback(
@@ -34,7 +58,7 @@ export function useToastUndo(budgetId: string, accountId?: string | null) {
               onClick={async () => {
                 toast.dismiss(t.id)
                 try {
-                  await apiClient.post(`/${budgetId}/changes/batch/${batchId}/undo`)
+                  await apiClient.post(path(batchId))
                   qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
                   invalidateAfterUndo(qc, budgetId, accountId)
                   toast.success('Undone')
@@ -58,6 +82,6 @@ export function useToastUndo(budgetId: string, accountId?: string | null) {
         { duration: 5000 }
       )
     },
-    [budgetId, accountId, qc]
+    [budgetId, accountId, qc, path]
   )
 }

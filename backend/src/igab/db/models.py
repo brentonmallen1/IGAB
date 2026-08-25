@@ -435,6 +435,24 @@ class Transaction(Base):
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), index=True
     )
+    # The category this row was filed in before that category was deleted, kept
+    # as provenance the way `entered_date` and `bank_payee` are.
+    #
+    # DISPLAY AND UNDO ONLY — provenance, never a category. Nothing may
+    # aggregate, filter or count on these: clearing `category_id` is precisely
+    # the statement that this row is uncategorized, and a reader that treats
+    # prior_* as a category recreates the bug they exist to replace (a
+    # transaction that renders as filed, is counted as filed, and points at a
+    # category no longer in the budget).
+    #
+    # Both, not just the name: the id is the identity — delete "Groceries",
+    # recreate it, delete it again, and the two are distinct — while the name
+    # is frozen here because the soft-deleted row it came from can be renamed
+    # (retroactively rewriting history) or hard-deleted with the budget.
+    prior_category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), index=True
+    )
+    prior_category_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     memo: Mapped[str | None] = mapped_column(Text)
     cleared: Mapped[str] = mapped_column(String(20), default="uncleared", nullable=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

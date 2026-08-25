@@ -364,6 +364,11 @@ class TestHistoricalCategoryInference:
         mock_service.transaction_repo.get_most_recent_category_for_payee = AsyncMock(
             return_value=None  # No history
         )
+        # The fallback is liveness-checked now: a default pointing at a deleted
+        # category must not be handed to a new row. Here it is live.
+        live_default = MagicMock()
+        live_default.id = default_cat_id
+        mock_service.category_repo.get = AsyncMock(return_value=live_default)
 
         data = TransactionCreate(
             account_id=account_id,

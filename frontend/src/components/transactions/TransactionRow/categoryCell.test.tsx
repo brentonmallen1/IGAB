@@ -116,3 +116,31 @@ describe('a transfer leg whose partner never imported', () => {
     expect(categoryCell(unpaired)).toBe('Transfer')
   })
 })
+
+describe('a row a category delete emptied', () => {
+  // Provenance, not a category. The row IS uncategorized — `needs_category`
+  // is what says so — and the hint only answers "why did this suddenly need
+  // filing?", which without it looks like a gap the user forgot about.
+  const orphan = txn({
+    category_id: null,
+    needs_category: true,
+    prior_category_id: 'c1',
+    prior_category_name: 'Groceries',
+  })
+
+  it('still chips as needing a category, and says what it was', () => {
+    expect(categoryCell(orphan)).toBe('Needs Categorywas Groceries')
+  })
+
+  it('shows no hint on a row that was simply never filed', () => {
+    expect(categoryCell(txn({ needs_category: true }))).toBe('Needs Category')
+  })
+
+  it('never shows the hint in place of a real category', () => {
+    // A move-to delete stamps provenance too, so a filed row can carry it.
+    // The cell must render the category it is actually in.
+    expect(
+      categoryCell(txn({ category_id: 'c1', prior_category_name: 'Old Groceries' }))
+    ).toBe('Groceries')
+  })
+})

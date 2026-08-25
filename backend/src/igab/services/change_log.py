@@ -54,6 +54,10 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "bank_payee",
         "payee_id",
         "category_id",
+        # Provenance, restored alongside category_id so an undone edit does not
+        # leave a row filed in one category while claiming it "was" another.
+        "prior_category_id",
+        "prior_category_name",
         "memo",
         "cleared",
         "approved",

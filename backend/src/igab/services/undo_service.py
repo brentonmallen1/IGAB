@@ -14,12 +14,25 @@ Batches are all-or-nothing: changes apply in reverse insertion order inside
 one DB transaction, so a conflict mid-batch rolls back everything.
 """
 
+import datetime
 import uuid
+from decimal import Decimal
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import ChangeLog, Transaction, TransactionAttachment
+from igab.db.models import (
+    BudgetAssignment,
+    BudgetFilterCategory,
+    BudgetViewPlacement,
+    Category,
+    CategoryGroup,
+    ChangeLog,
+    Payee,
+    ScheduledTransaction,
+    Transaction,
+    TransactionAttachment,
+)
 from igab.domain.enums import ClearedStatus
 from igab.domain.exceptions import NotFoundError, UndoConflict
 from igab.repositories.change_log_repo import ChangeLogRepository
@@ -79,6 +92,8 @@ class UndoService:
             self._undo_create(change, entity, force)
         elif change.action in ("update", "approve"):
             self._undo_update(change, entity, force)
+        elif change.action == "delete" and change.entity_type == "category":
+            await self._undo_category_delete(change, entity)
         elif change.action == "delete":
             await self._undo_delete(change, entity)
         elif change.action == "merge":
@@ -125,6 +140,204 @@ class UndoService:
                 update(TransactionAttachment)
                 .where(TransactionAttachment.id.in_([uuid.UUID(a) for a in attachment_ids]))
                 .values(transaction_id=change.entity_id)
+            )
+
+    async def _undo_category_delete(self, change: ChangeLog, entity) -> None:
+        """Reverse a real category delete: the category, and everything the
+        delete cleared on its way out.
+
+        A category delete is one change row rather than a batch of per-row
+        changes (see `CategoryService._record_delete`), so this branch has to
+        put back what those rows would have. Every restore is conditional on
+        the target still being where the delete left it — the same "only those
+        still on the target" rule `_undo_merge` uses — so anything the user
+        re-filed, re-assigned or re-pointed in the meantime stays as they left
+        it rather than being silently overwritten by an undo.
+
+        The reconciliation guard in `_undo_update` is deliberately not
+        consulted: this is a bulk UPDATE on a `category` entity, not an edit of
+        a reconciled transaction, and it restores exactly the category the row
+        already had. `_undo_merge` re-points `payee_id` on reconciled rows on
+        the same footing.
+        """
+        before = change.before or {}
+        if not getattr(entity, "is_deleted", False):
+            raise UndoConflict("The category is no longer deleted")
+        # This branch also serves REPAIR records — hygiene passes over
+        # categories deleted long before the repair ran. Undoing one still
+        # restores the category to the budget, deliberately: re-orphaning
+        # (category dead, rows re-filed into it, assignments recreated) would
+        # recreate the exact stranded-money corruption the repair exists to
+        # fix. A live category is the only coherent inverse, and the repair
+        # UI says so. Pinned by
+        # test_undoing_a_repair_restores_the_category_to_the_budget.
+
+        # 1. The categories themselves, primary first so `entity` is consistent.
+        self._restore_fields(change, entity)
+        entity.is_deleted = False
+        restored: list[uuid.UUID] = [change.entity_id]
+        for row in before.get("_categories") or []:
+            cat_id = uuid.UUID(row["id"])
+            if cat_id == change.entity_id:
+                continue
+            cat = await self.session.get(Category, cat_id)
+            if cat is None:
+                continue
+            for field, value in row.items():
+                if field == "id" or field.startswith("_"):
+                    continue
+                setattr(cat, field, coerce_value(Category, field, value))
+            cat.is_deleted = False
+            restored.append(cat_id)
+
+        # No contested-link handling here on purpose. A restored category
+        # cannot end up fighting a live one over an account or liability,
+        # because a category can only be deleted while its link is already
+        # null: `CategoryService._blocking_link` refuses while the counterpart
+        # is live, and both counterpart deletions clear the link on their way
+        # out (`AccountRepository.soft_delete`, `delete_liability`). The
+        # restored snapshot therefore carries null too. Pinned by
+        # test_category_delete.py::test_a_deleted_category_never_holds_a_link.
+        group_raw = before.get("_group_id")
+        if group_raw:
+            group = await self.session.get(CategoryGroup, uuid.UUID(group_raw))
+            if group is not None:
+                for field, value in (before.get("_group_before") or {}).items():
+                    if not field.startswith("_"):
+                        setattr(group, field, coerce_value(CategoryGroup, field, value))
+                group.is_deleted = False
+
+        # 2. Transactions, restored by the exact id list the delete recorded
+        #    (`_transactions`), never by `prior_category_id` — provenance is
+        #    display-only and single-level, so a later delete of the
+        #    destination overwrites it, and an undo keyed on it silently
+        #    matched nothing (measured: delete A into B, delete B, undo both
+        #    in reverse — the rows stayed in B). The ids don't age like that,
+        #    and reverse-order undo walks all the way home.
+        #    `IS NOT DISTINCT FROM` rather than `==` because the destination is
+        #    NULL on the uncategorize path, and `category_id = NULL` is never
+        #    true — the whole restore would silently match nothing.
+        moved_raw = before.get("_moved_to")
+        destination = uuid.UUID(moved_raw) if moved_raw else None
+        moved_map = before.get("_transactions") or {}
+        for cat_id in restored:
+            txn_ids = [uuid.UUID(t) for t in moved_map.get(str(cat_id), [])]
+            # Chunked: a well-used category's list can be thousands of ids and
+            # asyncpg caps statement parameters.
+            for i in range(0, len(txn_ids), 1000):
+                await self.session.execute(
+                    update(Transaction)
+                    .where(
+                        Transaction.id.in_(txn_ids[i : i + 1000]),
+                        Transaction.category_id.is_not_distinct_from(destination),
+                    )
+                    .values(
+                        category_id=cat_id,
+                        prior_category_id=None,
+                        prior_category_name=None,
+                    )
+                )
+
+        # 2b. The cover the delete granted the destination (move path only)
+        #     comes back out — the exact inverse of the recorded deltas, so an
+        #     assignment the user edited in between keeps their edit and loses
+        #     only what the delete added.
+        for row in before.get("_dest_assignment_deltas") or []:
+            if destination is None:
+                break
+            month = datetime.date.fromisoformat(row["month"])
+            delta = Decimal(row["delta"])
+            existing = (
+                await self.session.execute(
+                    select(BudgetAssignment).where(
+                        BudgetAssignment.category_id == destination,
+                        BudgetAssignment.month == month,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                existing.assigned = existing.assigned - delta
+            else:
+                self.session.add(
+                    BudgetAssignment(
+                        budget_id=change.budget_id,
+                        category_id=destination,
+                        month=month,
+                        assigned=-delta,
+                    )
+                )
+
+        # 3. Assignments: add back what the delete removed. Matched by
+        #    (category, month) — the unique key — not by row id: an
+        #    out-of-order undo can already have written an inverse-delta row
+        #    for the same month (2b above), and an id-keyed insert then
+        #    collides with it. Additive, so the two undos compose to the
+        #    arithmetic truth instead of the last one winning.
+        for row in before.get("_assignments") or []:
+            month = datetime.date.fromisoformat(row["month"])
+            category_id = uuid.UUID(row["category_id"])
+            existing = (
+                await self.session.execute(
+                    select(BudgetAssignment).where(
+                        BudgetAssignment.category_id == category_id,
+                        BudgetAssignment.month == month,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                existing.assigned = existing.assigned + Decimal(row["assigned"])
+            else:
+                self.session.add(
+                    BudgetAssignment(
+                        id=uuid.UUID(row["id"]),
+                        budget_id=uuid.UUID(row["budget_id"]),
+                        category_id=category_id,
+                        month=month,
+                        assigned=Decimal(row["assigned"]),
+                    )
+                )
+        await self.session.flush()
+
+        # 4. Payee defaults and scheduled transactions — each restored to the
+        #    category IT pointed at (a group cascade clears defaults across
+        #    several; measured, restoring them all to the primary filed
+        #    Chipotle's default under Groceries) — and only where still empty,
+        #    so a default the user set in the meantime survives.
+        for payee_raw, cat_raw in (before.get("_payee_defaults") or {}).items():
+            await self.session.execute(
+                update(Payee)
+                .where(
+                    Payee.id == uuid.UUID(payee_raw),
+                    Payee.default_category_id.is_(None),
+                )
+                .values(default_category_id=uuid.UUID(cat_raw))
+            )
+        for sched_raw, cat_raw in (before.get("_scheduled_categories") or {}).items():
+            await self.session.execute(
+                update(ScheduledTransaction)
+                .where(
+                    ScheduledTransaction.id == uuid.UUID(sched_raw),
+                    ScheduledTransaction.category_id.is_(None),
+                )
+                .values(category_id=uuid.UUID(cat_raw))
+            )
+
+        # 5. View placements and saved-filter selections.
+        for row in before.get("_placements") or []:
+            self.session.add(
+                BudgetViewPlacement(
+                    view_id=uuid.UUID(row["view_id"]),
+                    category_id=uuid.UUID(row["category_id"]),
+                    group_id=uuid.UUID(row["group_id"]) if row.get("group_id") else None,
+                    is_hidden=bool(row.get("is_hidden")),
+                )
+            )
+        for row in before.get("_filter_selections") or []:
+            self.session.add(
+                BudgetFilterCategory(
+                    filter_id=uuid.UUID(row["filter_id"]),
+                    category_id=uuid.UUID(row["category_id"]),
+                )
             )
 
     async def _undo_merge(self, change: ChangeLog, entity) -> None:

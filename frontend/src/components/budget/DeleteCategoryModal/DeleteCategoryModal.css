@@ -1,0 +1,222 @@
+.delete-category-modal__overlay {
+  align-items: flex-start;
+  padding-top: 8vh;
+}
+
+.delete-category-modal {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--shadow-lg);
+  width: min(480px, calc(100vw - var(--spacing-lg)));
+  max-height: 84vh;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.delete-category-modal__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.delete-category-modal__loading {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* A refusal, not a warning: the delete cannot proceed until the link goes. */
+.delete-category-modal__blocked {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: flex-start;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.delete-category-modal__blocked svg {
+  color: var(--color-warning);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.delete-category-modal__blocked p {
+  margin: 0;
+}
+
+/* The numbers. Two columns so the labels line up and the money reads as a
+   column rather than as prose. */
+.delete-category-modal__facts {
+  margin: 0;
+  display: grid;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+}
+
+.delete-category-modal__facts > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--spacing-md);
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.delete-category-modal__facts dt {
+  color: var(--text-secondary);
+}
+
+.delete-category-modal__facts dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.delete-category-modal__money {
+  font-weight: 600;
+}
+
+.delete-category-modal__note {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.delete-category-modal__choice {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.delete-category-modal__choice legend {
+  padding: 0;
+  margin-bottom: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.delete-category-modal__option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-sm);
+  align-items: start;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+}
+
+.delete-category-modal__option input {
+  margin-top: 3px;
+  accent-color: var(--color-accent);
+}
+
+.delete-category-modal__option strong {
+  display: block;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.delete-category-modal__option em {
+  display: block;
+  margin-top: 2px;
+  font-style: normal;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.delete-category-modal__picker {
+  margin: calc(var(--spacing-xs) * -1) 0 var(--spacing-xs) calc(var(--spacing-md) + 2px);
+}
+
+.delete-category-modal__undo {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.delete-category-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.delete-category-modal__cancel,
+.delete-category-modal__confirm {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+}
+
+.delete-category-modal__cancel {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.delete-category-modal__cancel:hover {
+  background-color: var(--bg-hover);
+}
+
+.delete-category-modal__confirm {
+  background-color: var(--color-error);
+  border-color: var(--color-error);
+  color: var(--bg-primary);
+  font-weight: 500;
+}
+
+.delete-category-modal__confirm:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.delete-category-modal__confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The preview failed to load: the modal must say so rather than sit with a
+   forever-disabled Delete and no explanation. */
+.delete-category-modal__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+}
+
+.delete-category-modal__error button {
+  background: none;
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  color: var(--color-error);
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+}
+
+.delete-category-modal__error button:hover {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+}

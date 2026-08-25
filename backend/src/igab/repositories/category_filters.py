@@ -84,3 +84,18 @@ IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP))
 #: A transaction leg may be filed here. System groups stay in — that is where
 #: income goes.
 IS_CATEGORIZABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(LINKED))
+
+#: The category is live but its group is soft-deleted: gone from the grid
+#: (which renders only the groups it was given) yet still in the budget
+#: summary's arithmetic. The integrity check reports these and the repair
+#: endpoint counts them — this expression is the one statement of that rule;
+#: it was found written out twice, both copies new in the same PR.
+UNDER_DELETED_GROUP = (
+    select(CategoryGroup.id)
+    .where(
+        CategoryGroup.id == Category.category_group_id,
+        CategoryGroup.is_deleted == True,  # noqa: E712
+    )
+    .correlate(Category)
+    .exists()
+)

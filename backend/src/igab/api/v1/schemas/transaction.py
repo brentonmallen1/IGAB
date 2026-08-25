@@ -124,6 +124,13 @@ class TransactionResponse(BaseModel):
     bank_payee: str | None = None
     payee_id: uuid.UUID | None
     category_id: uuid.UUID | None
+    #: What this row was filed in before that category was deleted. Provenance
+    #: for display only — the register shows "was: Groceries" beside the Needs
+    #: Category chip. Never a category: the row is uncategorized, and
+    #: `needs_category` below is the field that says so. See
+    #: `Transaction.prior_category_id`.
+    prior_category_id: uuid.UUID | None = None
+    prior_category_name: str | None = None
     #: Server's answer to "does the user still have to file this?", so clients
     #: never re-derive it. Required, not optional: a missing value must fail
     #: here rather than reach the register as a quiet False. See

@@ -9,7 +9,7 @@ from sqlalchemy import Integer, Select, and_, case, cast, func, insert, or_, sel
 from sqlalchemy.orm import with_expression
 from sqlalchemy.sql.elements import ColumnElement
 
-from igab.db.models import Payee, Transaction, TransactionAttachment
+from igab.db.models import Category, Payee, Transaction, TransactionAttachment
 from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
@@ -976,14 +976,23 @@ class TransactionRepository(BaseRepository[Transaction]):
         budget_id: uuid.UUID,
         payee_id: uuid.UUID,
     ) -> uuid.UUID | None:
-        """Find the category from the most recent transaction for this payee."""
+        """Find the category from the most recent transaction for this payee.
+
+        Joined to `categories` rather than reading `category_id` alone: a
+        deleted category still sits on the rows it was deleted from until the
+        hygiene repair runs, and handing it back here re-filed every new
+        transaction for that payee into an envelope the budget no longer
+        shows — the orphan population growing on its own.
+        """
         result = await self.session.execute(
             select(Transaction.category_id)
+            .join(Category, Transaction.category_id == Category.id)
             .where(
                 Transaction.budget_id == budget_id,
                 Transaction.payee_id == payee_id,
                 Transaction.category_id.isnot(None),
                 Transaction.is_deleted == False,  # noqa: E712
+                Category.is_deleted == False,  # noqa: E712
             )
             .order_by(Transaction.date.desc(), Transaction.created_at.desc())
             .limit(1)
