@@ -45,12 +45,12 @@ from igab.db.models import (
 )
 from igab.domain.dates import month_start as first_of_month
 from igab.domain.exceptions import InvariantViolation, NotFoundError
+from igab.repositories.category_filters import UNDER_DELETED_GROUP
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
     CategoryGroupRepository,
     CategoryRepository,
 )
-from igab.repositories.category_filters import UNDER_DELETED_GROUP
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.budget_service import BudgetService
 from igab.services.change_log import ChangeRecorder, snapshot

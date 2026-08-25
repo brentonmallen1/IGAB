@@ -20,7 +20,6 @@ from igab.db.models import (
     Account,
     BudgetAssignment,
     Category,
-    CategoryGroup,
     Payee,
     ScheduledTransaction,
     Transaction,
