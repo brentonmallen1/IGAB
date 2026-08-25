@@ -168,7 +168,11 @@ class AccountHygieneService:
                 "as real income or spending. This is usually what an account left out of an "
                 "import leaves behind."
             ),
-            action="Review them and give each a category, or re-import the missing account.",
+            action=(
+                "Match them up links every leg whose other side is unmistakable, "
+                "without touching a single amount. Whatever is left is ambiguous or "
+                "genuinely one-sided — open one to pick its partner or add the missing row."
+            ),
             transaction_count=int(count),
         )
 

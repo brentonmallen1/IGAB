@@ -32,6 +32,7 @@ import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simple
 import { useShortcut } from '../../../hooks/useShortcut'
 import { SHORTCUTS } from '../../../keyboard/shortcuts'
 import { today } from '../../../utils/dates'
+import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
@@ -494,7 +495,11 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   function renderUpcomingRow(s: ScheduledTransaction) {
     const amount = Number(s.amount)
     const isOutflow = amount < 0
-    const payeeName = payeeMap.get(s.payee_id ?? '') ?? (s.transfer_account_id ? 'Transfer' : '—')
+    const payeeName = transactionDisplayPayee(
+      { payee_id: s.payee_id, counterpart_account_id: s.transfer_account_id },
+      payeeMap,
+      accountMap
+    )
     const catName = s.category_id ? categoryMap.get(s.category_id) ?? '—' : '—'
 
     return (
@@ -558,6 +563,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           transaction={txn}
           onEdit={handleEdit}
           payeeMap={payeeMap}
+          accountMap={accountMap}
           categoryMap={categoryMap}
           payees={payees}
           categories={categories}

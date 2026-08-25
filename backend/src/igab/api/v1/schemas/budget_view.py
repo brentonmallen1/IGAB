@@ -40,9 +40,12 @@ class BudgetViewPlacementInput(BaseModel):
 class BudgetViewCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     hide_unassigned: bool = False
-    #: Group names in display order. Ids are assigned server-side; placements
-    #: are sent in a follow-up PATCH once the client knows them.
+    #: Group names in display order. Ids are assigned server-side.
     groups: list[str] = Field(default_factory=list)
+    #: Placements in the same request, referencing groups above by `group_name`
+    #: (ids don't exist yet). One atomic call: the POST-then-PATCH split left a
+    #: committed zero-group view behind whenever the PATCH failed.
+    placements: list[BudgetViewPlacementInput] = Field(default_factory=list)
 
 
 class BudgetViewUpdate(BaseModel):

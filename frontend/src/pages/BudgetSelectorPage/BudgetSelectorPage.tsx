@@ -273,6 +273,17 @@ export function BudgetSelectorPage() {
         )
       }
       toast.success(`Imported ${parts.join(', ')}`, { duration: 15000 })
+      // A tag decides how a category's spending is classified in reports, so
+      // guessing at one from a name has to be said out loud — and said as
+      // something the user can change, not as a fact.
+      if (r.categories_tagged > 0) {
+        toast(
+          `${r.categories_tagged} categor${r.categories_tagged === 1 ? 'y looks' : 'ies look'} ` +
+            'like savings, so they are tagged for the Savings report. Change that on any ' +
+            'category if it is wrong.',
+          { duration: 12000, icon: '🏷️' }
+        )
+      }
       // Unlinked transfer legs still balance the accounts they sit on, but they
       // can't be told apart from real income and expense, so reports will read
       // high. Warn rather than bury it in a count — it means the export wasn't

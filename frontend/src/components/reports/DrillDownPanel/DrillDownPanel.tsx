@@ -6,6 +6,7 @@ import { useAccounts } from '../../../api/accounts'
 import { useCategories } from '../../../api/categories'
 import { usePayees } from '../../../api/payees'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import './DrillDownPanel.css'
 
 const PAGE_SIZE = 200
@@ -136,13 +137,17 @@ function DrillDownPanelInner({
                   <tr key={t.id}>
                     <td className="ddp__date">{t.date}</td>
                     <td>{accountName.get(t.account_id) ?? ''}</td>
-                    <td>{t.payee_id ? (payeeName.get(t.payee_id) ?? '') : ''}</td>
+                    <td>
+                      {t.payee_id || t.counterpart_account_id
+                        ? transactionDisplayPayee(t, payeeName, accountName)
+                        : ''}
+                    </td>
                     <td>
                       {t.is_split
                         ? 'Split'
                         : t.category_id
                           ? (categoryName.get(t.category_id) ?? '')
-                          : t.transfer_id
+                          : t.counterpart_account_id || t.transfer_id
                             ? 'Transfer'
                             : ''}
                     </td>

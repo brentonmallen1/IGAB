@@ -239,6 +239,11 @@ a {
   background: var(--border-color);
   border-radius: 3px;
 }
+/* Where both scrollbars appear, WebKit paints an opaque square between them.
+   Unstyled it reads as a resize grip on things that do not resize. */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 /* Number columns use tabular nums */
 .tabular {

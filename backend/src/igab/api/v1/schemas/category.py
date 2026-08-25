@@ -14,6 +14,12 @@ class CategoryGroupCreate(BaseModel):
     sort_order: int = 0
 
 
+class CategoryGroupReorder(BaseModel):
+    #: Every live group in this budget, in the order they should appear.
+    #: Must name each exactly once — see CategoryGroupRepository.reorder.
+    group_ids: list[uuid.UUID]
+
+
 class CategoryGroupUpdate(BaseModel):
     name: str | None = None
     sort_order: int | None = None

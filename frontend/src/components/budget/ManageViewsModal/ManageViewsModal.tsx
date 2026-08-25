@@ -1,6 +1,9 @@
 import { Layers, Pencil, Plus, Trash2, X } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useBudgetViews, useDeleteBudgetView } from '../../../api/budgetViews'
+import { apiErrorMessage } from '../../../api/client'
 import { useUIStore } from '../../../stores/uiStore'
+import { confirmAsync } from '../../../stores/confirmStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './ManageViewsModal.css'
 
@@ -17,21 +20,33 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
   const openModal = useUIStore((s) => s.openModal)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
+  // openModal replaces the single modal slot, which closes this modal by
+  // itself. Do NOT follow it with onClose(): that is closeModal(), and it
+  // nulls the slot openModal just filled — the editor never rendered.
   function handleEdit(id: string) {
     openModal('view', id)
-    onClose()
   }
 
   function handleNew() {
     openModal('view')
-    onClose()
   }
 
-  async function handleDelete(id: string) {
-    await deleteView.mutateAsync(id)
-    // Deleting the view you are looking at drops you back to the budget's own
-    // groups rather than leaving the page pointing at nothing.
-    if (activeViewId === id) setActiveView(null)
+  async function handleDelete(id: string, name: string) {
+    const ok = await confirmAsync({
+      title: `Delete the view “${name}”?`,
+      message: 'Your budget’s own groups and categories are not affected.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      await deleteView.mutateAsync(id)
+      // Deleting the view you are looking at drops you back to the budget's own
+      // groups rather than leaving the page pointing at nothing.
+      if (activeViewId === id) setActiveView(null)
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not delete this view'))
+    }
   }
 
   return (
@@ -107,7 +122,7 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
                     <button
                       type="button"
                       className="manage-views-modal__icon-btn manage-views-modal__icon-btn--danger"
-                      onClick={() => handleDelete(v.id)}
+                      onClick={() => handleDelete(v.id, v.name)}
                       disabled={deleteView.isPending}
                       aria-label={`Delete view ${v.name}`}
                       title="Delete view"

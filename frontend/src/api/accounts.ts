@@ -114,3 +114,31 @@ export function useAccountHygiene(budgetId: string | null) {
     enabled: !!budgetId,
   })
 }
+
+export interface RepairTransfersResult {
+  linked: number
+  ambiguous: number
+  remaining: number
+}
+
+/** Link the unpaired transfer legs whose partner is unmistakable.
+ *
+ *  Repairs history the fixed importer cannot reach. Writes no money and
+ *  creates no rows — only the link — so it is safe to run and safe to undo,
+ *  and anything ambiguous is left for the register's picker. */
+export function useRepairTransfers(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient
+        .post<RepairTransfersResult>(`/${budgetId}/accounts/hygiene/repair-transfers`)
+        .then((r) => r.data),
+    onSuccess: () => {
+      // Links change how every transfer row reads and what the register's
+      // unpaired filter returns.
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: ['all-transactions'] })
+      qc.invalidateQueries({ queryKey: ['account-hygiene', budgetId] })
+    },
+  })
+}

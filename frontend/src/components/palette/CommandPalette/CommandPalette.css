@@ -174,3 +174,17 @@
     display: flex;
   }
 }
+
+/* Sits in the input row beside the close button. The panel opens downward
+   over the results, which is fine — it is only open while being read. */
+.palette__help {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.palette__help .info-pop__btn {
+  border: none;
+  width: 20px;
+  height: 20px;
+}

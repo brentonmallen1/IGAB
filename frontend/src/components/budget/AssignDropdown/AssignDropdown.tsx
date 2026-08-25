@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
+import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
 import { createPortal } from 'react-dom'
 import { Zap } from 'lucide-react'
 import { useAssignStrategyTotals } from '../../../api/assign'
@@ -103,25 +104,14 @@ interface DropdownProps extends ContentProps {
 }
 
 const PANEL_WIDTH = 320
-const VIEWPORT_MARGIN = 8
+const PANEL_GAP = 6
 
 /** Desktop: fixed-position portal panel anchored under the Assign button. */
 export function AssignDropdown({ anchorRef, onClose, ...contentProps }: DropdownProps) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
-
-  useEffect(() => {
-    const rect = anchorRef.current?.getBoundingClientRect()
-    if (rect) {
-      setPos({
-        top: rect.bottom + 6,
-        left: Math.max(
-          VIEWPORT_MARGIN,
-          Math.min(rect.left, window.innerWidth - PANEL_WIDTH - VIEWPORT_MARGIN)
-        ),
-      })
-    }
-  }, [anchorRef])
+  // Measured once on mount before, so the panel detached from the Assign
+  // button the moment the budget table scrolled underneath it.
+  const pos = useAnchoredPosition(anchorRef, true, { width: PANEL_WIDTH, gap: PANEL_GAP })
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -147,7 +137,15 @@ export function AssignDropdown({ anchorRef, onClose, ...contentProps }: Dropdown
     <div
       ref={panelRef}
       className="assign-dropdown"
-      style={{ position: 'fixed', top: pos.top, left: pos.left, width: PANEL_WIDTH }}
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        bottom: pos.bottom,
+        left: pos.left,
+        width: pos.width,
+        maxHeight: pos.maxHeight,
+        overflowY: 'auto',
+      }}
       role="dialog"
       aria-label="Assign money"
     >

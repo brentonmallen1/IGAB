@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { X } from 'lucide-react'
+import { AlertTriangle, X } from 'lucide-react'
 import { describeSearchChips, removeSearchChip } from '../../../utils/searchParser'
 import './SearchFilterChips.css'
 
@@ -26,7 +26,20 @@ export function SearchFilterChips({ query, categoryMap, payeeMap, accountMap, on
   return (
     <div className="search-chips" role="list" aria-label="Active search filters">
       {chips.map((chip) => (
-        <span key={chip.key} className="search-chips__chip" role="listitem">
+        <span
+          key={chip.key}
+          className={
+            'search-chips__chip' +
+            (chip.unrecognized ? ' search-chips__chip--unrecognized' : '')
+          }
+          role="listitem"
+          title={
+            chip.unrecognized
+              ? 'This part of the search was ignored, so these results are not filtered by it.'
+              : undefined
+          }
+        >
+          {chip.unrecognized && <AlertTriangle size={11} aria-hidden />}
           {chip.label}
           <button
             className="search-chips__remove"

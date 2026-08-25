@@ -30,8 +30,21 @@ export function useBudgetViews(budgetId: string | null) {
 export function useCreateBudgetView(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; groups?: string[]; hide_unassigned?: boolean }) =>
-      apiClient.post<BudgetView>(`/${budgetId}/views`, data).then((r) => r.data),
+    mutationFn: (data: {
+      name: string
+      groups?: string[]
+      hide_unassigned?: boolean
+      /** Sent with the same request so create is atomic — a failed follow-up
+       *  PATCH used to leave a committed zero-group view behind. `group_name`
+       *  resolves against `groups` above server-side. */
+      placements?: {
+        category_id: string
+        group_id?: string | null
+        group_name?: string | null
+        sort_order?: number
+        is_hidden?: boolean
+      }[]
+    }) => apiClient.post<BudgetView>(`/${budgetId}/views`, data).then((r) => r.data),
     onSuccess: () => invalidate(qc, budgetId),
   })
 }

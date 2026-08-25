@@ -40,7 +40,7 @@ const FILTERED_LIMIT = 2000
  * picks FILTERED_LIMIT over PAGE_SIZE, so a filter missing from it makes a
  * register stop at 100 rows while claiming to be complete.
  */
-function transactionFilterParams(filters: TransactionFilters): Record<string, unknown> {
+export function transactionFilterParams(filters: TransactionFilters): Record<string, unknown> {
   const params: Record<string, unknown> = {}
   if (filters.text) params.search = filters.text
   if (filters.cleared) params.cleared = filters.cleared
@@ -228,10 +228,20 @@ export function useCreateTransaction(budgetId: string) {
   })
 }
 
+/** PATCH body. Wider than `Transaction`: the transfer fields are instructions,
+ *  not columns — see TransactionService.update. `transfer_account_id: null` is
+ *  meaningful (break the link), so it must survive as an explicit null. */
+export type TransactionUpdatePayload = Partial<Transaction> & {
+  id: string
+  transfer_account_id?: string | null
+  transfer_partner_transaction_id?: string | null
+  transfer_create_partner?: boolean
+}
+
 export function useUpdateTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: Partial<Transaction> & { id: string }) =>
+    mutationFn: ({ id, ...data }: TransactionUpdatePayload) =>
       apiClient
         .patch<Transaction>(`/transactions/${id}`, data, { params: { budget_id: budgetId } })
         .then((r) => r.data),
@@ -244,7 +254,34 @@ export function useUpdateTransaction(budgetId: string) {
       qc.invalidateQueries({ queryKey: ['reconcile-status'] })
       qc.invalidateQueries({ queryKey: ['pending-review-count'] })
       qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
+      // A link/retarget/break writes the OTHER account's row too.
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: ['account-hygiene', budgetId] })
     },
+  })
+}
+
+/** Rows in `accountId` that could be this transaction's missing far leg.
+ *
+ *  Asked before linking so the user picks when it is ambiguous: the server
+ *  refuses to guess (linking the wrong row moves the wrong money; creating a
+ *  new one alongside the real far leg double-counts it). */
+export function useTransferCandidates(
+  budgetId: string,
+  transactionId: string | null,
+  accountId: string | null
+) {
+  return useQuery({
+    queryKey: ['transfer-candidates', budgetId, transactionId, accountId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<Transaction[]>(
+        `/transactions/${transactionId}/transfer-candidates`,
+        { params: { budget_id: budgetId, account_id: accountId } }
+      )
+      return data
+    },
+    enabled: !!budgetId && !!transactionId && !!accountId,
+    staleTime: 15_000,
   })
 }
 

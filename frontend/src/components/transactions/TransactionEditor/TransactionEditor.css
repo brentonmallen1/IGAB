@@ -716,3 +716,31 @@
   color: var(--text-secondary);
   font-weight: 600;
 }
+
+/* Which existing row is this transfer's other half. Shown only when the
+   answer is genuinely ambiguous, so it reads as a question to answer rather
+   than another field to fill in. */
+.txn-editor__partner-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-xs);
+  background-color: var(--input-bg);
+}
+
+.txn-editor__partner-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 4px 6px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.txn-editor__partner-option:hover {
+  background-color: var(--bg-hover);
+}

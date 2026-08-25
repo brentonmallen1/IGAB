@@ -7,6 +7,7 @@ import {
   useCategories,
   useCategoryGroups,
   useCreateCategoryGroup,
+  useReorderCategoryGroups,
 } from '../../../api/categories'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
@@ -31,6 +32,8 @@ export function BudgetTable() {
   const [showHidden, setShowHidden] = useState(false)
   const [isAddingGroup, setIsAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
+  const [dragGroupIndex, setDragGroupIndex] = useState<number | null>(null)
+  const [dragOverGroupIndex, setDragOverGroupIndex] = useState<number | null>(null)
   const addGroupRef = useRef<HTMLInputElement>(null)
 
   const { data: groups, isLoading: groupsLoading } = useCategoryGroups(budgetId, showHidden)
@@ -39,6 +42,7 @@ export function BudgetTable() {
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: views } = useBudgetViews(budgetId)
   const createGroup = useCreateCategoryGroup(budgetId ?? '')
+  const reorderGroups = useReorderCategoryGroups(budgetId ?? '')
 
   if (!budgetId) {
     return (
@@ -127,6 +131,27 @@ export function BudgetTable() {
       : sourceGroups
 
   const allGroupIds = visibleGroups?.map((g) => g.id) ?? []
+
+  // Dragging is offered only on the budget's own arrangement, showing every
+  // group. A filtered or searched grid hides groups, so a drop there would
+  // reorder against a list the user cannot see; a view has its own order,
+  // which is edited in the view editor.
+  const canReorderGroups =
+    !isFiltered && !activeView && (groups?.length ?? 0) > 1 && visibleGroups === groups
+
+  function moveGroup(from: number, to: number) {
+    if (!groups || from === to || to < 0 || to >= groups.length) return
+    const next = groups.map((g) => g.id)
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    reorderGroups.mutate(next)
+  }
+
+  function handleGroupDrop(dropIndex: number) {
+    if (dragGroupIndex !== null) moveGroup(dragGroupIndex, dropIndex)
+    setDragGroupIndex(null)
+    setDragOverGroupIndex(null)
+  }
   const allCollapsed = allGroupIds.length > 0 && allGroupIds.every((id) => collapsedGroups.has(id))
 
   function startAddGroup() {
@@ -196,7 +221,7 @@ export function BudgetTable() {
       </div>
 
       <div className="budget-table__body">
-        {visibleGroups?.map((group: CategoryGroup) => (
+        {visibleGroups?.map((group: CategoryGroup, index: number) => (
           <CategoryGroupRow
             key={group.id}
             group={group}
@@ -205,6 +230,29 @@ export function BudgetTable() {
             budgetId={budgetId}
             month={month}
             readOnlyGroup={activeView != null}
+            reorder={
+              canReorderGroups
+                ? {
+                    isDragging: dragGroupIndex === index,
+                    isDragOver: dragOverGroupIndex === index && dragGroupIndex !== index,
+                    onDragStart: () => setDragGroupIndex(index),
+                    onDragOver: () => setDragOverGroupIndex(index),
+                    onDrop: () => handleGroupDrop(index),
+                    onDragEnd: () => {
+                      setDragGroupIndex(null)
+                      setDragOverGroupIndex(null)
+                    },
+                    // Keyboard equivalent: dragging is not reachable without a
+                    // pointer, and the order of a budget is not a mouse-only
+                    // decision.
+                    onMoveUp: index > 0 ? () => moveGroup(index, index - 1) : undefined,
+                    onMoveDown:
+                      index < (visibleGroups?.length ?? 0) - 1
+                        ? () => moveGroup(index, index + 1)
+                        : undefined,
+                  }
+                : undefined
+            }
           />
         ))}
       </div>

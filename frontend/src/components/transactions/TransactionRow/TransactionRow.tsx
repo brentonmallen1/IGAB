@@ -14,6 +14,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
 import { useToastUndo } from '../../../utils/toastUndo'
 import { parseAmountExpressionInput } from '../../../utils/amountExpression'
+import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
@@ -28,6 +29,9 @@ interface Props {
   transaction: Transaction
   onEdit: (txn: Transaction) => void
   payeeMap: Map<string, string>
+  /** id → name for every budget account, so transfer legs can name their
+   *  destination ("Transfer : Savings") instead of the bare word. */
+  accountMap: Map<string, string>
   categoryMap: Map<string, string>
   payees: Payee[]
   categories: Category[]
@@ -93,11 +97,14 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     // The category cell renders from this, and it can change without any
     // other field moving — reopening a counterpart account on budget flips it.
     a.needs_category !== b.needs_category ||
+    // Served field; a repair/retarget changes it with no other field moving.
+    a.counterpart_account_id !== b.counterpart_account_id ||
     a.bank_amount !== b.bank_amount ||
     a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
   ) return false
   if (prev.payeeMap !== next.payeeMap) return false
+  if (prev.accountMap !== next.accountMap) return false
   if (prev.categoryMap !== next.categoryMap) return false
   if (prev.payees !== next.payees) return false
   if (prev.categories !== next.categories) return false
@@ -119,6 +126,7 @@ export const TransactionRow = memo(function TransactionRow({
   transaction: txn,
   onEdit,
   payeeMap,
+  accountMap,
   categoryMap,
   payees,
   categories,
@@ -156,9 +164,7 @@ export const TransactionRow = memo(function TransactionRow({
   const outflow = isOutflow ? Math.abs(Number(txn.amount)) : 0
   const inflow = !isOutflow ? Number(txn.amount) : 0
 
-  const payeeName = txn.transfer_id
-    ? 'Transfer'
-    : (txn.payee_id ? (payeeMap.get(txn.payee_id) ?? '—') : '—')
+  const payeeName = transactionDisplayPayee(txn, payeeMap, accountMap)
 
   const categoryName = txn.is_split
     ? 'Split Transaction'

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
+from igab.domain.transfers import linking_breaks_category_rule
 from igab.integrations.ynab.models import YNABBudget
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -14,6 +15,7 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.payee_repo import PayeeRepository
+from igab.repositories.tag_repo import TagRepository, seed_system_tags, suggest_system_tag
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.liability_service import ensure_for_account
@@ -50,6 +52,17 @@ class ImportResult:
     #: swallowed: silently unlinked legs are indistinguishable from real
     #: income and expense until someone reads a report and disbelieves it.
     transfer_legs_unpaired: int = 0
+    #: Transfer legs that are one line of a split. Never paired, by design:
+    #: money fields live on a split's parent, so linking a child would put the
+    #: pair's two halves at different levels. Counted into the unpaired total
+    #: so the number the user is shown is the number of rows they can act on —
+    #: they are repairable by hand from the register like any orphan leg.
+    transfer_legs_in_splits: int = 0
+    #: Categories the import tagged from their names (Savings, Long-term
+    #: expense). Reported because a tag changes how that category's spending
+    #: is classified in reports — applying it silently would be a number
+    #: moving for a reason the user never saw.
+    categories_tagged: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -78,6 +91,7 @@ class YNABImporter:
         self.transaction_repo = transaction_repo
         self.transaction_service = transaction_service
         self.assignment_repo = assignment_repo
+        self.tag_repo = TagRepository(session)
         # account name → (account_type, on_budget) override; YNAB register
         # exports carry no type info, so callers may supply the mapping.
         self.account_types = account_types or {}
@@ -100,6 +114,10 @@ class YNABImporter:
 
     async def import_budget(self, budget: YNABBudget) -> ImportResult:
         result = ImportResult()
+        # Before any category exists, so the name-based tagging below has real
+        # tags to point at. A budget created by import otherwise reaches the
+        # tags endpoint (which backfills) only if the user opens Settings.
+        await seed_system_tags(self.session, self.budget_id)
         # Rows the parser had to drop because their amount was unreadable.
         # Carried through rather than swallowed: the import summary is the
         # only place a user would ever learn a row did not make it.
@@ -142,6 +160,22 @@ class YNABImporter:
 
         self._account_cache[name] = account
         return account
+
+    def _may_link(self, a: dict, b: dict) -> bool:
+        """May these two legs be linked as one transfer?
+
+        The rule itself — a category may only sit on the on-budget side of an
+        on↔off pair — lives once, in `domain/transfers.py`, shared with
+        transfer create, the edit planner, and the repair pass. A pair that
+        fails it stays unpaired and visible rather than linked wrong.
+        """
+        on_budget = {acc.id: acc.on_budget for acc in self._account_cache.values()}
+        a_on, b_on = on_budget.get(a["account_id"]), on_budget.get(b["account_id"])
+        if a_on is None or b_on is None:
+            return False
+        return not linking_breaks_category_rule(
+            a["category_id"] is not None, a_on, b["category_id"] is not None, b_on
+        )
 
     async def _get_or_create_category(
         self, group_name: str, category_name: str, result: ImportResult
@@ -187,9 +221,30 @@ class YNABImporter:
                     name=category_name,
                 )
                 result.categories_imported += 1
+                await self._suggest_tag(category, group.name, result)
             self._category_cache[cache_key] = category
 
         return self._category_cache[cache_key]
+
+    async def _suggest_tag(self, category: Category, group_name: str, result: ImportResult) -> None:
+        """Tag a freshly created category when its name plainly says what it is.
+
+        Without this a YNAB import produces a savings report that is empty
+        forever: nothing else tags categories, and the only place to do it by
+        hand is a section of the category inspector the user has no reason to
+        open. Counted in the summary, because a tag that changes how money is
+        classified must not be applied silently.
+
+        New categories only — an existing category's tags are the user's.
+        """
+        system_key = suggest_system_tag(category.name, group_name)
+        if system_key is None:
+            return
+        tag = await self.tag_repo.get_system_tag(self.budget_id, system_key)
+        if tag is None:
+            return
+        await self.tag_repo.set_category_tags(category.id, [tag.id])
+        result.categories_tagged += 1
 
     async def _resolve_payees(
         self, budget: YNABBudget, payee_names: set[str], result: ImportResult
@@ -251,9 +306,12 @@ class YNABImporter:
         transfer legs mutually via ids generated client-side.
 
         Per-leg cleared/reconciled state from YNAB is preserved. A transfer
-        leg carrying a category (YNAB's off-budget spending transfer) imports
-        as a plain categorized row and is NOT transfer-linked. Legs whose
-        partner never appears import unlinked so balances stay correct.
+        leg carrying a category (YNAB's off-budget spending transfer) links to
+        its far side like any other, keeping its category — so the mortgage
+        payment still counts as spending AND names the account it went to. It
+        links only where the category is legal on that pair (`_may_link`):
+        the on-budget side of an on↔off transfer. Legs whose partner never
+        appears import unlinked so balances stay correct.
 
         Transactions the parser reassembled from YNAB's flattened split legs
         become a parent row (is_split, no category, amount = bank total — the
@@ -341,6 +399,18 @@ class YNABImporter:
                                 "import_id": None,
                             }
                         )
+                    # A transfer that is one line of a split never enters the
+                    # pairing pool (see transfer_legs_in_splits) — but it is
+                    # still an unlinked transfer leg, so count it rather than
+                    # let it look like ordinary spending.
+                    if txn.payee.startswith(_TRANSFER_PREFIX):
+                        # Counted the way UNPAIRED_TRANSFER_LEG counts: the
+                        # parent (never categorized) plus every uncategorized
+                        # child, since children inherit the transfer payee.
+                        result.transfer_legs_in_splits += 1 + sum(
+                            1 for kid in children if kid["category_id"] is None
+                        )
+
                     # Append only after every leg resolved, so a failed leg
                     # can never leave a parent whose children don't sum to it.
                     rows.append(parent_row)
@@ -375,8 +445,12 @@ class YNABImporter:
                 }
                 rows.append(row)
 
-                is_transfer_leg = txn.payee.startswith(_TRANSFER_PREFIX) and category_id is None
-                if is_transfer_leg:
+                # A categorized leg is a YNAB *spending transfer* (a mortgage
+                # payment out of checking) and pairs like any other. Excluding
+                # it left 169 rows unlinked on one real export — every one of
+                # them a transfer whose far side the user could see in the
+                # other account but never reach from this one.
+                if txn.payee.startswith(_TRANSFER_PREFIX):
                     target_name = txn.payee[len(_TRANSFER_PREFIX) :]
                     pair_key = (
                         *sorted((txn.account_name.lower(), target_name.lower())),
@@ -384,7 +458,14 @@ class YNABImporter:
                         abs(txn.amount),
                     )
                     waiting = unpaired_legs.setdefault(pair_key, [])
-                    partner = next((r for r in waiting if r["amount"] == -txn.amount), None)
+                    partner = next(
+                        (
+                            r
+                            for r in waiting
+                            if r["amount"] == -txn.amount and self._may_link(r, row)
+                        ),
+                        None,
+                    )
                     if partner is not None:
                         waiting.remove(partner)
                         row["transfer_id"] = partner["id"]
@@ -403,7 +484,20 @@ class YNABImporter:
                 result.transactions_skipped += 1
 
         result.accounts_skipped = len(skipped_account_names)
-        result.transfer_legs_unpaired = sum(len(legs) for legs in unpaired_legs.values())
+        # Must equal what UNPAIRED_TRANSFER_LEG selects, or the hygiene panel
+        # promises a number the list it links to cannot show. That predicate is
+        # transfer-payee + no link + NO CATEGORY, so:
+        #   - categorized legs are excluded even when they end up unpaired. A
+        #     categorized leg is a spending transfer: already counted as
+        #     spending, so nothing is misreported by its missing partner.
+        #     (They still take part in pairing above — being unproblematic is
+        #     not a reason to leave a link unmade.)
+        #   - split rows ARE included: they carry the transfer payee and never
+        #     enter the pairing pool, so the predicate lists them.
+        result.transfer_legs_unpaired = (
+            sum(1 for legs in unpaired_legs.values() for leg in legs if leg["category_id"] is None)
+            + result.transfer_legs_in_splits
+        )
 
         disambiguate_in_batch(rows)
 

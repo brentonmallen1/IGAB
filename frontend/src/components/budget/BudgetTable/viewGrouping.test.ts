@@ -160,6 +160,26 @@ describe('groupByView', () => {
     const { byGroup } = groupByView(v, [cat('c1', 'Rent')], BUDGET)
     expect(byGroup.get('need')!.map((c) => c.name)).toEqual(['Rent'])
   })
+
+  it('a zero-group view shows everything under Unassigned even with hide_unassigned', () => {
+    // With no groups every category is unassigned; honouring the flag would
+    // render the budget page empty. The editor refuses the combination now,
+    // but views saved before it did must still show something.
+    const v = { ...view([], []), hide_unassigned: true }
+    const cats = [cat('c1', 'Rent'), cat('c2', 'Dining')]
+    const { groups, byGroup } = groupByView(v, cats, BUDGET)
+    expect(groups.map((g) => g.name)).toEqual(['Unassigned'])
+    expect(byGroup.get(UNASSIGNED_GROUP_ID)!.map((c) => c.name)).toEqual(['Rent', 'Dining'])
+  })
+
+  it('a zero-group view still honours per-category hides', () => {
+    const v = {
+      ...view([], [{ category_id: 'c2', is_hidden: true }]),
+      hide_unassigned: true,
+    }
+    const { byGroup } = groupByView(v, [cat('c1', 'Rent'), cat('c2', 'Dining')], BUDGET)
+    expect(byGroup.get(UNASSIGNED_GROUP_ID)!.map((c) => c.name)).toEqual(['Rent'])
+  })
 })
 
 describe('visibleCategoryIds', () => {

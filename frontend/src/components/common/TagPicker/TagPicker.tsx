@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition';
 import { Check, Plus, Tag } from 'lucide-react';
 import { TagChip, type TagColorSlot } from '../TagChip';
 import './TagPicker.css';
@@ -20,42 +21,16 @@ interface TagPickerProps {
   ghost?: boolean;
 }
 
-interface DropdownPos {
-  top?: number;
-  bottom?: number;
-  left: number;
-  width: number;
-  maxHeight: number;
-}
-
-// Keep the fixed-position dropdown fully on screen: clamp horizontally and
-// flip upward when the trigger sits near the bottom edge (selection bars).
-const VIEWPORT_MARGIN = 8;
-const DROPDOWN_MAX_HEIGHT = 300;
-
-function measureDropdown(rect: DOMRect): DropdownPos {
-  const width = Math.min(Math.max(rect.width, 200), 280);
-  const left = Math.max(
-    VIEWPORT_MARGIN,
-    Math.min(rect.left, window.innerWidth - width - VIEWPORT_MARGIN)
-  );
-  const spaceBelow = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
-  const spaceAbove = rect.top - VIEWPORT_MARGIN;
-  if (spaceBelow < 160 && spaceAbove > spaceBelow) {
-    return {
-      bottom: window.innerHeight - rect.top + 2,
-      left,
-      width,
-      maxHeight: Math.min(DROPDOWN_MAX_HEIGHT, spaceAbove),
-    };
-  }
-  return {
-    top: rect.bottom + 2,
-    left,
-    width,
-    maxHeight: Math.min(DROPDOWN_MAX_HEIGHT, spaceBelow),
-  };
-}
+// The dropdown's own preferences; the viewport still overrides all three.
+// These used to be written twice — here and again as min-width/max-width/
+// max-height in TagPicker.css — where the inline values silently won and the
+// stylesheet's copy was free to drift.
+const DROPDOWN = {
+  width: 'trigger',
+  minWidth: 200,
+  maxWidth: 280,
+  maxHeight: 300,
+} as const;
 
 export function TagPicker({
   selectedTagIds,
@@ -68,13 +43,14 @@ export function TagPicker({
 }: TagPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [creating, setCreating] = useState(false);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const dropdownPos = useAnchoredPosition(triggerRef, open, DROPDOWN);
 
   const filtered = tags.filter((t) =>
     t.name.toLowerCase().includes(query.toLowerCase())
@@ -87,10 +63,6 @@ export function TagPicker({
   const totalOptions = filtered.length + (showCreate ? 1 : 0);
 
   function measureAndOpen() {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      setDropdownPos(measureDropdown(rect));
-    }
     setOpen(true);
     setHighlightedIndex(0);
   }
@@ -175,7 +147,11 @@ export function TagPicker({
         top: dropdownPos.top,
         bottom: dropdownPos.bottom,
         left: dropdownPos.left,
-        minWidth: dropdownPos.width,
+        // The one width resolveWidth computed and clamped `left` against.
+        // Painting min/max here instead let shrink-to-fit grow the panel past
+        // the edge the math had already respected — the exact bug class this
+        // util consolidates. min/max are inputs (DROPDOWN), never styles.
+        width: dropdownPos.width,
         maxHeight: dropdownPos.maxHeight,
       }}
     >

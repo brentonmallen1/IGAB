@@ -29,6 +29,12 @@ export function groupByView(
   const placementBy = new Map(view.placements.map((p) => [p.category_id, p]))
   const byGroup = new Map<string, Category[]>()
 
+  // A view with no groups puts every category in Unassigned; honouring
+  // hide_unassigned then would render the budget page empty. The editor
+  // refuses the combination going forward, but views saved before it did
+  // (or emptied of groups later) must still show something.
+  const hideUnassigned = view.hide_unassigned && view.groups.length > 0
+
   for (const cat of categories) {
     const placement = placementBy.get(cat.id)
     // Hidden in this view: out of the grid and out of its group totals.
@@ -36,7 +42,7 @@ export function groupByView(
     const bucket = placement?.group_id ?? UNASSIGNED_GROUP_ID
     // Only when the user has said so — the default is to surface anything the
     // view hasn't placed rather than let it quietly disappear.
-    if (bucket === UNASSIGNED_GROUP_ID && view.hide_unassigned) continue
+    if (bucket === UNASSIGNED_GROUP_ID && hideUnassigned) continue
     if (!byGroup.has(bucket)) byGroup.set(bucket, [])
     byGroup.get(bucket)!.push(cat)
   }
