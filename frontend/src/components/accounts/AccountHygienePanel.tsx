@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ChevronRight, X } from 'lucide-react'
-import { useAccountHygiene, type HygieneFinding } from '../../api/accounts'
+import toast from 'react-hot-toast'
+import { useAccountHygiene, useRepairTransfers, type HygieneFinding } from '../../api/accounts'
+import { apiErrorMessage } from '../../api/client'
 import './AccountHygienePanel.css'
 
 /**
@@ -45,6 +47,27 @@ export function AccountHygienePanel({ budgetId }: { budgetId: string | null }) {
   const { data } = useAccountHygiene(budgetId)
   const [dismissed, setDismissed] = useState<string[]>(readDismissed)
   const navigate = useNavigate()
+  const repair = useRepairTransfers(budgetId ?? '')
+
+  async function repairTransfers() {
+    try {
+      const r = await repair.mutateAsync()
+      // Say what is left as well as what was fixed: a pass that links 900 of
+      // 1,117 and says only "900 linked" reads as finished.
+      const left = [
+        r.ambiguous ? `${r.ambiguous} need you to choose` : '',
+        r.remaining ? `${r.remaining} have no other side` : '',
+      ].filter(Boolean)
+      const summary = r.linked
+        ? `Linked ${r.linked} transfer${r.linked === 1 ? '' : 's'}`
+        : 'Nothing could be linked automatically'
+      toast.success(left.length ? `${summary} — ${left.join(', ')}.` : `${summary}.`, {
+        duration: 8000,
+      })
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not repair the transfers'))
+    }
+  }
 
   function dismiss(kind: string) {
     const next = [...dismissed, kind]
@@ -70,6 +93,17 @@ export function AccountHygienePanel({ budgetId }: { budgetId: string | null }) {
             <p className="hygiene__detail">{f.detail}</p>
             <p className="hygiene__action">
               {f.action}
+              {f.kind === 'unpaired_transfer_legs' && (
+                <button
+                  type="button"
+                  className="hygiene__link"
+                  onClick={repairTransfers}
+                  disabled={repair.isPending}
+                >
+                  {repair.isPending ? 'Matching…' : 'Match them up'}
+                  <ChevronRight size={12} />
+                </button>
+              )}
               {target(f) && (
                 <button
                   type="button"

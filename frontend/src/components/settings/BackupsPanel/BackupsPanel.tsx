@@ -295,6 +295,11 @@ export function BackupsPanel() {
   const agentOnline = data?.agent_online ?? false
   const job = data?.job ?? null
   const jobRunning = job?.state === 'running' && agentOnline
+  // Between the click and the agent's next command poll (up to ~10s), the
+  // command file is the only evidence anything happened — `job` still
+  // describes the previous run for that whole window.
+  const queued = (data?.queued ?? false) && agentOnline
+  const busy = queued || jobRunning || runBackup.isPending
   const files = data?.files ?? []
 
   async function startRestore(preBackup: boolean) {
@@ -334,14 +339,20 @@ export function BackupsPanel() {
         <button
           className="settings-btn settings-btn--primary"
           onClick={() => runBackup.mutate()}
-          disabled={!agentOnline || jobRunning || runBackup.isPending}
+          disabled={!agentOnline || busy}
         >
           <HardDriveDownload size={14} />
-          {jobRunning && job?.action === 'backup' ? 'Backing up…' : 'Back up now'}
+          {jobRunning && job?.action === 'backup'
+            ? 'Backing up…'
+            : queued
+              ? 'Queued…'
+              : 'Back up now'}
         </button>
       </div>
 
-      {job && job.state !== 'running' && job.action === 'backup' && (
+      {/* While queued/running, the previous job's result reads as if THIS
+          click already finished — suppress it until the new job reports. */}
+      {job && !queued && !jobRunning && job.state !== 'running' && job.action === 'backup' && (
         <div
           className={`bkp-job-note ${job.state === 'error' ? 'bkp-job-note--error' : ''}`}
         >

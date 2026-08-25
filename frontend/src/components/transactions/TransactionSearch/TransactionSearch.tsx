@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, startTransition } from 'react'
 import { Search, X } from 'lucide-react'
-import { SEARCH_SUGGESTIONS } from '../../../utils/searchParser'
+import { matchSuggestions } from '../../../utils/searchParser'
+import { SearchHelp } from './SearchHelp'
 import './TransactionSearch.css'
 
 const DEBOUNCE_MS = 150
@@ -25,26 +26,9 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
     setLocalValue(value)
   }, [value])
 
-  // Use the trimmed value so trailing spaces don't produce an empty last token
-  const trimmedValue = localValue.trimEnd()
-  const tokens = trimmedValue ? trimmedValue.split(' ') : []
-  // Suggestion syntaxes span multiple tokens ("is: unapproved"), so match a
-  // trailing run of input tokens — not just the last one — and remember how
-  // much of the input each match covers so selecting it replaces exactly that.
-  function matchedTailLen(syntax: string): number {
-    const lower = syntax.toLowerCase()
-    for (let n = Math.min(3, tokens.length); n >= 1; n--) {
-      const tail = tokens.slice(-n).join(' ')
-      if (lower.startsWith(tail.toLowerCase())) return tail.length
-    }
-    return 0
-  }
-  const activeSuggestions =
-    tokens.length === 0
-      ? SEARCH_SUGGESTIONS.map((s) => ({ ...s, matchedLen: 0 }))
-      : SEARCH_SUGGESTIONS.map((s) => ({ ...s, matchedLen: matchedTailLen(s.syntax) })).filter(
-          (s) => s.matchedLen > 0
-        )
+  // Matching lives in searchParser alongside the list itself, so the palette
+  // offers exactly the same vocabulary this box does.
+  const activeSuggestions = matchSuggestions(localValue)
   const shouldShowSuggestions = focused && showSuggestions &&
     (localValue.length === 0 || activeSuggestions.length > 0)
 
@@ -78,7 +62,10 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
   }
 
   function appendSuggestion(syntax: string, matchedLen: number) {
-    // Replace the matched trailing portion of the input with the full syntax
+    // Replace the matched trailing portion of the input with the full syntax.
+    // Trailing spaces are trimmed first so `matchedLen` (measured against the
+    // trimmed tokens) lines up with what is being cut.
+    const trimmedValue = localValue.trimEnd()
     const prefix = trimmedValue.slice(0, trimmedValue.length - matchedLen)
     const next = prefix + syntax
     setLocalValue(next)
@@ -155,6 +142,12 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
           <X size={12} />
         </button>
       )}
+      {/* Inside the box, so the explanation sits where the question occurs.
+          The dropdown below completes syntax for someone who already knows a
+          language is there; this is what tells them there is one. */}
+      <span className="txn-search__help">
+        <SearchHelp />
+      </span>
 
       {shouldShowSuggestions && (
         <div className="txn-search__suggestions">

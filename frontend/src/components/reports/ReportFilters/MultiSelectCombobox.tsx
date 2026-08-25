@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, X, Check } from 'lucide-react'
+import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
 import './MultiSelectCombobox.css'
 
 export interface MultiSelectOption {
@@ -20,20 +21,20 @@ interface Props {
   title?: string
 }
 
-interface DropdownPos {
-  top: number
-  left: number
-  width: number
-}
-
 export function MultiSelectCombobox({ selectedIds, options, onChange, placeholder = 'All', label, disabled = false, title }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)
   const triggerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
+
+  // 220 is this filter's floor: the trigger is narrow in the report bar but
+  // the option labels (account and category names) are not.
+  const dropdownPos = useAnchoredPosition(triggerRef, open, {
+    width: 'trigger',
+    minWidth: 220,
+  })
 
   const filtered = options.filter((o) =>
     o.label.toLowerCase().includes(query.toLowerCase())
@@ -51,8 +52,6 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
 
   function measureAndOpen() {
     if (disabled) return
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (rect) setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 220) })
     setOpen(true)
     setHighlightedIndex(0)
   }
@@ -96,7 +95,15 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
     <div
       ref={listRef}
       className="msc__dropdown"
-      style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width, zIndex: 'var(--z-dropdown)' }}
+      style={{
+        position: 'fixed',
+        top: dropdownPos.top,
+        bottom: dropdownPos.bottom,
+        left: dropdownPos.left,
+        width: dropdownPos.width,
+        maxHeight: dropdownPos.maxHeight,
+        zIndex: 'var(--z-dropdown)',
+      }}
     >
       <div className="msc__search-wrap">
         <input

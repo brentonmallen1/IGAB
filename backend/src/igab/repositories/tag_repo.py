@@ -22,6 +22,34 @@ SYSTEM_TAGS = [
     ("debt_principal", "Debt principal", "orange"),
 ]
 
+#: Name fragments that suggest a system tag on import, checked against the
+#: category's own name and its group's.
+#:
+#: Only for a fresh import, where the alternative is a savings report that is
+#: empty until the user finds a tag UI they have no reason to look for. It is
+#: a suggestion made out loud — the import summary reports the count, and a
+#: wrong guess is one click to remove — so the list stays short and obvious
+#: rather than clever. Nothing here ever re-tags an existing category.
+IMPORT_TAG_HINTS: list[tuple[str, tuple[str, ...]]] = [
+    ("savings", ("saving", "emergency fund", "rainy day", "nest egg")),
+    ("long_term_expense", ("true expense", "long term", "long-term", "sinking fund")),
+]
+
+
+def suggest_system_tag(category_name: str, group_name: str) -> str | None:
+    """The system tag an imported category's names point at, if any.
+
+    The category's own name wins: a "Vacation" category inside a "True
+    Expenses" group is a long-term expense, but a "Savings" category in that
+    same group is savings.
+    """
+    for haystack in (category_name, group_name):
+        lowered = haystack.lower()
+        for system_key, fragments in IMPORT_TAG_HINTS:
+            if any(fragment in lowered for fragment in fragments):
+                return system_key
+    return None
+
 
 class TagRepository(BaseRepository[Tag]):
     model = Tag
@@ -243,13 +271,40 @@ class TagRepository(BaseRepository[Tag]):
 
 
 async def seed_system_tags(session: AsyncSession, budget_id: uuid.UUID) -> None:
+    """Give this budget the system tags it is missing.
+
+    Per key, and safe to call repeatedly: a budget that has three of the four
+    (anything predating `debt_principal`) gets the fourth rather than nothing.
+
+    A same-named tag the user made themselves is ADOPTED rather than skipped.
+    Skipping it is what the original backfill migration did, and the result
+    was a budget where "Savings" existed, categories were tagged with it, and
+    the savings report stayed empty forever — because the report looks up the
+    system key, which that tag did not have. Adopting also avoids the unique
+    name collision that creating a second "Savings" would hit.
+    """
     repo = TagRepository(session)
     for system_key, name, color_slot in SYSTEM_TAGS:
-        existing = await repo.get_system_tag(budget_id, system_key)
-        if existing is None:
-            await repo.create(
-                budget_id=budget_id,
-                name=name,
-                system_key=system_key,
-                color_slot=color_slot,
+        if await repo.get_system_tag(budget_id, system_key) is not None:
+            continue
+        claimed = (
+            await session.execute(
+                select(Tag).where(
+                    Tag.budget_id == budget_id,
+                    func.lower(Tag.name) == name.lower(),
+                    Tag.system_key.is_(None),
+                    Tag.is_deleted == False,  # noqa: E712
+                )
             )
+        ).scalar_one_or_none()
+        if claimed is not None:
+            claimed.system_key = system_key
+            claimed.color_slot = color_slot
+            await session.flush()
+            continue
+        await repo.create(
+            budget_id=budget_id,
+            name=name,
+            system_key=system_key,
+            color_slot=color_slot,
+        )

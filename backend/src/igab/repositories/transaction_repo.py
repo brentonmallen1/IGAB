@@ -1,7 +1,7 @@
 import re
 import uuid
 from collections.abc import Collection, Mapping, Sequence
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
@@ -14,6 +14,7 @@ from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
+    COUNTERPART_ACCOUNT_ID,
     LEAF,
     NEEDS_CATEGORY,
     NOT_DELETED,
@@ -26,7 +27,11 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-_AMOUNT_SEARCH_RE = re.compile(r"\d*\.?\d+")
+# A trailing dot is a half-typed amount, not a non-amount: "12." is what the
+# user's keyboard holds for one keystroke on the way to "12.34". Rejecting it
+# blanked the results mid-word, which reads as "typing a dot breaks search".
+# `\d+\.?\d*` accepts 12, 12., 12.34; `\.\d+` keeps bare ".34" working.
+_AMOUNT_SEARCH_RE = re.compile(r"\d+\.?\d*|\.\d+")
 
 
 def _amount_from_search(search: str) -> Decimal | None:
@@ -57,16 +62,24 @@ class TransactionRepository(BaseRepository[Transaction]):
     model = Transaction
 
     @staticmethod
-    def with_needs_category(stmt: Select[tuple[Transaction]]) -> Select[tuple[Transaction]]:
-        """Load `Transaction.needs_category` on a statement selecting Transaction.
+    def with_computed(stmt: Select[tuple[Transaction]]) -> Select[tuple[Transaction]]:
+        """Load every served computed field on a statement selecting Transaction.
 
         Every path that serializes a `TransactionResponse` has to go through
-        here. The field is required in the schema, so a path that skips it
+        here. One helper for all of them, so a new computed field cannot be
+        forgotten on some listing path.
+
+        `needs_category` is required in the schema, so a path that skips this
         raises rather than reporting an unfiled row as filed — the failure
         direction that matters when the number is a count of work the user
-        still owes.
+        still owes. `counterpart_account_id` is nullable (a plain transaction
+        has none), so it cannot fail loudly the same way; the checklist suite
+        in test_transfer_counterpart.py sweeps the serializing paths instead.
         """
-        return stmt.options(with_expression(Transaction.needs_category, NEEDS_CATEGORY))
+        return stmt.options(
+            with_expression(Transaction.needs_category, NEEDS_CATEGORY),
+            with_expression(Transaction.counterpart_account_id, COUNTERPART_ACCOUNT_ID),
+        )
 
     async def get(self, id: uuid.UUID) -> Transaction | None:
         # Overrides BaseRepository.get to carry needs_category. populate_existing
@@ -74,7 +87,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         # and SQLAlchemy leaves a with_expression attribute unset on an object
         # it has seen before — which would surface as None on exactly the
         # create/update responses, and only those.
-        stmt = self.with_needs_category(
+        stmt = self.with_computed(
             select(Transaction).where(Transaction.id == id, NOT_DELETED)
         ).execution_options(populate_existing=True)
         return (await self.session.execute(stmt)).scalar_one_or_none()
@@ -90,7 +103,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         No is_deleted filter: this refreshes an object already in hand, and a
         soft-deleted row still has to be snapshot-able for the change log.
         """
-        stmt = self.with_needs_category(
+        stmt = self.with_computed(
             select(Transaction).where(Transaction.id == txn.id)
         ).execution_options(populate_existing=True)
         await self.session.execute(stmt)
@@ -126,7 +139,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         is_transfer: bool | None = None,
         unpaired_transfers: bool = False,
     ) -> list[Transaction]:
-        q = self.with_needs_category(select(Transaction)).where(
+        q = self.with_computed(select(Transaction)).where(
             Transaction.account_id == account_id,
             Transaction.is_deleted == False,  # noqa: E712
             Transaction.parent_transaction_id.is_(None),
@@ -311,7 +324,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         if unpaired_transfers:
             where.append(UNPAIRED_TRANSFER_LEG)
 
-        rows_q = self.with_needs_category(select(Transaction))
+        rows_q = self.with_computed(select(Transaction))
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
             Transaction
         )
@@ -602,6 +615,68 @@ class TransactionRepository(BaseRepository[Transaction]):
             await self.session.execute(insert(Transaction).values(chunk))
         await self.session.flush()
         return len(transactions)
+
+    async def list_unpaired_transfer_legs(self, budget_id: uuid.UUID) -> list[Transaction]:
+        """Every leg the hygiene panel counts, oldest first.
+
+        Same predicate as the count and the `is:unpaired` filter — the number,
+        the list and the repair pass must be looking at one rule.
+        """
+        q = (
+            self.with_computed(select(Transaction))
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.is_split == False,  # noqa: E712
+                UNPAIRED_TRANSFER_LEG,
+            )
+            .order_by(Transaction.date, Transaction.created_at)
+        )
+        return list((await self.session.execute(q)).scalars().all())
+
+    async def find_transfer_candidates(
+        self,
+        *,
+        account_id: uuid.UUID,
+        amount: Decimal,
+        counterpart_account_id: uuid.UUID | None = None,
+        on_date: date | None = None,
+        date_tolerance_days: int = 0,
+    ) -> list[Transaction]:
+        """Rows in `account_id` that could be the missing side of a transfer.
+
+        Always: live, unlinked, not part of a split, exactly `amount`.
+        `counterpart_account_id` narrows to legs whose transfer payee points
+        back at that account — the high-confidence shape auto-linking trusts.
+        Left None, plain rows qualify too (a bank-imported far leg whose payee
+        is "Online Transfer"), which is what the picker wants to offer.
+        Dates: exact `on_date`, widened by `date_tolerance_days` either side.
+        """
+        q = self.with_computed(select(Transaction)).where(
+            Transaction.account_id == account_id,
+            NOT_DELETED,
+            Transaction.parent_transaction_id.is_(None),
+            Transaction.is_split == False,  # noqa: E712
+            Transaction.transfer_id.is_(None),
+            Transaction.amount == amount,
+        )
+        if counterpart_account_id is not None:
+            q = q.join(Payee, Transaction.payee_id == Payee.id).where(
+                Payee.transfer_account_id == counterpart_account_id
+            )
+        if on_date is not None:
+            if date_tolerance_days:
+                q = q.where(
+                    Transaction.date.between(
+                        on_date - timedelta(days=date_tolerance_days),
+                        on_date + timedelta(days=date_tolerance_days),
+                    )
+                )
+            else:
+                q = q.where(Transaction.date == on_date)
+        q = q.order_by(Transaction.date, Transaction.created_at)
+        return list((await self.session.execute(q)).scalars().all())
 
     async def bulk_link_transfers(self, links: list[tuple[uuid.UUID, uuid.UUID]]) -> None:
         """Set transfer_id on already-inserted rows: (row_id, partner_id) pairs.

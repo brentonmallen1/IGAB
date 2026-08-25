@@ -213,6 +213,11 @@ export interface Transaction {
    * as unfiled under a badge that counted 3.
    */
   needs_category: boolean
+  /** The account on the other side of a transfer, or null for a plain
+   *  transaction. Server-computed — COUNTERPART_ACCOUNT_ID in backend
+   *  txn_filters.py — because a linked leg's payee can be null or wrong.
+   *  Render via utils/transferDisplay.ts; never re-derive. */
+  counterpart_account_id: string | null
   memo: string | null
   cleared: ClearedStatus
   approved: boolean

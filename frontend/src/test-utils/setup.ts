@@ -11,6 +11,11 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver
 
+// jsdom has no layout, so it ships no scrollIntoView. cmdk calls it whenever
+// the highlighted item changes — i.e. on every keystroke in the command
+// palette — so without this any palette test dies before its first assertion.
+Element.prototype.scrollIntoView ??= function scrollIntoView() {}
+
 // jsdom implements no media queries at all, so useMediaQuery/useIsMobile throws
 // in any component that consults the breakpoint. Default to desktop; a test
 // that needs the mobile branch mocks useMediaQuery directly, as the transaction

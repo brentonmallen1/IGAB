@@ -120,8 +120,11 @@ async def test_unpaired_transfer_leg_imports_as_plain_row(db_session):
 
 async def test_categorized_transfer_leg_imports_categorized_unlinked(db_session):
     """YNAB transfers to off-budget accounts carry a category (they're
-    spending). The leg imports with its category and is not transfer-linked
-    (linked categorized transfers arrive with the off-budget feature)."""
+    spending). Here BOTH accounts are on-budget (no type override, so
+    "Mortgage" imports as an ordinary checking account), and a category on an
+    on↔on transfer would count money that never left the budget as spending —
+    so the legs stay unlinked. See TestSpendingTransfersPair for the same
+    shape with a genuinely off-budget far side, which does link."""
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
@@ -767,3 +770,131 @@ class TestTheUnpairedCountAgreesWithTheImporter:
 
         review = await services.transaction_repo.count_pending_review(budget.id)
         assert review["uncategorized"] == 1, "it surfaces as a row needing a category instead"
+
+
+class TestSpendingTransfersPair:
+    """A categorized transfer leg — YNAB's "spending transfer", a mortgage
+    payment made from checking — is still a transfer and still has a far leg
+    in the export. The importer used to refuse to even look at it
+    (`category_id is None` gated the pairing), so on one real export 169 rows
+    imported with their far side visible in the other account and unreachable
+    from this one. Pairing them changes no number: the category stays, so the
+    spending still counts as spending.
+    """
+
+    async def _import(self, db_session, transactions, account_types=None):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        result = await _importer(
+            services, db_session, budget, account_types=account_types
+        ).import_budget(YNABBudget(transactions=transactions, budget_entries=[]))
+        await db_session.flush()
+        return services, budget, result
+
+    async def _rows_by_account(self, db_session, budget):
+        rows = (
+            await db_session.execute(
+                select(Transaction).where(Transaction.budget_id == budget.id)
+            )
+        ).scalars()
+        out: dict[str, list[Transaction]] = {}
+        accounts = {
+            a.id: a.name
+            for a in (
+                await db_session.execute(select(Account).where(Account.budget_id == budget.id))
+            ).scalars()
+        }
+        for row in rows:
+            out.setdefault(accounts[row.account_id], []).append(row)
+        return out
+
+    async def test_a_categorized_leg_pairs_with_its_tracked_side(self, db_session):
+        _, budget, result = await self._import(
+            db_session,
+            [
+                _txn(
+                    "Checking",
+                    "Transfer : Mortgage",
+                    "-2000.00",
+                    category="Mortgage",
+                    group="Bills",
+                ),
+                _txn("Mortgage", "Transfer : Checking", "2000.00"),
+            ],
+            account_types={"Mortgage": ("mortgage", False)},
+        )
+
+        by_account = await self._rows_by_account(db_session, budget)
+        near = by_account["Checking"][0]
+        far = by_account["Mortgage"][0]
+        assert near.transfer_id == far.id, "the 169: linked at last"
+        assert far.transfer_id == near.id
+        assert near.category_id is not None, "and still counted as spending"
+        assert result.transfer_legs_unpaired == 0
+
+    async def test_two_categorized_legs_are_left_unlinked(self, db_session):
+        """Both sides categorized would count the same money as spending
+        twice. Better visibly unpaired than invisibly wrong."""
+        _, budget, _ = await self._import(
+            db_session,
+            [
+                _txn("Checking", "Transfer : Savings", "-500.00", category="Fun", group="Everyday"),
+                _txn("Savings", "Transfer : Checking", "500.00", category="Fun", group="Everyday"),
+            ],
+        )
+        by_account = await self._rows_by_account(db_session, budget)
+        assert by_account["Checking"][0].transfer_id is None
+        assert by_account["Savings"][0].transfer_id is None
+
+    async def test_a_categorized_leg_between_on_budget_accounts_is_left_unlinked(
+        self, db_session
+    ):
+        """On↔on is internal movement; a category on it would count money that
+        never left the budget as spending."""
+        _, budget, _ = await self._import(
+            db_session,
+            [
+                _txn("Checking", "Transfer : Savings", "-500.00", category="Fun", group="Everyday"),
+                _txn("Savings", "Transfer : Checking", "500.00"),
+            ],
+        )
+        by_account = await self._rows_by_account(db_session, budget)
+        assert by_account["Checking"][0].transfer_id is None
+
+    async def test_split_transfer_legs_are_counted_not_hidden(self, db_session):
+        """A transfer inside a split can't be linked — money fields live on
+        the parent — but it must not vanish from the count either, or the
+        hygiene panel promises fewer rows than its own list shows."""
+        _, budget, result = await self._import(
+            db_session,
+            [
+                # Savings must exist for "Transfer : Savings" to resolve to a
+                # real transfer payee — that resolution is what makes a row a
+                # transfer leg to every reader, including the predicate.
+                _txn("Savings", "Interest", "1.00", category="Income", group="Inflow"),
+                _split_txn(
+                    "Checking",
+                    "Transfer : Savings",
+                    [("-300.00", "Everyday", "Groceries", None), ("-200.00", None, None, None)],
+                ),
+            ],
+        )
+        # Parent (never categorized) + the one uncategorized child, exactly
+        # what UNPAIRED_TRANSFER_LEG selects.
+        assert result.transfer_legs_in_splits == 2
+        assert result.transfer_legs_unpaired == 2
+        predicate_count = (
+            await db_session.execute(
+                select(func.count())
+                .select_from(Transaction)
+                .where(
+                    Transaction.budget_id == budget.id,
+                    Transaction.is_deleted == False,  # noqa: E712
+                    UNPAIRED_TRANSFER_LEG,
+                )
+            )
+        ).scalar_one()
+        assert predicate_count == result.transfer_legs_unpaired
+
+

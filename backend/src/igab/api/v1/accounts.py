@@ -12,6 +12,7 @@ from igab.dependencies import (
     SessionDep,
     get_account_repo,
     get_transaction_matching_service,
+    get_transaction_service,
 )
 from igab.domain.exceptions import DuplicateError, NotFoundError
 from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
@@ -23,6 +24,7 @@ from igab.services.liability_service import (
     release_for_account,
 )
 from igab.services.transaction_matching_service import TransactionMatchingService
+from igab.services.transaction_service import TransactionService
 
 router = APIRouter()
 
@@ -82,6 +84,35 @@ async def account_hygiene(
     return HygieneReportResponse(
         findings=[HygieneFindingResponse(**vars(f)) for f in report.findings],
         clean=report.clean,
+    )
+
+
+class RepairTransfersResponse(BaseModel):
+    #: Pairs linked. Each is two rows that already existed.
+    linked: int
+    #: Legs with more than one possible partner — left alone on purpose, for a
+    #: person to answer in the register's picker.
+    ambiguous: int
+    #: Legs with no candidate at all: the other side was never imported.
+    remaining: int
+
+
+@router.post("/{budget_id}/accounts/hygiene/repair-transfers")
+async def repair_transfers(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    date_tolerance_days: int = Query(0, ge=0, le=14),
+) -> RepairTransfersResponse:
+    """Link the unpaired transfer legs whose partner is unmistakable.
+
+    Repairs history the fixed importer can't reach. It writes no money and
+    creates no rows — only `transfer_id` on pairs that already exist — and it
+    is idempotent, so a second run links nothing. Anything ambiguous is left
+    for the register's picker rather than guessed at.
+    """
+    return RepairTransfersResponse(
+        **await txn_service.repair_transfers(budget_id, date_tolerance_days=date_tolerance_days)
     )
 
 

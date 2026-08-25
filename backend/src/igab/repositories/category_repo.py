@@ -3,16 +3,72 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.orm import selectinload, with_expression
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup
+from igab.domain.exceptions import InvariantViolation
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import IS_ASSIGNABLE, IS_CATEGORIZABLE
 
 
 class CategoryGroupRepository(BaseRepository[CategoryGroup]):
     model = CategoryGroup
+
+    async def reorder(self, budget_id: uuid.UUID, group_ids: list[uuid.UUID]) -> None:
+        """Set every group's sort_order from its position in `group_ids`.
+
+        The list must name each of the budget's *visible* live groups exactly
+        once; **hidden** groups may be omitted, because the budget page drags
+        against the list it shows and by default that list excludes them —
+        demanding completeness the caller structurally cannot provide made
+        every reorder fail for any budget that had ever hidden a group. An
+        omitted hidden group keeps its old position among the others (stable
+        interleave), so it re-appears where the user left it when re-shown.
+
+        Everything else is still refused: a duplicate, an unknown or deleted
+        id, or a *visible* group missing from the list — that last one is the
+        stale client (a group added in another tab), which must fail loudly
+        rather than shuffle rows the user never saw.
+        """
+        live = list(
+            (
+                await self.session.execute(
+                    select(CategoryGroup)
+                    .where(
+                        CategoryGroup.budget_id == budget_id,
+                        CategoryGroup.is_deleted == False,  # noqa: E712
+                    )
+                    .order_by(CategoryGroup.sort_order, CategoryGroup.name)
+                )
+            ).scalars()
+        )
+        given = set(group_ids)
+        if len(group_ids) != len(given):
+            raise InvariantViolation("Reorder must list each group at most once")
+        live_ids = {g.id for g in live}
+        if given - live_ids:
+            raise InvariantViolation("Reorder names a group this budget does not have")
+        visible = {g.id for g in live if not g.is_hidden}
+        if visible - given:
+            raise InvariantViolation("Reorder must list each of this budget's visible groups")
+
+        # Omitted hidden groups hold their old slot; the given ids fill the
+        # remaining slots in the given order.
+        order: list[uuid.UUID | None] = [None] * len(live)
+        for old_index, group in enumerate(live):
+            if group.id not in given:
+                order[old_index] = group.id
+        it = iter(group_ids)
+        final = [slot if slot is not None else next(it) for slot in order]
+
+        for position, group_id in enumerate(final):
+            await self.session.execute(
+                update(CategoryGroup)
+                .where(CategoryGroup.id == group_id)
+                .values(sort_order=position)
+            )
+        await self.session.flush()
 
     async def get_all(
         self, budget_id: uuid.UUID, include_hidden: bool = False

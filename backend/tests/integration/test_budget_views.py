@@ -69,6 +69,98 @@ class TestViewCrud:
         assert "already" in resp.json()["detail"].lower()
 
 
+class TestSoftDeleteLifecycle:
+    """Deletes are soft, but they must not behave like the view half-exists.
+
+    The original full unique constraint burned every deleted view's name
+    forever — recreate returned 409 "already exists" against a list showing
+    nothing — and the access guard passed soft-deleted ids through to loaders
+    that filter them, turning a plain GET into 404 and a PATCH into a 500.
+    """
+
+    async def test_deleted_name_is_reusable(self, api_client, db_session):
+        budget, _ = await _budget_with_categories(db_session, api_client.test_user)
+        first = (
+            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})
+        ).json()
+        assert (await api_client.delete(f"/api/v1/views/{first['id']}")).status_code == 204
+
+        again = await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})
+        assert again.status_code == 201
+        assert again.json()["id"] != first["id"]
+
+    async def test_soft_deleted_view_is_gone_from_every_route(self, api_client, db_session):
+        budget, _ = await _budget_with_categories(db_session, api_client.test_user)
+        view = (
+            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})
+        ).json()
+        await api_client.delete(f"/api/v1/views/{view['id']}")
+
+        assert (await api_client.get(f"/api/v1/views/{view['id']}")).status_code == 404
+        # PATCHing a deleted view used to slip past the guard and 500 on
+        # serializing the row the repo (correctly) refused to load.
+        patched = await api_client.patch(f"/api/v1/views/{view['id']}", json={"name": "X"})
+        assert patched.status_code == 404
+        assert (await api_client.delete(f"/api/v1/views/{view['id']}")).status_code == 404
+
+    async def test_empty_patch_on_live_view_is_fine(self, api_client, db_session):
+        budget, _ = await _budget_with_categories(db_session, api_client.test_user)
+        view = (
+            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})
+        ).json()
+        resp = await api_client.patch(f"/api/v1/views/{view['id']}", json={})
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "Lens"
+
+
+class TestAtomicCreate:
+    async def test_groups_and_placements_land_in_one_request(self, api_client, db_session):
+        """Create used to be POST-the-name then PATCH-the-rest; a failed PATCH
+        left a committed zero-group view behind. One request, or nothing."""
+        budget, cats = await _budget_with_categories(db_session, api_client.test_user)
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/views",
+            json={
+                "name": "NWS",
+                "groups": ["Need", "Save"],
+                "placements": [
+                    {"category_id": str(cats[0].id), "group_name": "Need"},
+                    {"category_id": str(cats[2].id), "group_name": "Save"},
+                ],
+            },
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        id_by_name = {g["name"]: g["id"] for g in body["groups"]}
+        placed = {p["category_id"]: p["group_id"] for p in body["placements"]}
+        assert placed[str(cats[0].id)] == id_by_name["Need"]
+        assert placed[str(cats[2].id)] == id_by_name["Save"]
+
+    async def test_bad_placement_fails_the_whole_create(self, api_client, db_session):
+        """A placement the budget doesn't own fails the create as one request.
+
+        Atomicity itself comes from get_session's rollback-on-exception, which
+        the test fixture cannot observe (it shares one never-committed session
+        across requests). What this pins is that validation happens inside the
+        create request at all — the old POST-then-PATCH split reported this
+        error only after the bare view had already committed.
+        """
+        budget, _ = await _budget_with_categories(db_session, api_client.test_user)
+        _, their_cats = await _budget_with_categories(db_session, api_client.test_user)
+
+        # their_cats belong to the user's *other* budget — valid id, wrong budget.
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/views",
+            json={
+                "name": "Torn",
+                "groups": ["Need"],
+                "placements": [{"category_id": str(their_cats[0].id), "group_name": "Need"}],
+            },
+        )
+        assert resp.status_code == 400
+        assert "does not belong" in resp.json()["detail"]
+
+
 class TestPlacements:
     async def test_categories_move_to_view_groups(self, api_client, db_session):
         """The whole point: the same categories, arranged differently."""

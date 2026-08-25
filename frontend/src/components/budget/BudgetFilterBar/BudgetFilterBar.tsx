@@ -60,6 +60,19 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
   // never comes back to a mysteriously short category list
   useEffect(() => () => useUIStore.getState().setCategorySearch(''), [])
 
+  // The persisted selections are not budget-scoped, so after switching budgets
+  // (or a delete from another tab) they can point at a view or filter this
+  // budget doesn't have. Self-heal to the default rather than letting a stale
+  // id ride along into report queries.
+  useEffect(() => {
+    if (views && activeViewId && !views.some((v) => v.id === activeViewId)) setActiveView(null)
+  }, [views, activeViewId, setActiveView])
+  useEffect(() => {
+    if (filters && activeFilterId && !filters.some((f) => f.id === activeFilterId)) {
+      setActiveFilter(null)
+    }
+  }, [filters, activeFilterId, setActiveFilter])
+
   // Funding status comes from the row, computed by the server's TargetService
   // — the same function Fill Underfunded asks — so a chip's count always
   // matches what the rows show and what the button will do.

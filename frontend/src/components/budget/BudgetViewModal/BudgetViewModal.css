@@ -302,3 +302,23 @@
   outline: none;
   border-bottom-color: var(--color-accent);
 }
+
+/* A view's group order is its array order, so dragging a chip IS the
+   feature — nothing else has to be saved. */
+.view-editor__chip {
+  cursor: grab;
+}
+
+.view-editor__chip:active {
+  cursor: grabbing;
+}
+
+.view-editor__chip--drag-over {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.view-editor__section-hint {
+  font-weight: 400;
+  color: var(--text-muted);
+}

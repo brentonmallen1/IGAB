@@ -60,6 +60,22 @@ class TransactionUpdate(BaseModel):
     memo: str | None = None
     cleared: UserClearedStatus | None = None
     approved: bool | None = None
+    #: Make (or repoint) this row into a transfer to the given account —
+    #: explicit null breaks a linked transfer, or clears an orphan leg's
+    #: transfer payee. See TransactionService.update for the full semantics.
+    #: The editor's "Transfer to account" toggle used to send this and be
+    #: silently dropped (extra='ignore' Pydantic default behavior on an
+    #: undeclared field): a no-op repair path.
+    transfer_account_id: uuid.UUID | None = None
+    #: With transfer_account_id: link THIS existing row in the target account
+    #: as the partner, instead of searching/creating. The disambiguation the
+    #: transfer-candidates endpoint feeds.
+    transfer_partner_transaction_id: uuid.UUID | None = None
+    #: With transfer_account_id: write the far leg even though the target
+    #: account holds rows that could be it. Without this the server refuses
+    #: rather than guess — creating alongside the real far leg double-counts
+    #: the money. This is the picker's "none of these, create it" answer.
+    transfer_create_partner: bool = False
     latitude: float | None = Field(None, ge=-90, le=90)
     longitude: float | None = Field(None, ge=-180, le=180)
 
@@ -70,6 +86,17 @@ class TransactionUpdate(BaseModel):
         mismatched_null = lat_sent and (self.latitude is None) != (self.longitude is None)
         if lat_sent != lng_sent or mismatched_null:
             raise ValueError("latitude and longitude must be provided together")
+        return self
+
+    @model_validator(mode="after")
+    def _transfer_fields_consistent(self) -> "TransactionUpdate":
+        if "transfer_account_id" in self.model_fields_set and "payee_id" in self.model_fields_set:
+            raise ValueError(
+                "Send either transfer_account_id or payee_id, not both — "
+                "a transfer's payee is derived from its destination"
+            )
+        if self.transfer_partner_transaction_id is not None and self.transfer_account_id is None:
+            raise ValueError("transfer_partner_transaction_id requires transfer_account_id")
         return self
 
 
@@ -102,6 +129,15 @@ class TransactionResponse(BaseModel):
     #: here rather than reach the register as a quiet False. See
     #: `Transaction.needs_category` and `NEEDS_CATEGORY`.
     needs_category: bool
+    #: The account on the other side of a transfer, or None for a plain
+    #: transaction. Server-computed (`COUNTERPART_ACCOUNT_ID` in
+    #: txn_filters.py) because a linked leg's payee can be null or wrong and
+    #: the partner row may not be loaded client-side. Declared without a
+    #: default so the key always serializes — but since None is legal, a path
+    #: that skips the loader degrades silently to "not a transfer" instead of
+    #: raising like needs_category does. test_transfer_counterpart.py sweeps
+    #: the serializing paths for exactly that gap.
+    counterpart_account_id: uuid.UUID | None
     memo: str | None
     cleared: str
     approved: bool

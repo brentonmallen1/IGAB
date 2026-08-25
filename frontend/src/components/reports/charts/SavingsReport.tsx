@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { useNavigate } from 'react-router-dom'
 import { useSavingsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { getCurrencySymbol } from '../../../utils/money'
@@ -26,6 +27,7 @@ interface Props {
 const MONTH_OPTIONS = [6, 12, 24] as const
 
 export function SavingsReport({ budgetId }: Props) {
+  const navigate = useNavigate()
   const { formatMoney, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
@@ -74,7 +76,8 @@ export function SavingsReport({ budgetId }: Props) {
             much you&apos;re typically adding.
           </p>
           <p>
-            To track a category, go to Settings → Categories and add the Savings tag.
+            To track a category, open it on the Budget page and add the{' '}
+            <strong>Savings</strong> tag in the panel that opens.
           </p>
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
@@ -109,10 +112,25 @@ export function SavingsReport({ budgetId }: Props) {
       {!hasData ? (
         <div className="reports-empty">
           <p>No savings categories tracked yet.</p>
+          {/* This report is tag-driven and nothing else says so, so an empty
+              state that only restates the emptiness leaves the user to guess
+              which of "no savings" and "not set up" they are looking at. */}
           <p style={{ fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
-            Tag categories with <strong>Savings</strong> or <strong>Long-term expense</strong> to
-            track them here.
+            This report follows the categories you tag as <strong>Savings</strong> or{' '}
+            <strong>Long-term expense</strong> — not your savings accounts.
           </p>
+          <p style={{ fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
+            Open a category on the Budget page and add the tag in the panel that
+            opens; it will show up here.
+          </p>
+          <button
+            type="button"
+            className="report-btn"
+            style={{ marginTop: 12 }}
+            onClick={() => navigate('/budget')}
+          >
+            Go to the Budget page
+          </button>
         </div>
       ) : (
         <div ref={captureRef} className="report-capture">

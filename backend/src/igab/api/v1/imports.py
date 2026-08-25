@@ -85,6 +85,10 @@ class YNABImportResult(BaseModel):
     #: Transfer legs imported without their partner. Non-zero means some rows
     #: that are really internal movement could not be identified as such.
     transfer_legs_unpaired: int = 0
+    #: Categories tagged Savings / Long-term expense from their names. A tag
+    #: changes how that category's spending is classified, so the count is
+    #: shown rather than applied quietly.
+    categories_tagged: int = 0
     errors: list[str]
 
 

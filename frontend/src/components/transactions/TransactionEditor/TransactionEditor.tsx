@@ -14,7 +14,10 @@ import {
   usePayees,
   useSimilarTransactions,
   useTransaction,
+  useTransferCandidates,
 } from '../../../api/transactions'
+import toast from 'react-hot-toast'
+import { apiErrorMessage } from '../../../api/client'
 import { confirmDeleteTransaction } from '../../../api/attachments'
 import { useCategories, useCategoryGroups, useRecentPayeeForCategory } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
@@ -71,6 +74,9 @@ interface Props {
   aiJob?: AIJob | null
   onClose: () => void
 }
+
+/** Sentinel partner choice: "none of these — write the far leg". */
+const CREATE_NEW_PARTNER = '__create__'
 
 export function TransactionEditor({
   budgetId,
@@ -154,8 +160,17 @@ export function TransactionEditor({
     }
     return 'uncleared'
   })
-  const [isTransfer, setIsTransfer] = useState(!!transaction?.transfer_id)
-  const [transferAccountId, setTransferAccountId] = useState('')
+  // counterpart_account_id, not transfer_id: an unpaired leg (the importer's
+  // leftovers) is still a transfer, and it is the one most in need of this
+  // editor. Opening one used to show the toggle off and no destination.
+  const [isTransfer, setIsTransfer] = useState(!!transaction?.counterpart_account_id)
+  const [transferAccountId, setTransferAccountId] = useState(
+    transaction?.counterpart_account_id ?? ''
+  )
+  /** Which existing row to adopt as the far leg (the ambiguity answer), or
+   *  CREATE_NEW_PARTNER for "none of these". */
+  const [partnerChoice, setPartnerChoice] = useState<string | null>(null)
+  const wasTransfer = !!transaction?.counterpart_account_id
   const [showPayeeDropdown, setShowPayeeDropdown] = useState(false)
   const [showSimilar, setShowSimilar] = useState(false)
   const [showAttachments, setShowAttachments] = useState(false)
@@ -232,6 +247,18 @@ export function TransactionEditor({
 
   const transferAccounts = accounts.filter((a) => a.id !== accountId)
   const transferTarget = accounts.find((a) => a.id === transferAccountId)
+  // Only for a row that isn't linked yet — an already-linked leg has its
+  // partner, and retargeting moves that partner rather than adopting another.
+  const needsPartner = isEdit && isTransfer && !transaction?.transfer_id && !!transferAccountId
+  const { data: partnerCandidates = [] } = useTransferCandidates(
+    budgetId,
+    needsPartner ? (transaction?.id ?? null) : null,
+    needsPartner ? transferAccountId : null
+  )
+  // The question is only answerable by a person, and the server refuses a
+  // submit without an answer — so Save waits for one rather than sending a
+  // request that can only fail.
+  const needsPartnerChoice = needsPartner && partnerCandidates.length > 0 && !partnerChoice
   // Off-budget transfers are real spending (YNAB semantics) and may carry a
   // category on the on-budget side
   const transferIsOffBudget = isTransfer && !!transferTarget && !transferTarget.on_budget
@@ -316,6 +343,18 @@ export function TransactionEditor({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    try {
+      await doSubmit()
+    } catch (err) {
+      // The mutations here define no onError, so without this catch a server
+      // refusal — an unanswered transfer-partner question, a reconciled-row
+      // guard — simply vanished: Save re-enabled, nothing saved, nothing
+      // said. The editor stays open with the user's input intact.
+      toast.error(apiErrorMessage(err, 'Could not save'))
+    }
+  }
+
+  async function doSubmit() {
     if (!accountId) return
     const outflowVal = parseAmountExpressionInput(outflow) || 0
     const inflowVal = parseAmountExpressionInput(inflow) || 0
@@ -393,6 +432,13 @@ export function TransactionEditor({
       ...(isTransfer
         ? {
             transfer_account_id: transferAccountId,
+            // Which existing row is the far leg, when more than one could be.
+            // Without an answer the server refuses rather than guess.
+            ...(partnerChoice === CREATE_NEW_PARTNER
+              ? { transfer_create_partner: true }
+              : partnerChoice
+                ? { transfer_partner_transaction_id: partnerChoice }
+                : {}),
             ...(transferIsOffBudget && categoryId ? { category_id: categoryId } : {}),
           }
         : {
@@ -417,6 +463,15 @@ export function TransactionEditor({
     if (!proceed) return
 
     if (isEdit) {
+      // Turning the toggle OFF: break the link as its own step. The payee of
+      // a linked leg IS its destination, so the server refuses to take a new
+      // payee and a link instruction together — break first, then edit.
+      if (wasTransfer && !isTransfer) {
+        await updateTxn.mutateAsync({
+          id: transaction!.id,
+          transfer_account_id: null,
+        })
+      }
       await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
     } else {
       await createTxn.mutateAsync({ ...payload, ai_job_id: aiJobId })
@@ -428,9 +483,13 @@ export function TransactionEditor({
   async function handleDelete() {
     if (!transaction) return
     if (!(await confirmDeleteTransaction(transaction.id))) return
-    const { batchId } = await deleteTxn.mutateAsync({ id: transaction.id, accountId })
-    onClose()
-    showUndo(batchId, 'Transaction deleted')
+    try {
+      const { batchId } = await deleteTxn.mutateAsync({ id: transaction.id, accountId })
+      onClose()
+      showUndo(batchId, 'Transaction deleted')
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not delete'))
+    }
   }
 
   const isPending =
@@ -779,8 +838,12 @@ export function TransactionEditor({
                 <select
                   className="txn-editor__select"
                   value={transferAccountId}
-                  onChange={(e) => setTransferAccountId(e.target.value)}
+                  onChange={(e) => {
+                    setTransferAccountId(e.target.value)
+                    setPartnerChoice(null)
+                  }}
                   required={isTransfer}
+                  aria-label="To Account"
                 >
                   <option value="">Select account…</option>
                   {transferAccounts.map((a) => (
@@ -790,6 +853,46 @@ export function TransactionEditor({
                   ))}
                 </select>
               </div>
+
+              {/* More than one row over there could be this transfer's other
+                  half. Guessing would either link the wrong money or write a
+                  duplicate, so the answer is the user's. */}
+              {partnerCandidates.length > 0 && (
+                <div className="txn-editor__field">
+                  <label className="txn-editor__label">
+                    Which transaction in {transferTarget?.name} is the other side?
+                  </label>
+                  <div className="txn-editor__partner-options">
+                    {partnerCandidates.map((c) => (
+                      <label key={c.id} className="txn-editor__partner-option">
+                        <input
+                          type="radio"
+                          name="transfer-partner"
+                          checked={partnerChoice === c.id}
+                          onChange={() => setPartnerChoice(c.id)}
+                        />
+                        <span>
+                          {c.date} · {formatMoney(Number(c.amount))}
+                          {c.memo ? ` · ${c.memo}` : ''}
+                          {c.cleared === 'reconciled' ? ' · reconciled' : ''}
+                        </span>
+                      </label>
+                    ))}
+                    <label className="txn-editor__partner-option">
+                      <input
+                        type="radio"
+                        name="transfer-partner"
+                        checked={partnerChoice === CREATE_NEW_PARTNER}
+                        onChange={() => setPartnerChoice(CREATE_NEW_PARTNER)}
+                      />
+                      <span>
+                        None of these — add the matching transaction to{' '}
+                        {transferTarget?.name}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
               {transferIsOffBudget && (
                 <div className="txn-editor__field">
                   <label className="txn-editor__label">
@@ -1060,7 +1163,7 @@ export function TransactionEditor({
             <button
               type="submit"
               className="txn-editor__btn txn-editor__btn--primary"
-              disabled={isPending || !splitIsValid || !accountId}
+              disabled={isPending || !splitIsValid || !accountId || needsPartnerChoice}
             >
               {isReview ? 'Approve' : isEdit ? 'Save' : 'Add'}
             </button>

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { invalidateAfterImport } from './invalidateAfterImport'
 import { confirmAsync } from '../stores/confirmStore'
 import type { Budget, BudgetMonth } from '../types'
 import type { YnabImportResult } from './imports'
@@ -221,10 +222,14 @@ export function useMoveHistory(budgetId: string, month: string, enabled: boolean
  * selector. Returning the invalidation promise makes mutateAsync wait for
  * the refetch, so navigation always happens against fresh data. */
 function seedBudgetsCache(qc: ReturnType<typeof useQueryClient>, budget: Budget) {
+  // Seed even when the list was never fetched — `old ? … : old` made this a
+  // no-op on a cold cache, and refetchType 'all' reaches the selector's
+  // query when it is not mounted at this moment (plain invalidation only
+  // refetches active queries, which read as "budget missing until refresh").
   qc.setQueryData<Budget[]>(['budgets'], (old) =>
-    old ? [...old.filter((b) => b.id !== budget.id), budget] : old
+    old ? [...old.filter((b) => b.id !== budget.id), budget] : [budget]
   )
-  return qc.invalidateQueries({ queryKey: ['budgets'] })
+  return qc.invalidateQueries({ queryKey: ['budgets'], refetchType: 'all' })
 }
 
 export function useCreateBudget() {
@@ -251,7 +256,13 @@ export function useCreateSampleBudget() {
   return useMutation({
     mutationFn: (tier: SampleTier = 'starter') =>
       apiClient.post<SampleBudgetResult>('/budgets/create-sample', { tier }).then((r) => r.data),
-    onSuccess: (result) => seedBudgetsCache(qc, result.budget),
+    onSuccess: (result) =>
+      // The new budget arrives with accounts, payees and transactions already
+      // in it — every cache an import touches, not just the budget list.
+      Promise.all([
+        seedBudgetsCache(qc, result.budget),
+        invalidateAfterImport(qc, result.budget.id),
+      ]),
   })
 }
 
@@ -422,6 +433,12 @@ export function useImportYnabAsBudget() {
         })
         .then((r) => r.data)
     },
-    onSuccess: (result) => seedBudgetsCache(qc, result.budget),
+    onSuccess: (result) =>
+      // The new budget arrives with accounts, payees and transactions already
+      // in it — every cache an import touches, not just the budget list.
+      Promise.all([
+        seedBudgetsCache(qc, result.budget),
+        invalidateAfterImport(qc, result.budget.id),
+      ]),
   })
 }

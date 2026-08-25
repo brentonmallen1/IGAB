@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, Plus } from 'lucide-react'
+import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
 import './Combobox.css'
 
 export interface ComboboxOption {
@@ -23,12 +24,6 @@ interface Props {
   onBlurClose?: () => void
   'aria-label'?: string
   'aria-labelledby'?: string
-}
-
-interface DropdownPos {
-  top: number
-  left: number
-  width: number
 }
 
 export function Combobox({
@@ -59,11 +54,12 @@ export function Combobox({
     if (!open) setQuery(selectedOption?.label ?? '')
   }
   const [highlightedIndex, setHighlightedIndex] = useState(0)
-  const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const triggerRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const dropdownPos = useAnchoredPosition(triggerRef, open, { width: 'trigger' })
 
   const filtered = options.filter((o) =>
     o.label.toLowerCase().includes(query.toLowerCase())
@@ -81,14 +77,6 @@ export function Combobox({
   }, [])
 
   function measureAndOpen() {
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (rect) {
-      setDropdownPos({
-        top: rect.bottom + 2,
-        left: rect.left,
-        width: rect.width,
-      })
-    }
     setOpen(true)
     setHighlightedIndex(0)
   }
@@ -97,7 +85,9 @@ export function Combobox({
     if (autoFocus) {
       inputRef.current?.focus()
       inputRef.current?.select()
-      measureAndOpen()
+      // No measureAndOpen() here any more: `open` already initialises to
+      // autoFocus and the highlight to 0, so all this call did was take the
+      // measurement that useAnchoredPosition now takes for itself.
     }
   }, [autoFocus])
 
@@ -111,21 +101,9 @@ export function Combobox({
         onBlurClose?.()
       }
     }
-    function handleScroll(e: Event) {
-      // Ignore scroll events from within the dropdown list itself to prevent jumpiness
-      if (dropdownRef.current?.contains(e.target as Node)) return
-      const rect = triggerRef.current?.getBoundingClientRect()
-      if (rect) {
-        setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: rect.width })
-      }
-    }
     if (open) {
       document.addEventListener('mousedown', handleClick)
-      window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
-      return () => {
-        document.removeEventListener('mousedown', handleClick)
-        window.removeEventListener('scroll', handleScroll, { capture: true })
-      }
+      return () => document.removeEventListener('mousedown', handleClick)
     }
   }, [open, onBlurClose])
 
@@ -220,8 +198,10 @@ export function Combobox({
       style={{
         position: 'fixed',
         top: dropdownPos.top,
+        bottom: dropdownPos.bottom,
         left: dropdownPos.left,
         width: dropdownPos.width,
+        maxHeight: dropdownPos.maxHeight,
         zIndex: 'var(--z-dropdown)',
       }}
     >

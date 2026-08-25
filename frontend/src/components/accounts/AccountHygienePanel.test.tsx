@@ -20,8 +20,18 @@ vi.mock('react-router-dom', async () => {
 })
 
 let report: HygieneReport = { findings: [], clean: true }
+const repairMutate = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ linked: 0, ambiguous: 0, remaining: 0 }))
+)
 vi.mock('../../api/accounts', () => ({
   useAccountHygiene: () => ({ data: report }),
+  useRepairTransfers: () => ({ mutateAsync: repairMutate, isPending: false }),
+}))
+
+const toastSuccess = vi.hoisted(() => vi.fn())
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('react-hot-toast', () => ({
+  default: { success: toastSuccess, error: toastError },
 }))
 
 function finding(over: Partial<HygieneFinding> = {}): HygieneFinding {
@@ -50,6 +60,9 @@ function renderPanel() {
 beforeEach(() => {
   localStorage.clear()
   navigate.mockClear()
+  repairMutate.mockClear()
+  toastSuccess.mockClear()
+  toastError.mockClear()
   report = { findings: [], clean: true }
 })
 
@@ -118,5 +131,31 @@ describe('AccountHygienePanel', () => {
     expect(() => renderPanel()).not.toThrow()
     expect(screen.getByText('3 debt accounts hold a positive balance')).toBeInTheDocument()
     spy.mockRestore()
+  })
+
+  it('offers to match unpaired transfers up, and says what is left over', async () => {
+    // The count that made this exist was 1,117. A pass that links most of
+    // them and reports only its successes reads as "done" when it is not.
+    repairMutate.mockResolvedValueOnce({ linked: 900, ambiguous: 200, remaining: 17 })
+    report = {
+      findings: [finding({ kind: 'unpaired_transfer_legs', title: '1,117 transfers' })],
+      clean: false,
+    }
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: /Match them up/ }))
+    expect(repairMutate).toHaveBeenCalled()
+    expect(toastSuccess).toHaveBeenCalledWith(
+      expect.stringContaining('Linked 900 transfers'),
+      expect.anything()
+    )
+    expect(toastSuccess.mock.calls[0][0]).toContain('200 need you to choose')
+    expect(toastSuccess.mock.calls[0][0]).toContain('17 have no other side')
+  })
+
+  it('offers no matching button for other kinds of finding', () => {
+    report = { findings: [finding()], clean: false }
+    renderPanel()
+    expect(screen.queryByRole('button', { name: /Match them up/ })).not.toBeInTheDocument()
   })
 })

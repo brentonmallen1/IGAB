@@ -71,14 +71,15 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
     if (activeFilterId === id) setActiveFilter(null)
   }
 
+  // openModal replaces the single modal slot, which closes this modal by
+  // itself. Do NOT follow it with onClose(): that is closeModal(), and it
+  // nulls the slot openModal just filled — the editor never rendered.
   function handleEditFilter(id: string) {
     openModal('filter', id)
-    onClose()
   }
 
   function handleNewFilter() {
     openModal('filter')
-    onClose()
   }
 
   return (

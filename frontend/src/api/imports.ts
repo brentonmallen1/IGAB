@@ -25,6 +25,10 @@ export interface YnabImportResult {
   /** Transfer legs imported without their partner. Non-zero means some rows
    *  that are really internal money movement could not be identified as such. */
   transfer_legs_unpaired: number
+  /** Categories tagged Savings / Long-term expense from their names, so the
+   *  savings report has something to show. A tag changes how a category's
+   *  spending is classified, so it is reported rather than applied quietly. */
+  categories_tagged: number
   errors: string[]
 }
 

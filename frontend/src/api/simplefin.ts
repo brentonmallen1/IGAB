@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { invalidateAfterImport } from './invalidateAfterImport'
 import type {
   SimpleFINConnection,
   SimpleFINRateLimitStatus,
@@ -101,19 +102,13 @@ export function useSyncSimpleFIN(budgetId: string | null) {
         )
         .then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['accounts'] })
+      // A sync is an import: rows, payees it created, balances, budget math,
+      // hygiene — the shared sweep covers what per-key lists kept missing
+      // (new payees rendered "—" until their staleTime lapsed).
+      invalidateAfterImport(qc, budgetId)
       qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
       qc.invalidateQueries({ queryKey: ['simplefin-rate-limit'] })
-      // Sync can queue review matches, create unapproved rows, and advance
-      // cleared state — every "needs attention" surface must refetch.
       qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
-      qc.invalidateQueries({ queryKey: ['pending-matches-account'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
-      qc.invalidateQueries({ queryKey: ['reconcile-status'] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth'] })
     },
   })
 }

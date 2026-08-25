@@ -207,3 +207,26 @@ class TestFreeTextSearchMatchesAmounts:
         await repo.get_for_account(uuid.uuid4(), search="12 west")
         sql = _captured_sql(repo)
         assert "abs(transactions.amount) =" not in sql.lower()
+
+    @pytest.mark.asyncio
+    async def test_a_half_typed_amount_still_matches(self) -> None:
+        """'12.' is one keystroke inside '12.34'. Refusing it emptied the
+        register mid-word, which reads as "typing a dot breaks search"."""
+        repo = _make_repo()
+        await repo.get_for_account(uuid.uuid4(), search="12.")
+        sql = _captured_sql(repo)
+        assert "abs(transactions.amount) = 12" in sql.lower()
+
+    @pytest.mark.asyncio
+    async def test_a_leading_dot_amount_still_matches(self) -> None:
+        repo = _make_repo()
+        await repo.get_for_account(uuid.uuid4(), search=".34")
+        sql = _captured_sql(repo)
+        assert "abs(transactions.amount) = 0.34" in sql.lower()
+
+    @pytest.mark.asyncio
+    async def test_two_dots_are_not_an_amount(self) -> None:
+        repo = _make_repo()
+        await repo.get_for_account(uuid.uuid4(), search="12.34.56")
+        sql = _captured_sql(repo)
+        assert "abs(transactions.amount) =" not in sql.lower()

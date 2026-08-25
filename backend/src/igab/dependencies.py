@@ -496,14 +496,26 @@ async def require_attachment_access(
 
 
 async def _require_budget_child(
-    session: AsyncSession, model, id_value: uuid.UUID, user_id: uuid.UUID, label: str
+    session: AsyncSession,
+    model,
+    id_value: uuid.UUID,
+    user_id: uuid.UUID,
+    label: str,
+    *,
+    live_only: bool = False,
 ) -> uuid.UUID:
-    """Membership check for models carrying a budget_id column."""
+    """Membership check for models carrying a budget_id column.
+
+    `live_only` adds `NOT is_deleted` for soft-deleting models: a guard that
+    passes soft-deleted ids lets the route's own loader (which does filter)
+    come back empty — a 500 from `model_validate(None)` instead of a 404.
+    """
     from sqlalchemy import select
 
-    result = await session.execute(
-        select(model.id).where(model.id == id_value, _is_member(model.budget_id, user_id))
-    )
+    clauses = [model.id == id_value, _is_member(model.budget_id, user_id)]
+    if live_only:
+        clauses.append(model.is_deleted == False)  # noqa: E712
+    result = await session.execute(select(model.id).where(*clauses))
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{label} not found")
     return id_value
@@ -540,7 +552,9 @@ async def require_view_access(
 ) -> uuid.UUID:
     from igab.db.models import BudgetView
 
-    return await _require_budget_child(session, BudgetView, view_id, current_user.id, "View")
+    return await _require_budget_child(
+        session, BudgetView, view_id, current_user.id, "View", live_only=True
+    )
 
 
 async def require_filter_access(
@@ -548,7 +562,9 @@ async def require_filter_access(
 ) -> uuid.UUID:
     from igab.db.models import BudgetFilter
 
-    return await _require_budget_child(session, BudgetFilter, filter_id, current_user.id, "Filter")
+    return await _require_budget_child(
+        session, BudgetFilter, filter_id, current_user.id, "Filter", live_only=True
+    )
 
 
 async def require_scheduled_access(

@@ -15,7 +15,12 @@ from igab.dependencies import (
 )
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
-from igab.repositories.tag_repo import TAG_COLOR_SLOTS, TagRepository, seed_system_tags
+from igab.repositories.tag_repo import (
+    SYSTEM_TAGS,
+    TAG_COLOR_SLOTS,
+    TagRepository,
+    seed_system_tags,
+)
 
 router = APIRouter()
 
@@ -28,9 +33,12 @@ async def list_tags(
 ) -> list[TagOut]:
     tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
 
-    # Backfill system tags for budgets created before the seeding feature
-    has_system = any(tag.system_key is not None for tag, _, _ in tags_with_counts)
-    if not has_system:
+    # Backfill any system tag this budget is missing. Testing "has none at
+    # all" was the bug: `debt_principal` was added to SYSTEM_TAGS after the
+    # backfill migration was written, so every budget that already had the
+    # other three was judged done and never got it.
+    present = {tag.system_key for tag, _, _ in tags_with_counts if tag.system_key}
+    if any(key not in present for key, _, _ in SYSTEM_TAGS):
         await seed_system_tags(tag_repo.session, budget_id)
         tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
 

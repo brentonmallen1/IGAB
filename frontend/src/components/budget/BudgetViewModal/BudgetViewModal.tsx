@@ -7,7 +7,9 @@ import {
   useDeleteBudgetView,
   useUpdateBudgetView,
 } from '../../../api/budgetViews'
+import { apiErrorMessage } from '../../../api/client'
 import { useUIStore } from '../../../stores/uiStore'
+import { confirmAsync } from '../../../stores/confirmStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './BudgetViewModal.css'
 
@@ -28,7 +30,17 @@ export function BudgetViewModal({ budgetId, viewId, onClose }: Props) {
   // mount. Mounting before the list has loaded would initialise an empty
   // editor over a real view — and saving that would wipe it.
   if (viewId && !views) return null
-  return <ViewEditor budgetId={budgetId} viewId={viewId} views={views} onClose={onClose} />
+  // Keyed so re-pointing the same mounted modal at a different view re-runs
+  // the state initializers instead of editing view A's form over view B.
+  return (
+    <ViewEditor
+      key={viewId ?? 'new'}
+      budgetId={budgetId}
+      viewId={viewId}
+      views={views}
+      onClose={onClose}
+    />
+  )
 }
 
 function ViewEditor({
@@ -53,6 +65,8 @@ function ViewEditor({
     () => existing?.groups.map((g) => g.name) ?? []
   )
   const [newGroup, setNewGroup] = useState('')
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
   const [hideUnassigned, setHideUnassigned] = useState(existing?.hide_unassigned ?? false)
   const [assignment, setAssignment] = useState<Assignment>(() => {
     if (!existing) return {}
@@ -74,6 +88,11 @@ function ViewEditor({
     () => new Map(groups.map((g) => [g.id, g.name])),
     [groups]
   )
+
+  // With no groups every category is unassigned; hiding them all would save a
+  // view that renders an empty budget page. The toggle is disabled then, and
+  // this effective value is what the rows preview and the save send.
+  const effectiveHideUnassigned = hideUnassigned && groupNames.length > 0
 
   function addGroup() {
     const trimmed = newGroup.trim()
@@ -101,6 +120,16 @@ function ViewEditor({
       )
     )
     return true
+  }
+
+  /** Move a group to a position. Order is what the view saves, so this is
+   *  the whole feature — no ids, no extra request. */
+  function moveGroupTo(name: string, index: number) {
+    setGroupNames((current) => {
+      const next = current.filter((n) => n !== name)
+      next.splice(index, 0, name)
+      return next
+    })
   }
 
   function removeGroup(target: string) {
@@ -140,13 +169,10 @@ function ViewEditor({
     setError(null)
 
     try {
-      const id = isEdit
-        ? existing!.id
-        : (await createView.mutateAsync({ name: trimmed, hide_unassigned: hideUnassigned })).id
-
-      // Groups and placements in one request: placements name their group, so
-      // the client never needs ids for groups it is creating in the same
-      // breath — and a failure can't leave the view renamed but unplaced.
+      // Everything in ONE request — placements name their group, so the
+      // client never needs ids for groups it is creating in the same breath.
+      // Create used to POST the name then PATCH the rest; when the PATCH
+      // failed, the committed zero-group view stayed behind.
       const placements = Object.entries(assignment)
         .filter(([, a]) => a.group !== null || a.hidden)
         .map(([category_id, a], i) => ({
@@ -156,27 +182,49 @@ function ViewEditor({
           is_hidden: a.hidden,
         }))
 
-      await updateView.mutateAsync({
-        id,
-        ...(isEdit ? { name: trimmed } : {}),
-        hide_unassigned: hideUnassigned,
-        groups: groupNames,
-        placements,
-      })
-
-      if (!isEdit) setActiveView(id)
+      let id: string
+      if (isEdit) {
+        id = existing!.id
+        await updateView.mutateAsync({
+          id,
+          name: trimmed,
+          hide_unassigned: effectiveHideUnassigned,
+          groups: groupNames,
+          placements,
+        })
+      } else {
+        id = (
+          await createView.mutateAsync({
+            name: trimmed,
+            hide_unassigned: effectiveHideUnassigned,
+            groups: groupNames,
+            placements,
+          })
+        ).id
+        setActiveView(id)
+      }
       onClose()
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(detail ?? 'Could not save this view')
+      setError(apiErrorMessage(err, 'Could not save this view'))
     }
   }
 
   async function handleDelete() {
     if (!existing) return
-    await deleteView.mutateAsync(existing.id)
-    if (activeViewId === existing.id) setActiveView(null)
-    onClose()
+    const ok = await confirmAsync({
+      title: `Delete the view “${existing.name}”?`,
+      message: 'Your budget’s own groups and categories are not affected.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      await deleteView.mutateAsync(existing.id)
+      if (activeViewId === existing.id) setActiveView(null)
+      onClose()
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Could not delete this view'))
+    }
   }
 
   const isPending = createView.isPending || updateView.isPending
@@ -219,25 +267,54 @@ function ViewEditor({
         />
 
         <label className="view-editor__toggle">
+          {/* With no groups, everything is unassigned — hiding the unassigned
+              would render the budget page empty. The grid ignores the flag in
+              that case (viewGrouping.ts); disabling it here says so up front. */}
           <input
             type="checkbox"
-            checked={hideUnassigned}
+            checked={effectiveHideUnassigned}
+            disabled={groupNames.length === 0}
             onChange={(e) => setHideUnassigned(e.target.checked)}
           />
           <span>
             Hide unassigned categories
             <span className="view-editor__toggle-hint">
-              {hideUnassigned
-                ? 'Anything you don’t place is left out of this view — including categories you add later.'
-                : 'Anything you don’t place shows under Unassigned, so new categories don’t go missing.'}
+              {groupNames.length === 0
+                ? 'Add a group first — with no groups, every category is unassigned and hiding them would leave this view empty.'
+                : hideUnassigned
+                  ? 'Anything you don’t place is left out of this view — including categories you add later.'
+                  : 'Anything you don’t place shows under Unassigned, so new categories don’t go missing.'}
             </span>
           </span>
         </label>
 
-        <div className="view-editor__section-title">Groups in this view</div>
+        <div className="view-editor__section-title">
+          Groups in this view
+          {groupNames.length > 1 && (
+            <span className="view-editor__section-hint"> — drag to reorder</span>
+          )}
+        </div>
         <div className="view-editor__groups">
-          {groupNames.map((g) => (
-            <span key={g} className="view-editor__chip">
+          {groupNames.map((g, index) => (
+            <span
+              key={g}
+              className={
+                'view-editor__chip' + (dragOver === g ? ' view-editor__chip--drag-over' : '')
+              }
+              // A view's group order is its array order (the server assigns
+              // sort_order from position), so reordering here needs no extra
+              // persistence — only a way to say it.
+              draggable
+              onDragStart={() => setDragging(g)}
+              onDragEnd={() => { setDragging(null); setDragOver(null) }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(g) }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (dragging && dragging !== g) moveGroupTo(dragging, index)
+                setDragging(null)
+                setDragOver(null)
+              }}
+            >
               {/* Editable in place: a group name is the whole label the user
                   reads on the budget page, and getting it wrong should not
                   mean deleting the group and reassigning everything in it. */}
@@ -294,7 +371,7 @@ function ViewEditor({
             // "Hide unassigned categories" claims every unplaced row. Render
             // that claim on the row itself — a checked, disabled Hide box —
             // or the flag looks like it did nothing.
-            const hiddenByFlag = hideUnassigned && !a?.group && !a?.hidden
+            const hiddenByFlag = effectiveHideUnassigned && !a?.group && !a?.hidden
             const effectiveHidden = (a?.hidden ?? false) || hiddenByFlag
             return (
               <div
