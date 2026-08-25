@@ -223,9 +223,13 @@ def get_category_service(
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    assignment_repo: Annotated[BudgetAssignmentRepository, Depends(get_assignment_repo)],
     current_user: "CurrentUser",
 ) -> CategoryService:
-    service = CategoryService(session, category_repo, group_repo, budget_service)
+    service = CategoryService(
+        session, category_repo, group_repo, budget_service, transaction_repo, assignment_repo
+    )
     # Same actor stamping as get_budget_service — see there.
     service.changes.actor_user_id = current_user.id
     return service

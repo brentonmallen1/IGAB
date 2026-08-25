@@ -22,7 +22,12 @@ from igab.db.models import (
     CategoryTarget,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
-from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
+from igab.repositories.category_repo import (
+    BudgetAssignmentRepository,
+    CategoryGroupRepository,
+    CategoryRepository,
+)
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.category_service import CategoryService
 
 from .factories import (
@@ -48,6 +53,8 @@ def _service(db_session, services) -> CategoryService:
         CategoryRepository(db_session),
         CategoryGroupRepository(db_session),
         services.budgets,
+        TransactionRepository(db_session),
+        BudgetAssignmentRepository(db_session),
     )
 
 
@@ -718,3 +725,133 @@ async def test_integrity_reports_categories_under_a_deleted_group(db_session):
     # categories deliberately are both defensible, and this action cannot pick.
     svc = _service(db_session, services)
     assert await svc.count_orphaned_categories_under_deleted_groups(budget.id) == 2
+
+
+# ─── Moving takes the cover along ────────────────────────────────────────────
+
+
+JUN = date(2026, 6, 1)
+JUL = date(2026, 7, 1)
+OCT = date(2026, 10, 1)
+
+
+class TestMoveTakesItsCover:
+    """Measured before this existed: delete Groceries ($100 assigned, $40
+    spent) moving its rows to Dining — the dialog promised $60, the delete
+    released $100, and Dining went $40 overspent, undisclosed. The rule now:
+    the assignment that covered the moved spending moves with it, month by
+    month, so the destination's balance is untouched and what reaches Ready
+    to Assign is exactly what the dialog said, on both paths.
+    """
+
+    async def _rich_setup(self, db_session):
+        """A source with an awkward history: overspent June (no assignment,
+        covered from TBA), normal August, a future assignment, and a
+        refund-heavy October — every shape the cover has to survive."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        group = await create_category_group(db_session, budget, "Everyday")
+        account = await create_account(db_session, budget, "Checking")
+        a = await create_category(db_session, budget, group, "Groceries")
+        b = await create_category(db_session, budget, group, "Dining")
+        await create_transaction(db_session, budget, account, "1000", JUN)
+        # B's own life, which must come through untouched.
+        await create_budget_assignment(db_session, budget, b, JUL, "50")
+        await create_transaction(db_session, budget, account, "-20", JUL, category=b)
+        # A's history.
+        await create_transaction(db_session, budget, account, "-10", JUN, category=a)
+        await create_budget_assignment(db_session, budget, a, AUG, "100")
+        await create_transaction(db_session, budget, account, "-40", AUG, category=a)
+        await create_budget_assignment(db_session, budget, a, SEP, "50")
+        await create_transaction(db_session, budget, account, "30", OCT, category=a)
+        await db_session.flush()
+        return budget, a, b
+
+    async def test_move_releases_what_the_dialog_promised(self, db_session):
+        services = make_services(db_session)
+        budget, a, b = await self._rich_setup(db_session)
+        svc = _service(db_session, services)
+
+        preview = await svc.preview_delete(budget.id, [a.id], AUG)
+
+        result = await svc.delete_categories(budget.id, [a.id], move_to=b.id, month=AUG)
+        assert result.released == preview.released_if_moved, (
+            "the dialog's number and the delete's number are the same rule"
+        )
+        # The two modes legitimately differ here: October's refund is future
+        # activity, and its cover is a future assignment the viewed month's
+        # TBA already counts. Stated and pinned, not silent.
+        assert preview.released_if_moved == preview.released_if_uncategorized + Decimal("30")
+
+    async def test_move_holds_the_destination_harmless_in_every_month(self, db_session):
+        """Not just the viewed month: the cover is keyed to activity months,
+        so every per-month delta to the destination nets zero all the way
+        through the carryover simulation — overspent June, refund October and
+        all."""
+        services = make_services(db_session)
+        budget, a, b = await self._rich_setup(db_session)
+        months = (JUN, JUL, AUG, SEP, OCT)
+        before = {
+            m: (await services.budgets.get_category_balance(b.id, m)).available for m in months
+        }
+
+        await _service(db_session, services).delete_categories(
+            budget.id, [a.id], move_to=b.id, month=AUG
+        )
+        db_session.expunge_all()
+
+        for m in months:
+            after = (await services.budgets.get_category_balance(b.id, m)).available
+            assert after == before[m], f"destination moved in {m:%B}: {before[m]} -> {after}"
+
+    async def test_uncategorize_still_releases_what_it_promised(self, db_session):
+        """The same promise holds on the other path — one rule, two modes."""
+        services = make_services(db_session)
+        budget, a, b = await self._rich_setup(db_session)
+        svc = _service(db_session, services)
+
+        preview = await svc.preview_delete(budget.id, [a.id], AUG)
+
+        result = await svc.delete_categories(budget.id, [a.id], month=AUG)
+        assert result.released == preview.released_if_uncategorized
+
+    async def test_preview_names_the_spending_that_moves(self, db_session):
+        services = make_services(db_session)
+        budget, a, b = await self._rich_setup(db_session)
+
+        preview = await _service(db_session, services).preview_delete(budget.id, [a.id], AUG)
+        # −10 (Jun) −40 (Aug) +30 (Oct refund) → net 20 of spending.
+        assert preview.moving_activity == Decimal("20")
+
+    async def test_a_group_cascade_covers_each_categorys_months(self, db_session):
+        """Two categories with activity in different months, moved as one
+        cascade — the destination is harmless against their combined
+        history."""
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        group = await create_category_group(db_session, budget, "Food")
+        keep = await create_category_group(db_session, budget, "Keep")
+        account = await create_account(db_session, budget, "Checking")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        dining = await create_category(db_session, budget, group, "Dining")
+        landing = await create_category(db_session, budget, keep, "Everything")
+        await create_transaction(db_session, budget, account, "500", JUN)
+        await create_budget_assignment(db_session, budget, groceries, JUN, "30")
+        await create_transaction(db_session, budget, account, "-30", JUN, category=groceries)
+        await create_budget_assignment(db_session, budget, dining, AUG, "60")
+        await create_transaction(db_session, budget, account, "-25", AUG, category=dining)
+        await db_session.flush()
+
+        months = (JUN, JUL, AUG)
+        before = {
+            m: (await services.budgets.get_category_balance(landing.id, m)).available
+            for m in months
+        }
+        await _service(db_session, services).delete_group(
+            budget.id, group.id, move_to=landing.id, month=AUG
+        )
+        db_session.expunge_all()
+        for m in months:
+            after = (await services.budgets.get_category_balance(landing.id, m)).available
+            assert after == before[m]

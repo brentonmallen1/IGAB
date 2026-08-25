@@ -326,6 +326,9 @@ def _preview_out(preview: CategoryDeletePreview) -> CategoryDeletePreviewRespons
         future_assigned=preview.future_assigned,
         payee_count=preview.payee_count,
         scheduled_count=preview.scheduled_count,
+        moving_activity=preview.moving_activity,
+        released_if_moved=preview.released_if_moved,
+        released_if_uncategorized=preview.released_if_uncategorized,
         blocked_by=preview.blocked_by,
         is_empty=preview.is_empty,
     )

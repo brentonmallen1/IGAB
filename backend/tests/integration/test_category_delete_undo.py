@@ -15,7 +15,12 @@ from sqlalchemy import select
 
 from igab.db.models import BudgetAssignment, ChangeLog
 from igab.domain.exceptions import UndoConflict
-from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
+from igab.repositories.category_repo import (
+    BudgetAssignmentRepository,
+    CategoryGroupRepository,
+    CategoryRepository,
+)
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.category_service import CategoryService
 from igab.services.undo_service import UndoService
 
@@ -42,6 +47,8 @@ def _service(db_session, services) -> CategoryService:
         CategoryRepository(db_session),
         CategoryGroupRepository(db_session),
         services.budgets,
+        TransactionRepository(db_session),
+        BudgetAssignmentRepository(db_session),
     )
 
 
@@ -340,3 +347,201 @@ async def test_undo_restores_a_link_that_is_still_free(db_session):
     await db_session.refresh(payment)
     assert payment.is_deleted is False
     assert payment.linked_account_id is None
+
+
+# ─── Review regressions: undo puts everything back where it was ──────────────
+
+
+async def test_group_undo_restores_each_payee_default_to_its_own_category(db_session):
+    """Measured before the fix: undoing a group delete filed EVERY payee
+    default and scheduled transaction into the first category — Chipotle's
+    default came back as Groceries. The bookkeeping is a mapping now."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    group = await create_category_group(db_session, budget, "Food")
+    account = await create_account(db_session, budget, "Checking")
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    dining = await create_category(db_session, budget, group, "Dining")
+    groceries.sort_order = 0
+    dining.sort_order = 1
+
+    store = await create_payee(db_session, budget, "Corner Store")
+    store.default_category_id = groceries.id
+    chipotle = await create_payee(db_session, budget, "Chipotle")
+    chipotle.default_category_id = dining.id
+    sched = await create_scheduled_transaction(db_session, budget, account, "-25", "monthly", AUG)
+    sched.category_id = dining.id
+    await db_session.flush()
+
+    result = await _service(db_session, services).delete_group(budget.id, group.id, month=AUG)
+    await db_session.flush()
+    await UndoService(db_session).undo_change(budget.id, result.change_id)
+    await db_session.flush()
+
+    await db_session.refresh(store)
+    await db_session.refresh(chipotle)
+    await db_session.refresh(sched)
+    assert store.default_category_id == groceries.id
+    assert chipotle.default_category_id == dining.id
+    assert sched.category_id == dining.id
+
+
+async def test_chained_delete_then_reverse_undo_returns_rows_home(db_session):
+    """Measured before the fix: delete A into B, delete B, undo both in
+    reverse — the rows stayed in B, because B's delete overwrote the
+    provenance undo keyed on. Undo restores from the recorded id list now;
+    provenance is display only."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    group = await create_category_group(db_session, budget, "Everyday")
+    account = await create_account(db_session, budget, "Checking")
+    a = await create_category(db_session, budget, group, "A")
+    b = await create_category(db_session, budget, group, "B")
+    txn = await create_transaction(db_session, budget, account, "-10", AUG, category=a)
+    await db_session.flush()
+
+    svc = _service(db_session, services)
+    res_a = await svc.delete_categories(budget.id, [a.id], move_to=b.id, month=AUG)
+    await db_session.flush()
+    res_b = await svc.delete_categories(budget.id, [b.id], month=AUG)
+    await db_session.flush()
+
+    undo = UndoService(db_session)
+    await undo.undo_change(budget.id, res_b.change_id)
+    await db_session.flush()
+    await undo.undo_change(budget.id, res_a.change_id)
+    await db_session.flush()
+
+    await db_session.refresh(txn)
+    await db_session.refresh(a)
+    await db_session.refresh(b)
+    assert a.is_deleted is False and b.is_deleted is False
+    assert txn.category_id == a.id, "reverse-order undo walks all the way home"
+    assert txn.prior_category_id is None and txn.prior_category_name is None
+
+
+async def test_out_of_order_undo_restores_the_category_but_not_rows_it_lost(db_session):
+    """Undo A while B (which took A's rows and was then deleted itself) is
+    still deleted: A comes back, but its rows are wherever B's delete put
+    them — not at A's recorded destination, so the still-where-we-left-them
+    rule leaves them. LIFO is the accurate direction; this pins what the
+    other order does instead of leaving it to chance."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    group = await create_category_group(db_session, budget, "Everyday")
+    account = await create_account(db_session, budget, "Checking")
+    a = await create_category(db_session, budget, group, "A")
+    b = await create_category(db_session, budget, group, "B")
+    txn = await create_transaction(db_session, budget, account, "-10", AUG, category=a)
+    await db_session.flush()
+
+    svc = _service(db_session, services)
+    res_a = await svc.delete_categories(budget.id, [a.id], move_to=b.id, month=AUG)
+    await db_session.flush()
+    res_b = await svc.delete_categories(budget.id, [b.id], month=AUG)
+    await db_session.flush()
+
+    undo = UndoService(db_session)
+    await undo.undo_change(budget.id, res_a.change_id)
+    await db_session.flush()
+
+    await db_session.refresh(txn)
+    await db_session.refresh(a)
+    assert a.is_deleted is False
+    assert txn.category_id is None, "the row is where B's delete left it"
+
+    await undo.undo_change(budget.id, res_b.change_id)
+    await db_session.flush()
+    await db_session.refresh(txn)
+    assert txn.category_id == b.id
+
+
+async def test_undo_returns_the_cover_it_granted(db_session):
+    """A move-delete grants the destination cover for the spending it
+    absorbs; undo takes back exactly those deltas — an assignment the user
+    edited in between keeps the edit and loses only the cover."""
+    services = make_services(db_session)
+    budget, _, account, groceries, other, _ = await _setup(db_session)
+
+    b_aug_before = Decimal("0")
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [groceries.id], move_to=other.id, month=AUG
+    )
+    await db_session.flush()
+
+    def _assign_rows():
+        return db_session.execute(
+            select(BudgetAssignment).where(BudgetAssignment.category_id == other.id)
+        )
+
+    rows = {a.month: a for a in (await _assign_rows()).scalars().all()}
+    assert rows[AUG].assigned == Decimal("30.0000"), "cover for the three -10 spends"
+
+    # The user tops the destination up before changing their mind.
+    rows[AUG].assigned = rows[AUG].assigned + Decimal("5")
+    await db_session.flush()
+
+    await UndoService(db_session).undo_change(budget.id, result.change_id)
+    await db_session.flush()
+    db_session.expunge_all()
+
+    rows = {a.month: a for a in (await _assign_rows()).scalars().all()}
+    assert rows[AUG].assigned == b_aug_before + Decimal("5"), (
+        "the edit survives; only the cover comes back out"
+    )
+
+    tba = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
+    groceries_rows = (
+        await db_session.execute(
+            select(BudgetAssignment).where(BudgetAssignment.category_id == groceries.id)
+        )
+    ).scalars().all()
+    assert {(r.month, r.assigned) for r in groceries_rows} == {
+        (AUG, Decimal("100.0000")),
+        (SEP, Decimal("50.0000")),
+    }
+    assert tba == (
+        await services.budgets.get_budget_summary(budget.id, SEP)
+    ).to_be_assigned - Decimal("0"), "months agree after the round trip"
+
+
+async def test_undoing_a_repair_restores_the_category_to_the_budget(db_session):
+    """User decision, pinned: undoing a hygiene repair brings the category
+    back LIVE — with its rows and assignments — rather than re-orphaning
+    them, which would deliberately recreate the stranded-money corruption
+    the repair exists to fix. The repair UI says so."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    group = await create_category_group(db_session, budget, "Everyday")
+    account = await create_account(db_session, budget, "Checking")
+    old = await create_category(db_session, budget, group, "Old Hobby")
+    await create_transaction(db_session, budget, account, "1000", AUG)
+    txn = await create_transaction(db_session, budget, account, "-30", AUG, category=old)
+    await create_budget_assignment(db_session, budget, old, AUG, "100")
+    old.is_deleted = True  # the pre-PR delete: flag flip, nothing else
+    await db_session.flush()
+
+    svc = _service(db_session, services)
+    results = await svc.repair_orphans(budget.id, AUG)
+    await db_session.flush()
+    assert len(results) == 1
+
+    await UndoService(db_session).undo_change(budget.id, results[0].change_id)
+    await db_session.flush()
+
+    await db_session.refresh(old)
+    await db_session.refresh(txn)
+    assert old.is_deleted is False, "the category returns to the budget, alive"
+    assert txn.category_id == old.id
+    # Not `tba_before_undo - released`: the repair measured against a DEAD
+    # envelope (whose current-month assignment already sat outside the
+    # summary), while undo resurrects it. The budget is now exactly "live
+    # category, $100 assigned, $30 spent, $1000 in" — so TBA is what that
+    # budget always shows, and the months agree on it.
+    tba_after = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
+    assert tba_after == Decimal("900.0000")
+    assert tba_after == (await services.budgets.get_budget_summary(budget.id, SEP)).to_be_assigned

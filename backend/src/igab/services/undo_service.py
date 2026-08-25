@@ -18,7 +18,7 @@ import datetime
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
@@ -163,6 +163,14 @@ class UndoService:
         before = change.before or {}
         if not getattr(entity, "is_deleted", False):
             raise UndoConflict("The category is no longer deleted")
+        # This branch also serves REPAIR records — hygiene passes over
+        # categories deleted long before the repair ran. Undoing one still
+        # restores the category to the budget, deliberately: re-orphaning
+        # (category dead, rows re-filed into it, assignments recreated) would
+        # recreate the exact stranded-money corruption the repair exists to
+        # fix. A live category is the only coherent inverse, and the repair
+        # UI says so. Pinned by
+        # test_undoing_a_repair_restores_the_category_to_the_budget.
 
         # 1. The categories themselves, primary first so `entity` is consistent.
         self._restore_fields(change, entity)
@@ -199,62 +207,119 @@ class UndoService:
                         setattr(group, field, coerce_value(CategoryGroup, field, value))
                 group.is_deleted = False
 
-        # 2. Transactions. No id list is needed: the delete stamped
-        #    `prior_category_id` on exactly the rows it touched, and clearing
-        #    it here is what stops a restored row still reading "was: …".
+        # 2. Transactions, restored by the exact id list the delete recorded
+        #    (`_transactions`), never by `prior_category_id` — provenance is
+        #    display-only and single-level, so a later delete of the
+        #    destination overwrites it, and an undo keyed on it silently
+        #    matched nothing (measured: delete A into B, delete B, undo both
+        #    in reverse — the rows stayed in B). The ids don't age like that,
+        #    and reverse-order undo walks all the way home.
         #    `IS NOT DISTINCT FROM` rather than `==` because the destination is
         #    NULL on the uncategorize path, and `category_id = NULL` is never
         #    true — the whole restore would silently match nothing.
         moved_raw = before.get("_moved_to")
         destination = uuid.UUID(moved_raw) if moved_raw else None
+        moved_map = before.get("_transactions") or {}
         for cat_id in restored:
-            await self.session.execute(
-                update(Transaction)
-                .where(
-                    Transaction.prior_category_id == cat_id,
-                    Transaction.category_id.is_not_distinct_from(destination),
+            txn_ids = [uuid.UUID(t) for t in moved_map.get(str(cat_id), [])]
+            # Chunked: a well-used category's list can be thousands of ids and
+            # asyncpg caps statement parameters.
+            for i in range(0, len(txn_ids), 1000):
+                await self.session.execute(
+                    update(Transaction)
+                    .where(
+                        Transaction.id.in_(txn_ids[i : i + 1000]),
+                        Transaction.category_id.is_not_distinct_from(destination),
+                    )
+                    .values(
+                        category_id=cat_id,
+                        prior_category_id=None,
+                        prior_category_name=None,
+                    )
                 )
-                .values(
-                    category_id=cat_id,
-                    prior_category_id=None,
-                    prior_category_name=None,
-                )
-            )
 
-        # 3. Assignments, recreated with their original ids and amounts.
-        for row in before.get("_assignments") or []:
-            existing = await self.session.get(BudgetAssignment, uuid.UUID(row["id"]))
+        # 2b. The cover the delete granted the destination (move path only)
+        #     comes back out — the exact inverse of the recorded deltas, so an
+        #     assignment the user edited in between keeps their edit and loses
+        #     only what the delete added.
+        for row in before.get("_dest_assignment_deltas") or []:
+            if destination is None:
+                break
+            month = datetime.date.fromisoformat(row["month"])
+            delta = Decimal(row["delta"])
+            existing = (
+                await self.session.execute(
+                    select(BudgetAssignment).where(
+                        BudgetAssignment.category_id == destination,
+                        BudgetAssignment.month == month,
+                    )
+                )
+            ).scalar_one_or_none()
             if existing is not None:
-                continue
-            self.session.add(
-                BudgetAssignment(
-                    id=uuid.UUID(row["id"]),
-                    budget_id=uuid.UUID(row["budget_id"]),
-                    category_id=uuid.UUID(row["category_id"]),
-                    month=datetime.date.fromisoformat(row["month"]),
-                    assigned=Decimal(row["assigned"]),
+                existing.assigned = existing.assigned - delta
+            else:
+                self.session.add(
+                    BudgetAssignment(
+                        budget_id=change.budget_id,
+                        category_id=destination,
+                        month=month,
+                        assigned=-delta,
+                    )
                 )
-            )
 
-        # 4. Payee defaults and scheduled transactions — only where still
-        #    empty, so a default the user set in the meantime survives.
-        primary = restored[0]
-        payee_ids = [uuid.UUID(p) for p in (before.get("_payee_ids") or [])]
-        if payee_ids:
+        # 3. Assignments: add back what the delete removed. Matched by
+        #    (category, month) — the unique key — not by row id: an
+        #    out-of-order undo can already have written an inverse-delta row
+        #    for the same month (2b above), and an id-keyed insert then
+        #    collides with it. Additive, so the two undos compose to the
+        #    arithmetic truth instead of the last one winning.
+        for row in before.get("_assignments") or []:
+            month = datetime.date.fromisoformat(row["month"])
+            category_id = uuid.UUID(row["category_id"])
+            existing = (
+                await self.session.execute(
+                    select(BudgetAssignment).where(
+                        BudgetAssignment.category_id == category_id,
+                        BudgetAssignment.month == month,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                existing.assigned = existing.assigned + Decimal(row["assigned"])
+            else:
+                self.session.add(
+                    BudgetAssignment(
+                        id=uuid.UUID(row["id"]),
+                        budget_id=uuid.UUID(row["budget_id"]),
+                        category_id=category_id,
+                        month=month,
+                        assigned=Decimal(row["assigned"]),
+                    )
+                )
+        await self.session.flush()
+
+        # 4. Payee defaults and scheduled transactions — each restored to the
+        #    category IT pointed at (a group cascade clears defaults across
+        #    several; measured, restoring them all to the primary filed
+        #    Chipotle's default under Groceries) — and only where still empty,
+        #    so a default the user set in the meantime survives.
+        for payee_raw, cat_raw in (before.get("_payee_defaults") or {}).items():
             await self.session.execute(
                 update(Payee)
-                .where(Payee.id.in_(payee_ids), Payee.default_category_id.is_(None))
-                .values(default_category_id=primary)
+                .where(
+                    Payee.id == uuid.UUID(payee_raw),
+                    Payee.default_category_id.is_(None),
+                )
+                .values(default_category_id=uuid.UUID(cat_raw))
             )
-        scheduled_ids = [uuid.UUID(s) for s in (before.get("_scheduled_ids") or [])]
-        if scheduled_ids:
+        for sched_raw, cat_raw in (before.get("_scheduled_categories") or {}).items():
             await self.session.execute(
                 update(ScheduledTransaction)
                 .where(
-                    ScheduledTransaction.id.in_(scheduled_ids),
+                    ScheduledTransaction.id == uuid.UUID(sched_raw),
                     ScheduledTransaction.category_id.is_(None),
                 )
-                .values(category_id=primary)
+                .values(category_id=uuid.UUID(cat_raw))
             )
 
         # 5. View placements and saved-filter selections.

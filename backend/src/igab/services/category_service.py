@@ -45,7 +45,12 @@ from igab.db.models import (
 )
 from igab.domain.dates import month_start as first_of_month
 from igab.domain.exceptions import InvariantViolation, NotFoundError
-from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
+from igab.repositories.category_repo import (
+    BudgetAssignmentRepository,
+    CategoryGroupRepository,
+    CategoryRepository,
+)
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.budget_service import BudgetService
 from igab.services.change_log import ChangeRecorder, snapshot
 
@@ -70,6 +75,20 @@ class CategoryDeletePreview:
     future_assigned: Decimal = Decimal("0")
     payee_count: int = 0
     scheduled_count: int = 0
+    #: Net POSTED spending filed in these categories over their whole life —
+    #: positive means outflow. On the move path this is the spending the
+    #: destination absorbs (with its cover; see `_cover_moved_activity`); on
+    #: the uncategorize path it is what leaves category-keyed reports until
+    #: re-filed. The dialog states it either way.
+    moving_activity: Decimal = Decimal("0")
+    #: What Ready to Assign gains in the viewed month, one figure per mode.
+    #: They differ exactly when the categories carry activity dated after the
+    #: viewed month: holding the destination harmless in a future month takes
+    #: a future assignment, which the viewed month's TBA already counts.
+    #: Served, never derived client-side; each is pinned against the measured
+    #: delete by a differential test.
+    released_if_moved: Decimal = Decimal("0")
+    released_if_uncategorized: Decimal = Decimal("0")
     #: Non-empty only when something blocks the delete outright.
     blocked_by: list[str] = field(default_factory=list)
 
@@ -89,7 +108,12 @@ def _touched(bookkeeping: dict[str, Any]) -> bool:
     """Did the repair actually clear anything for this category?"""
     return any(
         bookkeeping.get(key)
-        for key in ("_payee_ids", "_scheduled_ids", "_placements", "_filter_selections")
+        for key in (
+            "_payee_defaults",
+            "_scheduled_categories",
+            "_placements",
+            "_filter_selections",
+        )
     )
 
 
@@ -110,11 +134,15 @@ class CategoryService:
         category_repo: CategoryRepository,
         group_repo: CategoryGroupRepository,
         budget_service: BudgetService,
+        transaction_repo: TransactionRepository,
+        assignment_repo: BudgetAssignmentRepository,
     ) -> None:
         self.session = session
         self.category_repo = category_repo
         self.group_repo = group_repo
         self.budget_service = budget_service
+        self.transaction_repo = transaction_repo
+        self.assignment_repo = assignment_repo
         self.changes = ChangeRecorder(session)
 
     # ─── Preview ──────────────────────────────────────────────────────────────
@@ -151,6 +179,15 @@ class CategoryService:
             balance = await self.budget_service.get_category_balance(cat.id, month_start)
             preview.available += balance.available
         preview.future_assigned = await self._sum_assigned(ids, after=month_start)
+        by_month = await self._activity_by_month(ids)
+        preview.moving_activity = -sum(by_month.values(), Decimal("0"))
+        preview.released_if_uncategorized = preview.available + preview.future_assigned
+        # Moving also covers activity in months AFTER the viewed one; those
+        # future cover assignments move the viewed month's TBA too (a future
+        # refund hands its cover back now, future spending takes it now).
+        preview.released_if_moved = preview.released_if_uncategorized + sum(
+            (a for m, a in by_month.items() if m > month_start), Decimal("0")
+        )
         preview.payee_count = await self._count(
             select(Payee.id).where(
                 Payee.default_category_id.in_(ids),
@@ -204,6 +241,10 @@ class CategoryService:
         tba_before = (await self.budget_service.get_budget_summary(budget_id, as_of)).to_be_assigned
 
         bookkeeping: dict[str, Any] = {}
+        # Cover must be computed while the rows still carry their category —
+        # the retarget below is what clears it.
+        if move_to is not None:
+            await self._cover_moved_activity(budget_id, ids, move_to, bookkeeping)
         moved, uncategorized = await self._retarget_transactions(ids, move_to, cats, bookkeeping)
         _sum, assignments_removed = await self._clear_assignments(ids, bookkeeping)
         await self._clear_referrers(ids, bookkeeping)
@@ -362,12 +403,13 @@ class CategoryService:
         leaves and split children only, which is precisely the set that
         carries category meaning.
 
-        Provenance is stamped on **both** paths, not just the uncategorized
-        one. It is what lets undo find its own rows without carrying a list of
-        ids, and a moved row is otherwise indistinguishable from one that was
-        already sitting in the destination — undoing would drag those along
-        with it. Whether to *show* "was: Groceries" is a separate question the
-        register answers from `category_id` being null.
+        Provenance (`prior_*`) is stamped on **both** paths, but it is DISPLAY
+        ONLY — the register's "was: Groceries" hint. Undo does not use it: a
+        later delete of the destination overwrites it (single level), which
+        silently severed the way home. Undo restores from `_transactions`, the
+        exact per-category id list recorded here — one JSONB array in one
+        change row, not the change-row-per-transaction design `_record_delete`
+        rejects.
         """
         names = {c.id: c.name for c in cats}
         # Counted before the update and over live rows only, so the number
@@ -381,7 +423,10 @@ class CategoryService:
                 Transaction.is_deleted == False,  # noqa: E712
             )
         )
+        moved_ids: dict[str, list[str]] = {}
         for cat_id in ids:
+            rows = await self._ids(select(Transaction.id).where(Transaction.category_id == cat_id))
+            moved_ids[str(cat_id)] = [str(r) for r in rows]
             await self.session.execute(
                 update(Transaction)
                 .where(Transaction.category_id == cat_id)
@@ -391,8 +436,50 @@ class CategoryService:
                     prior_category_name=names[cat_id],
                 )
             )
+        bookkeeping["_transactions"] = moved_ids
         bookkeeping["_moved_to"] = str(move_to) if move_to else None
         return (total, 0) if move_to else (0, total)
+
+    async def _cover_moved_activity(
+        self,
+        budget_id: uuid.UUID,
+        ids: list[uuid.UUID],
+        move_to: uuid.UUID,
+        bookkeeping: dict[str, Any],
+    ) -> None:
+        """Spending takes its cover: the destination is held harmless.
+
+        Moving a category's transactions moves its POSTED activity into the
+        destination; without this step the destination's balance dropped by
+        exactly that spending (measured: move $40 of spending and the
+        destination goes $40 overspent) while the source's *entire* assignment
+        history returned to Ready to Assign — the dialog had promised only the
+        unspent part.
+
+        So, per month with moved net activity `a`, the destination's
+        assignment gains `-a` (spending −40 → cover +40; a refund month +30
+        → −30). Keyed to the ACTIVITY months, every per-month delta to the
+        destination nets zero, which is what holds its balance unchanged
+        through `domain/carryover.py`'s zero-floor simulation — not just in
+        the viewed month, in every month. What reaches Ready to Assign is then
+        exactly `available + future_assigned`, the number the dialog states,
+        on both paths.
+
+        The deltas are recorded for undo, which applies their exact inverse —
+        relative deltas stay correct even if the destination's assignments
+        were edited in between.
+        """
+        by_month = await self._activity_by_month(ids)
+        deltas: list[dict[str, str]] = []
+        for m in sorted(by_month):
+            delta = -by_month[m]
+            if delta == 0:
+                continue
+            row = await self.assignment_repo.get_or_create(budget_id, move_to, m)
+            row.assigned = row.assigned + delta
+            deltas.append({"month": m.isoformat(), "delta": str(delta)})
+        bookkeeping["_dest_assignment_deltas"] = deltas
+        await self.session.flush()
 
     async def _clear_assignments(
         self, ids: list[uuid.UUID], bookkeeping: dict[str, Any]
@@ -439,8 +526,18 @@ class CategoryService:
         arrangements whose repositories filter the view's or filter's own
         `is_deleted` but never the category's.
         """
-        payees = await self._ids(select(Payee.id).where(Payee.default_category_id.in_(ids)))
-        bookkeeping["_payee_ids"] = [str(p) for p in payees]
+        # Mappings, not flat lists: a multi-category delete (a group cascade)
+        # clears defaults pointing at *different* categories, and undo must
+        # put each one back where it was — measured before this, undoing a
+        # group delete filed every payee default into the first category.
+        payees = (
+            await self.session.execute(
+                select(Payee.id, Payee.default_category_id).where(
+                    Payee.default_category_id.in_(ids)
+                )
+            )
+        ).all()
+        bookkeeping["_payee_defaults"] = {str(pid): str(cat) for pid, cat in payees}
         if payees:
             await self.session.execute(
                 update(Payee)
@@ -448,10 +545,14 @@ class CategoryService:
                 .values(default_category_id=None)
             )
 
-        scheduled = await self._ids(
-            select(ScheduledTransaction.id).where(ScheduledTransaction.category_id.in_(ids))
-        )
-        bookkeeping["_scheduled_ids"] = [str(s) for s in scheduled]
+        scheduled = (
+            await self.session.execute(
+                select(ScheduledTransaction.id, ScheduledTransaction.category_id).where(
+                    ScheduledTransaction.category_id.in_(ids)
+                )
+            )
+        ).all()
+        bookkeeping["_scheduled_categories"] = {str(sid): str(cat) for sid, cat in scheduled}
         if scheduled:
             await self.session.execute(
                 update(ScheduledTransaction)
@@ -639,6 +740,19 @@ class CategoryService:
 
     async def _ids(self, stmt) -> list[uuid.UUID]:
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def _activity_by_month(self, ids: list[uuid.UUID]) -> dict[date, Decimal]:
+        """Net POSTED activity per month across the set — the same
+        `sum_by_category_by_month` the budget summary reads, so the cover and
+        the preview mirror the summary's arithmetic by construction. date.max
+        so future-dated activity months are included."""
+        by_month: dict[date, Decimal] = {}
+        for cat_id in ids:
+            for m, amount in (
+                await self.transaction_repo.sum_by_category_by_month(cat_id, date.max)
+            ).items():
+                by_month[m] = by_month.get(m, Decimal("0")) + amount
+        return by_month
 
     async def _sum_assigned(self, ids: list[uuid.UUID], *, after: date) -> Decimal:
         rows = (

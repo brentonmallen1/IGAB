@@ -38,6 +38,18 @@ class CategoryDeletePreviewResponse(BaseModel):
     future_assigned: Decimal
     payee_count: int
     scheduled_count: int
+    #: Net posted spending filed here over the categories' whole life
+    #: (positive = outflow). Moving hands it to the destination along with the
+    #: assignment that covered it, so the destination's balance is unchanged;
+    #: uncategorizing sends it out of category-keyed reports until re-filed.
+    #: Required, not optional — the dialog states it either way.
+    moving_activity: Decimal
+    #: What Ready to Assign gains in the viewed month, one figure per mode —
+    #: they differ when activity dated after the viewed month moves (its
+    #: cover is a future assignment the viewed month's TBA already counts).
+    #: The dialog shows the one for the selected mode; it never derives money.
+    released_if_moved: Decimal
+    released_if_uncategorized: Decimal
     #: Reasons the delete would be refused outright (a linked payment or debt
     #: category). Non-empty means the confirm button stays disabled.
     blocked_by: list[str]
