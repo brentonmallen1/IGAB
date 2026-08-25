@@ -273,6 +273,18 @@
   border: 1px solid color-mix(in srgb, var(--color-warning) 12%, transparent);
   white-space: nowrap;
   pointer-events: none;
+  gap: 5px;
+}
+
+/* Provenance, so it must not read as a category. Quieter than the chip's own
+   text and separated by a rule, because "Needs Category" is the state and
+   "was Groceries" is only the explanation for how it got there. */
+.txn-needs-category__was {
+  padding-left: 5px;
+  border-left: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
+  font-weight: 400;
+  letter-spacing: 0;
+  opacity: 0.85;
 }
 
 .txn-split-label {

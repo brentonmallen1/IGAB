@@ -21,7 +21,9 @@ from igab.api.v1.schemas.category import (
     CategoryClassification,
     CategoryClassSlice,
     CategoryCreate,
+    CategoryDeletePreviewRequest,
     CategoryDeletePreviewResponse,
+    CategoryDeleteRequest,
     CategoryDeleteResultResponse,
     CategoryGroupCreate,
     CategoryGroupReorder,
@@ -338,6 +340,43 @@ def _result_out(result: CategoryDeleteResult) -> CategoryDeleteResultResponse:
         assignments_removed=result.assignments_removed,
         released=result.released,
     )
+
+
+@router.post("/{budget_id}/categories/delete-preview", response_model=CategoryDeletePreviewResponse)
+async def preview_delete_categories(
+    budget_id: BudgetAccess,
+    body: CategoryDeletePreviewRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryDeletePreviewResponse:
+    """What deleting this selection would do, before the user commits.
+
+    POST rather than GET because the id list is the input and can be long;
+    nothing is written.
+    """
+    preview = await category_service.preview_delete(
+        budget_id, body.category_ids, body.month or date.today()
+    )
+    return _preview_out(preview)
+
+
+@router.post("/{budget_id}/categories/delete", response_model=CategoryDeleteResultResponse)
+async def delete_categories(
+    budget_id: BudgetAccess,
+    body: CategoryDeleteRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryDeleteResultResponse:
+    """Delete a selection of categories as one undoable operation."""
+    try:
+        result = await category_service.delete_categories(
+            budget_id, body.category_ids, move_to=body.move_to, month=body.month
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return _result_out(result)
 
 
 @router.post(

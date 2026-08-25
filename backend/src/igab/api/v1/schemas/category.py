@@ -56,6 +56,29 @@ class CategoryDeleteResultResponse(BaseModel):
     released: Decimal
 
 
+class CategoryDeleteRequest(BaseModel):
+    """Delete one or many categories as a single operation.
+
+    A list rather than a call per category: the budget page deletes
+    multi-selections, and N separate deletes would write N change rows for
+    what the user experienced as one action — N cards in Activity, N undo
+    clicks to reverse it, and N chances for one of them to fail halfway.
+    """
+
+    category_ids: list[uuid.UUID]
+    #: Re-file their transactions here. Null leaves the rows genuinely
+    #: uncategorized, carrying provenance so the register can say what they
+    #: used to be.
+    move_to: uuid.UUID | None = None
+    #: The month whose Ready to Assign the reported figures refer to.
+    month: datetime.date | None = None
+
+
+class CategoryDeletePreviewRequest(BaseModel):
+    category_ids: list[uuid.UUID]
+    month: datetime.date | None = None
+
+
 class RepairOrphansResponse(BaseModel):
     """What the hygiene repair found and fixed."""
 

@@ -8,6 +8,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient } from './client'
+import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 
 export interface Change {
   id: string
@@ -147,9 +148,12 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: ['payees', budgetId] })
   qc.invalidateQueries({ queryKey: ['duplicatePayees', budgetId] })
 
-  // Category data
-  qc.invalidateQueries({ queryKey: ['categories', budgetId] })
-  qc.invalidateQueries({ queryKey: ['category-groups', budgetId] })
+  // Category data. Undoing a category delete restores the category, its
+  // transactions, its assignments and its view placements at once, so this
+  // borrows the delete's own list rather than keeping a second, shorter one
+  // here — which is how `['category-groups']` sat here for months quietly
+  // refreshing nothing (the real key is `['categoryGroups']`).
+  invalidateAfterCategoryChange(qc, budgetId)
 
   // Review counts
   qc.invalidateQueries({ queryKey: ['pending-review-count'] })

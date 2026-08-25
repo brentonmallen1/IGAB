@@ -99,3 +99,30 @@
   font-size: var(--font-size-xs);
   line-height: 1.6;
 }
+
+/* Only appears under a failing orphaned-categories check. It moves real money
+   back to Ready to Assign, so it is a deliberate button rather than something
+   that runs as part of the check. */
+.integrity-panel__fix-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  padding: 4px var(--spacing-sm);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.integrity-panel__fix-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--color-accent);
+}
+
+.integrity-panel__fix-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

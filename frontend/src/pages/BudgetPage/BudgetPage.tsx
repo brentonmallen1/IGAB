@@ -18,7 +18,8 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation'
 import { addMonths } from '../../utils/dates'
 import { useBudgets, useCreateBudget } from '../../api/budgets'
-import { useCategories, useCategoryGroups, useUpdateCategory, useDeleteCategory } from '../../api/categories'
+import { useCategories, useCategoryGroups, useUpdateCategory } from '../../api/categories'
+import { useDeleteCategoryFlow } from '../../components/budget/DeleteCategoryModal/useDeleteCategoryFlow'
 import './BudgetPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 
@@ -45,7 +46,10 @@ export function BudgetPage() {
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const updateCategory = useUpdateCategory(budgetId ?? '')
-  const deleteCategory = useDeleteCategory(budgetId ?? '')
+  const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(
+    budgetId ?? '',
+    clearCategorySelection
+  )
   const createBudget = useCreateBudget()
 
   const [newName, setNewName] = useState('')
@@ -91,18 +95,13 @@ export function BudgetPage() {
     clearCategorySelection()
   }
 
-  async function handleDeleteSelected() {
+  function handleDeleteSelected() {
     const count = selectedCategoryIds.size
-    const ok = await confirmAsync({
-      title: `Delete ${count} categor${count !== 1 ? 'ies' : 'y'}?`,
-      message: 'Transactions will lose their category.',
-      confirmLabel: 'Delete',
-      destructive: true,
+    requestDelete({
+      kind: 'categories',
+      ids: Array.from(selectedCategoryIds),
+      name: `${count} categor${count !== 1 ? 'ies' : 'y'}`,
     })
-    if (!ok) return
-    const ids = Array.from(selectedCategoryIds)
-    await Promise.all(ids.map((id) => deleteCategory.mutateAsync(id)))
-    clearCategorySelection()
   }
 
   const selectedCount = selectedCategoryIds.size
@@ -234,6 +233,7 @@ export function BudgetPage() {
         <ManageFiltersModal budgetId={budgetId} onClose={closeModal} />
       )}
       {!isMobile && multiMonthOpen && <MultiMonthSheet budgetId={budgetId} />}
+      {deleteModal}
     </div>
   )
 }

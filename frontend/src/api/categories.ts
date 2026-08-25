@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
+import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import type { Category, CategoryGroup, CategoryClassification } from '../types'
 
 export function useCategoryGroups(budgetId: string | null, includeHidden = false) {
@@ -159,22 +160,133 @@ export function useReorderCategoryGroups(budgetId: string) {
   })
 }
 
-export function useDeleteCategoryGroup(budgetId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/category-groups/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
+/** What deleting will do, so the dialog can say it before the user commits.
+ *  The same numbers the delete then reports back — pinned by a differential
+ *  test on the server (test_category_delete.py). */
+export interface CategoryDeletePreview {
+  category_ids: string[]
+  category_names: string[]
+  transaction_count: number
+  /** Of those, how many are reconciled — they cannot be re-filed by hand
+   *  afterwards without unlocking them first, so the dialog says so. */
+  reconciled_count: number
+  available: string
+  future_assigned: string
+  payee_count: number
+  scheduled_count: number
+  /** Non-empty means the delete is refused (a linked payment or debt
+   *  category); each entry names the counterpart and what to do instead. */
+  blocked_by: string[]
+  /** Nothing to decide — delete without showing the dialog at all. */
+  is_empty: boolean
+}
+
+export interface CategoryDeleteResult {
+  /** Undo this one row to reverse the whole operation. */
+  change_id: string
+  category_ids: string[]
+  transactions_moved: number
+  transactions_uncategorized: number
+  assignments_removed: number
+  /** What actually reached Ready to Assign. Not the assignments removed —
+   *  money already spent out of an envelope does not come back. */
+  released: string
+}
+
+/** What the delete dialog is about to act on: a selection of categories, or a
+ *  whole group (which cascades over the categories inside it). */
+export type DeleteTarget =
+  | { kind: 'categories'; ids: string[]; name: string }
+  | { kind: 'group'; id: string; name: string }
+
+export function useCategoryDeletePreview(
+  budgetId: string,
+  target: DeleteTarget | null,
+  month: string
+) {
+  const key = target?.kind === 'group' ? target.id : (target?.ids.join(',') ?? '')
+  return useQuery({
+    queryKey: ['categoryDeletePreview', budgetId, target?.kind, key, month],
+    queryFn: async () => {
+      if (target?.kind === 'group') {
+        const { data } = await apiClient.get<CategoryDeletePreview>(
+          `/category-groups/${target.id}/delete-preview`,
+          { params: { month } }
+        )
+        return data
+      }
+      const { data } = await apiClient.post<CategoryDeletePreview>(
+        `/${budgetId}/categories/delete-preview`,
+        { category_ids: target!.ids, month }
+      )
+      return data
     },
+    enabled: !!target,
+    // Never served from cache: it quantifies money and drives a destructive
+    // button, so an answer from before the user's last edit is exactly the
+    // wrong thing to put in front of them.
+    staleTime: 0,
+    gcTime: 0,
   })
 }
 
-export function useDeleteCategory(budgetId: string) {
+export interface DeleteCategoryVars {
+  target: DeleteTarget
+  /** Re-file the transactions here; null leaves them uncategorized, showing
+   *  "Needs Category" with a `was:` hint. */
+  moveTo: string | null
+  month: string
+}
+
+/**
+ * One mutation for both shapes, because both are one operation on the server:
+ * a selection of categories and a whole group each produce a single change row
+ * carrying everything needed to undo them together.
+ */
+export function useDeleteCategories(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/categories/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] })
+    mutationFn: async ({ target, moveTo, month }: DeleteCategoryVars) => {
+      if (target.kind === 'group') {
+        const { data } = await apiClient.delete<CategoryDeleteResult>(
+          `/category-groups/${target.id}`,
+          { params: { move_to: moveTo ?? undefined, month } }
+        )
+        return data
+      }
+      const { data } = await apiClient.post<CategoryDeleteResult>(
+        `/${budgetId}/categories/delete`,
+        { category_ids: target.ids, move_to: moveTo, month }
+      )
+      return data
     },
+    onSuccess: () => invalidateAfterCategoryChange(qc, budgetId),
+    onError: (e) => toast.error(apiErrorMessage(e, 'Could not delete')),
+  })
+}
+
+export interface RepairOrphansResult {
+  categories_repaired: number
+  transactions_uncategorized: number
+  assignments_removed: number
+  released: string
+  change_ids: string[]
+  categories_under_deleted_groups: number
+}
+
+/** Finish the job on categories deleted before deleting was a real operation. */
+export function useRepairOrphanedCategories(budgetId: string, month: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<RepairOrphansResult>(
+        `/${budgetId}/categories/hygiene/repair-orphans`,
+        null,
+        { params: { month } }
+      )
+      return data
+    },
+    onSuccess: () => invalidateAfterCategoryChange(qc, budgetId),
+    onError: (e) => toast.error(apiErrorMessage(e, 'Could not repair categories')),
   })
 }

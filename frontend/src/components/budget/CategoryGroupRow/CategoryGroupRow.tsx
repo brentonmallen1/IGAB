@@ -3,10 +3,10 @@ import { ChevronDown, ChevronRight, EyeOff, GripVertical, Pencil, Plus, Trash2 }
 import { useUIStore } from '../../../stores/uiStore'
 import {
   useCreateCategory,
-  useDeleteCategoryGroup,
   useUpdateCategoryGroup,
 } from '../../../api/categories'
 import { CategoryRow } from '../CategoryRow/CategoryRow'
+import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Category, CategoryBalance, CategoryGroup } from '../../../types'
 import './CategoryGroupRow.css'
@@ -65,13 +65,12 @@ export function CategoryGroupRow({
   const [renameValue, setRenameValue] = useState('')
   const [isAddingCategory, setIsAddingCategory] = useState(false)
   const [newCatName, setNewCatName] = useState('')
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const renameRef = useRef<HTMLInputElement>(null)
   const addCatRef = useRef<HTMLInputElement>(null)
 
   const updateGroup = useUpdateCategoryGroup(budgetId)
-  const deleteGroup = useDeleteCategoryGroup(budgetId)
+  const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(budgetId)
   const createCategory = useCreateCategory(budgetId)
 
   const groupAssigned = categories.reduce((sum, cat) => sum + Number(balanceMap.get(cat.id)?.assigned ?? 0), 0)
@@ -100,7 +99,10 @@ export function CategoryGroupRow({
   }
 
   function handleDelete() {
-    deleteGroup.mutate(group.id)
+    // The modal is the confirmation now. Deleting a group cascades over its
+    // categories and returns their money to Ready to Assign, which is more
+    // than a two-pixel tick should be able to set off.
+    requestDelete({ kind: 'group', id: group.id, name: group.name })
   }
 
   function startAddCategory() {
@@ -226,35 +228,14 @@ export function CategoryGroupRow({
               </button>
             )}
             {canEditGroup && (
-              confirmDelete ? (
-                <>
-                  <button
-                    className="category-group-row__action-btn category-group-row__action-btn--confirm"
-                    onClick={handleDelete}
-                    aria-label="Confirm delete"
-                    title="Confirm delete"
-                  >
-                    ✓
-                  </button>
-                  <button
-                    className="category-group-row__action-btn"
-                    onClick={() => setConfirmDelete(false)}
-                    aria-label="Cancel delete"
-                    title="Cancel"
-                  >
-                    ✗
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="category-group-row__action-btn category-group-row__action-btn--danger"
-                  onClick={() => setConfirmDelete(true)}
-                  aria-label={`Delete group ${group.name}`}
-                  title="Delete group"
-                >
-                  <Trash2 size={12} />
-                </button>
-              )
+              <button
+                className="category-group-row__action-btn category-group-row__action-btn--danger"
+                onClick={handleDelete}
+                aria-label={`Delete group ${group.name}`}
+                title="Delete group"
+              >
+                <Trash2 size={12} />
+              </button>
             )}
             {!readOnlyGroup && (
               <button className="category-group-row__action-btn" onClick={startAddCategory} aria-label={`Add category to ${group.name}`} title="Add category">
@@ -314,6 +295,7 @@ export function CategoryGroupRow({
           )}
         </div>
       )}
+      {deleteModal}
     </div>
   )
 }
