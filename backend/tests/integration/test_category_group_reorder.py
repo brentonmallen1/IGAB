@@ -85,7 +85,7 @@ class TestReorder:
         other_budget, other_groups = await _budget_with_groups(db_session, ("Theirs",))
 
         repo = CategoryGroupRepository(db_session)
-        with pytest.raises(InvariantViolation, match="exactly once"):
+        with pytest.raises(InvariantViolation, match="does not have"):
             await repo.reorder(
                 budget.id,
                 [str(groups[0].id), str(groups[1].id), other_groups[0].id],
@@ -100,3 +100,59 @@ class TestReorder:
             },
         )
         assert resp.status_code == 400
+
+
+class TestHiddenGroups:
+    """The budget page drags against the list it shows, and by default that
+    list excludes hidden groups — so omitting them must be legal, or any
+    budget that has ever hidden a group loses reordering entirely. Found in
+    review: the server demanded completeness the client structurally could
+    not send, and every drag came back 400."""
+
+    async def test_reorder_succeeds_with_a_hidden_group_omitted(self, api_client, db_session):
+        budget, groups = await _budget_with_groups(db_session, user=api_client.test_user)
+        groups[1].is_hidden = True  # Wants, holding slot 1
+        await db_session.flush()
+
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/category-groups/reorder",
+            json={"group_ids": [str(groups[2].id), str(groups[0].id)]},
+        )
+        assert resp.status_code == 204
+        db_session.expunge_all()
+        assert await _order(db_session, budget) == ["Savings", "Bills"]
+
+    async def test_an_omitted_hidden_group_keeps_its_slot(self, db_session):
+        """Re-showing the group later must find it where the user left it,
+        not dumped at the end."""
+        budget, groups = await _budget_with_groups(db_session)
+        groups[1].is_hidden = True
+        await db_session.flush()
+
+        repo = CategoryGroupRepository(db_session)
+        await repo.reorder(budget.id, [groups[2].id, groups[0].id])
+        db_session.expunge_all()
+        everyone = [g.name for g in await repo.get_all(budget.id, include_hidden=True)]
+        assert everyone == ["Savings", "Wants", "Bills"]
+
+    async def test_a_hidden_group_may_still_be_listed(self, db_session):
+        """Show-hidden mode sends the full list; that keeps working."""
+        budget, groups = await _budget_with_groups(db_session)
+        groups[0].is_hidden = True
+        await db_session.flush()
+
+        repo = CategoryGroupRepository(db_session)
+        await repo.reorder(budget.id, [groups[1].id, groups[0].id, groups[2].id])
+        db_session.expunge_all()
+        everyone = [g.name for g in await repo.get_all(budget.id, include_hidden=True)]
+        assert everyone == ["Wants", "Bills", "Savings"]
+
+    async def test_a_missing_visible_group_is_still_refused(self, db_session):
+        """Omission is a hidden-group privilege; a missing visible group is
+        still the stale-client case and fails loudly."""
+        budget, groups = await _budget_with_groups(db_session)
+        groups[1].is_hidden = True
+        await db_session.flush()
+
+        with pytest.raises(InvariantViolation, match="visible groups"):
+            await CategoryGroupRepository(db_session).reorder(budget.id, [groups[0].id])
