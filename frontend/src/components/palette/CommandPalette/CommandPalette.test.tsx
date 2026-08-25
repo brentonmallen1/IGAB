@@ -79,6 +79,26 @@ describe('CommandPalette search', () => {
     expect(screen.queryByText('No results.')).not.toBeInTheDocument()
   })
 
+  it('names a transfer leg by its destination, like the register does', async () => {
+    // The shared rule (transactionDisplayPayee) — the hand-rolled lookup this
+    // replaced called every payee-less transfer "No payee" here while the
+    // register said "Transfer : Checking" for the same row.
+    apiGet.mockResolvedValue({
+      data: {
+        transactions: [
+          { ...TXN, payee_id: null, transfer_id: 't-far', counterpart_account_id: 'acc-1' },
+        ],
+        total_count: 1,
+        total_amount: '0',
+      },
+    })
+    renderPalette()
+    await type('12.34')
+
+    expect(await screen.findByText('Transfer : Checking')).toBeInTheDocument()
+    expect(screen.queryByText('No payee')).not.toBeInTheDocument()
+  })
+
   it('sends the amount as a filter, not just as free text', async () => {
     renderPalette()
     await type('amount:>100')

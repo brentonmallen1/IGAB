@@ -20,6 +20,7 @@ import { addMonths, currentMonthStart } from '../../../utils/dates'
 import { THEMES } from '../../../stores/appStore'
 import { STATIC_COMMANDS, type CommandCtx } from '../commands'
 import { SearchHelp } from '../../transactions/TransactionSearch/SearchHelp'
+import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { BudgetTransactionsResponse } from '../../../types'
 import './CommandPalette.css'
 
@@ -324,14 +325,18 @@ export function CommandPalette() {
                   key={t.id}
                   value={`txn-${t.id}`}
                   keywords={[
-                    t.payee_id ? (payeeNameById.get(t.payee_id) ?? '') : '',
+                    // The shared payee rule, so a linked leg is findable by
+                    // its destination ("Savings") the same way the register
+                    // names it — not the raw lookup this replaced, which
+                    // called every payee-less transfer "No payee".
+                    transactionDisplayPayee(t, payeeNameById, accountMap),
                     t.memo ?? '',
                   ]}
                   onSelect={() => run(() => navigate(`/accounts/${t.account_id}?highlight=${t.id}`))}
                 >
                   <Receipt size={14} className="palette__item-icon" />
                   <span className="palette__txn-payee">
-                    {t.payee_id ? (payeeNameById.get(t.payee_id) ?? 'No payee') : 'No payee'}
+                    {transactionDisplayPayee(t, payeeNameById, accountMap)}
                   </span>
                   {t.memo && <span className="palette__txn-memo">{t.memo}</span>}
                   <span className="palette__txn-meta">

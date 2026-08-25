@@ -612,7 +612,8 @@ class TransactionService:
         """
         legs = await self.transaction_repo.list_unpaired_transfer_legs(budget_id)
         on_budget = {
-            a.id: a.on_budget for a in await self.account_repo.get_all(budget_id, include_closed=True)
+            a.id: a.on_budget
+            for a in await self.account_repo.get_all(budget_id, include_closed=True)
         }
         # (leg id, partner account) → the payee's target. Both directions of a
         # pair appear in this list, so each pair is seen twice; `claimed`
