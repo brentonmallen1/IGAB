@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
+from igab.domain.transfers import linking_breaks_category_rule
 from igab.integrations.ynab.models import YNABBudget
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -163,24 +164,18 @@ class YNABImporter:
     def _may_link(self, a: dict, b: dict) -> bool:
         """May these two legs be linked as one transfer?
 
-        The same rule the service enforces on every other path: a category on
-        a transfer means a YNAB spending transfer, and it may only sit on the
-        ON-BUDGET side of an on↔off pair. Linking anything else would either
-        count internal movement as spending or hide real spending, so a pair
-        that fails this stays unpaired and visible rather than linked wrong.
+        The rule itself — a category may only sit on the on-budget side of an
+        on↔off pair — lives once, in `domain/transfers.py`, shared with
+        transfer create, the edit planner, and the repair pass. A pair that
+        fails it stays unpaired and visible rather than linked wrong.
         """
         on_budget = {acc.id: acc.on_budget for acc in self._account_cache.values()}
         a_on, b_on = on_budget.get(a["account_id"]), on_budget.get(b["account_id"])
         if a_on is None or b_on is None:
             return False
-        categorized = [row for row in (a, b) if row["category_id"] is not None]
-        if not categorized:
-            return True
-        if len(categorized) == 2:
-            return False
-        leg = categorized[0]
-        other_on = b_on if leg is a else a_on
-        return bool(on_budget[leg["account_id"]]) and not other_on
+        return not linking_breaks_category_rule(
+            a["category_id"] is not None, a_on, b["category_id"] is not None, b_on
+        )
 
     async def _get_or_create_category(
         self, group_name: str, category_name: str, result: ImportResult

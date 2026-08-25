@@ -694,3 +694,89 @@ class TestRepairPass:
         assert (
             await TransactionRepository(db_session).get_or_raise(other_near.id)
         ).transfer_id is None
+
+
+class TestRepairCategoryLegality:
+    """The auto-pass must not create what the manual paths refuse.
+
+    Found in review: `repair_transfers` matched on account, amount and date
+    only, so it linked a categorized on-budget↔on-budget pair — the exact
+    state `_create_transfer` and `_plan_transfer_edit` reject with a
+    user-facing error. The rule now lives once in domain/transfers.py and the
+    pass consults it; an illegal pair stays in `remaining`, where the manual
+    repair path explains the problem when a person resolves it.
+    """
+
+    async def test_repair_refuses_a_categorized_on_on_pair(self, db_session):
+        budget, checking, savings = await _setup(db_session)
+        to_savings = await _transfer_payee(db_session, budget, savings)
+        to_checking = await _transfer_payee(db_session, budget, checking)
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        near = await create_transaction(
+            db_session, budget, checking, "-500.00", TODAY, payee=to_savings, category=groceries
+        )
+        far = await create_transaction(
+            db_session, budget, savings, "500.00", TODAY, payee=to_checking
+        )
+
+        services = make_services(db_session)
+        result = await services.transactions.repair_transfers(budget.id)
+
+        # remaining is 1, not 2: UNPAIRED_TRANSFER_LEG counts only
+        # *uncategorized* legs, so the categorized side is not in the hygiene
+        # list at all — the link attempt comes from the plain side, and the
+        # legality check refuses it there.
+        assert result == {"linked": 0, "ambiguous": 0, "remaining": 1}
+        db_session.expunge_all()
+        repo = TransactionRepository(db_session)
+        assert (await repo.get_or_raise(near.id)).transfer_id is None
+        assert (await repo.get_or_raise(far.id)).transfer_id is None
+
+    async def test_repair_still_links_a_legal_spending_transfer(self, db_session):
+        """A category on the on-budget side of an on↔off pair is the YNAB
+        spending transfer — exactly what the pass exists to relink. The
+        legality check must not be broader than the rule."""
+        budget, checking, tracking = await _setup(db_session, target_on_budget=False)
+        to_tracking = await _transfer_payee(db_session, budget, tracking)
+        to_checking = await _transfer_payee(db_session, budget, checking)
+        group = await create_category_group(db_session, budget, "Everyday")
+        house = await create_category(db_session, budget, group, "House Fund")
+        near = await create_transaction(
+            db_session, budget, checking, "-500.00", TODAY, payee=to_tracking, category=house
+        )
+        far = await create_transaction(
+            db_session, budget, tracking, "500.00", TODAY, payee=to_checking
+        )
+
+        services = make_services(db_session)
+        result = await services.transactions.repair_transfers(budget.id)
+
+        assert result["linked"] == 1
+        db_session.expunge_all()
+        repo = TransactionRepository(db_session)
+        near_after = await repo.get_or_raise(near.id)
+        assert near_after.transfer_id == far.id
+        assert near_after.category_id == house.id, "linking must not strip the category"
+
+    async def test_repair_refuses_a_category_on_the_off_budget_side(self, db_session):
+        budget, checking, tracking = await _setup(db_session, target_on_budget=False)
+        to_tracking = await _transfer_payee(db_session, budget, tracking)
+        to_checking = await _transfer_payee(db_session, budget, checking)
+        group = await create_category_group(db_session, budget, "Everyday")
+        house = await create_category(db_session, budget, group, "House Fund")
+        await create_transaction(
+            db_session, budget, checking, "-500.00", TODAY, payee=to_tracking
+        )
+        far = await create_transaction(
+            db_session, budget, tracking, "500.00", TODAY, payee=to_checking, category=house
+        )
+
+        services = make_services(db_session)
+        result = await services.transactions.repair_transfers(budget.id)
+
+        assert result["linked"] == 0
+        db_session.expunge_all()
+        assert (
+            await TransactionRepository(db_session).get_or_raise(far.id)
+        ).transfer_id is None

@@ -11,6 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.splits import require_split_balances
+from igab.domain.transfers import (
+    leg_may_carry_category,
+    linking_breaks_category_rule,
+    pair_may_carry_category,
+)
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
@@ -523,17 +528,26 @@ class TransactionService:
             raise InvariantViolation("Transfer account does not belong to this budget")
         from_account = await self.account_repo.get_or_raise(data.account_id)
 
-        # YNAB "spending transfer": a transfer between an on-budget and an
-        # off-budget account is real spending/income and may carry a category,
-        # which lives on the ON-BUDGET leg. On-budget↔on-budget transfers are
-        # internal money movement and can never be categorized.
+        # YNAB "spending transfer" rule — the one implementation lives in
+        # domain/transfers.py; this call site only decides the message and
+        # which leg receives the category.
         category_id = data.category_id
-        if category_id is not None and from_account.on_budget == to_account.on_budget:
+        if category_id is not None and not pair_may_carry_category(
+            from_account.on_budget, to_account.on_budget
+        ):
             raise InvariantViolation(
                 "Only transfers between an on-budget and an off-budget account can be categorized"
             )
-        source_category = category_id if from_account.on_budget else None
-        dest_category = category_id if to_account.on_budget else None
+        source_category = (
+            category_id
+            if leg_may_carry_category(from_account.on_budget, to_account.on_budget)
+            else None
+        )
+        dest_category = (
+            category_id
+            if leg_may_carry_category(to_account.on_budget, from_account.on_budget)
+            else None
+        )
 
         # Source: outflow from from-account
         from_payee = await self._get_transfer_payee(budget_id, to_account)
@@ -597,6 +611,9 @@ class TransactionService:
         person to decide, and legs with no candidate at all.
         """
         legs = await self.transaction_repo.list_unpaired_transfer_legs(budget_id)
+        on_budget = {
+            a.id: a.on_budget for a in await self.account_repo.get_all(budget_id, include_closed=True)
+        }
         # (leg id, partner account) → the payee's target. Both directions of a
         # pair appear in this list, so each pair is seen twice; `claimed`
         # keeps the second sighting from re-linking or double-counting it.
@@ -635,6 +652,25 @@ class TransactionService:
                     continue
 
                 partner = candidates[0]
+                # The auto-pass must not create what the manual paths refuse:
+                # a category anywhere but the on-budget side of an on↔off pair
+                # (domain/transfers.py). Such a pair stays in `remaining`; the
+                # manual repair path explains why when the user resolves it
+                # there. Found in review: without this, the pass linked a
+                # categorized on↔on pair with zero validation.
+                leg_on = on_budget.get(leg.account_id)
+                partner_on = on_budget.get(partner.account_id)
+                if (
+                    leg_on is None
+                    or partner_on is None
+                    or linking_breaks_category_rule(
+                        leg.category_id is not None,
+                        leg_on,
+                        partner.category_id is not None,
+                        partner_on,
+                    )
+                ):
+                    continue
                 leg_before = snapshot("transaction", leg)
                 partner_before = snapshot("transaction", partner)
                 updated_leg = await self.transaction_repo.update(leg.id, transfer_id=partner.id)
@@ -700,11 +736,11 @@ class TransactionService:
             raise InvariantViolation("A transfer needs two different accounts")
 
         own_account = await self.account_repo.get_or_raise(txn.account_id)
-        # Same rule as create: a categorized transfer is a YNAB spending
-        # transfer, and the category lives on the on-budget side of an
-        # on↔off pair. Categorizing any other transfer would count internal
-        # movement as spending.
-        if category_id is not None and not (own_account.on_budget and not target.on_budget):
+        # Same rule as create — domain/transfers.py — asked leg-wise here,
+        # because the category being edited sits on THIS row.
+        if category_id is not None and not leg_may_carry_category(
+            own_account.on_budget, target.on_budget
+        ):
             raise InvariantViolation(
                 "Transfers can only be categorized on the on-budget side of an off-budget transfer"
             )
