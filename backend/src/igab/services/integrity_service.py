@@ -27,6 +27,7 @@ from igab.db.models import (
     TransactionMatch,
 )
 from igab.domain.splits import split_balances, split_sum
+from igab.repositories.category_filters import UNDER_DELETED_GROUP
 from igab.utils.clock import today_utc
 
 STALE_PENDING_DAYS = 21
@@ -148,11 +149,10 @@ class IntegrityService:
         stranded = await _names(
             select(func.count())
             .select_from(Category)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Category.budget_id == budget_id,
                 Category.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_deleted == True,  # noqa: E712
+                UNDER_DELETED_GROUP,
             )
         )
         if stranded and int(stranded[0]) > 0:

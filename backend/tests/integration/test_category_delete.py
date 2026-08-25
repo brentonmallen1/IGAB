@@ -855,3 +855,39 @@ class TestMoveTakesItsCover:
         for m in months:
             after = (await services.budgets.get_category_balance(landing.id, m)).available
             assert after == before[m]
+
+
+async def test_repair_records_a_change_when_it_touches_only_soft_deleted_rows(db_session):
+    """Measured before the fix: a dead category referenced only by a
+    soft-deleted transaction was uncategorized by the repair while it
+    reported nothing to do and wrote no change row — an unrecorded,
+    un-undoable mutation. Touching anything now records, and undo works."""
+    from igab.services.undo_service import UndoService
+
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    group = await create_category_group(db_session, budget, "Everyday")
+    account = await create_account(db_session, budget, "Checking")
+    old = await create_category(db_session, budget, group, "Old")
+    txn = await create_transaction(db_session, budget, account, "-30", AUG, category=old)
+    txn.is_deleted = True
+    old.is_deleted = True
+    await db_session.flush()
+
+    svc = _service(db_session, services)
+    results = await svc.repair_orphans(budget.id, AUG)
+    await db_session.flush()
+
+    assert len(results) == 1, "touching the row is work, and work is recorded"
+    await db_session.refresh(txn)
+    assert txn.category_id is None
+    assert txn.prior_category_name == "Old"
+
+    await UndoService(db_session).undo_change(budget.id, results[0].change_id)
+    await db_session.flush()
+    await db_session.refresh(txn)
+    assert txn.category_id == old.id, "and the recorded change is undoable"
+
+    # A second run finds nothing — the guard stays idempotent.
+    assert await svc.repair_orphans(budget.id, AUG) == []

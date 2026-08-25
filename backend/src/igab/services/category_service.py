@@ -50,6 +50,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.category_filters import UNDER_DELETED_GROUP
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.budget_service import BudgetService
 from igab.services.change_log import ChangeRecorder, snapshot
@@ -344,8 +345,14 @@ class CategoryService:
             moved, uncategorized = await self._retarget_transactions(ids, None, [cat], bookkeeping)
             _sum, removed = await self._clear_assignments(ids, bookkeeping)
             await self._clear_referrers(ids, bookkeeping)
-            if not (uncategorized or removed or _touched(bookkeeping)):
-                continue  # already clean; nothing to record
+            # Decided from what was actually touched — the id map counts
+            # soft-deleted rows too, which `uncategorized` (live only) does
+            # not. Measured before this: a category referenced only by a
+            # soft-deleted row was mutated while the repair reported nothing
+            # to do and recorded nothing to undo.
+            touched_rows = any(bookkeeping.get("_transactions", {}).values())
+            if not (touched_rows or removed or _touched(bookkeeping)):
+                continue  # nothing matched anything; genuinely clean
             await self.session.flush()
             released = (
                 await self.budget_service.get_budget_summary(budget_id, as_of)
@@ -370,12 +377,10 @@ class CategoryService:
 
     async def count_orphaned_categories_under_deleted_groups(self, budget_id: uuid.UUID) -> int:
         return await self._count(
-            select(Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
+            select(Category.id).where(
                 Category.budget_id == budget_id,
                 Category.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_deleted == True,  # noqa: E712
+                UNDER_DELETED_GROUP,
             )
         )
 
@@ -427,6 +432,8 @@ class CategoryService:
         for cat_id in ids:
             rows = await self._ids(select(Transaction.id).where(Transaction.category_id == cat_id))
             moved_ids[str(cat_id)] = [str(r) for r in rows]
+            if not rows:
+                continue
             await self.session.execute(
                 update(Transaction)
                 .where(Transaction.category_id == cat_id)
