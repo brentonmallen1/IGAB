@@ -16,6 +16,8 @@ import {
   useTransaction,
   useTransferCandidates,
 } from '../../../api/transactions'
+import toast from 'react-hot-toast'
+import { apiErrorMessage } from '../../../api/client'
 import { confirmDeleteTransaction } from '../../../api/attachments'
 import { useCategories, useCategoryGroups, useRecentPayeeForCategory } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
@@ -253,6 +255,10 @@ export function TransactionEditor({
     needsPartner ? (transaction?.id ?? null) : null,
     needsPartner ? transferAccountId : null
   )
+  // The question is only answerable by a person, and the server refuses a
+  // submit without an answer — so Save waits for one rather than sending a
+  // request that can only fail.
+  const needsPartnerChoice = needsPartner && partnerCandidates.length > 0 && !partnerChoice
   // Off-budget transfers are real spending (YNAB semantics) and may carry a
   // category on the on-budget side
   const transferIsOffBudget = isTransfer && !!transferTarget && !transferTarget.on_budget
@@ -337,6 +343,18 @@ export function TransactionEditor({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    try {
+      await doSubmit()
+    } catch (err) {
+      // The mutations here define no onError, so without this catch a server
+      // refusal — an unanswered transfer-partner question, a reconciled-row
+      // guard — simply vanished: Save re-enabled, nothing saved, nothing
+      // said. The editor stays open with the user's input intact.
+      toast.error(apiErrorMessage(err, 'Could not save'))
+    }
+  }
+
+  async function doSubmit() {
     if (!accountId) return
     const outflowVal = parseAmountExpressionInput(outflow) || 0
     const inflowVal = parseAmountExpressionInput(inflow) || 0
@@ -465,9 +483,13 @@ export function TransactionEditor({
   async function handleDelete() {
     if (!transaction) return
     if (!(await confirmDeleteTransaction(transaction.id))) return
-    const { batchId } = await deleteTxn.mutateAsync({ id: transaction.id, accountId })
-    onClose()
-    showUndo(batchId, 'Transaction deleted')
+    try {
+      const { batchId } = await deleteTxn.mutateAsync({ id: transaction.id, accountId })
+      onClose()
+      showUndo(batchId, 'Transaction deleted')
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not delete'))
+    }
   }
 
   const isPending =
@@ -1141,7 +1163,7 @@ export function TransactionEditor({
             <button
               type="submit"
               className="txn-editor__btn txn-editor__btn--primary"
-              disabled={isPending || !splitIsValid || !accountId}
+              disabled={isPending || !splitIsValid || !accountId || needsPartnerChoice}
             >
               {isReview ? 'Approve' : isEdit ? 'Save' : 'Add'}
             </button>

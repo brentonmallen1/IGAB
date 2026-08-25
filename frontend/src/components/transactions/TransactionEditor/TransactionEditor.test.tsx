@@ -16,6 +16,9 @@ const updateMutate = vi.hoisted(() =>
 const deleteMutate = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 const convertMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 const confirmOverspend = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+const toastError = vi.hoisted(() => vi.fn())
+
+vi.mock('react-hot-toast', () => ({ default: { error: toastError, success: vi.fn() } }))
 
 const GROUPS = vi.hoisted(() => [{ id: 'g1', name: 'Everyday', is_hidden: false }])
 const CATEGORIES = vi.hoisted(() => [
@@ -410,6 +413,34 @@ describe('TransactionEditor transfers', () => {
     expect(updateMutate).toHaveBeenCalledWith(
       expect.objectContaining({ transfer_partner_transaction_id: 'cand-1' })
     )
+  })
+
+  it('holds Save until the partner question is answered', () => {
+    // Found in review: submitting with the question unanswered sent a request
+    // the server can only refuse — and the refusal was swallowed, so Save
+    // just re-enabled with nothing saved and nothing said.
+    transferCandidates = [
+      { id: 'cand-1', date: '2026-08-20', amount: '500.00', memo: 'ACH credit', cleared: 'cleared' },
+      { id: 'cand-2', date: '2026-08-20', amount: '500.00', memo: 'Deposit', cleared: 'uncleared' },
+    ]
+    renderEditor({ transaction: orphanLeg })
+
+    expect(submitButton('Save')).toBeDisabled()
+    fireEvent.click(screen.getByRole('radio', { name: /ACH credit/ }))
+    expect(submitButton('Save')).toBeEnabled()
+  })
+
+  it('says so when the server refuses the save, and stays open', async () => {
+    const onClose = vi.fn()
+    updateMutate.mockRejectedValueOnce(new Error('refused'))
+    renderEditor({ transaction: linkedLeg, onClose })
+    fireEvent.change(screen.getByRole('combobox', { name: 'To Account' }), {
+      target: { value: 'acc-3' },
+    })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('can say none of these, write the missing one', async () => {
