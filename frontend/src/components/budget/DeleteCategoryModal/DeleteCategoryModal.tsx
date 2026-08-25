@@ -42,7 +42,11 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
   const [mode, setMode] = useState<'move' | 'uncategorize'>('move')
   const { formatMoney } = useFormatters()
 
-  const { data: preview, isLoading } = useCategoryDeletePreview(budgetId, target, month)
+  const { data: preview, isLoading, isError, refetch } = useCategoryDeletePreview(
+    budgetId,
+    target,
+    month
+  )
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const deleteCategories = useDeleteCategories(budgetId)
@@ -72,9 +76,15 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
   // no transactions, and gating on a picker nobody can see left the Delete
   // button permanently inert on an empty category.
   const needsDestination = txnCount > 0 && mode === 'move' && !moveTo
+  // Served, per mode — never derived here. The two figures differ exactly
+  // when future-dated activity moves (its cover is a future assignment the
+  // viewed month's Ready to Assign already counts).
   const returning = preview
-    ? parseApiDecimal(preview.available) + parseApiDecimal(preview.future_assigned)
+    ? parseApiDecimal(
+        mode === 'move' ? preview.released_if_moved : preview.released_if_uncategorized
+      )
     : 0
+  const movingActivity = preview ? parseApiDecimal(preview.moving_activity) : 0
 
   async function handleDelete() {
     if (!preview) return
@@ -98,6 +108,15 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
         <h2 className="delete-category-modal__title">Delete {target.name}?</h2>
 
         {isLoading && <p className="delete-category-modal__loading">Checking what this affects…</p>}
+
+        {isError && (
+          <div className="delete-category-modal__error" role="alert">
+            <p>Couldn&rsquo;t check what this delete affects — nothing was deleted.</p>
+            <button type="button" onClick={() => refetch()}>
+              Try again
+            </button>
+          </div>
+        )}
 
         {blocked && (
           <div className="delete-category-modal__blocked" role="alert">
@@ -130,6 +149,12 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
                   )}
                 </dd>
               </div>
+              {movingActivity !== 0 && (
+                <div>
+                  <dt>Spending recorded in it</dt>
+                  <dd>{formatMoney(movingActivity)}</dd>
+                </div>
+              )}
               <div>
                 <dt>Returns to Ready to Assign</dt>
                 <dd className="delete-category-modal__money">{formatMoney(returning)}</dd>
@@ -161,7 +186,11 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
                   />
                   <span>
                     <strong>Move them to another category</strong>
-                    <em>Keeps this spending in reports, under the category you pick.</em>
+                    <em>
+                      Keeps this spending in reports, under the category you pick — and the
+                      money that covered it moves too, so that category&rsquo;s balance is not
+                      affected.
+                    </em>
                   </span>
                 </label>
                 {mode === 'move' && (

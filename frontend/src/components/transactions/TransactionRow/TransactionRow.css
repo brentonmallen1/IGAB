@@ -284,7 +284,11 @@
   border-left: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
   font-weight: 400;
   letter-spacing: 0;
-  opacity: 0.85;
+  /* No opacity here: the chip color clears WCAG AA by ~0.3, and an 85% blend
+     onto the tinted backdrop dropped this 11px text to ~3.7:1 in the Light
+     theme — below the 4.5:1 floor, invisibly to contrast.test.ts, which
+     reads theme files only. The lighter weight and the divider carry the
+     de-emphasis. */
 }
 
 .txn-split-label {

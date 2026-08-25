@@ -1,8 +1,13 @@
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../../../stores/appStore'
 import { useToastUndoChange } from '../../../utils/toastUndo'
 import { DeleteCategoryModal } from './DeleteCategoryModal'
-import type { DeleteTarget } from '../../../api/categories'
+import {
+  deletePreviewOptions,
+  useDeleteCategories,
+  type DeleteTarget,
+} from '../../../api/categories'
 
 /**
  * The whole delete-a-category interaction, in one place.
@@ -13,6 +18,12 @@ import type { DeleteTarget } from '../../../api/categories'
  * to say something that was no longer true. They now each ask for the flow and
  * render what it hands back.
  *
+ * An EMPTY category — no transactions, no money, nothing pointing at it — is
+ * deleted on the spot with an undo toast and no dialog: ceremony only where
+ * money is at stake. The preview decides that (`is_empty`), and anything else
+ * — something to decide, a blocking link, or the preview failing to load —
+ * opens the dialog, which owns its own error state.
+ *
  *   const { requestDelete, modal } = useDeleteCategoryFlow(budgetId, onDone)
  *   …
  *   <button onClick={() => requestDelete({ kind: 'categories', ids, name })}>
@@ -22,6 +33,37 @@ export function useDeleteCategoryFlow(budgetId: string, onDeleted?: () => void) 
   const month = useAppStore((s) => s.selectedMonth)
   const [target, setTarget] = useState<DeleteTarget | null>(null)
   const showUndo = useToastUndoChange(budgetId)
+  const qc = useQueryClient()
+  const deleteCategories = useDeleteCategories(budgetId)
+  const inFlight = useRef(false)
+
+  const requestDelete = useCallback(
+    async (t: DeleteTarget) => {
+      if (inFlight.current) return
+      inFlight.current = true
+      try {
+        const preview = await qc.fetchQuery(deletePreviewOptions(budgetId, t, month))
+        if (preview.is_empty && preview.blocked_by.length === 0) {
+          const result = await deleteCategories.mutateAsync({
+            target: t,
+            moveTo: null,
+            month,
+          })
+          showUndo(result.change_id, `${t.name} deleted`)
+          onDeleted?.()
+          return
+        }
+      } catch {
+        // Preview unreachable, or the one-click delete was refused (the
+        // mutation's own toast already said so). Fall through to the dialog,
+        // which shows what it can and offers a retry.
+      } finally {
+        inFlight.current = false
+      }
+      setTarget(t)
+    },
+    [budgetId, month, qc, deleteCategories, showUndo, onDeleted]
+  )
 
   const modal = target ? (
     <DeleteCategoryModal
@@ -36,5 +78,5 @@ export function useDeleteCategoryFlow(budgetId: string, onDeleted?: () => void) 
     />
   ) : null
 
-  return { requestDelete: setTarget, modal }
+  return { requestDelete, modal }
 }

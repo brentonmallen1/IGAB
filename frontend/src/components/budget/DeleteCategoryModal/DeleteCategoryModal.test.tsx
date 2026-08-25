@@ -20,6 +20,8 @@ const deleteMutate = vi.hoisted(() =>
   )
 )
 let preview: CategoryDeletePreview
+let previewFailed = false
+const refetchSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../api/categories', async () => {
   const actual = await vi.importActual<typeof import('../../../api/categories')>(
@@ -27,7 +29,12 @@ vi.mock('../../../api/categories', async () => {
   )
   return {
     ...actual,
-    useCategoryDeletePreview: () => ({ data: preview, isLoading: false }),
+    useCategoryDeletePreview: () => ({
+      data: preview,
+      isLoading: false,
+      isError: previewFailed,
+      refetch: refetchSpy,
+    }),
     useCategories: () => ({
       data: [
         { id: 'c1', name: 'Groceries', category_group_id: 'g1', is_categorizable: true },
@@ -50,10 +57,32 @@ function makePreview(over: Partial<CategoryDeletePreview> = {}): CategoryDeleteP
     future_assigned: '50.0000',
     payee_count: 0,
     scheduled_count: 0,
+    moving_activity: '40.0000',
+    released_if_moved: '110.0000',
+    released_if_uncategorized: '110.0000',
     blocked_by: [],
     is_empty: false,
     ...over,
   }
+}
+
+/** The preview request failed: no data, isError set — the modal must say so
+ *  rather than sit silent with a forever-disabled Delete. */
+function renderFailed() {
+  previewFailed = true
+  preview = undefined as unknown as CategoryDeletePreview
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <DeleteCategoryModal
+        budgetId="b1"
+        target={{ kind: 'categories', ids: ['c1'], name: 'Groceries' }}
+        month="2026-08-01"
+        onClose={vi.fn()}
+        onDeleted={vi.fn()}
+      />
+    </QueryClientProvider>
+  )
 }
 
 function renderModal(over: Partial<CategoryDeletePreview> = {}) {
@@ -76,16 +105,43 @@ function renderModal(over: Partial<CategoryDeletePreview> = {}) {
 
 beforeEach(() => {
   deleteMutate.mockClear()
+  refetchSpy.mockClear()
+  previewFailed = false
 })
 
 describe('DeleteCategoryModal', () => {
   it('states what is about to move before the user commits', () => {
     renderModal()
     expect(screen.getByText('412')).toBeInTheDocument()
-    // available + future_assigned, from the server. The dialog never adds up
-    // money of its own — a differential test on the server holds these to what
-    // the delete then does.
+    // Served, from the server. The dialog never adds up money of its own — a
+    // differential test on the server holds these to what the delete does.
     expect(screen.getByText('$110.00')).toBeInTheDocument()
+    // The spending that moves is stated too.
+    expect(screen.getByText('$40.00')).toBeInTheDocument()
+  })
+
+  it('shows the figure for the mode the user has selected', async () => {
+    // They differ when future-dated activity moves; the dialog must follow
+    // the selection rather than quote one number for both.
+    renderModal({ released_if_moved: '110.0000', released_if_uncategorized: '80.0000' })
+    expect(screen.getByText('$110.00')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('radio', { name: /Leave them uncategorized/ }))
+    expect(screen.getByText('$80.00')).toBeInTheDocument()
+    expect(screen.queryByText('$110.00')).not.toBeInTheDocument()
+  })
+
+  it('says the destination is held harmless', () => {
+    renderModal()
+    expect(screen.getByText(/balance is not\s+affected/)).toBeInTheDocument()
+  })
+
+  it('says so when the preview cannot be loaded, and offers a retry', async () => {
+    renderFailed()
+    expect(screen.getByRole('alert')).toHaveTextContent(/nothing was deleted/i)
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(refetchSpy).toHaveBeenCalled()
+    // No numbers to stand behind, so no Delete.
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
   })
 
   it('calls out reconciled rows, which cannot be re-filed by hand afterwards', () => {

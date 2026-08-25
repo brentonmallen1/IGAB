@@ -174,6 +174,14 @@ export interface CategoryDeletePreview {
   future_assigned: string
   payee_count: number
   scheduled_count: number
+  /** Net posted spending filed here over the categories' whole life
+   *  (positive = outflow) — what the destination absorbs, or what leaves
+   *  category-keyed reports until re-filed. */
+  moving_activity: string
+  /** What Ready to Assign gains, one figure per mode — SERVED, the dialog
+   *  never derives money. They differ when future-dated activity moves. */
+  released_if_moved: string
+  released_if_uncategorized: string
   /** Non-empty means the delete is refused (a linked payment or debt
    *  category); each entry names the counterpart and what to do instead. */
   blocked_by: string[]
@@ -199,16 +207,15 @@ export type DeleteTarget =
   | { kind: 'categories'; ids: string[]; name: string }
   | { kind: 'group'; id: string; name: string }
 
-export function useCategoryDeletePreview(
-  budgetId: string,
-  target: DeleteTarget | null,
-  month: string
-) {
-  const key = target?.kind === 'group' ? target.id : (target?.ids.join(',') ?? '')
-  return useQuery({
-    queryKey: ['categoryDeletePreview', budgetId, target?.kind, key, month],
-    queryFn: async () => {
-      if (target?.kind === 'group') {
+/** The one definition of the delete-preview fetch — the modal's query and the
+ *  flow hook's skip-the-dialog prefetch both use it, so they cannot disagree
+ *  about key, endpoint or freshness. */
+export function deletePreviewOptions(budgetId: string, target: DeleteTarget, month: string) {
+  const key = target.kind === 'group' ? target.id : target.ids.join(',')
+  return {
+    queryKey: ['categoryDeletePreview', budgetId, target.kind, key, month] as const,
+    queryFn: async (): Promise<CategoryDeletePreview> => {
+      if (target.kind === 'group') {
         const { data } = await apiClient.get<CategoryDeletePreview>(
           `/category-groups/${target.id}/delete-preview`,
           { params: { month } }
@@ -217,14 +224,31 @@ export function useCategoryDeletePreview(
       }
       const { data } = await apiClient.post<CategoryDeletePreview>(
         `/${budgetId}/categories/delete-preview`,
-        { category_ids: target!.ids, month }
+        { category_ids: target.ids, month }
       )
       return data
     },
-    enabled: !!target,
     // Never served from cache: it quantifies money and drives a destructive
     // button, so an answer from before the user's last edit is exactly the
     // wrong thing to put in front of them.
+    staleTime: 0,
+    gcTime: 0,
+  }
+}
+
+export function useCategoryDeletePreview(
+  budgetId: string,
+  target: DeleteTarget | null,
+  month: string
+) {
+  const key = target?.kind === 'group' ? target.id : (target?.ids.join(',') ?? '')
+  return useQuery({
+    queryKey: ['categoryDeletePreview', budgetId, target?.kind ?? 'none', key, month],
+    // Delegates to the shared definition — target is always set here because
+    // the query is disabled without one.
+    queryFn: (): Promise<CategoryDeletePreview> =>
+      deletePreviewOptions(budgetId, target!, month).queryFn(),
+    enabled: !!target,
     staleTime: 0,
     gcTime: 0,
   })

@@ -19,32 +19,31 @@ function keysInvalidatedFor(budgetId: string | null): string[] {
 }
 
 describe('invalidateAfterCategoryChange', () => {
-  it('covers every cache a category delete stales', () => {
-    const keys = keysInvalidatedFor('b1')
+  it('covers every cache a category delete stales — the whole list, exactly', () => {
+    // Set equality, not toContain: a partial pin let five keys drop without
+    // failing anything (found in review). Removing OR adding a key now has
+    // to happen here too, deliberately.
+    const expected = [
+      ['categories'],
+      ['categoryGroups'],
+      ['categoryClassification'],
+      ['budgetMonth', 'b1'],
+      ['transactions'],
+      ['all-transactions'],
+      ['budget-transactions'],
+      ['category-transactions'],
+      ['payee-transactions'],
+      ['pending-review-count'],
+      ['pending-review-count-account'],
+      ['payees'],
+      ['scheduled-transactions'],
+      ['budgetViews'],
+      ['budgetFilters'],
+      ['reports'],
+      ['changes'],
+    ].map((k) => JSON.stringify(k))
 
-    // The grid and the money on it.
-    expect(keys).toContain(JSON.stringify(['categories']))
-    expect(keys).toContain(JSON.stringify(['categoryGroups']))
-    expect(keys).toContain(JSON.stringify(['budgetMonth', 'b1']))
-
-    // The register's category column, and the rows that just changed.
-    expect(keys).toContain(JSON.stringify(['transactions']))
-    expect(keys).toContain(JSON.stringify(['all-transactions']))
-    expect(keys).toContain(JSON.stringify(['category-transactions']))
-
-    // The needs-a-category badge counts exactly the rows a delete creates.
-    expect(keys).toContain(JSON.stringify(['pending-review-count']))
-
-    // Payee defaults and scheduled categories are cleared by the delete.
-    expect(keys).toContain(JSON.stringify(['payees']))
-    expect(keys).toContain(JSON.stringify(['scheduled-transactions']))
-
-    // Views and filters lose their placements and selections.
-    expect(keys).toContain(JSON.stringify(['budgetViews']))
-    expect(keys).toContain(JSON.stringify(['budgetFilters']))
-
-    // Reports group by category.
-    expect(keys).toContain(JSON.stringify(['reports']))
+    expect(keysInvalidatedFor('b1').sort()).toEqual(expected.sort())
   })
 
   it('spells the group key the way the query registers it', () => {

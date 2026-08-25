@@ -42,13 +42,24 @@ export function IntegrityPanel({ budgetId }: Props) {
    * front of the check that just told them about it.
    */
   async function repair() {
-    const result = await repairOrphans.mutateAsync()
+    let result
+    try {
+      result = await repairOrphans.mutateAsync()
+    } catch {
+      return // the mutation's onError toast has already said so
+    }
     const released = parseApiDecimal(result.released)
     const parts = [`${result.categories_repaired} categories tidied`]
     if (result.transactions_uncategorized > 0) {
       parts.push(`${result.transactions_uncategorized} transactions now need a category`)
     }
     if (released !== 0) parts.push(`${formatMoney(released)} back in Ready to Assign`)
+    // "Restores": undoing a repair from Activity brings the category back to
+    // the budget, live — pinned server-side; re-orphaning would recreate the
+    // stranded money the repair just fixed.
+    if (result.categories_repaired > 0) {
+      parts.push('undo from Activity restores a category to your budget')
+    }
     toast.success(parts.join(' · '))
     if (result.categories_under_deleted_groups > 0) {
       // Not repairable from here: restoring the group and deleting the
