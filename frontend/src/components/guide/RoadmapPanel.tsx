@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import { ExternalLink, Heart, Info } from 'lucide-react'
+import { ExternalLink, Info } from 'lucide-react'
 import {
   ROADMAP_STEPS,
   ROADMAP_ATTRIBUTION,
   ROADMAP_DISCLAIMER,
-  DISCRETIONARY_NOTE,
 } from '../../content/roadmap'
 import { useGuideStore, type RoadmapView } from '../../stores/guideStore'
 import { stepColor } from './stepColor'
@@ -22,7 +21,7 @@ const VIEWS: { id: RoadmapView; label: string; hint: string }[] = [
 export function RoadmapPanel() {
   const view = useGuideStore((s) => s.roadmapView)
   const setView = useGuideStore((s) => s.setRoadmapView)
-  const [dialog, setDialog] = useState<'fun' | 'source' | null>(null)
+  const [dialog, setDialog] = useState<'source' | null>(null)
 
   // Map owns its own scrolling — it pans and zooms — so the panel becomes a
   // fixed-height column and the page behind it stops scrolling. The reading
@@ -43,15 +42,6 @@ export function RoadmapPanel() {
         </div>
 
         <div className="guide-roadmap__controls">
-          <button
-            type="button"
-            className="guide-icon-button"
-            onClick={() => setDialog('fun')}
-            aria-label="A note on spending for fun"
-            title="A note on spending for fun"
-          >
-            <Heart size={14} />
-          </button>
           <button
             type="button"
             className="guide-icon-button"
@@ -99,16 +89,6 @@ export function RoadmapPanel() {
       <footer className="guide-roadmap__footer">
         <p className="guide-roadmap__meta">{ROADMAP_DISCLAIMER}</p>
       </footer>
-
-      {dialog === 'fun' && (
-        <GuideDialog title="A note on spending for fun" onClose={() => setDialog(null)} historyKey="guide-fun">
-          <p className="guide-dialog__body">{DISCRETIONARY_NOTE}</p>
-          <p className="guide-dialog__body guide-dialog__body--muted">
-            None of this roadmap is an argument for a joyless budget. Money you plan to enjoy
-            is doing its job as much as money you save.
-          </p>
-        </GuideDialog>
-      )}
 
       {dialog === 'source' && (
         <GuideDialog title="Where this comes from" onClose={() => setDialog(null)} historyKey="guide-source">
