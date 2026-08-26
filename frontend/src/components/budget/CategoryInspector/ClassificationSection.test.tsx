@@ -3,7 +3,7 @@
  * a hover away. An ordinary spending category renders nothing — a chip on
  * every category would say nothing about any of them.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CategoryClassification } from '../../../types'
 
@@ -14,6 +14,7 @@ vi.mock('../../../api/categories', () => ({
 }))
 
 import { ClassificationSection } from './ClassificationSection'
+import { TOOLTIP_DELAY_MS } from '../../common/Tooltip/tooltipDelay'
 
 const DEBT: CategoryClassification = {
   classes: [
@@ -40,8 +41,12 @@ describe('ClassificationSection', () => {
   })
 
   it('explains itself on hover, composition included', () => {
+    vi.useFakeTimers()
     render(<ClassificationSection categoryId="c1" />)
     fireEvent.mouseEnter(screen.getByText('Debt payment'))
+    // Tooltips wait the one shared delay before showing.
+    act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
+    vi.useRealTimers()
     expect(screen.getByRole('tooltip')).toHaveTextContent('pays down a tracked debt')
     expect(screen.getByRole('tooltip')).toHaveTextContent('Spending: $4.50')
   })

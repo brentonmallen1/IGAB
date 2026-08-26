@@ -46,6 +46,7 @@ import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox
 import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { randomUUID } from '../../../utils/uuid'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
 
 /** Prefill for create mode — the shared shape every AI entry path (NL text,
@@ -1127,19 +1128,25 @@ export function TransactionEditor({
               {bankRecord.postedDate && (
                 <div
                   className={`txn-editor__bank-meta-field${bankRecord.dateDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
-                  title={bankRecord.dateDiffers ? 'Differs from the date on this transaction' : undefined}
                 >
                   <dt>Posted</dt>
-                  <dd>{formatDate(bankRecord.postedDate)}</dd>
+                  <dd>
+                    <Tooltip content={bankRecord.dateDiffers ? 'Differs from the date on this transaction' : null}>
+                      <span>{formatDate(bankRecord.postedDate)}</span>
+                    </Tooltip>
+                  </dd>
                 </div>
               )}
               {bankRecord.amount !== null && (
                 <div
                   className={`txn-editor__bank-meta-field${bankRecord.amountDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
-                  title={bankRecord.amountDiffers ? 'Differs from the amount on this transaction' : undefined}
                 >
                   <dt>Amount</dt>
-                  <dd>{formatMoney(bankRecord.amount)}</dd>
+                  <dd>
+                    <Tooltip content={bankRecord.amountDiffers ? 'Differs from the amount on this transaction' : null}>
+                      <span>{formatMoney(bankRecord.amount)}</span>
+                    </Tooltip>
+                  </dd>
                 </div>
               )}
               {bankRecord.payee && (

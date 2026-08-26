@@ -22,6 +22,7 @@ import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { BankRecordIcon } from '../../simplefin/BankRecordIcon'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { RowAttachmentButton } from './RowAttachmentButton'
 import type { Transaction, Category, CategoryGroup, Payee } from '../../../types'
 import './TransactionRow.css'
@@ -189,6 +190,18 @@ export const TransactionRow = memo(function TransactionRow({
 
   const isReconciled = txn.cleared === 'reconciled'
   const isPending = txn.cleared === 'pending'
+
+  const dateProvenance =
+    [
+      txn.bank_posted_date && txn.bank_posted_date !== txn.date
+        ? `Bank posted ${formatDate(txn.bank_posted_date)}.`
+        : null,
+      txn.entered_date && txn.entered_date !== txn.date
+        ? `Originally entered ${formatDate(txn.entered_date)}.`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' ') || null
 
   // Only rows entered from a schedule fetch the schedules (the query is
   // disabled otherwise), and the list is shared with the register's upcoming
@@ -407,16 +420,17 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Status icons */}
       <div className="txn-col txn-col--status" onClick={(e) => e.stopPropagation()}>
         {!txn.approved && (
-          <button
-            ref={eyeRef}
-            className="txn-status-icon txn-status-icon--unapproved"
-            onClick={handleEyeClick}
-            title="Unapproved — click to approve or delete"
-            aria-label="Unapproved transaction"
-            aria-haspopup="menu"
-          >
-            <Eye size={12} />
-          </button>
+          <Tooltip content="Unapproved — click to approve or delete">
+            <button
+              ref={eyeRef}
+              className="txn-status-icon txn-status-icon--unapproved"
+              onClick={handleEyeClick}
+              aria-label="Unapproved transaction"
+              aria-haspopup="menu"
+            >
+              <Eye size={12} />
+            </button>
+          </Tooltip>
         )}
         {/* Separates an AI-extracted row from an unapproved bank import: both
             are dimmed and carry the warning eye, but only one of them was
@@ -426,24 +440,26 @@ export const TransactionRow = memo(function TransactionRow({
             the review modal, and the cluster is crowded enough. Drops away on
             approve, like every other glyph here: it means "this needs you". */}
         {!txn.approved && txn.created_via?.startsWith('ai') && (
-          <span
-            className="txn-status-icon txn-status-icon--ai"
-            role="img"
-            aria-label="Extracted from an image by AI — needs review"
-            title="Extracted from an image by AI — needs review"
-          >
-            <Sparkles size={12} />
-          </span>
+          <Tooltip content="Extracted from an image by AI — needs review">
+            <span
+              className="txn-status-icon txn-status-icon--ai"
+              role="img"
+              aria-label="Extracted from an image by AI — needs review"
+            >
+              <Sparkles size={12} />
+            </span>
+          </Tooltip>
         )}
         {txn.scheduled_transaction_id && (
-          <span
-            className="txn-status-icon txn-status-icon--scheduled"
-            role="img"
-            aria-label={scheduleLabel}
-            title={scheduleLabel}
-          >
-            <CalendarClock size={11} />
-          </span>
+          <Tooltip content={scheduleLabel}>
+            <span
+              className="txn-status-icon txn-status-icon--scheduled"
+              role="img"
+              aria-label={scheduleLabel}
+            >
+              <CalendarClock size={11} />
+            </span>
+          </Tooltip>
         )}
         <BankRecordIcon transaction={txn} />
         {/* Mobile cards only show the icon when an image exists (view); adding
@@ -476,18 +492,6 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--date"
         onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'date')}
-        title={
-          [
-            txn.bank_posted_date && txn.bank_posted_date !== txn.date
-              ? `Bank posted ${formatDate(txn.bank_posted_date)}.`
-              : null,
-            txn.entered_date && txn.entered_date !== txn.date
-              ? `Originally entered ${formatDate(txn.entered_date)}.`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(' ') || undefined
-        }
       >
         {isEditing('date') ? (
           <DatePicker
@@ -496,6 +500,10 @@ export const TransactionRow = memo(function TransactionRow({
             onClose={stopEditing}
             onTabOut={(d) => advance('date', d)}
           />
+        ) : dateProvenance ? (
+          <Tooltip content={dateProvenance}>
+            <span>{formatDate(txn.date)}</span>
+          </Tooltip>
         ) : (
           formatDate(txn.date)
         )}
@@ -517,7 +525,6 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--payee txn-text-clip"
         onClick={() => !isMobile && !isReconciled && !txn.transfer_id && startEditing(txn.id, 'payee')}
-        title={txn.import_description ?? undefined}
       >
         {isEditing('payee') ? (
           <Combobox
@@ -531,6 +538,10 @@ export const TransactionRow = memo(function TransactionRow({
             onBlurClose={stopEditing}
             onTabOut={(d) => advance('payee', d)}
           />
+        ) : txn.import_description ? (
+          <Tooltip content={txn.import_description} block className="txn-text-clip">
+            <span className="txn-cell-text">{payeeName}</span>
+          </Tooltip>
         ) : (
           <span className="txn-cell-text">{payeeName}</span>
         )}
@@ -550,7 +561,6 @@ export const TransactionRow = memo(function TransactionRow({
           }
           if (!isReconciled) startEditing(txn.id, 'category')
         }}
-        title={txn.is_split ? 'Split — click to view and edit the lines' : undefined}
       >
         {isEditing('category') ? (
           <Combobox
@@ -565,11 +575,15 @@ export const TransactionRow = memo(function TransactionRow({
             onBlurClose={stopEditing}
             onTabOut={(d) => advance('category', d)}
           />
+        ) : txn.is_split ? (
+          <Tooltip content="Split — click to view and edit the lines">
+            <span className="txn-cell-text txn-split-label">
+              <ChevronRight size={11} className="txn-split-label__chevron" aria-hidden />
+              {categoryName}
+            </span>
+          </Tooltip>
         ) : categoryName !== null ? (
-          <span className={`txn-cell-text ${txn.is_split ? 'txn-split-label' : ''}`}>
-            {txn.is_split && <ChevronRight size={11} className="txn-split-label__chevron" aria-hidden />}
-            {categoryName}
-          </span>
+          <span className="txn-cell-text">{categoryName}</span>
         ) : txn.needs_category ? (
           // `prior_category_name` is provenance, never a category: this row
           // IS uncategorized and the chip says so. The hint only answers
@@ -603,7 +617,6 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--memo txn-text-clip"
         onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'memo')}
-        title={txn.memo ?? undefined}
       >
         {isEditing('memo') ? (
           <InlineInput
@@ -613,8 +626,14 @@ export const TransactionRow = memo(function TransactionRow({
             onTabOut={(d) => advance('memo', d)}
             placeholder="Add memo…"
           />
+        ) : txn.memo ? (
+          // The only place a clipped memo is readable without opening the
+          // editor — so it must not take a second to appear.
+          <Tooltip content={txn.memo} block className="txn-text-clip">
+            <span className="txn-cell-text">{txn.memo}</span>
+          </Tooltip>
         ) : (
-          <span className="txn-cell-text">{txn.memo ?? ''}</span>
+          <span className="txn-cell-text" />
         )}
       </div>
 
@@ -659,42 +678,48 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Cleared */}
       <div className="txn-col txn-col--cleared">
         {isReconciled ? (
-          <button
-            className="txn-cleared-btn txn-cleared-btn--locked"
-            onClick={(e) => { e.stopPropagation(); handleUnreconcile() }}
-            title="Reconciled — locked. Click to unlock (unreconcile)."
-            aria-label="Reconciled transaction — click to unreconcile"
-          >
-            <Lock size={12} />
-          </button>
+          <Tooltip content="Reconciled — locked. Click to unlock (unreconcile).">
+            <button
+              className="txn-cleared-btn txn-cleared-btn--locked"
+              onClick={(e) => { e.stopPropagation(); handleUnreconcile() }}
+              aria-label="Reconciled transaction — click to unreconcile"
+            >
+              <Lock size={12} />
+            </button>
+          </Tooltip>
         ) : isPending ? (
-          <span
-            className="txn-cleared-btn txn-cleared-btn--pending"
-            title="Pending — the bank reports a hold that has not posted. Not counted in balances until it does."
-          >
-            <Clock size={14} />
-          </span>
+          <Tooltip content="Pending — the bank reports a hold that has not posted. Not counted in balances until it does.">
+            <span className="txn-cleared-btn txn-cleared-btn--pending" role="img" aria-label="Pending">
+              <Clock size={14} />
+            </span>
+          </Tooltip>
         ) : (
-          <button
-            className={`txn-cleared-btn ${txn.cleared !== 'uncleared' ? 'cleared' : ''}`}
-            onClick={(e) => { e.stopPropagation(); toggleCleared() }}
-            title={
+          <Tooltip
+            content={
               txn.cleared === 'uncleared'
                 ? 'Uncleared — entered by you, not yet confirmed by the bank. Click to mark cleared.'
                 : 'Cleared — confirmed by the bank. Click to mark uncleared.'
             }
           >
-            {txn.cleared !== 'uncleared' ? <CheckCircle size={14} /> : <Circle size={14} />}
-          </button>
+            <button
+              className={`txn-cleared-btn ${txn.cleared !== 'uncleared' ? 'cleared' : ''}`}
+              onClick={(e) => { e.stopPropagation(); toggleCleared() }}
+              aria-label={txn.cleared === 'uncleared' ? 'Uncleared — mark cleared' : 'Cleared — mark uncleared'}
+            >
+              {txn.cleared !== 'uncleared' ? <CheckCircle size={14} /> : <Circle size={14} />}
+            </button>
+          </Tooltip>
         )}
-        <button
-          ref={moreRef}
-          className="txn-more-btn"
-          onClick={handleMoreClick}
-          title="More actions"
-        >
-          <MoreHorizontal size={12} />
-        </button>
+        <Tooltip content="More actions">
+          <button
+            ref={moreRef}
+            className="txn-more-btn"
+            onClick={handleMoreClick}
+            aria-label="More actions"
+          >
+            <MoreHorizontal size={12} />
+          </button>
+        </Tooltip>
       </div>
 
       {contextMenuOpen && (

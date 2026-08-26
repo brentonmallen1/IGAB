@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useLayoutEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { TOOLTIP_DELAY_MS } from './tooltipDelay'
 import './Tooltip.css'
 
 /** Breathing room the popup keeps from every viewport edge. */
@@ -8,19 +9,51 @@ const EDGE = 8
 interface Props {
   content: React.ReactNode | null
   children: React.ReactNode
+  /**
+   * Fill the parent as a block instead of sitting inline. For a clipped text
+   * cell (memo, payee) the host must be the block that carries the
+   * ellipsis, or the text inside an inline-flex box clips without one.
+   */
+  block?: boolean
+  /** Extra class on the host — the cell's own clipping class, typically. */
+  className?: string
 }
 
-export function Tooltip({ content, children }: Props) {
+/**
+ * The app's one hover tooltip. Shows after TOOLTIP_DELAY_MS on hover or
+ * keyboard focus, hides on leave/blur, and clamps itself to the viewport.
+ * Prefer it over a native `title` anywhere a person actually waits for the
+ * text — `title` has a browser-fixed delay of about a second and no
+ * styling; keep `title` for the incidental case.
+ */
+export function Tooltip({ content, children, block = false, className }: Props) {
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null)
   const ref = useRef<HTMLSpanElement>(null)
   const popupRef = useRef<HTMLSpanElement>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const show = useCallback(() => {
-    const rect = ref.current?.getBoundingClientRect()
-    if (rect) setAnchor({ x: rect.left + rect.width / 2, y: rect.top - EDGE })
+  const cancel = useCallback(() => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
   }, [])
 
-  const hide = useCallback(() => setAnchor(null), [])
+  const show = useCallback(() => {
+    cancel()
+    timer.current = setTimeout(() => {
+      timer.current = null
+      const rect = ref.current?.getBoundingClientRect()
+      if (rect) setAnchor({ x: rect.left + rect.width / 2, y: rect.top - EDGE })
+    }, TOOLTIP_DELAY_MS)
+  }, [cancel])
+
+  const hide = useCallback(() => {
+    cancel()
+    setAnchor(null)
+  }, [cancel])
+
+  useEffect(() => cancel, [cancel])
 
   // The anchor is where the popup *wants* to sit — centred over the host.
   // Only once it has rendered do we know its size, so clamping to the
@@ -43,8 +76,19 @@ export function Tooltip({ content, children }: Props) {
     }
   }, [anchor])
 
+  const hostClass = ['tooltip-host', block ? 'tooltip-host--block' : '', className ?? '']
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <span ref={ref} className="tooltip-host" onMouseEnter={show} onMouseLeave={hide}>
+    <span
+      ref={ref}
+      className={hostClass}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+    >
       {children}
       {anchor && content != null &&
         createPortal(

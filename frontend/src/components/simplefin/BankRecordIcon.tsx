@@ -1,4 +1,5 @@
 import { Landmark, Link2 } from 'lucide-react'
+import { Tooltip } from '../common/Tooltip/Tooltip'
 import type { Transaction } from '../../types'
 import { useFormatters } from '../../hooks/useFormatters'
 import './BankRecordIcon.css'
@@ -38,8 +39,14 @@ export function BankRecordIcon({ transaction }: { transaction: Transaction }) {
   ].filter(Boolean) as string[]
 
   return (
-    <span className="bank-record-icon" title={lines.join('\n')} aria-label={lines.join('. ')}>
-      {enteredByUser ? <Link2 size={11} /> : <Landmark size={11} />}
-    </span>
+    <Tooltip
+      content={lines.map((line) => (
+        <div key={line}>{line}</div>
+      ))}
+    >
+      <span className="bank-record-icon" role="img" aria-label={lines.join('. ')}>
+        {enteredByUser ? <Link2 size={11} /> : <Landmark size={11} />}
+      </span>
+    </Tooltip>
   )
 }

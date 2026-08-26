@@ -4,6 +4,13 @@
   align-items: center;
 }
 
+/* A host that is the cell's text block: it carries the clipping class the
+   cell hands it, so an overlong memo still ends in an ellipsis. */
+.tooltip-host--block {
+  display: block;
+  min-width: 0;
+}
+
 .tooltip-popup {
   position: fixed;
   transform: translate(-50%, -100%);
