@@ -141,6 +141,12 @@ still matters. The tabs are in the app and describe themselves.
 - **SimpleFIN sync** — link multiple banks; encrypted token storage,
   similarity-scored deduplication (payee, date, amount), and a review queue
   for uncertain matches
+- **Four clearing states, one meaning each** — *pending* is a bank hold that
+  has not posted (never counted), *uncleared* is a row you entered that the
+  bank has not confirmed, *cleared* is bank-confirmed, *reconciled* is checked
+  against a statement and locked. A hold that posts under the same record
+  clears in place; a changed amount against something you entered goes to the
+  review queue instead of being applied silently
 - **YNAB import** — switching from YNAB? Import your full export (accounts,
   categories, transactions, budget history) and run both in parallel until
   you trust the numbers. Note: YNAB's export does not include saved views — those

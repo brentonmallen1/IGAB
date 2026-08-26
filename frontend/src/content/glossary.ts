@@ -54,6 +54,10 @@ export const GLOSSARY_IDS = [
   'taxable-account',
   'savings-rate',
   'compounding',
+  'pending',
+  'uncleared',
+  'cleared',
+  'reconciled',
 ] as const
 
 export type GlossaryId = (typeof GLOSSARY_IDS)[number]
@@ -278,6 +282,41 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'Growth earning further growth, so the balance accelerates over time.',
     body: 'The reason starting early matters more than contributing heavily later — early money has the most time to compound. It works identically against you on debt, which is why high-rate balances grow so quickly when left unpaid.',
     related: ['apy', 'savings-rate', 'apr'],
+  },
+  {
+    id: 'pending',
+    term: 'Pending',
+    aliases: ['authorization hold', 'auth hold', 'pending transaction'],
+    short: 'The bank reports a hold that has not posted yet. Provisional, and not counted.',
+    body: 'When you pay by card the bank first records an authorization for an estimated amount; the final charge posts days later and can differ (a tip, a fuel hold). Until it posts, nothing has actually moved.',
+    inIgab: 'Rows the bank sync brings in as pending show a clock and are left out of every balance. When the same record posts, the row clears in place; if the posted amount differs from something you entered yourself, it is offered for review rather than changed silently.',
+    related: ['uncleared', 'cleared', 'reconciled'],
+  },
+  {
+    id: 'uncleared',
+    term: 'Uncleared',
+    aliases: ['unconfirmed'],
+    short: 'You entered it and the money has moved in your ledger; the bank has not confirmed it yet.',
+    body: 'An uncleared transaction is a real one you recorded before the bank did. It counts toward your balance because you know you spent it; it simply has not been matched to a bank record yet.',
+    inIgab: 'The empty circle in the register. Clicking it marks the row cleared by hand; a bank sync that finds the matching record clears it for you.',
+    related: ['pending', 'cleared', 'reconciled'],
+  },
+  {
+    id: 'cleared',
+    term: 'Cleared',
+    short: 'The bank agrees this transaction happened, at this amount.',
+    body: 'Cleared means confirmed: either the bank record matched, or you ticked it yourself while checking against a statement. Cleared rows are what a reconciliation compares to the bank balance.',
+    inIgab: 'The filled check in the register. The cleared balance shown on an account is the sum of these rows.',
+    related: ['uncleared', 'reconciled', 'pending'],
+  },
+  {
+    id: 'reconciled',
+    term: 'Reconciled',
+    aliases: ['locked'],
+    short: 'Checked against a bank statement and locked. The money cannot change; the bookkeeping can.',
+    body: 'Reconciling an account is agreeing that its cleared balance equals what the bank says on a date. Every cleared transaction up to that date is then locked, so the agreement stays true.',
+    inIgab: 'The lock in the register. A reconciled row keeps its amount, date and account fixed, but you can still edit its category, payee, memo and split lines through Edit… in the row menu; Unlock returns it to cleared.',
+    related: ['cleared', 'uncleared', 'pending'],
   },
 ]
 
