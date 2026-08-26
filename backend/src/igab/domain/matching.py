@@ -19,6 +19,7 @@ that, so a future weight change cannot quietly make an unknown payee enough
 to merge two transactions.
 """
 
+from collections.abc import Iterable
 from datetime import date
 
 from rapidfuzz import fuzz
@@ -42,6 +43,26 @@ def payee_similarity(a: str | None, b: str | None, *, unknown: float) -> float:
     if not a or not b:
         return unknown
     return fuzz.WRatio(a.lower(), b.lower()) / 100.0
+
+
+def best_payee_similarity(
+    names: Iterable[str | None], other: str | None, *, unknown: float
+) -> float:
+    """The best `payee_similarity` between `other` and any of `names`.
+
+    A row keeps several strings for the same merchant: the payee the user
+    chose ("Starbucks"), the bank's own string from a pending record
+    ("STARBUCKS #1234") and its description. When the bank re-identifies a
+    record at posting, the posted string is usually near-identical to the
+    bank's pending string even when it shares nothing with the user's payee
+    — so the row is scored on whichever of its strings matches best, never
+    on the user's payee alone. Non-strings and empty strings are skipped;
+    with nothing to compare, the caller's `unknown` applies.
+    """
+    usable = [n for n in names if isinstance(n, str) and n]
+    if not usable:
+        return unknown
+    return max(payee_similarity(n, other, unknown=unknown) for n in usable)
 
 
 def date_proximity(one: date, other: date, *, window_days: int = DATE_WINDOW_DAYS) -> float:

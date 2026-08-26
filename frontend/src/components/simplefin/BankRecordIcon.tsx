@@ -19,6 +19,11 @@ export function BankRecordIcon({ transaction }: { transaction: Transaction }) {
     'From your bank',
     transaction.bank_posted_date ? `Posted ${formatDate(transaction.bank_posted_date)}` : null,
     transaction.bank_amount != null ? `Amount ${formatMoney(transaction.bank_amount)}` : null,
+    // The bank's posted amount replaced what was entered — say so, and say
+    // what it was. Home: Transaction.entered_amount.
+    transaction.entered_amount != null
+      ? `Amount updated from ${formatMoney(transaction.entered_amount)} when the bank posted`
+      : null,
     bankPayee ? `Payee ${bankPayee}` : null,
   ].filter(Boolean) as string[]
 

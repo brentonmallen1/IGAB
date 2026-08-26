@@ -8,15 +8,19 @@ from typing import Literal
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import SimpleFINConnection, Transaction
+from igab.db.models import Account, SimpleFINConnection, Transaction
+from igab.domain.bank_posting import FeedRecord, Review
 from igab.domain.exceptions import IGABError
-from igab.domain.matching import date_proximity, payee_similarity
+from igab.domain.matching import best_payee_similarity, date_proximity, payee_similarity
 from igab.integrations.simplefin.client import SimpleFINClient
 from igab.integrations.simplefin.encryption import decrypt, encrypt
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.transaction_matching_service import TransactionMatchingService
+from igab.services.transaction_matching_service import (
+    TransactionMatchingService,
+    calculate_confidence,
+)
 from igab.services.transaction_service import TransactionCreate, TransactionService
 from igab.utils.clock import today_utc
 
@@ -40,6 +44,11 @@ DEDUP_AUTO_DATE_MAX_DAYS = 5
 DEDUP_TIGHT_DATE_DAYS = 1
 # Payee-similarity margin that resolves a same-day tie between candidates.
 DEDUP_TIEBREAK_MARGIN = 0.10
+# A user row whose pending bank link vanished is offered for review against a
+# posted row this run created when it scores at least this. Review only,
+# never auto: the amounts differ by construction (an equal amount would have
+# matched in the loop), so a human confirms the tip or the settled hold.
+STALE_LINK_REVIEW_THRESHOLD = 0.5
 
 
 #: What a missing payee counts for here. Neutral rather than zero: a SimpleFIN
@@ -59,19 +68,48 @@ def _date_proximity_score(synced: date, existing: date) -> float:
     return date_proximity(synced, existing, window_days=DEDUP_AUTO_DATE_MAX_DAYS)
 
 
+def _dedup_score(payee_score: float, synced_date: date, existing_date: date) -> float:
+    # Amount already exact. Date is weighted low because banks post 2-5 days
+    # after YNAB records the due date. Payee carries most of the signal.
+    # Weights: date 20%, payee 80%
+    return round(_date_proximity_score(synced_date, existing_date) * 0.2 + payee_score * 0.8, 4)
+
+
 def _calculate_dedup_score(
     synced_payee: str | None,
     synced_date: date,
     existing_payee: str | None,
     existing_date: date,
 ) -> float:
-    # Amount already exact. Date is weighted low because banks post 2-5 days
-    # after YNAB records the due date. Payee carries most of the signal.
-    # Weights: date 20%, payee 80%
-    return round(
-        _date_proximity_score(synced_date, existing_date) * 0.2
-        + _payee_similarity(synced_payee, existing_payee) * 0.8,
-        4,
+    return _dedup_score(_payee_similarity(synced_payee, existing_payee), synced_date, existing_date)
+
+
+def _row_payee_strings(txn: Transaction, payee_name: str | None) -> list[str | None]:
+    """Every string a row keeps for its merchant — the user's payee and the
+    bank's own pending strings. See domain.matching.best_payee_similarity."""
+    return [payee_name, txn.bank_payee, txn.import_description]
+
+
+def _feed_record(t: dict) -> FeedRecord:
+    """One SimpleFIN feed row as the posting rule reads it."""
+    # A missing/empty bank id must never dedup by sync_id ("" would collide
+    # every id-less transaction into one row).
+    sync_id = (t.get("id") or "").strip() or None
+    posted_ts = t.get("posted")
+    transacted_ts = t.get("transacted_at")
+    timestamp = posted_ts or transacted_ts
+    txn_date = (
+        datetime.fromtimestamp(timestamp, tz=UTC).date()
+        if isinstance(timestamp, (int, float)) and timestamp > 0
+        else today_utc()
+    )
+    return FeedRecord(
+        amount=Decimal(str(t.get("amount", "0"))),
+        date=txn_date,
+        posted=bool(posted_ts and posted_ts > 0),
+        payee=t.get("payee") or t.get("description") or None,
+        description=t.get("description") or None,
+        sync_id=sync_id,
     )
 
 
@@ -99,15 +137,19 @@ def _decide_match(
     if not candidates:
         return _MatchDecision("create")
 
-    scored = [
-        (
-            txn,
-            _payee_similarity(synced_payee, payee_name),
-            abs((txn_date - txn.date).days),
-            _calculate_dedup_score(synced_payee, txn_date, payee_name, txn.date),
+    scored = []
+    for txn, payee_name in candidates:
+        similarity = best_payee_similarity(
+            _row_payee_strings(txn, payee_name), synced_payee, unknown=_UNKNOWN_PAYEE_SCORE
         )
-        for txn, payee_name in candidates
-    ]
+        scored.append(
+            (
+                txn,
+                similarity,
+                abs((txn_date - txn.date).days),
+                _dedup_score(similarity, txn_date, txn.date),
+            )
+        )
 
     best = max(scored, key=lambda s: s[3])
     if best[3] >= DEDUP_AUTO_MATCH_THRESHOLD:
@@ -308,7 +350,19 @@ class SimpleFINService:
         # identical feed rows can never collapse onto the same existing row
         # (or onto each other, for id-less feeds).
         consumed_ids: set[uuid.UUID] = set()
+        # Rows this run created, with the feed record each came from — the
+        # stale-link pass below looks among them for a re-identified posting.
+        created_this_run: list[tuple[Transaction, FeedRecord]] = []
 
+        # How a posting reaches the row it belongs to, in order:
+        #   1. Same bank id — the identity path. Most banks keep the id from
+        #      pending to posted, so this is the main road, and it involves no
+        #      scoring: same amount clears in place; a different amount on a
+        #      user-entered row goes to the review queue.
+        #   2. New id, same amount — the exact-amount candidate ladder, which
+        #      also sees PROVISIONALLY_LINKED rows for a posted record.
+        #   3. New id, different amount — the stale-link pass after the loop,
+        #      the only step that needs payee similarity.
         for t in txns_raw:
             acct_sf_id = t.get("account_id")
             if acct_sf_id not in target_sf_ids:
@@ -320,131 +374,91 @@ class SimpleFINService:
                 skipped += 1
                 continue
 
-            # A missing/empty bank id must never dedup by sync_id ("" would
-            # collide every id-less transaction into one row).
-            sync_id = (t.get("id") or "").strip() or None
-            posted_ts = t.get("posted")
-            transacted_ts = t.get("transacted_at")
-            timestamp = posted_ts or transacted_ts
-            txn_date = (
-                datetime.fromtimestamp(timestamp, tz=UTC).date()
-                if isinstance(timestamp, (int, float)) and timestamp > 0
-                else today_utc()
-            )
-            is_posted = bool(posted_ts and posted_ts > 0)
-            new_cleared = "cleared" if is_posted else "pending"
-            amount = Decimal(str(t.get("amount", "0")))
-            synced_payee = t.get("payee") or t.get("description") or ""
+            feed = _feed_record(t)
 
-            if sync_id is not None:
-                existing = await self.txn_repo.find_by_sync_id(account.id, sync_id)
+            if feed.sync_id is not None:
+                existing = await self.txn_repo.find_by_sync_id(account.id, feed.sync_id)
                 if existing is not None:
-                    # Pending → posted: the bank's posted values win (amounts
-                    # routinely change — tips, gas holds). The prior date is
-                    # preserved once in entered_date as provenance.
-                    if existing.cleared == "pending" and is_posted:
-                        updates: dict[str, object] = {
-                            "cleared": "cleared",
-                            "bank_posted_date": txn_date,
-                            "bank_amount": amount,
-                            "bank_payee": synced_payee or None,
-                        }
-                        if existing.amount != amount:
-                            updates["amount"] = amount
-                        if existing.date != txn_date:
-                            updates["date"] = txn_date
-                            if existing.entered_date is None:
-                                updates["entered_date"] = existing.date
-                        await self.txn_repo.update(existing.id, **updates)
+                    consumed_ids.add(existing.id)
+                    outcome = await self.txn_service.apply_bank_posting(
+                        existing, feed, confirmed=False
+                    )
+                    if isinstance(outcome, Review):
+                        if self.matching_service is None:
+                            # Nowhere to queue the question — leave the row
+                            # as it is rather than write a duplicate nobody
+                            # will be asked about.
+                            skipped += 1
+                            continue
+                        new_txn = await self._import_for_review(budget_id, account, feed, existing)
+                        if new_txn is None:
+                            skipped += 1
+                        else:
+                            consumed_ids.add(new_txn.id)
+                            created_this_run.append((new_txn, feed))
+                            imported += 1
+                            review_queued += 1
+                    elif "cleared" in outcome.updates:
                         cleared += 1
                     else:
+                        # Provenance may have been refreshed; the row's state
+                        # did not change.
                         skipped += 1
                     continue
 
-            # Dedup against transactions that lack a sync link
-            # (YNAB imports, manual entries, CSV imports)
+            # Dedup against rows that lack a bank link (YNAB imports, manual
+            # entries, CSV imports) — and, for a posted record, rows whose
+            # link is to a pending record the bank may have re-identified.
             candidates = await self.txn_repo.find_existing_match_candidates(
                 account.id,
-                amount,
-                txn_date,
+                feed.amount,
+                feed.date,
                 date_window_days=DEDUP_DATE_WINDOW_DAYS,
                 exclude_ids=consumed_ids,
+                include_provisional=feed.posted,
             )
-            decision = _decide_match(synced_payee, txn_date, is_posted, candidates)
+            decision = _decide_match(feed.payee, feed.date, feed.posted, candidates)
 
             if decision.action == "auto" and decision.candidate is not None:
                 best_match = decision.candidate
-                updates = {
-                    "sync_source": "simplefin",
-                    "import_description": t.get("description"),
-                    "has_sync_source": True,
-                    # The bank's own values, kept next to the user's — this is
-                    # the pair that makes a match reviewable after the fact.
-                    "bank_amount": amount,
-                    "bank_payee": synced_payee or None,
-                }
-                if sync_id is not None:
-                    updates["sync_id"] = sync_id
-                if is_posted:
-                    # Provenance metadata only — safe on reconciled rows. The
-                    # user's ledger date is never touched; budget months
-                    # follow the date the user (or their YNAB history) chose.
-                    updates["bank_posted_date"] = txn_date
-                if best_match.cleared in ("pending", "uncleared") and is_posted:
-                    updates["cleared"] = "cleared"
-                    cleared += 1
-                await self.txn_repo.update(best_match.id, **updates)
-                if updates.get("cleared") == "cleared" and best_match.is_split:
-                    # Children always mirror the parent's cleared state.
-                    await self.txn_repo.set_children_cleared(best_match.id, "cleared")
-                consumed_ids.add(best_match.id)
-                matched += 1
-                continue
+                outcome = await self.txn_service.apply_bank_posting(
+                    best_match, feed, confirmed=False
+                )
+                if isinstance(outcome, Review):
+                    # Candidates share the feed's exact amount, so this cannot
+                    # happen today. If it ever does, the review queue is the
+                    # honest fallback — never a silent row beside a linked one.
+                    decision = _MatchDecision("review", best_match, decision.score)
+                else:
+                    if "cleared" in outcome.updates:
+                        cleared += 1
+                    consumed_ids.add(best_match.id)
+                    matched += 1
+                    continue
 
-            try:
-                # Savepoint so a duplicate-identity IntegrityError (unique
-                # partial index) skips this row without poisoning the session.
-                async with self.session.begin_nested():
-                    new_txn = await self.txn_service.create(
-                        budget_id,
-                        TransactionCreate(
-                            account_id=account.id,
-                            date=txn_date,
-                            amount=amount,
-                            payee_name=synced_payee,
-                            import_description=t.get("description"),
-                            sync_id=sync_id,
-                            sync_source="simplefin",
-                            cleared=new_cleared,
-                            approved=False,
-                            bank_posted_date=txn_date if is_posted else None,
-                            bank_amount=amount,
-                            bank_payee=synced_payee or None,
-                        ),
-                    )
-            except IntegrityError:
+            new_txn = await self._import_feed_row(budget_id, account, feed)
+            if new_txn is None:
                 skipped += 1
                 continue
-            if new_txn is not None:
-                consumed_ids.add(new_txn.id)
-                if decision.action == "review" and decision.candidate is not None:
-                    if self.matching_service is not None:
-                        await self.matching_service.match_repo.create(
-                            synced_transaction_id=new_txn.id,
-                            manual_transaction_id=decision.candidate.id,
-                            confidence_score=decision.score,
-                        )
-                        # One review claim per candidate per run: a second
-                        # identical feed row must queue against a different
-                        # existing row, or import clean.
-                        consumed_ids.add(decision.candidate.id)
-                        review_queued += 1
-                elif self.matching_service is not None:
-                    await self.matching_service.try_match(new_txn)
+            consumed_ids.add(new_txn.id)
+            created_this_run.append((new_txn, feed))
+            if decision.action == "review" and decision.candidate is not None:
+                if self.matching_service is not None:
+                    await self.matching_service.match_repo.create(
+                        synced_transaction_id=new_txn.id,
+                        manual_transaction_id=decision.candidate.id,
+                        confidence_score=decision.score,
+                    )
+                    # One review claim per candidate per run: a second
+                    # identical feed row must queue against a different
+                    # existing row, or import clean.
+                    consumed_ids.add(decision.candidate.id)
+                    review_queued += 1
+            elif self.matching_service is not None:
+                await self.matching_service.try_match(new_txn)
             imported += 1
 
-        # Sweep stale sync-created pendings: an auth the bank dropped or
-        # re-identified at posting would otherwise linger forever. Only rows
+        # After the loop: rows whose bank id vanished from the feed. Only rows
         # inside the fetched window are judged, and only when the feed
         # actually returned data (an empty feed proves nothing).
         removed_pending = 0
@@ -454,12 +468,34 @@ class SimpleFINService:
             }
             window_start = since.date() if since is not None else None
             for account in targets:
+                # A pending row the sync itself created: the bank dropped the
+                # auth, or re-identified it at posting with a changed amount
+                # (a same-amount re-id was absorbed in the loop). Recorded, so
+                # a category or memo the user put on it comes back with undo.
                 stale_rows = await self.txn_repo.find_stale_pending_synced(
                     account.id, "simplefin", window_start, feed_sync_ids
                 )
                 for stale in stale_rows:
-                    await self.txn_repo.soft_delete(stale.id)
+                    await self.txn_service.delete(budget_id, stale.id, source="system")
                     removed_pending += 1
+
+                # A user row linked to a pending record that vanished can
+                # never clear through that link. Unlink it, and if a posted
+                # row this run created looks like the same purchase, offer the
+                # pair for review — the amounts differ by construction.
+                fresh = [
+                    (txn, f)
+                    for txn, f in created_this_run
+                    if txn.account_id == account.id and f.posted
+                ]
+                for row in await self.txn_repo.find_stale_provisional_links(
+                    account.id, "simplefin", window_start, feed_sync_ids
+                ):
+                    await self.txn_service.release_bank_link(row)
+                    if self.matching_service is None or not fresh:
+                        continue
+                    if await self._queue_reidentified_review(row, fresh):
+                        review_queued += 1
 
         # Update per-account sync state
         now = datetime.now(UTC)
@@ -488,6 +524,102 @@ class SimpleFINService:
             "removed_pending": removed_pending,
             **rate_status,
         }
+
+    async def _import_feed_row(
+        self, budget_id: uuid.UUID, account: Account, feed: FeedRecord
+    ) -> Transaction | None:
+        """Write a feed record as a new row, or None when its identity already
+        exists (the partial unique index on (account_id, sync_id))."""
+        try:
+            # Savepoint so a duplicate-identity IntegrityError skips this row
+            # without poisoning the session.
+            async with self.session.begin_nested():
+                return await self.txn_service.create(
+                    budget_id,
+                    TransactionCreate(
+                        account_id=account.id,
+                        date=feed.date,
+                        amount=feed.amount,
+                        payee_name=feed.payee or "",
+                        import_description=feed.description,
+                        sync_id=feed.sync_id,
+                        sync_source="simplefin",
+                        cleared="cleared" if feed.posted else "pending",
+                        approved=False,
+                        bank_posted_date=feed.date if feed.posted else None,
+                        bank_amount=feed.amount,
+                        bank_payee=feed.payee,
+                    ),
+                )
+        except IntegrityError:
+            return None
+
+    async def _import_for_review(
+        self, budget_id: uuid.UUID, account: Account, feed: FeedRecord, existing: Transaction
+    ) -> Transaction | None:
+        """The bank posted a different amount against a row the user entered.
+
+        Never applied silently. The user's row gives up the bank id, the
+        posted record becomes its own row carrying it, and the pair is queued
+        for review: accepting merges them with the bank's amount (see
+        TransactionService.merge), rejecting keeps both.
+        """
+        await self.txn_service.release_bank_link(existing)
+        new_txn = await self._import_feed_row(budget_id, account, feed)
+        if new_txn is not None and self.matching_service is not None:
+            await self.matching_service.match_repo.create(
+                synced_transaction_id=new_txn.id,
+                manual_transaction_id=existing.id,
+                confidence_score=await self._review_confidence(feed, existing),
+            )
+        return new_txn
+
+    async def _review_confidence(self, feed: FeedRecord, row: Transaction) -> float:
+        """The review queue's own score for a queued pair, so the modal's
+        confidence bar means the same thing whichever path queued it."""
+        payee_name = ""
+        if self.matching_service is not None and row.payee_id:
+            payee = await self.matching_service.payee_repo.get(row.payee_id)
+            if payee is not None:
+                payee_name = payee.name
+        return calculate_confidence(
+            feed.amount, feed.date, feed.payee or "", row.amount, row.date, payee_name
+        )
+
+    async def _queue_reidentified_review(
+        self, row: Transaction, fresh: list[tuple[Transaction, FeedRecord]]
+    ) -> bool:
+        """Offer a posted row this run created as the re-identified posting of
+        a user row whose pending link vanished. Scored on the best of the
+        row's payee strings — the user's payee and the bank's own pending
+        strings — because a bank's posted descriptor usually matches its
+        pending one even when the user renamed the payee."""
+        assert self.matching_service is not None
+        payee_name: str | None = None
+        if row.payee_id:
+            payee = await self.matching_service.payee_repo.get(row.payee_id)
+            payee_name = payee.name if payee is not None else None
+        names = _row_payee_strings(row, payee_name)
+
+        best: tuple[float, Transaction] | None = None
+        for txn, feed in fresh:
+            if txn.id == row.id or abs((feed.date - row.date).days) > DEDUP_TIGHT_DATE_DAYS:
+                continue
+            similarity = best_payee_similarity(names, feed.payee, unknown=_UNKNOWN_PAYEE_SCORE)
+            score = _dedup_score(similarity, feed.date, row.date)
+            if score >= STALE_LINK_REVIEW_THRESHOLD and (best is None or score > best[0]):
+                best = (score, txn)
+        if best is None:
+            return False
+        score, synced = best
+        if await self.matching_service.match_repo.exists_for_pair(synced.id, row.id):
+            return False
+        await self.matching_service.match_repo.create(
+            synced_transaction_id=synced.id,
+            manual_transaction_id=row.id,
+            confidence_score=score,
+        )
+        return True
 
     async def _fresh_rate_status(self, connection_id: uuid.UUID) -> dict:
         conn = await self.repo.get(connection_id)

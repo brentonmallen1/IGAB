@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Payee, Transaction
+from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, posting_updates
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.reconciliation import (
     RECONCILED_LOCKED_FIELDS,
@@ -209,6 +210,9 @@ class TransactionService:
             import_description=data.import_description,
             sync_id=data.sync_id,
             sync_source=data.sync_source,
+            # Bank-sourced from birth: the posting rule would otherwise
+            # write this on the next sync, and "writes nothing" is a promise.
+            has_sync_source=data.sync_source is not None,
             bank_posted_date=data.bank_posted_date,
             bank_amount=data.bank_amount,
             bank_payee=data.bank_payee,
@@ -456,18 +460,19 @@ class TransactionService:
             # Propagate parent date/cleared to children (mirror invariant).
             if txn.is_split and ({"date", "cleared"} & changes.keys()):
                 child_changes = {k: changes[k] for k in ("date", "cleared") if k in changes}
-                for child in await self.transaction_repo.get_splits(txn.id):
-                    child_before = snapshot("transaction", child)
-                    updated_child = await self.transaction_repo.update(child.id, **child_changes)
-                    await self._record_txn(updated_child, "update", before=child_before)
+                await self._mirror_children(txn.id, **child_changes)
 
             updated = await self.transaction_repo.update(transaction_id, **changes)
             await self._record_txn(updated, "update", before=before_self)
         return updated
 
-    async def delete(self, budget_id: uuid.UUID, transaction_id: uuid.UUID) -> uuid.UUID:
+    async def delete(
+        self, budget_id: uuid.UUID, transaction_id: uuid.UUID, *, source: str = "manual"
+    ) -> uuid.UUID:
         """Soft-delete a transaction (plus transfer partner and split
-        children). Returns the change-log batch id so callers can offer undo."""
+        children). Returns the change-log batch id so callers can offer undo.
+        `source` is who is acting — "system" when the bank sync sweeps a
+        pending row the feed dropped."""
         txn = await self.transaction_repo.get_or_raise(transaction_id)
         if str(txn.budget_id) != str(budget_id):
             raise InvariantViolation("Transaction does not belong to this budget")
@@ -489,7 +494,9 @@ class TransactionService:
                         )
                     partner_before = snapshot("transaction", partner)
                     await self.transaction_repo.soft_delete(partner.id)
-                    await self._record_txn(partner, "delete", before=partner_before, refresh=False)
+                    await self._record_txn(
+                        partner, "delete", before=partner_before, source=source, refresh=False
+                    )
 
             # Soft delete any splits (children mirror the parent's cleared state,
             # so a non-reconciled parent implies non-reconciled children).
@@ -497,14 +504,16 @@ class TransactionService:
             for split in splits:
                 split_before = snapshot("transaction", split)
                 await self.transaction_repo.soft_delete(split.id)
-                await self._record_txn(split, "delete", before=split_before, refresh=False)
+                await self._record_txn(
+                    split, "delete", before=split_before, source=source, refresh=False
+                )
 
             if self.match_repo is not None:
                 await self.match_repo.cancel_pending_for_transaction(transaction_id)
 
             txn_before = snapshot("transaction", txn)
             await self.transaction_repo.soft_delete(transaction_id)
-            await self._record_txn(txn, "delete", before=txn_before, refresh=False)
+            await self._record_txn(txn, "delete", before=txn_before, source=source, refresh=False)
         return batch_id
 
     async def unreconcile(self, budget_id: uuid.UUID, transaction_id: uuid.UUID) -> Transaction:
@@ -517,17 +526,62 @@ class TransactionService:
 
         with self.changes.batch():
             if txn.is_split:
-                for child in await self.transaction_repo.get_splits(txn.id):
-                    if child.cleared == "reconciled":
-                        child_before = snapshot("transaction", child)
-                        updated_child = await self.transaction_repo.update(
-                            child.id, cleared="cleared"
-                        )
-                        await self._record_txn(updated_child, "update", before=child_before)
+                await self._mirror_children(txn.id, cleared="cleared")
             before = snapshot("transaction", txn)
             updated = await self.transaction_repo.update(transaction_id, cleared="cleared")
             await self._record_txn(updated, "update", before=before)
         return updated
+
+    async def _mirror_children(
+        self, parent_id: uuid.UUID, *, source: str = "manual", **fields: Any
+    ) -> None:
+        """Write `fields` onto every live split line of a parent, recorded.
+
+        Children must always share their parent's date and cleared state —
+        account balances (parent rows) and category activity (leaf rows) have
+        to agree on when money moved. This is the only place that mirror is
+        written; three copies of it once existed and one of them (the bank
+        sync's) cleared a parent while leaving its lines pending.
+        """
+        for child in await self.transaction_repo.get_splits(parent_id):
+            child_before = snapshot("transaction", child)
+            updated_child = await self.transaction_repo.update(child.id, **fields)
+            await self._record_txn(updated_child, "update", before=child_before, source=source)
+
+    async def apply_bank_posting(
+        self, txn: Transaction, feed: FeedRecord, *, confirmed: bool
+    ) -> Apply | Review:
+        """The bank feed has a record for this row: apply what the posting
+        rule says (domain.bank_posting) and record it.
+
+        The only writer of bank-driven changes. Both sync paths — a row found
+        by its bank id and a row found by amount and date — come through
+        here, as does an accepted amount-change review (`confirmed=True`,
+        via `merge`). A sync therefore never rewrites a row unrecorded, and a
+        split parent's lines always follow its cleared state.
+        """
+        outcome = posting_updates(RowState.from_transaction(txn), feed, confirmed=confirmed)
+        if isinstance(outcome, Review) or not outcome.updates:
+            return outcome
+        before = snapshot("transaction", txn)
+        with self.changes.batch():
+            updated = await self.transaction_repo.update(txn.id, **outcome.updates)
+            await self._record_txn(updated, "update", before=before, source="system")
+            if "cleared" in outcome.updates and txn.is_split:
+                await self._mirror_children(
+                    txn.id, source="system", cleared=outcome.updates["cleared"]
+                )
+        return outcome
+
+    async def release_bank_link(self, txn: Transaction) -> None:
+        """The bank record this row was linked to moved on — the bank posted
+        a different amount, or re-identified the record. The row goes back to
+        unlinked and matchable; its bank provenance stays as a trace."""
+        if txn.sync_id is None:
+            return
+        before = snapshot("transaction", txn)
+        updated = await self.transaction_repo.update(txn.id, sync_id=None)
+        await self._record_txn(updated, "update", before=before, source="system")
 
     async def approve(self, transaction_id: uuid.UUID, budget_id: uuid.UUID | None = None):
         txn = await self.transaction_repo.get_or_raise(transaction_id)

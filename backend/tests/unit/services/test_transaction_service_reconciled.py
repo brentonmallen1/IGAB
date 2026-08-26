@@ -117,9 +117,7 @@ class TestUpdateReconciled:
         svc = make_service(txn)
         # The budget-ownership lookup needs a real session; it is not what is
         # under test here.
-        monkeypatch.setattr(
-            "igab.services.transaction_service.require_in_budget", AsyncMock()
-        )
+        monkeypatch.setattr("igab.services.transaction_service.require_in_budget", AsyncMock())
         cat_id = uuid.uuid4()
         await svc.update(BUDGET_ID, txn.id, TransactionUpdate(category_id=cat_id))
         svc.transaction_repo.update.assert_called_once_with(txn.id, category_id=cat_id)
@@ -156,19 +154,19 @@ class TestUpdateNonReconciled:
     async def test_edit_uncleared_succeeds(self):
         txn = MockTransaction(cleared="uncleared")
         svc = make_service(txn)
-        result = await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
         svc.transaction_repo.update.assert_called_once()
 
     async def test_edit_cleared_succeeds(self):
         txn = MockTransaction(cleared="cleared")
         svc = make_service(txn)
-        result = await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
         svc.transaction_repo.update.assert_called_once()
 
     async def test_edit_pending_succeeds(self):
         txn = MockTransaction(cleared="pending")
         svc = make_service(txn)
-        result = await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
         svc.transaction_repo.update.assert_called_once()
 
     async def test_edit_uncleared_amount_succeeds(self):

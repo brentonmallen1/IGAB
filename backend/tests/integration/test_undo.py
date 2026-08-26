@@ -624,7 +624,7 @@ async def test_undo_change_in_batch_undoes_whole_batch(db_session):
     budget, account, _, _ = await setup_budget(db_session)
     savings = await create_account(db_session, budget, "Savings")
     services = make_services(db_session)
-    txn = await services.transactions.create(
+    await services.transactions.create(
         budget.id,
         TransactionCreate(
             account_id=account.id,
@@ -683,7 +683,7 @@ async def test_undo_fails_gracefully_when_entity_hard_deleted(db_session):
 
     budget, _, _, _ = await setup_budget(db_session)
     payee = await create_payee(db_session, budget, "Test Payee")
-    services = make_services(db_session)
+    make_services(db_session)
 
     # Record a change for this payee (simulating rename via the API)
     from igab.services.change_log import ChangeRecorder, snapshot

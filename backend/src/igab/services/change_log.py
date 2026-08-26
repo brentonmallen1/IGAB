@@ -48,6 +48,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "account_id",
         "date",
         "entered_date",
+        "entered_amount",
         "bank_posted_date",
         "amount",
         "bank_amount",

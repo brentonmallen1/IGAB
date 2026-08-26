@@ -420,6 +420,11 @@ class Transaction(Base):
     # user-entered date is preserved here for display as provenance metadata.
     # _PyDate alias: the `date` name is shadowed by the column above.
     entered_date: Mapped[_PyDate | None] = mapped_column(Date, nullable=True)
+    # When the bank's posted amount overwrites `amount` — a pending row
+    # posting, or an accepted amount-change review — the prior amount is
+    # preserved here once. The same provenance pattern as entered_date, and
+    # what lets the bank-record tooltip say "amount updated from X".
+    entered_amount: Mapped[Decimal | None] = mapped_column(Numeric(19, 4), nullable=True)
     # The bank's posted date for synced/matched rows. `date` stays the user's
     # ledger date (budget months follow it); this is display-only provenance.
     bank_posted_date: Mapped[_PyDate | None] = mapped_column(Date, nullable=True)

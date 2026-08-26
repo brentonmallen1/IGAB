@@ -118,6 +118,9 @@ class TransactionResponse(BaseModel):
     account_id: uuid.UUID
     date: datetime.date
     entered_date: datetime.date | None = None
+    #: The amount this row had before the bank's posted amount replaced it
+    #: (see `Transaction.entered_amount`); None when the bank never changed it.
+    entered_amount: Decimal | None = None
     bank_posted_date: datetime.date | None = None
     amount: Decimal
     bank_amount: Decimal | None = None

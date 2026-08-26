@@ -104,6 +104,7 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     // else on the row, so the chip's "was …" would go stale without this.
     a.prior_category_name !== b.prior_category_name ||
     a.bank_amount !== b.bank_amount ||
+    a.entered_amount !== b.entered_amount ||
     a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
   ) return false
@@ -601,14 +602,21 @@ export const TransactionRow = memo(function TransactionRow({
             <Lock size={12} />
           </button>
         ) : isPending ? (
-          <span className="txn-cleared-btn txn-cleared-btn--pending" title="Pending — not yet posted">
+          <span
+            className="txn-cleared-btn txn-cleared-btn--pending"
+            title="Pending — the bank reports a hold that has not posted. Not counted in balances until it does."
+          >
             <Clock size={14} />
           </span>
         ) : (
           <button
             className={`txn-cleared-btn ${txn.cleared !== 'uncleared' ? 'cleared' : ''}`}
             onClick={(e) => { e.stopPropagation(); toggleCleared() }}
-            title={txn.cleared}
+            title={
+              txn.cleared === 'uncleared'
+                ? 'Uncleared — entered by you, not yet confirmed by the bank. Click to mark cleared.'
+                : 'Cleared — confirmed by the bank. Click to mark uncleared.'
+            }
           >
             {txn.cleared !== 'uncleared' ? <CheckCircle size={14} /> : <Circle size={14} />}
           </button>

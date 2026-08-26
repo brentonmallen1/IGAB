@@ -196,6 +196,11 @@ export interface Transaction {
   date: string
   /** The user's originally-entered date when bank data overwrote `date` */
   entered_date: string | null
+  /** The amount this row had before the bank's posted amount replaced it —
+   *  a hold posting as a larger charge, or an accepted amount-change review.
+   *  Null when the bank never changed it. Provenance for the bank tooltip;
+   *  never money. Home: `Transaction.entered_amount` (backend models.py). */
+  entered_amount: number | null
   /** The bank's posted date; `date` stays the user's ledger date */
   bank_posted_date: string | null
   amount: number

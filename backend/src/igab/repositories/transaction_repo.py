@@ -13,6 +13,7 @@ from igab.db.models import Category, Payee, Transaction, TransactionAttachment
 from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
+    BANK_UNLINKED,
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
     LEAF,
@@ -20,7 +21,10 @@ from igab.repositories.txn_filters import (
     NOT_DELETED,
     PARENT_ROW,
     POSTED,
+    PROVISIONALLY_LINKED,
     UNPAIRED_TRANSFER_LEG,
+    USER_ENTERED,
+    sync_created_pending,
 )
 
 if TYPE_CHECKING:
@@ -725,9 +729,37 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         q = select(Transaction).where(
             Transaction.account_id == account_id,
-            Transaction.cleared == "pending",
+            sync_created_pending(sync_source),
+            Transaction.is_deleted == False,  # noqa: E712
+        )
+        if window_start is not None:
+            q = q.where(Transaction.date >= window_start)
+        if active_sync_ids:
+            q = q.where(Transaction.sync_id.notin_(active_sync_ids))
+        result = await self.session.execute(q)
+        return list(result.scalars().all())
+
+    async def find_stale_provisional_links(
+        self,
+        account_id: uuid.UUID,
+        sync_source: str,
+        window_start: date | None,
+        active_sync_ids: set[str],
+    ) -> list[Transaction]:
+        """User rows linked to a bank record the feed no longer reports.
+
+        An `uncleared` row matched while the bank record was still an auth
+        hold, whose id then vanished: the bank dropped the hold or
+        re-identified it at posting. Such a row can never clear through its
+        link again. `uncleared` only — a row the user marked cleared is done
+        as far as they are concerned, and pre-`bank_posted_date` legacy rows
+        are `cleared`, so this can never unlink one of them.
+        """
+        q = select(Transaction).where(
+            Transaction.account_id == account_id,
+            PROVISIONALLY_LINKED,
+            Transaction.cleared == "uncleared",
             Transaction.sync_source == sync_source,
-            Transaction.sync_id.isnot(None),
             Transaction.is_deleted == False,  # noqa: E712
         )
         if window_start is not None:
@@ -821,12 +853,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             Transaction.account_id == account_id,
             Transaction.amount == amount,
             Transaction.date.between(date_low, date_high),
-            Transaction.import_id.is_(None),
-            Transaction.sync_id.is_(None),
-            # sync_id alone misses id-less feeds: a sync-created row without a
-            # bank id is still bank-sourced, never a "manual" match candidate.
-            Transaction.sync_source.is_(None),
-            Transaction.linked_transaction_id.is_(None),
+            USER_ENTERED,
             Transaction.is_deleted == False,  # noqa: E712
             Transaction.parent_transaction_id.is_(None),
         )
@@ -864,6 +891,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         date_window_days: int = 5,
         limit: int = 5,
         exclude_ids: Collection[uuid.UUID] | None = None,
+        include_provisional: bool = False,
     ) -> list[tuple[Transaction, str | None]]:
         """Return (Transaction, payee_name) candidates matching by exact amount and date window.
 
@@ -871,11 +899,15 @@ class TransactionRepository(BaseRepository[Transaction]):
         Caller is responsible for scoring and selecting the best match.
         exclude_ids: rows already claimed earlier in the same sync run — filtered
         before LIMIT so consumption can't starve the candidate pool.
+        include_provisional: also offer PROVISIONALLY_LINKED rows (see
+        txn_filters) — for a posted feed record, whose bank may have
+        re-identified it since the pending record those rows were linked to.
         """
         from datetime import timedelta
 
         date_low = txn_date - timedelta(days=date_window_days)
         date_high = txn_date + timedelta(days=date_window_days)
+        linked = or_(BANK_UNLINKED, PROVISIONALLY_LINKED) if include_provisional else BANK_UNLINKED
         query = (
             select(Transaction, Payee.name)
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
@@ -883,7 +915,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.account_id == account_id,
                 Transaction.amount == amount,
                 Transaction.date.between(date_low, date_high),
-                Transaction.sync_id.is_(None),  # Exclude already-synced transactions
+                linked,
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
             )

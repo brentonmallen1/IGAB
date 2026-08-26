@@ -464,6 +464,8 @@ class TestSimpleFINSyncDeduplication:
         """Create SimpleFINService with mocked dependencies."""
         from igab.services.simplefin_service import SimpleFINService
 
+        from igab.services.transaction_service import TransactionService
+
         svc = SimpleFINService(
             session=AsyncMock(),
             repo=AsyncMock(),
@@ -472,7 +474,20 @@ class TestSimpleFINSyncDeduplication:
             txn_service=AsyncMock(),
         )
         svc.session.begin_nested = MagicMock(return_value=AsyncMock())
+        # The posting rule is written by TransactionService; bind the real
+        # writer to this test's mocked repo so txn_repo.update stays observable.
+        real = TransactionService(
+            session=AsyncMock(),
+            transaction_repo=svc.txn_repo,
+            account_repo=AsyncMock(),
+            category_repo=AsyncMock(),
+            payee_repo=AsyncMock(),
+        )
+        svc.txn_service.apply_bank_posting = real.apply_bank_posting
+        svc.txn_service.release_bank_link = real.release_bank_link
+        svc.txn_repo.get_splits = AsyncMock(return_value=[])
         svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
+        svc.txn_repo.find_stale_provisional_links = AsyncMock(return_value=[])
         return svc
 
     async def test_matches_when_existing_match_found(self, mock_svc):
@@ -497,6 +512,22 @@ class TestSimpleFINSyncDeduplication:
         account.first_sync_complete = True
 
         existing_txn = MagicMock()
+        # Typed defaults for everything the posting rule reads; a MagicMock
+        # auto-attribute is a truthy split flag and an amount that never
+        # matches. Tests override what they care about below.
+        existing_txn.amount = Decimal("-25.00")
+        existing_txn.entered_date = None
+        existing_txn.entered_amount = None
+        existing_txn.bank_posted_date = None
+        existing_txn.bank_amount = None
+        existing_txn.bank_payee = None
+        existing_txn.import_description = None
+        existing_txn.sync_id = None
+        existing_txn.sync_source = None
+        existing_txn.has_sync_source = False
+        existing_txn.is_split = False
+        existing_txn.transfer_id = None
+        existing_txn.parent_transaction_id = None
         existing_txn.id = uuid.uuid4()
         existing_txn.sync_id = None
         existing_txn.date = date.today()
@@ -562,6 +593,22 @@ class TestSimpleFINSyncDeduplication:
         account.first_sync_complete = True
 
         existing_txn = MagicMock()
+        # Typed defaults for everything the posting rule reads; a MagicMock
+        # auto-attribute is a truthy split flag and an amount that never
+        # matches. Tests override what they care about below.
+        existing_txn.amount = Decimal("-25.00")
+        existing_txn.entered_date = None
+        existing_txn.entered_amount = None
+        existing_txn.bank_posted_date = None
+        existing_txn.bank_amount = None
+        existing_txn.bank_payee = None
+        existing_txn.import_description = None
+        existing_txn.sync_id = None
+        existing_txn.sync_source = None
+        existing_txn.has_sync_source = False
+        existing_txn.is_split = False
+        existing_txn.transfer_id = None
+        existing_txn.parent_transaction_id = None
         existing_txn.id = uuid.uuid4()
         existing_txn.import_id = None  # No import_id
         existing_txn.date = date.today()
@@ -631,6 +678,22 @@ class TestSimpleFINSyncDeduplication:
 
         # Transaction imported from YNAB (has import_id, no sync_id)
         existing_txn = MagicMock()
+        # Typed defaults for everything the posting rule reads; a MagicMock
+        # auto-attribute is a truthy split flag and an amount that never
+        # matches. Tests override what they care about below.
+        existing_txn.amount = Decimal("-25.00")
+        existing_txn.entered_date = None
+        existing_txn.entered_amount = None
+        existing_txn.bank_posted_date = None
+        existing_txn.bank_amount = None
+        existing_txn.bank_payee = None
+        existing_txn.import_description = None
+        existing_txn.sync_id = None
+        existing_txn.sync_source = None
+        existing_txn.has_sync_source = False
+        existing_txn.is_split = False
+        existing_txn.transfer_id = None
+        existing_txn.parent_transaction_id = None
         existing_txn.id = uuid.uuid4()
         existing_txn.import_id = "csv:existing123"
         existing_txn.sync_id = None
