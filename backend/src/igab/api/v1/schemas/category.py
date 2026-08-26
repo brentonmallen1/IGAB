@@ -371,6 +371,12 @@ class AssignApplyResponse(BaseModel):
     to_return: Decimal
     categories_changed: int
     tba_after: Decimal
+    # Change-log batch for undo; null when the strategy moved nothing
+    batch_id: uuid.UUID | None = None
+
+
+class CoverOverspentApplyResponse(BaseModel):
+    batch_id: uuid.UUID | None = None
 
 
 class RecentPayeeResponse(BaseModel):

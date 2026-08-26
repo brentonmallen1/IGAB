@@ -132,6 +132,9 @@ class AssignPreview:
     tba_before: Decimal
     tba_after: Decimal
     affected_count: int
+    # Set by apply(): the change-log batch the moves were recorded under, so
+    # the caller can offer an undo of the whole strategy.
+    batch_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -300,7 +303,8 @@ class AssignService:
     async def apply(self, budget_id: uuid.UUID, month: date, strategy: str) -> AssignPreview:
         """Recompute the strategy fresh and apply it through move_money."""
         preview = await self.preview(budget_id, month, strategy)
-        with self.budget_service.changes.batch():
+        with self.budget_service.changes.batch() as batch_id:
+            preview.batch_id = batch_id
             for item in preview.items:
                 if item.delta > ZERO:
                     await self.budget_service.move_money(

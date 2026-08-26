@@ -4,7 +4,7 @@ from datetime import date
 from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
-from igab.db.models import Category
+from igab.db.models import BudgetMove, Category
 from igab.domain.carryover import available_through
 
 # Aliased: `month_start` is also a local variable throughout this module
@@ -165,9 +165,27 @@ class BudgetService:
         self.snapshot_repo = snapshot_repo
         self.changes = ChangeRecorder(assignment_repo.session)
 
-    async def _record_assignment(self, assignment, before_assigned: Decimal) -> None:
+    async def _record_assignment(
+        self, assignment, before_assigned: Decimal, move: BudgetMove | None = None
+    ) -> None:
         """Record an assignment change (all assignment writes are updates —
-        get_or_create means the row may be fresh, in which case before is 0)."""
+        get_or_create means the row may be fresh, in which case before is 0).
+
+        `move` ties the row to the budget move that produced it: undoing the
+        move finds its rows by it, undoing the row deletes the move, and redo
+        recreates it.
+        Underscore keys are bookkeeping — snapshot matching and field restore
+        both skip them."""
+        after = snapshot("assignment", assignment)
+        if move is not None:
+            after["_move_id"] = str(move.id)
+            # Enough to recreate the audit row on redo, under the same id
+            after["_move"] = {
+                "month": move.month.isoformat(),
+                "from_category_id": str(move.from_category_id) if move.from_category_id else None,
+                "to_category_id": str(move.to_category_id) if move.to_category_id else None,
+                "amount": str(move.amount),
+            }
         await self.changes.record(
             budget_id=assignment.budget_id,
             entity_type="assignment",
@@ -178,7 +196,7 @@ class BudgetService:
                 "month": assignment.month.isoformat(),
                 "assigned": str(before_assigned),
             },
-            after=snapshot("assignment", assignment),
+            after=after,
         )
 
     async def _budget_math_category_ids(self, budget_id: uuid.UUID) -> set[uuid.UUID]:
@@ -554,6 +572,17 @@ class BudgetService:
             if category is None or str(category.budget_id) != str(budget_id):
                 raise InvariantViolation("Category does not belong to this budget")
 
+        # The audit row first, so both assignment change rows can carry its id.
+        move = None
+        if self.move_repo is not None:
+            move = await self.move_repo.create(
+                budget_id=budget_id,
+                month=month_start,
+                from_category_id=from_category_id,
+                to_category_id=to_category_id,
+                amount=amount,
+            )
+
         with self.changes.batch():
             if from_category_id is not None:
                 from_assignment = await self.assignment_repo.get_or_create(
@@ -563,7 +592,7 @@ class BudgetService:
                 updated_from = await self.assignment_repo.update(
                     from_assignment.id, assigned=from_assignment.assigned - amount
                 )
-                await self._record_assignment(updated_from, before_from)
+                await self._record_assignment(updated_from, before_from, move)
             if to_category_id is not None:
                 to_assignment = await self.assignment_repo.get_or_create(
                     budget_id, to_category_id, month_start
@@ -572,16 +601,11 @@ class BudgetService:
                 updated_to = await self.assignment_repo.update(
                     to_assignment.id, assigned=to_assignment.assigned + amount
                 )
-                await self._record_assignment(updated_to, before_to)
-
-        if self.move_repo is not None:
-            await self.move_repo.create(
-                budget_id=budget_id,
-                month=month_start,
-                from_category_id=from_category_id,
-                to_category_id=to_category_id,
-                amount=amount,
-            )
+                await self._record_assignment(updated_to, before_to, move)
+        # The rows must be queryable by the next statement in this transaction
+        # (undo_move, a batch undo): a session without autoflush would otherwise
+        # hold the last-recorded side back until something else flushed.
+        await self.changes.session.flush()
 
     async def get_move_history(self, budget_id: uuid.UUID, month: date):
         if self.move_repo is None:
@@ -665,6 +689,7 @@ class BudgetService:
                     "Cover amount exceeds current overspending — refresh the preview and try again"
                 )
 
-        with self.changes.batch():
+        with self.changes.batch() as batch_id:
             for cat_id, amount in to_apply:
                 await self.move_money(budget_id, None, cat_id, amount, month)
+        return batch_id if to_apply else None

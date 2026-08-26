@@ -60,6 +60,38 @@ async def undo_change(
     return UndoResult(undone_change_ids=undone)
 
 
+@router.post("/{budget_id}/changes/redo", response_model=UndoResult)
+async def redo_latest(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    undo_service: Annotated[UndoService, Depends(get_undo_service)],
+    force: bool = Query(False),
+) -> UndoResult:
+    """Re-apply the most recently undone change or batch. Refused once
+    anything newer has been recorded."""
+    try:
+        redone = await undo_service.redo_latest(budget_id, force=force)
+    except UndoConflict as e:
+        raise _conflict(e) from e
+    return UndoResult(undone_change_ids=redone)
+
+
+@router.post("/{budget_id}/budget/moves/{move_id}/undo", response_model=UndoResult)
+async def undo_move(
+    budget_id: BudgetAccess,
+    move_id: uuid.UUID,
+    current_user: CurrentUser,
+    undo_service: Annotated[UndoService, Depends(get_undo_service)],
+) -> UndoResult:
+    """Undo one budget move on its own — even one that shares a batch with
+    a bulk assign's other moves."""
+    try:
+        undone = await undo_service.undo_move(budget_id, move_id)
+    except UndoConflict as e:
+        raise _conflict(e) from e
+    return UndoResult(undone_change_ids=undone)
+
+
 @router.post("/{budget_id}/changes/batch/{batch_id}/undo", response_model=UndoResult)
 async def undo_batch(
     budget_id: BudgetAccess,

@@ -17,6 +17,7 @@ one DB transaction, so a conflict mid-batch rolls back everything.
 import datetime
 import uuid
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import (
     BudgetAssignment,
     BudgetFilterCategory,
+    BudgetMove,
     BudgetViewPlacement,
     Category,
     CategoryGroup,
@@ -37,6 +39,10 @@ from igab.domain.enums import ClearedStatus
 from igab.domain.exceptions import NotFoundError, UndoConflict
 from igab.repositories.change_log_repo import ChangeLogRepository
 from igab.services.change_log import ENTITY_MODELS, coerce_value, snapshot, snapshots_match
+
+
+def _opt_uuid(value: object) -> uuid.UUID | None:
+    return uuid.UUID(str(value)) if value else None
 
 
 class UndoService:
@@ -78,6 +84,132 @@ class UndoService:
         await self.session.flush()
         return undone
 
+    async def undo_move(self, budget_id: uuid.UUID, move_id: uuid.UUID) -> list[uuid.UUID]:
+        """Undo one budget move, whatever batch it sits in.
+
+        A move from a bulk assign shares its batch with every sibling, and
+        undoing that batch would be far more than "take this one back". So a
+        move is reversed by its own two rows, and by DELTA rather than by
+        restoring `before`: a later move through the same category keeps its
+        effect, which a snapshot restore would silently wipe. The rows are
+        stamped undone (⌘Z will not reverse them again), the audit row is
+        deleted so the move leaves the month's list, and — as with every
+        undo — no new rows are written, so this is not itself undoable."""
+        move = await self.session.get(BudgetMove, move_id)
+        if move is None or move.budget_id != budget_id:
+            raise NotFoundError("budget move", str(move_id))
+        rows = await self.repo.get_for_move(budget_id, move_id)
+        if not rows:
+            # Recorded before moves were linked to their change rows: there is
+            # nothing to reverse it by, and dropping the row would hide money.
+            raise UndoConflict("This move was recorded before per-move undo existed")
+        # Rows already undone through the log (⌘Z, the Activity page) have
+        # reversed the money; only the audit row is left to drop.
+        pending = [r for r in rows if r.undone_at is None]
+        undone: list[uuid.UUID] = []
+        for row in pending:
+            entity = await self.session.get(BudgetAssignment, row.entity_id)
+            if entity is None:
+                raise UndoConflict("The affected category no longer exists")
+            delta = Decimal(str((row.after or {})["assigned"])) - Decimal(
+                str((row.before or {})["assigned"])
+            )
+            entity.assigned = entity.assigned - delta
+            row.undone_at = func.now()
+            undone.append(row.id)
+        await self.session.delete(move)
+        await self.session.flush()
+        return undone
+
+    async def redo_latest(self, budget_id: uuid.UUID, force: bool = False) -> list[uuid.UUID]:
+        """Re-apply the most recently undone change (its whole batch, if it
+        had one). Refused when anything has been recorded since the undo:
+        a new action empties the redo stack, as in any editor."""
+        candidate = await self.repo.latest_undone(budget_id)
+        if candidate is None:
+            raise UndoConflict("Nothing to redo")
+        if await self.repo.count_live_after(budget_id, candidate.undone_at) > 0:
+            raise UndoConflict("Nothing to redo — something changed since that undo")
+        rows = (
+            await self.repo.get_batch(budget_id, candidate.batch_id)
+            if candidate.batch_id is not None
+            else [candidate]
+        )
+        # Redo replays in insertion order, the reverse of undo
+        pending = sorted((r for r in rows if r.undone_at is not None), key=lambda r: r.seq)
+        redone: list[uuid.UUID] = []
+        for change in pending:
+            await self._reapply(change, force)
+            change.undone_at = None
+            redone.append(change.id)
+        await self.session.flush()
+        return redone
+
+    async def _reapply(self, change: ChangeLog, force: bool) -> None:
+        model = ENTITY_MODELS.get(change.entity_type)
+        if model is None:
+            raise UndoConflict(f"Unknown entity type '{change.entity_type}'")
+        entity: Any = await self.session.get(model, change.entity_id)
+        if entity is None:
+            raise UndoConflict("The affected item no longer exists")
+        if change.action in ("create", "import"):
+            if not getattr(entity, "is_deleted", False):
+                raise UndoConflict("The item is already present")
+            entity.is_deleted = False
+        elif change.action in ("update", "approve"):
+            if isinstance(entity, Transaction) and entity.cleared == ClearedStatus.RECONCILED:
+                raise UndoConflict("Reconciled transactions cannot be changed by redo")
+            if not force and change.before is not None:
+                diff = snapshots_match(snapshot(change.entity_type, entity), change.before)
+                if diff:
+                    raise UndoConflict("The item has been edited since this undo", fields=diff)
+            for field, value in (change.after or {}).items():
+                if field.startswith("_"):
+                    continue
+                setattr(entity, field, coerce_value(model, field, value))
+            if change.entity_type == "assignment":
+                await self._remember_move(change)
+        elif change.action == "delete" and change.entity_type != "category":
+            if getattr(entity, "is_deleted", False):
+                raise UndoConflict("The item is already deleted")
+            entity.is_deleted = True
+        else:
+            raise UndoConflict(f"Changes of type '{change.action}' cannot be redone")
+
+    async def _remember_move(self, change: ChangeLog) -> None:
+        """Redo of a move's row puts the audit row back, under its original id,
+        so undo can find it again."""
+        after = change.after or {}
+        raw_id, data = after.get("_move_id"), after.get("_move")
+        if not raw_id or not data:
+            return
+        move_id = uuid.UUID(str(raw_id))
+        if await self.session.get(BudgetMove, move_id) is not None:
+            return
+        self.session.add(
+            BudgetMove(
+                id=move_id,
+                budget_id=change.budget_id,
+                month=datetime.date.fromisoformat(data["month"]),
+                from_category_id=_opt_uuid(data.get("from_category_id")),
+                to_category_id=_opt_uuid(data.get("to_category_id")),
+                amount=Decimal(str(data["amount"])),
+            )
+        )
+        # Both of a move's rows call this; a pending add is invisible to
+        # session.get until flushed, so flush now or the second side re-adds it.
+        await self.session.flush()
+
+    async def _forget_move(self, change: ChangeLog) -> None:
+        """An assignment row undone through the log (⌘Z, the Activity page, a
+        batch) takes its budget move out of the month's list with it."""
+        raw = (change.after or {}).get("_move_id")
+        if not raw:
+            return
+        move = await self.session.get(BudgetMove, uuid.UUID(str(raw)))
+        if move is not None:
+            await self.session.delete(move)
+
     # ─── Inverse operations ───────────────────────────────────────────────────
 
     async def _apply(self, change: ChangeLog, force: bool) -> None:
@@ -92,6 +224,8 @@ class UndoService:
             self._undo_create(change, entity, force)
         elif change.action in ("update", "approve"):
             self._undo_update(change, entity, force)
+            if change.entity_type == "assignment":
+                await self._forget_move(change)
         elif change.action == "delete" and change.entity_type == "category":
             await self._undo_category_delete(change, entity)
         elif change.action == "delete":

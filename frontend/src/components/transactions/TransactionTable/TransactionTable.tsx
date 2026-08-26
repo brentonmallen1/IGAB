@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Plus, ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
-import { useInfiniteTransactions, useInfiniteBudgetTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useUpdateTransaction, useCreateTransaction, useBulkApprove, useMergeTransactions, usePendingReviewCountForAccount, usePendingReviewCount } from '../../../api/transactions'
+import { useInfiniteTransactions, useInfiniteBudgetTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useCreateTransaction, useBulkApprove, useMergeTransactions, usePendingReviewCountForAccount, usePendingReviewCount } from '../../../api/transactions'
 import { useCheckAttachments } from '../../../api/attachments'
 import { useAIJobForTransaction } from '../../../api/aiJobs'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
@@ -27,7 +27,6 @@ import { parseTransactionSearch } from '../../../utils/searchParser'
 /** Stable empty map: a fresh `new Map()` per render would defeat the memo. */
 const EMPTY_ACCOUNT_MAP = new Map<string, string>()
 import { useToastUndo } from '../../../utils/toastUndo'
-import { useHistoryStore } from '../../../stores/historyStore'
 import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simplefin'
 import { useShortcut } from '../../../hooks/useShortcut'
 import { SHORTCUTS } from '../../../keyboard/shortcuts'
@@ -38,6 +37,7 @@ import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import './TransactionTable.css'
+import { Surface } from '../../common/Surface'
 
 interface Props {
   /** null renders the all-accounts register for the whole budget */
@@ -161,7 +161,6 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       }
     }
   }, [selectedTransactionIds, showAttachmentPanel, attachmentTxnId])
-  const undoTxn = useUpdateTransaction(budgetId)
   const { data: pendingMatches = [] } = usePendingMatchesForAccount(accountId)
   const rejectMatch = useRejectMatch(accountId ?? undefined)
   const createTxn = useCreateTransaction(budgetId)
@@ -170,13 +169,6 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const { data: upcomingScheduled = [] } = useScheduledTransactionsByAccount(budgetId, accountId)
   const enterScheduled = useEnterScheduledTransaction(budgetId)
   const skipScheduled = useSkipScheduledTransaction(budgetId)
-
-  useShortcut(SHORTCUTS.undo.combo, () => {
-    const entry = useHistoryStore.getState().undo()
-    if (entry) {
-      undoTxn.mutate({ id: entry.transactionId, [entry.field]: entry.before } as Parameters<typeof undoTxn.mutate>[0])
-    }
-  })
 
   const { splitEditing, startSplitEditing } = useTransactionEditStore()
 
@@ -791,7 +783,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         />
       )}
 
-      {/* Toolbar */}
+      {/* Toolbar, filter chips, selection bar and column header pin together */}
+      <Surface variant="chrome" sticky className="transaction-table__chrome">
       <div className="transaction-table__toolbar">
         <TransactionSearch
           value={transactionSearchQuery}
@@ -878,6 +871,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         <div className="txn-col txn-col--inflow txn-col--header-center">Inflow</div>
         <div className="txn-col txn-col--cleared txn-col--header-center">Cleared</div>
       </div>
+      </Surface>
 
       {isLoading ? (
         <div className="transaction-table__loading">Loading transactions…</div>

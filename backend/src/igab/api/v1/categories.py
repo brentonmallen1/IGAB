@@ -36,6 +36,7 @@ from igab.api.v1.schemas.category import (
     CategoryTargetResponse,
     CategoryUpdate,
     CoverOverspentApplyRequest,
+    CoverOverspentApplyResponse,
     CoverOverspentPreviewItem,
     CoverOverspentPreviewResponse,
     FutureOverspendPreviewRequest,
@@ -905,6 +906,7 @@ async def assign_strategy_apply(
         to_return=applied.to_return,
         categories_changed=applied.affected_count,
         tba_after=applied.tba_after,
+        batch_id=applied.batch_id,
     )
 
 
@@ -940,18 +942,19 @@ async def cover_overspent_preview(
     )
 
 
-@router.post("/{budget_id}/cover-overspent/apply", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{budget_id}/cover-overspent/apply", response_model=CoverOverspentApplyResponse)
 async def cover_overspent_apply(
     budget_id: BudgetAccess,
     body: CoverOverspentApplyRequest,
     current_user: CurrentUser,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
-) -> None:
+) -> CoverOverspentApplyResponse:
     try:
-        await budget_service.cover_overspent_apply(
+        batch_id = await budget_service.cover_overspent_apply(
             budget_id,
             body.month,
             [(item.category_id, item.proposed_addition) for item in body.items],
         )
     except InvariantViolation as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return CoverOverspentApplyResponse(batch_id=batch_id)
