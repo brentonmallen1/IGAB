@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, model_validator
@@ -108,3 +108,44 @@ class GuideOverview(BaseModel):
     thresholds: dict[str, int]
     preferences: PreferencesResponse
     progress: dict[str, str]
+
+
+class CheckupMetric(BaseModel):
+    """One row of the checkup: a figure against the target the roadmap states."""
+
+    key: str
+    label: str
+    value: Decimal | None = None
+    target: Decimal | None = None
+    #: 'money' | 'months' | 'percent' | 'count'
+    unit: str
+    detail: str = ""
+    #: Finding kinds this row is the home of, so the client can mark it.
+    finding_kinds: list[str] = Field(default_factory=list)
+    #: A report tab that shows the working, when one exists.
+    report: str | None = None
+
+
+class CheckupFinding(BaseModel):
+    kind: str
+    rank: int
+    concept_key: str | None = None
+    title: str
+    detail: str = ""
+    value: Decimal | None = None
+    target: Decimal | None = None
+    names: list[str] = Field(default_factory=list)
+
+
+class CheckupResponse(BaseModel):
+    """Metrics, and every finding that fired, most severe first.
+
+    All findings are returned: the roadmap's step markers need every kind, and
+    how many the health report shows is the client's call.
+    """
+
+    enabled: bool
+    as_of: date
+    last_run: datetime | None = None
+    metrics: list[CheckupMetric]
+    findings: list[CheckupFinding]

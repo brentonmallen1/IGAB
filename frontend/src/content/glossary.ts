@@ -58,6 +58,7 @@ export const GLOSSARY_IDS = [
   'uncleared',
   'cleared',
   'reconciled',
+  'essential-expenses',
 ] as const
 
 export type GlossaryId = (typeof GLOSSARY_IDS)[number]
@@ -113,6 +114,15 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: 'Its job is to absorb the unexpected — a repair, a medical bill, a lost job — so that a bad month does not become debt. The roadmap builds it in two passes: a small starter buffer early, then three to six months of expenses once expensive debt is cleared. Speed of access matters more than the interest rate it earns.',
     inIgab: 'Usually a category tagged Savings, an account of its own, or both.',
     related: ['sinking-fund', 'savings-rate'],
+  },
+  {
+    id: 'essential-expenses',
+    term: 'Essential expenses',
+    aliases: ['essentials', 'lean month', 'bare-bones budget'],
+    short: 'What a month costs if you cut everything you could do without.',
+    body: 'Housing, groceries, utilities, transport to work, insurance, minimum debt payments, medical needs — the spending that continues whatever else stops. It is the figure an emergency fund is measured against: three months of essentials, not three months of everything.',
+    inIgab: 'Tag the categories and payees you could not do without as Essential. The Essentials report, the Overview card and the Guide’s emergency-fund target all read that one figure, and the checkup states your emergency fund in months of it.',
+    related: ['emergency-fund', 'target'],
   },
   {
     id: 'sinking-fund',

@@ -3,6 +3,8 @@
 from datetime import date
 from decimal import Decimal
 
+from igab.domain.dates import add_months
+
 from .factories import (
     create_account,
     create_budget,
@@ -324,3 +326,148 @@ class TestIsolation:
             (await api_client.get(f"/api/v1/{b.id}/guide/signals")).json(), "emergency_fund"
         )
         assert other["tracked"] is True
+
+
+class TestCheckup:
+    """The health report: one computation, three surfaces, never pushed."""
+
+    async def test_checkup_off_returns_disabled_and_runs_nothing(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        await create_liability(
+            db_session, budget, "Visa",
+            interest_rate=Decimal("22.9000"), manual_balance=Decimal("3410.00"),
+        )
+        await api_client.put(f"/api/v1/{budget.id}/guide/preferences", json={"checkup": False})
+
+        r = await api_client.get(f"/api/v1/{budget.id}/guide/checkup")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["enabled"] is False
+        # Off means off: not an empty result over a computed one.
+        assert body["metrics"] == []
+        assert body["findings"] == []
+
+    async def test_run_stamps_last_run_and_get_reads_it_back(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        before = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
+        assert before["last_run"] is None
+
+        r = await api_client.post(f"/api/v1/{budget.id}/guide/checkup/run")
+        assert r.status_code == 200
+        stamped = r.json()["last_run"]
+        assert stamped is not None
+
+        after = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
+        assert after["last_run"] == stamped
+
+    async def test_run_is_refused_when_reviews_are_off(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        await api_client.put(f"/api/v1/{budget.id}/guide/preferences", json={"checkup": False})
+
+        r = await api_client.post(f"/api/v1/{budget.id}/guide/checkup/run")
+
+        # A run that does nothing must not report success.
+        assert r.status_code == 409
+        assert (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()[
+            "last_run"
+        ] is None
+
+    async def test_high_interest_debt_outranks_a_thin_emergency_fund(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        await create_liability(
+            db_session, budget, "Visa",
+            interest_rate=Decimal("22.9000"), manual_balance=Decimal("3410.00"),
+        )
+        group = await create_category_group(db_session, budget, "Savings")
+        cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "200.00")
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
+
+        kinds = [f["kind"] for f in body["findings"]]
+        assert kinds[:2] == ["high_interest_debt", "ef_below_starter"]
+        assert Decimal(body["findings"][0]["value"]) == Decimal("3410.00")
+        assert Decimal(body["findings"][1]["value"]) == Decimal("200.00")
+
+    async def test_funded_count_matches_the_month_endpoint(self, db_session, api_client):
+        """The checkup's "funded" is the budget page's pill, by construction."""
+        budget = await _budget(db_session, api_client)
+        group = await create_category_group(db_session, budget, "Bills")
+        funded = await create_category(db_session, budget, group, "Rent")
+        short = await create_category(db_session, budget, group, "Power")
+        await create_category(db_session, budget, group, "No target")
+        for cat in (funded, short):
+            r = await api_client.post(
+                f"/api/v1/categories/{cat.id}/target",
+                json={"target_type": "monthly_funding", "target_amount": "100.00"},
+            )
+            assert r.status_code in (200, 201), r.text
+        await create_budget_assignment(db_session, budget, funded, THIS_MONTH, "100.00")
+
+        month = (
+            await api_client.get(f"/api/v1/{budget.id}/months/{THIS_MONTH.isoformat()}")
+        ).json()
+        statuses = [
+            b["target_status"] for b in month["category_balances"] if b["target_status"]
+        ]
+        body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
+        metric = next(m for m in body["metrics"] if m["key"] == "categories_funded")
+
+        assert Decimal(metric["value"]) == sum(1 for s in statuses if s != "underfunded") == 1
+        assert Decimal(metric["target"]) == len(statuses) == 2
+
+    async def test_chronic_count_matches_the_plan_vs_reality_report(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        account = await create_account(db_session, budget, account_type="checking")
+        group = await create_category_group(db_session, budget, "Fun")
+        dining = await create_category(db_session, budget, group, "Dining Out")
+        # Over in four of the last six months: chronic by the report's rule.
+        for back in range(4):
+            month = add_months(THIS_MONTH, -back)
+            await create_budget_assignment(db_session, budget, dining, month, "100.00")
+            await create_transaction(
+                db_session, budget, account, "-150.00", month, category=dining
+            )
+
+        report = (await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-reality")).json()
+        body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
+
+        metric = next(m for m in body["metrics"] if m["key"] == "chronic_overspend")
+        finding = next(f for f in body["findings"] if f["kind"] == "chronic_overspend")
+        assert report["chronic_count"] == 1
+        assert Decimal(metric["value"]) == 1
+        assert finding["names"] == ["Dining Out"]
+
+    async def test_self_reported_money_can_change_a_finding_but_never_a_report(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        account = await create_account(db_session, budget, account_type="checking")
+        await create_transaction(db_session, budget, account, "500.00", TODAY)
+        group = await create_category_group(db_session, budget, "Savings")
+        cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "200.00")
+
+        before = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
+        assert "ef_below_starter" in [f["kind"] for f in before["findings"]]
+        net_before = (await api_client.get(f"/api/v1/{budget.id}/reports/net-worth")).json()
+
+        await api_client.put(
+            f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
+            json={
+                "mode": "manual",
+                "entity_ids": {"category": [str(cat.id)]},
+                "external": True,
+                "external_amount": "250000",
+            },
+        )
+
+        after = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
+        assert not [f for f in after["findings"] if f["kind"].startswith("ef_")]
+        net_after = (await api_client.get(f"/api/v1/{budget.id}/reports/net-worth")).json()
+        assert net_after == net_before

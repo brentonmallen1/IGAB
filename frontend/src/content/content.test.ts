@@ -10,6 +10,7 @@ import {
   type RoadmapNode,
 } from './roadmap'
 import { GLOSSARY, GLOSSARY_IDS, glossaryEntry, searchGlossary } from './glossary'
+import { REPORT_TABS } from '../stores/reportStore'
 
 /** The roadmap and glossary are hand-authored prose, and the usual failure is
  *  not a crash — it is a dead link, an unreachable node, or a decision whose
@@ -159,6 +160,24 @@ describe('roadmap integrity', () => {
       for (const link of node.appLinks ?? []) {
         const pathname = link.to.split('?')[0]
         if (!APP_ROUTES.has(pathname)) bad.push(`${node.id} -> ${link.to}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
+  it('every report link names a tab the reports page has', () => {
+    // A bare `/reports` lands on the overview whatever the label promised —
+    // "Subscriptions report" did exactly that. A named tab must exist.
+    const tabs = new Set(REPORT_TABS.map((t) => t.id))
+    const bad: string[] = []
+    for (const node of allNodes) {
+      for (const link of node.appLinks ?? []) {
+        const [pathname, query] = link.to.split('?')
+        if (pathname !== '/reports') continue
+        const tab = new URLSearchParams(query ?? '').get('tab')
+        if (!tab || !tabs.has(tab as (typeof REPORT_TABS)[number]['id'])) {
+          bad.push(`${node.id} -> ${link.to}`)
+        }
       }
     }
     expect(bad).toEqual([])
