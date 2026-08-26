@@ -1,16 +1,20 @@
+import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { UserCircle2, LayoutDashboard, List, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, Sparkles, History, Compass } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useAccountTypes } from '../../../api/accountTypes'
-import { accountTypeLabel } from '../../../constants/accountTypes'
 import {
-  assetsTotal as sumAssets,
+  SIDEBAR_SECTION_IDS,
+  accountsTotal,
   buildLiabilityRows,
+  groupLabel,
+  groupedAccountsTotal,
   liabilityHeaderTotal,
   orderedOnBudgetKeys,
   partitionAccounts,
+  sidebarTypeGroupId,
 } from './sidebarGroups'
 import { useBudgets } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
@@ -24,26 +28,10 @@ import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Account } from '../../../types'
 import './Sidebar.css'
-
-// Group headers pluralize the built-in labels; custom types fall back to the
-// registry-aware label helper.
-function groupLabel(type: string, registry?: { key: string; label: string }[]): string {
-  switch (type) {
-    case 'checking': return 'Checking'
-    case 'savings': return 'Savings'
-    case 'cash': return 'Cash'
-    case 'credit_card': return 'Credit Cards'
-    case 'mortgage': return 'Mortgages'
-    case 'auto_loan': return 'Auto Loans'
-    case 'student_loan': return 'Student Loans'
-    case 'loan': return 'Loans'
-    case 'investment': return 'Investments'
-    case 'other_asset': return 'Other Assets'
-    case 'other_liability': return 'Other Liabilities'
-    case 'tracking': return 'Tracking'
-    default: return accountTypeLabel(type, registry)
-  }
-}
+import { useSidebarResize } from './useSidebarResize'
+import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './sidebarWidth'
+import { SidebarAccountRow } from './SidebarAccountRow'
+import { SidebarGroupHeader } from './SidebarGroupHeader'
 
 
 
@@ -60,6 +48,11 @@ export function Sidebar() {
   const updateAvailable = useUpdateStatus().data?.update_available === true
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
+  const sidebarWidth = useUIStore((s) => s.sidebarWidth)
+  const setSidebarWidth = useUIStore((s) => s.setSidebarWidth)
+  const collapsedGroups = useUIStore((s) => s.collapsedSidebarGroups)
+  const toggleGroup = useUIStore((s) => s.toggleSidebarGroup)
+  const resize = useSidebarResize(sidebarWidth, setSidebarWidth)
   const activeModal = useUIStore((s) => s.activeModal)
   const openModal = useUIStore((s) => s.openModal)
   const closeModal = useUIStore((s) => s.closeModal)
@@ -108,11 +101,11 @@ export function Sidebar() {
     accounts ?? []
   )
   const onBudgetTypes = orderedOnBudgetKeys(onBudgetByType)
-  const onBudgetTotal = accounts
-    ?.filter((a) => a.on_budget)
-    .reduce((sum, a) => sum + Number(a.balance), 0) ?? 0
+  // Summed from the same map the groups render from, so the section header is
+  // by construction the sum of the subtotals listed under it.
+  const onBudgetTotal = groupedAccountsTotal(onBudgetByType)
 
-  const assetsTotal = sumAssets(offBudgetAssets)
+  const assetsTotal = accountsTotal(offBudgetAssets)
   // Every debt exactly once: liability-classified accounts (tracker balance
   // when linked), managed liabilities whose account lives elsewhere, and
   // unmanaged liabilities. The header total is the sum of what's listed.
@@ -134,9 +127,28 @@ export function Sidebar() {
   }
 
   const collapsed = sidebarCollapsed
+  const isFolded = (groupId: string) => collapsedGroups.has(groupId)
 
   return (
-    <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
+    <aside
+      className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}
+      style={collapsed ? undefined : ({ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties)}
+    >
+      {!collapsed && (
+        <div
+          className={`sidebar__resizer ${resize.active ? 'sidebar__resizer--active' : ''}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={SIDEBAR_MAX_WIDTH}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          title="Drag to resize · double-click to reset"
+          {...resize.handleProps}
+        />
+      )}
+      <div className="sidebar__scroll">
       <div className="sidebar__logo">
         {!collapsed && <span className="sidebar__logo-text">IGAB</span>}
         <button
@@ -216,204 +228,191 @@ export function Sidebar() {
         </button>
       </nav>
 
-      {!collapsed && <div className="sidebar__section-header">
-        <button
-          className="sidebar__section-header-link"
-          onClick={() => navigate('/transactions')}
-          title="All transactions across accounts"
-        >
-          Budget Accounts
-        </button>
-        <span className="sidebar__section-header-actions">
-          <span className="sidebar__total tabular">{formatMoney(onBudgetTotal)}</span>
-          <button
-            className="sidebar__add-account"
-            onClick={() => navigate('/accounts')}
-            aria-label="Manage accounts"
-            title="Manage accounts"
-          >
-            <Settings size={12} />
-          </button>
-          <button
-            className="sidebar__add-account"
-            onClick={() => openModal('add-account')}
-            aria-label="Add account"
-            title="Add account"
-          >
-            <Plus size={12} />
-          </button>
-        </span>
-      </div>}
-
-      {!collapsed && onBudgetTypes.map((type) => {
-        const typeAccounts: Account[] = onBudgetByType.get(type) ?? []
-        if (typeAccounts.length === 0) return null
-        return (
-          <div key={type} className="sidebar__account-group">
-            <div className="sidebar__account-type">{groupLabel(type, typeRows)}</div>
-            {typeAccounts.map((acc) => (
-              <button
-                key={acc.id}
-                className="sidebar__account"
-                onClick={() => handleAccountClick(acc)}
-              >
-                <span className="sidebar__account-name">
-                  {acc.name}
-                  {acc.uncategorized_count > 0 && (
-                    <span className="sidebar__uncategorized-badge" title={`${acc.uncategorized_count} uncategorized`}>
-                      {acc.uncategorized_count}
-                    </span>
-                  )}
-                </span>
-                <span className="sidebar__account-right">
-                  {acc.simplefin_account_id && (
-                    <SyncStatusIcon
-                      account={acc}
-                      isSyncing={syncMutation.isPending && syncingAccountId === acc.simplefin_account_id}
-                      onSyncClick={(e) => handleAccountSync(acc, e)}
-                      lastSyncError={primaryConnection?.last_sync_error}
-                    />
-                  )}
-                  <span className={`sidebar__account-balance tabular ${Number(acc.balance) < 0 ? 'negative' : ''}`}>
-                    {formatMoney(Number(acc.balance))}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )
-      })}
+      {!collapsed && (
+        <div className="sidebar__section">
+          <SidebarGroupHeader
+            level="section"
+            label="Budget Accounts"
+            total={onBudgetTotal}
+            collapsible={onBudgetTypes.length > 0}
+            collapsed={isFolded(SIDEBAR_SECTION_IDS.budgetAccounts)}
+            onToggle={() => toggleGroup(SIDEBAR_SECTION_IDS.budgetAccounts)}
+            onLabelClick={() => navigate('/transactions')}
+            labelTitle="All transactions across accounts"
+            actions={
+              <>
+                <button
+                  className="sidebar__group-action"
+                  onClick={() => navigate('/accounts')}
+                  aria-label="Manage accounts"
+                  title="Manage accounts"
+                >
+                  <Settings size={12} />
+                </button>
+                <button
+                  className="sidebar__group-action"
+                  onClick={() => openModal('add-account')}
+                  aria-label="Add account"
+                  title="Add account"
+                >
+                  <Plus size={12} />
+                </button>
+              </>
+            }
+          />
+          {!isFolded(SIDEBAR_SECTION_IDS.budgetAccounts) &&
+            onBudgetTypes.map((type) => {
+              const typeAccounts: Account[] = onBudgetByType.get(type) ?? []
+              if (typeAccounts.length === 0) return null
+              const typeGroupId = sidebarTypeGroupId(type)
+              return (
+                <div key={type} className="sidebar__account-group">
+                  <SidebarGroupHeader
+                    level="type"
+                    label={groupLabel(type, typeRows)}
+                    // A one-account group's subtotal is that account's own
+                    // balance printed again one line below it. Shown only when
+                    // it says something the rows don't: two or more accounts,
+                    // or a group folded shut over the number.
+                    total={
+                      typeAccounts.length > 1 || isFolded(typeGroupId)
+                        ? accountsTotal(typeAccounts)
+                        : null
+                    }
+                    collapsed={isFolded(typeGroupId)}
+                    onToggle={() => toggleGroup(typeGroupId)}
+                  />
+                  {!isFolded(typeGroupId) &&
+                    typeAccounts.map((acc) => (
+                      <SidebarAccountRow
+                        key={acc.id}
+                        name={acc.name}
+                        balance={Number(acc.balance)}
+                        badgeCount={acc.uncategorized_count}
+                        onClick={() => handleAccountClick(acc)}
+                        trailing={
+                          acc.simplefin_account_id ? (
+                            <SyncStatusIcon
+                              account={acc}
+                              isSyncing={
+                                syncMutation.isPending &&
+                                syncingAccountId === acc.simplefin_account_id
+                              }
+                              onSyncClick={(e) => handleAccountSync(acc, e)}
+                              lastSyncError={primaryConnection?.last_sync_error}
+                            />
+                          ) : undefined
+                        }
+                      />
+                    ))}
+                </div>
+              )
+            })}
+        </div>
+      )}
 
       {!collapsed && (offBudgetAssets.length > 0 || budgetId) && (
-        <>
-          <div className="sidebar__section-header">
-            <span>Assets</span>
-            <span className="sidebar__section-header-actions">
-              <span className="sidebar__total tabular">{formatMoney(assetsTotal)}</span>
+        <div className="sidebar__section">
+          <SidebarGroupHeader
+            level="section"
+            label="Assets"
+            total={assetsTotal}
+            collapsible={offBudgetAssets.length > 0}
+            collapsed={isFolded(SIDEBAR_SECTION_IDS.assets)}
+            onToggle={() => toggleGroup(SIDEBAR_SECTION_IDS.assets)}
+            actions={
               <button
-                className="sidebar__add-account"
+                className="sidebar__group-action"
                 onClick={() => setAssetModalOpen(true)}
                 aria-label="Add asset"
                 title="Add asset"
               >
                 <Plus size={12} />
               </button>
-            </span>
-          </div>
-          {offBudgetAssets.map((acc) => (
-            <button
-              key={acc.id}
-              className="sidebar__account"
-              onClick={() => handleAccountClick(acc)}
-            >
-              <span className="sidebar__account-name">{acc.name}</span>
-              <span className="sidebar__account-balance tabular">
-                {formatMoney(Number(acc.balance))}
-              </span>
-            </button>
-          ))}
-        </>
+            }
+          />
+          {!isFolded(SIDEBAR_SECTION_IDS.assets) &&
+            offBudgetAssets.map((acc) => (
+              <SidebarAccountRow
+                key={acc.id}
+                name={acc.name}
+                balance={Number(acc.balance)}
+                onClick={() => handleAccountClick(acc)}
+              />
+            ))}
+        </div>
       )}
 
-      {!collapsed && liabilityRows.length > 0 && (
-        <>
-          <div className="sidebar__section-header">
-            <button
-              className="sidebar__section-header-link"
-              onClick={() => navigate('/liabilities')}
-              title="All liabilities"
-            >
-              Liabilities
-            </button>
-            <span className="sidebar__section-header-actions">
-              <span className="sidebar__total tabular negative">
-                {formatMoney(liabilitiesTotal)}
-              </span>
+      {!collapsed && (liabilityRows.length > 0 || budgetId) && (
+        <div className="sidebar__section">
+          <SidebarGroupHeader
+            level="section"
+            label="Liabilities"
+            total={liabilityRows.length > 0 ? liabilitiesTotal : null}
+            collapsible={liabilityRows.length > 0}
+            collapsed={isFolded(SIDEBAR_SECTION_IDS.liabilities)}
+            onToggle={() => toggleGroup(SIDEBAR_SECTION_IDS.liabilities)}
+            onLabelClick={() => navigate('/liabilities')}
+            labelTitle={liabilityRows.length > 0 ? 'All liabilities' : 'Track a liability'}
+            actions={
               <button
-                className="sidebar__add-liability"
-                onClick={() => { openModal('liability'); navigate('/liabilities') }}
+                className="sidebar__group-action"
+                onClick={() => {
+                  openModal('liability')
+                  navigate('/liabilities')
+                }}
                 aria-label="Add liability"
                 title="Add liability"
               >
                 <Plus size={12} />
               </button>
-            </span>
-          </div>
-          {liabilityRows.map((row) => (
-            <div
-              key={row.key}
-              className="sidebar__account"
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                const target = row.target
-                if (target.kind === 'liability') {
-                  navigate(`/liabilities/${target.liabilityId}`)
-                } else {
-                  const acc = offBudgetLiabilityAccounts.find((a) => a.id === target.accountId)
-                  if (acc) handleAccountClick(acc)
+            }
+          />
+          {!isFolded(SIDEBAR_SECTION_IDS.liabilities) &&
+            liabilityRows.map((row) => (
+              <SidebarAccountRow
+                key={row.key}
+                name={row.name}
+                balance={row.balance}
+                onClick={() => {
+                  const target = row.target
+                  if (target.kind === 'liability') {
+                    navigate(`/liabilities/${target.liabilityId}`)
+                  } else {
+                    const acc = offBudgetLiabilityAccounts.find((a) => a.id === target.accountId)
+                    if (acc) handleAccountClick(acc)
+                  }
+                }}
+                leadingIcon={
+                  row.icon ? (
+                    <span
+                      className={`sidebar__liability-icon ${row.icon === 'managed' ? 'sidebar__liability-icon--managed' : ''}`}
+                      title={
+                        row.icon === 'managed' ? 'Payoff tracking enabled' : 'Manually tracked'
+                      }
+                    >
+                      {row.icon === 'managed' ? <Link2 size={12} /> : <PenLine size={12} />}
+                    </span>
+                  ) : undefined
                 }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  e.currentTarget.click()
+                trailing={
+                  row.registerAccountId ? (
+                    <button
+                      className="sidebar__register-btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedAccount(row.registerAccountId!)
+                        navigate(`/accounts/${row.registerAccountId}`)
+                      }}
+                      aria-label={`Open ${row.name} register`}
+                      title="Open account register"
+                    >
+                      <List size={12} />
+                    </button>
+                  ) : undefined
                 }
-              }}
-            >
-              <span className="sidebar__account-name">
-                {row.icon === 'managed' && (
-                  <span className="sidebar__liability-icon sidebar__liability-icon--managed" title="Payoff tracking enabled">
-                    <Link2 size={12} />
-                  </span>
-                )}
-                {row.icon === 'manual' && (
-                  <span className="sidebar__liability-icon" title="Manually tracked">
-                    <PenLine size={12} />
-                  </span>
-                )}
-                {row.name}
-              </span>
-              <span className="sidebar__account-right">
-                {row.registerAccountId && (
-                  <button
-                    className="sidebar__register-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedAccount(row.registerAccountId!)
-                      navigate(`/accounts/${row.registerAccountId}`)
-                    }}
-                    aria-label={`Open ${row.name} register`}
-                    title="Open account register"
-                  >
-                    <List size={12} />
-                  </button>
-                )}
-                <span className="sidebar__account-balance tabular negative">
-                  {formatMoney(row.balance)}
-                </span>
-              </span>
-            </div>
-          ))}
-        </>
-      )}
-      {!collapsed && liabilityRows.length === 0 && budgetId && (
-        <div className="sidebar__section-header">
-          <button
-            className="sidebar__section-header-link"
-            onClick={() => navigate('/liabilities')}
-            title="Track a liability"
-          >
-            Liabilities
-          </button>
-          <button
-            className="sidebar__add-liability"
-            onClick={() => { openModal('liability'); navigate('/liabilities') }}
-            aria-label="Add liability"
-            title="Add liability"
-          >
-            <Plus size={12} />
-          </button>
+              />
+            ))}
         </div>
       )}
 
@@ -456,6 +455,7 @@ export function Sidebar() {
           onClose={() => setAssetModalOpen(false)}
         />
       )}
+      </div>
     </aside>
   )
 }

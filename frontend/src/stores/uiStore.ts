@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
+import { SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../components/layout/Sidebar/sidebarWidth'
 import type { AssignStrategy } from '../types'
 
 type TransactionSortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
@@ -57,6 +58,14 @@ interface UIState {
    *  stacked. Being able to represent that at all was the bug. */
   activeModal: ActiveModal | null
   sidebarCollapsed: boolean
+  /** Resizable sidebar width in px; clamped by setSidebarWidth. */
+  sidebarWidth: number
+  /** Which sidebar account groups are folded shut, by the ids in
+   *  `SIDEBAR_SECTION_IDS` / `sidebarTypeGroupId`. Separate from
+   *  `collapsedGroups`, which is the budget page's category groups: one Set
+   *  for both would make renaming a category group collapse a sidebar
+   *  section. */
+  collapsedSidebarGroups: Set<string>
 
   // Mobile shell (bottom nav)
   quickAddOpen: boolean
@@ -88,6 +97,8 @@ interface UIState {
   openModal: (kind: ModalKind, editingId?: string | null) => void
   closeModal: () => void
   toggleSidebarCollapsed: () => void
+  setSidebarWidth: (px: number) => void
+  toggleSidebarGroup: (groupId: string) => void
   toggleBudgetRowMode: () => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
   selectOnlyCategory: (id: string) => void
@@ -166,6 +177,7 @@ export const useUIStore = create<UIState>()(
   collapsedGroups: new Set(),
   activeModal: null,
   sidebarCollapsed: false,
+  sidebarWidth: SIDEBAR_MIN_WIDTH,
   budgetRowMode: 'expanded',
   selectedCategoryIds: new Set(),
   categoryInspectorOpen: true,
@@ -200,6 +212,15 @@ export const useUIStore = create<UIState>()(
 
 
   toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  setSidebarWidth: (px) => set({ sidebarWidth: clampSidebarWidth(px) }),
+
+  collapsedSidebarGroups: new Set<string>(),
+  toggleSidebarGroup: (groupId) => {
+    const groups = new Set(get().collapsedSidebarGroups)
+    if (groups.has(groupId)) groups.delete(groupId)
+    else groups.add(groupId)
+    set({ collapsedSidebarGroups: groups })
+  },
 
   quickAddOpen: false,
   moreSheetOpen: false,
@@ -392,7 +413,24 @@ export const useUIStore = create<UIState>()(
         activeFilterId: s.activeFilterId,
         activeViewId: s.activeViewId,
         quickFilterOrder: s.quickFilterOrder,
+        // A width someone dragged to is a deliberate choice, like a filter.
+        sidebarWidth: s.sidebarWidth,
+        // So is folding a section shut. A Set does not survive JSON — it
+        // stringifies to `{}` — so it is stored as an array and rebuilt in
+        // merge() below. Persisting the Set directly rehydrates a plain
+        // object whose `.has` is undefined, which throws on first render.
+        collapsedSidebarGroups: [...s.collapsedSidebarGroups],
       }),
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<
+          Omit<UIState, 'collapsedSidebarGroups'> & { collapsedSidebarGroups: string[] }
+        >
+        return {
+          ...current,
+          ...saved,
+          collapsedSidebarGroups: new Set(saved.collapsedSidebarGroups ?? []),
+        }
+      },
     }
   )
 )
