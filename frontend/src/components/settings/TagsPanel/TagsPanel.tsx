@@ -122,7 +122,7 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                       Edit
                     </button>
                     {tag.system_key ? (
-                      <span className="tags-panel__system-icon" title="System tag — used by reports. Rename or recolor only.">
+                      <span className="tags-panel__system-icon" title="System tag — changes how money is counted (see the ⓘ beside the section title). Rename or recolour only.">
                         <Lock size={14} />
                       </span>
                     ) : (

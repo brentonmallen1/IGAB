@@ -21,6 +21,7 @@ import { IntegrityPanel } from '../../components/settings/IntegrityPanel/Integri
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
+import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
 import { AISettingsPanel } from '../../components/settings/AISettingsPanel'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
@@ -434,7 +435,17 @@ export function SettingsPage() {
 
       {/* Tags */}
       {budgetId && (
-        <Surface as="section" className="settings-section" id="tags" title="Tags">
+        <Surface
+          as="section"
+          className="settings-section"
+          id="tags"
+          title={
+            <span className="settings-section__title-help">
+              Tags
+              <SystemTagsHelp />
+            </span>
+          }
+        >
           <div className="settings-section__body">
             <TagsPanel budgetId={budgetId} />
           </div>

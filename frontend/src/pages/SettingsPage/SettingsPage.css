@@ -409,3 +409,10 @@
   font-size: var(--font-size-xs);
   color: var(--color-negative);
 }
+
+/* A section title with its help trigger beside it — the reports' pattern. */
+.settings-section__title-help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
