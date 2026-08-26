@@ -164,6 +164,46 @@
 
   /* Focus ring — consistent keyboard focus indicator */
   --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--color-accent);
+
+  /* Surface roles — the ONLY vocabulary page-level containers should use.
+     Themes author a four-grey ladder (--bg-primary … --bg-elevated); the
+     mapping from ladder to role lives here, once, so a card is raised in
+     every theme instead of raised in Desert and sunken in Catppuccin.
+
+     The ladder contract (enforced by contrast.test.ts, values picked in the
+     surface picker on 2026-08-25): raised is one 8-pt lightness step above
+     the canvas in every theme, overlay one more; --border-subtle is the
+     hairline that separates a raised surface from its parent, --border-color
+     the stronger rule for chrome edges and outlines.
+
+     canvas  — the page ground (.main-layout__main)
+     raised  — a card or section sitting on the canvas
+     sunken  — an inset region INSIDE a raised card: scroll wells, table
+               bodies, read-only panes. Cuts back to the canvas colour.
+     chrome  — toolbars, filter bars, page headers, sticky table headers
+     overlay — modals, popovers, dropdowns (shadow-carried in light themes) */
+  --surface-canvas: var(--bg-primary);
+  --surface-raised: var(--bg-secondary);
+  --surface-sunken: var(--bg-primary);
+  --surface-chrome: var(--bg-secondary);
+  --surface-overlay: var(--bg-elevated);
+  --edge: var(--border-subtle);
+  --edge-strong: var(--border-color);
+  --elevation-raised: none;
+  --elevation-stuck: var(--shadow-sm);
+  --elevation-overlay: var(--shadow-lg);
+
+  /* Aliases used by older components. Identical in every theme, so they
+     live here rather than 40 times over. */
+  --color-surface: var(--bg-secondary);
+  --color-border: var(--border-color);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --hover-bg: var(--bg-hover);
+  --color-success: var(--color-positive);
+  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
+  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
+  --color-info-text: var(--color-info);
 }
 
 * {
@@ -257,6 +297,112 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
+}
+
+/* Surface — the single composition of the surface roles declared above.
+   Global rather than per-component because pages use the bare `surface`
+   class on their own elements; a stylesheet that only loads with the
+   <Surface> component would leave those pages flat until something else
+   happened to import it. Components style their CONTENTS; the container's
+   fill, edge and elevation come from here and nowhere else. */
+.surface {
+  background-color: var(--surface-raised);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--elevation-raised);
+}
+
+/* An inset region inside a raised card. Cuts back to the canvas colour so the
+   well reads as a hole in the card rather than a second card. */
+.surface--sunken {
+  background-color: var(--surface-sunken);
+  border-radius: var(--border-radius-sm);
+  box-shadow: none;
+}
+
+/* Bars: full-bleed, edge only on the bottom. */
+.surface--chrome {
+  background-color: var(--surface-chrome);
+  border: 0;
+  border-bottom: 1px solid var(--edge);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.surface--sticky {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+
+/* Set by useStuck once the bar is pinned — the shadow says "content is
+   passing underneath", and only then. */
+.surface--sticky.surface--stuck {
+  box-shadow: var(--elevation-stuck);
+}
+
+.surface--dashed {
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.surface__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--edge);
+}
+
+/* Typography comes from .section-label (base.css); a section title is the
+   same label in the primary text colour. */
+.surface__title {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.surface__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* useStuck's sentinel: occupies no space, never paints, never hit-tests. */
+.surface__sentinel {
+  height: 1px;
+  margin-bottom: -1px;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* A list that stops growing and scrolls instead — payees to merge, wizard
+   groups, regex test results. Set --scroll-list-max on the element to tune
+   the cap; the default suits a modal body. */
+.scroll-list {
+  max-height: var(--scroll-list-max, 240px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Inside a flex column (every modal body) an overflow:auto child may shrink
+     to nothing; the list must keep its own height up to the cap. */
+  flex-shrink: 0;
+}
+
+/* A page-level list that takes the rest of the viewport and scrolls inside
+   it — activity feeds, the scheduled table — so the page header stays put and
+   the page itself never grows past the screen. The page root must be a flex
+   column that fills the main area (.page-fill). */
+.page-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.scroll-fill {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Keyboard key hint — header palette bar, shortcut help, context menus */

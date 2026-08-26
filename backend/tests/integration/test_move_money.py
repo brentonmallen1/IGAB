@@ -182,3 +182,129 @@ async def test_move_money_api(api_client, db_session):
         },
     )
     assert resp.status_code == 422
+
+
+async def test_undo_move_reverses_only_that_move_and_drops_its_row(db_session):
+    from igab.services.undo_service import UndoService
+
+    services, budget, groceries, dining = await _setup(db_session)
+    await services.budgets.move_money(budget.id, groceries.id, dining.id, Decimal("25.00"), MONTH)
+    # A later move through the same category must survive the undo of the first
+    await services.budgets.move_money(budget.id, None, dining.id, Decimal("10.00"), MONTH)
+    moves = await services.budgets.get_move_history(budget.id, MONTH)
+    first = next(m for m in moves if m.from_category_id == groceries.id)
+
+    undone = await UndoService(db_session).undo_move(budget.id, first.id)
+    assert len(undone) == 2, "both sides of the move are stamped undone"
+
+    _, bal = await _snapshot(services, budget)
+    assert bal[groceries.id].assigned == Decimal("600.00")
+    assert bal[dining.id].assigned == Decimal("110.00"), "the later $10 move is kept"
+    moves = await services.budgets.get_move_history(budget.id, MONTH)
+    assert [m.amount for m in moves] == [Decimal("10.00")], "the undone move left the list"
+
+    # A second undo of the same move finds nothing pending and nothing to drop
+    with pytest.raises(Exception):
+        await UndoService(db_session).undo_move(budget.id, first.id)
+
+
+async def test_undo_move_after_log_undo_only_drops_the_row(db_session):
+    from igab.services.undo_service import UndoService
+
+    services, budget, groceries, dining = await _setup(db_session)
+    await services.budgets.move_money(budget.id, groceries.id, dining.id, Decimal("25.00"), MONTH)
+    move = (await services.budgets.get_move_history(budget.id, MONTH))[0]
+    undo = UndoService(db_session)
+    rows = await undo.repo.get_for_move(budget.id, move.id)
+    await undo.undo_batch(budget.id, rows[0].batch_id)
+    # The batch undo already dropped the audit row; a stale row (from before
+    # moves were linked to their changes) would still be listed — undo_move
+    # on it must reverse nothing and just remove it.
+    db_session.add(type(move)(id=move.id, budget_id=budget.id, month=MONTH, from_category_id=groceries.id, to_category_id=dining.id, amount=Decimal("25.00")))
+    await db_session.flush()
+    assert await undo.undo_move(budget.id, move.id) == []
+    assert await services.budgets.get_move_history(budget.id, MONTH) == []
+    _, bal = await _snapshot(services, budget)
+    assert bal[groceries.id].assigned == Decimal("600.00"), "money was not reversed twice"
+
+
+async def test_undo_move_refuses_a_move_with_no_linked_rows(db_session):
+    from igab.domain.exceptions import UndoConflict
+    from igab.services.undo_service import UndoService
+
+    services, budget, groceries, dining = await _setup(db_session)
+    # A row from before moves carried their change ids: nothing links back
+    legacy = services.budgets.move_repo.model(
+        budget_id=budget.id, month=MONTH, from_category_id=groceries.id,
+        to_category_id=dining.id, amount=Decimal("5.00"),
+    )
+    db_session.add(legacy)
+    await db_session.flush()
+    with pytest.raises(UndoConflict):
+        await UndoService(db_session).undo_move(budget.id, legacy.id)
+    assert len(await services.budgets.get_move_history(budget.id, MONTH)) == 1, "still listed"
+
+
+async def test_undo_of_a_bulk_batch_drops_its_moves(db_session):
+    from igab.services.undo_service import UndoService
+
+    services, budget, groceries, dining = await _setup(db_session)
+    with services.budgets.changes.batch() as batch_id:
+        await services.budgets.move_money(budget.id, None, groceries.id, Decimal("5.00"), MONTH)
+        await services.budgets.move_money(budget.id, None, dining.id, Decimal("7.00"), MONTH)
+    assert len(await services.budgets.get_move_history(budget.id, MONTH)) == 2
+
+    await UndoService(db_session).undo_batch(budget.id, batch_id)
+
+    assert await services.budgets.get_move_history(budget.id, MONTH) == []
+    _, bal = await _snapshot(services, budget)
+    assert bal[groceries.id].assigned == Decimal("600.00")
+    assert bal[dining.id].assigned == Decimal("100.00")
+
+
+async def test_redo_restores_the_move_and_its_row(db_session):
+    from igab.domain.exceptions import UndoConflict
+    from igab.services.undo_service import UndoService
+
+    services, budget, groceries, dining = await _setup(db_session)
+    await services.budgets.move_money(budget.id, groceries.id, dining.id, Decimal("25.00"), MONTH)
+    move = (await services.budgets.get_move_history(budget.id, MONTH))[0]
+    undo = UndoService(db_session)
+    await undo.undo_move(budget.id, move.id)
+    assert await services.budgets.get_move_history(budget.id, MONTH) == []
+
+    redone = await undo.redo_latest(budget.id)
+    assert len(redone) == 2
+    _, bal = await _snapshot(services, budget)
+    assert bal[groceries.id].assigned == Decimal("575.00")
+    assert bal[dining.id].assigned == Decimal("125.00")
+    moves = await services.budgets.get_move_history(budget.id, MONTH)
+    assert [m.id for m in moves] == [move.id], "the audit row is back under its original id"
+
+    # Undo again, then do something new: the redo stack is gone
+    await undo.undo_move(budget.id, move.id)
+    await services.budgets.move_money(budget.id, None, dining.id, Decimal("1.00"), MONTH)
+    with pytest.raises(UndoConflict):
+        await undo.redo_latest(budget.id)
+
+
+async def test_undo_move_api(api_client, db_session):
+    services = make_services(db_session)
+    budget = await create_budget(db_session, api_client.test_user)
+    group = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    dining = await create_category(db_session, budget, group, "Dining")
+    await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("100.00"))
+    await services.budgets.move_money(budget.id, groceries.id, dining.id, Decimal("40.00"), MONTH)
+    move = (await services.budgets.get_move_history(budget.id, MONTH))[0]
+
+    resp = await api_client.post(f"/api/v1/{budget.id}/budget/moves/{move.id}/undo")
+    assert resp.status_code == 200
+    assert len(resp.json()["undone_change_ids"]) == 2
+    resp = await api_client.get(f"/api/v1/{budget.id}/budget/moves", params={"month": "2026-07-01"})
+    assert resp.json() == []
+
+    resp = await api_client.post(f"/api/v1/{budget.id}/changes/redo")
+    assert resp.status_code == 200
+    resp = await api_client.get(f"/api/v1/{budget.id}/budget/moves", params={"month": "2026-07-01"})
+    assert len(resp.json()) == 1

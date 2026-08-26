@@ -7,6 +7,8 @@ import { AUTO_STRATEGY_ORDER, RESET_STRATEGY_ORDER, STRATEGY_META } from './stra
 interface Props {
   totals: AssignStrategyTotalsResponse | undefined
   isLoading: boolean
+  /** Categories overspent this month — counted server-side beside total_overspent. */
+  overspentCount: number
   onPickStrategy: (strategy: AssignStrategy) => void
   onCoverOverspent: () => void
 }
@@ -16,7 +18,7 @@ interface Props {
  * the same number the preview modal and apply will produce. Clicking a row
  * opens the preview modal; nothing applies from here.
  */
-export function AssignAutoTab({ totals, isLoading, onPickStrategy, onCoverOverspent }: Props) {
+export function AssignAutoTab({ totals, isLoading, overspentCount, onPickStrategy, onCoverOverspent }: Props) {
   const { formatMoney } = useFormatters()
 
   if (isLoading || !totals) {
@@ -25,6 +27,11 @@ export function AssignAutoTab({ totals, isLoading, onPickStrategy, onCoverOversp
 
   const byStrategy = new Map(totals.strategies.map((s) => [s.strategy, s]))
   const overspent = Number(totals.total_overspent)
+  const underfundedNeeded = Number(byStrategy.get('underfunded')?.total_needed ?? 0)
+  // Overspending and underfunding measure different things: a category with
+  // no target is never "underfunded" however overspent it is. When the two
+  // disagree, say so where the $0 would otherwise look wrong.
+  const overspentButNotUnderfunded = overspent > 0 && underfundedNeeded === 0
 
   function renderRow(strategy: AssignStrategy) {
     const row = byStrategy.get(strategy)
@@ -59,26 +66,32 @@ export function AssignAutoTab({ totals, isLoading, onPickStrategy, onCoverOversp
 
   return (
     <div className="assign-dropdown__rows" role="menu">
+      <button
+        type="button"
+        data-assign-row
+        className={`assign-dropdown__row ${overspent > 0 ? 'assign-dropdown__row--warning' : ''}`}
+        disabled={overspent === 0}
+        onClick={onCoverOverspent}
+      >
+        <span className="assign-dropdown__row-label">
+          <AlertTriangle size={13} />
+          Cover Overspending
+          {overspent > 0 && overspentCount > 0 && (
+            <span className="assign-dropdown__row-sub">
+              {overspentCount} {overspentCount === 1 ? 'category' : 'categories'}
+            </span>
+          )}
+        </span>
+        <span className="assign-dropdown__row-amount tabular">{formatMoney(-overspent)}</span>
+      </button>
       {AUTO_STRATEGY_ORDER.map(renderRow)}
+      {overspentButNotUnderfunded && (
+        <div className="assign-dropdown__note">
+          Overspending isn't a target shortfall — Cover Overspending is the row for it.
+        </div>
+      )}
       <div className="assign-dropdown__divider" />
       {RESET_STRATEGY_ORDER.map(renderRow)}
-      {overspent > 0 && (
-        <>
-          <div className="assign-dropdown__divider" />
-          <button
-            type="button"
-            data-assign-row
-            className="assign-dropdown__row assign-dropdown__row--warning"
-            onClick={onCoverOverspent}
-          >
-            <span className="assign-dropdown__row-label">
-              <AlertTriangle size={13} />
-              Cover Overspending
-            </span>
-            <span className="assign-dropdown__row-amount tabular">{formatMoney(-overspent)}</span>
-          </button>
-        </>
-      )}
     </div>
   )
 }

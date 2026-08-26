@@ -25,11 +25,6 @@ const PROMPT_TASKS: Array<{ key: string; label: string; placeholders: string[] }
     label: 'Category suggestion',
     placeholders: ['{payee_name}', '{amount}', '{memo}', '{categories}'],
   },
-  {
-    key: 'ai_prompt_normalize_payee',
-    label: 'Payee normalization',
-    placeholders: ['{payee_name}'],
-  },
 ]
 
 function PromptCard({ taskKey, label, placeholders }: { taskKey: string; label: string; placeholders: string[] }) {
@@ -51,10 +46,14 @@ function PromptCard({ taskKey, label, placeholders }: { taskKey: string; label: 
     toast.success('Prompt saved')
   }
 
+  // Two ways back to the shipped prompt: throw away an unsaved edit, or
+  // delete a saved override. Either way the default text is what remains.
   async function handleRevert() {
-    await resetSetting.mutateAsync(taskKey)
+    if (isOverridden) {
+      await resetSetting.mutateAsync(taskKey)
+      toast.success('Reverted to default')
+    }
     setDraft(null)
-    toast.success('Reverted to default')
   }
 
   return (
@@ -80,16 +79,15 @@ function PromptCard({ taskKey, label, placeholders }: { taskKey: string; label: 
             spellCheck={false}
           />
           <div className="ai-settings__json-actions">
-            {isOverridden && (
-              <button
-                className="settings-btn settings-btn--secondary"
-                onClick={() => void handleRevert()}
-                disabled={resetSetting.isPending}
-              >
-                <RotateCcw size={12} />
-                Revert to default
-              </button>
-            )}
+            <button
+              className="settings-btn settings-btn--secondary"
+              onClick={() => void handleRevert()}
+              disabled={(!isOverridden && !dirty) || resetSetting.isPending}
+              title={isOverridden ? 'Delete your override and use the shipped prompt' : 'Discard unsaved edits'}
+            >
+              <RotateCcw size={12} />
+              {isOverridden ? 'Revert to default' : 'Discard changes'}
+            </button>
             <button
               className="settings-btn settings-btn--primary"
               onClick={() => void handleSave()}

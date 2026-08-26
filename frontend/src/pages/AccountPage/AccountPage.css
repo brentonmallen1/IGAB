@@ -12,8 +12,6 @@
   justify-content: space-between;
   gap: var(--spacing-xl);
   padding: var(--spacing-lg) var(--spacing-lg);
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
@@ -42,18 +40,6 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
-}
-
-.account-page__status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-}
-
-.account-page__status-badge--connected {
-  color: var(--color-positive);
 }
 
 /* Balance equation row */

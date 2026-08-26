@@ -23,7 +23,6 @@
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
-  background: var(--bg-primary);
   margin: calc(-1 * var(--payees-pad)) calc(-1 * var(--payees-pad)) 0;
   padding: var(--payees-pad) var(--payees-pad) var(--spacing-md);
 }
@@ -103,9 +102,6 @@
 }
 
 .payees-table {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
   overflow: hidden;
 }
 
@@ -446,7 +442,7 @@
   padding: var(--spacing-xs) var(--spacing-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
-  background: var(--bg-primary);
+  background: var(--surface-overlay);
   font-size: var(--font-size-xs);
   display: flex;
   flex-direction: column;

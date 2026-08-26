@@ -118,7 +118,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
   }
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Liabilities</h2>
         <ReportInfoButton title="Liabilities">

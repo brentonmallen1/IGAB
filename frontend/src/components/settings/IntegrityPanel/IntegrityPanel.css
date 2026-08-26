@@ -20,7 +20,7 @@
   background: var(--color-accent);
   color: var(--bg-primary);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   font-size: var(--font-size-sm);
   cursor: pointer;
 }
@@ -39,7 +39,7 @@
   font-size: var(--font-size-base);
   font-weight: 600;
   padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
 }
 
 .integrity-panel__verdict--pass {

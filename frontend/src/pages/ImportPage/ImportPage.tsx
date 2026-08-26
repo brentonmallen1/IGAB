@@ -6,6 +6,7 @@ import { importCsv, type CsvImportResult } from '../../api/imports'
 import { invalidateAfterImport } from '../../api/invalidateAfterImport'
 import { useToastUndo } from '../../utils/toastUndo'
 import './ImportPage.css'
+import { Surface } from '../../components/common/Surface'
 
 export function ImportPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -55,13 +56,15 @@ export function ImportPage() {
 
   return (
     <div className="import-page">
-      <div className="import-card">
-        <div className="import-card__header">
-          <div className="import-card__title">Import Transactions</div>
-          <div className="import-card__subtitle">
-            Import transactions from a bank export CSV file
+      <Surface
+        className="import-card"
+        header={
+          <div>
+            <span className="section-label surface__title">Import Transactions</span>
+            <div className="import-card__subtitle">Import transactions from a bank export CSV file</div>
           </div>
-        </div>
+        }
+      >
         <form className="import-card__body" onSubmit={handleCsvImport}>
           <div className="import-field">
             <label className="import-field__label">Account</label>
@@ -104,7 +107,7 @@ export function ImportPage() {
             )}
           </div>
         </form>
-      </div>
+      </Surface>
     </div>
   )
 }

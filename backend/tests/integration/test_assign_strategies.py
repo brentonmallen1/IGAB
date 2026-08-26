@@ -521,6 +521,7 @@ async def test_api_flow_totals_preview_apply(api_client, db_session):
     assert Decimal(str(applied["to_assign"])) == Decimal("240.00")
     assert applied["categories_changed"] == 1
     assert Decimal(str(applied["tba_after"])) == Decimal("320.00")
+    assert applied["batch_id"], "apply must hand back its change-log batch for undo"
 
     moves = await api_client.get(
         f"/api/v1/{budget.id}/budget/moves", params={"month": "2026-07-01"}

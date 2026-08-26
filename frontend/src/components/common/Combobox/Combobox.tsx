@@ -107,8 +107,16 @@ export function Combobox({
     }
   }, [open, onBlurClose])
 
+  // Only keyboard navigation (and typing, which resets to the top) may scroll
+  // the list to follow the highlight. Hover also moves the highlight, and if
+  // hover scrolled too, an option half-hidden at the list's edge would scroll
+  // into view, slide the next option under a stationary pointer, and creep
+  // the whole list — which is what made reaching the Split button "weird".
+  const highlightSource = useRef<'keyboard' | 'pointer'>('keyboard')
+
   // Scroll highlighted item into view within the list (manual to avoid page scroll side-effects)
   useEffect(() => {
+    if (highlightSource.current !== 'keyboard') return
     const list = listRef.current
     const item = list?.querySelector<HTMLElement>(`[data-option-index="${highlightedIndex}"]`)
     if (!list || !item) return
@@ -158,10 +166,12 @@ export function Combobox({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
+        highlightSource.current = 'keyboard'
         setHighlightedIndex((i) => Math.min(i + 1, filtered.length - 1))
         break
       case 'ArrowUp':
         e.preventDefault()
+        highlightSource.current = 'keyboard'
         setHighlightedIndex((i) => Math.max(i - 1, 0))
         break
       case 'Enter':
@@ -187,6 +197,7 @@ export function Combobox({
   function handleInputChange(v: string) {
     setQuery(v)
     if (!open) measureAndOpen()
+    highlightSource.current = 'keyboard'
     setHighlightedIndex(0)
     if (!v) onChange(null)
   }
@@ -239,7 +250,10 @@ export function Combobox({
                     data-option-index={idx}
                     className={`combobox__option ${idx === highlightedIndex ? 'combobox__option--highlighted' : ''} ${opt.id === value ? 'combobox__option--selected' : ''}`}
                     onMouseDown={(e) => { e.preventDefault(); selectOption(opt) }}
-                    onMouseEnter={() => setHighlightedIndex(idx)}
+                    onMouseEnter={() => {
+                      highlightSource.current = 'pointer'
+                      setHighlightedIndex(idx)
+                    }}
                     role="option"
                     aria-selected={opt.id === value}
                   >

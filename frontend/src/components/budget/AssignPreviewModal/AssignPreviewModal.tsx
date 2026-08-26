@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { useToastUndo } from '../../../utils/toastUndo'
 import { useAssignApply, useAssignPreview } from '../../../api/assign'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { AssignStrategy } from '../../../types'
@@ -24,6 +24,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
   const { formatMoney } = useFormatters()
   const { data: preview, isLoading } = useAssignPreview(budgetId, month, strategy)
   const apply = useAssignApply(budgetId)
+  const showUndo = useToastUndo(budgetId)
   const meta = STRATEGY_META[strategy]
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
@@ -41,7 +42,8 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
     const parts = []
     if (assigned > 0) parts.push(`${formatMoney(assigned)} assigned`)
     if (returned > 0) parts.push(`${formatMoney(returned)} returned to TBA`)
-    toast.success(
+    showUndo(
+      result.categories_changed > 0 ? result.batch_id : null,
       parts.length > 0
         ? `${meta.label}: ${parts.join(', ')} across ${result.categories_changed} categories`
         : `${meta.label}: nothing to change`

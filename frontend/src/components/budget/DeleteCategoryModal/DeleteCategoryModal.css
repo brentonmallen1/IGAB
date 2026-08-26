@@ -178,8 +178,8 @@
 }
 
 .delete-category-modal__confirm {
-  background-color: var(--color-error);
-  border-color: var(--color-error);
+  background-color: var(--color-negative);
+  border-color: var(--color-negative);
   color: var(--bg-primary);
   font-weight: 500;
 }
@@ -201,22 +201,22 @@
   justify-content: space-between;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm);
-  border: 1px solid var(--color-error);
+  border: 1px solid var(--color-negative);
   border-radius: 4px;
-  color: var(--color-error);
+  color: var(--color-negative);
   font-size: var(--font-size-sm);
 }
 
 .delete-category-modal__error button {
   background: none;
-  border: 1px solid var(--color-error);
+  border: 1px solid var(--color-negative);
   border-radius: 4px;
-  color: var(--color-error);
+  color: var(--color-negative);
   padding: 2px 8px;
   cursor: pointer;
   font-size: var(--font-size-xs);
 }
 
 .delete-category-modal__error button:hover {
-  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  background: color-mix(in srgb, var(--color-negative) 12%, transparent);
 }

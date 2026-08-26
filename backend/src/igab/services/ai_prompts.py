@@ -15,7 +15,6 @@ PROMPT_PLACEHOLDERS: dict[str, list[str]] = {
     "ai_prompt_receipt_extract": ["{categories}", "{today}"],
     "ai_prompt_nl_parse": ["{text}", "{categories}", "{today}"],
     "ai_prompt_suggest_category": ["{payee_name}", "{amount}", "{memo}", "{categories}"],
-    "ai_prompt_normalize_payee": ["{payee_name}"],
     "ai_prompt_suggest_regex": ["{names}"],
 }
 
@@ -109,10 +108,6 @@ DEFAULT_PROMPTS: dict[str, str] = {
         "Match on the category NAME first — the (group) is organizational context, not"
         " a restriction on meaning; use it only as a tie-breaker between candidates.\n"
         "Use category names exactly as they appear in the list. Never invent categories."
-    ),
-    "ai_prompt_normalize_payee": (
-        "Normalize this bank payee name to a clean, readable merchant name: '{payee_name}'\n"
-        "Respond with only the normalized name, nothing else."
     ),
     "ai_prompt_suggest_regex": (
         "These raw bank payee names all belong to the same real-world payee:\n"

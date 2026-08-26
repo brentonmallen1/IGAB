@@ -1,7 +1,4 @@
 .metric-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
   padding: var(--spacing-md) var(--spacing-lg);
   display: flex;
   flex-direction: column;
@@ -11,12 +8,12 @@
 
 .metric-card--accent {
   border-color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color) 8%, var(--bg-secondary));
+  background-color: color-mix(in srgb, var(--accent-color) 8%, transparent);
 }
 
 .metric-card--warning {
   border-color: var(--color-warning);
-  background: color-mix(in srgb, var(--color-warning) 8%, var(--bg-secondary));
+  background-color: color-mix(in srgb, var(--color-warning) 8%, transparent);
 }
 
 .metric-card__label {

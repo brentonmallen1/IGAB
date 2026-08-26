@@ -47,7 +47,7 @@ export function SavingsRateReport({ budgetId }: Props) {
   )
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Savings Rate</h2>
         <ReportInfoButton title="Savings Rate">

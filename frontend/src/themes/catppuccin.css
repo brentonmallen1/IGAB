@@ -1,8 +1,8 @@
 /* Catppuccin Mocha (Dark) */
 [data-theme="catppuccin-mocha"] {
   --bg-primary: #1e1e2e;
-  --bg-secondary: #181825;
-  --bg-tertiary: #313244;
+  --bg-secondary: #313244;
+  --bg-tertiary: #37384b;
   --bg-elevated: #45475a;
   --bg-hover: #313244;
 
@@ -19,10 +19,10 @@
   --color-warning: #fab387;
   --color-info: #8fbaff;
 
-  --border-color: #313244;
-  --border-subtle: #1e1e2e;
-  --input-bg: #181825;
-  --input-border: #626579;
+  --border-color: #4a4c60;
+  --border-subtle: #47495d;
+  --input-bg: #1e1e2e;
+  --input-border: #66697f;
   --input-focus-ring: #cda8f9;
 
   --row-hover-bg: rgba(205, 168, 249, 0.06);
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #11111b;
   --header-bg: #11111b;
-  --card-bg: #181825;
-  --card-border: #313244;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #11111b */
   --sidebar-text-primary: #cdd6f4;
@@ -62,24 +60,14 @@
   --chart-6: #67a263;
   --chart-7: #724e97;
   --chart-8: #d06c89;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Catppuccin Latte (Light) */
 [data-theme="catppuccin-latte"] {
-  --bg-primary: #eff1f5;
-  --bg-secondary: #e6e9ef;
-  --bg-tertiary: #dce0e8;
+  --bg-primary: #e6e9ef;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #dbdfe8;
   --bg-elevated: #ffffff;
   --bg-hover: #e6e9ef;
 
@@ -96,8 +84,8 @@
   --color-warning: #983700;
   --color-info: #0049d2;
 
-  --border-color: #ccd0da;
-  --border-subtle: #dce0e8;
+  --border-color: #bec1cc;
+  --border-subtle: #e5e6e9;
   --input-bg: #ffffff;
   --input-border: #90939f;
   --input-focus-ring: #7416d6;
@@ -111,8 +99,6 @@
 
   --sidebar-bg: #4c4f69;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #ccd0da;
 
   /* Sidebar text — sidebar is medium-dark (#4c4f69) in catppuccin-latte */
   --sidebar-text-primary: #eff1f5;
@@ -138,15 +124,5 @@
   --chart-6: #40a02b;
   --chart-7: #8839ef;
   --chart-8: #d20f39;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

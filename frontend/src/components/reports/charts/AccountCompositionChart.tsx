@@ -38,7 +38,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
   }))
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Account Composition</h2>
         <ReportInfoButton title="Account Composition">

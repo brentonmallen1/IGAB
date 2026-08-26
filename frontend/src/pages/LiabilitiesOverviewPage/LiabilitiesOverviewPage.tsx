@@ -80,7 +80,7 @@ export function LiabilitiesOverviewPage() {
             return (
               <button
                 key={liability.id}
-                className="liability-card"
+                className="liability-card surface"
                 onClick={() => navigate(`/liabilities/${liability.id}`)}
               >
                 <div className="liability-card__top">

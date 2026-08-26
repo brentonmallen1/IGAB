@@ -1,5 +1,6 @@
 .sched-page {
   padding: var(--spacing-xl);
+  width: 100%;
   max-width: 900px;
   display: flex;
   flex-direction: column;
@@ -52,13 +53,13 @@
 }
 
 .sched-table {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
   overflow: hidden;
 }
 
 .sched-table__head {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
   display: grid;
   grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr 60px auto;
   padding: var(--spacing-xs) var(--spacing-md);

@@ -1,8 +1,8 @@
 /* Rosé Pine */
 [data-theme="rose-pine"] {
   --bg-primary: #191724;
-  --bg-secondary: #1f1d2e;
-  --bg-tertiary: #26233a;
+  --bg-secondary: #2a273d;
+  --bg-tertiary: #322f44;
   --bg-elevated: #403d52;
   --bg-hover: #26233a;
 
@@ -19,9 +19,9 @@
   --color-warning: #f6c177;
   --color-info: #9ccfd8;
 
-  --border-color: #26233a;
-  --border-subtle: #1f1d2e;
-  --input-bg: #1f1d2e;
+  --border-color: #4b4958;
+  --border-subtle: #434157;
+  --input-bg: #191724;
   --input-border: #6b687e;
   --input-focus-ring: #c4a7e7;
 
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #1f1d2e;
   --header-bg: #1f1d2e;
-  --card-bg: #1f1d2e;
-  --card-border: #26233a;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #1f1d2e */
   --sidebar-text-primary: #e0def4;
@@ -63,26 +61,16 @@
   --chart-6: #209eca;
   --chart-7: #885cb5;
   --chart-8: #d26583;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Rosé Pine Dawn — the official light variant; light counterpart of the main
    Rosé Pine palette */
 [data-theme="rose-pine-dawn"] {
-  --bg-primary: #faf4ed;
-  --bg-secondary: #fffaf3;
-  --bg-tertiary: #f2e9e1;
-  --bg-elevated: #fffaf3;
+  --bg-primary: #f6ebdf;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f4e8d9;
+  --bg-elevated: #ffffff;
   --bg-hover: #f2e9e1;
 
   --text-primary: #524d74;
@@ -98,8 +86,8 @@
   --color-warning: #855300;
   --color-info: #266671;
 
-  --border-color: #dfdad9;
-  --border-subtle: #f2e9e1;
+  --border-color: #cdc3c4;
+  --border-subtle: #e7e6ec;
   --input-bg: #fffaf3;
   --input-border: #939092;
   --input-focus-ring: #6a5582;
@@ -115,8 +103,6 @@
      surface so it still reads as Rosé Pine */
   --sidebar-bg: #2a273f;
   --header-bg: #fffaf3;
-  --card-bg: #fffaf3;
-  --card-border: #dfdad9;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
   --sidebar-text-primary: #e0def4;
@@ -144,16 +130,6 @@
   --chart-6: #1d5468;
   --chart-7: #907aa9;
   --chart-8: #94445c;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
@@ -162,10 +138,10 @@
    variant — the warm cream base goes cool lavender, and text contrast steps up
    so the two light themes are clearly distinct side by side. */
 [data-theme="rose-pine-moon-dawn"] {
-  --bg-primary: #f1eef6;
-  --bg-secondary: #f9f7fc;
+  --bg-primary: #e9e4f1;
+  --bg-secondary: #ffffff;
   --bg-tertiary: #e6e1ef;
-  --bg-elevated: #f9f7fc;
+  --bg-elevated: #ffffff;
   --bg-hover: #e6e1ef;
 
   --text-primary: #433f5e;
@@ -181,8 +157,8 @@
   --color-warning: #804e00;
   --color-info: #21626d;
 
-  --border-color: #d9d3e3;
-  --border-subtle: #e6e1ef;
+  --border-color: #bfbacc;
+  --border-subtle: #e5e4e8;
   --input-bg: #f9f7fc;
   --input-border: #928ca1;
   --input-focus-ring: #66517d;
@@ -198,8 +174,6 @@
      the family link to the paired dark variant */
   --sidebar-bg: #2a273f;
   --header-bg: #f9f7fc;
-  --card-bg: #f9f7fc;
-  --card-border: #d9d3e3;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
   --sidebar-text-primary: #e0def4;
@@ -226,24 +200,14 @@
   --chart-6: #1e576f;
   --chart-7: #8a72a6;
   --chart-8: #8e415a;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Rosé Pine Moon */
 [data-theme="rose-pine-moon"] {
   --bg-primary: #232136;
-  --bg-secondary: #2a273f;
-  --bg-tertiary: #393552;
+  --bg-secondary: #33304f;
+  --bg-tertiary: #393653;
   --bg-elevated: #44415a;
   --bg-hover: #393552;
 
@@ -260,9 +224,9 @@
   --color-warning: #f6c177;
   --color-info: #9ccfd8;
 
-  --border-color: #393552;
-  --border-subtle: #2a273f;
-  --input-bg: #2a273f;
+  --border-color: #535166;
+  --border-subtle: #4b4866;
+  --input-bg: #232136;
   --input-border: #73718c;
   --input-focus-ring: #c8abec;
 
@@ -275,8 +239,6 @@
 
   --sidebar-bg: #2a273f;
   --header-bg: #2a273f;
-  --card-bg: #2a273f;
-  --card-border: #393552;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #2a273f */
   --sidebar-text-primary: #e0def4;
@@ -303,15 +265,5 @@
   --chart-6: #24a0cc;
   --chart-7: #885cb5;
   --chart-8: #d26583;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

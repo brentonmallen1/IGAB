@@ -6,8 +6,6 @@ from fastapi import APIRouter, Depends
 from igab.api.v1.schemas.ai import (
     AIStatusResponse,
     InsightsResponse,
-    NormalizePayeeRequest,
-    NormalizePayeeResponse,
     OllamaModelInfo,
     OllamaModelsResponse,
     PayeeCleanupGroup,
@@ -51,17 +49,6 @@ async def suggest_category(
 ) -> SuggestCategoryResponse:
     result = await ai_svc.suggest_category(budget_id, body.payee_name, body.amount, body.memo)
     return SuggestCategoryResponse(**result)
-
-
-@router.post("/{budget_id}/ai/normalize-payee", response_model=NormalizePayeeResponse)
-async def normalize_payee(
-    budget_id: BudgetAccess,
-    body: NormalizePayeeRequest,
-    current_user: CurrentUser,
-    ai_svc: Annotated[AIService, Depends(get_ai_service)],
-) -> NormalizePayeeResponse:
-    normalized = await ai_svc.normalize_payee(body.payee_name)
-    return NormalizePayeeResponse(normalized_name=normalized)
 
 
 @router.post("/{budget_id}/ai/suggest-regex", response_model=SuggestRegexResponse)

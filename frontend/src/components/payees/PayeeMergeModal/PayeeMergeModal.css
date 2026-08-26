@@ -73,7 +73,8 @@
   margin: 0;
 }
 
-.pmerge-options {
+.pmerge-options,
+.pmerge-options__names {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -122,35 +123,13 @@
 }
 
 .pmerge-option--custom {
+  margin-top: var(--spacing-sm);
   border-style: dashed;
 }
 
 .pmerge-option__name--placeholder {
   color: var(--text-muted);
   font-style: italic;
-}
-
-.pmerge-ai-normalize {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  padding: 2px 8px;
-  border: 1px solid var(--color-accent);
-  border-radius: var(--border-radius-sm);
-  color: var(--color-accent);
-  background: transparent;
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.pmerge-ai-normalize:hover {
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-
-.pmerge-ai-normalize:disabled {
-  opacity: 0.5;
 }
 
 .pmerge-custom-input {
@@ -322,9 +301,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
-  max-height: 140px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  --scroll-list-max: 140px;
 }
 
 .pmerge-pattern__test {
@@ -361,6 +338,7 @@
 }
 
 .pmerge-preview {
+  --scroll-list-max: 120px;
   display: flex;
   flex-direction: column;
   gap: 2px;

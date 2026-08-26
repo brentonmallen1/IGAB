@@ -3,8 +3,6 @@
   flex-direction: row;
   gap: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
 }
 
 .rfb__row {

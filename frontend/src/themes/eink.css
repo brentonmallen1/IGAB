@@ -1,9 +1,9 @@
 /* E-Ink Dark — inverted color e-ink, washed-out primaries */
 [data-theme="eink-dark"] {
   --bg-primary: #0c0c0c;
-  --bg-secondary: #161616;
+  --bg-secondary: #202020;
   --bg-tertiary: #202020;
-  --bg-elevated: #2a2a2a;
+  --bg-elevated: #2e2e2e;
   --bg-hover: #202020;
 
   --text-primary: #e8e8e8;
@@ -19,9 +19,9 @@
   --color-warning: #a89868;
   --color-info: #7a9ab3;
 
-  --border-color: #383838;
-  --border-subtle: #161616;
-  --input-bg: #161616;
+  --border-color: #434343;
+  --border-subtle: #3c3c3c;
+  --input-bg: #0c0c0c;
   --input-border: #646464;
   --input-focus-ring: #7a9ab3;
 
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #080808;
   --header-bg: #080808;
-  --card-bg: #161616;
-  --card-border: #383838;
 
   --sidebar-text-primary: #e8e8e8;
   --sidebar-text-secondary: #b0b0b0;
@@ -58,24 +56,15 @@
   --chart-6: #709890;
   --chart-7: #a07888;
   --chart-8: #a88868;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* E-Ink Light — color e-ink paper, washed-out primaries */
 [data-theme="eink-light"] {
-  --bg-primary: #f4f4f2;
-  --bg-secondary: #fafaf8;
-  --bg-tertiary: #ececea;
-  --bg-elevated: #fafaf8;
+  --bg-primary: #ecece9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #ebebe8;
+  --bg-elevated: #ffffff;
   --bg-hover: #f0f0ee;
 
   --text-primary: #141414;
@@ -91,8 +80,8 @@
   --color-warning: #735b34;
   --color-info: #446373;
 
-  --border-color: #c8c8c6;
-  --border-subtle: #e0e0de;
+  --border-color: #b6b6b3;
+  --border-subtle: #dedede;
   --input-bg: #fafaf8;
   --input-border: #90908e;
   --input-focus-ring: #446373;
@@ -106,8 +95,6 @@
 
   --sidebar-bg: #141414;
   --header-bg: #fafaf8;
-  --card-bg: #fafaf8;
-  --card-border: #c8c8c6;
 
   --sidebar-text-primary: #e8e8e8;
   --sidebar-text-secondary: #b0b0b0;
@@ -130,14 +117,5 @@
   --chart-6: #487068;
   --chart-7: #785060;
   --chart-8: #805838;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

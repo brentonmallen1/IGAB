@@ -5,7 +5,7 @@
      exactly 100dvh whenever there isn't one. */
   height: var(--app-h);
   overflow: hidden;
-  background-color: var(--bg-primary);
+  background-color: var(--surface-canvas);
 }
 
 @media (max-width: 768px) {
@@ -37,7 +37,7 @@
   overflow-y: auto;
   /* No rubber-band chaining out into <body> behind the fixed shell */
   overscroll-behavior: contain;
-  background-color: var(--bg-primary);
+  background-color: var(--surface-canvas);
   /* Containing block for absolutely-positioned descendants (e.g. .sr-only) so
      they clip to this scroll container instead of stretching <html> */
   position: relative;

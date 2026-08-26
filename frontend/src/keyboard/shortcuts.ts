@@ -20,7 +20,8 @@ export const SHORTCUTS = {
   monthNext: { combo: ']', label: 'Next month', group: 'Global' },
   monthToday: { combo: 't', label: 'Jump to current month', group: 'Global' },
   privacy: { combo: 'shift+p', label: 'Toggle privacy mode (mask amounts)', group: 'Global' },
-  undo: { combo: 'mod+z', label: 'Undo last edit', group: 'Transactions' },
+  undo: { combo: 'mod+z', label: 'Undo last change', group: 'Global' },
+  redo: { combo: 'mod+shift+z', label: 'Redo', group: 'Global' },
   duplicate: { combo: 'shift+d', label: 'Duplicate selected', group: 'Transactions' },
   makeRepeating: {
     combo: 'shift+t',

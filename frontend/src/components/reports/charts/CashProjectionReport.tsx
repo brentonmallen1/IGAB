@@ -58,7 +58,7 @@ export function CashProjectionReport({ budgetId }: Props) {
   const rangeP90 = endPoint?.p90 ?? startBalance
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Cash Projection</h2>
         <ReportInfoButton title="Cash Projection">

@@ -41,6 +41,8 @@ export interface AssignApplyResponse {
   to_return: number
   categories_changed: number
   tba_after: number
+  /** Change-log batch for undo; null when nothing moved. */
+  batch_id: string | null
 }
 
 export function useAssignStrategyTotals(budgetId: string | null, month: string, enabled: boolean) {

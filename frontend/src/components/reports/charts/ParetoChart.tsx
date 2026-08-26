@@ -164,7 +164,7 @@ export function ParetoReport({ budgetId }: Props) {
   }))
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Pareto Analysis (80/20 Rule)</h2>
         <ReportInfoButton title="Pareto Analysis">

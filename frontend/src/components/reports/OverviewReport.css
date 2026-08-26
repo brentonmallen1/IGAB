@@ -15,9 +15,6 @@
 }
 
 .overview-report__metrics-section {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
   padding: var(--spacing-lg);
 }
 
@@ -38,9 +35,6 @@
 
 /* Top spending categories */
 .overview-report__top {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
   padding: var(--spacing-lg);
 }
 

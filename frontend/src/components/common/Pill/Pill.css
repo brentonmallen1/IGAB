@@ -1,0 +1,29 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--edge);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.pill--outline {
+  background-color: transparent;
+  color: var(--text-muted);
+}
+
+.pill--positive {
+  color: var(--color-positive);
+}
+
+.pill--caps {
+  font-size: var(--font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
