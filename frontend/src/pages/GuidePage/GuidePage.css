@@ -1554,6 +1554,11 @@
 
 .guide-checkup__error { color: var(--color-negative); }
 
+/* The metrics sit in one raised card as sunken wells — a report section's
+   shape — rather than as tiles loose on the canvas, where a well is the
+   canvas colour and nothing reads as a section. */
+.guide-checkup__card { padding: var(--spacing-lg); }
+
 .guide-checkup__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

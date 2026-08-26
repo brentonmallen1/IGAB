@@ -1,4 +1,5 @@
 import { useGuideStore } from '../../../stores/guideStore'
+import { Surface } from '../../common/Surface'
 import { TOOL_LIST, TOOLS } from './toolRegistry'
 import { PayoffPlanner } from './PayoffPlanner'
 import { PayVsSave } from './PayVsSave'
@@ -41,12 +42,17 @@ export function ToolsPanel() {
         </div>
       </header>
 
-      <p className="guide-tools__blurb">{TOOLS[activeTool].blurb}</p>
-
-      {activeTool === 'payoff-plan' && <PayoffPlanner />}
-      {activeTool === 'pay-vs-save' && <PayVsSave />}
-      {activeTool === 'loan-compare' && <LoanCompare />}
-      {activeTool === 'emergency-fund' && <EmergencyFundSizer />}
+      <Surface as="div" className="guide-tools__card">
+        <div className="guide-tools__strip surface surface--chrome">
+          <p className="guide-tools__blurb">{TOOLS[activeTool].blurb}</p>
+        </div>
+        <div className="guide-tools__body">
+          {activeTool === 'payoff-plan' && <PayoffPlanner />}
+          {activeTool === 'pay-vs-save' && <PayVsSave />}
+          {activeTool === 'loan-compare' && <LoanCompare />}
+          {activeTool === 'emergency-fund' && <EmergencyFundSizer />}
+        </div>
+      </Surface>
 
       <p className="guide-tools__note">
         Arithmetic that can show its working, nothing more — no projected market returns, no
