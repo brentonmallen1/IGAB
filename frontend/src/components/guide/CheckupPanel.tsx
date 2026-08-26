@@ -113,7 +113,7 @@ export function CheckupPanel() {
                     {m.detail && <span className="guide-checkup__detail">{m.detail}</span>}
                     {m.report && (
                       <Link to={`/reports?tab=${m.report}`} className="guide-checkup__report">
-                        Show the working
+                        See the report
                       </Link>
                     )}
                   </span>
@@ -125,8 +125,8 @@ export function CheckupPanel() {
       )}
 
       <p className="guide-checkup__note">
-        Educational only — arithmetic IGAB can show its working for, not advice. IGAB never
-        sends a notification about any of it.
+        Educational only — plain arithmetic, not advice. IGAB never sends a notification
+        about any of it.
       </p>
 
       {reportOpen && data && (

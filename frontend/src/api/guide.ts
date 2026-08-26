@@ -191,7 +191,7 @@ export interface CheckupMetric {
   detail: string
   /** Finding kinds this row is the home of — mark it when one fired. */
   finding_kinds: FindingKind[]
-  /** A report tab that shows the working, when one exists. */
+  /** A report tab with the numbers behind this row, when one exists. */
   report: string | null
 }
 
