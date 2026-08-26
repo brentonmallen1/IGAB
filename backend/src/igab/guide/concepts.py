@@ -157,6 +157,10 @@ RETIREMENT_TARGET_RATE = 15
 STARTER_EMERGENCY_FUND = 1000
 FULL_EMERGENCY_FUND_MONTHS_LOW = 3
 FULL_EMERGENCY_FUND_MONTHS_HIGH = 6
+#: How old a self-reported figure may be before the checkup asks, once and
+#: quietly, whether it is still true. IGAB cannot refresh a number it was told,
+#: so the age of the claim is part of the claim.
+STALE_EXTERNAL_MONTHS = 12
 #: How far back "what a lean month costs" looks — the Guide's essentials
 #: signal and the Overview's essentials card share it, so the emergency-fund
 #: target and the card can never quote different months.

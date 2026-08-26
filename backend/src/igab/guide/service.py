@@ -6,7 +6,7 @@ of the package free to change without touching the HTTP layer.
 
 import uuid
 from dataclasses import asdict
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Liability
+from igab.domain.dates import month_start
 from igab.guide.bindings import Resolution, resolve_all
 from igab.guide.concepts import (
     CONCEPTS,
@@ -23,8 +24,19 @@ from igab.guide.concepts import (
     RETIREMENT_TARGET_RATE,
     STARTER_EMERGENCY_FUND,
 )
-from igab.guide.detection import Finding, GuideDetection
+from igab.guide.detection import (
+    Finding,
+    GuideDetection,
+    budget_service_from,
+    liability_service_from,
+)
+from igab.guide.findings import CheckupInputs, evaluate, metrics
 from igab.guide.repo import GuideRepository
+from igab.repositories.target_repo import TargetRepository
+from igab.services.budget_service import BudgetService
+from igab.services.liability_service import LiabilityService
+from igab.services.report_service import ReportService
+from igab.services.target_service import TargetService
 
 #: Defaults for the two switches on the settings page. Both on: the roadmap is
 #: far more useful when it knows the numbers, and every inference it makes is
@@ -33,13 +45,30 @@ DEFAULT_PREFS: dict[str, bool] = {"personalization": True, "checkup": True}
 
 PREFS_KEY = "prefs"
 STEP_PREFIX = "step:"
+#: When the user last pressed "Run health report". The checkup never runs on
+#: its own, so this is the only timestamp it has.
+CHECKUP_KEY = "checkup"
 
 
 class GuideService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        budget_service: BudgetService | None = None,
+        target_service: TargetService | None = None,
+        report_service: ReportService | None = None,
+        liability_service: LiabilityService | None = None,
+    ) -> None:
         self.session = session
         self.repo = GuideRepository(session)
-        self.detection = GuideDetection(session)
+        # The request path hands in the instances it already built; a test may
+        # say `GuideService(session)` and get the same wiring from the session.
+        self.budget = budget_service or budget_service_from(session)
+        self.liabilities = liability_service or liability_service_from(session)
+        self.targets = target_service or TargetService(TargetRepository(session))
+        self.reports = report_service or ReportService(session)
+        self.detection = GuideDetection(session, self.budget, self.liabilities)
 
     # ── preferences ──────────────────────────────────────────────────────────
 
@@ -241,6 +270,74 @@ class GuideService:
             else (finding.entities if finding else {})
         )
         return {k: [str(i) for i in v] for k, v in source.items()}
+
+    # ── the checkup ──────────────────────────────────────────────────────────
+
+    async def checkup(self, budget_id: uuid.UUID, *, stamp: bool = False) -> dict[str, Any]:
+        """Metrics against their targets, and every finding that fires.
+
+        One computation feeds three surfaces — the Checkup tab, the health
+        report, and the step markers on the roadmap — so they cannot disagree.
+        With reviews switched off nothing is computed at all: off means off,
+        for the household member who finds the whole thing stressful.
+        """
+        prefs = await self.preferences(budget_id)
+        today = date.today()
+        state = await self.repo.state(budget_id)
+        last_run = state.get(CHECKUP_KEY, {}).get("last_run")
+        if not prefs["checkup"]:
+            return {
+                "enabled": False,
+                "as_of": today,
+                "last_run": last_run,
+                "metrics": [],
+                "findings": [],
+            }
+
+        signals = await self.signals(budget_id)
+        by_key = {c["key"]: c for c in signals["concepts"]}
+
+        plan = await self.reports.plan_vs_reality(budget_id)
+        chronic_names = [c["category_name"] for c in plan["categories"] if c["chronic"]]
+
+        # Same composition as the budget month endpoint, so "funded" here is
+        # the pill the budget page shows.
+        summary = await self.budget.get_budget_summary(budget_id, month_start(today))
+        targets = {
+            t.category_id: t
+            for t in await self.targets.repo.get_by_category_ids(
+                [b.category_id for b in summary.category_balances]
+            )
+        }
+        funded = sum(
+            1
+            for b in summary.category_balances
+            if (t := targets.get(b.category_id))
+            and self.targets.calculate_status(t, b.assigned, b.available, today) != "underfunded"
+        )
+
+        inputs = CheckupInputs(
+            signals=by_key,
+            essentials_monthly=by_key.get("essential_expenses", {}).get("value"),
+            chronic_count=plan["chronic_count"],
+            chronic_names=chronic_names,
+            funded=funded,
+            with_targets=len(targets),
+            unknown_rate_names=list(by_key.get("high_interest_debt", {}).get("gaps", [])),
+            today=today,
+        )
+
+        if stamp:
+            last_run = datetime.now(UTC).isoformat()
+            await self.repo.set_state(budget_id, CHECKUP_KEY, {"last_run": last_run})
+
+        return {
+            "enabled": True,
+            "as_of": today,
+            "last_run": last_run,
+            "metrics": [asdict(m) for m in metrics(inputs)],
+            "findings": [asdict(f) for f in evaluate(inputs)],
+        }
 
     # ── candidates for the binding picker ────────────────────────────────────
 

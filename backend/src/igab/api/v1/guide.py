@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from igab.api.v1.schemas.guide import (
     BindingUpdate,
     CandidatesResponse,
+    CheckupResponse,
     GuideOverview,
     PreferencesResponse,
     PreferencesUpdate,
@@ -118,3 +119,33 @@ async def set_guide_step(
     payload: StepUpdate,
 ) -> None:
     await service.set_step(budget_id, stage_id, payload.state)
+
+
+@router.get("/{budget_id}/guide/checkup", response_model=CheckupResponse)
+async def guide_checkup(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    service: GuideServiceDep,
+) -> CheckupResponse:
+    return CheckupResponse(**await service.checkup(budget_id))
+
+
+@router.post("/{budget_id}/guide/checkup/run", response_model=CheckupResponse)
+async def run_health_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    service: GuideServiceDep,
+) -> CheckupResponse:
+    """The health report, run because the user pressed the button.
+
+    Same payload as the GET, plus a stamp recording that they looked. Refused
+    rather than quietly empty when reviews are off — a run that does nothing
+    must not report success.
+    """
+    result = await service.checkup(budget_id, stamp=True)
+    if not result["enabled"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Financial health reviews are switched off for this budget",
+        )
+    return CheckupResponse(**result)

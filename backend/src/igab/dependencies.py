@@ -102,10 +102,6 @@ def get_account_type_repo(session: SessionDep) -> AccountTypeRepository:
     return AccountTypeRepository(session)
 
 
-def get_guide_service(session: SessionDep) -> GuideService:
-    return GuideService(session)
-
-
 def get_attachment_repo(session: SessionDep) -> AttachmentRepository:
     return AttachmentRepository(session)
 
@@ -249,6 +245,22 @@ def get_liability_service(
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
 ) -> LiabilityService:
     return LiabilityService(liability_repo, account_repo, category_repo, transaction_repo)
+
+
+def get_guide_service(
+    session: SessionDep,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    target_service: Annotated[TargetService, Depends(get_target_service)],
+    report_service: Annotated[ReportService, Depends(get_report_service)],
+    liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
+) -> GuideService:
+    return GuideService(
+        session,
+        budget_service=budget_service,
+        target_service=target_service,
+        report_service=report_service,
+        liability_service=liability_service,
+    )
 
 
 def get_assign_service(

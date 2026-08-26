@@ -274,7 +274,7 @@ export const ROADMAP: RoadmapStage[] = [
         body: 'Streaming, cable, subscriptions, the phone plan you upgraded. Pay what you have committed to, then look hard at whether you still want it.',
         detail:
           'Subscriptions are the most common place a budget quietly leaks, because each one is individually too small to argue with. Seen together as a monthly and annual total, the picture usually changes.',
-        appLinks: [{ label: 'Subscriptions report', to: '/reports' }],
+        appLinks: [{ label: 'Subscriptions report', to: '/reports?tab=subscriptions' }],
       },
     ],
   },
@@ -471,7 +471,7 @@ export const ROADMAP: RoadmapStage[] = [
           { answer: 'No', label: 'Look at where you could contribute more', toNode: 'employer-plan-question' },
         ],
         glossary: ['savings-rate', 'compounding'],
-        appLinks: [{ label: 'Savings rate report', to: '/reports' }],
+        appLinks: [{ label: 'Savings rate report', to: '/reports?tab=savings-rate' }],
         signal: 'retirement_contributions',
       },
       {

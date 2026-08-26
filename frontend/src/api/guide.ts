@@ -153,3 +153,72 @@ export function useSetGuideStep(budgetId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['guide', budgetId] }),
   })
 }
+
+// ── the checkup ──────────────────────────────────────────────────────────────
+
+/** What the health report can find. Home of each kind → roadmap step:
+ *  components/guide/checkupLeds.ts. */
+export type FindingKind =
+  | 'high_interest_debt'
+  | 'ef_below_starter'
+  | 'chronic_overspend'
+  | 'ef_below_full'
+  | 'moderate_debt'
+  | 'retirement_below_target'
+  | 'stale_external'
+  | 'unknown_rates'
+
+export interface CheckupFinding {
+  kind: FindingKind
+  /** Severity, 1 = most. The server sorts by it; the client shows the first few. */
+  rank: number
+  concept_key: string | null
+  /** A short clause with no figures — compose with `value` in the budget's currency. */
+  title: string
+  detail: string
+  value: string | null
+  target: string | null
+  names: string[]
+}
+
+export interface CheckupMetric {
+  key: string
+  label: string
+  value: string | null
+  target: string | null
+  unit: 'money' | 'months' | 'percent' | 'count'
+  detail: string
+  /** Finding kinds this row is the home of — mark it when one fired. */
+  finding_kinds: FindingKind[]
+  /** A report tab that shows the working, when one exists. */
+  report: string | null
+}
+
+export interface Checkup {
+  enabled: boolean
+  as_of: string
+  last_run: string | null
+  metrics: CheckupMetric[]
+  /** Every finding that fired, most severe first — never capped by the server. */
+  findings: CheckupFinding[]
+}
+
+export function useGuideCheckup(budgetId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['guide-checkup', budgetId],
+    queryFn: () => apiClient.get<Checkup>(`/${budgetId}/guide/checkup`).then((r) => r.data),
+    // Gated on the preference by the caller: with reviews off, no request at all.
+    enabled: !!budgetId && enabled,
+    staleTime: 30_000,
+  })
+}
+
+export function useRunHealthReport(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient.post<Checkup>(`/${budgetId}/guide/checkup/run`).then((r) => r.data),
+    // The run returns the same payload the GET would, freshly stamped.
+    onSuccess: (checkup) => qc.setQueryData(['guide-checkup', budgetId], checkup),
+  })
+}
