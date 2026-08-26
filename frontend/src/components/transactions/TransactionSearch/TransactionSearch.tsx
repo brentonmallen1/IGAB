@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, startTransition } from 'react'
 import { Search, X } from 'lucide-react'
 import { matchSuggestions } from '../../../utils/searchParser'
-import { SearchHelp } from './SearchHelp'
 import './TransactionSearch.css'
 
 const DEBOUNCE_MS = 150
@@ -142,13 +141,6 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
           <X size={12} />
         </button>
       )}
-      {/* Inside the box, so the explanation sits where the question occurs.
-          The dropdown below completes syntax for someone who already knows a
-          language is there; this is what tells them there is one. */}
-      <span className="txn-search__help">
-        <SearchHelp />
-      </span>
-
       {shouldShowSuggestions && (
         <div className="txn-search__suggestions">
           <div className="txn-search__suggestions-header">Search syntax</div>

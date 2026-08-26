@@ -19,6 +19,7 @@ import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
 import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
 import { TransactionSearch } from '../TransactionSearch/TransactionSearch'
+import { SearchHelp } from '../TransactionSearch/SearchHelp'
 import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
@@ -786,10 +787,17 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       {/* Toolbar, filter chips, selection bar and column header pin together */}
       <Surface variant="chrome" sticky className="transaction-table__chrome">
       <div className="transaction-table__toolbar">
-        <TransactionSearch
-          value={transactionSearchQuery}
-          onChange={setTransactionSearch}
-        />
+        {/* The ⓘ sits beside the box, not inside it: inside, it shared an edge
+            with the clear ✕ and took the click meant for it. */}
+        <div className="transaction-table__search-group">
+          <TransactionSearch
+            value={transactionSearchQuery}
+            onChange={setTransactionSearch}
+          />
+          <span className="transaction-table__search-help">
+            <SearchHelp />
+          </span>
+        </div>
         <button className="transaction-table__add-btn" onClick={() => openModal('transaction')}>
           <Plus size={14} />
           Add Transaction

@@ -26,6 +26,22 @@
   padding: var(--spacing-sm) var(--spacing-md);
 }
 
+/* Search box + its help trigger travel together; the group takes the row's
+   slack so the box can still widen on focus. */
+.transaction-table__search-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.transaction-table__search-help {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 /* Toolbar, filter chips, selection bar and column header pin together as one
    chrome block, so the column header never needs to know the toolbar's height. */
 .transaction-table__chrome {
