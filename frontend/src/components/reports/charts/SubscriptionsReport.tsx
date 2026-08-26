@@ -26,7 +26,7 @@ interface Props {
 const MONTH_OPTIONS = [6, 12, 24] as const
 
 export function SubscriptionsReport({ budgetId }: Props) {
-  const { formatMoney, settings } = useFormatters()
+  const { formatMoney, formatDate, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
   const { data, isLoading, isError, error, refetch } = useSubscriptionsReport(budgetId, months)
@@ -202,9 +202,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
                   <td style={{ textAlign: 'right' }}>{formatMoney(sub.total)}</td>
                   <td style={{ textAlign: 'right' }}>{sub.transaction_count}</td>
                   <td style={{ textAlign: 'right' }}>
-                    {sub.last_charge_date
-                      ? new Date(sub.last_charge_date).toLocaleDateString()
-                      : '—'}
+                    {sub.last_charge_date ? formatDate(sub.last_charge_date) : '—'}
                   </td>
                 </tr>
               ))}

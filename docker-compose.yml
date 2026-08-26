@@ -117,6 +117,10 @@ services:
       PGUSER: ${DB_USER:-igab}
       PGPASSWORD: ${DB_PASSWORD}
       PGDATABASE: ${DB_NAME:-igab}
+      # Backup filenames carry the agent's wall-clock time (scripts/db-backup.sh);
+      # without this the container runs on UTC and the name disagrees with the
+      # timestamp column the app renders in your local zone.
+      TZ: ${TZ:-UTC}
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
       BACKUP_KEEP_MIN: ${BACKUP_KEEP_MIN:-7}
       BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}

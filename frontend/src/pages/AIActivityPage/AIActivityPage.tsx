@@ -97,7 +97,7 @@ function JobThumbnail({ attachmentId, onOpen }: { attachmentId: string; onOpen: 
 
 function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
   const navigate = useNavigate()
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatDateTime } = useFormatters()
   const reprocess = useReprocessAIJob(budgetId)
   const remove = useDeleteAIJob(budgetId)
   const [errorOpen, setErrorOpen] = useState(false)
@@ -193,7 +193,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
           </span>
           {job.model && <span className="ai-activity__model">{job.model}</span>}
           <span className="ai-activity__time">
-            {new Date(job.created_at).toLocaleString()}
+            {formatDateTime(job.created_at)}
           </span>
           {/* From the first attempt, not only retries: a job that failed once
               and is waiting out its backoff looked idle, which read as

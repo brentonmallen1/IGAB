@@ -76,7 +76,7 @@ const CURRENCIES: { value: string; label: string; symbol: string }[] = [
 
 
 export function SettingsPage() {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatDateTime } = useFormatters()
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const fontScale = useAppStore((s) => s.fontScale)
@@ -575,7 +575,7 @@ export function SettingsPage() {
                   <div>
                     <div className="settings-row__label">Sync enabled</div>
                     <div className="settings-row__desc">
-                      Last synced: {conn.last_sync_at ? new Date(conn.last_sync_at).toLocaleString() : 'Never'}
+                      Last synced: {conn.last_sync_at ? formatDateTime(conn.last_sync_at) : 'Never'}
                     </div>
                   </div>
                   <input
@@ -654,7 +654,7 @@ export function SettingsPage() {
                     <span className="sf-error__label">Last sync error</span>
                     <span className="sf-error__msg">{conn.last_sync_error}</span>
                     {conn.last_sync_error_at && (
-                      <span className="sf-error__time">{new Date(conn.last_sync_error_at).toLocaleString()}</span>
+                      <span className="sf-error__time">{formatDateTime(conn.last_sync_error_at)}</span>
                     )}
                   </div>
                 )}
