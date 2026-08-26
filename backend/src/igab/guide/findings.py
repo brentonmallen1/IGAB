@@ -25,6 +25,7 @@ from typing import Any, Literal
 from igab.domain.dates import add_months
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
+    CONCEPTS_BY_KEY,
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
     HIGH_INTEREST_APR,
@@ -92,8 +93,12 @@ class Metric:
     #: Which finding kinds this row is the home of, so the client can mark it
     #: when one of them fired.
     finding_kinds: list[str] = field(default_factory=list)
-    #: A report tab that shows the working, when one exists.
+    #: A report tab with the numbers behind this row, when one exists.
     report: str | None = None
+    #: The things the figure counts, by name — every one of them. The client
+    #: decides how many to show at once; a list cut short here is information
+    #: quietly lost.
+    names: list[str] = field(default_factory=list)
 
 
 def _sig(inputs: CheckupInputs, key: str) -> Mapping[str, Any]:
@@ -374,14 +379,10 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
             value=Decimal(inputs.chronic_count),
             target=Decimal("0"),
             unit="count",
-            detail=(
-                ", ".join(inputs.chronic_names[:3])
-                + (" …" if len(inputs.chronic_names) > 3 else "")
-                if inputs.chronic_names
-                else "Over budget in three of the last six months counts as chronic."
-            ),
+            detail="Over budget in three of the last six months counts as chronic.",
             finding_kinds=["chronic_overspend"],
             report="plan-reality",
+            names=list(inputs.chronic_names),
         )
     )
     rows.append(
@@ -394,23 +395,23 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
             detail="Categories with a target that Fill Underfunded would leave alone.",
         )
     )
-    stale = [f for f in _stale_external(inputs)]
-    gaps = len(inputs.unknown_rate_names) + len(stale)
+    stale = _stale_external(inputs)
+    gap_names = [f"{name} — no rate on record" for name in inputs.unknown_rate_names] + [
+        f"{CONCEPTS_BY_KEY[f.concept_key].label} — told to us over a year ago"
+        for f in stale
+        if f.concept_key in CONCEPTS_BY_KEY
+    ]
     rows.append(
         Metric(
             key="data_gaps",
             label="Data gaps",
-            value=Decimal(gaps),
+            value=Decimal(len(gap_names)),
             target=Decimal("0"),
             unit="count",
-            detail=(
-                ", ".join(inputs.unknown_rate_names[:3])
-                + (" …" if len(inputs.unknown_rate_names) > 3 else "")
-                if inputs.unknown_rate_names
-                else "Debts with no rate on record, and self-reported figures over a year old."
-            ),
+            detail="Debts with no rate on record, and self-reported figures over a year old.",
             finding_kinds=["unknown_rates", "stale_external"],
             report="liabilities",
+            names=gap_names,
         )
     )
     return rows

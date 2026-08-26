@@ -239,3 +239,29 @@ class TestMetrics:
         assert funded.value == Decimal("18")
         assert funded.target == Decimal("21")
         assert funded.finding_kinds == []
+
+
+class TestNamesTravelWhole:
+    """A list cut to three with an ellipsis is information quietly lost."""
+
+    def test_chronic_metric_carries_every_name(self):
+        names = [f"Category {i}" for i in range(12)]
+        rows = metrics(inputs(chronic_count=12, chronic_names=names))
+        row = next(m for m in rows if m.key == "chronic_overspend")
+        assert row.names == names
+        assert "…" not in row.detail
+
+    def test_data_gaps_metric_names_every_gap_and_stale_figure(self):
+        stale = add_months(TODAY, -STALE_EXTERNAL_MONTHS - 1)
+        signals = {
+            "emergency_fund": sig(met=True, value="9000", external_as_of=stale),
+            "hsa": sig(external_as_of=stale, external_value="4000"),
+        }
+        unknown = [f"Card {i}" for i in range(8)]
+        rows = metrics(inputs(signals, unknown_rate_names=unknown))
+        row = next(m for m in rows if m.key == "data_gaps")
+        assert row.value == Decimal("10")
+        assert len(row.names) == 10
+        assert row.names[0] == "Card 0 — no rate on record"
+        assert any(n.startswith("Emergency fund — told to us") for n in row.names)
+        assert any(n.startswith("Health savings account — told to us") for n in row.names)

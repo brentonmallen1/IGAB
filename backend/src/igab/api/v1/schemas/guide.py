@@ -125,8 +125,10 @@ class CheckupMetric(BaseModel):
     detail: str = ""
     #: Finding kinds this row is the home of, so the client can mark it.
     finding_kinds: list[str] = Field(default_factory=list)
-    #: A report tab that shows the working, when one exists.
+    #: A report tab with the numbers behind this row, when one exists.
     report: str | None = None
+    #: What the figure counts, by name — the whole list; the client paces it.
+    names: list[str] = Field(default_factory=list)
 
 
 class CheckupFinding(BaseModel):
