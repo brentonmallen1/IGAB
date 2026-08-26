@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { TOOLTIP_DELAY_MS } from './tooltipDelay'
+import { markTooltipHidden, tooltipDelayNow } from './tooltipDelay'
 import './Tooltip.css'
 
 /** Breathing room the popup keeps from every viewport edge. */
@@ -20,8 +20,9 @@ interface Props {
 }
 
 /**
- * The app's one hover tooltip. Shows after TOOLTIP_DELAY_MS on hover or
- * keyboard focus, hides on leave/blur, and clamps itself to the viewport.
+ * The app's one hover tooltip. Shows after the cold delay on hover or
+ * keyboard focus — at once when another tooltip just closed (see
+ * tooltipDelay.ts) — hides on leave/blur, and clamps itself to the viewport.
  * Prefer it over a native `title` anywhere a person actually waits for the
  * text — `title` has a browser-fixed delay of about a second and no
  * styling; keep `title` for the incidental case.
@@ -45,12 +46,15 @@ export function Tooltip({ content, children, block = false, className }: Props) 
       timer.current = null
       const rect = ref.current?.getBoundingClientRect()
       if (rect) setAnchor({ x: rect.left + rect.width / 2, y: rect.top - EDGE })
-    }, TOOLTIP_DELAY_MS)
+    }, tooltipDelayNow())
   }, [cancel])
 
   const hide = useCallback(() => {
     cancel()
-    setAnchor(null)
+    setAnchor((open) => {
+      if (open) markTooltipHidden()
+      return null
+    })
   }, [cancel])
 
   useEffect(() => cancel, [cancel])

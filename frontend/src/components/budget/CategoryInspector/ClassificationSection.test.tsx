@@ -14,7 +14,7 @@ vi.mock('../../../api/categories', () => ({
 }))
 
 import { ClassificationSection } from './ClassificationSection'
-import { TOOLTIP_DELAY_MS } from '../../common/Tooltip/tooltipDelay'
+import { TOOLTIP_DELAY_MS, resetTooltipWarmth } from '../../common/Tooltip/tooltipDelay'
 
 const DEBT: CategoryClassification = {
   classes: [
@@ -42,6 +42,7 @@ describe('ClassificationSection', () => {
 
   it('explains itself on hover, composition included', () => {
     vi.useFakeTimers()
+    resetTooltipWarmth()
     render(<ClassificationSection categoryId="c1" />)
     fireEvent.mouseEnter(screen.getByText('Debt payment'))
     // Tooltips wait the one shared delay before showing.
