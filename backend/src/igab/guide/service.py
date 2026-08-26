@@ -44,6 +44,7 @@ from igab.guide.scenarios import (
     pay_vs_save,
     payoff_plan,
 )
+from igab.repositories.category_repo import CategoryGroupRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.services.amortization import CascadeDebt
 from igab.services.budget_service import BudgetService
@@ -54,7 +55,7 @@ from igab.services.target_service import TargetService
 #: Defaults for the two switches on the settings page. Both on: the roadmap is
 #: far more useful when it knows the numbers, and every inference it makes is
 #: explained and reversible.
-DEFAULT_PREFS: dict[str, bool] = {"personalization": True, "checkup": True}
+DEFAULT_PREFS: dict[str, bool] = {"personalization": True, "checkup": True, "wishlist": True}
 
 PREFS_KEY = "prefs"
 STEP_PREFIX = "step:"
@@ -100,6 +101,19 @@ class GuideService:
         if not merged.get("personalization", True):
             merged["checkup"] = False
         await self.repo.set_state(budget_id, PREFS_KEY, merged)
+        if "wishlist" in changes:
+            # The Wishlist group follows the switch: off hides it (money stays
+            # where it is; hidden groups are already out of every picker), on
+            # brings it back — seeding it the first time.
+            groups = CategoryGroupRepository(self.session)
+            if changes["wishlist"]:
+                group = await groups.ensure_system_group(budget_id, "wishlist")
+                if group.is_hidden:
+                    await groups.update(group.id, is_hidden=False)
+            else:
+                group = await groups.get_by_system_key(budget_id, "wishlist")
+                if group is not None and not group.is_hidden:
+                    await groups.update(group.id, is_hidden=True)
         return merged
 
     # ── step progress ────────────────────────────────────────────────────────

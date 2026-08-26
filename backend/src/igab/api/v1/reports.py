@@ -38,6 +38,7 @@ from igab.api.v1.schemas.report import (
     PayeeTrend,
     PlanRealityCategory,
     PlanRealityResponse,
+    ReportDrains,
     SankeyLink,
     SankeyNode,
     SavingsCategory,
@@ -496,6 +497,7 @@ async def savings_report(
         categories=[SavingsCategory.model_validate(c) for c in data["categories"]],
         summary=SavingsSummary.model_validate(data["summary"]),
         months=data["months"],
+        drains=ReportDrains.model_validate(data["drains"]),
     )
 
 

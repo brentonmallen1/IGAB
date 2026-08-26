@@ -26,6 +26,7 @@ from igab.api.v1 import (
     tags,
     transactions,
     users,
+    wishlist,
 )
 
 api_router = APIRouter()
@@ -45,6 +46,7 @@ api_router.include_router(system.router, tags=["system"])
 api_router.include_router(backups.router, tags=["backups"])
 api_router.include_router(reports.router, tags=["reports"])
 api_router.include_router(guide.router, tags=["guide"])
+api_router.include_router(wishlist.router, tags=["wishlist"])
 api_router.include_router(ai.router, tags=["ai"])
 api_router.include_router(ai_jobs.router, tags=["ai-jobs"])
 api_router.include_router(simplefin.router, tags=["simplefin"])

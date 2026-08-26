@@ -61,6 +61,9 @@ export interface CategoryGroup {
   sort_order: number
   is_hidden: boolean
   is_system: boolean
+  /** 'wishlist' for the group the Guide keeps: rename and delete are refused,
+   *  hide is not. Served from `CategoryGroup.system_key`. */
+  system_key: string | null
 }
 
 export interface TagSimple {
@@ -779,10 +782,29 @@ export interface SavingsSummary {
   category_count: number
 }
 
+export interface ReportDrainMove {
+  move_id: string
+  month: string
+  date: string
+  amount: number
+  from_category_id: string
+  from_name: string
+  to_category_id: string | null
+  to_name: string
+}
+
+/** Money moved out of the report's envelopes in its window — the audit
+ *  trail, named on both sides. Shaped by backend domain/drains.py. */
+export interface ReportDrains {
+  total: number
+  moves: ReportDrainMove[]
+}
+
 export interface SavingsReport {
   categories: SavingsCategory[]
   summary: SavingsSummary
   months: string[]
+  drains: ReportDrains
 }
 
 export interface AnomalyItem {

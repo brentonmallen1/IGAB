@@ -262,7 +262,10 @@ class Payee(Base):
 
 class CategoryGroup(Base):
     __tablename__ = "category_groups"
-    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_category_group_budget_name"),)
+    __table_args__ = (
+        UniqueConstraint("budget_id", "name", name="uq_category_group_budget_name"),
+        UniqueConstraint("budget_id", "system_key", name="uq_category_group_budget_system_key"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -272,6 +275,11 @@ class CategoryGroup(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: A group the app seeds and protects by key, the way system tags are —
+    #: `wishlist` is the only one. NOT `is_system`: that flag means the Income
+    #: arrangement (not assignable, outside To Be Assigned). A keyed group is
+    #: an ordinary envelope group the user cannot rename or delete, only hide.
+    system_key: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -951,6 +959,93 @@ class GuideState(Base):
     )
     key: Mapped[str] = mapped_column(String(60), nullable=False)
     value: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class WishlistProject(Base):
+    """A group of wishes — "we want to do X, so we need a, b, c".
+
+    Optionally names the envelope its items draw on; an item with a category
+    of its own overrides it. No stored status: a project is complete when no
+    item in it is open, derived on read so there is nothing to drift.
+    """
+
+    __tablename__ = "wishlist_projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    notes: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class WishlistItem(Base):
+    """A wish: something to buy or do, and the envelope that funds it.
+
+    The wishlist lives inside the budget, not beside it. A wish's money is an
+    envelope's money — by default a category of its own in the Wishlist group
+    (`owns_envelope`), or any existing category, or none yet — and the
+    wishlist adds intent (why the envelope exists, when it was last
+    affirmed), priority and a cooling-off period. `cost` is the wish's own
+    figure; for an own envelope the wishlist also writes a savings goal from
+    it, and the budget page may move that goal afterwards — "what it costs"
+    and "what I will set aside" are allowed to differ.
+
+    Linking a purchase to a transaction is deliberately absent: spending from
+    an own envelope IS the purchase. Self-reported Guide money never enters
+    reach.
+    """
+
+    __tablename__ = "wishlist_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("wishlist_projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    url: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    cost: Mapped[Decimal] = mapped_column(Numeric(19, 4), default=0, nullable=False)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    #: The wishlist created this wish's category. Governs the offer to delete
+    #: the envelope with the wish, and the cost → savings-goal write.
+    owns_envelope: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: 'open' | 'done' | 'dropped'
+    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
+    cooling_until: Mapped[date | None] = mapped_column(Date)
+    last_affirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    done_at: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

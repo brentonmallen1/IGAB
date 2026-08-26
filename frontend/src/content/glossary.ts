@@ -59,6 +59,7 @@ export const GLOSSARY_IDS = [
   'cleared',
   'reconciled',
   'essential-expenses',
+  'cooling-off',
 ] as const
 
 export type GlossaryId = (typeof GLOSSARY_IDS)[number]
@@ -123,6 +124,15 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: 'Housing, groceries, utilities, transport to work, insurance, minimum debt payments, medical needs — the spending that continues whatever else stops. It is the figure an emergency fund is measured against: three months of essentials, not three months of everything.',
     inIgab: 'Tag the categories and payees you could not do without as Essential. The Essentials report, the Overview card and the Guide’s emergency-fund target all read that one figure, and the checkup states your emergency fund in months of it.',
     related: ['emergency-fund', 'target'],
+  },
+  {
+    id: 'cooling-off',
+    term: 'Cooling-off period',
+    aliases: ['waiting period', '30-day rule'],
+    short: 'A deliberate wait between wanting something and buying it.',
+    body: 'Most impulse purchases do not survive a month on a list. A cooling-off period is that month, made explicit: the wish sits, the envelope fills or does not, and at the end you decide with the urgency gone. The friction is the feature — an impulse that survives it was never an impulse.',
+    inIgab: 'Every wish on the Guide’s wishlist gets one (30 days by default, adjustable per wish and per budget). Until it passes, the wish reads "cooling off until <date>" and the Done button keeps quiet.',
+    related: ['sinking-fund', 'target'],
   },
   {
     id: 'sinking-fund',

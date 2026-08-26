@@ -8,7 +8,7 @@ import { RoadmapPanel } from '../../components/guide/RoadmapPanel'
 import { GlossaryPanel } from '../../components/guide/GlossaryPanel'
 import { CheckupPanel } from '../../components/guide/CheckupPanel'
 import { ToolsPanel } from '../../components/guide/tools/ToolsPanel'
-import { GuidePlaceholder } from '../../components/guide/GuidePlaceholder'
+import { WishlistPanel } from '../../components/guide/wishlist/WishlistPanel'
 import './GuidePage.css'
 
 /**
@@ -31,7 +31,10 @@ export function GuidePage() {
   const checkupOn = overview
     ? overview.preferences.personalization && overview.preferences.checkup
     : true
-  const tabs = GUIDE_TABS.filter((t) => t.id !== 'checkup' || checkupOn)
+  const wishlistOn = overview ? overview.preferences.wishlist : true
+  const tabs = GUIDE_TABS.filter(
+    (t) => (t.id !== 'checkup' || checkupOn) && (t.id !== 'wishlist' || wishlistOn)
+  )
 
   // The map pans and zooms inside its own viewport. If the page scrolled too,
   // one wheel gesture would drive both — which is exactly as confusing as it
@@ -69,21 +72,7 @@ export function GuidePage() {
       case 'tools':
         return <ToolsPanel />
       case 'wishlist':
-        return (
-          <GuidePlaceholder title="Wishlist">
-            <p>
-              Not a shopping list — the counterweight to one. Somewhere to park something you
-              want, attach it to a real category, and let time and funding decide whether it
-              still matters. The friction is the point: an impulse that survives three months
-              of sitting on a list was never an impulse.
-            </p>
-            <p>
-              It turns a fun budget into a purposeful one. You will see what you can afford
-              now, roughly how long the rest would take at your current rate of saving, and
-              which items you added a while ago and still want.
-            </p>
-          </GuidePlaceholder>
-        )
+        return <WishlistPanel />
     }
   }
 

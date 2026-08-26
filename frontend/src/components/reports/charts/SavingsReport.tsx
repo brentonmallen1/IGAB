@@ -19,6 +19,7 @@ import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
+import './SavingsReport.css'
 
 interface Props {
   budgetId: string
@@ -28,7 +29,7 @@ const MONTH_OPTIONS = [6, 12, 24] as const
 
 export function SavingsReport({ budgetId }: Props) {
   const navigate = useNavigate()
-  const { formatMoney, settings } = useFormatters()
+  const { formatMoney, formatDate, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
   const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
@@ -78,6 +79,11 @@ export function SavingsReport({ budgetId }: Props) {
           <p>
             To track a category, open it on the Budget page and add the{' '}
             <strong>Savings</strong> tag in the panel that opens.
+          </p>
+          <p>
+            <strong>What pulled from savings</strong> lists money moved <em>out</em> of these
+            categories in the window — to another category or back to To Be Assigned — as
+            the audit trail records it. It states the move, nothing about why.
           </p>
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
@@ -222,6 +228,26 @@ export function SavingsReport({ budgetId }: Props) {
               ))}
             </tbody>
           </table>
+
+          {data && data.drains.moves.length > 0 && (
+            <section className="report-drains">
+              <h3 className="report-drains__title">What pulled from savings</h3>
+              <p className="report-drains__total">
+                {formatMoney(data.drains.total)} moved out of savings categories in this window.
+              </p>
+              <ul className="report-drains__list">
+                {data.drains.moves.map((m) => (
+                  <li key={m.move_id} className="report-drains__row">
+                    <span className="report-drains__date">{formatDate(m.date.slice(0, 10))}</span>
+                    <span className="report-drains__amount tabular">{formatMoney(m.amount)}</span>
+                    <span>
+                      {m.from_name} → {m.to_name}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       )}
     </div>

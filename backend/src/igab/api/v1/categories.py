@@ -159,8 +159,16 @@ async def update_category_group(
     recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> CategoryGroupResponse:
     try:
-        before = snapshot("category_group", await group_repo.get_or_raise(group_id))
+        current = await group_repo.get_or_raise(group_id)
+        before = snapshot("category_group", current)
         changes = body.model_dump(exclude_none=True)
+        if current.system_key is not None and "name" in changes and changes["name"] != current.name:
+            # Like a system tag: the name is how the user recognises what the
+            # group is for. Hiding and reordering stay open.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This group is kept by the app and cannot be renamed",
+            )
         group = await group_repo.update(group_id, **changes)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

@@ -9,6 +9,7 @@ from igab.db.models import User
 from igab.db.session import get_session
 from igab.domain.exceptions import AuthenticationError
 from igab.guide.service import GuideService
+from igab.guide.wishlist_service import WishlistService
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.account_type_repo import AccountTypeRepository
 from igab.repositories.ai_job_repo import AIJobRepository
@@ -261,6 +262,14 @@ def get_guide_service(
         report_service=report_service,
         liability_service=liability_service,
     )
+
+
+def get_wishlist_service(
+    session: SessionDep,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    target_service: Annotated[TargetService, Depends(get_target_service)],
+) -> WishlistService:
+    return WishlistService(session, budget_service=budget_service, target_service=target_service)
 
 
 def get_assign_service(

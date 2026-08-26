@@ -762,45 +762,6 @@
 
 .guide-roadmap__source:hover { color: var(--color-accent); }
 
-.guide-placeholder {
-  max-width: 560px;
-  margin: 0 auto;
-  padding: var(--spacing-xl) 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  align-items: flex-start;
-  color: var(--text-muted);
-}
-
-.guide-placeholder__title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
-.guide-placeholder__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.guide-placeholder__body p {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.65;
-}
-
-.guide-placeholder__note {
-  margin: 0;
-  font-size: var(--font-size-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-}
-
 .guide-empty {
   color: var(--text-muted);
   font-size: var(--font-size-sm);

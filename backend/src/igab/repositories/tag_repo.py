@@ -25,6 +25,10 @@ SYSTEM_TAGS = [
     # three readers (see TransactionRepository.essential_spend). Applies to
     # categories and payees alike.
     ("essential", "Essential", "blue"),
+    # Applied by the wishlist to every envelope that funds an open wish, and
+    # removed when none does — derived from the wish→envelope link, never
+    # hand-set, so reports that filter by it cannot disagree with the list.
+    ("wishlist", "Wishlist", "pink"),
 ]
 
 #: Name fragments that suggest a system tag on import, checked against the
@@ -123,6 +127,26 @@ class TagRepository(BaseRepository[Tag]):
         await self.session.execute(delete(payee_tags).where(payee_tags.c.payee_id == payee_id))
         for tag_id in tag_ids:
             await self.session.execute(payee_tags.insert().values(payee_id=payee_id, tag_id=tag_id))
+        await self.session.flush()
+
+    async def add_category_tag(self, category_id: uuid.UUID, tag_id: uuid.UUID) -> None:
+        existing = await self.session.execute(
+            select(category_tags).where(
+                category_tags.c.category_id == category_id, category_tags.c.tag_id == tag_id
+            )
+        )
+        if existing.first() is None:
+            await self.session.execute(
+                category_tags.insert().values(category_id=category_id, tag_id=tag_id)
+            )
+            await self.session.flush()
+
+    async def remove_category_tag(self, category_id: uuid.UUID, tag_id: uuid.UUID) -> None:
+        await self.session.execute(
+            delete(category_tags).where(
+                category_tags.c.category_id == category_id, category_tags.c.tag_id == tag_id
+            )
+        )
         await self.session.flush()
 
     async def add_payee_tag(self, payee_id: uuid.UUID, tag_id: uuid.UUID) -> None:

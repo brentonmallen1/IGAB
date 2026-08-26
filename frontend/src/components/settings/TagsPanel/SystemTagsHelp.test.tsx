@@ -18,6 +18,7 @@ describe('SystemTagsHelp', () => {
       'long_term_expense',
       'debt_principal',
       'essential',
+    'wishlist',
     ])
   })
 

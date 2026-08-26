@@ -57,6 +57,7 @@ export interface SignalsResponse {
 export interface GuidePreferences {
   personalization: boolean
   checkup: boolean
+  wishlist: boolean
 }
 
 export interface GuideOverview {

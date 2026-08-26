@@ -144,7 +144,7 @@ export function SettingsPage() {
   const guideOverview = useGuideOverview(budgetId)
   const setGuidePrefs = useSetGuidePreferences(budgetId ?? '')
   // Both default on; the server is the source of truth once it answers.
-  const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true }
+  const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true, wishlist: true }
 
   const sections = [
     { id: 'appearance', label: 'Appearance' },
@@ -427,6 +427,23 @@ export function SettingsPage() {
                 checked={guidePrefs.checkup}
                 disabled={!guidePrefs.personalization || setGuidePrefs.isPending}
                 onChange={(e) => setGuidePrefs.mutate({ checkup: e.target.checked })}
+              />
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <div className="settings-row__label">Wishlist</div>
+                <div className="settings-row__desc">
+                  Keep a wishlist — a Wishlist group in your budget and the Wishlist tab in
+                  the Guide. Off hides both; any money in those envelopes stays exactly where
+                  it is.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={guidePrefs.wishlist}
+                disabled={setGuidePrefs.isPending}
+                onChange={(e) => setGuidePrefs.mutate({ wishlist: e.target.checked })}
               />
             </div>
           </div>

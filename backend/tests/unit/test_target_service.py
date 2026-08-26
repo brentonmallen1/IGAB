@@ -170,3 +170,36 @@ class TestNeededGrossIsTheOneDuty:
             mock_date.today.return_value = date(2026, 4, 1)
             # months_between floors at 1 — the whole shortfall, not a divide by zero.
             assert self.svc.needed_gross(target, Decimal("100")) == Decimal("500")
+
+
+class TestMonthlyPace:
+    """The pace a wish can count on — see TargetService.monthly_pace."""
+
+    def setup_method(self):
+        self.svc = TargetService(repo=MagicMock())
+        self.today = date(2026, 8, 26)
+
+    def test_monthly_and_weekly_are_their_amount(self):
+        assert self.svc.monthly_pace(make_target("monthly_funding", "100"), Decimal("0"), self.today) == Decimal("100")
+        assert self.svc.monthly_pace(make_target("weekly_funding", "25"), Decimal("0"), self.today) == Decimal("25")
+
+    def test_dated_needed_for_spending_matches_needed_gross(self):
+        t = make_target("needed_for_spending", "600", date(2027, 2, 1))
+        available = Decimal("0")
+        assert self.svc.monthly_pace(t, available, self.today) == self.svc.needed_gross(
+            t, available, self.today
+        )
+
+    def test_a_dated_savings_goal_paces_by_its_date_although_fill_underfunded_fills_it_whole(self):
+        t = make_target("savings_balance", "1200", date(2027, 2, 1))  # six months away
+        pace = self.svc.monthly_pace(t, Decimal("0"), self.today)
+        assert pace == Decimal("200")
+        # The divergence, named: Fill Underfunded asks for the lot now.
+        assert self.svc.needed_gross(t, Decimal("0"), self.today) == Decimal("1200")
+
+    def test_an_undated_savings_goal_has_no_pace(self):
+        assert self.svc.monthly_pace(make_target("savings_balance", "1200"), Decimal("0"), self.today) is None
+
+    def test_a_past_due_savings_goal_is_the_whole_shortfall(self):
+        t = make_target("savings_balance", "1200", date(2026, 1, 1))
+        assert self.svc.monthly_pace(t, Decimal("200"), self.today) == Decimal("1000")
