@@ -9,7 +9,8 @@ import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useLongPress } from '../../../hooks/useLongPress'
-import { useTransactionEditStore } from '../../../stores/transactionEditStore'
+import { useTransactionEditStore, type EditableField } from '../../../stores/transactionEditStore'
+import { nextEditableField } from './fieldOrder'
 import { useHistoryStore } from '../../../stores/historyStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
@@ -212,6 +213,18 @@ export const TransactionRow = memo(function TransactionRow({
       confirmLabel: 'Unlock',
     })
     if (ok) unreconcileTxn.mutate(txn.id)
+  }
+
+  // Tab from a cell: the next cell this row can edit opens, or editing
+  // ends past the last one. The rule lives in fieldOrder.ts.
+  function advance(from: EditableField, direction: 1 | -1) {
+    const next = nextEditableField(from, direction, {
+      isTransfer: !!txn.transfer_id,
+      isSplit: txn.is_split,
+      onBudget: !!accountOnBudget,
+    })
+    if (next) startEditing(txn.id, next)
+    else stopEditing()
   }
 
   function commitField(field: string, value: unknown) {
@@ -481,6 +494,7 @@ export const TransactionRow = memo(function TransactionRow({
             value={txn.date}
             onChange={(date) => commitField('date', date)}
             onClose={stopEditing}
+            onTabOut={(d) => advance('date', d)}
           />
         ) : (
           formatDate(txn.date)
@@ -515,6 +529,7 @@ export const TransactionRow = memo(function TransactionRow({
             placeholder="Search payees…"
             autoFocus
             onBlurClose={stopEditing}
+            onTabOut={(d) => advance('payee', d)}
           />
         ) : (
           <span className="txn-cell-text">{payeeName}</span>
@@ -548,6 +563,7 @@ export const TransactionRow = memo(function TransactionRow({
             placeholder="Search categories…"
             autoFocus
             onBlurClose={stopEditing}
+            onTabOut={(d) => advance('category', d)}
           />
         ) : categoryName !== null ? (
           <span className={`txn-cell-text ${txn.is_split ? 'txn-split-label' : ''}`}>
@@ -594,6 +610,7 @@ export const TransactionRow = memo(function TransactionRow({
             value={txn.memo ?? ''}
             onCommit={(val) => commitField('memo', val || null)}
             onCancel={stopEditing}
+            onTabOut={(d) => advance('memo', d)}
             placeholder="Add memo…"
           />
         ) : (
@@ -611,6 +628,7 @@ export const TransactionRow = memo(function TransactionRow({
             value={outflow > 0 ? outflow.toFixed(2) : ''}
             onCommit={(val) => commitAmount(val, -1)}
             onCancel={stopEditing}
+            onTabOut={(d) => advance('outflow', d)}
             type="currency"
             placeholder="0.00"
           />
@@ -629,6 +647,7 @@ export const TransactionRow = memo(function TransactionRow({
             value={inflow > 0 ? inflow.toFixed(2) : ''}
             onCommit={(val) => commitAmount(val, 1)}
             onCancel={stopEditing}
+            onTabOut={(d) => advance('inflow', d)}
             type="currency"
             placeholder="0.00"
           />

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { randomUUID } from '../utils/uuid'
 
-type EditableField = 'date' | 'payee' | 'category' | 'memo' | 'outflow' | 'inflow'
+export type EditableField = 'date' | 'payee' | 'category' | 'memo' | 'outflow' | 'inflow'
 
 export interface SplitDraft {
   tempId: string

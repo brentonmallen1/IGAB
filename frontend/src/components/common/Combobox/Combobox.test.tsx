@@ -62,3 +62,55 @@ describe('Combobox highlight scrolling', () => {
     expect(list.scrollTop).not.toBe(scrolled)
   })
 })
+
+
+describe('Combobox Tab', () => {
+  function setupTab(extra: Partial<React.ComponentProps<typeof Combobox>> = {}) {
+    const onChange = vi.fn()
+    const onBlurClose = vi.fn()
+    const utils = render(
+      <Combobox value={null} options={OPTIONS} onChange={onChange} onBlurClose={onBlurClose} autoFocus {...extra} />
+    )
+    const input = utils.container.querySelector('input')!
+    return { ...utils, input, onChange, onBlurClose }
+  }
+
+  it('after typing, Tab selects the highlighted option instead of discarding it', () => {
+    const { input, onChange } = setupTab()
+    fireEvent.change(input, { target: { value: 'Option 12' } })
+    fireEvent.keyDown(input, { key: 'Tab' })
+    expect(onChange).toHaveBeenLastCalledWith('o12')
+  })
+
+  it('after arrowing, Tab selects the highlighted option', () => {
+    const { input, onChange } = setupTab()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.keyDown(input, { key: 'Tab' })
+    expect(onChange).toHaveBeenCalledWith('o2')
+  })
+
+  it('an un-engaged Tab keeps the prior value — tabbing through must not pick the first option', () => {
+    const { input, onChange, onBlurClose } = setupTab()
+    fireEvent.keyDown(input, { key: 'Tab' })
+    expect(onChange).not.toHaveBeenCalled()
+    expect(onBlurClose).toHaveBeenCalled()
+  })
+
+  it('with onTabOut, Tab and Shift+Tab hand the direction over and stop the native move', () => {
+    const onTabOut = vi.fn()
+    const { input, onBlurClose } = setupTab({ onTabOut })
+    const forward = fireEvent.keyDown(input, { key: 'Tab' })
+    expect(forward).toBe(false) // default prevented
+    expect(onTabOut).toHaveBeenLastCalledWith(1)
+    fireEvent.keyDown(input, { key: 'ArrowDown' }) // reopen + engage after the close
+    fireEvent.keyDown(input, { key: 'Tab', shiftKey: true })
+    expect(onTabOut).toHaveBeenLastCalledWith(-1)
+    expect(onBlurClose).not.toHaveBeenCalled()
+  })
+
+  it('without onTabOut, Tab lets focus move natively', () => {
+    const { input } = setupTab()
+    expect(fireEvent.keyDown(input, { key: 'Tab' })).toBe(true)
+  })
+})

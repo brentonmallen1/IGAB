@@ -22,6 +22,11 @@ interface Props {
   className?: string
   autoFocus?: boolean
   onBlurClose?: () => void
+  /** Tab / Shift+Tab: the caller moves editing to its next/previous field
+   *  itself (the register's cells unmount on commit, so native Tab would
+   *  land on <body>). Without it, Tab lets focus move natively. Either way
+   *  a highlighted option the user typed or arrowed to is selected first. */
+  onTabOut?: (direction: 1 | -1) => void
   'aria-label'?: string
   'aria-labelledby'?: string
 }
@@ -38,6 +43,7 @@ export function Combobox({
   className = '',
   autoFocus = false,
   onBlurClose,
+  onTabOut,
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledby,
 }: Props) {
@@ -79,6 +85,7 @@ export function Combobox({
   function measureAndOpen() {
     setOpen(true)
     setHighlightedIndex(0)
+    engaged.current = false
   }
 
   useEffect(() => {
@@ -113,6 +120,11 @@ export function Combobox({
   // into view, slide the next option under a stationary pointer, and creep
   // the whole list — which is what made reaching the Split button "weird".
   const highlightSource = useRef<'keyboard' | 'pointer'>('keyboard')
+  // Has the user typed or arrowed since the list opened? Only then does Tab
+  // take the highlight: the list opens on focus with the first option
+  // highlighted, and someone tabbing straight through a row must not be
+  // handed its first payee.
+  const engaged = useRef(false)
 
   // Scroll highlighted item into view within the list (manual to avoid page scroll side-effects)
   useEffect(() => {
@@ -156,9 +168,13 @@ export function Combobox({
   }, [onCreateNew, query, onChange, onBlurClose])
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    const tabDirection: 1 | -1 = e.shiftKey ? -1 : 1
     if (!open) {
       if (e.key === 'ArrowDown' || e.key === 'Enter') {
         measureAndOpen()
+      } else if (e.key === 'Tab' && onTabOut) {
+        e.preventDefault()
+        onTabOut(tabDirection)
       }
       return
     }
@@ -167,11 +183,13 @@ export function Combobox({
       case 'ArrowDown':
         e.preventDefault()
         highlightSource.current = 'keyboard'
+        engaged.current = true
         setHighlightedIndex((i) => Math.min(i + 1, filtered.length - 1))
         break
       case 'ArrowUp':
         e.preventDefault()
         highlightSource.current = 'keyboard'
+        engaged.current = true
         setHighlightedIndex((i) => Math.max(i - 1, 0))
         break
       case 'Enter':
@@ -187,10 +205,24 @@ export function Combobox({
         setQuery(selectedOption?.label ?? '')
         onBlurClose?.()
         break
-      case 'Tab':
+      case 'Tab': {
+        // Tab used to close the list and throw the highlight away — the one
+        // key on the register that discarded what the user had just found.
+        const picked =
+          engaged.current && highlightedIndex < filtered.length ? filtered[highlightedIndex] : null
         setOpen(false)
-        onBlurClose?.()
+        if (picked) {
+          onChange(picked.id)
+          setQuery(picked.label)
+        }
+        if (onTabOut) {
+          e.preventDefault()
+          onTabOut(tabDirection)
+        } else {
+          onBlurClose?.()
+        }
         break
+      }
     }
   }
 
@@ -198,6 +230,7 @@ export function Combobox({
     setQuery(v)
     if (!open) measureAndOpen()
     highlightSource.current = 'keyboard'
+    engaged.current = true
     setHighlightedIndex(0)
     if (!v) onChange(null)
   }
