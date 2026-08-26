@@ -193,6 +193,8 @@ export interface CheckupMetric {
   finding_kinds: FindingKind[]
   /** A report tab with the numbers behind this row, when one exists. */
   report: string | null
+  /** What the figure counts, by name — the whole list; NameChips paces it. */
+  names: string[]
 }
 
 export interface Checkup {

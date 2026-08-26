@@ -45,6 +45,7 @@ function checkup(findings: CheckupFinding[]): Checkup {
         detail: 'these debts are at 10% APR or higher',
         finding_kinds: ['high_interest_debt', 'unknown_rates'],
         report: 'liabilities',
+        names: [],
       },
       {
         key: 'chronic_overspend',
@@ -55,6 +56,7 @@ function checkup(findings: CheckupFinding[]): Checkup {
         detail: '',
         finding_kinds: ['chronic_overspend'],
         report: 'plan-reality',
+        names: [],
       },
     ],
     findings,

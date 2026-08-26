@@ -5,6 +5,7 @@ import { findStage, type StageId } from '../../content/roadmap'
 import { useFormatters } from '../../hooks/useFormatters'
 import { InfoPopover } from '../common/InfoPopover/InfoPopover'
 import { GlossaryChips } from './GlossaryChips'
+import { NameChips } from './NameChips'
 import { TOOLS } from './tools/toolRegistry'
 import { stagesForFinding } from './checkupLeds'
 import {
@@ -71,13 +72,12 @@ export function CheckupBlock({ metric, finding, thresholds, onGoToStage }: Props
             <div className="checkup-block__bar-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
           </div>
         )}
-        {finding && (
-          <p className="checkup-block__finding">
-            {finding.title}
-            {finding.names.length > 0 && <> — {finding.names.join(', ')}</>}
-          </p>
-        )}
+        {finding && <p className="checkup-block__finding">{finding.title}</p>}
         {metric.detail && <p className="checkup-block__detail">{metric.detail}</p>}
+        <NameChips
+          names={metric.names.length > 0 ? metric.names : (finding?.names ?? [])}
+          label={`${metric.label}: what this counts`}
+        />
       </div>
 
       <div className="checkup-block__side">

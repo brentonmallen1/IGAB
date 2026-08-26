@@ -1599,6 +1599,7 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .checkup-block__status {
@@ -1626,7 +1627,36 @@
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
+
+/* Names as wrapping chips, the tail folded behind "+N more". Shared by the
+   checkup blocks and the health report. */
+.name-chips {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.name-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-2xs);
+  line-height: 1.6;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.checkup-block--warn .name-chip {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+}
+
+.name-chips__more { display: inline-flex; align-items: center; }
 
 .checkup-block__target {
   font-size: var(--font-size-xs);
