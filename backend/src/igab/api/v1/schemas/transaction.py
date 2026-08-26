@@ -167,7 +167,11 @@ class TransactionResponse(BaseModel):
     import_description: str | None
     sync_id: str | None
     sync_source: str | None
+    #: Where the row came from — see `Transaction.created_via`. None = unknown.
     created_via: str | None = None
+    #: The schedule this row was entered from, or None. Declared without a
+    #: default so the key always serializes.
+    scheduled_transaction_id: uuid.UUID | None
     has_sync_source: bool
     latitude: float | None = None
     longitude: float | None = None

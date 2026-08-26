@@ -152,6 +152,29 @@ async def test_categorized_transfer_leg_imports_categorized_unlinked(db_session)
     await assert_financial_invariants(db_session, budget.id)
 
 
+async def test_imported_rows_are_stamped_import(db_session):
+    """The bulk insert path bypasses TransactionService.create, so it stamps
+    its own origin — flat rows, split parents and split lines alike."""
+    from sqlalchemy import select
+
+    from igab.db.models import Transaction
+
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    data = YNABBudget(
+        transactions=[
+            _txn("Checking", "Coffee Shop", "-4.50"),
+            _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+        ]
+    )
+    await _importer(services, db_session, budget).import_budget(data)
+    rows = (
+        await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id))
+    ).scalars().all()
+    assert rows and all(r.created_via == "import" for r in rows)
+
+
 async def test_same_day_duplicate_rows_both_import(db_session):
     services = make_services(db_session)
     user = await create_user(db_session)

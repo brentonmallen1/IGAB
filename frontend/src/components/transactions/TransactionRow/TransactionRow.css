@@ -504,3 +504,8 @@
     display: none;
   }
 }
+
+/* Entered from a schedule — provenance, same weight as the bank glyph. */
+.txn-status-icon--scheduled {
+  color: var(--text-muted);
+}

@@ -28,7 +28,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match, source_for
 from igab.services.ownership import require_in_budget
 
 if TYPE_CHECKING:
@@ -68,6 +68,8 @@ class TransactionCreate:
     # AI provenance ('ai_receipt' | 'ai_nl') — set server-side only, never
     # accepted verbatim from clients.
     created_via: str | None = None
+    #: The schedule this row is being entered from (see §enter_now).
+    scheduled_transaction_id: uuid.UUID | None = None
     latitude: float | None = None
     longitude: float | None = None
 
@@ -110,6 +112,18 @@ class SplitSpec:
 
 # Fields that may never be set to NULL via PATCH
 _REQUIRED_FIELDS = ("date", "amount", "cleared", "approved")
+
+
+def origin_of(data: TransactionCreate) -> str:
+    """Where a new row comes from, when the caller did not say (the AI paths
+    say 'ai_receipt' / 'ai_nl' themselves). See Transaction.created_via."""
+    if data.sync_source:
+        return "sync"
+    if data.scheduled_transaction_id is not None:
+        return "scheduled"
+    if data.import_batch_id is not None or data.import_id:
+        return "import"
+    return "manual"
 
 
 def build_transaction_service(session: AsyncSession) -> TransactionService:
@@ -221,6 +235,7 @@ class TransactionService:
                 if default is not None:
                     category_id = default.id
 
+        created_via = data.created_via or origin_of(data)
         txn = await self.transaction_repo.create(
             budget_id=budget_id,
             account_id=data.account_id,
@@ -232,6 +247,7 @@ class TransactionService:
             cleared=data.cleared,
             approved=data.approved,
             parent_transaction_id=data.parent_transaction_id,
+            scheduled_transaction_id=data.scheduled_transaction_id,
             import_id=data.import_id,
             import_batch_id=data.import_batch_id,
             import_description=data.import_description,
@@ -243,13 +259,12 @@ class TransactionService:
             bank_posted_date=data.bank_posted_date,
             bank_amount=data.bank_amount,
             bank_payee=data.bank_payee,
-            created_via=data.created_via,
+            created_via=created_via,
             latitude=data.latitude,
             longitude=data.longitude,
         )
         if record:
-            source = "ai" if data.created_via else ("import" if data.import_batch_id else "manual")
-            await self._record_txn(txn, "create", source=source)
+            await self._record_txn(txn, "create", source=source_for(created_via))
         return txn
 
     async def create_split(
@@ -717,6 +732,7 @@ class TransactionService:
 
         # Source: outflow from from-account
         from_payee = await self._get_transfer_payee(budget_id, to_account)
+        created_via = data.created_via or origin_of(data)
         source = await self.transaction_repo.create(
             budget_id=budget_id,
             account_id=data.account_id,
@@ -727,6 +743,8 @@ class TransactionService:
             memo=data.memo,
             cleared=data.cleared,
             approved=data.approved,
+            created_via=created_via,
+            scheduled_transaction_id=data.scheduled_transaction_id,
         )
 
         # Destination: inflow into to-account
@@ -742,6 +760,8 @@ class TransactionService:
             cleared="uncleared",
             approved=data.approved,
             transfer_id=source.id,
+            created_via=created_via,
+            scheduled_transaction_id=data.scheduled_transaction_id,
         )
 
         # Link source → dest
@@ -1037,6 +1057,8 @@ class TransactionService:
             cleared="uncleared",
             approved=txn.approved,
             transfer_id=txn.id,
+            created_via=txn.created_via or "manual",
+            scheduled_transaction_id=txn.scheduled_transaction_id,
         )
         await self._record_txn(created, "create")
         return {"payee_id": own_payee.id, "transfer_id": created.id}

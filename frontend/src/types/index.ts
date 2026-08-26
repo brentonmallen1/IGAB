@@ -245,8 +245,14 @@ export interface Transaction {
   import_description: string | null
   sync_id: string | null
   sync_source: string | null
-  /** AI provenance: 'ai_receipt' | 'ai_nl'; null for manual/import/sync rows */
+  /** Where the row came from: 'manual' | 'import' | 'sync' | 'scheduled' |
+   *  'ai_receipt' | 'ai_nl'; null = unknown (rows older than the stamp).
+   *  Home: `Transaction.created_via` (backend models.py). Presentation only —
+   *  it is what lets a row the bank matched say it was entered by you. */
   created_via: string | null
+  /** The schedule this row was entered from, or null. Home:
+   *  `Transaction.scheduled_transaction_id`. */
+  scheduled_transaction_id: string | null
   has_sync_source: boolean
   created_at: string
   updated_at: string

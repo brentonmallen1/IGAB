@@ -1,6 +1,7 @@
-import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Sparkles, Split, Trash2, ChevronRight, Pencil, Unlock } from 'lucide-react'
+import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Sparkles, Split, Trash2, ChevronRight, Pencil, Unlock, CalendarClock } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
 import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction } from '../../../api/transactions'
+import { useScheduledTransactions } from '../../../api/scheduledTransactions'
 import { confirmDeleteTransaction } from '../../../api/attachments'
 import { useCreateCategory } from '../../../api/categories'
 import { useCreatePayee } from '../../../api/payees'
@@ -109,6 +110,9 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     a.prior_category_name !== b.prior_category_name ||
     a.bank_amount !== b.bank_amount ||
     a.entered_amount !== b.entered_amount ||
+    // Both are provenance the status cluster renders from.
+    a.created_via !== b.created_via ||
+    a.scheduled_transaction_id !== b.scheduled_transaction_id ||
     a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
   ) return false
@@ -184,6 +188,17 @@ export const TransactionRow = memo(function TransactionRow({
 
   const isReconciled = txn.cleared === 'reconciled'
   const isPending = txn.cleared === 'pending'
+
+  // Only rows entered from a schedule fetch the schedules (the query is
+  // disabled otherwise), and the list is shared with the register's upcoming
+  // rows, so this costs nothing extra.
+  const { data: schedules } = useScheduledTransactions(txn.scheduled_transaction_id ? budgetId : null)
+  const schedule = txn.scheduled_transaction_id
+    ? schedules?.find((s) => s.id === txn.scheduled_transaction_id)
+    : undefined
+  const scheduleLabel = schedule
+    ? `Entered from schedule: ${schedule.payee_id ? (payeeMap.get(schedule.payee_id) ?? 'schedule') : 'schedule'} · ${schedule.frequency}`
+    : 'Entered from a schedule'
 
   function toggleCleared() {
     const next = txn.cleared === 'cleared' ? 'uncleared' : 'cleared'
@@ -405,6 +420,16 @@ export const TransactionRow = memo(function TransactionRow({
             title="Extracted from an image by AI — needs review"
           >
             <Sparkles size={12} />
+          </span>
+        )}
+        {txn.scheduled_transaction_id && (
+          <span
+            className="txn-status-icon txn-status-icon--scheduled"
+            role="img"
+            aria-label={scheduleLabel}
+            title={scheduleLabel}
+          >
+            <CalendarClock size={11} />
           </span>
         )}
         <BankRecordIcon transaction={txn} />

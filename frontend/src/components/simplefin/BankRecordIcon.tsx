@@ -1,4 +1,4 @@
-import { Landmark } from 'lucide-react'
+import { Landmark, Link2 } from 'lucide-react'
 import type { Transaction } from '../../types'
 import { useFormatters } from '../../hooks/useFormatters'
 import './BankRecordIcon.css'
@@ -14,9 +14,19 @@ export function BankRecordIcon({ transaction }: { transaction: Transaction }) {
 
   if (!transaction.has_sync_source && !transaction.sync_source) return null
 
+  // A row the user entered (by hand, from a schedule, or via the AI paths)
+  // that the bank later matched reads differently from one the bank wrote:
+  // the first is the user's record with the bank's confirmation attached.
+  // `created_via` is the origin stamp (backend Transaction.created_via);
+  // null is unknown — rows older than the stamp — and reads as the bank's.
+  const enteredByUser =
+    transaction.created_via != null && transaction.created_via !== 'sync' &&
+    transaction.created_via !== 'import'
   const bankPayee = transaction.bank_payee ?? transaction.import_description
   const lines = [
-    'From your bank',
+    enteredByUser
+      ? `Entered by you${transaction.created_at ? ` ${formatDate(transaction.created_at.slice(0, 10))}` : ''}, matched to your bank`
+      : 'From your bank',
     transaction.bank_posted_date ? `Posted ${formatDate(transaction.bank_posted_date)}` : null,
     transaction.bank_amount != null ? `Amount ${formatMoney(transaction.bank_amount)}` : null,
     // The bank's posted amount replaced what was entered — say so, and say
@@ -29,7 +39,7 @@ export function BankRecordIcon({ transaction }: { transaction: Transaction }) {
 
   return (
     <span className="bank-record-icon" title={lines.join('\n')} aria-label={lines.join('. ')}>
-      <Landmark size={11} />
+      {enteredByUser ? <Link2 size={11} /> : <Landmark size={11} />}
     </span>
   )
 }

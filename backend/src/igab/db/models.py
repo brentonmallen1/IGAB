@@ -482,9 +482,16 @@ class Transaction(Base):
     # Bank sync deduplication (SimpleFIN, future: Plaid, etc.)
     sync_id: Mapped[str | None] = mapped_column(String(255))
     sync_source: Mapped[str | None] = mapped_column(String(50))
-    # AI provenance: 'ai_receipt' | 'ai_nl'. NULL for manual/import/sync rows
-    # (those are already distinguishable via import_id / sync_source).
+    # Where the row came from: 'manual' | 'import' | 'sync' | 'scheduled' |
+    # 'ai_receipt' | 'ai_nl'. Set by TransactionService.create (and the bulk
+    # importers), never accepted from a client. NULL means "unknown" — rows
+    # written before this was stamped. It cannot be backfilled: a hand-typed
+    # row the bank later matched carries sync_source too, and would be
+    # misfiled as a sync row. This is what lets the register show that a row
+    # the bank matched was entered by the user first.
     created_via: Mapped[str | None] = mapped_column(String(20))
+    # The schedule this row was entered from (Enter now, or the scheduler's
+    # auto-create). Served, so the row can say so; nothing else reads it.
     scheduled_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # SimpleFIN match link
     linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(

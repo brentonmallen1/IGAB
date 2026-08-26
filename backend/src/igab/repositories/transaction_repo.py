@@ -28,7 +28,7 @@ from igab.repositories.txn_filters import (
 )
 
 if TYPE_CHECKING:
-    import polars as pl
+    pass
 
 
 # A trailing dot is a half-typed amount, not a non-amount: "12." is what the
@@ -701,10 +701,6 @@ class TransactionRepository(BaseRepository[Transaction]):
                 [{"id": row_id, "transfer_id": partner_id} for row_id, partner_id in chunk],
             )
         await self.session.flush()
-
-    async def bulk_create_from_df(self, df: "pl.DataFrame") -> int:
-        """Bulk insert transactions from a Polars DataFrame."""
-        return await self.bulk_create(df.to_dicts())
 
     async def find_by_sync_id(self, account_id: uuid.UUID, sync_id: str) -> Transaction | None:
         """Find a transaction by bank sync ID (SimpleFIN, Plaid, etc.)."""
