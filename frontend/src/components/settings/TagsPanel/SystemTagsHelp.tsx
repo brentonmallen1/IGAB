@@ -6,9 +6,9 @@ export function SystemTagsHelp() {
   return (
     <InfoPopover title="System tags" label="What system tags do" width={440}>
       <p>
-        Every budget gets these five tags. They can be renamed or recoloured but not
-        deleted, because unlike your own tags they change how IGAB <strong>counts</strong>{' '}
-        money.
+        Every budget gets these five tags. Their colour is yours to change; their names
+        are not, and they cannot be deleted — unlike your own tags they change how IGAB{' '}
+        <strong>counts</strong> money, and the name is how you know which is which.
       </p>
 
       <InfoSection title="Each one">
