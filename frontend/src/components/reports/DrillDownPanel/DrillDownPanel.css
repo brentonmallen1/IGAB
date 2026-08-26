@@ -1,7 +1,4 @@
 .ddp {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
   padding: var(--spacing-lg);
   margin-top: var(--spacing-lg);
   display: flex;

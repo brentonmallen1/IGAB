@@ -326,6 +326,47 @@ function checksFor(theme: string): Check[] {
 
 const THEME_NAMES = [...themes.keys()].sort()
 
+// ---------------------------------------------------------------- surfaces
+
+/**
+ * The surface ladder. Sections were invisible because cards painted
+ * themselves the canvas colour and, in the themes that did step up, the step
+ * was 3-4 pt of lightness with a border the same colour as the next surface.
+ * These floors are the picked contract (surface picker, 2026-08-25: an 8-pt
+ * lightness step, hairlines mixed 14% toward the text colour) measured on the
+ * generated ladders and floored — WCAG ratios compress near white, so a light
+ * theme scores lower for the same visual step and gets its own floors.
+ *
+ * Every number below fails against the ladders that shipped before this
+ * contract: Desert Dark's step measured 1.13, and the light themes' hairline
+ * (--border-subtle on white) measured 1.06.
+ */
+const SURFACE_STEP_MIN = { dark: 1.18, light: 1.08 } // canvas -> raised
+// raised -> overlay. Overlays carry --shadow-lg and a scrim, so this floor only
+// guards direction and non-zero; the text colours cap how far the overlay can
+// go (Phosphor's text-muted tops out at +9 pt) and win over a bigger step.
+const OVERLAY_STEP_MIN = { dark: 1.03 }
+const EDGE_MIN = { dark: 1.34, light: 1.23 } // hairline on the raised surface it outlines
+const EDGE_STRONG_MIN = { dark: 1.6, light: 1.45 } // strong rule on the canvas
+
+function surfaceChecksFor(theme: string): Check[] {
+  const out: Check[] = []
+  const canvas = token(theme, 'surface-canvas')
+  const raised = token(theme, 'surface-raised')
+  const overlay = token(theme, 'surface-overlay')
+  const edge = token(theme, 'edge')
+  const strong = token(theme, 'edge-strong')
+  if (!canvas || !raised || !overlay || !edge || !strong) return out
+  const mode = luminance(canvas) < 0.5 ? 'dark' : 'light'
+  out.push({ label: `${mode}: canvas -> raised step`, ratio: contrast(canvas, raised), min: SURFACE_STEP_MIN[mode] })
+  if (mode === 'dark') {
+    out.push({ label: 'dark: raised -> overlay step', ratio: contrast(raised, overlay), min: OVERLAY_STEP_MIN.dark })
+  }
+  out.push({ label: `${mode}: hairline (--edge) on raised`, ratio: contrast(edge, raised), min: EDGE_MIN[mode] })
+  out.push({ label: `${mode}: strong edge on canvas`, ratio: contrast(strong, canvas), min: EDGE_STRONG_MIN[mode] })
+  return out
+}
+
 describe('theme palettes', () => {
   it('finds every shipped theme', () => {
     expect(THEME_NAMES.length).toBeGreaterThanOrEqual(40)
@@ -340,6 +381,25 @@ describe('theme palettes', () => {
       }
     }
     expect(bad).toEqual([])
+  })
+
+  it.each(THEME_NAMES)('%s steps its surfaces apart', (theme) => {
+    const canvas = token(theme, 'surface-canvas')
+    const raised = token(theme, 'surface-raised')
+    const overlay = token(theme, 'surface-overlay')
+    expect(canvas && raised && overlay).toBeTruthy()
+    // Direction is universal: a raised surface is LIGHTER than the canvas in
+    // every theme, including phosphor-light (dark-on-dark by design). This is
+    // the check the four inverted ladders (Catppuccin, Gruvbox, Nord, Nord
+    // Aurora) failed before they were re-tuned.
+    expect(luminance(raised!)).toBeGreaterThan(luminance(canvas!))
+    expect(luminance(overlay!)).toBeGreaterThanOrEqual(luminance(raised!))
+    const checks = surfaceChecksFor(theme)
+    expect(checks.length).toBeGreaterThanOrEqual(3)
+    const failures = checks
+      .filter((c) => c.ratio < c.min)
+      .map((c) => `${c.label} — ${c.ratio.toFixed(2)}:1 (needs ${c.min}:1)`)
+    expect(failures).toEqual([])
   })
 
   it.each(THEME_NAMES)('%s meets WCAG AA', (theme) => {

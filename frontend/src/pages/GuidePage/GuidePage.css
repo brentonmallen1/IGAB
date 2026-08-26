@@ -20,8 +20,8 @@
 /* ─── Tabs ───────────────────────────────────────────────────────────────── */
 
 .guide-nav {
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge);
   flex-shrink: 0;
   padding: var(--spacing-sm) var(--spacing-lg);
 }
@@ -308,8 +308,8 @@
 /* ─── Nodes ──────────────────────────────────────────────────────────────── */
 
 .guide-node {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  background: var(--surface-raised);
+  border: 1px solid var(--edge);
   border-left: 2px solid color-mix(in srgb, var(--stage-color) 45%, transparent);
   border-radius: var(--border-radius);
   padding: var(--spacing-md);
@@ -390,8 +390,8 @@
   gap: var(--spacing-sm);
   width: 100%;
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  background: var(--surface-raised);
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius);
   cursor: pointer;
   text-align: left;
@@ -406,12 +406,12 @@
 
 .guide-branch--static {
   cursor: default;
-  background: var(--bg-primary);
+  background: var(--surface-raised);
 }
 
 .guide-branch--static:hover {
-  border-color: var(--border-color);
-  background: var(--bg-primary);
+  border-color: var(--edge);
+  background: var(--surface-raised);
 }
 
 .guide-branch__answer {
@@ -677,12 +677,13 @@
 .guide-glossary__list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 var(--spacing-md);
   display: flex;
   flex-direction: column;
 }
 
-.guide-glossary__item { border-bottom: 1px solid var(--border-subtle); }
+.guide-glossary__item { border-bottom: 1px solid var(--edge); }
+.guide-glossary__item:last-child { border-bottom: none; }
 
 .guide-glossary__term {
   display: flex;
@@ -962,8 +963,8 @@
   position: absolute;
   display: flex;
   flex-direction: column;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  background: var(--surface-raised);
+  border: 1px solid var(--edge);
   border-top: 3px solid var(--stage-color);
   border-radius: var(--border-radius);
   overflow: hidden;
@@ -1063,7 +1064,7 @@
   width: min(560px, 100%);
   max-height: 80vh;
   overflow-y: auto;
-  background: var(--bg-primary);
+  background: var(--surface-overlay);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: var(--spacing-lg);
@@ -1182,7 +1183,7 @@
   width: min(520px, 100%);
   max-height: 80vh;
   overflow-y: auto;
-  background: var(--bg-primary);
+  background: var(--surface-overlay);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: var(--spacing-lg);
@@ -1251,8 +1252,8 @@
   flex-direction: column;
   gap: var(--spacing-xs);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius);
 }
 

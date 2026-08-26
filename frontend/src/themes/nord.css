@@ -1,9 +1,9 @@
 /* Nord */
 [data-theme="nord"] {
   --bg-primary: #2e3440;
-  --bg-secondary: #242933;
-  --bg-tertiary: #3b4252;
-  --bg-elevated: #434c5e;
+  --bg-secondary: #3b4252;
+  --bg-tertiary: #3b4353;
+  --bg-elevated: #444d5f;
   --bg-hover: #3b4252;
 
   --text-primary: #eceff4;
@@ -19,10 +19,10 @@
   --color-warning: #ebcb8b;
   --color-info: #a4c9f8;
 
-  --border-color: #3b4252;
-  --border-subtle: #2e3440;
-  --input-bg: #242933;
-  --input-border: #687388;
+  --border-color: #5e636d;
+  --border-subtle: #545a69;
+  --input-bg: #2e3440;
+  --input-border: #747f95;
   --input-focus-ring: #97cfdf;
 
   --row-hover-bg: rgba(151, 207, 223, 0.06);
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #242933;
   --header-bg: #242933;
-  --card-bg: #3b4252;
-  --card-border: #434c5e;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #242933 */
   --sidebar-text-primary: #eceff4;
@@ -63,16 +61,6 @@
   --chart-6: #7a9e58;
   --chart-7: #5081bc;
   --chart-8: #bf616a;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
@@ -81,10 +69,10 @@
    built for a dark ground, so each one is deepened along its own hue until it
    clears 4.5:1 on the Snow Storm background — same colors, not new ones. */
 [data-theme="nord-light"] {
-  --bg-primary: #eceff4;
-  --bg-secondary: #e5e9f0;
+  --bg-primary: #e5e9f0;
+  --bg-secondary: #ffffff;
   --bg-tertiary: #d8dee9;
-  --bg-elevated: #f6f8fa;
+  --bg-elevated: #ffffff;
   --bg-hover: #d8dee9;
 
   --text-primary: #2e3440;
@@ -102,8 +90,8 @@
   --color-warning: #6f510c;
   --color-info: #365881;
 
-  --border-color: #c6cdd9;
-  --border-subtle: #d8dee9;
+  --border-color: #b7bbc4;
+  --border-subtle: #e2e3e4;
   --input-bg: #f6f8fa;
   --input-border: #888f9d;
   --input-focus-ring: #265d6c;
@@ -118,8 +106,6 @@
   /* Dark sidebar, like the app's other light themes — Polar Night keeps it Nord */
   --sidebar-bg: #2e3440;
   --header-bg: #f6f8fa;
-  --card-bg: #f6f8fa;
-  --card-border: #c6cdd9;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #2e3440 */
   --sidebar-text-primary: #eceff4;
@@ -153,16 +139,6 @@
   --chart-6: #4a6035;
   --chart-7: #6386b1;
   --chart-8: #a1545b;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
@@ -178,16 +154,16 @@
    against it. Same values, different cast — still unmistakably Polar Night. */
 [data-theme="nord-aurora"] {
   --bg-primary: #343144;
-  --bg-secondary: #292637;
-  --bg-tertiary: #423e57;
-  --bg-elevated: #4c4764;
+  --bg-secondary: #46425c;
+  --bg-tertiary: #46425c;
+  --bg-elevated: #504c69;
   --bg-hover: #423e57;
 
   --text-primary: #eceff4;
   --text-secondary: #d9d5e2;
   /* Nord's own nord3 (#4c566a) lands at 1.7:1 on this ground — invisible, not
      muted. Same neutral, lifted to 3.9:1 so labels are actually readable. */
-  --text-muted: #c5c3d5;
+  --text-muted: #cbc9d9;
   --text-inverse: #343144;
 
   /* Aurora purple (nord15) at roughly twice its native chroma, rotated to 328°
@@ -195,21 +171,21 @@
      the only Aurora color free to take the accent — red, orange, yellow and
      green carry negative/warning/positive, and money must never change meaning
      to suit a theme. */
-  --color-accent: #f2aeef;
+  --color-accent: #f4b6f1;
   --color-accent-hover: #eaafe7;
   --accent-color: var(--color-accent);
   /* The Aurora semantics, punched to clear AA on this ground. Plain Nord's
      #bf616a sits at 3.0:1, which is not enough for an amount you have to
      read. */
-  --color-positive: #abcf8b;
-  --color-negative: #ffafb4;
+  --color-positive: #b4d397;
+  --color-negative: #ffb9be;
   --color-warning: #f1ca78;
-  --color-info: #7bcef7;
+  --color-info: #8ad4f7;
 
-  --border-color: #423e57;
-  --border-subtle: #343144;
-  --input-bg: #292637;
-  --input-border: #726f88;
+  --border-color: #626170;
+  --border-subtle: #5d5a71;
+  --input-bg: #343144;
+  --input-border: #7d7a92;
   --input-focus-ring: #f2aeef;
 
   /* Selection is a state worth seeing — plain Nord's 6%/12% barely registers */
@@ -222,8 +198,6 @@
 
   --sidebar-bg: #292637;
   --header-bg: #292637;
-  --card-bg: #423e57;
-  --card-border: #4c4764;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #292637 */
   --sidebar-text-primary: #eceff4;
@@ -258,16 +232,6 @@
   --chart-6: #75bbba;
   --chart-7: #739a4d;
   --chart-8: #98e1f6;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
@@ -275,10 +239,10 @@
    dark variant, with Aurora deepened along each of its own hues until it
    clears AA on a light ground. Same colors, moved, not new ones. */
 [data-theme="nord-aurora-light"] {
-  --bg-primary: #efedf6;
-  --bg-secondary: #e7e5f1;
-  --bg-tertiary: #dcdae8;
-  --bg-elevated: #f6f5fb;
+  --bg-primary: #e7e4f1;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #dedaec;
+  --bg-elevated: #ffffff;
   --bg-hover: #dcdae8;
 
   --text-primary: #343142;
@@ -296,8 +260,8 @@
   --color-warning: #6e5000;
   --color-info: #005795;
 
-  --border-color: #cccadb;
-  --border-subtle: #dcdae8;
+  --border-color: #bab7c5;
+  --border-subtle: #e3e2e5;
   --input-bg: #f6f5fb;
   --input-border: #8e8b9e;
   --input-focus-ring: #80387f;
@@ -313,8 +277,6 @@
      ground keeps it Nord Aurora */
   --sidebar-bg: #343144;
   --header-bg: #f6f5fb;
-  --card-bg: #f6f5fb;
-  --card-border: #cccadb;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #343144 */
   --sidebar-text-primary: #eceff4;
@@ -344,15 +306,5 @@
   --chart-6: #3a807f;
   --chart-7: #3a531e;
   --chart-8: #438fa3;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

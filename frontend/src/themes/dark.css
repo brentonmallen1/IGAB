@@ -2,9 +2,9 @@
 [data-theme="dark"],
 :root:not([data-theme]) {
   --bg-primary: #0f1117;
-  --bg-secondary: #1a1d27;
-  --bg-tertiary: #252836;
-  --bg-elevated: #2d3047;
+  --bg-secondary: #1f2330;
+  --bg-tertiary: #242937;
+  --bg-elevated: #2f3648;
   --bg-hover: #2a2d3e;
 
   --text-primary: #e8eaf0;
@@ -20,9 +20,9 @@
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
 
-  --border-color: #2d3047;
-  --border-subtle: #1e2235;
-  --input-bg: #1a1d27;
+  --border-color: #46484e;
+  --border-subtle: #3b3f4b;
+  --input-bg: #0f1117;
   --input-border: #636880;
   --input-focus-ring: #7d9cff;
 
@@ -35,8 +35,6 @@
 
   --sidebar-bg: #13161f;
   --header-bg: #13161f;
-  --card-bg: #1a1d27;
-  --card-border: #252836;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #13161f */
   --sidebar-text-primary: #e8eaf0;
@@ -62,15 +60,5 @@
   --chart-6: #17ac59;
   --chart-7: #977ae7;
   --chart-8: #e45f61;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

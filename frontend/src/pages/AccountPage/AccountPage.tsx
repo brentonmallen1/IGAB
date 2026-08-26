@@ -29,6 +29,8 @@ import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import './AccountPage.css'
+import { Pill } from '../../components/common/Pill/Pill'
+import { Surface } from '../../components/common/Surface'
 
 function formatReconcileAge(lastReconciledAt: string | null): string {
   if (!lastReconciledAt) return 'Never reconciled'
@@ -131,39 +133,39 @@ export function AccountPage() {
 
   return (
     <div className="account-page">
-      <div className="account-page__header">
+      <Surface variant="chrome" className="account-page__header">
         {/* Left: Account identity + balances stacked */}
         <div className="account-page__header-left">
           <div className="account-page__identity">
             <h1 className="account-page__name">{account.name}</h1>
             <div className="account-page__status-row">
               {account.on_budget ? (
-                <span
-                  className="account-page__status-badge"
+                <Pill
+                  tone="outline"
                   title="On budget — spending here comes out of your envelope categories"
                 >
                   <Wallet size={12} />
                   On budget
-                </span>
+                </Pill>
               ) : (
-                <span
-                  className="account-page__status-badge"
+                <Pill
+                  tone="outline"
                   title="Tracking — counted in net worth only; transactions here don't need categories"
                 >
                   <Telescope size={12} />
                   Tracking
-                </span>
+                </Pill>
               )}
               {isConnected && (
-                <span className="account-page__status-badge account-page__status-badge--connected">
+                <Pill tone="positive">
                   <LinkIcon size={12} />
                   Connected
-                </span>
+                </Pill>
               )}
-              <span className="account-page__status-badge">
+              <Pill tone="outline">
                 <Lock size={12} />
                 {formatReconcileAge(account.last_reconciled_at)}
-              </span>
+              </Pill>
             </div>
           </div>
           <div className="account-page__balances">
@@ -224,7 +226,7 @@ export function AccountPage() {
           </button>
           {syncMsg && <span className="account-page__sync-msg">{syncMsg}</span>}
         </div>
-      </div>
+      </Surface>
 
       {showReconcileModal && accountId && (
         <ReconcileModal accountId={accountId} accountName={account.name} />

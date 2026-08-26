@@ -21,6 +21,5 @@
        to 3:1 against its own field, so it is the right strength to borrow. */
     --border-color: var(--input-border);
     --border-subtle: var(--input-border);
-    --card-border: var(--input-border);
   }
 }

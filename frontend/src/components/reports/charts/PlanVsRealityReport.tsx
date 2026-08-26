@@ -63,7 +63,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
   )
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Plan vs Reality</h2>
         <ReportInfoButton title="Plan vs Reality">

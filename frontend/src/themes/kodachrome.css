@@ -1,27 +1,27 @@
 /* Kodachrome Dark — warm vintage film, saturated slides */
 [data-theme="kodachrome-dark"] {
   --bg-primary: #1a1614;
-  --bg-secondary: #24201c;
-  --bg-tertiary: #2e2824;
-  --bg-elevated: #38322c;
+  --bg-secondary: #312a26;
+  --bg-tertiary: #312a26;
+  --bg-elevated: #3b322e;
   --bg-hover: #2e2824;
 
   --text-primary: #f0e8dc;
   --text-secondary: #c8b8a8;
-  --text-muted: #a9a190;
+  --text-muted: #aba393;
   --text-inverse: #1a1614;
 
-  --color-accent: #ff7763;
+  --color-accent: #ff7b68;
   --color-accent-hover: #f77462;
   --accent-color: var(--color-accent);
-  --color-positive: #6fb070;
-  --color-negative: #ff7763;
+  --color-positive: #72b273;
+  --color-negative: #ff7b68;
   --color-warning: #d89830;
-  --color-info: #66a6e1;
+  --color-info: #6aa8e2;
 
-  --border-color: #38322c;
-  --border-subtle: #24201c;
-  --input-bg: #24201c;
+  --border-color: #504b46;
+  --border-subtle: #4c453f;
+  --input-bg: #1a1614;
   --input-border: #736a61;
   --input-focus-ring: #ff7763;
 
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #141210;
   --header-bg: #141210;
-  --card-bg: #24201c;
-  --card-border: #38322c;
 
   --sidebar-text-primary: #f0e8dc;
   --sidebar-text-secondary: #c8b8a8;
@@ -58,23 +56,14 @@
   --chart-6: #38807a;
   --chart-7: #c85070;
   --chart-8: #d87830;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Kodachrome Light — warm vintage prints */
 [data-theme="kodachrome-light"] {
-  --bg-primary: #faf6f0;
+  --bg-primary: #f5ede0;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f4ece0;
+  --bg-tertiary: #f4ebde;
   --bg-elevated: #ffffff;
   --bg-hover: #f8f0e4;
 
@@ -91,8 +80,8 @@
   --color-warning: #835700;
   --color-info: #205888;
 
-  --border-color: #e8dcd0;
-  --border-subtle: #f4ece0;
+  --border-color: #c2bab0;
+  --border-subtle: #e1e0e0;
   --input-bg: #ffffff;
   --input-border: #9d9287;
   --input-focus-ring: #af2f1f;
@@ -106,8 +95,6 @@
 
   --sidebar-bg: #1a1614;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #e8dcd0;
 
   --sidebar-text-primary: #f0e8dc;
   --sidebar-text-secondary: #c8b8a8;
@@ -130,14 +117,5 @@
   --chart-6: #286860;
   --chart-7: #a84058;
   --chart-8: #b86020;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

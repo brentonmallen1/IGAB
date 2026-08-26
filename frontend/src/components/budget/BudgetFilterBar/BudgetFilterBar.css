@@ -3,8 +3,6 @@
   align-items: center;
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-md);
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-primary);
   flex-wrap: wrap;
 }
 

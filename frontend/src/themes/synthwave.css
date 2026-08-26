@@ -2,9 +2,9 @@
 [data-theme="synthwave-dark"] {
   /* Backgrounds — deep cool gray with subtle purple undertone */
   --bg-primary: #1a1820;
-  --bg-secondary: #24222a;
-  --bg-tertiary: #2e2b36;
-  --bg-elevated: #38343f;
+  --bg-secondary: #2d2937;
+  --bg-tertiary: #2f2b3a;
+  --bg-elevated: #393446;
   --bg-hover: #2e2b36;
 
   /* Text — warm off-white */
@@ -23,9 +23,9 @@
   --color-info: #7fa3ff;
 
   /* Borders and inputs */
-  --border-color: #38343f;
-  --border-subtle: #24222a;
-  --input-bg: #24222a;
+  --border-color: #504e52;
+  --border-subtle: #484450;
+  --input-bg: #1a1820;
   --input-border: #716b79;
   --input-focus-ring: #ff72c8;
 
@@ -41,8 +41,6 @@
   /* Chrome */
   --sidebar-bg: #16141c;
   --header-bg: #16141c;
-  --card-bg: #24222a;
-  --card-border: #38343f;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #16141c */
   --sidebar-text-primary: #f0ede8;
@@ -70,23 +68,15 @@
   --chart-8: #f5e066;
 
   /* Aliases */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Synthwave Light */
 [data-theme="synthwave-light"] {
   /* Backgrounds — warm cream/off-white */
-  --bg-primary: #faf8f5;
+  --bg-primary: #f1ece4;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f0ede8;
+  --bg-tertiary: #f1ece4;
   --bg-elevated: #ffffff;
   --bg-hover: #f5f2ed;
 
@@ -106,8 +96,8 @@
   --color-info: #3958bf;
 
   /* Borders and inputs */
-  --border-color: #e5e0da;
-  --border-subtle: #f0ede8;
+  --border-color: #bfbab7;
+  --border-subtle: #e1e0e2;
   --input-bg: #ffffff;
   --input-border: #98938d;
   --input-focus-ring: #b00082;
@@ -124,8 +114,6 @@
   /* Chrome — sidebar stays dark */
   --sidebar-bg: #1a1820;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #e5e0da;
 
   /* Sidebar text — sidebar is dark (#1a1820) in light theme */
   --sidebar-text-primary: #f0ede8;
@@ -153,13 +141,5 @@
   --chart-8: #b8a020;
 
   /* Aliases */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

@@ -60,7 +60,7 @@ export function PayeeReport({ budgetId }: Props) {
   const grandTotal = payees.reduce((s, p) => s + Number(p.total), 0)
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Payee Analysis</h2>
         <ReportInfoButton title="Payee Analysis">

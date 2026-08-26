@@ -100,7 +100,7 @@ export function BudgetActualReport({ budgetId }: Props) {
   }))
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Budget vs Actual</h2>
         <ReportInfoButton title="Budget vs Actual">

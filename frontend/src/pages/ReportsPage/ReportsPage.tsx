@@ -34,6 +34,7 @@ import { CashProjectionReport } from '../../components/reports/charts/CashProjec
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import './ReportsPage.css'
+import { Surface } from '../../components/common/Surface'
 
 export function ReportsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -121,7 +122,7 @@ export function ReportsPage() {
 
   return (
     <div className="reports-page">
-      <nav className="reports-nav" aria-label="Report navigation">
+      <Surface as="nav" variant="chrome" className="reports-nav" aria-label="Report navigation">
         <div className="reports-nav__row">
           {/* Group dropdown */}
           <div className="reports-nav__dropdown" ref={dropdownRef}>
@@ -168,7 +169,7 @@ export function ReportsPage() {
             ))}
           </div>
         </div>
-      </nav>
+      </Surface>
 
       <ReportFiltersBar budgetId={budgetId} />
 

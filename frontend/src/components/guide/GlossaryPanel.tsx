@@ -42,7 +42,7 @@ export function GlossaryPanel() {
           No term matches “{query}”. {GLOSSARY.length} terms are defined — try a shorter word.
         </p>
       ) : (
-        <ul className="guide-glossary__list">
+        <ul className="guide-glossary__list surface">
           {results.map((entry) => {
             const isOpen = open === entry.id
             return (

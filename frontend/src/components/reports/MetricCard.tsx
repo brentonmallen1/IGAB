@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Surface, type SurfaceVariant } from '../common/Surface'
 import './MetricCard.css'
 
 interface Props {
@@ -9,9 +10,14 @@ interface Props {
   trend?: 'up' | 'down' | 'neutral'
   accent?: boolean
   warning?: boolean
+  /**
+   * Metric tiles usually sit inside a raised report section, where they read
+   * as sunken wells. On the page canvas (LiabilityPage) pass `raised`.
+   */
+  variant?: Extract<SurfaceVariant, 'raised' | 'sunken'>
 }
 
-export function MetricCard({ label, value, delta, sub, accent, warning }: Props) {
+export function MetricCard({ label, value, delta, sub, accent, warning, variant = 'sunken' }: Props) {
   const deltaSign = delta && delta.value > 0 ? 'pos' : delta && delta.value < 0 ? 'neg' : 'neutral'
 
   const classes = ['metric-card']
@@ -19,7 +25,7 @@ export function MetricCard({ label, value, delta, sub, accent, warning }: Props)
   if (warning) classes.push('metric-card--warning')
 
   return (
-    <div className={classes.join(' ')}>
+    <Surface variant={variant} className={classes.join(' ')}>
       <div className="metric-card__label">{label}</div>
       <div className="metric-card__value">{value}</div>
       {delta !== undefined && (
@@ -29,6 +35,6 @@ export function MetricCard({ label, value, delta, sub, accent, warning }: Props)
         </div>
       )}
       {sub && <div className="metric-card__sub">{sub}</div>}
-    </div>
+    </Surface>
   )
 }

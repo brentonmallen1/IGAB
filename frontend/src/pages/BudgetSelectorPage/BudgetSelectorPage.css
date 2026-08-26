@@ -6,7 +6,7 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  background-color: var(--bg-secondary);
+  background-color: var(--surface-canvas);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -95,9 +95,6 @@
 }
 
 .budget-card {
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
   padding: var(--spacing-md) var(--spacing-lg);
   display: flex;
   align-items: center;
@@ -234,15 +231,9 @@
 
 /* Cards for create / import */
 
-.selector-card {
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-}
-
 .selector-card__header {
   padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--edge);
 }
 
 /* The header doubles as the section toggle — full-width hit area, chevron
@@ -256,7 +247,7 @@
   min-height: var(--tap-min);
   background: none;
   border: none;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--edge);
   border-radius: var(--border-radius) var(--border-radius) 0 0;
   text-align: left;
   cursor: pointer;
@@ -270,14 +261,6 @@
 
 .selector-card__header--toggle:hover {
   background-color: var(--bg-hover);
-}
-
-.selector-card__title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .selector-card__subtitle {
@@ -348,12 +331,7 @@
   cursor: not-allowed;
 }
 
-/* Demoted card + button for the throwaway sample budget */
-.selector-card--secondary {
-  background-color: var(--bg-secondary);
-  border-style: dashed;
-}
-
+/* Demoted button for the throwaway sample budget (its card is a dashed Surface) */
 .selector-btn--secondary {
   background-color: transparent;
   color: var(--text-secondary);
@@ -392,8 +370,6 @@
   max-height: 260px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--border-color, var(--bg-tertiary));
-  border-radius: var(--border-radius-sm);
   padding: var(--spacing-sm);
 }
 
@@ -638,7 +614,7 @@
   gap: var(--spacing-xs);
   margin: var(--spacing-sm) 0 var(--spacing-xs);
   padding-left: var(--spacing-xs);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--edge);
   padding-top: var(--spacing-sm);
 }
 

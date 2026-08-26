@@ -98,7 +98,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
   const isAllActive = activeFilterId === null && activeQuickFilter === null
 
   return (
-    <div className="budget-filter-bar">
+    <div className="budget-filter-bar surface surface--chrome">
       {/* How categories are grouped. Separate control from the filter chips
           because it is a separate question — a view decides the arrangement,
           a filter decides which of those categories show. Both can be on. */}

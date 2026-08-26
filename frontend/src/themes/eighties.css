@@ -2,30 +2,30 @@
 [data-theme="eighties-dark"] {
   /* Backgrounds — deep teal-black */
   --bg-primary: #0f1a1a;
-  --bg-secondary: #162424;
-  --bg-tertiary: #1e2e2e;
-  --bg-elevated: #263838;
+  --bg-secondary: #1e3434;
+  --bg-tertiary: #1e3434;
+  --bg-elevated: #233c3c;
   --bg-hover: #1e2e2e;
 
   /* Text — warm off-white with mint undertone */
   --text-primary: #e8f0ec;
   --text-secondary: #b8c8c0;
-  --text-muted: #92a9a1;
+  --text-muted: #9bafa7;
   --text-inverse: #0f1a1a;
 
   /* Semantic colors from the 80s palette */
-  --color-accent: #37b798;
+  --color-accent: #39bf9e;
   --color-accent-hover: #3cc9a6;
   --accent-color: var(--color-accent);
   --color-positive: #A1D4B1;
-  --color-negative: #ff7957;
+  --color-negative: #ff8566;
   --color-warning: #F1A512;
-  --color-info: #37b798;
+  --color-info: #39bf9e;
 
   /* Borders and inputs */
-  --border-color: #263838;
-  --border-subtle: #162424;
-  --input-bg: #162424;
+  --border-color: #46504f;
+  --border-subtle: #3a4e4e;
+  --input-bg: #0f1a1a;
   --input-border: #567171;
   --input-focus-ring: #37b798;
 
@@ -41,8 +41,6 @@
   /* Chrome */
   --sidebar-bg: #0a1414;
   --header-bg: #0a1414;
-  --card-bg: #162424;
-  --card-border: #263838;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #0a1414 */
   --sidebar-text-primary: #e8f0ec;
@@ -70,23 +68,15 @@
   --chart-8: #f5d060;
 
   /* Aliases */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* 80s Retro Light */
 [data-theme="eighties-light"] {
   /* Backgrounds — warm cream with slight mint undertone */
-  --bg-primary: #f5faf8;
+  --bg-primary: #e4f1ec;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #e8f0ec;
+  --bg-tertiary: #e2f1eb;
   --bg-elevated: #ffffff;
   --bg-hover: #f0f5f3;
 
@@ -106,8 +96,8 @@
   --color-info: #006d56;
 
   /* Borders and inputs */
-  --border-color: #d0e0dc;
-  --border-subtle: #e8f0ec;
+  --border-color: #b1bfbb;
+  --border-subtle: #dfe1e1;
   --input-bg: #ffffff;
   --input-border: #889793;
   --input-focus-ring: #006d56;
@@ -124,8 +114,6 @@
   /* Chrome — sidebar stays dark */
   --sidebar-bg: #0f1a1a;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #d0e0dc;
 
   /* Sidebar text — sidebar is dark (#0f1a1a) in light theme */
   --sidebar-text-primary: #e8f0ec;
@@ -153,13 +141,5 @@
   --chart-8: #a89010;
 
   /* Aliases */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

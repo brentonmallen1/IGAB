@@ -80,7 +80,9 @@
 .bkp-table {
   width: 100%;
   min-width: 500px; /* Ensure table has minimum width and scrolls if needed */
-  border-collapse: collapse;
+  /* separate, not collapse: a collapsed table ignores the well's border-radius */
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.82rem;
 }
 
@@ -129,7 +131,7 @@
   font-size: 0.72rem;
   color: var(--text-muted);
   border: 1px dashed var(--border-color);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--border-radius-sm);
   padding: 0.1rem 0.45rem;
   cursor: help;
 }
@@ -156,7 +158,7 @@
 .bkp-modal {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-lg);
   max-width: 30rem;
   width: 100%;
@@ -197,7 +199,7 @@
   gap: 0.5rem;
   cursor: pointer;
   background: var(--bg-tertiary);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--border-radius-sm);
   padding: 0.55rem 0.7rem;
 }
 
@@ -220,7 +222,7 @@
   gap: 0.75rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-lg);
   padding: 2rem 2.5rem;
   max-width: 26rem;

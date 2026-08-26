@@ -2,9 +2,9 @@
 [data-theme="eighties-pop-dark"] {
   /* Backgrounds — deep cool purple-gray */
   --bg-primary: #1a1820;
-  --bg-secondary: #242028;
-  --bg-tertiary: #2e2a34;
-  --bg-elevated: #38343f;
+  --bg-secondary: #2d2937;
+  --bg-tertiary: #2e2a39;
+  --bg-elevated: #3b3749;
   --bg-hover: #2e2a34;
 
   /* Text — warm off-white */
@@ -23,9 +23,9 @@
   --color-info: #79a3ff;
 
   /* Borders and inputs */
-  --border-color: #38343f;
-  --border-subtle: #242028;
-  --input-bg: #242028;
+  --border-color: #504d55;
+  --border-subtle: #484451;
+  --input-bg: #1a1820;
   --input-border: #71697a;
   --input-focus-ring: #ff76a4;
 
@@ -41,8 +41,6 @@
   /* Chrome */
   --sidebar-bg: #14121a;
   --header-bg: #14121a;
-  --card-bg: #242028;
-  --card-border: #38343f;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #14121a */
   --sidebar-text-primary: #f0ecf4;
@@ -70,44 +68,36 @@
   --chart-8: #f0a060;
 
   /* Aliases */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* 80s Pop Light */
 [data-theme="eighties-pop-light"] {
   /* Backgrounds — soft warm white with hint of pink */
-  --bg-primary: #faf8fc;
+  --bg-primary: #ebe2f3;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f4f0f8;
+  --bg-tertiary: #ebe2f3;
   --bg-elevated: #ffffff;
   --bg-hover: #f8f4fa;
 
   /* Text — deep purple-gray */
   --text-primary: #2a2530;
   --text-secondary: #4a4550;
-  --text-muted: #65616b;
+  --text-muted: #5d5b62;
   --text-inverse: #ffffff;
 
   /* Semantic colors — adjusted for light background */
-  --color-accent: #ae3063;
-  --color-accent-hover: #b84070;
+  --color-accent: #a22d5d;
+  --color-accent-hover: #ac3d6a;
   --accent-color: var(--color-accent);
-  --color-positive: #006d6e;
-  --color-negative: #ae3063;
-  --color-warning: #7d5d00;
-  --color-info: #395faf;
+  --color-positive: #006364;
+  --color-negative: #a22d5d;
+  --color-warning: #735500;
+  --color-info: #3659a3;
 
   /* Borders and inputs */
-  --border-color: #e8e0f0;
-  --border-subtle: #f4f0f8;
+  --border-color: #bab2c2;
+  --border-subtle: #e1e0e2;
   --input-bg: #ffffff;
   --input-border: #9891a0;
   --input-focus-ring: #ae3063;
@@ -124,8 +114,6 @@
   /* Chrome — sidebar stays dark */
   --sidebar-bg: #1a1820;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #e8e0f0;
 
   /* Sidebar text — sidebar is dark (#1a1820) in light theme */
   --sidebar-text-primary: #f0ecf4;
@@ -153,13 +141,5 @@
   --chart-8: #c88050;
 
   /* Aliases */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

@@ -305,7 +305,7 @@ export function AccountsOverviewPage() {
           return (
             <div key={key} className="accounts-overview__group">
               <div className="accounts-overview__group-label">{label}</div>
-              <div className="accounts-overview__group-rows">
+              <div className="accounts-overview__group-rows surface">
                 {typeAccounts.map((acc) => (
                   <AccountRow
                     key={acc.id}

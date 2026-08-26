@@ -87,7 +87,7 @@ function DrillDownPanelInner({
   const canLoadMore = rows.length < totalCount && limit < MAX_ROWS
 
   return (
-    <div className="ddp" ref={panelRef}>
+    <div className="ddp surface" ref={panelRef}>
       <div className="ddp__header">
         <div className="ddp__heading">
           <h3 className="ddp__title">Transactions — {drillDown.label}</h3>

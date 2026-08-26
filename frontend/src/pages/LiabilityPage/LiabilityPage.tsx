@@ -24,6 +24,8 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { useAccountTypes } from '../../api/accountTypes'
 import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
 import './LiabilityPage.css'
+import { Pill } from '../../components/common/Pill/Pill'
+import { Surface } from '../../components/common/Surface'
 
 export function LiabilityPage() {
   const { formatMoney, formatMonth } = useFormatters()
@@ -167,10 +169,10 @@ export function LiabilityPage() {
       <div className="liability-page__header">
         <div className="liability-page__header-left">
           <h1 className="liability-page__name">{liability.name}</h1>
-          <span className="liability-page__badge">{liabilityTypeLabel(liability.liability_type, accountTypes)}</span>
-          <span className="liability-page__badge liability-page__badge--muted">
+          <Pill caps>{liabilityTypeLabel(liability.liability_type, accountTypes)}</Pill>
+          <Pill caps tone="outline">
             {liability.mode === 'managed' ? 'Managed' : 'Unmanaged'}
-          </span>
+          </Pill>
           <button
             className="liability-page__settings"
             onClick={() => openModal('liability', liability.id)}
@@ -258,6 +260,7 @@ export function LiabilityPage() {
 
       <div className="liability-page__metrics">
         <MetricCard
+              variant="raised"
           label="Current Balance"
           value={formatMoney(Number(liability.current_balance))}
           accent
@@ -265,11 +268,13 @@ export function LiabilityPage() {
         {/* 0% is a real rate here — promo cards have one — so an unset rate
             has to read differently from zero, not as Number(null). */}
         <MetricCard
+              variant="raised"
           label="Interest Rate"
           value={liability.interest_rate === null ? 'Not set' : `${Number(liability.interest_rate)}%`}
           sub={liability.interest_rate === null ? 'Add it for a payoff date' : undefined}
         />
         <MetricCard
+              variant="raised"
           label="Interest Remaining"
           value={
             !amortization
@@ -287,6 +292,7 @@ export function LiabilityPage() {
           }
         />
         <MetricCard
+              variant="raised"
           label="Months Remaining"
           value={monthsRemaining === null ? '—' : String(monthsRemaining)}
           sub="At minimum payment"
@@ -377,107 +383,123 @@ export function LiabilityPage() {
         </div>
       )}
 
-      <div className="liability-page__section">
-        <div className="liability-page__section-header">
-          <h2>Paydown</h2>
-          <div className="liability-page__chart-controls">
-            <div className="liability-page__toggle">
-              <button
-                className={chartMode === 'now' ? 'active' : ''}
-                onClick={() => setChartMode('now')}
-              >
-                Now
-              </button>
-              <button
-                className={chartMode === 'beginning' ? 'active' : ''}
-                onClick={() => setChartMode('beginning')}
-              >
-                Beginning
-              </button>
+      <Surface
+        as="section"
+        className="liability-page__section"
+        header={
+            <div className="liability-page__section-header">
+              <h2>Paydown</h2>
+              <div className="liability-page__chart-controls">
+                <div className="liability-page__toggle">
+                  <button
+                    className={chartMode === 'now' ? 'active' : ''}
+                    onClick={() => setChartMode('now')}
+                  >
+                    Now
+                  </button>
+                  <button
+                    className={chartMode === 'beginning' ? 'active' : ''}
+                    onClick={() => setChartMode('beginning')}
+                  >
+                    Beginning
+                  </button>
+                </div>
+                <label className="liability-page__whatif">
+                  <span>Extra monthly:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={extraInput}
+                    onChange={(e) => setExtraInput(e.target.value)}
+                  />
+                </label>
+              </div>
             </div>
-            <label className="liability-page__whatif">
-              <span>Extra monthly:</span>
-              <input
-                type="number"
-                min="0"
-                step="10"
-                inputMode="decimal"
-                placeholder="0"
-                value={extraInput}
-                onChange={(e) => setExtraInput(e.target.value)}
-              />
-            </label>
-          </div>
-        </div>
-        {whatIfSavings && (
-          <div className="liability-page__whatif-result">
-            +{formatMoney(extraPayment)}/mo →{' '}
-            {whatIfSavings.monthsSooner !== null
-              ? `paid off ${whatIfSavings.monthsSooner} month${whatIfSavings.monthsSooner === 1 ? '' : 's'} sooner`
-              : 'actually pays off'}
-            {' · '}
-            {formatMoney(Number(whatIfSavings.interestSaved))} interest saved
-          </div>
-        )}
-        {amortization ? (
-          Number(liability.current_balance) === 0 ? (
-            <div className="liability-page__empty">Nothing left to pay down.</div>
-          ) : !amortization.terms_complete ? (
-            // The curve past today IS the projection. Without terms there is
-            // nothing to draw but the balance you already know, so say what is
-            // missing rather than render an almost-empty chart.
-            <div className="liability-page__empty">
-              <p>
-                A paydown curve needs the APR and minimum payment — they decide how much of
-                each payment is interest, and therefore when this is gone.
-              </p>
-              <button
-                type="button"
-                className="liability-page__empty-action"
-                onClick={() => openModal('liability', liability.id)}
-              >
-                <Settings size={13} />
-                Add the terms
-              </button>
+        }
+      >
+        <div className="liability-page__section-body">
+          {whatIfSavings && (
+            <div className="liability-page__whatif-result">
+              +{formatMoney(extraPayment)}/mo →{' '}
+              {whatIfSavings.monthsSooner !== null
+                ? `paid off ${whatIfSavings.monthsSooner} month${whatIfSavings.monthsSooner === 1 ? '' : 's'} sooner`
+                : 'actually pays off'}
+              {' · '}
+              {formatMoney(Number(whatIfSavings.interestSaved))} interest saved
             </div>
+          )}
+          {amortization ? (
+            Number(liability.current_balance) === 0 ? (
+              <div className="liability-page__empty">Nothing left to pay down.</div>
+            ) : !amortization.terms_complete ? (
+              // The curve past today IS the projection. Without terms there is
+              // nothing to draw but the balance you already know, so say what is
+              // missing rather than render an almost-empty chart.
+              <div className="liability-page__empty">
+                <p>
+                  A paydown curve needs the APR and minimum payment — they decide how much of
+                  each payment is interest, and therefore when this is gone.
+                </p>
+                <button
+                  type="button"
+                  className="liability-page__empty-action"
+                  onClick={() => openModal('liability', liability.id)}
+                >
+                  <Settings size={13} />
+                  Add the terms
+                </button>
+              </div>
+            ) : (
+              <PaydownChart amortization={amortization} mode={chartMode} isMobile={isMobile} />
+            )
           ) : (
-            <PaydownChart amortization={amortization} mode={chartMode} isMobile={isMobile} />
-          )
-        ) : (
-          <div className="liability-page__empty">Loading chart…</div>
-        )}
-      </div>
+            <div className="liability-page__empty">Loading chart…</div>
+          )}
+        </div>
+      </Surface>
 
-      <div className="liability-page__section">
-        <div className="liability-page__section-header">
-          <h2>Amortization schedule</h2>
-          <span className="liability-page__section-sub">At the minimum payment</span>
-        </div>
-        {amortization ? (
-          !amortization.terms_complete ? (
-            <div className="liability-page__empty">
-              <p>Add this liability&apos;s APR and minimum payment to see its schedule.</p>
-              <button
-                type="button"
-                className="liability-page__empty-action"
-                onClick={() => openModal('liability', liability.id)}
-              >
-                <Settings size={13} />
-                Add the terms
-              </button>
+      <Surface
+        as="section"
+        className="liability-page__section"
+        header={
+            <div className="liability-page__section-header">
+              <h2>Amortization schedule</h2>
+              <span className="liability-page__section-sub">At the minimum payment</span>
             </div>
-          ) : amortization.baseline_never_pays_off &&
-            amortization.baseline_schedule.length === 0 ? (
-            <div className="liability-page__empty">
-              The minimum payment doesn't cover interest — there is no schedule to show.
-            </div>
+        }
+      >
+        <div className="liability-page__section-body">
+          {amortization ? (
+            !amortization.terms_complete ? (
+              <div className="liability-page__empty">
+                <p>Add this liability&apos;s APR and minimum payment to see its schedule.</p>
+                <button
+                  type="button"
+                  className="liability-page__empty-action"
+                  onClick={() => openModal('liability', liability.id)}
+                >
+                  <Settings size={13} />
+                  Add the terms
+                </button>
+              </div>
+            ) : amortization.baseline_never_pays_off &&
+              amortization.baseline_schedule.length === 0 ? (
+              <div className="liability-page__empty">
+                The minimum payment doesn't cover interest — there is no schedule to show.
+              </div>
+            ) : (
+              <Surface variant="sunken" className="liability-page__well">
+                <AmortizationTable schedule={amortization.baseline_schedule} />
+              </Surface>
+            )
           ) : (
-            <AmortizationTable schedule={amortization.baseline_schedule} />
-          )
-        ) : (
-          <div className="liability-page__empty">Loading schedule…</div>
-        )}
-      </div>
+            <div className="liability-page__empty">Loading schedule…</div>
+          )}
+        </div>
+      </Surface>
 
       {showBalanceForm && (
         <div

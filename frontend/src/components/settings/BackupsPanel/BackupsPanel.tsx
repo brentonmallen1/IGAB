@@ -393,7 +393,7 @@ export function BackupsPanel() {
             No backups yet{agentOnline ? ' — one will be created on the next cycle.' : '.'}
           </div>
         ) : (
-          <table className="bkp-table">
+          <table className="bkp-table surface surface--sunken">
             <thead>
               <tr>
                 <th scope="col">File</th>

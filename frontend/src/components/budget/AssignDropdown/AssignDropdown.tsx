@@ -14,6 +14,7 @@ interface ContentProps {
   budgetId: string
   month: string
   tba: number
+  overspentCount: number
   onPickStrategy: (strategy: AssignStrategy) => void
   onCoverOverspent: () => void
   onClose: () => void
@@ -27,6 +28,7 @@ export function AssignDropdownContent({
   budgetId,
   month,
   tba,
+  overspentCount,
   onPickStrategy,
   onCoverOverspent,
   onClose,
@@ -89,6 +91,7 @@ export function AssignDropdownContent({
         <AssignAutoTab
           totals={totals}
           isLoading={isLoading}
+          overspentCount={overspentCount}
           onPickStrategy={onPickStrategy}
           onCoverOverspent={onCoverOverspent}
         />
