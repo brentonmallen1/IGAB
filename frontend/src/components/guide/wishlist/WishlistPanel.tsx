@@ -171,169 +171,173 @@ export function WishlistPanel() {
         </div>
       )}
 
-      <Surface variant="chrome" className="guide-wishlist__bar">
-        <input
-          type="search"
-          className="guide-wishlist__search"
-          placeholder="Search wishes and projects"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search the wishlist"
-        />
-        <label className="guide-wishlist__sort">
-          <span>Sort</span>
-          <select value={sort} onChange={(e) => setSort(e.target.value as WishlistSort)}>
-            {SORTS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="guide-viewswitch" role="group" aria-label="Wishlist view">
-          {(['flat', 'projects'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              className={`guide-viewswitch__button ${view === v ? 'guide-viewswitch__button--active' : ''}`}
-              aria-pressed={view === v}
-              onClick={() => setView(v)}
-            >
-              {v === 'flat' ? 'Flat' : 'Projects'}
-            </button>
-          ))}
-        </div>
-        <button type="button" className="guide-checkup__run" onClick={() => setAdding('wish')}>
-          <Plus size={13} aria-hidden /> Add a wish
-        </button>
-        <button type="button" className="guide-link-button" onClick={() => setAdding('project')}>
-          Add a project
-        </button>
-        <button
-          type="button"
-          className="guide-icon-button"
-          onClick={() => setSettingsOpen((o) => !o)}
-          aria-label="Wishlist settings"
-          title="Cooling-off and review defaults"
-          aria-expanded={settingsOpen}
-        >
-          <Settings2 size={14} />
-        </button>
-      </Surface>
-
-      {settingsOpen && (
-        <form
-          className="guide-wishlist__settings"
-          onSubmit={(e) => {
-            e.preventDefault()
-            const form = new FormData(e.currentTarget)
-            setSettings.mutate({
-              cooling_days: Number(form.get('cooling_days')),
-              review_after_days: Number(form.get('review_after_days')),
-            })
-            setSettingsOpen(false)
-          }}
-        >
-          <label className="tool__field tool__field--inline">
-            <span>Cooling-off for new wishes, days</span>
-            <input name="cooling_days" inputMode="numeric" defaultValue={data.settings.cooling_days} />
+      <Surface as="div" className="guide-wishlist__card">
+        <div className="guide-wishlist__bar surface surface--chrome">
+          <input
+            type="search"
+            className="guide-wishlist__search"
+            placeholder="Search wishes and projects"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search the wishlist"
+          />
+          <label className="guide-wishlist__sort">
+            <span>Sort</span>
+            <select value={sort} onChange={(e) => setSort(e.target.value as WishlistSort)}>
+              {SORTS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
           </label>
-          <label className="tool__field tool__field--inline">
-            <span>Ask "still want it?" after, days</span>
-            <input name="review_after_days" inputMode="numeric" defaultValue={data.settings.review_after_days} />
-          </label>
-          <button type="submit" className="guide-link-button">
-            Save
-          </button>
-        </form>
-      )}
-
-      {data.items.length === 0 ? (
-        <p className="guide-wishlist__empty">
-          Nothing on the list yet. Add something you want — and give it an envelope, so the budget
-          can tell you when.
-        </p>
-      ) : view === 'flat' ? (
-        <div className="guide-wishlist__list">{rest.map((w) => card(w))}</div>
-      ) : (
-        <div className="guide-wishlist__list">
-          {groupByProject(filtered, activeProjects).map((section) => (
-            <WishlistProjectSection
-              key={section.project?.id ?? 'loose'}
-              project={section.project}
-              count={section.items.length}
-              onEdit={section.project ? () => setEditingProject(section.project) : undefined}
-              onDelete={section.project ? () => removeProject.mutate(section.project!.id) : undefined}
-            >
-              {section.items.length ? (
-                section.items.map((w) => card(w))
-              ) : (
-                <p className="guide-wishlist__empty">Nothing on it yet.</p>
-              )}
-            </WishlistProjectSection>
-          ))}
-        </div>
-      )}
-
-      {data.drains && (
-        <section className="wish-drains">
-          <h3 className="wish-drains__title">What pulled from your wants</h3>
-          {data.drains.moves.length === 0 ? (
-            <p className="wish-drains__empty">Nothing left your wants this month.</p>
-          ) : (
-            <>
-              <p className="wish-drains__total">
-                {fmt.formatMoney(Number(data.drains.total))} moved out of wish envelopes this month.
-              </p>
-              <ul className="wish-drains__list">
-                {data.drains.moves.map((m) => (
-                  <li key={m.move_id} className="wish-drains__row">
-                    <span className="wish-drains__date">{fmt.formatDate(m.date.slice(0, 10))}</span>
-                    <span className="wish-drains__amount tabular">{fmt.formatMoney(Number(m.amount))}</span>
-                    <span className="wish-drains__path">
-                      {m.from_name} → {m.to_name}
-                    </span>
-                    {m.affected.map((a) => (
-                      <span key={a.item_id} className="wish-drains__impact">
-                        {a.name}: {impactLabel(a.months_further) ?? 'no pace to measure by'}
-                      </span>
-                    ))}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-      )}
-
-      {(data.history.length > 0 || completeProjects.length > 0) && (
-        <Collapsible
-          title="History"
-          count={data.history.length + completeProjects.length}
-          isOpen={historyOpen}
-          onToggle={() => setHistoryOpen((o) => !o)}
-          className="guide-wishlist__history"
-        >
-          {completeProjects.map((p) => (
-            <p key={p.id} className="guide-wishlist__history-row">
-              <strong>{p.name}</strong> — complete
-            </p>
-          ))}
-          {data.history.map((w) => (
-            <p key={w.id} className="guide-wishlist__history-row">
-              <strong>{w.name}</strong> · {fmt.formatMoney(Number(w.cost))} ·{' '}
-              {w.status === 'done' ? `done ${w.done_at ? fmt.formatDate(w.done_at) : ''}` : 'dropped'}
+          <div className="guide-viewswitch" role="group" aria-label="Wishlist view">
+            {(['flat', 'projects'] as const).map((v) => (
               <button
+                key={v}
                 type="button"
-                className="guide-link-button"
-                onClick={() => update.mutate({ id: w.id, status: 'open' })}
+                className={`guide-viewswitch__button ${view === v ? 'guide-viewswitch__button--active' : ''}`}
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
               >
-                Reopen
+                {v === 'flat' ? 'Flat' : 'Projects'}
               </button>
-            </p>
-          ))}
-        </Collapsible>
-      )}
+            ))}
+          </div>
+          <button type="button" className="guide-checkup__run" onClick={() => setAdding('wish')}>
+            <Plus size={13} aria-hidden /> Add a wish
+          </button>
+          <button type="button" className="guide-link-button" onClick={() => setAdding('project')}>
+            Add a project
+          </button>
+          <button
+            type="button"
+            className="guide-icon-button"
+            onClick={() => setSettingsOpen((o) => !o)}
+            aria-label="Wishlist settings"
+            title="Cooling-off and review defaults"
+            aria-expanded={settingsOpen}
+          >
+            <Settings2 size={14} />
+          </button>
+        </div>
+
+        <div className="guide-wishlist__body">
+        {settingsOpen && (
+          <form
+            className="guide-wishlist__settings"
+            onSubmit={(e) => {
+              e.preventDefault()
+              const form = new FormData(e.currentTarget)
+              setSettings.mutate({
+                cooling_days: Number(form.get('cooling_days')),
+                review_after_days: Number(form.get('review_after_days')),
+              })
+              setSettingsOpen(false)
+            }}
+          >
+            <label className="tool__field tool__field--inline">
+              <span>Cooling-off for new wishes, days</span>
+              <input name="cooling_days" inputMode="numeric" defaultValue={data.settings.cooling_days} />
+            </label>
+            <label className="tool__field tool__field--inline">
+              <span>Ask "still want it?" after, days</span>
+              <input name="review_after_days" inputMode="numeric" defaultValue={data.settings.review_after_days} />
+            </label>
+            <button type="submit" className="guide-link-button">
+              Save
+            </button>
+          </form>
+        )}
+
+        {data.items.length === 0 ? (
+          <p className="guide-wishlist__empty">
+            Nothing on the list yet. Add something you want — and give it an envelope, so the budget
+            can tell you when.
+          </p>
+        ) : view === 'flat' ? (
+          <div className="guide-wishlist__list">{rest.map((w) => card(w))}</div>
+        ) : (
+          <div className="guide-wishlist__list">
+            {groupByProject(filtered, activeProjects).map((section) => (
+              <WishlistProjectSection
+                key={section.project?.id ?? 'loose'}
+                project={section.project}
+                count={section.items.length}
+                onEdit={section.project ? () => setEditingProject(section.project) : undefined}
+                onDelete={section.project ? () => removeProject.mutate(section.project!.id) : undefined}
+              >
+                {section.items.length ? (
+                  section.items.map((w) => card(w))
+                ) : (
+                  <p className="guide-wishlist__empty">Nothing on it yet.</p>
+                )}
+              </WishlistProjectSection>
+            ))}
+          </div>
+        )}
+
+        {data.drains && (
+          <section className="wish-drains">
+            <h3 className="wish-drains__title">What pulled from your wants</h3>
+            {data.drains.moves.length === 0 ? (
+              <p className="wish-drains__empty">Nothing left your wants this month.</p>
+            ) : (
+              <>
+                <p className="wish-drains__total">
+                  {fmt.formatMoney(Number(data.drains.total))} moved out of wish envelopes this month.
+                </p>
+                <ul className="wish-drains__list">
+                  {data.drains.moves.map((m) => (
+                    <li key={m.move_id} className="wish-drains__row">
+                      <span className="wish-drains__date">{fmt.formatDate(m.date.slice(0, 10))}</span>
+                      <span className="wish-drains__amount tabular">{fmt.formatMoney(Number(m.amount))}</span>
+                      <span className="wish-drains__path">
+                        {m.from_name} → {m.to_name}
+                      </span>
+                      {m.affected.map((a) => (
+                        <span key={a.item_id} className="wish-drains__impact">
+                          {a.name}: {impactLabel(a.months_further) ?? 'no pace to measure by'}
+                        </span>
+                      ))}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
+
+        {(data.history.length > 0 || completeProjects.length > 0) && (
+          <Collapsible
+            title="History"
+            count={data.history.length + completeProjects.length}
+            isOpen={historyOpen}
+            onToggle={() => setHistoryOpen((o) => !o)}
+            className="guide-wishlist__history"
+          >
+            {completeProjects.map((p) => (
+              <p key={p.id} className="guide-wishlist__history-row">
+                <strong>{p.name}</strong> — complete
+              </p>
+            ))}
+            {data.history.map((w) => (
+              <p key={w.id} className="guide-wishlist__history-row">
+                <strong>{w.name}</strong> · {fmt.formatMoney(Number(w.cost))} ·{' '}
+                {w.status === 'done' ? `done ${w.done_at ? fmt.formatDate(w.done_at) : ''}` : 'dropped'}
+                <button
+                  type="button"
+                  className="guide-link-button"
+                  onClick={() => update.mutate({ id: w.id, status: 'open' })}
+                >
+                  Reopen
+                </button>
+              </p>
+            ))}
+          </Collapsible>
+        )}
+        </div>
+      </Surface>
 
       {adding === 'wish' && (
         <WishForm

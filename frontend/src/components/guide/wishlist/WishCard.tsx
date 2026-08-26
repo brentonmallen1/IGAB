@@ -41,7 +41,7 @@ export function WishCard({
   const pct = progress === null ? 0 : Math.round(Math.min(1, Math.max(0, progress)) * 100)
 
   return (
-    <article className={`wish ${hero ? 'wish--hero' : ''} ${wish.cooling ? 'wish--cooling' : ''}`}>
+    <article className={`wish ${hero ? 'wish--hero surface' : ''} ${wish.cooling ? 'wish--cooling' : ''}`}>
       <div className="wish__head">
         <h4 className="wish__name">
           {wish.url ? (

@@ -6,6 +6,7 @@ import { useGuideCheckup, useGuideOverview, useRunHealthReport } from '../../api
 import type { CheckupMetric } from '../../api/guide'
 import { useFormatters } from '../../hooks/useFormatters'
 import { MetricCard } from '../reports/MetricCard'
+import { Surface } from '../common/Surface'
 import { HealthReportDialog } from './HealthReportDialog'
 
 /**
@@ -92,7 +93,7 @@ export function CheckupPanel() {
       </header>
 
       {data && (
-        <div className="guide-checkup__grid">
+        <Surface as="div" className="guide-checkup__card guide-checkup__grid">
           {data.metrics.map((m) => {
             const { value, target } = display(m)
             const warn = m.finding_kinds.some((k) => fired.has(k))
@@ -102,7 +103,6 @@ export function CheckupPanel() {
                 label={m.label}
                 value={value}
                 warning={warn}
-                variant="raised"
                 sub={
                   <span className="guide-checkup__sub">
                     {target !== null && (
@@ -121,7 +121,7 @@ export function CheckupPanel() {
               />
             )
           })}
-        </div>
+        </Surface>
       )}
 
       <p className="guide-checkup__note">

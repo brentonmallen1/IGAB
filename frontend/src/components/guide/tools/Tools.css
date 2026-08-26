@@ -39,6 +39,19 @@
   color: var(--text-muted);
 }
 
+/* One raised card per calculator: a chrome strip carrying the blurb, the
+   inputs and results below, result cards as sunken wells. Same shape as the
+   roadmap map's card, so the tabs read as one family. */
+.guide-tools__card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* the chrome strip follows the card's corners */
+}
+
+.guide-tools__strip { padding: var(--spacing-sm) var(--spacing-lg); }
+
+.guide-tools__body { padding: var(--spacing-lg); }
+
 .tool {
   display: flex;
   flex-direction: column;
@@ -206,7 +219,7 @@
   padding: var(--spacing-md);
   background: var(--surface-sunken);
   border: 1px solid var(--edge);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-sm);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
