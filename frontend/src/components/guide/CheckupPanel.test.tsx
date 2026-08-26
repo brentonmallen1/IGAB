@@ -82,7 +82,7 @@ function renderPanel() {
   )
 }
 
-const ON: GuidePreferences = { personalization: true, checkup: true }
+const ON: GuidePreferences = { personalization: true, checkup: true, wishlist: true }
 
 beforeEach(() => {
   useAppStore.setState({ currentBudgetId: 'b1' })
@@ -98,7 +98,7 @@ beforeEach(() => {
 describe('CheckupPanel', () => {
   it('offers no report when reviews are off', () => {
     vi.mocked(useGuideOverview).mockReturnValue(
-      overview({ personalization: true, checkup: false }) as never
+      overview({ personalization: true, checkup: false, wishlist: true }) as never
     )
     vi.mocked(useGuideCheckup).mockReturnValue({ data: undefined, isLoading: false } as never)
     renderPanel()

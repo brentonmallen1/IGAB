@@ -12,7 +12,8 @@ vi.mock('../../api/guide', async (importOriginal) => ({
   useGuideOverview: vi.fn(),
 }))
 
-function prefs(preferences: GuidePreferences) {
+function prefs(preferences: Omit<GuidePreferences, 'wishlist'> & { wishlist?: boolean }) {
+  preferences = { wishlist: true, ...preferences }
   vi.mocked(useGuideOverview).mockReturnValue({
     data: { concepts: [], thresholds: {}, preferences, progress: {} },
   } as never)
@@ -60,6 +61,13 @@ describe('GuidePage', () => {
     renderPage('/guide?tab=tools&tool=crystal-ball')
     expect(useGuideStore.getState().activeTab).toBe('tools')
     expect(useGuideStore.getState().activeTool).toBeNull()
+  })
+
+  it('hides the Wishlist tab when the wishlist is off', () => {
+    prefs({ personalization: true, checkup: true, wishlist: false })
+    renderPage()
+    expect(screen.queryByRole('button', { name: 'Wishlist' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Checkup' })).toBeInTheDocument()
   })
 
   it('falls back to the roadmap when the persisted tab is switched off', () => {

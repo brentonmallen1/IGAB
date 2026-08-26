@@ -39,4 +39,10 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     on: 'categories and payees',
     does: 'Spending here is what a lean month costs. The Essentials report, the Overview’s essentials card and the Guide’s emergency-fund target are all built from it.',
   },
+  {
+    key: 'wishlist',
+    name: 'Wishlist',
+    on: 'categories',
+    does: 'Applied by the wishlist itself to every envelope that funds an open wish, and removed when none does — nothing to tag by hand. Reports and tag filters can read it.',
+  },
 ]

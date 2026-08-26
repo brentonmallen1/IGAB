@@ -23,7 +23,8 @@ import { useReorderCategoryGroups } from './categories'
 import type { CategoryGroup } from '../types'
 
 function group(id: string, name: string, sort_order: number): CategoryGroup {
-  return { id, budget_id: 'b1', name, sort_order, is_hidden: false, is_system: false }
+  return { id, budget_id: 'b1', name, sort_order, is_hidden: false, is_system: false,
+  system_key: null }
 }
 
 const GROUPS = [group('g1', 'Bills', 0), group('g2', 'Wants', 1), group('g3', 'Savings', 2)]

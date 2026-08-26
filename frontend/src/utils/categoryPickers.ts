@@ -65,6 +65,7 @@ function ungroupedFallback(budgetId: string): CategoryGroup {
     sort_order: Number.MAX_SAFE_INTEGER,
     is_hidden: false,
     is_system: false,
+    system_key: null,
   } as CategoryGroup
 }
 

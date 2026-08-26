@@ -60,6 +60,9 @@ export function CategoryGroupRow({
   const someGroupSelected = categoryIds.some((id) => selectedCategoryIds.has(id))
   const isExpanded = !collapsedGroups.has(group.id)
   const canEditGroup = !group.is_system && !readOnlyGroup
+  // A group the app keeps by key (the Wishlist) can be hidden but not renamed
+  // or deleted — the server refuses both; offering them would only surface an error.
+  const canRenameOrDelete = canEditGroup && !group.system_key
 
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -209,7 +212,7 @@ export function CategoryGroupRow({
         ) : (
           <span
             className="category-group-row__name"
-            onDoubleClick={canEditGroup ? startRename : undefined}
+            onDoubleClick={canRenameOrDelete ? startRename : undefined}
           >
             {group.name}
           </span>
@@ -217,7 +220,7 @@ export function CategoryGroupRow({
 
         {!isRenaming && (
           <div className="category-group-row__actions">
-            {canEditGroup && (
+            {canRenameOrDelete && (
               <button className="category-group-row__action-btn" onClick={startRename} aria-label={`Rename group ${group.name}`} title="Rename">
                 <Pencil size={12} />
               </button>
@@ -227,7 +230,7 @@ export function CategoryGroupRow({
                 <EyeOff size={12} />
               </button>
             )}
-            {canEditGroup && (
+            {canRenameOrDelete && (
               <button
                 className="category-group-row__action-btn category-group-row__action-btn--danger"
                 onClick={handleDelete}
