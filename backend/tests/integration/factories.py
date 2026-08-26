@@ -122,9 +122,7 @@ async def create_category_group(
     *,
     is_system: bool = False,
 ) -> CategoryGroup:
-    group = CategoryGroup(
-        budget_id=budget.id, name=name or _name("Group"), is_system=is_system
-    )
+    group = CategoryGroup(budget_id=budget.id, name=name or _name("Group"), is_system=is_system)
     session.add(group)
     await session.flush()
     return group
@@ -395,7 +393,9 @@ def make_services(session: AsyncSession) -> Services:
     reconciliation = ReconciliationService(
         session, reconciliation_repo, account_repo, payee_repo, transaction_repo, transactions
     )
-    matching = TransactionMatchingService(session, transaction_repo, match_repo, payee_repo)
+    matching = TransactionMatchingService(
+        session, transaction_repo, match_repo, payee_repo, transactions
+    )
 
     return Services(
         session=session,

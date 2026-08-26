@@ -115,25 +115,15 @@ def _draft_result_json(draft) -> dict:
 
 
 def _build_services(session: AsyncSession):
-    from igab.repositories.account_repo import AccountRepository
     from igab.repositories.attachment_repo import AttachmentRepository
-    from igab.repositories.category_repo import CategoryRepository
-    from igab.repositories.payee_repo import PayeeRepository
     from igab.repositories.settings_repo import SettingsRepository
-    from igab.repositories.transaction_repo import TransactionRepository
     from igab.services.ai_draft_service import AIDraftService
     from igab.services.ai_service import AIService
     from igab.services.attachment_service import AttachmentService
     from igab.services.settings_service import SettingsService
-    from igab.services.transaction_service import TransactionService
+    from igab.services.transaction_service import build_transaction_service
 
-    txn_svc = TransactionService(
-        session,
-        TransactionRepository(session),
-        AccountRepository(session),
-        CategoryRepository(session),
-        PayeeRepository(session),
-    )
+    txn_svc = build_transaction_service(session)
     return {
         "ai": AIService(session, SettingsService(SettingsRepository(session))),
         "transactions": txn_svc,

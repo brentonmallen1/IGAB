@@ -47,8 +47,11 @@ from igab.services.scheduled_transaction_service import ScheduledTransactionServ
 from igab.services.settings_service import SettingsService
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.target_service import TargetService
-from igab.services.transaction_matching_service import TransactionMatchingService
-from igab.services.transaction_service import TransactionService
+from igab.services.transaction_matching_service import (
+    TransactionMatchingService,
+    build_transaction_matching_service,
+)
+from igab.services.transaction_service import TransactionService, build_transaction_service
 from igab.services.undo_service import UndoService
 
 bearer_scheme = HTTPBearer()
@@ -268,25 +271,8 @@ def get_transaction_match_repo(session: SessionDep) -> TransactionMatchRepositor
     return TransactionMatchRepository(session)
 
 
-def get_transaction_service(
-    session: SessionDep,
-    transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
-    account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
-    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
-    payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
-    attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
-    match_repo: Annotated[TransactionMatchRepository, Depends(get_transaction_match_repo)],
-    current_user: "CurrentUser",
-) -> TransactionService:
-    service = TransactionService(
-        session,
-        transaction_repo,
-        account_repo,
-        category_repo,
-        payee_repo,
-        attachment_repo=attachment_repo,
-        match_repo=match_repo,
-    )
+def get_transaction_service(session: SessionDep, current_user: "CurrentUser") -> TransactionService:
+    service = build_transaction_service(session)
     # Same actor stamping as get_budget_service — see there.
     service.changes.actor_user_id = current_user.id
     return service
@@ -294,11 +280,9 @@ def get_transaction_service(
 
 def get_transaction_matching_service(
     session: SessionDep,
-    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
-    match_repo: Annotated[TransactionMatchRepository, Depends(get_transaction_match_repo)],
-    payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
 ) -> TransactionMatchingService:
-    return TransactionMatchingService(session, txn_repo, match_repo, payee_repo)
+    return build_transaction_matching_service(session, txn_service)
 
 
 def get_simplefin_service(

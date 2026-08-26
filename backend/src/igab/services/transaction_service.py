@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, posting_updates
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.merging import MergeSide, choose_survivor, survivor_violation
 from igab.domain.reconciliation import (
     RECONCILED_LOCKED_FIELDS,
     locked_changes,
@@ -107,6 +108,30 @@ class SplitSpec:
 
 # Fields that may never be set to NULL via PATCH
 _REQUIRED_FIELDS = ("date", "amount", "cleared", "approved")
+
+
+def build_transaction_service(session: AsyncSession) -> TransactionService:
+    """A fully wired TransactionService over one session.
+
+    The one place the constructor is called with every repository. Five
+    call sites used to wire it by hand, and the scheduler's two left out the
+    attachment and match repositories — so a merge made by the hourly sync
+    silently skipped reassigning receipts and cancelling stale review matches.
+    """
+    from igab.repositories.attachment_repo import AttachmentRepository
+    from igab.repositories.transaction_match_repo import TransactionMatchRepository
+
+    return TransactionService(
+        session,
+        TransactionRepository(session),
+        AccountRepository(session),
+        CategoryRepository(session),
+        PayeeRepository(session),
+        attachment_repo=AttachmentRepository(session),
+        match_repo=TransactionMatchRepository(session),
+    )
+
+
 # Cleared values reserved for system flows (reconciliation, bank sync)
 _SYSTEM_CLEARED_VALUES = ("reconciled", "pending")
 
@@ -966,98 +991,96 @@ class TransactionService:
         transaction_ids: list[uuid.UUID],
         survivor_id: uuid.UUID | None = None,
     ) -> Transaction:
-        """Merge two transactions. Survivor keeps its data; import metadata is merged."""
+        """Merge two rows that are the same real-world transaction.
+
+        The one merge: the user's explicit merge and the bank-sync review
+        queue's accept both come here. Who survives is domain.merging's
+        rule; what a bank-sourced loser contributes is the bank-posting
+        rule's (its posted amount replaces the survivor's — this is the
+        accepted amount-change review — with the prior amount kept in
+        `entered_amount`; its posted date, amount and payee string arrive as
+        provenance; an uncleared survivor clears). Everything else is
+        additive: the survivor keeps what it has and takes what it lacks —
+        memo, category, payee, approval, the loser's attachments, its import
+        and bank identity. A merge determines which value wins, never which
+        one is lost.
+
+        The loser is soft-deleted before the survivor is written so the
+        partial unique index on (account_id, sync_id) never sees two live
+        rows. Recorded as one batch, so undo restores both rows and moves
+        exactly the loser's attachments back.
+        """
         if len(transaction_ids) != 2:
             raise InvariantViolation("Exactly 2 transactions are required for a merge")
 
         txn1 = await self.transaction_repo.get_or_raise(transaction_ids[0])
         txn2 = await self.transaction_repo.get_or_raise(transaction_ids[1])
-
         for txn in (txn1, txn2):
             if str(txn.budget_id) != str(budget_id):
                 raise InvariantViolation("All transactions must belong to this budget")
-            if txn.is_split or txn.parent_transaction_id:
-                raise InvariantViolation("Cannot merge split transactions")
-            if txn.transfer_id:
-                raise InvariantViolation("Cannot merge transfer transactions")
 
-        if txn1.cleared == "reconciled" and txn2.cleared == "reconciled":
-            raise InvariantViolation("Cannot merge two reconciled transactions")
+        side1, side2 = MergeSide.from_transaction(txn1), MergeSide.from_transaction(txn2)
+        survivor_side, deleted_side = choose_survivor(side1, side2, survivor_id)
+        violation = survivor_violation(survivor_side, deleted_side, survivor_id)
+        if violation is not None:
+            raise InvariantViolation(violation)
+        survivor = txn1 if survivor_side.id == txn1.id else txn2
+        deleted = txn2 if survivor is txn1 else txn1
 
-        if txn1.account_id != txn2.account_id:
-            raise InvariantViolation("Transactions must be in the same account")
-
-        # A merge asserts "these are the same real-world transaction" — with
-        # different amounts that's false, and merging would silently change
-        # the account balance by the difference.
-        if txn1.amount != txn2.amount:
+        updates: dict[str, Any] = {}
+        if deleted_side.bank_sourced:
+            outcome = posting_updates(
+                RowState.from_transaction(survivor),
+                FeedRecord.from_transaction(deleted),
+                confirmed=True,
+            )
+            if isinstance(outcome, Review):
+                raise InvariantViolation(outcome.reason)
+            updates.update(outcome.updates)
+        elif survivor.amount != deleted.amount:
+            # Neither side speaks for the bank, so nothing arbitrates the
+            # difference — and merging would silently change the account
+            # balance by it.
             raise InvariantViolation("Only transactions with identical amounts can be merged")
 
-        if txn1.sync_id and txn2.sync_id and txn1.sync_id != txn2.sync_id:
-            raise InvariantViolation("Both transactions are linked to different bank transactions")
-
-        # When one transaction is reconciled it must always be the survivor
-        if txn1.cleared == "reconciled":
-            reconciled_txn = txn1
-        elif txn2.cleared == "reconciled":
-            reconciled_txn = txn2
-        else:
-            reconciled_txn = None
-        if reconciled_txn is not None:
-            if survivor_id is not None and survivor_id != reconciled_txn.id:
-                raise InvariantViolation("The reconciled transaction must be kept as the survivor")
-            survivor = reconciled_txn
-            deleted = txn2 if survivor is txn1 else txn1
-        elif survivor_id is not None:
-            if survivor_id not in transaction_ids:
-                raise InvariantViolation("survivor_id must be one of the transaction_ids")
-            survivor = txn1 if txn1.id == survivor_id else txn2
-            deleted = txn2 if txn1.id == survivor_id else txn1
-        else:
-            if txn1.created_at <= txn2.created_at:
-                survivor, deleted = txn1, txn2
-            else:
-                survivor, deleted = txn2, txn1
-
-        # Merge import metadata from deleted into survivor if survivor lacks it
-        updates: dict = {}
+        # Identity and import metadata the survivor lacks.
         if not survivor.import_id and deleted.import_id:
             updates["import_id"] = deleted.import_id
         if not survivor.import_description and deleted.import_description:
-            updates["import_description"] = deleted.import_description
+            updates.setdefault("import_description", deleted.import_description)
         if not survivor.sync_id and deleted.sync_id:
-            updates["sync_id"] = deleted.sync_id
-        # An id-less bank feed row has sync_source but no sync_id — its bank
-        # identity still transfers to the survivor.
+            updates.setdefault("sync_id", deleted.sync_id)
         if not survivor.sync_source and deleted.sync_source:
-            updates["sync_source"] = deleted.sync_source
+            updates.setdefault("sync_source", deleted.sync_source)
         if deleted.has_sync_source or survivor.has_sync_source:
             updates["has_sync_source"] = True
 
-        # The survivor's ledger date is never touched — it is the date the
-        # user chose by picking the survivor. Bank provenance follows the
-        # merge as metadata instead.
-        if survivor.bank_posted_date is None:
-            deleted_is_bank = bool(deleted.sync_id or deleted.sync_source)
-            inherited = deleted.bank_posted_date or (deleted.date if deleted_is_bank else None)
-            if inherited is not None:
-                updates["bank_posted_date"] = inherited
-        if survivor.bank_amount is None:
-            deleted_is_bank = bool(deleted.sync_id or deleted.sync_source)
-            inherited_amount = deleted.bank_amount or (deleted.amount if deleted_is_bank else None)
-            if inherited_amount is not None:
-                updates["bank_amount"] = inherited_amount
-        if survivor.bank_payee is None and deleted.bank_payee:
-            updates["bank_payee"] = deleted.bank_payee
         # Mirror case: survivor is the bank row, the deleted row is manual —
         # keep the user's date once as entered-date provenance.
         if (
-            (survivor.sync_id or survivor.sync_source)
-            and not (deleted.sync_id or deleted.sync_source)
+            survivor_side.bank_sourced
+            and not deleted_side.bank_sourced
             and survivor.entered_date is None
             and deleted.date != survivor.date
         ):
             updates["entered_date"] = deleted.date
+
+        # Bookkeeping is additive. A memo present on both sides and different
+        # is kept whole — "survivor — loser" — rather than one being dropped.
+        # Category and payee never land on a transfer leg (its payee is its
+        # destination and a category is allowed on only one kind of leg), and
+        # a split parent's categories live on its lines.
+        if deleted.memo and not survivor.memo:
+            updates["memo"] = deleted.memo
+        elif deleted.memo and survivor.memo and deleted.memo != survivor.memo:
+            updates["memo"] = f"{survivor.memo} — {deleted.memo}"
+        if survivor.transfer_id is None:
+            if survivor.category_id is None and deleted.category_id and not survivor.is_split:
+                updates["category_id"] = deleted.category_id
+            if survivor.payee_id is None and deleted.payee_id:
+                updates["payee_id"] = deleted.payee_id
+        if deleted.approved and not survivor.approved:
+            updates["approved"] = True
 
         survivor_before = snapshot("transaction", survivor)
         deleted_before = snapshot("transaction", deleted)
@@ -1068,21 +1091,23 @@ class TransactionService:
                 str(a.id) for a in await self.attachment_repo.get_for_transaction(deleted.id)
             ]
 
-        # Delete first so the partial unique indexes never see two live rows
-        # with the same identity, then write metadata onto the survivor.
-        await self.transaction_repo.soft_delete(deleted.id)
-        if updates:
-            await self.transaction_repo.update(survivor.id, **updates)
-
-        # The deleted row's attachments belong to the surviving record now.
-        if self.attachment_repo is not None:
-            await self.attachment_repo.reassign(deleted.id, survivor.id)
-        # Pending review matches pointing at the deleted row are moot.
-        if self.match_repo is not None:
-            await self.match_repo.cancel_pending_for_transaction(deleted.id)
-
-        await self.transaction_repo.refresh(survivor)
         with self.changes.batch():
+            # Delete first so the partial unique indexes never see two live
+            # rows with the same identity, then write onto the survivor.
+            await self.transaction_repo.soft_delete(deleted.id)
+            if updates:
+                await self.transaction_repo.update(survivor.id, **updates)
+            if "cleared" in updates and survivor.is_split:
+                await self._mirror_children(survivor.id, cleared=updates["cleared"])
+
+            # The deleted row's attachments belong to the surviving record now.
+            if self.attachment_repo is not None:
+                await self.attachment_repo.reassign(deleted.id, survivor.id)
+            # Pending review matches pointing at the deleted row are moot.
+            if self.match_repo is not None:
+                await self.match_repo.cancel_pending_for_transaction(deleted.id)
+
+            await self.transaction_repo.refresh(survivor)
             await self._record_txn(deleted, "delete", before=deleted_before, refresh=False)
             await self._record_txn(survivor, "update", before=survivor_before, refresh=False)
         return survivor

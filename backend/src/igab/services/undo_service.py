@@ -83,7 +83,13 @@ class UndoService:
             await self._apply(change, force)
             change.undone_at = func.now()
             undone.append(change.id)
-        await self.session.flush()
+            # One flush per step, so the reverse order is the order the
+            # database sees. A merge's batch is "delete the loser, then write
+            # its bank id onto the survivor"; undone in one flush, the unit of
+            # work may revive the loser before the survivor gives the id
+            # back, and the partial unique index on (account_id, sync_id)
+            # refuses two live rows with it.
+            await self.session.flush()
         return undone
 
     async def undo_move(self, budget_id: uuid.UUID, move_id: uuid.UUID) -> list[uuid.UUID]:

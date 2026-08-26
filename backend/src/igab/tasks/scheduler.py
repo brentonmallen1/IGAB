@@ -10,26 +10,16 @@ async def process_due_scheduled_transactions() -> None:
 
     from igab.db.models import Budget
     from igab.db.session import AsyncSessionLocal
-    from igab.repositories.account_repo import AccountRepository
-    from igab.repositories.category_repo import CategoryRepository
-    from igab.repositories.payee_repo import PayeeRepository
     from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
-    from igab.repositories.transaction_repo import TransactionRepository
     from igab.services.scheduled_transaction_service import ScheduledTransactionService
-    from igab.services.transaction_service import TransactionService
+    from igab.services.transaction_service import build_transaction_service
 
     async with AsyncSessionLocal() as session:
         try:
             result = await session.execute(select(Budget))
             budgets = list(result.scalars().all())
 
-            txn_svc = TransactionService(
-                session,
-                TransactionRepository(session),
-                AccountRepository(session),
-                CategoryRepository(session),
-                PayeeRepository(session),
-            )
+            txn_svc = build_transaction_service(session)
             sched_svc = ScheduledTransactionService(
                 ScheduledTransactionRepository(session), txn_svc
             )
@@ -49,14 +39,11 @@ async def process_auto_simplefin_sync() -> None:
     from igab.db.models import Budget, BudgetMember, SimpleFINConnection
     from igab.db.session import AsyncSessionLocal
     from igab.repositories.account_repo import AccountRepository
-    from igab.repositories.category_repo import CategoryRepository
-    from igab.repositories.payee_repo import PayeeRepository
     from igab.repositories.simplefin_repo import SimpleFINRepository
-    from igab.repositories.transaction_match_repo import TransactionMatchRepository
     from igab.repositories.transaction_repo import TransactionRepository
     from igab.services.simplefin_service import SimpleFINService
-    from igab.services.transaction_matching_service import TransactionMatchingService
-    from igab.services.transaction_service import TransactionService
+    from igab.services.transaction_matching_service import build_transaction_matching_service
+    from igab.services.transaction_service import build_transaction_service
 
     current_hour = datetime.now(UTC).hour
 
@@ -89,23 +76,14 @@ async def process_auto_simplefin_sync() -> None:
                 )
                 budgets = list(budgets_result.scalars().all())
 
-                txn_repo = TransactionRepository(session)
-                account_repo = AccountRepository(session)
-                payee_repo = PayeeRepository(session)
-                category_repo = CategoryRepository(session)
-
-                txn_svc = TransactionService(
-                    session, txn_repo, account_repo, category_repo, payee_repo
-                )
-                match_repo = TransactionMatchRepository(session)
-                matching_svc = TransactionMatchingService(session, txn_repo, match_repo, payee_repo)
+                txn_svc = build_transaction_service(session)
                 svc = SimpleFINService(
                     session,
                     SimpleFINRepository(session),
-                    account_repo,
-                    txn_repo,
+                    AccountRepository(session),
+                    TransactionRepository(session),
                     txn_svc,
-                    matching_svc,
+                    build_transaction_matching_service(session, txn_svc),
                 )
 
                 for budget in budgets:
