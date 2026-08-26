@@ -2747,6 +2747,7 @@ class ReportService:
                     "category_count": 0,
                 },
                 "months": [],
+                "drains": {"total": Decimal("0"), "moves": []},
             }
 
         # Date range
@@ -2754,6 +2755,26 @@ class ReportService:
         end_date = today
         start_date = _subtract_months(today, months).replace(day=1)
         month_list = _months_in_range(start_date, end_date)
+
+        # What pulled from savings: moves out of these envelopes in the window,
+        # named on both sides. The same rows the wishlist reads for its
+        # envelopes — one query, one shaping, two readers.
+        from igab.domain.drains import drains_total, shape_drains
+        from igab.repositories.budget_move_repo import BudgetMoveRepository
+        from igab.repositories.category_repo import CategoryRepository
+
+        moves = await BudgetMoveRepository(self.session).outflows_from(
+            budget_id, list(savings_cat_ids), start_date, end_date
+        )
+        all_names = {
+            c.id: c.name
+            for c in await CategoryRepository(self.session).get_all(budget_id, include_hidden=True)
+        }
+        shaped = shape_drains(moves, all_names)
+        drains = {
+            "total": drains_total(shaped),
+            "moves": [d.__dict__ for d in shaped],
+        }
 
         # Get category info and current balances
         cat_info_q = (
@@ -2912,6 +2933,7 @@ class ReportService:
                 "category_count": len(categories),
             },
             "months": month_list,
+            "drains": drains,
         }
 
     # ─── Anomaly Detection ────────────────────────────────────────────────────

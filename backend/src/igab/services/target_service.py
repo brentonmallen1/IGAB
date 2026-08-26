@@ -77,6 +77,32 @@ class TargetService:
             return max(Decimal("0"), amount - available) / months_left
         return amount
 
+    def monthly_pace(
+        self,
+        target: CategoryTarget,
+        available: Decimal,
+        today: date | None = None,
+    ) -> Decimal | None:
+        """What this target asks for per month — the pace a wish can count on.
+
+        Funding targets (monthly, weekly, undated needed-for-spending) are
+        their amount, and a dated needed-for-spending target is its shortfall
+        spread over the months left: both exactly `needed_gross`. A dated
+        savings goal is ALSO paced by its date here, which is a deliberate
+        divergence from Fill Underfunded: that fills a savings goal whole,
+        because it is asking what to assign now; this asks how fast the
+        balance is being built, which is what "about N months" means. An
+        undated savings goal has no pace, so it answers None rather than
+        pretending the whole shortfall arrives every month.
+        """
+        today = today or date.today()
+        if target.target_type == "savings_balance":
+            if not target.target_date:
+                return None
+            months_left = months_between(today, target.target_date)
+            return max(Decimal("0"), target.target_amount - available) / months_left
+        return self.needed_gross(target, available, today)
+
     def measures_balance(self, target: CategoryTarget) -> bool:
         """Does this target's progress read AVAILABLE rather than ASSIGNED?"""
         return target.target_type == "savings_balance" or (

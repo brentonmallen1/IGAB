@@ -38,7 +38,7 @@ class TestOverview:
         assert body["thresholds"]["high_interest_apr"] == 10
         # Both switches default on — the roadmap is far more useful knowing
         # the numbers, and every inference is explained and reversible.
-        assert body["preferences"] == {"personalization": True, "checkup": True}
+        assert body["preferences"] == {"personalization": True, "checkup": True, "wishlist": True}
         assert body["progress"] == {}
 
     async def test_a_concept_says_what_it_may_be_bound_to(self, db_session, api_client):
@@ -286,12 +286,12 @@ class TestPreferencesAndProgress:
         )
         # Health findings are built from the same signals — a checkup left on
         # would be a switch that does nothing.
-        assert r.json() == {"personalization": False, "checkup": False}
+        assert r.json() == {"personalization": False, "checkup": False, "wishlist": True}
 
     async def test_checkup_can_be_off_on_its_own(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         r = await api_client.put(f"/api/v1/{budget.id}/guide/preferences", json={"checkup": False})
-        assert r.json() == {"personalization": True, "checkup": False}
+        assert r.json() == {"personalization": True, "checkup": False, "wishlist": True}
 
     async def test_marking_and_clearing_a_step(self, db_session, api_client):
         budget = await _budget(db_session, api_client)

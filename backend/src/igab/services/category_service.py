@@ -296,6 +296,10 @@ class CategoryService:
             raise NotFoundError("Category group", str(group_id))
         if group.is_system:
             raise InvariantViolation("Cannot delete system category groups")
+        if group.system_key is not None:
+            # The wishlist's home. Hide it (the Guide's toggle does) rather
+            # than delete it: wishes point at its envelopes.
+            raise InvariantViolation("This group is kept by the app; hide it instead")
         cats = await self.category_repo.get_by_group(group_id)
         if not cats:
             return await self._delete_empty_group(budget_id, group)

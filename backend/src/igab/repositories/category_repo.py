@@ -11,9 +11,69 @@ from igab.domain.exceptions import InvariantViolation
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import IS_ASSIGNABLE, IS_CATEGORIZABLE
 
+#: Groups the app seeds and protects by key. Kept the way SYSTEM_TAGS is —
+#: (key, name) — and seeded the same lazy way: adopt a same-named group the
+#: user already made rather than colliding with it. These are ordinary,
+#: assignable envelope groups; `is_system` means something else entirely.
+SYSTEM_GROUPS: list[tuple[str, str]] = [("wishlist", "Wishlist")]
+
 
 class CategoryGroupRepository(BaseRepository[CategoryGroup]):
     model = CategoryGroup
+
+    async def get_by_system_key(
+        self, budget_id: uuid.UUID, system_key: str
+    ) -> CategoryGroup | None:
+        result = await self.session.execute(
+            select(CategoryGroup).where(
+                CategoryGroup.budget_id == budget_id,
+                CategoryGroup.system_key == system_key,
+                CategoryGroup.is_deleted == False,  # noqa: E712
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def ensure_system_group(self, budget_id: uuid.UUID, system_key: str) -> CategoryGroup:
+        """The keyed group, seeded on first need.
+
+        A live group the user already named the same is ADOPTED and stamped
+        with the key, as `seed_system_tags` does — creating a second
+        "Wishlist" would collide on the name, and skipping would leave their
+        group unprotected and the wishlist's wishes homeless.
+        """
+        existing = await self.get_by_system_key(budget_id, system_key)
+        if existing is not None:
+            return existing
+        name = dict(SYSTEM_GROUPS)[system_key]
+        claimed = (
+            await self.session.execute(
+                select(CategoryGroup).where(
+                    CategoryGroup.budget_id == budget_id,
+                    func.lower(CategoryGroup.name) == name.lower(),
+                    CategoryGroup.system_key.is_(None),
+                    CategoryGroup.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
+        if claimed is not None:
+            claimed.system_key = system_key
+            await self.session.flush()
+            return claimed
+        last = (
+            await self.session.execute(
+                select(func.coalesce(func.max(CategoryGroup.sort_order), -1)).where(
+                    CategoryGroup.budget_id == budget_id,
+                    CategoryGroup.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one()
+        return await self.create(
+            budget_id=budget_id,
+            name=name,
+            system_key=system_key,
+            sort_order=int(last) + 1,
+            is_system=False,
+        )
 
     async def reorder(self, budget_id: uuid.UUID, group_ids: list[uuid.UUID]) -> None:
         """Set every group's sort_order from its position in `group_ids`.

@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -511,10 +511,29 @@ class SavingsSummary(BaseModel):
     category_count: int
 
 
+class ReportDrainMove(BaseModel):
+    move_id: uuid.UUID
+    month: date
+    date: datetime
+    amount: Decimal
+    from_category_id: uuid.UUID
+    from_name: str
+    to_category_id: uuid.UUID | None
+    to_name: str
+
+
+class ReportDrains(BaseModel):
+    """Money moved out of the report's envelopes in its window."""
+
+    total: Decimal
+    moves: list[ReportDrainMove]
+
+
 class SavingsReportResponse(BaseModel):
     categories: list[SavingsCategory]
     summary: SavingsSummary
     months: list[date]
+    drains: ReportDrains
 
 
 # ─── Savings Rate Report ─────────────────────────────────────────────────────

@@ -90,11 +90,13 @@ class BindingUpdate(BaseModel):
 class PreferencesUpdate(BaseModel):
     personalization: bool | None = None
     checkup: bool | None = None
+    wishlist: bool | None = None
 
 
 class PreferencesResponse(BaseModel):
     personalization: bool
     checkup: bool
+    wishlist: bool
 
 
 class StepUpdate(BaseModel):
