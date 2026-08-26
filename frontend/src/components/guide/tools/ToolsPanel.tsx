@@ -10,9 +10,9 @@ import './Tools.css'
 /**
  * The Tools tab: one calculator at a time, chosen here or by a roadmap node.
  *
- * Every figure any of them shows is arithmetic the server can show its
- * working for. There is no market-return projection and no tax modelling
- * anywhere on this tab, and the footer says so.
+ * Every figure any of them shows is arithmetic you could check by hand.
+ * There is no market-return projection and no tax modeling anywhere on this
+ * tab, and the footer says so.
  */
 export function ToolsPanel() {
   const activeTool = useGuideStore((s) => s.activeTool) ?? 'payoff-plan'
@@ -55,8 +55,8 @@ export function ToolsPanel() {
       </Surface>
 
       <p className="guide-tools__note">
-        Arithmetic that can show its working, nothing more — no projected market returns, no
-        tax modelling, no advice. Nothing you type here is saved.
+        Plain arithmetic you can check, nothing more — no projected market returns, no tax
+        modeling, no advice. Nothing you type here is saved.
       </p>
     </section>
   )

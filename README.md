@@ -106,7 +106,7 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
   open the map and explore the shape of it, branches you won't take included
 - **Every inference is explained, correctable, and optional.** IGAB guesses
   which of your categories or accounts is the emergency fund, and then shows
-  its working. If it guessed wrong, point it at the right one. If the money
+  how it decided. If it guessed wrong, point it at the right one. If the money
   lives somewhere IGAB can't see — another bank, a workplace 401(k) — say so
   and it counts without ever being invented into your balances. If you'd
   rather it didn't look at all, one switch in Settings turns personalization
@@ -126,7 +126,7 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
   each leading to a step or a report. When nothing stands out it says so. The
   only ambient signal is a small amber dot on the roadmap step concerned; mark
   a step done and the dot defers to you
-- **Scenario calculators that show their working** — avalanche against
+- **Scenario calculators you can check by hand** — avalanche against
   snowball over your real debts with a true rollover cascade, measured against
   paying minimums; pay a debt down or save the money instead, at a rate you
   type in; which of two loans costs less once fees are counted; how large an
