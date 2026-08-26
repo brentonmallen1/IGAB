@@ -4,6 +4,7 @@ import type { RoadmapNode } from '../../content/roadmap'
 import type { ConceptInfo, Signal } from '../../api/guide'
 import { GlossaryChips } from './GlossaryChips'
 import { SignalNote } from './SignalNote'
+import { TOOLS } from './tools/toolRegistry'
 
 export type NodeState = 'visible' | 'pending' | 'skipped'
 
@@ -144,9 +145,17 @@ export function NodeCard({
 
       {node.glossary && node.glossary.length > 0 && <GlossaryChips terms={node.glossary} />}
 
-      {node.appLinks && node.appLinks.length > 0 && (
+      {((node.appLinks && node.appLinks.length > 0) || node.tool) && (
         <div className="guide-node__links">
-          {node.appLinks.map((l) => (
+          {node.tool && (
+            <Link
+              to={`/guide?tab=tools&tool=${node.tool}`}
+              className="guide-node__link guide-node__link--tool"
+            >
+              {TOOLS[node.tool].linkLabel}
+            </Link>
+          )}
+          {node.appLinks?.map((l) => (
             <Link key={l.to + l.label} to={l.to} className="guide-node__link">
               {l.label}
             </Link>

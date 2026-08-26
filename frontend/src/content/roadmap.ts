@@ -71,6 +71,11 @@ export interface RoadmapBranch {
   toStage?: StageId
 }
 
+/** The scenario calculators on the Tools tab. A node names the one that
+ *  answers its question; the registry of labels lives with the components. */
+export const TOOL_IDS = ['payoff-plan', 'pay-vs-save', 'loan-compare', 'emergency-fund'] as const
+export type ToolId = (typeof TOOL_IDS)[number]
+
 export interface RoadmapNode {
   id: string
   kind: 'action' | 'decision' | 'note'
@@ -89,6 +94,8 @@ export interface RoadmapNode {
   appLinks?: { label: string; to: string }[]
   /** The user's own number this node would show, once detection exists. */
   signal?: SignalKey
+  /** The calculator that works this node's question through with real numbers. */
+  tool?: ToolId
   /** US-specific account types and tax rules. */
   region?: 'us'
   /** One of several parallel choices offered by the node before it, rather
@@ -258,6 +265,7 @@ export const ROADMAP: RoadmapStage[] = [
     nodes: [
       {
         id: 'starter-ef',
+        tool: 'emergency-fund',
         kind: 'action',
         title: 'Save $1,000, or one month of expenses — whichever is larger',
         body: 'Keep it somewhere you can reach the same day: checking or plain savings. This is not an investment.',
@@ -339,6 +347,7 @@ export const ROADMAP: RoadmapStage[] = [
       },
       {
         id: 'choose-payoff-method',
+        tool: 'payoff-plan',
         kind: 'action',
         title: 'Choose avalanche or snowball — then stick with it',
         body: 'Avalanche pays the highest rate first and costs the least. Snowball pays the smallest balance first and clears individual debts sooner. Keep paying every minimum either way.',
@@ -359,6 +368,7 @@ export const ROADMAP: RoadmapStage[] = [
     nodes: [
       {
         id: 'full-ef',
+        tool: 'emergency-fund',
         kind: 'action',
         title: 'Build up to three to six months of living expenses',
         body: 'Measure against what you would actually spend in a lean month — essentials, not your current spending.',
@@ -383,6 +393,7 @@ export const ROADMAP: RoadmapStage[] = [
     nodes: [
       {
         id: 'moderate-interest-question',
+        tool: 'pay-vs-save',
         kind: 'decision',
         title: 'Do you have debt above about 4–5%, not counting your mortgage?',
         body: 'Car loans, student loans and personal loans often sit in this range.',
@@ -398,6 +409,7 @@ export const ROADMAP: RoadmapStage[] = [
       },
       {
         id: 'pay-moderate-debt',
+        tool: 'payoff-plan',
         kind: 'action',
         title: 'Apply the same payoff method here',
         body: 'Avalanche or snowball, whichever you picked. There is no reason to switch methods midway.',
@@ -428,6 +440,7 @@ export const ROADMAP: RoadmapStage[] = [
       },
       {
         id: 'large-purchase-question',
+        tool: 'loan-compare',
         kind: 'decision',
         title: 'Is a large, genuinely required expense coming?',
         body: 'A car you need to get to work, tuition, a professional certification — not things you would simply like to have.',

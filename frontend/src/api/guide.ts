@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { SignalKey } from '../content/roadmap'
 
@@ -221,4 +221,164 @@ export function useRunHealthReport(budgetId: string) {
     // The run returns the same payload the GET would, freshly stamped.
     onSuccess: (checkup) => qc.setQueryData(['guide-checkup', budgetId], checkup),
   })
+}
+
+
+// ── scenario calculators ─────────────────────────────────────────────────────
+// Inputs are documents the user typed (or edited from a seed), so these are
+// POSTs behind useQuery: keyed on the body, previous answer kept while the next
+// one is in flight. Money and rates travel as strings, never floats.
+
+export interface CascadeDebtIn {
+  key: string
+  name: string
+  balance: string
+  annual_rate: string
+  minimum_payment: string
+}
+
+export interface PayoffPlanRequest {
+  debts: CascadeDebtIn[]
+  extra: string
+}
+
+export interface CascadeDebtOut {
+  key: string
+  name: string
+  order: number
+  payoff_date: string | null
+  months: number
+  never_pays_off: boolean
+  total_interest: string
+  total_principal: string
+}
+
+export interface CascadeMonthOut {
+  month_index: number
+  date: string
+  payment: string
+  principal_paid: string
+  interest_paid: string
+  balance: string
+  balances: Record<string, string>
+}
+
+export interface CascadeOut {
+  order: 'avalanche' | 'snowball'
+  debts: CascadeDebtOut[]
+  months: CascadeMonthOut[]
+  debt_free_date: string | null
+  never_pays_off: boolean
+  total_interest: string
+  total_paid: string
+}
+
+export interface PayoffPlanResponse {
+  as_of: string
+  extra: string
+  avalanche: CascadeOut
+  snowball: CascadeOut
+  /** Minimums only, nothing rolled — what happens if nothing changes. */
+  minimums_only: CascadeOut
+}
+
+export interface PayVsSaveRequest {
+  balance: string
+  annual_rate: string
+  minimum_payment: string
+  extra: string
+  savings_apy: string
+}
+
+export interface PayVsSaveResponse {
+  horizon_months: number
+  baseline_total_interest: string
+  baseline_never_pays_off: boolean
+  pay_months: number
+  pay_payoff_date: string | null
+  pay_total_interest: string
+  pay_never_pays_off: boolean
+  debt_interest_saved: string
+  months_sooner: number
+  savings_contributed: string
+  savings_balance: string
+  savings_interest_earned: string
+  breakeven_apy: string | null
+  favours: 'pay' | 'save' | 'even'
+}
+
+export interface LoanIn {
+  name: string
+  principal: string
+  annual_rate: string
+  term_months?: number | null
+  payment?: string | null
+  fees?: string
+}
+
+export interface LoanCompareRequest {
+  loans: LoanIn[]
+}
+
+export interface LoanOutcomeOut {
+  name: string
+  payment: string
+  months: number
+  payoff_date: string | null
+  never_pays_off: boolean
+  total_interest: string
+  total_cost: string
+}
+
+export interface LoanCompareResponse {
+  loans: LoanOutcomeOut[]
+  cheapest: string | null
+}
+
+export interface EmergencyFundRequest {
+  months: number
+  monthly_contribution: string
+}
+
+export interface EmergencyFundResponse {
+  months: number
+  monthly_contribution: string
+  essentials_monthly: string | null
+  current: string | null
+  target: string | null
+  gap: string | null
+  months_to_fund: number | null
+  funded_by: string | null
+}
+
+function useScenario<Req, Res>(kind: string, budgetId: string | null, body: Req | null) {
+  return useQuery({
+    queryKey: ['guide-scenario', kind, budgetId, body],
+    queryFn: () =>
+      apiClient
+        .post<Res>(`/${budgetId}/guide/scenarios/${kind}`, body)
+        .then((r) => r.data),
+    enabled: !!budgetId && body !== null,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  })
+}
+
+export function usePayoffPlan(budgetId: string | null, body: PayoffPlanRequest | null) {
+  return useScenario<PayoffPlanRequest, PayoffPlanResponse>('payoff-plan', budgetId, body)
+}
+
+export function usePayVsSave(budgetId: string | null, body: PayVsSaveRequest | null) {
+  return useScenario<PayVsSaveRequest, PayVsSaveResponse>('pay-vs-save', budgetId, body)
+}
+
+export function useLoanCompare(budgetId: string | null, body: LoanCompareRequest | null) {
+  return useScenario<LoanCompareRequest, LoanCompareResponse>('loan-compare', budgetId, body)
+}
+
+export function useEmergencyFundPlan(
+  budgetId: string | null,
+  body: EmergencyFundRequest | null
+) {
+  return useScenario<EmergencyFundRequest, EmergencyFundResponse>('emergency-fund', budgetId, body)
 }

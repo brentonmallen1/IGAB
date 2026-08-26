@@ -7,10 +7,10 @@ import {
   ROADMAP_STEPS,
   findNode,
   findStage,
-  type RoadmapNode,
-} from './roadmap'
+  type RoadmapNode, TOOL_IDS } from './roadmap'
 import { GLOSSARY, GLOSSARY_IDS, glossaryEntry, searchGlossary } from './glossary'
 import { REPORT_TABS } from '../stores/reportStore'
+import { TOOLS } from '../components/guide/tools/toolRegistry'
 
 /** The roadmap and glossary are hand-authored prose, and the usual failure is
  *  not a crash — it is a dead link, an unreachable node, or a decision whose
@@ -163,6 +163,18 @@ describe('roadmap integrity', () => {
       }
     }
     expect(bad).toEqual([])
+  })
+
+  it('every tool a node names exists, and every tool is reachable from a node', () => {
+    const named = new Set<string>()
+    for (const node of allNodes) {
+      if (!node.tool) continue
+      expect(TOOL_IDS).toContain(node.tool)
+      expect(TOOLS[node.tool].linkLabel.length).toBeGreaterThan(0)
+      named.add(node.tool)
+    }
+    // A calculator nobody is pointed at is one nobody finds.
+    expect([...named].sort()).toEqual([...TOOL_IDS].sort())
   })
 
   it('every report link names a tab the reports page has', () => {

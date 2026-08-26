@@ -1,6 +1,6 @@
 """The Guide's HTTP surface, and the boundaries it must not cross."""
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from igab.domain.dates import add_months
@@ -471,3 +471,128 @@ class TestCheckup:
         assert not [f for f in after["findings"] if f["kind"].startswith("ef_")]
         net_after = (await api_client.get(f"/api/v1/{budget.id}/reports/net-worth")).json()
         assert net_after == net_before
+
+
+class TestScenarios:
+    """The calculators: arithmetic on typed inputs, nothing persisted."""
+
+    async def test_payoff_plan_returns_both_strategies_and_a_baseline(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/guide/scenarios/payoff-plan",
+            json={
+                "debts": [
+                    {"key": "visa", "name": "Visa", "balance": "3410", "annual_rate": "22.9",
+                     "minimum_payment": "85"},
+                    {"key": "car", "name": "Car", "balance": "14200", "annual_rate": "6.4",
+                     "minimum_payment": "310"},
+                ],
+                "extra": "200",
+            },
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        for key in ("avalanche", "snowball", "minimums_only"):
+            assert body[key]["debt_free_date"] is not None
+            assert len(body[key]["debts"]) == 2
+        # Avalanche attacks the 22.9% card first; the baseline costs the most.
+        assert body["avalanche"]["debts"][0]["key"] == "visa"
+        assert Decimal(body["minimums_only"]["total_interest"]) >= Decimal(
+            body["avalanche"]["total_interest"]
+        )
+        assert body["avalanche"]["months"][0]["balances"].keys() == {"visa", "car"}
+
+    async def test_payoff_plan_rejects_an_empty_list_and_duplicate_keys(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        url = f"/api/v1/{budget.id}/guide/scenarios/payoff-plan"
+        assert (await api_client.post(url, json={"debts": [], "extra": "0"})).status_code == 422
+        dup = {"key": "a", "name": "A", "balance": "1", "annual_rate": "1", "minimum_payment": "1"}
+        assert (await api_client.post(url, json={"debts": [dup, dup]})).status_code == 422
+        bad = {**dup, "annual_rate": "-1"}
+        assert (await api_client.post(url, json={"debts": [bad]})).status_code == 422
+
+    async def test_pay_vs_save_answers_with_a_breakeven(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/guide/scenarios/pay-vs-save",
+            json={"balance": "3410", "annual_rate": "22.9", "minimum_payment": "85",
+                  "extra": "100", "savings_apy": "4"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["favours"] == "pay"
+        assert body["breakeven_apy"] is not None
+        assert body["months_sooner"] > 0
+
+    async def test_loan_compare_needs_a_term_or_a_payment(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        url = f"/api/v1/{budget.id}/guide/scenarios/loan-compare"
+        r = await api_client.post(
+            url,
+            json={"loans": [
+                {"name": "A", "principal": "10000", "annual_rate": "6", "term_months": 12},
+                {"name": "B", "principal": "10000", "annual_rate": "5", "term_months": 12,
+                 "fees": "500"},
+            ]},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["cheapest"] == "A"
+        r = await api_client.post(
+            url, json={"loans": [{"name": "A", "principal": "10000", "annual_rate": "6"}]}
+        )
+        assert r.status_code == 422
+
+    async def test_emergency_fund_plan_uses_the_roadmap_figures(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        account = await create_account(db_session, budget, account_type="checking")
+        bills = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, bills, "Rent")
+        # 3,000 of spending over the last 90 days: essentials read 1,000 a month.
+        await create_transaction(
+            db_session, budget, account, "-3000.00", TODAY - timedelta(days=10), category=rent
+        )
+        savings = await create_category_group(db_session, budget, "Savings")
+        ef = await create_category(db_session, budget, savings, "Emergency Fund")
+        await create_budget_assignment(db_session, budget, ef, THIS_MONTH, "240.00")
+        await api_client.put(
+            f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
+            json={"mode": "manual", "entity_ids": {"category": [str(ef.id)]},
+                  "external": True, "external_amount": "500"},
+        )
+        net_before = (await api_client.get(f"/api/v1/{budget.id}/reports/net-worth")).json()
+
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/guide/scenarios/emergency-fund",
+            json={"months": 3, "monthly_contribution": "500"},
+        )
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert Decimal(body["essentials_monthly"]) == Decimal("1000.00")
+        # 240 in the budget plus 500 declared elsewhere — the roadmap's number.
+        assert Decimal(body["current"]) == Decimal("740.00")
+        assert Decimal(body["target"]) == Decimal("3000.00")
+        assert Decimal(body["gap"]) == Decimal("2260.00")
+        assert body["months_to_fund"] == 5  # 2260 / 500 = 4.52 → 5
+        assert body["funded_by"] == add_months(TODAY, 5).isoformat()
+        # And the declared 500 still reaches no report.
+        net_after = (await api_client.get(f"/api/v1/{budget.id}/reports/net-worth")).json()
+        assert net_after == net_before
+
+    async def test_emergency_fund_plan_with_no_essentials_reports_unknown(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/guide/scenarios/emergency-fund",
+            json={"months": 6, "monthly_contribution": "100"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["target"] is None
+        assert body["months_to_fund"] is None
+        assert body["months"] == 6

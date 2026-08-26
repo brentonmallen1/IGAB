@@ -1,5 +1,5 @@
 import { parseAmountInput } from '../../utils/money'
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -21,6 +21,7 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useAccountTypes } from '../../api/accountTypes'
 import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
 import './LiabilityPage.css'
@@ -44,7 +45,6 @@ export function LiabilityPage() {
 
   const [chartMode, setChartMode] = useState<'now' | 'beginning'>('now')
   const [extraInput, setExtraInput] = useState('')
-  const [extraPayment, setExtraPayment] = useState(0)
   const [showBalanceForm, setShowBalanceForm] = useState(false)
   const [newBalance, setNewBalance] = useState('')
   const [balanceDate, setBalanceDate] = useState('')
@@ -55,14 +55,13 @@ export function LiabilityPage() {
   const linkCategory = useLinkCategoryLiability(budgetId)
   const createTransaction = useCreateTransaction(budgetId ?? '')
 
-  // Debounce the what-if input so typing doesn't spam the API
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      const parsed = parseAmountInput(extraInput)
-      setExtraPayment(!isNaN(parsed) && parsed > 0 ? parsed : 0)
-    }, 400)
-    return () => clearTimeout(handle)
-  }, [extraInput])
+  // Debounced so typing doesn't spam the API — the same hook the Guide's
+  // calculators use.
+  const settledExtra = useDebouncedValue(extraInput)
+  const extraPayment = useMemo(() => {
+    const parsed = parseAmountInput(settledExtra)
+    return !isNaN(parsed) && parsed > 0 ? parsed : 0
+  }, [settledExtra])
 
   const { data: amortization } = useLiabilityAmortization(budgetId, liabilityId ?? null, {
     extraPayment,
