@@ -241,6 +241,15 @@
   cursor: pointer;
 }
 
+/* The one place the whole memo is readable: the register clips it to a line
+   and the inline editor is a single input. */
+.txn-editor__memo {
+  font-family: inherit;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: calc(3 * 1.4em + 12px);
+}
+
 .txn-editor__payee-wrap {
   position: relative;
 }

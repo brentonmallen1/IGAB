@@ -539,6 +539,7 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--memo txn-text-clip"
         onClick={() => !isMobile && !isReconciled && startEditing(txn.id, 'memo')}
+        title={txn.memo ?? undefined}
       >
         {isEditing('memo') ? (
           <InlineInput

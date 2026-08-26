@@ -1014,9 +1014,9 @@ export function TransactionEditor({
 
           <div className="txn-editor__field">
             <label className="txn-editor__label">Memo</label>
-            <input
-              type="text"
-              className="txn-editor__input"
+            <textarea
+              className="txn-editor__input txn-editor__memo"
+              rows={3}
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               placeholder="Optional note..."
