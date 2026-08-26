@@ -61,6 +61,7 @@ export function groupByView(
     sort_order,
     is_hidden: false,
     is_system: false,
+    system_key: null,
   })
 
   const groups = [...view.groups]

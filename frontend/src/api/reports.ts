@@ -17,6 +17,7 @@ import type {
   PlanRealityReport,
   SavingsReport,
   SeasonalityReport,
+  EssentialsReport,
   SpendingGroupedReport,
   SubscriptionsReport,
   TimelineReport,
@@ -318,6 +319,21 @@ export function useSpendingGroupedReport(
 }
 
 // ─── Seasonality ───────────────────────────────────────────────────────────
+
+export function useEssentialsReport(budgetId: string | null, months = 12) {
+  return useQuery({
+    queryKey: ['reports', 'essentials', budgetId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<EssentialsReport>(
+        `/${budgetId}/reports/essentials`,
+        { params: { months } },
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
 
 export function useSeasonalityReport(budgetId: string | null, months = 12) {
   return useQuery({

@@ -293,3 +293,24 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* The one thing accept changes about the user's entry, said before they
+   press it. Warning tone, not danger: the bank is usually right (a tip). */
+.match-modal__callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-sm) 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-radius: var(--border-radius-sm);
+}
+
+.match-modal__callout svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-warning);
+}

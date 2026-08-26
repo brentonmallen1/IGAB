@@ -20,9 +20,11 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import select
 
-from igab.db.models import Transaction
+from igab.db.models import ChangeLog, Transaction
 from igab.domain.exceptions import InvariantViolation
 from igab.services.simplefin_service import SimpleFINService
+from igab.services.transaction_service import SplitSpec, TransactionUpdate
+from igab.services.undo_service import UndoService
 
 from .factories import (
     create_account,
@@ -82,9 +84,7 @@ async def _sync_setup(db_session):
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
-    account = await create_account(
-        db_session, budget, "Checking", simplefin_account_id=SF_ACCT
-    )
+    account = await create_account(db_session, budget, "Checking", simplefin_account_id=SF_ACCT)
     conn = await create_simplefin_connection(db_session, user)
     return services, user, budget, account, conn
 
@@ -118,9 +118,7 @@ async def _live_rows(db_session, account_id) -> list[Transaction]:
     return list(rows)
 
 
-PATCH_DECRYPT = patch(
-    "igab.services.simplefin_service.decrypt", return_value="https://u:p@x.test"
-)
+PATCH_DECRYPT = patch("igab.services.simplefin_service.decrypt", return_value="https://u:p@x.test")
 
 
 async def test_sync_idempotent_same_payload_twice(db_session):
@@ -213,13 +211,17 @@ async def test_renamed_payee_same_day_exact_amount_auto_matches(db_session):
     cat = await create_category(db_session, budget, group)
     payee = await create_payee(db_session, budget, "Bread Financial")
     manual = await create_transaction(
-        db_session, budget, account, "-320.35", day,
-        payee=payee, category=cat, cleared="reconciled",
+        db_session,
+        budget,
+        account,
+        "-320.35",
+        day,
+        payee=payee,
+        category=cat,
+        cleared="reconciled",
     )
 
-    svc = _service(
-        services, [bank_txn("t-320", "-320.35", day, payee="COMENITY PAY VI WEB PYMT")]
-    )
+    svc = _service(services, [bank_txn("t-320", "-320.35", day, payee="COMENITY PAY VI WEB PYMT")])
     with PATCH_DECRYPT:
         result = await svc.sync(conn.id, budget.id)
 
@@ -401,7 +403,13 @@ async def test_accept_keeps_reconciled_side(db_session):
         db_session, budget, account, "-30.00", today - timedelta(days=2), cleared="reconciled"
     )
     newer = await create_transaction(
-        db_session, budget, account, "-30.00", today, cleared="cleared", sync_id="t-x",
+        db_session,
+        budget,
+        account,
+        "-30.00",
+        today,
+        cleared="cleared",
+        sync_id="t-x",
         sync_source="simplefin",
     )
     match = await services.match_repo.create(
@@ -423,9 +431,7 @@ async def test_accept_keeps_reconciled_side(db_session):
 async def test_accept_both_reconciled_rejected(db_session):
     services, user, budget, account, conn = await _sync_setup(db_session)
     today = date.today()
-    a = await create_transaction(
-        db_session, budget, account, "-30.00", today, cleared="reconciled"
-    )
+    a = await create_transaction(db_session, budget, account, "-30.00", today, cleared="reconciled")
     b = await create_transaction(
         db_session, budget, account, "-30.00", today - timedelta(days=1), cleared="reconciled"
     )
@@ -504,15 +510,26 @@ async def test_unique_index_blocks_duplicate_live_sync_id(db_session):
         db_session, budget, account, "-1.00", today, sync_id="dup-1", sync_source="simplefin"
     )
     await create_transaction(
-        db_session, budget, account, "-2.00", today, sync_id="dup-1",
-        sync_source="simplefin", is_deleted=True,
+        db_session,
+        budget,
+        account,
+        "-2.00",
+        today,
+        sync_id="dup-1",
+        sync_source="simplefin",
+        is_deleted=True,
     )
 
     from sqlalchemy.exc import IntegrityError
 
     with pytest.raises(IntegrityError):
         await create_transaction(
-            db_session, budget, account, "-3.00", today, sync_id="dup-1",
+            db_session,
+            budget,
+            account,
+            "-3.00",
+            today,
+            sync_id="dup-1",
             sync_source="simplefin",
         )
 
@@ -564,9 +581,7 @@ async def test_match_candidates_exclude_bank_sourced_rows(db_session):
         db_session, budget, account, "-6.50", day, sync_source="simplefin"
     )
 
-    found = await services.transaction_repo.find_match_candidates(
-        account.id, Decimal("-6.50"), day
-    )
+    found = await services.transaction_repo.find_match_candidates(account.id, Decimal("-6.50"), day)
     ids = {t.id for t in found}
     assert manual.id in ids
     assert idless_synced.id not in ids
@@ -575,8 +590,9 @@ async def test_match_candidates_exclude_bank_sourced_rows(db_session):
 # ─── Split parents and the widened search window ──────────────────────────────
 
 
-async def _make_split(db_session, budget, account, payee, day, total, leg_amounts, *,
-                      cleared="cleared"):
+async def _make_split(
+    db_session, budget, account, payee, day, total, leg_amounts, *, cleared="cleared"
+):
     parent = await create_transaction(
         db_session, budget, account, total, day, payee=payee, cleared=cleared, is_split=True
     )
@@ -627,8 +643,14 @@ async def test_sync_cleared_upgrade_on_split_parent_clears_children(db_session):
     day = date.today() - timedelta(days=3)
     payee = await create_payee(db_session, budget, "Target")
     parent = await _make_split(
-        db_session, budget, account, payee, day, "-163.94",
-        ["-74.44", "-65.00", "-24.50"], cleared="uncleared",
+        db_session,
+        budget,
+        account,
+        payee,
+        day,
+        "-163.94",
+        ["-74.44", "-65.00", "-24.50"],
+        cleared="uncleared",
     )
 
     svc = _service(services, [bank_txn("t-split-u", "-163.94", day, payee="TARGET T- 0423")])
@@ -760,3 +782,429 @@ async def test_nearest_candidate_survives_the_limit(db_session):
     assert len(found) == 5
     ids = {t.id for t, _ in found}
     assert exact.id in ids
+
+
+# ─── One posting rule (domain.bank_posting) — pinned by the divergence each
+# of the sync's two paths used to have ───────────────────────────────────────
+
+
+async def _link_manual_to_hold(
+    db_session,
+    services,
+    budget,
+    account,
+    conn,
+    *,
+    amount="-50.00",
+    user_payee="Corner Market",
+    bank_payee="CORNER MARKET",
+    sync_id="t-hold",
+    via_feed=True,
+):
+    """A hand-typed uncleared row linked to a bank record that is still an
+    auth hold: it carries the hold's id but no posted date.
+
+    `via_feed=True` links it the way the sync does (auto-match on a similar
+    payee). `via_feed=False` writes the link directly — the state an earlier
+    accepted review leaves behind, which is how a row whose payee shares
+    nothing with the bank's string comes to be linked at all.
+    """
+    day = date.today() - timedelta(days=2)
+    payee = await create_payee(db_session, budget, user_payee)
+    manual = await create_transaction(
+        db_session, budget, account, amount, day, payee=payee, cleared="uncleared"
+    )
+    svc = _service(services, [bank_txn(sync_id, amount, day, posted=False, payee=bank_payee)])
+    if via_feed:
+        with PATCH_DECRYPT:
+            first = await svc.sync(conn.id, budget.id)
+        assert first["matched"] == 1, first
+    else:
+        manual.sync_id = sync_id
+        manual.sync_source = "simplefin"
+        manual.has_sync_source = True
+        manual.bank_amount = Decimal(amount)
+        manual.bank_payee = bank_payee
+        await db_session.flush()
+    await db_session.refresh(manual)
+    assert manual.sync_id == sync_id and manual.cleared == "uncleared"
+    assert manual.bank_posted_date is None, "linked to a hold: provisional"
+    return svc, manual, day
+
+
+async def test_identity_path_used_to_skip_an_uncleared_row_forever(db_session):
+    """Bug A. The old identity path upgraded only `pending` rows, so a
+    hand-typed row linked while the bank record was a hold stayed uncleared
+    after it posted under the same id — every sync, forever."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    svc, manual, day = await _link_manual_to_hold(db_session, services, budget, account, conn)
+    post_day = day + timedelta(days=1)
+
+    svc.client = FakeClient([bank_txn("t-hold", "-50.00", post_day, posted=True)])
+    with PATCH_DECRYPT:
+        second = await svc.sync(conn.id, budget.id)
+
+    assert second["cleared"] == 1 and second["imported"] == 0, second
+    await db_session.refresh(manual)
+    assert manual.cleared == "cleared"
+    assert manual.bank_posted_date == post_day
+    assert manual.date == day, "the user's ledger date is kept"
+    assert manual.amount == Decimal("-50.00")
+    assert len(await _live_rows(db_session, account.id)) == 1
+
+
+async def test_identity_path_used_to_leave_split_children_pending(db_session):
+    """A bank-created pending row the user split: when it posts under the
+    same id the parent clears and its lines must follow."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    day = date.today() - timedelta(days=2)
+    svc = _service(services, [bank_txn("t-p", "-30.00", day, posted=False)])
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    [parent] = await _live_rows(db_session, account.id)
+    await services.transactions.convert_to_split(
+        budget.id,
+        parent.id,
+        [SplitSpec(amount=Decimal("-20.00")), SplitSpec(amount=Decimal("-10.00"))],
+    )
+
+    svc.client = FakeClient([bank_txn("t-p", "-30.00", day, posted=True)])
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+
+    await db_session.refresh(parent)
+    assert parent.cleared == "cleared"
+    children = await services.transaction_repo.get_splits(parent.id)
+    assert len(children) == 2
+    assert all(c.cleared == "cleared" for c in children), "lines follow the parent"
+
+
+async def test_auto_match_path_used_to_blank_import_description(db_session):
+    """A feed record without a description used to write NULL over one the
+    row already carried."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    day = date.today() - timedelta(days=1)
+    manual = await create_transaction(
+        db_session, budget, account, "-50.00", day, cleared="uncleared"
+    )
+    manual.import_description = "OLD DESC"
+    await db_session.flush()
+
+    bare = {"account_id": SF_ACCT, "id": "t-nd", "amount": "-50.00", "posted": _ts(day)}
+    svc = _service(services, [bare])
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["matched"] == 1
+    await db_session.refresh(manual)
+    assert manual.import_description == "OLD DESC"
+    assert manual.bank_payee is None
+    assert manual.cleared == "cleared"
+
+
+async def test_reidentified_posting_upgrades_the_provisionally_linked_manual_row(db_session):
+    """Bug B, same amount. The bank re-identifies the record at posting: the
+    row holding the hold's id used to be invisible to the candidate search,
+    so a duplicate imported and the user's row stayed uncleared."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    svc, manual, day = await _link_manual_to_hold(db_session, services, budget, account, conn)
+    post_day = day + timedelta(days=1)
+
+    svc.client = FakeClient([bank_txn("t-posted", "-50.00", post_day, posted=True)])
+    with PATCH_DECRYPT:
+        second = await svc.sync(conn.id, budget.id)
+
+    assert second["matched"] == 1 and second["imported"] == 0, second
+    assert second["removed_pending"] == 0
+    rows = await _live_rows(db_session, account.id)
+    assert len(rows) == 1 and rows[0].id == manual.id
+    await db_session.refresh(manual)
+    assert manual.sync_id == "t-posted", "the row now carries the posted id"
+    assert manual.cleared == "cleared" and manual.bank_posted_date == post_day
+
+
+async def test_reidentified_posting_keeps_the_users_category_on_a_bank_pending_row(db_session):
+    """A same-amount re-id used to sweep the pending row and import a fresh
+    one — losing the category, memo and approval the user had put on it."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    day = date.today() - timedelta(days=2)
+    group = await create_category_group(db_session, budget)
+    cat = await create_category(db_session, budget, group)
+    svc = _service(services, [bank_txn("t-p", "-30.00", day, posted=False)])
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    [pending] = await _live_rows(db_session, account.id)
+    await services.transactions.update(
+        budget.id, pending.id, TransactionUpdate(category_id=cat.id, memo="lunch", approved=True)
+    )
+
+    svc.client = FakeClient([bank_txn("t-q", "-30.00", day, posted=True)])
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["removed_pending"] == 0 and result["imported"] == 0
+    rows = await _live_rows(db_session, account.id)
+    assert len(rows) == 1 and rows[0].id == pending.id
+    await db_session.refresh(pending)
+    assert pending.sync_id == "t-q" and pending.cleared == "cleared"
+    assert pending.category_id == cat.id and pending.memo == "lunch" and pending.approved
+
+
+async def test_legacy_cleared_row_without_bank_posted_date_is_not_reidentified(db_session):
+    """Rows linked before bank_posted_date existed are cleared with a NULL
+    posted date. They must never absorb a foreign same-amount bank id."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    day = date.today() - timedelta(days=1)
+    legacy = await create_transaction(
+        db_session,
+        budget,
+        account,
+        "-50.00",
+        day,
+        cleared="cleared",
+        sync_id="old-1",
+        sync_source="simplefin",
+    )
+    svc = _service(services, [bank_txn("t-new", "-50.00", day, posted=True)])
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["imported"] == 1 and result["matched"] == 0
+    rows = await _live_rows(db_session, account.id)
+    assert len(rows) == 2
+    await db_session.refresh(legacy)
+    assert legacy.sync_id == "old-1"
+
+
+async def test_pending_feed_row_never_claims_a_provisionally_linked_row(db_session):
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    svc, manual, day = await _link_manual_to_hold(db_session, services, budget, account, conn)
+
+    svc.client = FakeClient(
+        [
+            bank_txn("t-hold", "-50.00", day, posted=False),
+            bank_txn("t-hold2", "-50.00", day, posted=False),
+        ]
+    )
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["imported"] == 1, "the second hold is its own pending row"
+    await db_session.refresh(manual)
+    assert manual.sync_id == "t-hold"
+    assert len(await _live_rows(db_session, account.id)) == 2
+
+
+async def _pending_matches(services, account_id):
+    return await services.matching.match_repo.get_pending_for_account(account_id)
+
+
+async def test_manual_row_amount_change_at_posting_queues_review_not_silent_update(db_session):
+    """The user typed -50; the bank posts -60 under the same id (a tip). Never
+    applied silently: the posted record becomes its own row, queued for
+    review against the user's, which goes back to unlinked and uncleared."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    svc, manual, day = await _link_manual_to_hold(db_session, services, budget, account, conn)
+    post_day = day + timedelta(days=1)
+
+    svc.client = FakeClient([bank_txn("t-hold", "-60.00", post_day, posted=True)])
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["review_queued"] == 1 and result["imported"] == 1 and result["cleared"] == 0
+    await db_session.refresh(manual)
+    assert manual.amount == Decimal("-50.00") and manual.cleared == "uncleared"
+    assert manual.sync_id is None, "the user's row gave the bank id to the posted row"
+    rows = await _live_rows(db_session, account.id)
+    [bank_row] = [r for r in rows if r.id != manual.id]
+    assert bank_row.sync_id == "t-hold" and bank_row.amount == Decimal("-60.00")
+    assert bank_row.cleared == "cleared"
+    [match] = await _pending_matches(services, account.id)
+    assert match.synced_transaction_id == bank_row.id
+    assert match.manual_transaction_id == manual.id
+
+
+async def test_bank_pending_row_amount_change_at_posting_updates_in_place(db_session):
+    """The rule the review queue does NOT apply to: a row the sync itself
+    created takes the bank's posted amount, remembering the hold's."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    day = date.today() - timedelta(days=2)
+    svc = _service(services, [bank_txn("t-9", "-20.00", day, posted=False)])
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    svc.client = FakeClient([bank_txn("t-9", "-23.50", day + timedelta(days=1), posted=True)])
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["review_queued"] == 0 and result["cleared"] == 1
+    [txn] = await _live_rows(db_session, account.id)
+    assert txn.amount == Decimal("-23.50")
+    assert txn.entered_amount == Decimal("-20.00"), "the hold's amount is kept as provenance"
+    assert await _pending_matches(services, account.id) == []
+
+
+async def test_stale_link_with_changed_amount_queues_review(db_session):
+    """New id AND a new amount at posting — the case exact-amount candidates
+    cannot cover. The vanished link is released and the posted row this run
+    created is offered for review."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    svc, manual, day = await _link_manual_to_hold(
+        db_session,
+        services,
+        budget,
+        account,
+        conn,
+        amount="-20.00",
+        user_payee="Starbucks",
+        bank_payee="STARBUCKS #1234",
+    )
+    post_day = day + timedelta(days=1)
+
+    svc.client = FakeClient(
+        [bank_txn("t-new", "-23.50", post_day, posted=True, payee="STARBUCKS #1234 SEATTLE")]
+    )
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["imported"] == 1 and result["review_queued"] == 1
+    assert result["removed_pending"] == 0, "a user row is never swept"
+    await db_session.refresh(manual)
+    assert manual.sync_id is None and manual.cleared == "uncleared"
+    [match] = await _pending_matches(services, account.id)
+    assert match.manual_transaction_id == manual.id
+    synced = await services.transaction_repo.get(match.synced_transaction_id)
+    assert synced is not None and synced.sync_id == "t-new"
+
+
+async def test_stale_link_review_matches_on_the_retained_bank_payee_when_the_users_payee_differs(
+    db_session,
+):
+    """The user renamed the payee to something the bank string shares nothing
+    with. The row still keeps the bank's own pending string, and the posted
+    string matches THAT — so the pair is found."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    svc, manual, day = await _link_manual_to_hold(
+        db_session,
+        services,
+        budget,
+        account,
+        conn,
+        amount="-20.00",
+        user_payee="Coffee",
+        bank_payee="SQ *BLUE BOTTLE 0042",
+        via_feed=False,
+    )
+    await db_session.refresh(manual)
+    assert manual.bank_payee == "SQ *BLUE BOTTLE 0042"
+
+    svc.client = FakeClient(
+        [bank_txn("t-new", "-23.50", day, posted=True, payee="SQ *BLUE BOTTLE 0042 OAKLAND")]
+    )
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["review_queued"] == 1
+    [match] = await _pending_matches(services, account.id)
+    assert match.manual_transaction_id == manual.id
+
+
+async def test_same_sync_id_with_changed_amount_never_needs_payee_scoring(db_session):
+    """When the bank keeps the id, the identity path queues the amount
+    change regardless of how the payee strings compare."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    svc, manual, day = await _link_manual_to_hold(
+        db_session,
+        services,
+        budget,
+        account,
+        conn,
+        user_payee="Coffee",
+        bank_payee="X",
+        via_feed=False,
+    )
+    svc.client = FakeClient(
+        [bank_txn("t-hold", "-60.00", day, posted=True, payee="ZZZ ENTIRELY DIFFERENT")]
+    )
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["review_queued"] == 1
+    [match] = await _pending_matches(services, account.id)
+    assert match.manual_transaction_id == manual.id
+
+
+async def _changes_for(db_session, txn_id):
+    await db_session.flush()
+    rows = (
+        (
+            await db_session.execute(
+                select(ChangeLog).where(ChangeLog.entity_id == txn_id).order_by(ChangeLog.seq)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows)
+
+
+async def test_second_sync_of_a_posted_row_writes_nothing(db_session):
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    day = date.today() - timedelta(days=1)
+    svc = _service(services, [bank_txn("t-1", "-12.50", day)])
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    [txn] = await _live_rows(db_session, account.id)
+    before = len(await _changes_for(db_session, txn.id))
+    stamp = txn.updated_at
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["skipped"] == 1 and result["cleared"] == 0
+    await db_session.refresh(txn)
+    assert txn.updated_at == stamp
+    assert len(await _changes_for(db_session, txn.id)) == before
+
+
+async def test_sync_posting_is_recorded_as_a_system_change(db_session):
+    """Sync used to write rows through the repository with no change-log row
+    — an amount or cleared state moved with nothing in Activity to show it."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    day = date.today() - timedelta(days=1)
+    manual = await create_transaction(
+        db_session, budget, account, "-50.00", day, cleared="uncleared"
+    )
+    svc = _service(services, [bank_txn("t-1", "-50.00", day)])
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+
+    changes = await _changes_for(db_session, manual.id)
+    assert [c.action for c in changes] == ["update"]
+    assert changes[0].source == "system"
+    assert changes[0].before["cleared"] == "uncleared" and changes[0].after["cleared"] == "cleared"
+
+
+async def test_sweep_delete_is_undoable(db_session):
+    """The sweep removes a bank-created pending row the feed dropped. It used
+    to be an unrecorded soft-delete; the category the user filed it under
+    went with it."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    auth_day = date.today() - timedelta(days=2)
+    svc = _service(services, [bank_txn("t-old", "-15.00", auth_day, posted=False)])
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    [pending] = await _live_rows(db_session, account.id)
+    await services.transactions.update(budget.id, pending.id, TransactionUpdate(memo="filed"))
+
+    svc.client = FakeClient(
+        [bank_txn("t-new", "-17.00", date.today(), posted=True, payee="ELSEWHERE")]
+    )
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+    assert result["removed_pending"] == 1
+
+    deletes = [c for c in await _changes_for(db_session, pending.id) if c.action == "delete"]
+    assert len(deletes) == 1 and deletes[0].source == "system"
+    await UndoService(db_session).undo_change(budget.id, deletes[0].id)
+    await db_session.refresh(pending)
+    assert pending.is_deleted is False and pending.memo == "filed"

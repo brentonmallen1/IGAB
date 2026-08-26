@@ -96,16 +96,24 @@ async def test_scan_accept_keeps_split_parent_and_category_activity(db_session):
     payee = await create_payee(db_session, budget, "Target")
 
     flat = await create_transaction(
-        db_session, budget, checking, "-163.94", TODAY - timedelta(days=1),
-        payee=payee, cleared="uncleared",
+        db_session,
+        budget,
+        checking,
+        "-163.94",
+        TODAY - timedelta(days=1),
+        payee=payee,
+        cleared="uncleared",
     )
     parent, children = await _make_split(
-        db_session, budget, checking, TODAY, "-163.94",
-        [("-100.00", groceries), ("-63.94", household)], payee=payee,
+        db_session,
+        budget,
+        checking,
+        TODAY,
+        "-163.94",
+        [("-100.00", groceries), ("-63.94", household)],
+        payee=payee,
     )
-    activity_before = await services.transaction_repo.sum_by_category_by_month(
-        groceries.id, TODAY
-    )
+    activity_before = await services.transaction_repo.sum_by_category_by_month(groceries.id, TODAY)
 
     created = await services.matching.scan_for_duplicates(checking.id)
     assert created == 1
@@ -119,9 +127,7 @@ async def test_scan_accept_keeps_split_parent_and_category_activity(db_session):
     assert (await _row(db_session, flat.id)).is_deleted, "the flat duplicate is merged away"
     for child in children:
         assert not (await _row(db_session, child.id)).is_deleted
-    activity_after = await services.transaction_repo.sum_by_category_by_month(
-        groceries.id, TODAY
-    )
+    activity_after = await services.transaction_repo.sum_by_category_by_month(groceries.id, TODAY)
     assert activity_after == activity_before, "category activity must not move on a merge"
     await assert_financial_invariants(db_session, budget.id)
 
@@ -157,11 +163,21 @@ async def test_reconciled_flat_vs_split_parent_blocks_and_stays_pending(db_sessi
     groceries = await create_category(db_session, budget, group, "Groceries")
 
     synced_flat = await create_transaction(
-        db_session, budget, checking, "-88.00", TODAY,
-        cleared="reconciled", sync_id="t-guard-1", sync_source="simplefin",
+        db_session,
+        budget,
+        checking,
+        "-88.00",
+        TODAY,
+        cleared="reconciled",
+        sync_id="t-guard-1",
+        sync_source="simplefin",
     )
     parent, children = await _make_split(
-        db_session, budget, checking, TODAY, "-88.00",
+        db_session,
+        budget,
+        checking,
+        TODAY,
+        "-88.00",
         [("-50.00", groceries), ("-38.00", None)],
     )
     match = await services.match_repo.create(
@@ -185,12 +201,23 @@ async def test_reconciled_flat_vs_split_parent_blocks_and_stays_pending(db_sessi
 async def test_reconciled_split_parent_wins_and_absorbs_identity(db_session):
     services, budget, checking = await _setup(db_session)
     parent, children = await _make_split(
-        db_session, budget, checking, TODAY, "-120.00",
-        [("-70.00", None), ("-50.00", None)], cleared="reconciled",
+        db_session,
+        budget,
+        checking,
+        TODAY,
+        "-120.00",
+        [("-70.00", None), ("-50.00", None)],
+        cleared="reconciled",
     )
     synced_flat = await create_transaction(
-        db_session, budget, checking, "-120.00", TODAY,
-        cleared="cleared", sync_id="t-guard-2", sync_source="simplefin",
+        db_session,
+        budget,
+        checking,
+        "-120.00",
+        TODAY,
+        cleared="cleared",
+        sync_id="t-guard-2",
+        sync_source="simplefin",
     )
     match = await services.match_repo.create(
         synced_transaction_id=synced_flat.id,
@@ -220,8 +247,14 @@ async def test_transfer_leg_absorbs_sync_id_under_unique_index(db_session):
     savings = await create_account(db_session, budget, "Savings")
     out_leg, in_leg = await _make_transfer(db_session, budget, checking, savings, "150.00", TODAY)
     synced_flat = await create_transaction(
-        db_session, budget, checking, "-150.00", TODAY,
-        cleared="cleared", sync_id="t-leg-dup", sync_source="simplefin",
+        db_session,
+        budget,
+        checking,
+        "-150.00",
+        TODAY,
+        cleared="cleared",
+        sync_id="t-leg-dup",
+        sync_source="simplefin",
     )
     match = await services.match_repo.create(
         synced_transaction_id=synced_flat.id,
@@ -246,11 +279,19 @@ async def test_scan_skips_both_structured_pairs(db_session):
     services, budget, checking = await _setup(db_session)
     savings = await create_account(db_session, budget, "Savings")
     await _make_split(
-        db_session, budget, checking, TODAY, "-163.94",
+        db_session,
+        budget,
+        checking,
+        TODAY,
+        "-163.94",
         [("-100.00", None), ("-63.94", None)],
     )
     await _make_split(
-        db_session, budget, checking, TODAY, "-163.94",
+        db_session,
+        budget,
+        checking,
+        TODAY,
+        "-163.94",
         [("-90.00", None), ("-73.94", None)],
     )
     out_leg, _ = await _make_transfer(db_session, budget, checking, savings, "163.94", TODAY)
@@ -270,12 +311,23 @@ async def test_idless_bank_row_confers_identity_on_accept(db_session):
     services, budget, checking = await _setup(db_session)
     payee = await create_payee(db_session, budget, "Corner Market")
     manual = await create_transaction(
-        db_session, budget, checking, "-42.00", TODAY - timedelta(days=1),
-        payee=payee, cleared="uncleared",
+        db_session,
+        budget,
+        checking,
+        "-42.00",
+        TODAY - timedelta(days=1),
+        payee=payee,
+        cleared="uncleared",
     )
     idless = await create_transaction(
-        db_session, budget, checking, "-42.00", TODAY,
-        payee=payee, cleared="cleared", sync_source="simplefin",
+        db_session,
+        budget,
+        checking,
+        "-42.00",
+        TODAY,
+        payee=payee,
+        cleared="cleared",
+        sync_source="simplefin",
     )
 
     created = await services.matching.scan_for_duplicates(checking.id)
@@ -302,12 +354,23 @@ async def test_accept_clears_split_children_then_reconciles_clean(db_session):
     reconciled parent."""
     services, budget, checking = await _setup(db_session)
     parent, children = await _make_split(
-        db_session, budget, checking, TODAY, "-163.94",
-        [("-100.00", None), ("-63.94", None)], cleared="uncleared",
+        db_session,
+        budget,
+        checking,
+        TODAY,
+        "-163.94",
+        [("-100.00", None), ("-63.94", None)],
+        cleared="uncleared",
     )
     synced_flat = await create_transaction(
-        db_session, budget, checking, "-163.94", TODAY,
-        cleared="cleared", sync_id="t-guard-f4", sync_source="simplefin",
+        db_session,
+        budget,
+        checking,
+        "-163.94",
+        TODAY,
+        cleared="cleared",
+        sync_id="t-guard-f4",
+        sync_source="simplefin",
     )
     match = await services.match_repo.create(
         synced_transaction_id=synced_flat.id,
@@ -340,12 +403,24 @@ async def test_try_match_auto_accept_keeps_split_parent(db_session):
     services, budget, checking = await _setup(db_session)
     payee = await create_payee(db_session, budget, "Target")
     parent, children = await _make_split(
-        db_session, budget, checking, TODAY, "-163.94",
-        [("-100.00", None), ("-63.94", None)], payee=payee,
+        db_session,
+        budget,
+        checking,
+        TODAY,
+        "-163.94",
+        [("-100.00", None), ("-63.94", None)],
+        payee=payee,
     )
     synced_flat = await create_transaction(
-        db_session, budget, checking, "-163.94", TODAY,
-        payee=payee, cleared="cleared", sync_id="t-guard-9", sync_source="simplefin",
+        db_session,
+        budget,
+        checking,
+        "-163.94",
+        TODAY,
+        payee=payee,
+        cleared="cleared",
+        sync_id="t-guard-9",
+        sync_source="simplefin",
     )
 
     await services.matching.try_match(synced_flat)
@@ -356,4 +431,39 @@ async def test_try_match_auto_accept_keeps_split_parent(db_session):
     assert (await _row(db_session, synced_flat.id)).is_deleted
     for child in children:
         assert not (await _row(db_session, child.id)).is_deleted
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_try_match_leaves_a_pending_match_when_the_merge_is_refused(db_session):
+    """try_match used to write the match as accepted BEFORE merging; a refused
+    merge left an accepted row with nothing behind it."""
+    services, budget, checking = await _setup(db_session)
+    payee = await create_payee(db_session, budget, "Target")
+    parent, children = await _make_split(
+        db_session,
+        budget,
+        checking,
+        TODAY,
+        "-163.94",
+        [("-100.00", None), ("-63.94", None)],
+        payee=payee,
+    )
+    synced_flat = await create_transaction(
+        db_session,
+        budget,
+        checking,
+        "-163.94",
+        TODAY,
+        payee=payee,
+        cleared="reconciled",
+        sync_id="t-guard-r",
+        sync_source="simplefin",
+    )
+
+    await services.matching.try_match(synced_flat)
+
+    matches = await services.match_repo.get_pending_for_account(checking.id)
+    assert [m.synced_transaction_id for m in matches] == [synced_flat.id]
+    assert not (await _row(db_session, parent.id)).is_deleted
+    assert not (await _row(db_session, synced_flat.id)).is_deleted
     await assert_financial_invariants(db_session, budget.id)

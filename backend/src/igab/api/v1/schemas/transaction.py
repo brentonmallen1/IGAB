@@ -16,9 +16,18 @@ class SplitCreate(BaseModel):
     payee_id: uuid.UUID | None = None
     payee_name: str | None = None
     memo: str | None = None
+    #: An existing line to update in place (PUT …/splits); omit for a new line.
+    id: uuid.UUID | None = None
 
 
 class ConvertToSplitRequest(BaseModel):
+    splits: list[SplitCreate]
+
+
+class ReplaceSplitsRequest(BaseModel):
+    """The split's lines as they should be: named lines are updated, unnamed
+    ones created, missing ones removed. They must sum to the parent."""
+
     splits: list[SplitCreate]
 
 
@@ -118,6 +127,9 @@ class TransactionResponse(BaseModel):
     account_id: uuid.UUID
     date: datetime.date
     entered_date: datetime.date | None = None
+    #: The amount this row had before the bank's posted amount replaced it
+    #: (see `Transaction.entered_amount`); None when the bank never changed it.
+    entered_amount: Decimal | None = None
     bank_posted_date: datetime.date | None = None
     amount: Decimal
     bank_amount: Decimal | None = None
@@ -155,7 +167,11 @@ class TransactionResponse(BaseModel):
     import_description: str | None
     sync_id: str | None
     sync_source: str | None
+    #: Where the row came from — see `Transaction.created_via`. None = unknown.
     created_via: str | None = None
+    #: The schedule this row was entered from, or None. Declared without a
+    #: default so the key always serializes.
+    scheduled_transaction_id: uuid.UUID | None
     has_sync_source: bool
     latitude: float | None = None
     longitude: float | None = None

@@ -115,25 +115,15 @@ def _draft_result_json(draft) -> dict:
 
 
 def _build_services(session: AsyncSession):
-    from igab.repositories.account_repo import AccountRepository
     from igab.repositories.attachment_repo import AttachmentRepository
-    from igab.repositories.category_repo import CategoryRepository
-    from igab.repositories.payee_repo import PayeeRepository
     from igab.repositories.settings_repo import SettingsRepository
-    from igab.repositories.transaction_repo import TransactionRepository
     from igab.services.ai_draft_service import AIDraftService
     from igab.services.ai_service import AIService
     from igab.services.attachment_service import AttachmentService
     from igab.services.settings_service import SettingsService
-    from igab.services.transaction_service import TransactionService
+    from igab.services.transaction_service import build_transaction_service
 
-    txn_svc = TransactionService(
-        session,
-        TransactionRepository(session),
-        AccountRepository(session),
-        CategoryRepository(session),
-        PayeeRepository(session),
-    )
+    txn_svc = build_transaction_service(session)
     return {
         "ai": AIService(session, SettingsService(SettingsRepository(session))),
         "transactions": txn_svc,
@@ -293,7 +283,7 @@ async def _apply_draft_to_existing(svcs: dict, job: AIJob, draft) -> Transaction
     Returns None when the transaction was deleted so the caller can create a
     replacement. An approved or cleared transaction belongs to the user —
     refuse rather than overwrite."""
-    from igab.services.transaction_service import TransactionCreate, TransactionUpdate
+    from igab.services.transaction_service import TransactionUpdate
 
     txn_svc = svcs["transactions"]
     txn = await txn_svc.transaction_repo.get(job.transaction_id)
@@ -305,15 +295,7 @@ async def _apply_draft_to_existing(svcs: dict, job: AIJob, draft) -> Transaction
             " — edit it directly, or delete it first to reprocess from scratch"
         )
 
-    payee = await txn_svc._resolve_payee(
-        job.budget_id,
-        TransactionCreate(
-            account_id=txn.account_id,
-            date=draft.date,
-            amount=draft.amount,
-            payee_name=draft.payee_name,
-        ),
-    )
+    payee = await txn_svc._resolve_payee(job.budget_id, None, draft.payee_name)
     category_id = await svcs["drafts"].resolve_category(job.budget_id, draft.category_name)
     return await txn_svc.update(
         job.budget_id,

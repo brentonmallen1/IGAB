@@ -5,11 +5,20 @@ interface Props {
   value: string
   onChange: (date: string) => void
   onClose?: () => void
+  /** Tab / Shift+Tab: the caller moves editing on to its next/previous field. */
+  onTabOut?: (direction: 1 | -1) => void
   disabled?: boolean
   className?: string
 }
 
-export function DatePicker({ value, onChange, onClose, disabled = false, className = '' }: Props) {
+export function DatePicker({
+  value,
+  onChange,
+  onClose,
+  onTabOut,
+  disabled = false,
+  className = '',
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -34,6 +43,10 @@ export function DatePicker({ value, onChange, onClose, disabled = false, classNa
         onChange(inputRef.current.value)
         onClose?.()
       }
+    } else if (e.key === 'Tab' && onTabOut) {
+      // A changed date already committed on change; Tab just moves on.
+      e.preventDefault()
+      onTabOut(e.shiftKey ? -1 : 1)
     }
   }
 

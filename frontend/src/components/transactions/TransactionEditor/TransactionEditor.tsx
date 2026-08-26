@@ -1,6 +1,6 @@
 import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw } from 'lucide-react'
+import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw, Lock } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { NLEntryForm } from '../../ai/NLEntryForm'
 import { ReceiptPane } from '../../ai/ReceiptPane'
@@ -11,6 +11,8 @@ import {
   useUpdateTransaction,
   useDeleteTransaction,
   useConvertToSplit,
+  useReplaceSplits,
+  useTransactionSplits,
   usePayees,
   useSimilarTransactions,
   useTransaction,
@@ -38,12 +40,13 @@ import {
   expressionToCents,
   parseAmountExpressionInput,
 } from '../../../utils/amountExpression'
-import { checkSplit } from '../../../utils/splits'
+import { checkSplit, draftsFromLines } from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import type { Transaction, Payee } from '../../../types'
 import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { randomUUID } from '../../../utils/uuid'
+import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
 
 /** Prefill for create mode — the shared shape every AI entry path (NL text,
@@ -93,6 +96,7 @@ export function TransactionEditor({
   // accountId for undo resolved after hooks; toastUndo called with final value
   const showUndo = useToastUndo(budgetId)
   const convertToSplit = useConvertToSplit(budgetId)
+  const replaceSplits = useReplaceSplits(budgetId)
   const suggestCategory = useSuggestCategory(budgetId)
 
   const { data: payees = [] } = usePayees(budgetId)
@@ -152,12 +156,15 @@ export function TransactionEditor({
     if (Number(transaction.amount) < 0) return ''
     return String(Number(transaction.amount))
   })
-  const [cleared, setCleared] = useState<'uncleared' | 'cleared'>(() => {
+  // Reconciled: the money is locked — amount, date, cleared state — and
+  // everything else stays editable (domain/reconciliation.py, one rule).
+  // The locked fields are shown disabled and left out of the PATCH.
+  const isReconciled = transaction?.cleared === 'reconciled'
+  const [cleared, setCleared] = useState<'uncleared' | 'cleared' | 'reconciled'>(() => {
     // 'pending' belongs to bank sync and 'reconciled' to the reconciliation
     // flow — neither is user-settable via the API.
-    if (transaction?.cleared === 'cleared' || transaction?.cleared === 'reconciled') {
-      return 'cleared'
-    }
+    if (transaction?.cleared === 'reconciled') return 'reconciled'
+    if (transaction?.cleared === 'cleared') return 'cleared'
     return 'uncleared'
   })
   // counterpart_account_id, not transfer_id: an unpaired leg (the importer's
@@ -174,11 +181,28 @@ export function TransactionEditor({
   const [showPayeeDropdown, setShowPayeeDropdown] = useState(false)
   const [showSimilar, setShowSimilar] = useState(false)
   const [showAttachments, setShowAttachments] = useState(false)
-  const [isSplit, setIsSplit] = useState(false)
-  const [splits, setSplits] = useState<SplitDraft[]>([
-    { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
-    { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
-  ])
+  // An existing split opens AS a split, with its lines from the server —
+  // the register never holds them, and an editor that opened flat over a
+  // split was the only way to "see" one: by not seeing it at all.
+  const editingExistingSplit = !!transaction?.is_split
+  const { data: splitLines } = useTransactionSplits(transaction?.id ?? null, editingExistingSplit)
+  const [isSplit, setIsSplit] = useState(editingExistingSplit)
+  const [splits, setSplits] = useState<SplitDraft[]>(() =>
+    editingExistingSplit
+      ? []
+      : [
+          { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+          { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+        ]
+  )
+  // Seed once, as a render-phase state adjustment (the pattern Combobox
+  // uses for an outside value change): no effect, no ref read in render.
+  const [linesSeeded, setLinesSeeded] = useState(false)
+  if (splitLines && !linesSeeded) {
+    setLinesSeeded(true)
+    setSplits(draftsFromLines(splitLines))
+  }
+  const splitLinesPending = editingExistingSplit && !linesSeeded
 
   // Tab state: entry method in add mode
   const [activeTab, setActiveTab] = useState<'manual' | 'describe' | 'receipt'>('manual')
@@ -375,6 +399,7 @@ export function TransactionEditor({
 
     if (isSplit && !isTransfer) {
       const splitList = splits.map((s) => ({
+        id: s.serverId,
         amount: (expressionToCents(s.amount) / 100) * sign,
         category_id: s.categoryId ?? undefined,
         memo: s.memo || undefined,
@@ -390,15 +415,24 @@ export function TransactionEditor({
         formatMoney
       )
       if (!proceed) return
-      if (isEdit) {
+      if (isEdit && editingExistingSplit) {
+        // Lines in place: named lines update, new ones append, missing ones
+        // go. The parent's amount is the lines' sum and is not sent.
+        await updateTxn.mutateAsync({
+          id: transaction!.id,
+          ...(isReconciled ? {} : { date, cleared }),
+          memo: memo || undefined,
+          approved: true,
+          payee_id: selectedPayeeId || undefined,
+        })
+        await replaceSplits.mutateAsync({ id: transaction!.id, splits: splitList })
+      } else if (isEdit) {
         // Split in place: the row becomes the parent, keeping attachments and
         // AI links (a create+delete replacement would orphan the receipt).
         await updateTxn.mutateAsync({
           id: transaction!.id,
-          date,
-          amount,
+          ...(isReconciled ? {} : { date, amount, cleared }),
           memo: memo || undefined,
-          cleared,
           approved: true,
           payee_id: selectedPayeeId || undefined,
         })
@@ -424,10 +458,9 @@ export function TransactionEditor({
 
     const payload = {
       account_id: accountId,
-      date,
-      amount,
+      // Locked money never leaves the editor for a reconciled row.
+      ...(isReconciled ? {} : { date, amount, cleared }),
       memo: memo || undefined,
-      cleared,
       approved: true,
       ...(isTransfer
         ? {
@@ -474,7 +507,8 @@ export function TransactionEditor({
       }
       await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
     } else {
-      await createTxn.mutateAsync({ ...payload, ai_job_id: aiJobId })
+      // A new row is never reconciled; restate the money so the type says so.
+      await createTxn.mutateAsync({ ...payload, date, amount, cleared, ai_job_id: aiJobId })
       if (!fixedAccountId) setLastPickedAccountId(accountId)
     }
     onClose()
@@ -493,7 +527,12 @@ export function TransactionEditor({
   }
 
   const isPending =
-    createTxn.isPending || updateTxn.isPending || deleteTxn.isPending || convertToSplit.isPending
+    createTxn.isPending ||
+    updateTxn.isPending ||
+    deleteTxn.isPending ||
+    convertToSplit.isPending ||
+    replaceSplits.isPending ||
+    splitLinesPending
 
   // What the bank reported, as distinct from the ledger values the user can
   // edit. The payee line prefers the bank's own string and falls back to the
@@ -765,6 +804,13 @@ export function TransactionEditor({
           )}
           <div className="txn-editor__body">
           {accountField}
+          {isReconciled && (
+            <div className="txn-editor__lock-note" role="note">
+              <Lock size={12} aria-hidden />
+              Reconciled — the amount, date and cleared state are locked. Everything else
+              can be changed here; unlock from the row menu to change those.
+            </div>
+          )}
           <div className="txn-editor__row">
             <div className="txn-editor__field">
               <label className="txn-editor__label">Date</label>
@@ -774,19 +820,26 @@ export function TransactionEditor({
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 required
+                disabled={isReconciled}
               />
             </div>
             <div className="txn-editor__field">
               <label className="txn-editor__label">Cleared</label>
-              <select
-                className="txn-editor__select"
-                value={cleared}
-                onChange={(e) => setCleared(e.target.value as typeof cleared)}
-              >
-                <option value="uncleared">Uncleared</option>
-                <option value="cleared">Cleared</option>
-                <option value="reconciled">Reconciled</option>
-              </select>
+              {isReconciled ? (
+                <div className="txn-editor__input txn-editor__locked" aria-label="Cleared: reconciled">
+                  <Lock size={12} aria-hidden />
+                  Reconciled
+                </div>
+              ) : (
+                <select
+                  className="txn-editor__select"
+                  value={cleared}
+                  onChange={(e) => setCleared(e.target.value as 'uncleared' | 'cleared')}
+                >
+                  <option value="uncleared">Uncleared</option>
+                  <option value="cleared">Cleared</option>
+                </select>
+              )}
             </div>
           </div>
 
@@ -825,6 +878,7 @@ export function TransactionEditor({
                 type="checkbox"
                 checked={isTransfer}
                 onChange={(e) => setIsTransfer(e.target.checked)}
+                disabled={isReconciled}
               />
               <span className="txn-editor__toggle-slider" />
             </label>
@@ -915,16 +969,21 @@ export function TransactionEditor({
             <div className="txn-editor__field">
               <label className="txn-editor__label">
                 Split Transaction
-                <button
-                  type="button"
-                  className="txn-editor__ai-btn"
-                  onClick={() => { setIsSplit(false); setCategoryId('') }}
-                  title="Switch to single category"
-                >
-                  <X size={12} />
-                  Cancel split
-                </button>
+                {!editingExistingSplit && (
+                  <button
+                    type="button"
+                    className="txn-editor__ai-btn"
+                    onClick={() => { setIsSplit(false); setCategoryId('') }}
+                    title="Switch to single category"
+                  >
+                    <X size={12} />
+                    Cancel split
+                  </button>
+                )}
               </label>
+              {splitLinesPending && (
+                <div className="txn-editor__split-loading" role="status">Loading lines…</div>
+              )}
               <div className="txn-editor__splits">
                 {splits.map((s) => (
                   <div key={s.tempId} className="txn-editor__split-row">
@@ -1014,9 +1073,9 @@ export function TransactionEditor({
 
           <div className="txn-editor__field">
             <label className="txn-editor__label">Memo</label>
-            <input
-              type="text"
-              className="txn-editor__input"
+            <textarea
+              className="txn-editor__input txn-editor__memo"
+              rows={3}
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               placeholder="Optional note..."
@@ -1031,6 +1090,14 @@ export function TransactionEditor({
                 value={outflow}
                 onValueChange={handleOutflowChange}
                 placeholder="0.00"
+                disabled={editingExistingSplit || isReconciled}
+                title={
+                  isReconciled
+                    ? 'Reconciled — the amount is locked'
+                    : editingExistingSplit
+                      ? 'A split’s total is the sum of its lines'
+                      : undefined
+                }
               />
             </div>
             <div className="txn-editor__field">
@@ -1040,6 +1107,14 @@ export function TransactionEditor({
                 value={inflow}
                 onValueChange={handleInflowChange}
                 placeholder="0.00"
+                disabled={editingExistingSplit || isReconciled}
+                title={
+                  isReconciled
+                    ? 'Reconciled — the amount is locked'
+                    : editingExistingSplit
+                      ? 'A split’s total is the sum of its lines'
+                      : undefined
+                }
               />
             </div>
           </div>
@@ -1053,19 +1128,25 @@ export function TransactionEditor({
               {bankRecord.postedDate && (
                 <div
                   className={`txn-editor__bank-meta-field${bankRecord.dateDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
-                  title={bankRecord.dateDiffers ? 'Differs from the date on this transaction' : undefined}
                 >
                   <dt>Posted</dt>
-                  <dd>{formatDate(bankRecord.postedDate)}</dd>
+                  <dd>
+                    <Tooltip content={bankRecord.dateDiffers ? 'Differs from the date on this transaction' : null}>
+                      <span>{formatDate(bankRecord.postedDate)}</span>
+                    </Tooltip>
+                  </dd>
                 </div>
               )}
               {bankRecord.amount !== null && (
                 <div
                   className={`txn-editor__bank-meta-field${bankRecord.amountDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
-                  title={bankRecord.amountDiffers ? 'Differs from the amount on this transaction' : undefined}
                 >
                   <dt>Amount</dt>
-                  <dd>{formatMoney(bankRecord.amount)}</dd>
+                  <dd>
+                    <Tooltip content={bankRecord.amountDiffers ? 'Differs from the amount on this transaction' : null}>
+                      <span>{formatMoney(bankRecord.amount)}</span>
+                    </Tooltip>
+                  </dd>
                 </div>
               )}
               {bankRecord.payee && (

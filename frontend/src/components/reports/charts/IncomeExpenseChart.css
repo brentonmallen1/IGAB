@@ -1,5 +1,1 @@
-.report-btn--active {
-  background: var(--accent-color);
-  color: var(--bg-primary);
-  border-color: var(--accent-color);
-}
+/* .report-btn--active lives in pages/ReportsPage/ReportsPage.css with .report-btn. */

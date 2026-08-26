@@ -7,6 +7,8 @@ import { NodeCard } from './NodeCard'
 import { stepColor } from './stepColor'
 import { buildFlow, NODE_W, NODE_H, ROW_GAP, type FlowEdge } from './flowLayout'
 import { useGuideSignalMap } from './useGuideSignalMap'
+import { useCheckupLeds } from './useCheckupLeds'
+import { StepLed } from './StepLed'
 import { SignalBindingSheet } from './SignalBindingSheet'
 import type { SignalKey } from '../../content/roadmap'
 
@@ -37,6 +39,7 @@ export function RoadmapMap() {
   const expandedDetails = useGuideStore((s) => s.expandedDetails)
   const toggleDetail = useGuideStore((s) => s.toggleDetail)
   const guide = useGuideSignalMap()
+  const { leds } = useCheckupLeds()
 
   const flow = useMemo(() => buildFlow(collapsedStages), [collapsedStages])
 
@@ -154,8 +157,8 @@ export function RoadmapMap() {
   )
 
   return (
-    <div className="flow">
-      <div className="flow__toolbar">
+    <div className="flow surface">
+      <div className="flow__toolbar surface surface--chrome">
         <p className="flow__hint">Drag to move · scroll to zoom · click a box to read it</p>
         <div className="flow__zoom">
           <button type="button" onClick={() => zoomBy(0.85)} aria-label="Zoom out" title="Zoom out">
@@ -172,7 +175,7 @@ export function RoadmapMap() {
       </div>
 
       <div
-        className="flow__viewport"
+        className="flow__viewport surface surface--sunken"
         ref={viewportRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -239,7 +242,10 @@ export function RoadmapMap() {
               onClick={() => toggleStage(c.stage.id)}
               title="Expand this step"
             >
-              <span className="flow-node__step">Step {c.stage.step}</span>
+              <span className="flow-node__step">
+                Step {c.stage.step}
+                {leds.get(c.stage.id) && <StepLed reason={leds.get(c.stage.id)!.title} />}
+              </span>
               <span className="flow-stage__title">{c.stage.title}</span>
               <span className="flow-stage__count">
                 {c.stage.nodes.length} boxes — click to expand
@@ -266,7 +272,14 @@ export function RoadmapMap() {
                   className="flow-node__button"
                   onClick={() => setSelected(n.node.id)}
                 >
-                  {first && <span className="flow-node__step">Step {n.stage.step}</span>}
+                  {first && (
+                    <span className="flow-node__step">
+                      Step {n.stage.step}
+                      {leds.get(n.stage.id) && (
+                        <StepLed reason={leds.get(n.stage.id)!.title} />
+                      )}
+                    </span>
+                  )}
                   <span className="flow-node__title">{n.node.title}</span>
                 </button>
                 {first && (

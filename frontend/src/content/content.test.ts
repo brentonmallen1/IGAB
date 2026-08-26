@@ -7,9 +7,10 @@ import {
   ROADMAP_STEPS,
   findNode,
   findStage,
-  type RoadmapNode,
-} from './roadmap'
+  type RoadmapNode, TOOL_IDS } from './roadmap'
 import { GLOSSARY, GLOSSARY_IDS, glossaryEntry, searchGlossary } from './glossary'
+import { REPORT_TABS } from '../stores/reportStore'
+import { TOOLS } from '../components/guide/tools/toolRegistry'
 
 /** The roadmap and glossary are hand-authored prose, and the usual failure is
  *  not a crash — it is a dead link, an unreachable node, or a decision whose
@@ -152,10 +153,43 @@ describe('roadmap integrity', () => {
     // then renders a blank page — which is worse than no link at all. This
     // caught nothing when written, but the liabilities rework moved exactly
     // these routes around, and a stale list would not have noticed.
+    // A link may name a tab within a page (`/reports?tab=essentials`); the
+    // route is the pathname.
     const bad: string[] = []
     for (const node of allNodes) {
       for (const link of node.appLinks ?? []) {
-        if (!APP_ROUTES.has(link.to)) bad.push(`${node.id} -> ${link.to}`)
+        const pathname = link.to.split('?')[0]
+        if (!APP_ROUTES.has(pathname)) bad.push(`${node.id} -> ${link.to}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
+  it('every tool a node names exists, and every tool is reachable from a node', () => {
+    const named = new Set<string>()
+    for (const node of allNodes) {
+      if (!node.tool) continue
+      expect(TOOL_IDS).toContain(node.tool)
+      expect(TOOLS[node.tool].linkLabel.length).toBeGreaterThan(0)
+      named.add(node.tool)
+    }
+    // A calculator nobody is pointed at is one nobody finds.
+    expect([...named].sort()).toEqual([...TOOL_IDS].sort())
+  })
+
+  it('every report link names a tab the reports page has', () => {
+    // A bare `/reports` lands on the overview whatever the label promised —
+    // "Subscriptions report" did exactly that. A named tab must exist.
+    const tabs = new Set(REPORT_TABS.map((t) => t.id))
+    const bad: string[] = []
+    for (const node of allNodes) {
+      for (const link of node.appLinks ?? []) {
+        const [pathname, query] = link.to.split('?')
+        if (pathname !== '/reports') continue
+        const tab = new URLSearchParams(query ?? '').get('tab')
+        if (!tab || !tabs.has(tab as (typeof REPORT_TABS)[number]['id'])) {
+          bad.push(`${node.id} -> ${link.to}`)
+        }
       }
     }
     expect(bad).toEqual([])

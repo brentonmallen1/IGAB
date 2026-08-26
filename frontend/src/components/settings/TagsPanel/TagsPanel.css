@@ -157,3 +157,13 @@
   color: var(--text-muted);
   font-size: var(--font-size-sm);
 }
+
+/* A system tag in edit mode: the name shown locked where the input would be. */
+.tags-panel__locked-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  padding: 0 var(--spacing-xs);
+}

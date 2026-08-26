@@ -419,7 +419,8 @@ class TestAIJobLinkOnCreate:
             },
         )
         assert resp.status_code == 201
-        assert resp.json()["created_via"] is None
+        # Not the client's value — the server stamps the origin itself.
+        assert resp.json()["created_via"] == "manual"
 
 
 class TestHasAttachmentFilter:

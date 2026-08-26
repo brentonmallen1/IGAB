@@ -36,7 +36,8 @@ servers.
 
 It also tries to answer the question a ledger can't: **what should I do
 next?** A guided roadmap reads your real numbers to show where you stand,
-explains every inference it makes, and lets you correct any of it.
+explains every inference it makes, and lets you correct any of it — with a
+checkup, calculators and a wishlist that all work from the same numbers.
 
 Built for a small household (1–2 people) that budgets daily or weekly and
 wants a tool that is **steady, clear, and trustworthy** — not a fintech
@@ -105,7 +106,7 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
   open the map and explore the shape of it, branches you won't take included
 - **Every inference is explained, correctable, and optional.** IGAB guesses
   which of your categories or accounts is the emergency fund, and then shows
-  its working. If it guessed wrong, point it at the right one. If the money
+  how it decided. If it guessed wrong, point it at the right one. If the money
   lives somewhere IGAB can't see — another bank, a workplace 401(k) — say so
   and it counts without ever being invented into your balances. If you'd
   rather it didn't look at all, one switch in Settings turns personalization
@@ -118,13 +119,25 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
 - Educational only, and it says so: no advice, no market-return projections,
   no single "financial health score" — only arithmetic IGAB can defend
 
-*Slated, not yet built:* a financial checkup (savings rate, emergency-fund
-runway, high-interest debt, chronic overspending — each against a stated
-target), scenario calculators (avalanche vs. snowball with a real rollover
-cascade, pay-off vs. save, loan comparison, emergency-fund sizing), and a
-wishlist — a counterweight to impulse spending rather than a shopping list,
-where a want gets attached to a real envelope and time decides whether it
-still matters. The tabs are in the app and describe themselves.
+- **A financial checkup with no score.** Each figure against the target the
+  roadmap states — emergency fund in months of *your* essential spending, debt
+  above 10%, retirement saving, categories overspent month after month — and
+  a health report you run when you want it: at most five findings, ranked,
+  each leading to a step or a report. When nothing stands out it says so. The
+  only ambient signal is a small amber dot on the roadmap step concerned; mark
+  a step done and the dot defers to you
+- **Scenario calculators you can check by hand** — avalanche against
+  snowball over your real debts with a true rollover cascade, measured against
+  paying minimums; pay a debt down or save the money instead, at a rate you
+  type in; which of two loans costs less once fees are counted; how large an
+  emergency fund needs to be and how long the gap takes to close
+- **A wishlist that lives inside the budget.** Not a shopping list — the
+  counterweight to one. A want gets an envelope (by default a category of its
+  own in a Wishlist group, with a goal), a cooling-off period, and a place in
+  the queue; the budget's own numbers then say when. Group wants into projects,
+  get asked "still want it?" after a while, and see what pulled money out of
+  those envelopes this month — the audit trail, named on both sides, with how
+  much further away each want now is. Nothing is inferred about why
 
 ### Accounts & Transactions
 - On-budget and tracking accounts: checking, savings, cash, credit cards, loans, investments, and other assets/liabilities — plus your own custom account types per budget
@@ -141,6 +154,12 @@ still matters. The tabs are in the app and describe themselves.
 - **SimpleFIN sync** — link multiple banks; encrypted token storage,
   similarity-scored deduplication (payee, date, amount), and a review queue
   for uncertain matches
+- **Four clearing states, one meaning each** — *pending* is a bank hold that
+  has not posted (never counted), *uncleared* is a row you entered that the
+  bank has not confirmed, *cleared* is bank-confirmed, *reconciled* is checked
+  against a statement and locked. A hold that posts under the same record
+  clears in place; a changed amount against something you entered goes to the
+  review queue instead of being applied silently
 - **YNAB import** — switching from YNAB? Import your full export (accounts,
   categories, transactions, budget history) and run both in parallel until
   you trust the numbers. Note: YNAB's export does not include saved views — those
@@ -494,11 +513,6 @@ just migrate                # single squashed migration (0001)
 ## Roadmap
 
 - Deeper mobile polish (chart touch interactions, per-page refinements)
-- The rest of the Guide — financial checkup, scenario calculators, wishlist.
-  The roadmap and glossary have shipped; see **Guidance & Tools** above
-- Extra-payment "what if" simulation for loans — amortization, interest, and
-  promo periods have shipped; the interactive simulator has not. It lands as
-  the Guide's payoff planner, with a proper multi-debt rollover cascade
 - Bill reminders
 - YNAB-compatible export — an exit strategy from IGAB itself, because a tool
   you can leave is a tool you can trust

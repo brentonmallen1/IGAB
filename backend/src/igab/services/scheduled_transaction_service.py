@@ -114,6 +114,9 @@ class ScheduledTransactionService:
                 approved=True,
                 # A scheduled transfer must materialize BOTH legs
                 transfer_account_id=sched.transfer_account_id,
+                # The row says where it came from (created_via='scheduled')
+                # and which schedule; nothing set this before.
+                scheduled_transaction_id=sched.id,
             ),
         )
         next_date = calculate_next(sched)

@@ -90,20 +90,26 @@ class TestConvertToSplit:
         await db_session.refresh(txn)
         assert txn.is_split is False
 
-    async def test_reconciled_rejected(self, db_session):
+    async def test_convert_on_a_reconciled_row_keeps_its_total_and_locks_the_lines(
+        self, db_session
+    ):
+        """Splitting is bookkeeping: the parent's amount does not move, so a
+        reconciled row may be split, and its lines lock with it."""
         budget, account, groceries, household, services = await _setup(db_session)
         txn = await create_transaction(
             db_session, budget, account, "-100.00", TXN_DATE, cleared="reconciled"
         )
-        with pytest.raises(InvariantViolation, match="reconciled"):
-            await services.transactions.convert_to_split(
-                budget.id,
-                txn.id,
-                [
-                    SplitSpec(amount=Decimal("-60.00"), category_id=groceries.id),
-                    SplitSpec(amount=Decimal("-40.00"), category_id=household.id),
-                ],
-            )
+        parent = await services.transactions.convert_to_split(
+            budget.id,
+            txn.id,
+            [
+                SplitSpec(amount=Decimal("-60.00"), category_id=groceries.id),
+                SplitSpec(amount=Decimal("-40.00"), category_id=household.id),
+            ],
+        )
+        assert parent.amount == Decimal("-100.00") and parent.cleared == "reconciled"
+        lines = await services.transaction_repo.get_splits(parent.id)
+        assert [c.cleared for c in lines] == ["reconciled", "reconciled"]
 
     async def test_already_split_rejected(self, db_session):
         budget, account, groceries, household, services = await _setup(db_session)

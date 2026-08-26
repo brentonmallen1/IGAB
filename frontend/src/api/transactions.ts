@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { apiClient } from './client'
+import { apiClient, apiErrorMessage } from './client'
 import type {
   BudgetTransactionsResponse,
   BulkActionResult,
@@ -257,6 +257,8 @@ export function useUpdateTransaction(budgetId: string) {
       // A link/retarget/break writes the OTHER account's row too.
       qc.invalidateQueries({ queryKey: ['transactions'] })
       qc.invalidateQueries({ queryKey: ['account-hygiene', budgetId] })
+      // A parent's date/cleared edit mirrors onto its lines.
+      qc.invalidateQueries({ queryKey: ['transaction-splits', txn.id] })
     },
   })
 }
@@ -285,6 +287,34 @@ export function useTransferCandidates(
   })
 }
 
+/** A split's lines. The register lists parent rows only — this is the one
+ *  way a client sees what a split is made of, and what both split editors
+ *  seed from. Never rebuild lines from a loaded page: a paginated register
+ *  may not hold them, and an empty draft saved over a real split is how
+ *  lines went "missing". */
+export function useTransactionSplits(transactionId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['transaction-splits', transactionId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<Transaction[]>(`/transactions/${transactionId}/splits`)
+      return data
+    },
+    enabled: !!transactionId && enabled,
+    staleTime: 15_000,
+  })
+}
+
+function invalidateAfterSplitChange(qc: ReturnType<typeof useQueryClient>, budgetId: string, txn: { id: string; account_id: string }) {
+  qc.invalidateQueries({ queryKey: ['transaction-splits', txn.id] })
+  qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
+  qc.invalidateQueries({ queryKey: ['all-transactions'] })
+  qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
+  qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+  qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+  qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+  qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
+}
+
 export function useConvertToSplit(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -296,14 +326,27 @@ export function useConvertToSplit(budgetId: string) {
           { params: { budget_id: budgetId } },
         )
         .then((r) => r.data),
-    onSuccess: (txn) => {
-      qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
+    onSuccess: (txn) => invalidateAfterSplitChange(qc, budgetId, txn),
+  })
+}
+
+/** Edit an existing split's lines in place: lines with an `id` update, the
+ *  rest are created, lines left out are removed. The parent — its identity,
+ *  receipt, bank link, amount — is untouched. */
+export function useReplaceSplits(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, splits }: { id: string; splits: SplitCreate[] }) =>
+      apiClient
+        .put<Transaction[]>(
+          `/transactions/${id}/splits`,
+          { splits },
+          { params: { budget_id: budgetId } },
+        )
+        .then((r) => ({ id, lines: r.data })),
+    onSuccess: ({ id, lines }) => {
+      if (lines[0]) invalidateAfterSplitChange(qc, budgetId, { id, account_id: lines[0].account_id })
+      else qc.invalidateQueries({ queryKey: ['transaction-splits', id] })
     },
   })
 }
@@ -318,6 +361,10 @@ export function useDeleteTransaction(budgetId: string) {
       )
       return { accountId, batchId: data.batch_id }
     },
+    // The server refuses some deletes (a reconciled row, the far side of a
+    // reconciled transfer). Without this the confirm dialog closed and
+    // nothing happened.
+    onError: (err) => toast.error(apiErrorMessage(err, 'Could not delete')),
     onSuccess: ({ accountId }) => {
       qc.refetchQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['all-transactions'] })

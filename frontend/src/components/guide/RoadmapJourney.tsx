@@ -7,7 +7,11 @@ import { stepColor } from './stepColor'
 import { NodeCard, type NodeState } from './NodeCard'
 import { SignalBindingSheet } from './SignalBindingSheet'
 import { useGuideSignalMap } from './useGuideSignalMap'
+import { useCheckupLeds } from './useCheckupLeds'
+import { StepLed } from './StepLed'
+import { StageMark } from './StageMark'
 import type { SignalKey } from '../../content/roadmap'
+import type { CheckupFinding } from '../../api/guide'
 
 /**
  * The roadmap as a path you walk — one stage at a time, collapsed by default.
@@ -22,6 +26,7 @@ export function RoadmapJourney() {
   const openStage = useGuideStore((s) => s.openStage)
   const answers = useGuideStore((s) => s.answers)
   const guide = useGuideSignalMap()
+  const { leds } = useCheckupLeds()
   const [correcting, setCorrecting] = useState<SignalKey | null>(null)
 
   const concept = correcting ? guide.concepts.get(correcting) : undefined
@@ -38,6 +43,7 @@ export function RoadmapJourney() {
             onGoToStage={openStage}
             answers={answers}
             onCorrect={setCorrecting}
+            led={leds.get(stage.id)}
           />
         ))}
       </ol>
@@ -60,6 +66,7 @@ function StageRow({
   onGoToStage,
   answers,
   onCorrect,
+  led,
 }: {
   stage: RoadmapStage
   open: boolean
@@ -67,6 +74,8 @@ function StageRow({
   onGoToStage: (id: RoadmapStage['id']) => void
   answers: Record<string, string>
   onCorrect: (key: SignalKey) => void
+  /** The health finding that marks this stage, if one does. */
+  led?: CheckupFinding
 }) {
   const toggleDetail = useGuideStore((s) => s.toggleDetail)
   const expandedDetails = useGuideStore((s) => s.expandedDetails)
@@ -75,7 +84,10 @@ function StageRow({
 
   const guide = useGuideSignalMap()
   const path = stagePath(stage, answers)
-  const done = stageAnswered(stage, answers) && stage.nodes.some((n) => n.kind === 'decision')
+  const mark = guide.progress[stage.id]
+  // The "answered" chip gives way to the mark: one status per row.
+  const done =
+    !mark && stageAnswered(stage, answers) && stage.nodes.some((n) => n.kind === 'decision')
   const bodyId = `stage-${stage.id}`
 
   function stateOf(nodeId: string): NodeState {
@@ -88,8 +100,9 @@ function StageRow({
 
   return (
     <li className="guide-stage" style={{ ['--stage-color' as string]: stepColor(stage.step) }}>
-      <div className="guide-stage__rail" aria-hidden>
-        <span className="guide-stage__dot" />
+      <div className="guide-stage__rail">
+        <span className="guide-stage__dot" aria-hidden />
+        {led && <StepLed reason={led.title} />}
       </div>
 
       <div className="guide-stage__main">
@@ -112,6 +125,10 @@ function StageRow({
             </span>
           )}
         </button>
+
+        {guide.budgetId && (
+          <StageMark budgetId={guide.budgetId} stageId={stage.id} mark={mark} showControls={open} />
+        )}
 
         {/* The summary stays visible when collapsed — the whole stage in a
             breath, so scanning the roadmap is useful without opening anything. */}

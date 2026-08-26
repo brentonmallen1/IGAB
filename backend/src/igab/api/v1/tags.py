@@ -99,6 +99,14 @@ async def update_tag(
     tag = await tag_repo.get_or_raise(tag_id)
     updates: dict = {}
     if body.name is not None:
+        # A system tag's name is how the user recognises what it does — a
+        # "Savings" tag renamed "Fun" still routes money to the savings
+        # reports. Colour is cosmetic; the name is not.
+        if tag.system_key is not None and body.name != tag.name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="System tags cannot be renamed; change the colour instead",
+            )
         if body.name.lower() != tag.name.lower():
             existing = await tag_repo.get_by_name(budget_id, body.name)
             if existing:

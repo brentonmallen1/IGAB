@@ -20,6 +20,15 @@ SYSTEM_TAGS = [
     ("savings", "Savings", "green"),
     ("long_term_expense", "Long-term expense", "teal"),
     ("debt_principal", "Debt principal", "orange"),
+    # What a lean month costs. Drives the Essentials report, the Overview's
+    # essentials card and the Guide's emergency-fund target — one figure,
+    # three readers (see TransactionRepository.essential_spend). Applies to
+    # categories and payees alike.
+    ("essential", "Essential", "blue"),
+    # Applied by the wishlist to every envelope that funds an open wish, and
+    # removed when none does — derived from the wish→envelope link, never
+    # hand-set, so reports that filter by it cannot disagree with the list.
+    ("wishlist", "Wishlist", "pink"),
 ]
 
 #: Name fragments that suggest a system tag on import, checked against the
@@ -118,6 +127,26 @@ class TagRepository(BaseRepository[Tag]):
         await self.session.execute(delete(payee_tags).where(payee_tags.c.payee_id == payee_id))
         for tag_id in tag_ids:
             await self.session.execute(payee_tags.insert().values(payee_id=payee_id, tag_id=tag_id))
+        await self.session.flush()
+
+    async def add_category_tag(self, category_id: uuid.UUID, tag_id: uuid.UUID) -> None:
+        existing = await self.session.execute(
+            select(category_tags).where(
+                category_tags.c.category_id == category_id, category_tags.c.tag_id == tag_id
+            )
+        )
+        if existing.first() is None:
+            await self.session.execute(
+                category_tags.insert().values(category_id=category_id, tag_id=tag_id)
+            )
+            await self.session.flush()
+
+    async def remove_category_tag(self, category_id: uuid.UUID, tag_id: uuid.UUID) -> None:
+        await self.session.execute(
+            delete(category_tags).where(
+                category_tags.c.category_id == category_id, category_tags.c.tag_id == tag_id
+            )
+        )
         await self.session.flush()
 
     async def add_payee_tag(self, payee_id: uuid.UUID, tag_id: uuid.UUID) -> None:
@@ -234,7 +263,12 @@ class TagRepository(BaseRepository[Tag]):
     async def get_category_ids_by_system_keys(
         self, budget_id: uuid.UUID, system_keys: Sequence[str]
     ) -> set[uuid.UUID]:
-        """Get all category IDs that have tags with any of the specified system keys."""
+        """Get all category IDs that have tags with any of the specified system keys.
+
+        For queries over things that are not transactions (assignments, the
+        savings report's category list). A predicate over transaction rows
+        is `txn_filters.category_tagged` — do not rebuild it from these ids.
+        """
         if not system_keys:
             return set()
         result = await self.session.execute(

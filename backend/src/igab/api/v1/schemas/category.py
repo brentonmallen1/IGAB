@@ -122,6 +122,8 @@ class CategoryGroupResponse(BaseModel):
     sort_order: int
     is_hidden: bool
     is_system: bool
+    #: 'wishlist' for the group the Guide keeps; rename and delete are refused.
+    system_key: str | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 

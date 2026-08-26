@@ -5,26 +5,53 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Integer, Select, and_, case, cast, func, insert, or_, select, update
+from sqlalchemy import (
+    Integer,
+    Select,
+    and_,
+    case,
+    cast,
+    func,
+    insert,
+    literal_column,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.orm import with_expression
 from sqlalchemy.sql.elements import ColumnElement
 
-from igab.db.models import Category, Payee, Transaction, TransactionAttachment
+from igab.db.models import (
+    Category,
+    CategoryGroup,
+    Payee,
+    Tag,
+    Transaction,
+    TransactionAttachment,
+    category_tags,
+    payee_tags,
+)
 from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
+    BANK_UNLINKED,
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
+    ESSENTIAL_TAGGED,
     LEAF,
     NEEDS_CATEGORY,
     NOT_DELETED,
+    ON_BUDGET_ACCOUNT,
     PARENT_ROW,
     POSTED,
+    PROVISIONALLY_LINKED,
     UNPAIRED_TRANSFER_LEG,
+    USER_ENTERED,
+    sync_created_pending,
 )
 
 if TYPE_CHECKING:
-    import polars as pl
+    pass
 
 
 # A trailing dot is a half-typed amount, not a non-amount: "12." is what the
@@ -451,11 +478,15 @@ class TransactionRepository(BaseRepository[Transaction]):
         }
 
     async def get_splits(self, parent_id: uuid.UUID) -> list[Transaction]:
+        """A parent's live lines, oldest first (new lines append). Carries the
+        served fields: this is what the split endpoints serialize."""
         result = await self.session.execute(
-            select(Transaction).where(
+            self.with_computed(select(Transaction))
+            .where(
                 Transaction.parent_transaction_id == parent_id,
                 Transaction.is_deleted == False,  # noqa: E712
             )
+            .order_by(Transaction.created_at, Transaction.id)
         )
         return list(result.scalars().all())
 
@@ -694,10 +725,6 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
         await self.session.flush()
 
-    async def bulk_create_from_df(self, df: "pl.DataFrame") -> int:
-        """Bulk insert transactions from a Polars DataFrame."""
-        return await self.bulk_create(df.to_dicts())
-
     async def find_by_sync_id(self, account_id: uuid.UUID, sync_id: str) -> Transaction | None:
         """Find a transaction by bank sync ID (SimpleFIN, Plaid, etc.)."""
         result = await self.session.execute(
@@ -725,9 +752,37 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         q = select(Transaction).where(
             Transaction.account_id == account_id,
-            Transaction.cleared == "pending",
+            sync_created_pending(sync_source),
+            Transaction.is_deleted == False,  # noqa: E712
+        )
+        if window_start is not None:
+            q = q.where(Transaction.date >= window_start)
+        if active_sync_ids:
+            q = q.where(Transaction.sync_id.notin_(active_sync_ids))
+        result = await self.session.execute(q)
+        return list(result.scalars().all())
+
+    async def find_stale_provisional_links(
+        self,
+        account_id: uuid.UUID,
+        sync_source: str,
+        window_start: date | None,
+        active_sync_ids: set[str],
+    ) -> list[Transaction]:
+        """User rows linked to a bank record the feed no longer reports.
+
+        An `uncleared` row matched while the bank record was still an auth
+        hold, whose id then vanished: the bank dropped the hold or
+        re-identified it at posting. Such a row can never clear through its
+        link again. `uncleared` only — a row the user marked cleared is done
+        as far as they are concerned, and pre-`bank_posted_date` legacy rows
+        are `cleared`, so this can never unlink one of them.
+        """
+        q = select(Transaction).where(
+            Transaction.account_id == account_id,
+            PROVISIONALLY_LINKED,
+            Transaction.cleared == "uncleared",
             Transaction.sync_source == sync_source,
-            Transaction.sync_id.isnot(None),
             Transaction.is_deleted == False,  # noqa: E712
         )
         if window_start is not None:
@@ -758,6 +813,106 @@ class TransactionRepository(BaseRepository[Transaction]):
             .values(cleared=cleared)
         )
         await self.session.flush()
+
+    # ─── Essentials: one query, three readers ──────────────────────────────
+
+    async def _essential_scope(
+        self, budget_id: uuid.UUID, bound_categories: Sequence[uuid.UUID] | None
+    ) -> tuple[list, str]:
+        """How "essential" is decided for this budget, and by which rule.
+
+        Precedence: categories the user bound in the Guide ("bound"); else
+        the Essential tag on categories or payees, when any is applied
+        ("tag"); else all spending ("all") — the Guide's original fallback,
+        which the report and the Overview card treat as "nothing tagged yet"
+        rather than show a figure that equals burn rate.
+        """
+        if bound_categories:
+            return [Transaction.category_id.in_(list(bound_categories))], "bound"
+        tagged = select(Tag.id).where(
+            Tag.budget_id == budget_id,
+            Tag.system_key == "essential",
+            Tag.is_deleted == False,  # noqa: E712
+        )
+        applied = (
+            select(func.count())
+            .select_from(category_tags)
+            .where(category_tags.c.tag_id.in_(tagged))
+            .scalar_subquery()
+            + select(func.count())
+            .select_from(payee_tags)
+            .where(payee_tags.c.tag_id.in_(tagged))
+            .scalar_subquery()
+        )
+        if (await self.session.execute(select(applied))).scalar_one() > 0:
+            return [ESSENTIAL_TAGGED], "tag"
+        return [], "all"
+
+    @staticmethod
+    def _essential_where(budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
+        from igab.domain.activity_class import ActivityClass
+
+        return [
+            Transaction.budget_id == budget_id,
+            NOT_DELETED,
+            POSTED,
+            LEAF,
+            ON_BUDGET_ACCOUNT,
+            Transaction.date >= since,
+            Transaction.date <= until,
+            ACTIVITY_CLASS == ActivityClass.SPENDING,
+            *scope,
+        ]
+
+    async def essential_spend(
+        self,
+        budget_id: uuid.UUID,
+        since: date,
+        until: date,
+        bound_categories: Sequence[uuid.UUID] | None = None,
+    ) -> tuple[Decimal, str]:
+        """Signed sum of essential spending in the window (outflows are
+        negative), and the rule that scoped it — see `_essential_scope`."""
+        scope, basis = await self._essential_scope(budget_id, bound_categories)
+        total = (
+            await self.session.execute(
+                apply_class_joins(
+                    select(func.coalesce(func.sum(Transaction.amount), 0))
+                    .select_from(Transaction)
+                    .where(*self._essential_where(budget_id, since, until, scope))
+                )
+            )
+        ).scalar_one()
+        return Decimal(total), basis
+
+    async def essential_spend_by_category_month(
+        self,
+        budget_id: uuid.UUID,
+        since: date,
+        until: date,
+        bound_categories: Sequence[uuid.UUID] | None = None,
+    ) -> tuple[list, str]:
+        """(category_id, category_name, group_name, month, total) rows over the
+        same predicate as `essential_spend`, grouped by calendar month. A
+        payee-tagged row without a category groups under None."""
+        scope, basis = await self._essential_scope(budget_id, bound_categories)
+        month = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        q = (
+            select(
+                Transaction.category_id,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+                month,
+                func.sum(Transaction.amount).label("total"),
+            )
+            .select_from(Transaction)
+            .outerjoin(Category, Category.id == Transaction.category_id)
+            .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
+            .where(*self._essential_where(budget_id, since, until, scope))
+            .group_by(Transaction.category_id, Category.name, CategoryGroup.name, month)
+        )
+        rows = (await self.session.execute(apply_class_joins(q))).all()
+        return list(rows), basis
 
     async def get_oldest_cleared_date_for_account(self, account_id: uuid.UUID) -> date | None:
         """Return the date of the oldest cleared or reconciled transaction on the account."""
@@ -821,12 +976,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             Transaction.account_id == account_id,
             Transaction.amount == amount,
             Transaction.date.between(date_low, date_high),
-            Transaction.import_id.is_(None),
-            Transaction.sync_id.is_(None),
-            # sync_id alone misses id-less feeds: a sync-created row without a
-            # bank id is still bank-sourced, never a "manual" match candidate.
-            Transaction.sync_source.is_(None),
-            Transaction.linked_transaction_id.is_(None),
+            USER_ENTERED,
             Transaction.is_deleted == False,  # noqa: E712
             Transaction.parent_transaction_id.is_(None),
         )
@@ -864,6 +1014,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         date_window_days: int = 5,
         limit: int = 5,
         exclude_ids: Collection[uuid.UUID] | None = None,
+        include_provisional: bool = False,
     ) -> list[tuple[Transaction, str | None]]:
         """Return (Transaction, payee_name) candidates matching by exact amount and date window.
 
@@ -871,11 +1022,15 @@ class TransactionRepository(BaseRepository[Transaction]):
         Caller is responsible for scoring and selecting the best match.
         exclude_ids: rows already claimed earlier in the same sync run — filtered
         before LIMIT so consumption can't starve the candidate pool.
+        include_provisional: also offer PROVISIONALLY_LINKED rows (see
+        txn_filters) — for a posted feed record, whose bank may have
+        re-identified it since the pending record those rows were linked to.
         """
         from datetime import timedelta
 
         date_low = txn_date - timedelta(days=date_window_days)
         date_high = txn_date + timedelta(days=date_window_days)
+        linked = or_(BANK_UNLINKED, PROVISIONALLY_LINKED) if include_provisional else BANK_UNLINKED
         query = (
             select(Transaction, Payee.name)
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
@@ -883,7 +1038,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.account_id == account_id,
                 Transaction.amount == amount,
                 Transaction.date.between(date_low, date_high),
-                Transaction.sync_id.is_(None),  # Exclude already-synced transactions
+                linked,
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),
             )

@@ -36,6 +36,7 @@ from igab.services.transaction_matching_service import (
     _payee_similarity,
     calculate_confidence,
 )
+from igab.services.transaction_service import TransactionService
 from igab.utils.clock import today_utc
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -99,7 +100,12 @@ def make_transaction(
     txn.amount = D(amount)
     txn.date = date_ or today_utc()
     txn.entered_date = None
+    txn.entered_amount = None
     txn.bank_posted_date = None
+    # Explicit None, not MagicMock auto-attributes: the posting rule drops
+    # unchanged values, and an auto-attribute compares unequal to everything.
+    txn.bank_amount = None
+    txn.bank_payee = None
     txn.payee_id = payee_id
     txn.category_id = category_id
     txn.import_id = import_id
@@ -281,8 +287,22 @@ class TestSyncFlow:
         )
         # begin_nested is used as an async context manager (savepoint per row)
         svc.session.begin_nested = MagicMock(return_value=AsyncMock())
-        # The stale-pending sweep iterates this — default to nothing stale
+        # The posting rule is written by TransactionService. Give the mocked
+        # service the real writer, bound to this test's mocked repo, so the
+        # assertions below can watch txn_repo.update as they always have.
+        real = TransactionService(
+            session=AsyncMock(),
+            transaction_repo=svc.txn_repo,
+            account_repo=AsyncMock(),
+            category_repo=AsyncMock(),
+            payee_repo=AsyncMock(),
+        )
+        svc.txn_service.apply_bank_posting = real.apply_bank_posting
+        svc.txn_service.release_bank_link = real.release_bank_link
+        svc.txn_repo.get_splits = AsyncMock(return_value=[])
+        # The after-loop passes iterate these — default to nothing stale
         svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
+        svc.txn_repo.find_stale_provisional_links = AsyncMock(return_value=[])
         return svc
 
     @pytest.mark.asyncio
@@ -341,7 +361,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, budget_id)
 
@@ -380,7 +403,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, budget_id)
 
@@ -426,7 +452,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, budget_id)
 
@@ -464,7 +493,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, budget_id)
 
@@ -488,7 +520,10 @@ class TestSyncFlow:
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(side_effect=error)),
             patch("igab.services.simplefin_service.asyncio.sleep", AsyncMock()),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, budget_id)
 
@@ -533,7 +568,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, budget_id)
 
@@ -572,7 +610,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, budget_id)
 
@@ -610,7 +651,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, budget_id)
 
@@ -652,7 +696,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, budget_id)
 
@@ -696,11 +743,20 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id="sf:txn-match", cleared="cleared")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "GROCERY")]
+        )
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch.object(
+                svc.client,
+                "get_transactions",
+                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+            ),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -718,11 +774,20 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="cleared")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "GROCERY")]
+        )
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch.object(
+                svc.client,
+                "get_transactions",
+                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+            ),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
@@ -741,11 +806,20 @@ class TestSyncFlow:
 
         # Transaction imported from YNAB (has import_id, no sync_id)
         existing = make_transaction(import_id="csv:existing123", sync_id=None, cleared="cleared")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "GROCERY")]
+        )
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch.object(
+                svc.client,
+                "get_transactions",
+                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+            ),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
@@ -769,11 +843,20 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="pending")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "GROCERY")]
+        )
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch.object(
+                svc.client,
+                "get_transactions",
+                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+            ),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -794,11 +877,20 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="uncleared")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "GROCERY")]
+        )
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch.object(
+                svc.client,
+                "get_transactions",
+                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+            ),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -815,7 +907,9 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="uncleared")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "GROCERY")]
+        )
 
         # Not posted — pending transaction
         raw_txns = [
@@ -830,7 +924,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -848,11 +945,20 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="cleared")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "GROCERY")]
+        )
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch.object(
+                svc.client,
+                "get_transactions",
+                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+            ),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -862,7 +968,7 @@ class TestSyncFlow:
 
     @pytest.mark.asyncio
     async def test_exact_sync_id_match_skips_entirely(self) -> None:
-        """When a transaction with exact sync_id already exists, skip without any update."""
+        """A row already carrying this sync_id is skipped: provenance may refresh, nothing else moves."""
         svc = self._make_svc()
         conn = make_connection()
         account = make_account(first_sync_complete=True)
@@ -873,13 +979,23 @@ class TestSyncFlow:
         svc.txn_repo.find_by_sync_id = AsyncMock(return_value=existing)
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch.object(
+                svc.client,
+                "get_transactions",
+                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+            ),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
         # Should skip entirely (not call update or create)
-        svc.txn_repo.update.assert_not_called()
+        # The identity path refreshes bank provenance on a hit (bank_amount, the
+        # posted date) but never the row's money or state.
+        for call in svc.txn_repo.update.call_args_list:
+            assert not ({"cleared", "amount", "date"} & call.kwargs.keys()), call.kwargs
         svc.txn_service.create.assert_not_called()
         assert result["skipped"] == 1
 
@@ -892,7 +1008,9 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(import_id=None, cleared="uncleared", amount="-100.00")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "GROCERY")])
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(
+            return_value=[(existing, "GROCERY")]
+        )
 
         raw_txns = [
             {
@@ -905,7 +1023,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -939,7 +1060,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -964,9 +1088,12 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(cleared="uncleared", is_split=True, amount="-50.00")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(
-            return_value=[(existing, "Costco")]
-        )
+        children = [
+            make_transaction(cleared="uncleared", parent_transaction_id=existing.id),
+            make_transaction(cleared="uncleared", parent_transaction_id=existing.id),
+        ]
+        svc.txn_repo.get_splits = AsyncMock(return_value=children)
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "Costco")])
 
         raw_txns = [
             {
@@ -985,8 +1112,11 @@ class TestSyncFlow:
             result = await svc.sync(conn.id, uuid.uuid4())
 
         assert result["matched"] == 1
-        assert svc.txn_repo.update.call_args.kwargs.get("cleared") == "cleared"
-        svc.txn_repo.set_children_cleared.assert_awaited_once_with(existing.id, "cleared")
+        parent_call, *child_calls = svc.txn_repo.update.call_args_list
+        assert parent_call.args[0] == existing.id
+        assert parent_call.kwargs.get("cleared") == "cleared"
+        assert [c.args[0] for c in child_calls] == [child.id for child in children]
+        assert all(c.kwargs == {"cleared": "cleared"} for c in child_calls)
 
     @pytest.mark.asyncio
     async def test_auto_match_on_already_cleared_split_parent_skips_children(self) -> None:
@@ -996,9 +1126,7 @@ class TestSyncFlow:
         self._base_sync_mocks(svc, account, conn)
 
         existing = make_transaction(cleared="cleared", is_split=True, amount="-50.00")
-        svc.txn_repo.find_existing_match_candidates = AsyncMock(
-            return_value=[(existing, "Costco")]
-        )
+        svc.txn_repo.find_existing_match_candidates = AsyncMock(return_value=[(existing, "Costco")])
 
         raw_txns = [
             {
@@ -1017,7 +1145,7 @@ class TestSyncFlow:
             result = await svc.sync(conn.id, uuid.uuid4())
 
         assert result["matched"] == 1
-        svc.txn_repo.set_children_cleared.assert_not_awaited()
+        svc.txn_repo.get_splits.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_ambiguous_candidates_create_review_match(self) -> None:
@@ -1049,7 +1177,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -1073,8 +1204,15 @@ class TestSyncFlow:
         svc.txn_service.create = AsyncMock(return_value=make_transaction())
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=[self._posted_raw_txn(account)])),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch.object(
+                svc.client,
+                "get_transactions",
+                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+            ),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
@@ -1103,7 +1241,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
@@ -1153,7 +1294,10 @@ class TestSyncFlow:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
 
@@ -1192,7 +1336,10 @@ class TestBankRecordCapture:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
@@ -1222,7 +1369,10 @@ class TestBankRecordCapture:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
@@ -1255,7 +1405,10 @@ class TestBankRecordCapture:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
@@ -1285,14 +1438,16 @@ class TestBankRecordCapture:
         ]
         with (
             patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
-            patch("igab.services.simplefin_service.decrypt", return_value="https://user:pass@example.com"),
+            patch(
+                "igab.services.simplefin_service.decrypt",
+                return_value="https://user:pass@example.com",
+            ),
         ):
             await svc.sync(conn.id, uuid.uuid4())
 
         create_data = svc.txn_service.create.call_args[0][1]
         assert create_data.bank_payee is None
         assert create_data.bank_amount == D("-9.99")
-
 
 
 # ─── Match decision ladder ────────────────────────────────────────────────────
@@ -1367,8 +1522,8 @@ class TestMatchDecision:
 
     def test_same_day_pair_with_clear_payee_winner_auto_matches(self) -> None:
         with patch(
-            "igab.services.simplefin_service._payee_similarity",
-            side_effect=lambda a, b: {"close": 0.62, "far": 0.30}[b],
+            "igab.services.simplefin_service.best_payee_similarity",
+            side_effect=lambda names, other, **_: {"close": 0.62, "far": 0.30}[names[0]],
         ):
             close = _candidate(days_ago=0, payee="close")
             far = _candidate(days_ago=0, payee="far")
@@ -1378,8 +1533,8 @@ class TestMatchDecision:
 
     def test_same_day_pair_below_margin_goes_to_review(self) -> None:
         with patch(
-            "igab.services.simplefin_service._payee_similarity",
-            side_effect=lambda a, b: {"close": 0.45, "far": 0.40}[b],
+            "igab.services.simplefin_service.best_payee_similarity",
+            side_effect=lambda names, other, **_: {"close": 0.45, "far": 0.40}[names[0]],
         ):
             close = _candidate(days_ago=0, payee="close")
             far = _candidate(days_ago=0, payee="far")
@@ -1460,8 +1615,12 @@ class TestMatchDecision:
 class TestConfidenceScoring:
     def test_perfect_match_returns_1(self) -> None:
         score = calculate_confidence(
-            D("-50.00"), today_utc(), "STARBUCKS",
-            D("-50.00"), today_utc(), "STARBUCKS",
+            D("-50.00"),
+            today_utc(),
+            "STARBUCKS",
+            D("-50.00"),
+            today_utc(),
+            "STARBUCKS",
         )
         assert score == pytest.approx(1.0, abs=0.01)
 
@@ -1507,8 +1666,12 @@ class TestConfidenceScoring:
     def test_full_confidence_components(self) -> None:
         today = today_utc()
         score = calculate_confidence(
-            D("-50.00"), today, "WHOLE FOODS",
-            D("-50.00"), today, "WHOLE FOODS MARKET",
+            D("-50.00"),
+            today,
+            "WHOLE FOODS",
+            D("-50.00"),
+            today,
+            "WHOLE FOODS MARKET",
         )
         # Amount (0.4) + Date (0.3) + partial payee match (should be high)
         assert score > 0.85
@@ -1524,6 +1687,7 @@ class TestTransactionMatchingService:
             txn_repo=AsyncMock(),
             match_repo=AsyncMock(),
             payee_repo=AsyncMock(),
+            txn_service=AsyncMock(),
         )
 
     @pytest.mark.asyncio

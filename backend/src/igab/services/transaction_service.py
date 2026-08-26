@@ -9,7 +9,15 @@ from typing import TYPE_CHECKING, Any, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Payee, Transaction
+from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, posting_updates
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.merging import MergeSide, choose_survivor, survivor_violation
+from igab.domain.reconciliation import (
+    RECONCILED_LOCKED_FIELDS,
+    locked_changes,
+    locked_values,
+    reconciled_edit_message,
+)
 from igab.domain.splits import require_split_balances
 from igab.domain.transfers import (
     leg_may_carry_category,
@@ -20,7 +28,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match, source_for
 from igab.services.ownership import require_in_budget
 
 if TYPE_CHECKING:
@@ -60,6 +68,8 @@ class TransactionCreate:
     # AI provenance ('ai_receipt' | 'ai_nl') — set server-side only, never
     # accepted verbatim from clients.
     created_via: str | None = None
+    #: The schedule this row is being entered from (see §enter_now).
+    scheduled_transaction_id: uuid.UUID | None = None
     latitude: float | None = None
     longitude: float | None = None
 
@@ -88,18 +98,56 @@ class TransactionUpdate:
 
 @dataclass
 class SplitSpec:
-    """One leg of a split conversion — everything else (account, date,
-    cleared, approved) is inherited from the parent transaction."""
+    """One line of a split — everything else (account, date, cleared,
+    approved) is inherited from the parent transaction. `id` names an
+    existing line to update in place; None means a new line."""
 
     amount: Decimal
     category_id: uuid.UUID | None = None
     payee_id: uuid.UUID | None = None
     payee_name: str | None = None
     memo: str | None = None
+    id: uuid.UUID | None = None
 
 
 # Fields that may never be set to NULL via PATCH
 _REQUIRED_FIELDS = ("date", "amount", "cleared", "approved")
+
+
+def origin_of(data: TransactionCreate) -> str:
+    """Where a new row comes from, when the caller did not say (the AI paths
+    say 'ai_receipt' / 'ai_nl' themselves). See Transaction.created_via."""
+    if data.sync_source:
+        return "sync"
+    if data.scheduled_transaction_id is not None:
+        return "scheduled"
+    if data.import_batch_id is not None or data.import_id:
+        return "import"
+    return "manual"
+
+
+def build_transaction_service(session: AsyncSession) -> TransactionService:
+    """A fully wired TransactionService over one session.
+
+    The one place the constructor is called with every repository. Five
+    call sites used to wire it by hand, and the scheduler's two left out the
+    attachment and match repositories — so a merge made by the hourly sync
+    silently skipped reassigning receipts and cancelling stale review matches.
+    """
+    from igab.repositories.attachment_repo import AttachmentRepository
+    from igab.repositories.transaction_match_repo import TransactionMatchRepository
+
+    return TransactionService(
+        session,
+        TransactionRepository(session),
+        AccountRepository(session),
+        CategoryRepository(session),
+        PayeeRepository(session),
+        attachment_repo=AttachmentRepository(session),
+        match_repo=TransactionMatchRepository(session),
+    )
+
+
 # Cleared values reserved for system flows (reconciliation, bank sync)
 _SYSTEM_CLEARED_VALUES = ("reconciled", "pending")
 
@@ -168,7 +216,7 @@ class TransactionService:
             return await self._create_transfer(budget_id, data, record=record)
 
         # Resolve or create payee
-        payee = await self._resolve_payee(budget_id, data)
+        payee = await self._resolve_payee(budget_id, data.payee_id, data.payee_name)
         payee_id = payee.id if payee else None
 
         # Auto-categorization: use the most recent category for this payee.
@@ -187,6 +235,7 @@ class TransactionService:
                 if default is not None:
                     category_id = default.id
 
+        created_via = data.created_via or origin_of(data)
         txn = await self.transaction_repo.create(
             budget_id=budget_id,
             account_id=data.account_id,
@@ -198,54 +247,53 @@ class TransactionService:
             cleared=data.cleared,
             approved=data.approved,
             parent_transaction_id=data.parent_transaction_id,
+            scheduled_transaction_id=data.scheduled_transaction_id,
             import_id=data.import_id,
             import_batch_id=data.import_batch_id,
             import_description=data.import_description,
             sync_id=data.sync_id,
             sync_source=data.sync_source,
+            # Bank-sourced from birth: the posting rule would otherwise
+            # write this on the next sync, and "writes nothing" is a promise.
+            has_sync_source=data.sync_source is not None,
             bank_posted_date=data.bank_posted_date,
             bank_amount=data.bank_amount,
             bank_payee=data.bank_payee,
-            created_via=data.created_via,
+            created_via=created_via,
             latitude=data.latitude,
             longitude=data.longitude,
         )
         if record:
-            source = "ai" if data.created_via else ("import" if data.import_batch_id else "manual")
-            await self._record_txn(txn, "create", source=source)
+            await self._record_txn(txn, "create", source=source_for(created_via))
         return txn
 
     async def create_split(
         self, budget_id: uuid.UUID, header: TransactionCreate, splits: list[TransactionCreate]
     ) -> Transaction:
         """Create a split transaction: one parent + N children."""
-        require_split_balances(header.amount, [s.amount for s in splits])
+        specs = [
+            SplitSpec(
+                amount=s.amount,
+                category_id=s.category_id,
+                payee_id=s.payee_id,
+                payee_name=s.payee_name,
+                memo=s.memo,
+            )
+            for s in splits
+        ]
+        require_split_balances(header.amount, [s.amount for s in specs])
 
         # Parent has no category (it's distributed across splits). Auto-
         # categorization in create() may have applied a payee default, so
         # force category back to NULL alongside the is_split flag.
         header.category_id = None
-        parent = await self.create(budget_id, header, record=False)
-        await self.transaction_repo.update(parent.id, is_split=True, category_id=None)
-
-        children: list[Transaction] = []
-        for split in splits:
-            split.parent_transaction_id = parent.id
-            split.account_id = header.account_id
-            # Children mirror the parent's date and posting state so account
-            # balances (parent rows) and category activity (leaf rows) always
-            # agree on when the money moved.
-            split.date = header.date
-            split.cleared = header.cleared
-            split.approved = header.approved
-            children.append(await self.create(budget_id, split, record=False))
-
-        await self.transaction_repo.refresh(parent)
-        # Recorded after the is_split flip so the snapshots hold final state.
         with self.changes.batch():
+            parent = await self.create(budget_id, header, record=False)
+            parent = await self.transaction_repo.update(parent.id, is_split=True, category_id=None)
+            # Recorded after the is_split flip so the snapshot holds final state.
             await self._record_txn(parent, "create", refresh=False)
-            for child in children:
-                await self._record_txn(child, "create")
+            await self._apply_split_legs(budget_id, parent, specs, existing=[])
+        await self.transaction_repo.refresh(parent)
         return parent
 
     async def convert_to_split(
@@ -256,13 +304,12 @@ class TransactionService:
         Unlike create-replacement-and-delete, this preserves the transaction's
         identity — attachments, AI-job links, import/sync ids, and provenance
         all stay put. Receipts made this mandatory: the image is attached to
-        the row being split.
+        the row being split. A reconciled row may be split: its amount does
+        not move (the lines must sum to it) and the lines lock with it.
         """
         txn = await self.transaction_repo.get_or_raise(transaction_id)
         if str(txn.budget_id) != str(budget_id):
             raise InvariantViolation("Transaction does not belong to this budget")
-        if txn.cleared == "reconciled":
-            raise InvariantViolation("Cannot split a reconciled transaction")
         if txn.is_split:
             raise InvariantViolation("Transaction is already split")
         if txn.parent_transaction_id is not None:
@@ -270,44 +317,113 @@ class TransactionService:
         if txn.transfer_id is not None:
             raise InvariantViolation("Cannot split a transfer")
 
-        require_split_balances(txn.amount, [s.amount for s in splits])
-
-        for split in splits:
-            await require_in_budget(
-                self.session, Category, split.category_id, budget_id, "Category"
-            )
-
         before = snapshot("transaction", txn)
-        await self.transaction_repo.update(txn.id, is_split=True, category_id=None)
-        children = []
-        for split in splits:
-            children.append(
-                await self.create(
+        # One batch: undoing it deletes the lines and restores the parent's
+        # pre-split category and is_split flag. Lines first — they validate
+        # (sum, categories) before anything is written — then the flip.
+        with self.changes.batch():
+            await self._apply_split_legs(budget_id, txn, splits, existing=[])
+            await self.transaction_repo.update(txn.id, is_split=True, category_id=None)
+            await self._record_txn(txn, "update", before=before)
+        await self.transaction_repo.refresh(txn)
+        return txn
+
+    async def replace_splits(
+        self, budget_id: uuid.UUID, parent_id: uuid.UUID, splits: list[SplitSpec]
+    ) -> list[Transaction]:
+        """Make these the split's lines: update the ones named by id, create
+        the rest, remove the missing. The parent's amount does not move — the
+        lines must still sum to it — so this is bookkeeping, and works on a
+        reconciled parent too (its lines stay reconciled). Returns the lines.
+        """
+        parent = await self.transaction_repo.get_or_raise(parent_id)
+        if str(parent.budget_id) != str(budget_id):
+            raise InvariantViolation("Transaction does not belong to this budget")
+        if not parent.is_split:
+            raise InvariantViolation("Transaction is not split")
+        existing = await self.transaction_repo.get_splits(parent.id)
+        with self.changes.batch():
+            lines = await self._apply_split_legs(budget_id, parent, splits, existing=existing)
+        return lines
+
+    async def _apply_split_legs(
+        self,
+        budget_id: uuid.UUID,
+        parent: Transaction,
+        specs: list[SplitSpec],
+        *,
+        existing: list[Transaction],
+    ) -> list[Transaction]:
+        """The one place a split's lines are written.
+
+        Lines mirror the parent's date, cleared state and approval — account
+        balances (parent rows) and category activity (leaf rows) have to
+        agree on when money moved — and they must sum to the parent's amount
+        exactly (domain.splits). A spec naming an id updates that line; an
+        id from some other transaction is refused (the route guards only the
+        parent); a line not named is removed, its attachments moved to the
+        parent and remembered so undo puts them back. Lines list oldest first;
+        lines written in one request share a created_at and order by id.
+        Three creation-time copies of the mirror rule used to exist; this is
+        the one. Records every step; callers own the batch.
+        """
+        require_split_balances(parent.amount, [s.amount for s in specs])
+        existing_by_id = {child.id: child for child in existing}
+        for spec in specs:
+            if spec.id is not None and spec.id not in existing_by_id:
+                raise InvariantViolation("Split line does not belong to this transaction")
+            await require_in_budget(self.session, Category, spec.category_id, budget_id, "Category")
+
+        kept: list[Transaction] = []
+        for spec in specs:
+            if spec.id is not None:
+                child = existing_by_id[spec.id]
+                child_before = snapshot("transaction", child)
+                changes: dict[str, Any] = {
+                    "amount": spec.amount,
+                    "category_id": spec.category_id,
+                    "memo": spec.memo,
+                }
+                if spec.payee_id is not None or spec.payee_name:
+                    payee = await self._resolve_payee(budget_id, spec.payee_id, spec.payee_name)
+                    changes["payee_id"] = payee.id if payee else None
+                updated = await self.transaction_repo.update(child.id, **changes)
+                await self._record_txn(updated, "update", before=child_before)
+                kept.append(updated)
+            else:
+                child = await self.create(
                     budget_id,
                     TransactionCreate(
-                        account_id=txn.account_id,
-                        date=txn.date,
-                        amount=split.amount,
-                        category_id=split.category_id,
-                        payee_id=split.payee_id,
-                        payee_name=split.payee_name,
-                        memo=split.memo,
-                        cleared=txn.cleared,
-                        approved=txn.approved,
-                        parent_transaction_id=txn.id,
+                        account_id=parent.account_id,
+                        date=parent.date,
+                        amount=spec.amount,
+                        category_id=spec.category_id,
+                        payee_id=spec.payee_id,
+                        payee_name=spec.payee_name,
+                        memo=spec.memo,
+                        cleared=parent.cleared,
+                        approved=parent.approved,
+                        parent_transaction_id=parent.id,
+                        created_via=parent.created_via,
                     ),
                     record=False,
                 )
-            )
-
-        await self.transaction_repo.refresh(txn)
-        # One batch: undoing it deletes the children and restores the parent's
-        # pre-split category and is_split flag.
-        with self.changes.batch():
-            await self._record_txn(txn, "update", before=before, refresh=False)
-            for child in children:
                 await self._record_txn(child, "create")
-        return txn
+                kept.append(child)
+
+        kept_ids = {child.id for child in kept}
+        for child in existing:
+            if child.id in kept_ids:
+                continue
+            child_before = snapshot("transaction", child)
+            if self.attachment_repo is not None:
+                child_before["_attachment_ids"] = [
+                    str(a.id) for a in await self.attachment_repo.get_for_transaction(child.id)
+                ]
+                await self.attachment_repo.reassign(child.id, parent.id)
+            await self.transaction_repo.soft_delete(child.id)
+            await self._record_txn(child, "delete", before=child_before, refresh=False)
+        return kept
 
     async def update(
         self, budget_id: uuid.UUID, transaction_id: uuid.UUID, data: TransactionUpdate
@@ -315,8 +431,6 @@ class TransactionService:
         txn = await self.transaction_repo.get_or_raise(transaction_id)
         if str(txn.budget_id) != str(budget_id):
             raise InvariantViolation("Transaction does not belong to this budget")
-        if txn.cleared == "reconciled":
-            raise InvariantViolation("Cannot edit a reconciled transaction")
 
         changes = {k: v for k, v in vars(data).items() if v is not UNSET}
         # Not columns — pulled out before the generic column update. Handled
@@ -328,6 +442,17 @@ class TransactionService:
         for field in _REQUIRED_FIELDS:
             if field in changes and changes[field] is None:
                 raise InvariantViolation(f"{field} cannot be empty")
+
+        # Reconciled: the money is locked, the bookkeeping is not (see
+        # domain.reconciliation). Unchanged locked values are dropped rather
+        # than refused — the editor sends every field it shows — so they
+        # cannot trip the transfer or split-propagation rules below either.
+        if txn.cleared == "reconciled":
+            locked = locked_changes(locked_values(txn), changes)
+            if locked:
+                raise InvariantViolation(reconciled_edit_message(locked))
+            for field in RECONCILED_LOCKED_FIELDS & changes.keys():
+                del changes[field]
 
         if transfer_requested:
             if txn.is_split or txn.parent_transaction_id is not None:
@@ -441,18 +566,19 @@ class TransactionService:
             # Propagate parent date/cleared to children (mirror invariant).
             if txn.is_split and ({"date", "cleared"} & changes.keys()):
                 child_changes = {k: changes[k] for k in ("date", "cleared") if k in changes}
-                for child in await self.transaction_repo.get_splits(txn.id):
-                    child_before = snapshot("transaction", child)
-                    updated_child = await self.transaction_repo.update(child.id, **child_changes)
-                    await self._record_txn(updated_child, "update", before=child_before)
+                await self._mirror_children(txn.id, **child_changes)
 
             updated = await self.transaction_repo.update(transaction_id, **changes)
             await self._record_txn(updated, "update", before=before_self)
         return updated
 
-    async def delete(self, budget_id: uuid.UUID, transaction_id: uuid.UUID) -> uuid.UUID:
+    async def delete(
+        self, budget_id: uuid.UUID, transaction_id: uuid.UUID, *, source: str = "manual"
+    ) -> uuid.UUID:
         """Soft-delete a transaction (plus transfer partner and split
-        children). Returns the change-log batch id so callers can offer undo."""
+        children). Returns the change-log batch id so callers can offer undo.
+        `source` is who is acting — "system" when the bank sync sweeps a
+        pending row the feed dropped."""
         txn = await self.transaction_repo.get_or_raise(transaction_id)
         if str(txn.budget_id) != str(budget_id):
             raise InvariantViolation("Transaction does not belong to this budget")
@@ -474,7 +600,9 @@ class TransactionService:
                         )
                     partner_before = snapshot("transaction", partner)
                     await self.transaction_repo.soft_delete(partner.id)
-                    await self._record_txn(partner, "delete", before=partner_before, refresh=False)
+                    await self._record_txn(
+                        partner, "delete", before=partner_before, source=source, refresh=False
+                    )
 
             # Soft delete any splits (children mirror the parent's cleared state,
             # so a non-reconciled parent implies non-reconciled children).
@@ -482,14 +610,16 @@ class TransactionService:
             for split in splits:
                 split_before = snapshot("transaction", split)
                 await self.transaction_repo.soft_delete(split.id)
-                await self._record_txn(split, "delete", before=split_before, refresh=False)
+                await self._record_txn(
+                    split, "delete", before=split_before, source=source, refresh=False
+                )
 
             if self.match_repo is not None:
                 await self.match_repo.cancel_pending_for_transaction(transaction_id)
 
             txn_before = snapshot("transaction", txn)
             await self.transaction_repo.soft_delete(transaction_id)
-            await self._record_txn(txn, "delete", before=txn_before, refresh=False)
+            await self._record_txn(txn, "delete", before=txn_before, source=source, refresh=False)
         return batch_id
 
     async def unreconcile(self, budget_id: uuid.UUID, transaction_id: uuid.UUID) -> Transaction:
@@ -502,17 +632,62 @@ class TransactionService:
 
         with self.changes.batch():
             if txn.is_split:
-                for child in await self.transaction_repo.get_splits(txn.id):
-                    if child.cleared == "reconciled":
-                        child_before = snapshot("transaction", child)
-                        updated_child = await self.transaction_repo.update(
-                            child.id, cleared="cleared"
-                        )
-                        await self._record_txn(updated_child, "update", before=child_before)
+                await self._mirror_children(txn.id, cleared="cleared")
             before = snapshot("transaction", txn)
             updated = await self.transaction_repo.update(transaction_id, cleared="cleared")
             await self._record_txn(updated, "update", before=before)
         return updated
+
+    async def _mirror_children(
+        self, parent_id: uuid.UUID, *, source: str = "manual", **fields: Any
+    ) -> None:
+        """Write `fields` onto every live split line of a parent, recorded.
+
+        Children must always share their parent's date and cleared state —
+        account balances (parent rows) and category activity (leaf rows) have
+        to agree on when money moved. This is the only place that mirror is
+        written; three copies of it once existed and one of them (the bank
+        sync's) cleared a parent while leaving its lines pending.
+        """
+        for child in await self.transaction_repo.get_splits(parent_id):
+            child_before = snapshot("transaction", child)
+            updated_child = await self.transaction_repo.update(child.id, **fields)
+            await self._record_txn(updated_child, "update", before=child_before, source=source)
+
+    async def apply_bank_posting(
+        self, txn: Transaction, feed: FeedRecord, *, confirmed: bool
+    ) -> Apply | Review:
+        """The bank feed has a record for this row: apply what the posting
+        rule says (domain.bank_posting) and record it.
+
+        The only writer of bank-driven changes. Both sync paths — a row found
+        by its bank id and a row found by amount and date — come through
+        here, as does an accepted amount-change review (`confirmed=True`,
+        via `merge`). A sync therefore never rewrites a row unrecorded, and a
+        split parent's lines always follow its cleared state.
+        """
+        outcome = posting_updates(RowState.from_transaction(txn), feed, confirmed=confirmed)
+        if isinstance(outcome, Review) or not outcome.updates:
+            return outcome
+        before = snapshot("transaction", txn)
+        with self.changes.batch():
+            updated = await self.transaction_repo.update(txn.id, **outcome.updates)
+            await self._record_txn(updated, "update", before=before, source="system")
+            if "cleared" in outcome.updates and txn.is_split:
+                await self._mirror_children(
+                    txn.id, source="system", cleared=outcome.updates["cleared"]
+                )
+        return outcome
+
+    async def release_bank_link(self, txn: Transaction) -> None:
+        """The bank record this row was linked to moved on — the bank posted
+        a different amount, or re-identified the record. The row goes back to
+        unlinked and matchable; its bank provenance stays as a trace."""
+        if txn.sync_id is None:
+            return
+        before = snapshot("transaction", txn)
+        updated = await self.transaction_repo.update(txn.id, sync_id=None)
+        await self._record_txn(updated, "update", before=before, source="system")
 
     async def approve(self, transaction_id: uuid.UUID, budget_id: uuid.UUID | None = None):
         txn = await self.transaction_repo.get_or_raise(transaction_id)
@@ -557,6 +732,7 @@ class TransactionService:
 
         # Source: outflow from from-account
         from_payee = await self._get_transfer_payee(budget_id, to_account)
+        created_via = data.created_via or origin_of(data)
         source = await self.transaction_repo.create(
             budget_id=budget_id,
             account_id=data.account_id,
@@ -567,6 +743,8 @@ class TransactionService:
             memo=data.memo,
             cleared=data.cleared,
             approved=data.approved,
+            created_via=created_via,
+            scheduled_transaction_id=data.scheduled_transaction_id,
         )
 
         # Destination: inflow into to-account
@@ -582,6 +760,8 @@ class TransactionService:
             cleared="uncleared",
             approved=data.approved,
             transfer_id=source.id,
+            created_via=created_via,
+            scheduled_transaction_id=data.scheduled_transaction_id,
         )
 
         # Link source → dest
@@ -877,6 +1057,8 @@ class TransactionService:
             cleared="uncleared",
             approved=txn.approved,
             transfer_id=txn.id,
+            created_via=txn.created_via or "manual",
+            scheduled_transaction_id=txn.scheduled_transaction_id,
         )
         await self._record_txn(created, "create")
         return {"payee_id": own_payee.id, "transfer_id": created.id}
@@ -897,98 +1079,96 @@ class TransactionService:
         transaction_ids: list[uuid.UUID],
         survivor_id: uuid.UUID | None = None,
     ) -> Transaction:
-        """Merge two transactions. Survivor keeps its data; import metadata is merged."""
+        """Merge two rows that are the same real-world transaction.
+
+        The one merge: the user's explicit merge and the bank-sync review
+        queue's accept both come here. Who survives is domain.merging's
+        rule; what a bank-sourced loser contributes is the bank-posting
+        rule's (its posted amount replaces the survivor's — this is the
+        accepted amount-change review — with the prior amount kept in
+        `entered_amount`; its posted date, amount and payee string arrive as
+        provenance; an uncleared survivor clears). Everything else is
+        additive: the survivor keeps what it has and takes what it lacks —
+        memo, category, payee, approval, the loser's attachments, its import
+        and bank identity. A merge determines which value wins, never which
+        one is lost.
+
+        The loser is soft-deleted before the survivor is written so the
+        partial unique index on (account_id, sync_id) never sees two live
+        rows. Recorded as one batch, so undo restores both rows and moves
+        exactly the loser's attachments back.
+        """
         if len(transaction_ids) != 2:
             raise InvariantViolation("Exactly 2 transactions are required for a merge")
 
         txn1 = await self.transaction_repo.get_or_raise(transaction_ids[0])
         txn2 = await self.transaction_repo.get_or_raise(transaction_ids[1])
-
         for txn in (txn1, txn2):
             if str(txn.budget_id) != str(budget_id):
                 raise InvariantViolation("All transactions must belong to this budget")
-            if txn.is_split or txn.parent_transaction_id:
-                raise InvariantViolation("Cannot merge split transactions")
-            if txn.transfer_id:
-                raise InvariantViolation("Cannot merge transfer transactions")
 
-        if txn1.cleared == "reconciled" and txn2.cleared == "reconciled":
-            raise InvariantViolation("Cannot merge two reconciled transactions")
+        side1, side2 = MergeSide.from_transaction(txn1), MergeSide.from_transaction(txn2)
+        survivor_side, deleted_side = choose_survivor(side1, side2, survivor_id)
+        violation = survivor_violation(survivor_side, deleted_side, survivor_id)
+        if violation is not None:
+            raise InvariantViolation(violation)
+        survivor = txn1 if survivor_side.id == txn1.id else txn2
+        deleted = txn2 if survivor is txn1 else txn1
 
-        if txn1.account_id != txn2.account_id:
-            raise InvariantViolation("Transactions must be in the same account")
-
-        # A merge asserts "these are the same real-world transaction" — with
-        # different amounts that's false, and merging would silently change
-        # the account balance by the difference.
-        if txn1.amount != txn2.amount:
+        updates: dict[str, Any] = {}
+        if deleted_side.bank_sourced:
+            outcome = posting_updates(
+                RowState.from_transaction(survivor),
+                FeedRecord.from_transaction(deleted),
+                confirmed=True,
+            )
+            if isinstance(outcome, Review):
+                raise InvariantViolation(outcome.reason)
+            updates.update(outcome.updates)
+        elif survivor.amount != deleted.amount:
+            # Neither side speaks for the bank, so nothing arbitrates the
+            # difference — and merging would silently change the account
+            # balance by it.
             raise InvariantViolation("Only transactions with identical amounts can be merged")
 
-        if txn1.sync_id and txn2.sync_id and txn1.sync_id != txn2.sync_id:
-            raise InvariantViolation("Both transactions are linked to different bank transactions")
-
-        # When one transaction is reconciled it must always be the survivor
-        if txn1.cleared == "reconciled":
-            reconciled_txn = txn1
-        elif txn2.cleared == "reconciled":
-            reconciled_txn = txn2
-        else:
-            reconciled_txn = None
-        if reconciled_txn is not None:
-            if survivor_id is not None and survivor_id != reconciled_txn.id:
-                raise InvariantViolation("The reconciled transaction must be kept as the survivor")
-            survivor = reconciled_txn
-            deleted = txn2 if survivor is txn1 else txn1
-        elif survivor_id is not None:
-            if survivor_id not in transaction_ids:
-                raise InvariantViolation("survivor_id must be one of the transaction_ids")
-            survivor = txn1 if txn1.id == survivor_id else txn2
-            deleted = txn2 if txn1.id == survivor_id else txn1
-        else:
-            if txn1.created_at <= txn2.created_at:
-                survivor, deleted = txn1, txn2
-            else:
-                survivor, deleted = txn2, txn1
-
-        # Merge import metadata from deleted into survivor if survivor lacks it
-        updates: dict = {}
+        # Identity and import metadata the survivor lacks.
         if not survivor.import_id and deleted.import_id:
             updates["import_id"] = deleted.import_id
         if not survivor.import_description and deleted.import_description:
-            updates["import_description"] = deleted.import_description
+            updates.setdefault("import_description", deleted.import_description)
         if not survivor.sync_id and deleted.sync_id:
-            updates["sync_id"] = deleted.sync_id
-        # An id-less bank feed row has sync_source but no sync_id — its bank
-        # identity still transfers to the survivor.
+            updates.setdefault("sync_id", deleted.sync_id)
         if not survivor.sync_source and deleted.sync_source:
-            updates["sync_source"] = deleted.sync_source
+            updates.setdefault("sync_source", deleted.sync_source)
         if deleted.has_sync_source or survivor.has_sync_source:
             updates["has_sync_source"] = True
 
-        # The survivor's ledger date is never touched — it is the date the
-        # user chose by picking the survivor. Bank provenance follows the
-        # merge as metadata instead.
-        if survivor.bank_posted_date is None:
-            deleted_is_bank = bool(deleted.sync_id or deleted.sync_source)
-            inherited = deleted.bank_posted_date or (deleted.date if deleted_is_bank else None)
-            if inherited is not None:
-                updates["bank_posted_date"] = inherited
-        if survivor.bank_amount is None:
-            deleted_is_bank = bool(deleted.sync_id or deleted.sync_source)
-            inherited_amount = deleted.bank_amount or (deleted.amount if deleted_is_bank else None)
-            if inherited_amount is not None:
-                updates["bank_amount"] = inherited_amount
-        if survivor.bank_payee is None and deleted.bank_payee:
-            updates["bank_payee"] = deleted.bank_payee
         # Mirror case: survivor is the bank row, the deleted row is manual —
         # keep the user's date once as entered-date provenance.
         if (
-            (survivor.sync_id or survivor.sync_source)
-            and not (deleted.sync_id or deleted.sync_source)
+            survivor_side.bank_sourced
+            and not deleted_side.bank_sourced
             and survivor.entered_date is None
             and deleted.date != survivor.date
         ):
             updates["entered_date"] = deleted.date
+
+        # Bookkeeping is additive. A memo present on both sides and different
+        # is kept whole — "survivor — loser" — rather than one being dropped.
+        # Category and payee never land on a transfer leg (its payee is its
+        # destination and a category is allowed on only one kind of leg), and
+        # a split parent's categories live on its lines.
+        if deleted.memo and not survivor.memo:
+            updates["memo"] = deleted.memo
+        elif deleted.memo and survivor.memo and deleted.memo != survivor.memo:
+            updates["memo"] = f"{survivor.memo} — {deleted.memo}"
+        if survivor.transfer_id is None:
+            if survivor.category_id is None and deleted.category_id and not survivor.is_split:
+                updates["category_id"] = deleted.category_id
+            if survivor.payee_id is None and deleted.payee_id:
+                updates["payee_id"] = deleted.payee_id
+        if deleted.approved and not survivor.approved:
+            updates["approved"] = True
 
         survivor_before = snapshot("transaction", survivor)
         deleted_before = snapshot("transaction", deleted)
@@ -999,41 +1179,45 @@ class TransactionService:
                 str(a.id) for a in await self.attachment_repo.get_for_transaction(deleted.id)
             ]
 
-        # Delete first so the partial unique indexes never see two live rows
-        # with the same identity, then write metadata onto the survivor.
-        await self.transaction_repo.soft_delete(deleted.id)
-        if updates:
-            await self.transaction_repo.update(survivor.id, **updates)
-
-        # The deleted row's attachments belong to the surviving record now.
-        if self.attachment_repo is not None:
-            await self.attachment_repo.reassign(deleted.id, survivor.id)
-        # Pending review matches pointing at the deleted row are moot.
-        if self.match_repo is not None:
-            await self.match_repo.cancel_pending_for_transaction(deleted.id)
-
-        await self.transaction_repo.refresh(survivor)
         with self.changes.batch():
+            # Delete first so the partial unique indexes never see two live
+            # rows with the same identity, then write onto the survivor.
+            await self.transaction_repo.soft_delete(deleted.id)
+            if updates:
+                await self.transaction_repo.update(survivor.id, **updates)
+            if "cleared" in updates and survivor.is_split:
+                await self._mirror_children(survivor.id, cleared=updates["cleared"])
+
+            # The deleted row's attachments belong to the surviving record now.
+            if self.attachment_repo is not None:
+                await self.attachment_repo.reassign(deleted.id, survivor.id)
+            # Pending review matches pointing at the deleted row are moot.
+            if self.match_repo is not None:
+                await self.match_repo.cancel_pending_for_transaction(deleted.id)
+
+            await self.transaction_repo.refresh(survivor)
             await self._record_txn(deleted, "delete", before=deleted_before, refresh=False)
             await self._record_txn(survivor, "update", before=survivor_before, refresh=False)
         return survivor
 
-    async def _resolve_payee(self, budget_id: uuid.UUID, data: TransactionCreate) -> Payee | None:
-        if data.payee_id:
-            return await self.session.get(Payee, data.payee_id)
-        if not data.payee_name:
+    async def _resolve_payee(
+        self, budget_id: uuid.UUID, payee_id: uuid.UUID | None, payee_name: str | None
+    ) -> Payee | None:
+        if payee_id:
+            return await self.session.get(Payee, payee_id)
+        if not payee_name:
             return None
         # Exact match first
-        existing = await self.payee_repo.find_by_name(budget_id, data.payee_name)
+        existing = await self.payee_repo.find_by_name(budget_id, payee_name)
         if existing:
             return existing
         # User-defined regex patterns beat fuzzy matching — they are explicit intent
-        by_pattern = await self.payee_repo.find_by_pattern(budget_id, data.payee_name)
+        by_pattern = await self.payee_repo.find_by_pattern(budget_id, payee_name)
         if by_pattern:
             return by_pattern
         # Fuzzy match against names and mapping_samples
-        similar = await self.payee_repo.find_best_match(budget_id, data.payee_name)
+        similar = await self.payee_repo.find_best_match(budget_id, payee_name)
         if similar:
             return similar
         # Create new payee
-        return await self.payee_repo.create(budget_id=budget_id, name=data.payee_name)
+        return await self.payee_repo.create(budget_id=budget_id, name=payee_name)

@@ -109,6 +109,7 @@ appdata dies, backups that lived next to the database die with it.
    DB_DATA_DIR=/mnt/user/appdata/igab/postgres
    ATTACHMENTS_DIR=/mnt/user/appdata/igab/attachments
    BACKUP_DIR=/mnt/user/backups/igab
+   TZ=America/New_York       # backup filenames are stamped with this clock
    ```
 
    `COMPOSE_PROFILES=production` selects nginx + the backup agent (and skips the

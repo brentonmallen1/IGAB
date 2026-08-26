@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -52,6 +52,11 @@ class DashboardMetrics(BaseModel):
     net_worth_prev: Decimal
     burn_rate_30: Decimal
     burn_rate_90: Decimal
+    #: Monthly essential spending over the Guide's 90-day window — the same
+    #: number the Guide's emergency-fund target is built from. None until
+    #: something is tagged Essential (untagged, it would equal burn rate).
+    essentials_monthly: Decimal | None
+    essentials_tagged: bool
     #: None when no income was recorded in the window — the Savings Rate tab's
     #: convention, and a gap rather than a floor on the chart.
     savings_rate: float | None
@@ -307,6 +312,52 @@ class SeasonalityResponse(BaseModel):
     categories: list[dict]
 
 
+# ─── Essentials ───────────────────────────────────────────────────────────────
+
+
+class EssentialsCategory(BaseModel):
+    #: None for payee-tagged rows with no category.
+    category_id: uuid.UUID | None
+    name: str
+    group_name: str | None
+    total: Decimal
+    monthly_average: Decimal
+    months_with_spend: int
+
+
+class EssentialsMonth(BaseModel):
+    month: date
+    total: Decimal
+
+
+class ReserveTarget(BaseModel):
+    months: int
+    amount: Decimal
+
+
+class EssentialsReportResponse(BaseModel):
+    """What a lean month costs, from what the household tagged Essential.
+
+    `essentials_90d` is the Guide's figure (rolling 90 days ÷ 3) and what the
+    Overview card shows; the per-category table averages over `months`
+    complete months instead. `tagged` is False until something carries the
+    tag — then every figure is 0 and the UI says where to apply it.
+    """
+
+    tagged: bool
+    months: int
+    window_start: date
+    window_end: date
+    essentials_90d: Decimal
+    monthly_total_average: Decimal
+    categories: list[EssentialsCategory]
+    monthly_series: list[EssentialsMonth]
+    #: 1 / 3 / 6 / 12 months of essentials, from `essentials_90d`.
+    reserve: list[ReserveTarget]
+    #: The roadmap's full-emergency-fund range, in months.
+    roadmap_range: tuple[int, int]
+
+
 # ─── Payee Analysis ───────────────────────────────────────────────────────────
 
 
@@ -460,10 +511,29 @@ class SavingsSummary(BaseModel):
     category_count: int
 
 
+class ReportDrainMove(BaseModel):
+    move_id: uuid.UUID
+    month: date
+    date: datetime
+    amount: Decimal
+    from_category_id: uuid.UUID
+    from_name: str
+    to_category_id: uuid.UUID | None
+    to_name: str
+
+
+class ReportDrains(BaseModel):
+    """Money moved out of the report's envelopes in its window."""
+
+    total: Decimal
+    moves: list[ReportDrainMove]
+
+
 class SavingsReportResponse(BaseModel):
     categories: list[SavingsCategory]
     summary: SavingsSummary
     months: list[date]
+    drains: ReportDrains
 
 
 # ─── Savings Rate Report ─────────────────────────────────────────────────────
