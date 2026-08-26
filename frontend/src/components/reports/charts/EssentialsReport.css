@@ -1,0 +1,144 @@
+/* One series (magnitude per category): one hue from the chart ramp, thin
+   marks, text in text tokens. The table IS the accessible view. */
+
+.essentials-report__section {
+  padding: var(--spacing-md);
+}
+
+.essentials-report__windows {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.essentials-report__empty {
+  padding: var(--spacing-lg) var(--spacing-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  max-width: 56ch;
+}
+
+.essentials-report__note {
+  margin: var(--spacing-sm) 0 var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.essentials-report__table-wrap {
+  overflow-x: auto;
+}
+
+.essentials-report__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.essentials-report__table th,
+.essentials-report__table td {
+  padding: 6px var(--spacing-sm);
+  border-bottom: 1px solid var(--edge);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.essentials-report__table thead th {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.essentials-report__table tfoot th,
+.essentials-report__table tfoot td {
+  border-bottom: none;
+  border-top: 1px solid var(--edge-strong);
+  font-weight: 600;
+}
+
+.essentials-report__num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.essentials-report__name {
+  display: block;
+  color: var(--text-primary);
+}
+
+.essentials-report__group {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.essentials-report__bar-col {
+  width: 34%;
+  min-width: 120px;
+}
+
+.essentials-report__bar {
+  height: 8px;
+  background: var(--surface-sunken);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.essentials-report__bar-fill {
+  height: 100%;
+  background: var(--chart-1);
+  border-radius: 0 4px 4px 0;
+  min-width: 2px;
+}
+
+.essentials-report__months {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  align-items: end;
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--edge);
+}
+
+.essentials-report__month {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.essentials-report__month-bar {
+  height: 56px;
+  display: flex;
+  align-items: flex-end;
+  background: var(--surface-sunken);
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+
+.essentials-report__month-fill {
+  width: 100%;
+  background: var(--chart-1);
+  border-radius: 4px 4px 0 0;
+}
+
+.essentials-report__month-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

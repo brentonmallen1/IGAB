@@ -38,6 +38,12 @@ from igab.domain.activity_class import (
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.dates import add_months
 from igab.domain.money import quantize_cents
+from igab.guide.concepts import (
+    ESSENTIALS_WINDOW_DAYS,
+    FULL_EMERGENCY_FUND_MONTHS_HIGH,
+    FULL_EMERGENCY_FUND_MONTHS_LOW,
+)
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     LEAF,
@@ -193,6 +199,7 @@ def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
 
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
+        self.txns = TransactionRepository(session)
         self.session = session
 
     # ─── Existing ─────────────────────────────────────────────────────────────
@@ -517,6 +524,12 @@ class ReportService:
         burn_30 = _burn(thirty_ago, today)
         burn_90 = _burn(ninety_ago, today) / 3
 
+        # What a lean month costs — the Guide's figure, from the Guide's window,
+        # so this card and the roadmap's emergency-fund target never disagree.
+        # None until something is tagged: the untagged fallback IS burn rate,
+        # and a second card saying the same number would mislead.
+        essentials_monthly, essentials_tagged = await self._essentials_monthly(budget_id, today)
+
         # savings / income, the same ratio the Savings Rate tab shows by
         # default. The old (income - expenses) / income counted a brokerage
         # transfer as an expense and so reported 0% for a household saving 40%.
@@ -567,6 +580,8 @@ class ReportService:
             "net_worth_prev": net_worth_prev,
             "burn_rate_30": burn_30,
             "burn_rate_90": burn_90,
+            "essentials_monthly": essentials_monthly,
+            "essentials_tagged": essentials_tagged,
             "savings_rate": savings_rate,
             "days_until_zero": days_until_zero,
             "income_this_month": income_this,
@@ -1946,6 +1961,94 @@ class ReportService:
         ]
 
         return {"cells": cells, "months": months_list, "categories": categories}
+
+    # ─── Essentials ───────────────────────────────────────────────────────────
+
+    async def _essentials_monthly(
+        self, budget_id: uuid.UUID, today: date
+    ) -> tuple[Decimal | None, bool]:
+        """(monthly essentials over the Guide's window, anything tagged?)."""
+        since = today - timedelta(days=ESSENTIALS_WINDOW_DAYS)
+        total, basis = await self.txns.essential_spend(budget_id, since, today)
+        if basis != "tag":
+            return None, False
+        return quantize_cents(abs(total) / 3), True
+
+    async def essentials_summary(self, budget_id: uuid.UUID, months: int = 12) -> dict:
+        """What a lean month costs, and what a reserve of N months would be.
+
+        The headline (`essentials_90d`) is the Guide's figure — rolling 90 days
+        ÷ 3 — so the Overview card, this report and the roadmap's target quote
+        one number. The per-category table averages over `months` COMPLETE
+        months instead: a partial current month would drag every average
+        down. That divergence is deliberate and pinned by test.
+        """
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        window_start = _subtract_months(first_of_month, months)
+        window_end = first_of_month - timedelta(days=1)
+        months_list = [_subtract_months(first_of_month, i) for i in range(months, 0, -1)]
+
+        essentials_90d, tagged = await self._essentials_monthly(budget_id, today)
+        headline = essentials_90d or Decimal("0")
+        reserve = [
+            {"months": n, "amount": quantize_cents(headline * n)}
+            for n in (1, FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH, 12)
+        ]
+        base = {
+            "tagged": tagged,
+            "months": months,
+            "window_start": window_start,
+            "window_end": window_end,
+            "essentials_90d": headline,
+            "reserve": reserve,
+            "roadmap_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),
+        }
+        if not tagged:
+            return {
+                **base,
+                "monthly_total_average": Decimal("0"),
+                "categories": [],
+                "monthly_series": [{"month": m, "total": Decimal("0")} for m in months_list],
+            }
+
+        rows, _ = await self.txns.essential_spend_by_category_month(
+            budget_id, window_start, window_end
+        )
+        by_category: dict[str | None, dict] = {}
+        by_month: dict[date, Decimal] = {m: Decimal("0") for m in months_list}
+        for r in rows:
+            key = str(r.category_id) if r.category_id else None
+            magnitude = -Decimal(r.total)  # spending is stored negative
+            entry = by_category.setdefault(
+                key,
+                {
+                    "category_id": r.category_id,
+                    "name": r.category_name or "Uncategorized",
+                    "group_name": r.group_name,
+                    "total": Decimal("0"),
+                    "months_with_spend": 0,
+                },
+            )
+            entry["total"] += magnitude
+            entry["months_with_spend"] += 1
+            month = r.month.date() if hasattr(r.month, "date") else r.month
+            by_month[month] = by_month.get(month, Decimal("0")) + magnitude
+
+        categories = sorted(by_category.values(), key=lambda c: c["total"], reverse=True)
+        for c in categories:
+            c["total"] = quantize_cents(c["total"])
+            c["monthly_average"] = quantize_cents(c["total"] / months)
+        grand = sum((c["total"] for c in categories), Decimal("0"))
+        return {
+            **base,
+            "monthly_total_average": quantize_cents(grand / months),
+            "categories": categories,
+            "monthly_series": [
+                {"month": m, "total": quantize_cents(by_month.get(m, Decimal("0")))}
+                for m in months_list
+            ],
+        }
 
     # ─── Payee Analysis ───────────────────────────────────────────────────────
 
@@ -3353,6 +3456,8 @@ def _empty_dashboard() -> dict:
         "net_worth_prev": Decimal("0"),
         "burn_rate_30": Decimal("0"),
         "burn_rate_90": Decimal("0"),
+        "essentials_monthly": None,
+        "essentials_tagged": False,
         "savings_rate": 0.0,
         "days_until_zero": None,
         "income_this_month": Decimal("0"),

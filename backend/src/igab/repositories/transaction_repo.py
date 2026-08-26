@@ -5,20 +5,43 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Integer, Select, and_, case, cast, func, insert, or_, select, update
+from sqlalchemy import (
+    Integer,
+    Select,
+    and_,
+    case,
+    cast,
+    func,
+    insert,
+    literal_column,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.orm import with_expression
 from sqlalchemy.sql.elements import ColumnElement
 
-from igab.db.models import Category, Payee, Transaction, TransactionAttachment
+from igab.db.models import (
+    Category,
+    CategoryGroup,
+    Payee,
+    Tag,
+    Transaction,
+    TransactionAttachment,
+    category_tags,
+    payee_tags,
+)
 from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     BANK_UNLINKED,
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
+    ESSENTIAL_TAGGED,
     LEAF,
     NEEDS_CATEGORY,
     NOT_DELETED,
+    ON_BUDGET_ACCOUNT,
     PARENT_ROW,
     POSTED,
     PROVISIONALLY_LINKED,
@@ -790,6 +813,106 @@ class TransactionRepository(BaseRepository[Transaction]):
             .values(cleared=cleared)
         )
         await self.session.flush()
+
+    # ─── Essentials: one query, three readers ──────────────────────────────
+
+    async def _essential_scope(
+        self, budget_id: uuid.UUID, bound_categories: Sequence[uuid.UUID] | None
+    ) -> tuple[list, str]:
+        """How "essential" is decided for this budget, and by which rule.
+
+        Precedence: categories the user bound in the Guide ("bound"); else
+        the Essential tag on categories or payees, when any is applied
+        ("tag"); else all spending ("all") — the Guide's original fallback,
+        which the report and the Overview card treat as "nothing tagged yet"
+        rather than show a figure that equals burn rate.
+        """
+        if bound_categories:
+            return [Transaction.category_id.in_(list(bound_categories))], "bound"
+        tagged = select(Tag.id).where(
+            Tag.budget_id == budget_id,
+            Tag.system_key == "essential",
+            Tag.is_deleted == False,  # noqa: E712
+        )
+        applied = (
+            select(func.count())
+            .select_from(category_tags)
+            .where(category_tags.c.tag_id.in_(tagged))
+            .scalar_subquery()
+            + select(func.count())
+            .select_from(payee_tags)
+            .where(payee_tags.c.tag_id.in_(tagged))
+            .scalar_subquery()
+        )
+        if (await self.session.execute(select(applied))).scalar_one() > 0:
+            return [ESSENTIAL_TAGGED], "tag"
+        return [], "all"
+
+    @staticmethod
+    def _essential_where(budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
+        from igab.domain.activity_class import ActivityClass
+
+        return [
+            Transaction.budget_id == budget_id,
+            NOT_DELETED,
+            POSTED,
+            LEAF,
+            ON_BUDGET_ACCOUNT,
+            Transaction.date >= since,
+            Transaction.date <= until,
+            ACTIVITY_CLASS == ActivityClass.SPENDING,
+            *scope,
+        ]
+
+    async def essential_spend(
+        self,
+        budget_id: uuid.UUID,
+        since: date,
+        until: date,
+        bound_categories: Sequence[uuid.UUID] | None = None,
+    ) -> tuple[Decimal, str]:
+        """Signed sum of essential spending in the window (outflows are
+        negative), and the rule that scoped it — see `_essential_scope`."""
+        scope, basis = await self._essential_scope(budget_id, bound_categories)
+        total = (
+            await self.session.execute(
+                apply_class_joins(
+                    select(func.coalesce(func.sum(Transaction.amount), 0))
+                    .select_from(Transaction)
+                    .where(*self._essential_where(budget_id, since, until, scope))
+                )
+            )
+        ).scalar_one()
+        return Decimal(total), basis
+
+    async def essential_spend_by_category_month(
+        self,
+        budget_id: uuid.UUID,
+        since: date,
+        until: date,
+        bound_categories: Sequence[uuid.UUID] | None = None,
+    ) -> tuple[list, str]:
+        """(category_id, category_name, group_name, month, total) rows over the
+        same predicate as `essential_spend`, grouped by calendar month. A
+        payee-tagged row without a category groups under None."""
+        scope, basis = await self._essential_scope(budget_id, bound_categories)
+        month = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        q = (
+            select(
+                Transaction.category_id,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+                month,
+                func.sum(Transaction.amount).label("total"),
+            )
+            .select_from(Transaction)
+            .outerjoin(Category, Category.id == Transaction.category_id)
+            .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
+            .where(*self._essential_where(budget_id, since, until, scope))
+            .group_by(Transaction.category_id, Category.name, CategoryGroup.name, month)
+        )
+        rows = (await self.session.execute(apply_class_joins(q))).all()
+        return list(rows), basis
 
     async def get_oldest_cleared_date_for_account(self, account_id: uuid.UUID) -> date | None:
         """Return the date of the oldest cleared or reconciled transaction on the account."""

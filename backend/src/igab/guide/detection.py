@@ -25,17 +25,18 @@ from igab.domain.carryover import available_through
 from igab.domain.dates import month_end, month_start
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
+    ESSENTIALS_WINDOW_DAYS,
     HIGH_INTEREST_APR,
     MODERATE_INTEREST_APR,
     MORTGAGE_KINDS,
 )
 from igab.repositories.tag_repo import TagRepository
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     BALANCE_ROW,
     COUNTERPART_ACCOUNT_ID,
     LEAF,
     NOT_DELETED,
-    ON_BUDGET_ACCOUNT,
     POSTED,
 )
 
@@ -55,9 +56,6 @@ def _cents(value: Decimal) -> Decimal:
 #: Names that suggest an emergency fund. Deliberately narrow — a false match
 #: here tells someone they are covered when they are not.
 EMERGENCY_NAME = re.compile(r"emergency|rainy.?day|buffer", re.I)
-
-#: How far back "what a lean month costs" looks.
-ESSENTIALS_WINDOW_DAYS = 90
 
 
 @dataclass
@@ -86,6 +84,7 @@ class GuideDetection:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.tags = TagRepository(session)
+        self.txns = TransactionRepository(session)
 
     # ── money the household has set aside ────────────────────────────────────
 
@@ -174,32 +173,24 @@ class GuideDetection:
     async def essential_expenses(
         self, budget_id: uuid.UUID, bound: dict[str, tuple[uuid.UUID, ...]] | None = None
     ) -> Finding:
-        """Roughly what a month costs — what an emergency fund is measured against."""
-        since = date.today() - timedelta(days=ESSENTIALS_WINDOW_DAYS)
-        conditions = [
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            LEAF,
-            ON_BUDGET_ACCOUNT,
-            Transaction.date >= since,
-            ACTIVITY_CLASS == ActivityClass.SPENDING,
-        ]
-        reason = "your average spending over the last 90 days"
-        if bound and bound.get("category"):
-            conditions.append(Transaction.category_id.in_(list(bound["category"])))
-            reason = "the categories you told us are essential"
+        """Roughly what a month costs — what an emergency fund is measured against.
 
-        total = (
-            await self.session.execute(
-                apply_class_joins(
-                    select(func.coalesce(func.sum(Transaction.amount), 0))
-                    .select_from(Transaction)
-                    .where(*conditions)
-                )
-            )
-        ).scalar_one()
-        monthly = _cents(abs(Decimal(total)) / 3)
+        One query (TransactionRepository.essential_spend) answers this, the
+        Overview's essentials card and the Essentials report, so the roadmap's
+        target and the reports quote one figure. Precedence: categories the
+        user bound here, else what they tagged Essential, else all spending.
+        """
+        today = date.today()
+        since = today - timedelta(days=ESSENTIALS_WINDOW_DAYS)
+        total, basis = await self.txns.essential_spend(
+            budget_id, since, today, bound.get("category") if bound else None
+        )
+        reason = {
+            "bound": "the categories you told us are essential",
+            "tag": "the categories and payees you tagged Essential",
+            "all": "your average spending over the last 90 days",
+        }[basis]
+        monthly = _cents(abs(total) / 3)
         return Finding(
             concept_key="essential_expenses",
             met=monthly > 0,

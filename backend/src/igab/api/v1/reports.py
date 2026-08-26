@@ -22,6 +22,7 @@ from igab.api.v1.schemas.report import (
     DashboardMetrics,
     DayPatternItem,
     DayPatternsResponse,
+    EssentialsReportResponse,
     IncomeExpenseMonth,
     IncomeExpenseResponse,
     LiabilitiesBalancePoint,
@@ -338,6 +339,16 @@ async def seasonality_report(
         months=data["months"],
         categories=data["categories"],
     )
+
+
+@router.get("/{budget_id}/reports/essentials", response_model=EssentialsReportResponse)
+async def essentials_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: int = Query(12, ge=1, le=60),
+) -> EssentialsReportResponse:
+    return EssentialsReportResponse(**await report_svc.essentials_summary(budget_id, months))
 
 
 @router.get("/{budget_id}/reports/payee-analysis", response_model=PayeeAnalysisResponse)

@@ -19,7 +19,7 @@ from datetime import date
 from sqlalchemy import Boolean, and_, func, not_, or_, select
 from sqlalchemy.orm import aliased
 
-from igab.db.models import Account, Payee, Transaction
+from igab.db.models import Account, Payee, Tag, Transaction, category_tags, payee_tags
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -249,3 +249,47 @@ NEEDS_CATEGORY = and_(
     ON_BUDGET_ACCOUNT,
     CASH_FLOW_ROW,
 )
+
+
+# ─── Tags on the row's category or payee ─────────────────────────────────────
+#
+# Both are guarded by the NOT NULL test: `NULL IN (...)` is UNKNOWN, not FALSE,
+# and a CASE arm evaluating to UNKNOWN differs from one evaluating FALSE only
+# by luck of ordering. Keep every arm two-valued. `category_tagged` is what
+# the activity classifier reads for the savings and debt tags; it lived there
+# as `_tagged` until the essentials report needed the same shape.
+
+
+def _tag_ids(system_keys: tuple[str, ...]):
+    return select(Tag.id).where(
+        Tag.system_key.in_(system_keys),
+        Tag.is_deleted == False,  # noqa: E712
+    )
+
+
+def category_tagged(*system_keys: str):
+    """Rows whose category carries any of these system tags."""
+    return and_(
+        Transaction.category_id.isnot(None),
+        Transaction.category_id.in_(
+            select(category_tags.c.category_id).where(
+                category_tags.c.tag_id.in_(_tag_ids(system_keys))
+            )
+        ),
+    )
+
+
+def payee_tagged(*system_keys: str):
+    """Rows whose payee carries any of these system tags."""
+    return and_(
+        Transaction.payee_id.isnot(None),
+        Transaction.payee_id.in_(
+            select(payee_tags.c.payee_id).where(payee_tags.c.tag_id.in_(_tag_ids(system_keys)))
+        ),
+    )
+
+
+#: Spending the household could not do without: the category OR the payee is
+#: tagged Essential. Evaluated only by TransactionRepository.essential_spend*
+#: — the Guide, the Overview card and the Essentials report all read those.
+ESSENTIAL_TAGGED = or_(category_tagged("essential"), payee_tagged("essential"))

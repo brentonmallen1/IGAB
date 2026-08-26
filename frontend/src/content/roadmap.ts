@@ -200,7 +200,10 @@ export const ROADMAP: RoadmapStage[] = [
         body: 'Including renters or homeowners insurance where it is required.',
         detail:
           'Housing sits first because losing it makes every other problem on this roadmap harder to solve. If the payment is genuinely unaffordable, that is a bigger conversation than budgeting — but it is one worth having early rather than after arrears build up.',
-        appLinks: [{ label: 'Open your budget', to: '/budget' }],
+        appLinks: [
+          { label: 'Open your budget', to: '/budget' },
+          { label: 'Essentials report', to: '/reports?tab=essentials' },
+        ],
         signal: 'essential_expenses',
       },
       {
@@ -364,7 +367,7 @@ export const ROADMAP: RoadmapStage[] = [
         glossary: ['emergency-fund'],
         appLinks: [
           { label: 'Open your budget', to: '/budget' },
-          { label: 'Burn rate report', to: '/reports' },
+          { label: 'Essentials report', to: '/reports?tab=essentials' },
         ],
         signal: 'emergency_fund',
       },

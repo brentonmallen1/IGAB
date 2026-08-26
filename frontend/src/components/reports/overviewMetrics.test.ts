@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampedSavingsRate,
+  essentialsReserve,
   netWorthDelta,
   roundedDaysUntilZero,
   spendingDelta,
@@ -49,5 +50,16 @@ describe('roundedDaysUntilZero', () => {
     expect(roundedDaysUntilZero(45.4)).toBe(45)
     expect(roundedDaysUntilZero(null)).toBeNull()
     expect(roundedDaysUntilZero(undefined)).toBeNull()
+  })
+})
+
+describe('essentialsReserve', () => {
+  it('multiplies the monthly figure by the months of runway', () => {
+    expect(essentialsReserve(1200, 6)).toBe(7200)
+  })
+
+  it('has no answer until something is tagged', () => {
+    expect(essentialsReserve(null, 6)).toBeNull()
+    expect(essentialsReserve(undefined, 3)).toBeNull()
   })
 })

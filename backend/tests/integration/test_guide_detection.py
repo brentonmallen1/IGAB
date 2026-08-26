@@ -189,6 +189,50 @@ class TestEssentialExpenses:
         assert found.value == Decimal("1000.00")
         assert "you told us are essential" in found.reason
 
+    async def test_an_essential_tag_narrows_detection(self, db_session):
+        from igab.repositories.tag_repo import TagRepository, seed_system_tags
+
+        budget = await _budget(db_session)
+        account = await create_account(db_session, budget, account_type="checking")
+        group = await create_category_group(db_session, budget, "Spending")
+        rent = await create_category(db_session, budget, group, "Rent")
+        fun = await create_category(db_session, budget, group, "Dining")
+        await create_transaction(db_session, budget, account, "-3000.00", TODAY, category=rent)
+        await create_transaction(db_session, budget, account, "-600.00", TODAY, category=fun)
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        essential = next(
+            t for t in await tags.list_for_budget(budget.id) if t.system_key == "essential"
+        )
+        await tags.set_category_tags(rent.id, [essential.id])
+
+        found = await GuideDetection(db_session).essential_expenses(budget.id)
+        assert found.value == Decimal("1000.00")
+        assert "tagged Essential" in found.reason
+
+    async def test_a_binding_still_beats_the_tag(self, db_session):
+        from igab.repositories.tag_repo import TagRepository, seed_system_tags
+
+        budget = await _budget(db_session)
+        account = await create_account(db_session, budget, account_type="checking")
+        group = await create_category_group(db_session, budget, "Spending")
+        rent = await create_category(db_session, budget, group, "Rent")
+        fun = await create_category(db_session, budget, group, "Dining")
+        await create_transaction(db_session, budget, account, "-3000.00", TODAY, category=rent)
+        await create_transaction(db_session, budget, account, "-600.00", TODAY, category=fun)
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        essential = next(
+            t for t in await tags.list_for_budget(budget.id) if t.system_key == "essential"
+        )
+        await tags.set_category_tags(rent.id, [essential.id])
+
+        found = await GuideDetection(db_session).essential_expenses(
+            budget.id, bound={"category": (fun.id,)}
+        )
+        assert found.value == Decimal("200.00"), "the user's explicit binding wins"
+        assert "you told us are essential" in found.reason
+
 
 class TestDebtBands:
     async def test_high_interest_counts_debts_at_ten_or_above(self, db_session):

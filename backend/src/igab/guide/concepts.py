@@ -59,9 +59,9 @@ CONCEPTS: tuple[Concept, ...] = (
         binds_to=("category",),
         prompt="Roughly what a lean month costs — what an emergency fund is measured against.",
         caveat=(
-            "Taken from your average spending over the last 90 days, which includes "
-            "things you could cut in a genuine emergency. Point it at specific "
-            "categories if you would rather be precise."
+            "Taken from your average spending over the last 90 days. Tag the "
+            "categories or payees you could not do without as Essential and this "
+            "narrows to them; point it at specific categories here to override that."
         ),
         allows_external=False,
     ),
@@ -157,6 +157,10 @@ RETIREMENT_TARGET_RATE = 15
 STARTER_EMERGENCY_FUND = 1000
 FULL_EMERGENCY_FUND_MONTHS_LOW = 3
 FULL_EMERGENCY_FUND_MONTHS_HIGH = 6
+#: How far back "what a lean month costs" looks — the Guide's essentials
+#: signal and the Overview's essentials card share it, so the emergency-fund
+#: target and the card can never quote different months.
+ESSENTIALS_WINDOW_DAYS = 90
 
 #: Kinds of debt the roadmap sets aside when asking about moderate-interest
 #: debt. Matched against LiabilityService.resolve_type, which answers with an

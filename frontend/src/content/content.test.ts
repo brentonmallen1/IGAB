@@ -152,10 +152,13 @@ describe('roadmap integrity', () => {
     // then renders a blank page — which is worse than no link at all. This
     // caught nothing when written, but the liabilities rework moved exactly
     // these routes around, and a stale list would not have noticed.
+    // A link may name a tab within a page (`/reports?tab=essentials`); the
+    // route is the pathname.
     const bad: string[] = []
     for (const node of allNodes) {
       for (const link of node.appLinks ?? []) {
-        if (!APP_ROUTES.has(link.to)) bad.push(`${node.id} -> ${link.to}`)
+        const pathname = link.to.split('?')[0]
+        if (!APP_ROUTES.has(pathname)) bad.push(`${node.id} -> ${link.to}`)
       }
     }
     expect(bad).toEqual([])

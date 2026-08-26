@@ -408,6 +408,12 @@ export interface DashboardMetrics {
   net_worth_prev: number
   burn_rate_30: number
   burn_rate_90: number
+  /** Monthly essential spending over the Guide's 90-day window — the number
+   *  the roadmap's emergency-fund target is built from. null until something
+   *  is tagged Essential (untagged it would equal burn rate). Server-computed:
+   *  TransactionRepository.essential_spend. */
+  essentials_monthly: number | null
+  essentials_tagged: boolean
   /** null when no income was recorded in the window — a gap, not a floor.
    *  "No income" and "saved nothing" are different facts. */
   savings_rate: number | null
@@ -655,6 +661,28 @@ export interface SeasonalityReport {
   cells: SeasonalityCell[]
   months: string[]
   categories: { id: string; name: string }[]
+}
+
+/** What a lean month costs — GET /reports/essentials. `essentials_90d` is the
+ *  Guide's figure and the Overview card's; the table averages complete months. */
+export interface EssentialsReport {
+  tagged: boolean
+  months: number
+  window_start: string
+  window_end: string
+  essentials_90d: number
+  monthly_total_average: number
+  categories: {
+    category_id: string | null
+    name: string
+    group_name: string | null
+    total: number
+    monthly_average: number
+    months_with_spend: number
+  }[]
+  monthly_series: { month: string; total: number }[]
+  reserve: { months: number; amount: number }[]
+  roadmap_range: [number, number]
 }
 
 export interface PayeeSpending {

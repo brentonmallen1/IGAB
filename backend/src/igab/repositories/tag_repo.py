@@ -20,6 +20,11 @@ SYSTEM_TAGS = [
     ("savings", "Savings", "green"),
     ("long_term_expense", "Long-term expense", "teal"),
     ("debt_principal", "Debt principal", "orange"),
+    # What a lean month costs. Drives the Essentials report, the Overview's
+    # essentials card and the Guide's emergency-fund target — one figure,
+    # three readers (see TransactionRepository.essential_spend). Applies to
+    # categories and payees alike.
+    ("essential", "Essential", "blue"),
 ]
 
 #: Name fragments that suggest a system tag on import, checked against the
@@ -234,7 +239,12 @@ class TagRepository(BaseRepository[Tag]):
     async def get_category_ids_by_system_keys(
         self, budget_id: uuid.UUID, system_keys: Sequence[str]
     ) -> set[uuid.UUID]:
-        """Get all category IDs that have tags with any of the specified system keys."""
+        """Get all category IDs that have tags with any of the specified system keys.
+
+        For queries over things that are not transactions (assignments, the
+        savings report's category list). A predicate over transaction rows
+        is `txn_filters.category_tagged` — do not rebuild it from these ids.
+        """
         if not system_keys:
             return set()
         result = await self.session.execute(
