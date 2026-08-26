@@ -23,7 +23,7 @@ describe('TagsPanel system tags', () => {
     fireEvent.click(screen.getAllByText('Edit')[0])
 
     expect(screen.queryByPlaceholderText('Tag name')).not.toBeInTheDocument()
-    expect(screen.getByTitle('System tag — its name is fixed')).toHaveTextContent('Savings')
+    expect(screen.getByLabelText('Savings — name is fixed')).toHaveTextContent('Savings')
 
     // The add-tag form below has its own swatches; the edit row's come first.
     fireEvent.click(screen.getAllByTitle('purple')[0])

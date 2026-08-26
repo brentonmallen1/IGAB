@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Lock } from 'lucide-react';
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag, type Tag } from '../../../api/tags';
 import { TagChip, type TagColorSlot } from '../../common/TagChip';
+import { Tooltip } from '../../common/Tooltip/Tooltip';
 import './TagsPanel.css';
 import { confirmAsync } from '../../../stores/confirmStore'
 
@@ -86,10 +87,12 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                   </div>
                   <div className="tags-panel__edit-row">
                     {tag.system_key ? (
-                      <span className="tags-panel__locked-name" title="System tag — its name is fixed">
-                        <Lock size={12} aria-hidden />
-                        {tag.name}
-                      </span>
+                      <Tooltip content="System tag — its name is fixed">
+                        <span className="tags-panel__locked-name" aria-label={`${tag.name} — name is fixed`}>
+                          <Lock size={12} aria-hidden />
+                          {tag.name}
+                        </span>
+                      </Tooltip>
                     ) : (
                       <input
                         type="text"
@@ -132,9 +135,11 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                       Edit
                     </button>
                     {tag.system_key ? (
-                      <span className="tags-panel__system-icon" title="System tag — changes how money is counted (see the ⓘ beside the section title). Colour can be changed; the name cannot.">
-                        <Lock size={14} />
-                      </span>
+                      <Tooltip content="System tag — changes how money is counted (see the ⓘ beside the section title). Colour can be changed; the name cannot.">
+                        <span className="tags-panel__system-icon" role="img" aria-label="System tag">
+                          <Lock size={14} />
+                        </span>
+                      </Tooltip>
                     ) : (
                       <button
                         type="button"
