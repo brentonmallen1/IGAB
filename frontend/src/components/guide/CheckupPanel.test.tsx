@@ -134,9 +134,10 @@ describe('CheckupPanel', () => {
       isLoading: false,
     } as never)
     const { container } = renderPanel()
-    const warned = container.querySelectorAll('.metric-card--warning')
+    const warned = container.querySelectorAll('.checkup-block--warn')
     expect(warned).toHaveLength(1)
     expect(warned[0].textContent).toContain('Debt at 10%+ APR')
+    expect(warned[0].textContent).toContain('worth a look')
   })
 
   it('reads "Never run" until the report has been run', () => {
