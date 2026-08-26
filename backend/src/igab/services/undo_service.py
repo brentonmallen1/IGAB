@@ -8,7 +8,8 @@ log stays a faithful history of what the user did.
 Conflict policy: a change is only undone if the entity still looks exactly
 like the recorded `after` snapshot (Decimal-scale tolerant). `force=True`
 overrides that staleness check, but never the reconciliation guard —
-reconciled transactions are immutable to undo, in both directions.
+the money on reconciled transactions is immutable to undo, in both
+directions (see domain.reconciliation); their bookkeeping is not.
 
 Batches are all-or-nothing: changes apply in reverse insertion order inside
 one DB transaction, so a conflict mid-batch rolls back everything.
@@ -37,6 +38,7 @@ from igab.db.models import (
 )
 from igab.domain.enums import ClearedStatus
 from igab.domain.exceptions import NotFoundError, UndoConflict
+from igab.domain.reconciliation import RECONCILED_LOCKED_FIELDS, locked_changes
 from igab.repositories.change_log_repo import ChangeLogRepository
 from igab.services.change_log import ENTITY_MODELS, coerce_value, snapshot, snapshots_match
 
@@ -81,7 +83,13 @@ class UndoService:
             await self._apply(change, force)
             change.undone_at = func.now()
             undone.append(change.id)
-        await self.session.flush()
+            # One flush per step, so the reverse order is the order the
+            # database sees. A merge's batch is "delete the loser, then write
+            # its bank id onto the survivor"; undone in one flush, the unit of
+            # work may revive the loser before the survivor gives the id
+            # back, and the partial unique index on (account_id, sync_id)
+            # refuses two live rows with it.
+            await self.session.flush()
         return undone
 
     async def undo_move(self, budget_id: uuid.UUID, move_id: uuid.UUID) -> list[uuid.UUID]:
@@ -157,14 +165,14 @@ class UndoService:
                 raise UndoConflict("The item is already present")
             entity.is_deleted = False
         elif change.action in ("update", "approve"):
-            if isinstance(entity, Transaction) and entity.cleared == ClearedStatus.RECONCILED:
-                raise UndoConflict("Reconciled transactions cannot be changed by redo")
+            skip = self._reconciled_skip(entity, change, "redo")
             if not force and change.before is not None:
                 diff = snapshots_match(snapshot(change.entity_type, entity), change.before)
+                diff = [f for f in diff if f not in skip]
                 if diff:
                     raise UndoConflict("The item has been edited since this undo", fields=diff)
             for field, value in (change.after or {}).items():
-                if field.startswith("_"):
+                if field.startswith("_") or field in skip:
                     continue
                 setattr(entity, field, coerce_value(model, field, value))
             if change.entity_type == "assignment":
@@ -240,9 +248,16 @@ class UndoService:
             raise UndoConflict("This item cannot be removed by undo")
         if entity.is_deleted:
             raise UndoConflict("The item has already been deleted")
-        # Reconciliation is a hard guard: undo must never remove a
-        # transaction the user has reconciled against their bank.
-        if isinstance(entity, Transaction) and entity.cleared == ClearedStatus.RECONCILED:
+        # Reconciliation is a hard guard on money: undo must never remove a
+        # transaction the user has reconciled against their bank. A split line
+        # is not money — its parent carries the balance — so lines under a
+        # reconciled parent may still go: re-splitting is bookkeeping, and
+        # bookkeeping has to stay undoable.
+        if (
+            isinstance(entity, Transaction)
+            and entity.cleared == ClearedStatus.RECONCILED
+            and entity.parent_transaction_id is None
+        ):
             raise UndoConflict("Reconciled transactions cannot be removed by undo")
         if not force and change.after is not None:
             diff = snapshots_match(snapshot(change.entity_type, entity), change.after)
@@ -253,13 +268,44 @@ class UndoService:
     def _undo_update(self, change: ChangeLog, entity, force: bool) -> None:
         if getattr(entity, "is_deleted", False):
             raise UndoConflict("The item has been deleted since this change")
-        if isinstance(entity, Transaction) and entity.cleared == ClearedStatus.RECONCILED:
-            raise UndoConflict("Reconciled transactions cannot be changed by undo")
+        skip = self._reconciled_skip(entity, change, "undo")
         if not force and change.after is not None:
             diff = snapshots_match(snapshot(change.entity_type, entity), change.after)
+            diff = [f for f in diff if f not in skip]
             if diff:
                 raise UndoConflict("The item has been edited since this change", fields=diff)
-        self._restore_fields(change, entity)
+        self._restore_fields(change, entity, skip=skip)
+
+    @staticmethod
+    def _reconciled_skip(entity: Any, change: ChangeLog, verb: str) -> frozenset[str]:
+        """Fields undo/redo must leave alone on a reconciled transaction.
+
+        The one rule in domain.reconciliation, applied to what this change
+        itself moved: a step that changed the amount (or date, cleared,
+        account) cannot be reverted while the row is reconciled. A step that
+        changed only bookkeeping can — but its snapshots predate
+        reconciliation, so the locked fields are neither compared (the
+        reconcile itself is not an "edit since") nor written back (restoring
+        the old `cleared` would quietly unreconcile the row).
+        """
+        if not (isinstance(entity, Transaction) and entity.cleared == ClearedStatus.RECONCILED):
+            return frozenset()
+
+        def typed(snap: dict[str, Any] | None) -> dict[str, Any]:
+            return {
+                f: coerce_value(Transaction, f, v)
+                for f, v in (snap or {}).items()
+                if f in RECONCILED_LOCKED_FIELDS
+            }
+
+        moved = locked_changes(typed(change.before), typed(change.after))
+        if moved:
+            raise UndoConflict(
+                "Reconciled transactions cannot have "
+                + ", ".join(sorted(moved))
+                + f" changed by {verb}; unlock the transaction first"
+            )
+        return RECONCILED_LOCKED_FIELDS
 
     async def _undo_delete(self, change: ChangeLog, entity) -> None:
         if not getattr(entity, "is_deleted", False):
@@ -494,9 +540,11 @@ class UndoService:
                 .values(payee_id=change.entity_id)
             )
 
-    def _restore_fields(self, change: ChangeLog, entity) -> None:
+    def _restore_fields(
+        self, change: ChangeLog, entity, skip: frozenset[str] = frozenset()
+    ) -> None:
         model = ENTITY_MODELS[change.entity_type]
         for field, value in (change.before or {}).items():
-            if field.startswith("_"):
+            if field.startswith("_") or field in skip:
                 continue
             setattr(entity, field, coerce_value(model, field, value))

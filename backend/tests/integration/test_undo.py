@@ -149,9 +149,7 @@ async def test_split_create_records_batch(db_session):
 
 async def test_update_records_before_and_after(db_session):
     budget, account, _, category = await setup_budget(db_session)
-    txn = await create_transaction(
-        db_session, budget, account, "-10.00", JAN, memo="before-memo"
-    )
+    txn = await create_transaction(db_session, budget, account, "-10.00", JAN, memo="before-memo")
     services = make_services(db_session)
 
     await services.transactions.update(
@@ -395,9 +393,7 @@ async def test_undo_delete_of_split_restores_parent_and_children(db_session):
 
 async def test_undo_update_restores_before_values(db_session):
     budget, account, _, category = await setup_budget(db_session)
-    txn = await create_transaction(
-        db_session, budget, account, "-10.00", JAN, memo="original"
-    )
+    txn = await create_transaction(db_session, budget, account, "-10.00", JAN, memo="original")
     services = make_services(db_session)
     await services.transactions.update(
         budget.id,
@@ -500,9 +496,7 @@ async def test_double_undo_conflicts(db_session):
     budget, account, _, _ = await setup_budget(db_session)
     txn = await create_transaction(db_session, budget, account, "-10.00", JAN)
     services = make_services(db_session)
-    await services.transactions.update(
-        budget.id, txn.id, TransactionUpdate(memo="edited")
-    )
+    await services.transactions.update(budget.id, txn.id, TransactionUpdate(memo="edited"))
     [change] = await changes_for(db_session, budget.id, "transaction", "update")
 
     undo = UndoService(db_session)
@@ -529,20 +523,41 @@ async def test_reconciled_guard_blocks_undo_even_with_force(db_session):
     assert txn.is_deleted is False
 
 
-async def test_reconciled_guard_blocks_update_undo(db_session):
+async def test_undo_of_an_unlocked_edit_survives_reconciliation(db_session):
+    """A memo edit made before the row was reconciled can still be undone —
+    reconciliation locks the money, not the bookkeeping — and undoing it must
+    not put back the pre-reconciliation `cleared` the snapshot remembers."""
+    budget, account, _, _ = await setup_budget(db_session)
+    txn = await create_transaction(db_session, budget, account, "-10.00", JAN, memo="lunch")
+    services = make_services(db_session)
+    await services.transactions.update(budget.id, txn.id, TransactionUpdate(memo="edited"))
+    [change] = await changes_for(db_session, budget.id, "transaction", "update")
+    txn.cleared = "reconciled"
+    await db_session.flush()
+
+    undo = UndoService(db_session)
+    await undo.undo_change(budget.id, change.id)
+    await db_session.refresh(txn)
+    assert txn.memo == "lunch"
+    assert txn.cleared == "reconciled", "undo restored the memo, not the old cleared state"
+
+
+async def test_undo_of_a_money_edit_is_blocked_after_reconciliation(db_session):
     budget, account, _, _ = await setup_budget(db_session)
     txn = await create_transaction(db_session, budget, account, "-10.00", JAN)
     services = make_services(db_session)
     await services.transactions.update(
-        budget.id, txn.id, TransactionUpdate(memo="edited")
+        budget.id, txn.id, TransactionUpdate(amount=Decimal("-12.00"))
     )
     [change] = await changes_for(db_session, budget.id, "transaction", "update")
     txn.cleared = "reconciled"
     await db_session.flush()
 
     undo = UndoService(db_session)
-    with pytest.raises(UndoConflict, match="Reconciled"):
+    with pytest.raises(UndoConflict, match="Reconciled transactions cannot have amount"):
         await undo.undo_change(budget.id, change.id, force=True)
+    await db_session.refresh(txn)
+    assert txn.amount == Decimal("-12.00")
 
 
 async def test_undo_create_conflicts_when_entity_edited(db_session):
@@ -609,7 +624,7 @@ async def test_undo_change_in_batch_undoes_whole_batch(db_session):
     budget, account, _, _ = await setup_budget(db_session)
     savings = await create_account(db_session, budget, "Savings")
     services = make_services(db_session)
-    txn = await services.transactions.create(
+    await services.transactions.create(
         budget.id,
         TransactionCreate(
             account_id=account.id,
@@ -668,7 +683,7 @@ async def test_undo_fails_gracefully_when_entity_hard_deleted(db_session):
 
     budget, _, _, _ = await setup_budget(db_session)
     payee = await create_payee(db_session, budget, "Test Payee")
-    services = make_services(db_session)
+    make_services(db_session)
 
     # Record a change for this payee (simulating rename via the API)
     from igab.services.change_log import ChangeRecorder, snapshot
@@ -781,9 +796,7 @@ async def test_payee_merge_undo_moves_back_only_still_on_target(api_client, db_s
 async def test_category_group_crud_recorded_and_delete_undoable(api_client, db_session):
     budget = await create_budget(db_session, api_client.test_user)
 
-    resp = await api_client.post(
-        f"/api/v1/{budget.id}/category-groups", json={"name": "Bills"}
-    )
+    resp = await api_client.post(f"/api/v1/{budget.id}/category-groups", json={"name": "Bills"})
     assert resp.status_code == 201
     group_id = resp.json()["id"]
 
@@ -860,8 +873,7 @@ async def test_bulk_delete_returns_batch_and_batch_undo_restores_all(api_client,
     budget = await create_budget(db_session, api_client.test_user)
     account = await create_account(db_session, budget)
     txns = [
-        await create_transaction(db_session, budget, account, f"-{i}.00", JAN)
-        for i in (1, 2, 3)
+        await create_transaction(db_session, budget, account, f"-{i}.00", JAN) for i in (1, 2, 3)
     ]
 
     resp = await api_client.post(
@@ -919,11 +931,7 @@ async def test_csv_import_records_batch_and_undo_removes_all(api_client, db_sess
     budget = await create_budget(db_session, api_client.test_user)
     account = await create_account(db_session, budget)
 
-    csv = (
-        "Date,Payee,Amount,Memo\n"
-        "2026-01-05,Coffee,-4.50,latte\n"
-        "2026-01-06,Store,-30.00,\n"
-    )
+    csv = "Date,Payee,Amount,Memo\n2026-01-05,Coffee,-4.50,latte\n2026-01-06,Store,-30.00,\n"
     resp = await api_client.post(
         f"/api/v1/{budget.id}/import/csv",
         params={"account_id": str(account.id)},
@@ -992,9 +1000,7 @@ async def test_list_changes_pagination_and_order(api_client, db_session):
     assert Decimal(body["changes"][0]["after"]["amount"]) == Decimal("-5.00")
     assert Decimal(body["changes"][1]["after"]["amount"]) == Decimal("-4.00")
 
-    resp = await api_client.get(
-        f"/api/v1/{budget.id}/changes", params={"limit": 2, "offset": 4}
-    )
+    resp = await api_client.get(f"/api/v1/{budget.id}/changes", params={"limit": 2, "offset": 4})
     assert len(resp.json()["changes"]) == 1
     assert Decimal(resp.json()["changes"][0]["after"]["amount"]) == Decimal("-1.00")
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
-import type { StageId } from '../content/roadmap'
+import type { StageId, ToolId } from '../content/roadmap'
 
 export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'glossary' | 'wishlist'
 
@@ -26,6 +26,10 @@ export const GUIDE_TABS: GuideTabDef[] = [
  * boxes and arrows, pannable and zoomable, foldable a step at a time. */
 export type RoadmapView = 'journey' | 'browse' | 'map'
 
+/** The wishlist as one list sorted, or grouped under its projects. */
+export type WishlistView = 'flat' | 'projects'
+export type WishlistSort = 'reach' | 'priority' | 'cost' | 'added' | 'name'
+
 interface GuideState {
   activeTab: GuideTab
   roadmapView: RoadmapView
@@ -38,8 +42,15 @@ interface GuideState {
    *  for now; these move to the server with the bindings work so a shared
    *  household budget agrees across devices. */
   answers: Record<string, string>
+  /** Which calculator the Tools tab shows. Null means the tab's default. */
+  activeTool: ToolId | null
+  wishlistView: WishlistView
+  wishlistSort: WishlistSort
   setActiveTab: (tab: GuideTab) => void
   setRoadmapView: (view: RoadmapView) => void
+  setActiveTool: (tool: ToolId) => void
+  setWishlistView: (view: WishlistView) => void
+  setWishlistSort: (sort: WishlistSort) => void
   toggleStage: (id: StageId) => void
   openStage: (id: StageId) => void
   toggleDetail: (nodeId: string) => void
@@ -57,9 +68,15 @@ export const useGuideStore = create<GuideState>()(
       expandedStages: ['foundation'],
       expandedDetails: [],
       answers: {},
+      activeTool: null,
+      wishlistView: 'flat',
+      wishlistSort: 'reach',
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       setRoadmapView: (view) => set({ roadmapView: view }),
+      setActiveTool: (tool) => set({ activeTool: tool }),
+      setWishlistView: (view) => set({ wishlistView: view }),
+      setWishlistSort: (sort) => set({ wishlistSort: sort }),
 
       toggleStage: (id) =>
         set((s) => ({
@@ -97,6 +114,9 @@ export const useGuideStore = create<GuideState>()(
         expandedStages: s.expandedStages,
         expandedDetails: s.expandedDetails,
         answers: s.answers,
+        activeTool: s.activeTool,
+        wishlistView: s.wishlistView,
+        wishlistSort: s.wishlistSort,
       }),
     }
   )

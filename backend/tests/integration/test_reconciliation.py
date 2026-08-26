@@ -56,9 +56,7 @@ async def test_finish_creates_adjustment_when_statement_differs(db_session):
 
     assert snapshot.adjustment_amount == Decimal("-1.00")
     assert snapshot.adjustment_transaction_id is not None
-    adjustment = await services.transaction_repo.get_or_raise(
-        snapshot.adjustment_transaction_id
-    )
+    adjustment = await services.transaction_repo.get_or_raise(snapshot.adjustment_transaction_id)
     assert adjustment.amount == Decimal("-1.00")
     assert adjustment.cleared == "reconciled", "adjustment locks with the rest"
     assert await services.account_repo.get_balance(checking.id) == Decimal("499.00")
@@ -82,10 +80,86 @@ async def test_finish_locks_cleared_parents_and_children(db_session):
     for child in await services.transaction_repo.get_splits(parent.id):
         assert child.cleared == "reconciled", "children lock with the parent"
 
-    with pytest.raises(InvariantViolation):
+    # Reconciliation locks the money, not the bookkeeping.
+    with pytest.raises(InvariantViolation, match="unlock it to change amount"):
         await services.transactions.update(
-            budget.id, parent.id, TransactionUpdate(memo="nope")
+            budget.id, parent.id, TransactionUpdate(amount=Decimal("-81.00"))
         )
+    await services.transactions.update(
+        budget.id, parent.id, TransactionUpdate(memo="filed after the statement")
+    )
+    await db_session.refresh(parent)
+    assert parent.memo == "filed after the statement"
+    assert parent.cleared == "reconciled", "a bookkeeping edit does not unlock the row"
+
+
+async def test_a_reconciled_transfer_leg_can_be_relinked(db_session):
+    """Retargeting the far leg moves the partner; this row's money never moves."""
+    services, budget, checking = await _setup(db_session)
+    savings = await create_account(db_session, budget, "Savings")
+    brokerage = await create_account(db_session, budget, "Brokerage")
+    leg = await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY,
+            amount=Decimal("-50.00"),
+            cleared="cleared",
+            transfer_account_id=savings.id,
+        ),
+    )
+    await services.reconciliation.finish(checking.id, Decimal("-50.00"))
+    await db_session.refresh(leg)
+    assert leg.cleared == "reconciled"
+
+    updated = await services.transactions.update(
+        budget.id, leg.id, TransactionUpdate(transfer_account_id=brokerage.id)
+    )
+    assert updated.cleared == "reconciled"
+    assert updated.amount == Decimal("-50.00") and updated.date == TODAY
+    partner = await services.transaction_repo.get(updated.transfer_id)
+    assert partner is not None and partner.account_id == brokerage.id
+
+
+async def _reconciled_row_via_api(api_client, db_session):
+    user = api_client.test_user
+    budget = await create_budget(db_session, user)
+    account = await create_account(db_session, budget, "Checking")
+    group = await create_category_group(db_session, budget)
+    category = await create_category(db_session, budget, group, "Groceries")
+    txn = await create_transaction(db_session, budget, account, "-10.00", TODAY, cleared="cleared")
+    await make_services(db_session).reconciliation.finish(account.id, Decimal("-10.00"))
+    await db_session.refresh(txn)
+    assert txn.cleared == "reconciled"
+    return budget, category, txn
+
+
+async def test_bulk_categorize_reaches_reconciled_rows(api_client, db_session):
+    budget, category, txn = await _reconciled_row_via_api(api_client, db_session)
+    resp = await api_client.patch(
+        f"/api/v1/{budget.id}/transactions/bulk-categorize",
+        json={"transaction_ids": [str(txn.id)], "category_id": str(category.id)},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["updated"] == [str(txn.id)] and body["failed"] == []
+    await db_session.refresh(txn)
+    assert txn.category_id == category.id and txn.cleared == "reconciled"
+
+
+async def test_bulk_cleared_reports_reconciled_rows_as_failed(api_client, db_session):
+    budget, _category, txn = await _reconciled_row_via_api(api_client, db_session)
+    resp = await api_client.patch(
+        f"/api/v1/{budget.id}/transactions/bulk-cleared",
+        json={"transaction_ids": [str(txn.id)], "cleared": "uncleared"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["updated"] == []
+    assert [f["id"] for f in body["failed"]] == [str(txn.id)]
+    assert "reconciled" in body["failed"][0]["reason"]
+    await db_session.refresh(txn)
+    assert txn.cleared == "reconciled"
 
 
 async def test_race_transaction_between_status_and_finish_absorbed(db_session):
@@ -110,9 +184,7 @@ async def test_race_transaction_between_status_and_finish_absorbed(db_session):
 
 async def test_unreconcile_unlocks_transaction(db_session):
     services, budget, checking = await _setup(db_session)
-    txn = await create_transaction(
-        db_session, budget, checking, "-45.00", TODAY, cleared="cleared"
-    )
+    txn = await create_transaction(db_session, budget, checking, "-45.00", TODAY, cleared="cleared")
     await services.reconciliation.finish(checking.id, Decimal("-45.00"))
     await db_session.refresh(txn)
     assert txn.cleared == "reconciled"
@@ -129,9 +201,7 @@ async def test_unreconcile_unlocks_transaction(db_session):
 
 async def test_unreconcile_requires_reconciled(db_session):
     services, budget, checking = await _setup(db_session)
-    txn = await create_transaction(
-        db_session, budget, checking, "-45.00", TODAY, cleared="cleared"
-    )
+    txn = await create_transaction(db_session, budget, checking, "-45.00", TODAY, cleared="cleared")
 
     with pytest.raises(InvariantViolation, match="not reconciled"):
         await services.transactions.unreconcile(budget.id, txn.id)
@@ -145,9 +215,7 @@ async def test_user_cannot_set_reconciled_or_pending_via_update(db_session):
 
     for value in ("reconciled", "pending"):
         with pytest.raises(InvariantViolation):
-            await services.transactions.update(
-                budget.id, txn.id, TransactionUpdate(cleared=value)
-            )
+            await services.transactions.update(budget.id, txn.id, TransactionUpdate(cleared=value))
 
 
 async def test_future_dated_cleared_txn_excluded_from_status(db_session):
@@ -156,7 +224,11 @@ async def test_future_dated_cleared_txn_excluded_from_status(db_session):
     services, budget, checking = await _setup(db_session)
     await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
     await create_transaction(
-        db_session, budget, checking, "-120.00", today_utc() + timedelta(days=5),
+        db_session,
+        budget,
+        checking,
+        "-120.00",
+        today_utc() + timedelta(days=5),
         cleared="cleared",
     )
 
@@ -181,9 +253,7 @@ async def test_future_dated_uncleared_and_pending_excluded_from_counts(db_sessio
 async def test_txn_dated_today_included_in_status(db_session):
     """Boundary: today's transactions are on the statement side of the cutoff."""
     services, budget, checking = await _setup(db_session)
-    await create_transaction(
-        db_session, budget, checking, "250.00", today_utc(), cleared="cleared"
-    )
+    await create_transaction(db_session, budget, checking, "250.00", today_utc(), cleared="cleared")
 
     status = await services.reconciliation.get_status(checking.id)
     assert status["cleared_balance"] == Decimal("250.00")
@@ -198,7 +268,11 @@ async def test_finish_ignores_future_cleared_txn_and_leaves_it_unlocked(db_sessi
         db_session, budget, checking, "500.00", TODAY, cleared="cleared"
     )
     future = await create_transaction(
-        db_session, budget, checking, "-75.00", today_utc() + timedelta(days=10),
+        db_session,
+        budget,
+        checking,
+        "-75.00",
+        today_utc() + timedelta(days=10),
         cleared="cleared",
     )
 
@@ -219,7 +293,11 @@ async def test_finish_adjustment_based_on_past_activity_only(db_session):
     services, budget, checking = await _setup(db_session)
     await create_transaction(db_session, budget, checking, "500.00", TODAY, cleared="cleared")
     await create_transaction(
-        db_session, budget, checking, "-999.00", today_utc() + timedelta(days=1),
+        db_session,
+        budget,
+        checking,
+        "-999.00",
+        today_utc() + timedelta(days=1),
         cleared="cleared",
     )
 

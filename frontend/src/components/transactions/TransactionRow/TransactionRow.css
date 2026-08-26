@@ -293,6 +293,14 @@
 
 .txn-split-label {
   color: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.txn-split-label__chevron {
+  flex-shrink: 0;
+  opacity: 0.8;
 }
 
 /* Fully themed checkbox: the native control is UA-painted (white box, gray
@@ -495,4 +503,9 @@
   .transaction-row .txn-col--cleared {
     display: none;
   }
+}
+
+/* Entered from a schedule — provenance, same weight as the bank glyph. */
+.txn-status-icon--scheduled {
+  color: var(--text-muted);
 }

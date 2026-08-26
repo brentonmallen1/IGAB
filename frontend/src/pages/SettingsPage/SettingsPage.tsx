@@ -21,6 +21,7 @@ import { IntegrityPanel } from '../../components/settings/IntegrityPanel/Integri
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
+import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
 import { AISettingsPanel } from '../../components/settings/AISettingsPanel'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
@@ -76,7 +77,7 @@ const CURRENCIES: { value: string; label: string; symbol: string }[] = [
 
 
 export function SettingsPage() {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatDateTime } = useFormatters()
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const fontScale = useAppStore((s) => s.fontScale)
@@ -143,7 +144,7 @@ export function SettingsPage() {
   const guideOverview = useGuideOverview(budgetId)
   const setGuidePrefs = useSetGuidePreferences(budgetId ?? '')
   // Both default on; the server is the source of truth once it answers.
-  const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true }
+  const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true, wishlist: true }
 
   const sections = [
     { id: 'appearance', label: 'Appearance' },
@@ -428,13 +429,40 @@ export function SettingsPage() {
                 onChange={(e) => setGuidePrefs.mutate({ checkup: e.target.checked })}
               />
             </div>
+
+            <div className="settings-row">
+              <div>
+                <div className="settings-row__label">Wishlist</div>
+                <div className="settings-row__desc">
+                  Keep a wishlist — a Wishlist group in your budget and the Wishlist tab in
+                  the Guide. Off hides both; any money in those envelopes stays exactly where
+                  it is.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={guidePrefs.wishlist}
+                disabled={setGuidePrefs.isPending}
+                onChange={(e) => setGuidePrefs.mutate({ wishlist: e.target.checked })}
+              />
+            </div>
           </div>
         </Surface>
       )}
 
       {/* Tags */}
       {budgetId && (
-        <Surface as="section" className="settings-section" id="tags" title="Tags">
+        <Surface
+          as="section"
+          className="settings-section"
+          id="tags"
+          title={
+            <span className="settings-section__title-help">
+              Tags
+              <SystemTagsHelp />
+            </span>
+          }
+        >
           <div className="settings-section__body">
             <TagsPanel budgetId={budgetId} />
           </div>
@@ -575,7 +603,7 @@ export function SettingsPage() {
                   <div>
                     <div className="settings-row__label">Sync enabled</div>
                     <div className="settings-row__desc">
-                      Last synced: {conn.last_sync_at ? new Date(conn.last_sync_at).toLocaleString() : 'Never'}
+                      Last synced: {conn.last_sync_at ? formatDateTime(conn.last_sync_at) : 'Never'}
                     </div>
                   </div>
                   <input
@@ -654,7 +682,7 @@ export function SettingsPage() {
                     <span className="sf-error__label">Last sync error</span>
                     <span className="sf-error__msg">{conn.last_sync_error}</span>
                     {conn.last_sync_error_at && (
-                      <span className="sf-error__time">{new Date(conn.last_sync_error_at).toLocaleString()}</span>
+                      <span className="sf-error__time">{formatDateTime(conn.last_sync_error_at)}</span>
                     )}
                   </div>
                 )}

@@ -38,14 +38,13 @@ from igab.db.models import (
     Category,
     CategoryGroup,
     Payee,
-    Tag,
     Transaction,
-    category_tags,
 )
 from igab.repositories.txn_filters import (
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
     TRANSFER_LEG,
+    category_tagged,
 )
 
 
@@ -153,21 +152,9 @@ _counterpart_is_liability = (
 )
 
 
-def _tagged(*system_keys: str):
-    # Guarded by the NOT NULL test: `NULL IN (...)` is UNKNOWN, not FALSE, and
-    # a CASE arm evaluating to UNKNOWN differs from one evaluating FALSE only
-    # by luck of ordering. Keep every arm two-valued.
-    return and_(
-        Transaction.category_id.isnot(None),
-        Transaction.category_id.in_(
-            select(category_tags.c.category_id)
-            .join(Tag, Tag.id == category_tags.c.tag_id)
-            .where(
-                Tag.system_key.in_(system_keys),
-                Tag.is_deleted == False,  # noqa: E712
-            )
-        ),
-    )
+# The category-tag predicate lives in txn_filters (category_tagged) — the
+# essentials report needs the same shape, and one SQL spelling is the rule.
+_tagged = category_tagged
 
 
 #: Inflow categories (YNAB's "Ready to Assign"). A categorized inflow to an

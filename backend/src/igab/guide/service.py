@@ -6,7 +6,7 @@ of the package free to change without touching the HTTP layer.
 
 import uuid
 from dataclasses import asdict
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -14,32 +14,75 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Liability
+from igab.domain.dates import month_start
 from igab.guide.bindings import Resolution, resolve_all
 from igab.guide.concepts import (
     CONCEPTS,
     CONCEPTS_BY_KEY,
+    FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
     HIGH_INTEREST_APR,
     RETIREMENT_TARGET_RATE,
     STARTER_EMERGENCY_FUND,
 )
-from igab.guide.detection import Finding, GuideDetection
+from igab.guide.detection import (
+    Finding,
+    GuideDetection,
+    budget_service_from,
+    liability_service_from,
+)
+from igab.guide.findings import CheckupInputs, evaluate, metrics
 from igab.guide.repo import GuideRepository
+from igab.guide.scenarios import (
+    EmergencyFundPlan,
+    LoanCandidate,
+    LoanComparison,
+    PayoffPlan,
+    PayVsSave,
+    emergency_fund,
+    loan_compare,
+    pay_vs_save,
+    payoff_plan,
+)
+from igab.repositories.category_repo import CategoryGroupRepository
+from igab.repositories.target_repo import TargetRepository
+from igab.services.amortization import CascadeDebt
+from igab.services.budget_service import BudgetService
+from igab.services.liability_service import LiabilityService
+from igab.services.report_service import ReportService
+from igab.services.target_service import TargetService
 
 #: Defaults for the two switches on the settings page. Both on: the roadmap is
 #: far more useful when it knows the numbers, and every inference it makes is
 #: explained and reversible.
-DEFAULT_PREFS: dict[str, bool] = {"personalization": True, "checkup": True}
+DEFAULT_PREFS: dict[str, bool] = {"personalization": True, "checkup": True, "wishlist": True}
 
 PREFS_KEY = "prefs"
 STEP_PREFIX = "step:"
+#: When the user last pressed "Run health report". The checkup never runs on
+#: its own, so this is the only timestamp it has.
+CHECKUP_KEY = "checkup"
 
 
 class GuideService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        budget_service: BudgetService | None = None,
+        target_service: TargetService | None = None,
+        report_service: ReportService | None = None,
+        liability_service: LiabilityService | None = None,
+    ) -> None:
         self.session = session
         self.repo = GuideRepository(session)
-        self.detection = GuideDetection(session)
+        # The request path hands in the instances it already built; a test may
+        # say `GuideService(session)` and get the same wiring from the session.
+        self.budget = budget_service or budget_service_from(session)
+        self.liabilities = liability_service or liability_service_from(session)
+        self.targets = target_service or TargetService(TargetRepository(session))
+        self.reports = report_service or ReportService(session)
+        self.detection = GuideDetection(session, self.budget, self.liabilities)
 
     # ── preferences ──────────────────────────────────────────────────────────
 
@@ -58,6 +101,19 @@ class GuideService:
         if not merged.get("personalization", True):
             merged["checkup"] = False
         await self.repo.set_state(budget_id, PREFS_KEY, merged)
+        if "wishlist" in changes:
+            # The Wishlist group follows the switch: off hides it (money stays
+            # where it is; hidden groups are already out of every picker), on
+            # brings it back — seeding it the first time.
+            groups = CategoryGroupRepository(self.session)
+            if changes["wishlist"]:
+                group = await groups.ensure_system_group(budget_id, "wishlist")
+                if group.is_hidden:
+                    await groups.update(group.id, is_hidden=False)
+            else:
+                group = await groups.get_by_system_key(budget_id, "wishlist")
+                if group is not None and not group.is_hidden:
+                    await groups.update(group.id, is_hidden=True)
         return merged
 
     # ── step progress ────────────────────────────────────────────────────────
@@ -242,6 +298,119 @@ class GuideService:
         )
         return {k: [str(i) for i in v] for k, v in source.items()}
 
+    # ── the checkup ──────────────────────────────────────────────────────────
+
+    async def checkup(self, budget_id: uuid.UUID, *, stamp: bool = False) -> dict[str, Any]:
+        """Metrics against their targets, and every finding that fires.
+
+        One computation feeds three surfaces — the Checkup tab, the health
+        report, and the step markers on the roadmap — so they cannot disagree.
+        With reviews switched off nothing is computed at all: off means off,
+        for the household member who finds the whole thing stressful.
+        """
+        prefs = await self.preferences(budget_id)
+        today = date.today()
+        state = await self.repo.state(budget_id)
+        last_run = state.get(CHECKUP_KEY, {}).get("last_run")
+        if not prefs["checkup"]:
+            return {
+                "enabled": False,
+                "as_of": today,
+                "last_run": last_run,
+                "metrics": [],
+                "findings": [],
+            }
+
+        signals = await self.signals(budget_id)
+        by_key = {c["key"]: c for c in signals["concepts"]}
+
+        plan = await self.reports.plan_vs_reality(budget_id)
+        chronic_names = [c["category_name"] for c in plan["categories"] if c["chronic"]]
+
+        # Same composition as the budget month endpoint, so "funded" here is
+        # the pill the budget page shows.
+        summary = await self.budget.get_budget_summary(budget_id, month_start(today))
+        targets = {
+            t.category_id: t
+            for t in await self.targets.repo.get_by_category_ids(
+                [b.category_id for b in summary.category_balances]
+            )
+        }
+        funded = sum(
+            1
+            for b in summary.category_balances
+            if (t := targets.get(b.category_id))
+            and self.targets.calculate_status(t, b.assigned, b.available, today) != "underfunded"
+        )
+
+        inputs = CheckupInputs(
+            signals=by_key,
+            essentials_monthly=by_key.get("essential_expenses", {}).get("value"),
+            chronic_count=plan["chronic_count"],
+            chronic_names=chronic_names,
+            funded=funded,
+            with_targets=len(targets),
+            unknown_rate_names=list(by_key.get("high_interest_debt", {}).get("gaps", [])),
+            today=today,
+        )
+
+        if stamp:
+            last_run = datetime.now(UTC).isoformat()
+            await self.repo.set_state(budget_id, CHECKUP_KEY, {"last_run": last_run})
+
+        return {
+            "enabled": True,
+            "as_of": today,
+            "last_run": last_run,
+            "metrics": [asdict(m) for m in metrics(inputs)],
+            "findings": [asdict(f) for f in evaluate(inputs)],
+        }
+
+    # ── scenario calculators ─────────────────────────────────────────────────
+    #
+    # Three are pure and pass straight through; the router still comes here
+    # so it keeps talking to one object. The fourth reads the roadmap's own
+    # figures, which is the point of it.
+
+    @staticmethod
+    def payoff_plan(debts: list[CascadeDebt], extra: Decimal, as_of: date) -> PayoffPlan:
+        return payoff_plan(debts, extra, as_of)
+
+    @staticmethod
+    def pay_vs_save(
+        balance: Decimal,
+        annual_rate: Decimal,
+        minimum_payment: Decimal,
+        extra: Decimal,
+        savings_apy: Decimal,
+        as_of: date,
+    ) -> PayVsSave:
+        return pay_vs_save(balance, annual_rate, minimum_payment, extra, savings_apy, as_of)
+
+    @staticmethod
+    def loan_compare(loans: list[LoanCandidate], as_of: date) -> LoanComparison:
+        return loan_compare(loans, as_of)
+
+    async def emergency_fund_plan(
+        self, budget_id: uuid.UUID, months: int, monthly_contribution: Decimal
+    ) -> EmergencyFundPlan:
+        """Size an emergency fund from the signals the roadmap already shows.
+
+        The essentials figure and the emergency-fund figure are the ones on
+        the roadmap — including any amount the user declared they hold
+        elsewhere, which counts here as it does there and, as everywhere in
+        the Guide, nowhere else.
+        """
+        signals = await self.signals(budget_id)
+        by_key = {c["key"]: c for c in signals["concepts"]}
+        return emergency_fund(
+            current=by_key.get("emergency_fund", {}).get("value"),
+            essentials_monthly=by_key.get("essential_expenses", {}).get("value"),
+            months=months,
+            monthly_contribution=monthly_contribution,
+            today=date.today(),
+        )
+
     # ── candidates for the binding picker ────────────────────────────────────
 
     async def candidates(self, budget_id: uuid.UUID, concept_key: str) -> dict[str, list[dict]]:
@@ -354,4 +523,5 @@ class GuideService:
             "retirement_target_rate": RETIREMENT_TARGET_RATE,
             "starter_emergency_fund": STARTER_EMERGENCY_FUND,
             "emergency_fund_months": FULL_EMERGENCY_FUND_MONTHS_LOW,
+            "emergency_fund_months_high": FULL_EMERGENCY_FUND_MONTHS_HIGH,
         }

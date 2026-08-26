@@ -22,6 +22,7 @@ from igab.api.v1.schemas.report import (
     DashboardMetrics,
     DayPatternItem,
     DayPatternsResponse,
+    EssentialsReportResponse,
     IncomeExpenseMonth,
     IncomeExpenseResponse,
     LiabilitiesBalancePoint,
@@ -37,6 +38,7 @@ from igab.api.v1.schemas.report import (
     PayeeTrend,
     PlanRealityCategory,
     PlanRealityResponse,
+    ReportDrains,
     SankeyLink,
     SankeyNode,
     SavingsCategory,
@@ -340,6 +342,16 @@ async def seasonality_report(
     )
 
 
+@router.get("/{budget_id}/reports/essentials", response_model=EssentialsReportResponse)
+async def essentials_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: int = Query(12, ge=1, le=60),
+) -> EssentialsReportResponse:
+    return EssentialsReportResponse(**await report_svc.essentials_summary(budget_id, months))
+
+
 @router.get("/{budget_id}/reports/payee-analysis", response_model=PayeeAnalysisResponse)
 async def payee_analysis_report(
     budget_id: BudgetAccess,
@@ -485,6 +497,7 @@ async def savings_report(
         categories=[SavingsCategory.model_validate(c) for c in data["categories"]],
         summary=SavingsSummary.model_validate(data["summary"]),
         months=data["months"],
+        drains=ReportDrains.model_validate(data["drains"]),
     )
 
 

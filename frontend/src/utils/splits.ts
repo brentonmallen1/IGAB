@@ -88,3 +88,18 @@ export function checkSplit(totalCents: number, legs: SplitLegInput[]): SplitChec
 
   return { ...base, isValid: true, reason: 'ok' }
 }
+
+/** Drafts for a split's saved lines, for either split editor. The server ids
+ *  ride along so a save updates the lines in place (PUT …/splits) instead
+ *  of replacing them. */
+export function draftsFromLines(
+  lines: { id: string; amount: number | string; category_id: string | null; memo: string | null }[]
+): { tempId: string; serverId: string; amount: string; categoryId: string | null; memo: string }[] {
+  return lines.map((line) => ({
+    tempId: line.id,
+    serverId: line.id,
+    amount: String(Math.abs(Number(line.amount))),
+    categoryId: line.category_id,
+    memo: line.memo ?? '',
+  }))
+}

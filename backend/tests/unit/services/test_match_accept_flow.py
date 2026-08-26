@@ -1,18 +1,16 @@
 """
 Unit tests for TransactionMatchingService accept/reject flows.
 
-Match acceptance rules (full DB behavior verified in
-tests/integration/test_simplefin_sync.py — these unit tests cover the
-mock-testable guards and control flow):
-  1. The pair merges down to one live row: the keeper inherits the loser's
-     bank identity (sync_id/sync_source, import metadata) and the loser is
-     soft-deleted FIRST (unique-index-safe ordering).
-  2. A reconciled row always wins the keeper role; after that a structured
-     row (split parent / transfer leg) beats a flat one. A structured loser
-     raises before anything is mutated — never orphan split children or a
-     transfer partner.
-  3. A match whose sides are missing or already deleted is auto-rejected.
-  4. Re-accepting an accepted match is a no-op; a self-match is a no-op.
+Accepting a match IS a merge — TransactionService.merge, the one merge; who
+survives and what the bank row contributes are decided there and pinned in
+tests/integration/test_merge.py and test_match_guards.py. What is left to
+this service, and covered here:
+  1. A self-match or a match with a deleted side never reaches the merge.
+  2. accept_match resolves the match only after a successful merge; a
+     refused merge propagates and leaves the match pending.
+  3. try_match writes its match row AFTER the outcome — accepted only when
+     the merge happened, pending when it was refused or the score fell short.
+  4. Re-accepting an accepted match is a no-op; a missing match is a no-op.
 """
 
 import datetime
@@ -71,11 +69,6 @@ def make_txn(
     return t
 
 
-def _statement_params(call) -> dict:
-    """Bound parameter values of a captured SQLAlchemy statement."""
-    return call.args[0].compile().params
-
-
 def make_match(
     *,
     synced_id: uuid.UUID | None = None,
@@ -98,6 +91,7 @@ def make_service() -> TransactionMatchingService:
         txn_repo=AsyncMock(),
         match_repo=AsyncMock(),
         payee_repo=AsyncMock(),
+        txn_service=AsyncMock(),
     )
 
 
@@ -108,246 +102,77 @@ class TestAcceptLinkGuards:
 
         await svc._accept_link(txn, txn, 0.99)
 
-        svc.session.execute.assert_not_awaited()
+        svc.txn_service.merge.assert_not_awaited()
 
     async def test_stale_deleted_side_is_noop(self) -> None:
         svc = make_service()
         synced = make_txn(sync_id="t-1", is_deleted=True)
         manual = make_txn()
 
-        await svc._accept_link(synced, manual, 0.9)
+        await svc._accept_link(synced, manual, 0.99)
 
-        svc.session.execute.assert_not_awaited()
+        svc.txn_service.merge.assert_not_awaited()
 
-    async def test_both_reconciled_raises(self) -> None:
-        svc = make_service()
-        synced = make_txn(sync_id="t-1", cleared="reconciled")
-        manual = make_txn(cleared="reconciled")
-
-        with pytest.raises(InvariantViolation):
-            await svc._accept_link(synced, manual, 0.9)
-
-    async def test_conflicting_bank_identities_raise(self) -> None:
-        svc = make_service()
-        synced = make_txn(sync_id="t-1")
-        manual = make_txn(sync_id="t-2")
-
-        with pytest.raises(InvariantViolation):
-            await svc._accept_link(synced, manual, 0.9)
-
-    async def test_merge_deletes_loser_then_updates_keeper(self) -> None:
-        """Ordering matters: under the partial unique index the loser's
-        sync_id must leave the live set before it lands on the keeper."""
+    async def test_accept_link_is_the_one_merge(self) -> None:
         svc = make_service()
         synced = make_txn(sync_id="t-1", sync_source="simplefin")
         manual = make_txn()
 
-        await svc._accept_link(synced, manual, 0.9)
+        await svc._accept_link(synced, manual, 0.99)
 
-        calls = svc.session.execute.call_args_list
-        assert len(calls) == 2
-        first_sql = str(calls[0].args[0]).lower()
-        second_sql = str(calls[1].args[0]).lower()
-        assert "is_deleted" in first_sql, "loser must be soft-deleted first"
-        assert "sync_id" in second_sql, "keeper receives the bank identity second"
-        svc.session.flush.assert_awaited_once()
+        svc.txn_service.merge.assert_awaited_once_with(BUDGET_ID, [synced.id, manual.id])
 
 
-class TestStructuredRowGuards:
-    """A split parent or transfer leg must never be the merged-away side."""
-
-    async def test_split_parent_loser_raises_without_mutation(self) -> None:
-        # Reconciled flat synced row wins the keeper role, which would make
-        # the manual split parent the loser — refuse instead of orphaning
-        # its children in category activity.
+class TestTryMatchWritesTheRowAfterTheOutcome:
+    def _svc_with_candidate(self, synced, candidate, score_patch):
         svc = make_service()
-        synced = make_txn(sync_id="t-1", cleared="reconciled")
-        manual = make_txn(is_split=True)
+        svc.txn_repo.find_match_candidates = AsyncMock(return_value=[candidate])
+        svc.payee_repo.get = AsyncMock(return_value=None)
+        return svc
 
-        with pytest.raises(InvariantViolation, match="split"):
-            await svc._accept_link(synced, manual, 0.9)
-
-        svc.session.execute.assert_not_awaited()
-
-    async def test_transfer_leg_loser_raises_without_mutation(self) -> None:
+    async def test_accepted_only_after_the_merge_happened(self, monkeypatch) -> None:
         svc = make_service()
-        synced = make_txn(sync_id="t-1", cleared="reconciled")
-        manual = make_txn(transfer_id=uuid.uuid4())
-
-        with pytest.raises(InvariantViolation, match="transfer"):
-            await svc._accept_link(synced, manual, 0.9)
-
-        svc.session.execute.assert_not_awaited()
-
-    async def test_both_structured_raises(self) -> None:
-        svc = make_service()
-        synced = make_txn(is_split=True)
-        manual = make_txn(transfer_id=uuid.uuid4())
-
-        with pytest.raises(InvariantViolation):
-            await svc._accept_link(synced, manual, 0.9)
-
-        svc.session.execute.assert_not_awaited()
-
-    async def test_split_child_on_either_side_raises(self) -> None:
-        svc = make_service()
-        child = make_txn(parent_transaction_id=uuid.uuid4())
-        flat = make_txn(sync_id="t-1")
-
-        with pytest.raises(InvariantViolation, match="split line"):
-            await svc._accept_link(child, flat, 0.9)
-        with pytest.raises(InvariantViolation, match="split line"):
-            await svc._accept_link(flat, child, 0.9)
-
-        svc.session.execute.assert_not_awaited()
-
-    async def test_structured_synced_row_wins_keeper_role(self) -> None:
-        """A structured synced row beats a flat manual row: the flat side is
-        deleted and the split parent absorbs the bank identity."""
-        svc = make_service()
-        synced = make_txn(is_split=True)
-        manual = make_txn(sync_id="t-1", sync_source="simplefin", cleared="cleared")
-
-        await svc._accept_link(synced, manual, 0.9)
-
-        calls = svc.session.execute.call_args_list
-        assert len(calls) == 2
-        delete_params = _statement_params(calls[0])
-        update_params = _statement_params(calls[1])
-        assert manual.id in delete_params.values(), "flat manual row is the loser"
-        assert synced.id in update_params.values(), "split parent is the keeper"
-        assert update_params.get("sync_id") == "t-1"
-
-    async def test_structured_manual_row_stays_default_keeper(self) -> None:
-        """The auto-match path: fresh flat synced row vs manual split parent
-        keeps the split parent, as before."""
-        svc = make_service()
-        synced = make_txn(sync_id="t-1", sync_source="simplefin", cleared="cleared")
-        manual = make_txn(is_split=True)
-
-        await svc._accept_link(synced, manual, 0.9)
-
-        calls = svc.session.execute.call_args_list
-        assert len(calls) == 2
-        assert synced.id in _statement_params(calls[0]).values()
-        assert manual.id in _statement_params(calls[1]).values()
-
-
-class TestBankIdentityInheritance:
-    async def test_idless_bank_loser_confers_identity_and_provenance(self) -> None:
-        """An id-less feed row (sync_source, no sync_id) is still the bank
-        side: the keeper gains sync_source, bank_posted_date, and the
-        cleared upgrade."""
-        svc = make_service()
-        posted = datetime.date(2026, 8, 10)
-        synced = make_txn(sync_source="simplefin", cleared="cleared", txn_date=posted)
-        manual = make_txn(cleared="uncleared")
-
-        await svc._accept_link(synced, manual, 0.9)
-
-        update_params = _statement_params(svc.session.execute.call_args_list[1])
-        assert update_params.get("sync_source") == "simplefin"
-        assert update_params.get("bank_posted_date") == posted
-        assert update_params.get("cleared") == "cleared"
-        assert update_params.get("has_sync_source") is True
-
-    async def test_keeper_with_own_sync_source_is_not_relabeled(self) -> None:
-        svc = make_service()
-        synced = make_txn(sync_source="simplefin", cleared="cleared")
-        manual = make_txn(sync_source="csv")
-
-        await svc._accept_link(synced, manual, 0.9)
-
-        update_params = _statement_params(svc.session.execute.call_args_list[1])
-        assert "sync_source" not in update_params
-
-    async def test_bank_loser_confers_its_amount_and_payee(self) -> None:
-        """The keeper is the user's row; the bank's own figures survive the
-        merge as provenance rather than being lost with the deleted row."""
-        svc = make_service()
-        synced = make_txn(
-            sync_source="simplefin",
-            cleared="cleared",
-            amount="-52.75",
-            bank_payee="SHELL OIL",
-        )
-        manual = make_txn(cleared="uncleared", amount="-52.75")
-
-        await svc._accept_link(synced, manual, 0.9)
-
-        update_params = _statement_params(svc.session.execute.call_args_list[1])
-        assert update_params.get("bank_amount") == Decimal("-52.75")
-        assert update_params.get("bank_payee") == "SHELL OIL"
-
-    async def test_bank_losers_recorded_bank_amount_wins_over_its_ledger_amount(self) -> None:
-        svc = make_service()
-        synced = make_txn(
-            sync_source="simplefin",
-            cleared="cleared",
-            amount="-52.75",
-            bank_amount=Decimal("-50.00"),
-        )
-        manual = make_txn(cleared="uncleared")
-
-        await svc._accept_link(synced, manual, 0.9)
-
-        update_params = _statement_params(svc.session.execute.call_args_list[1])
-        assert update_params.get("bank_amount") == Decimal("-50.00")
-
-    async def test_keeper_keeps_its_own_bank_values(self) -> None:
-        svc = make_service()
-        synced = make_txn(sync_source="simplefin", cleared="cleared", amount="-52.75")
-        manual = make_txn(
-            cleared="uncleared", bank_amount=Decimal("-99.00"), bank_payee="EXISTING"
+        synced, manual = make_txn(sync_id="t-1", sync_source="simplefin"), make_txn()
+        svc.txn_repo.find_match_candidates = AsyncMock(return_value=[manual])
+        svc.payee_repo.get = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            "igab.services.transaction_matching_service.calculate_confidence", lambda *a: 0.95
         )
 
-        await svc._accept_link(synced, manual, 0.9)
+        await svc.try_match(synced)
 
-        update_params = _statement_params(svc.session.execute.call_args_list[1])
-        assert "bank_amount" not in update_params
-        assert "bank_payee" not in update_params
+        svc.txn_service.merge.assert_awaited_once()
+        assert svc.match_repo.create.await_args.kwargs["status"] == "accepted"
 
-    async def test_manual_loser_confers_no_bank_provenance(self) -> None:
+    async def test_refused_merge_leaves_a_pending_match(self, monkeypatch) -> None:
         svc = make_service()
-        synced = make_txn(cleared="reconciled", sync_id="t-1")
-        manual = make_txn(cleared="cleared", txn_date=datetime.date(2026, 8, 1))
+        synced, manual = make_txn(sync_id="t-1", sync_source="simplefin"), make_txn(is_split=True)
+        svc.txn_repo.find_match_candidates = AsyncMock(return_value=[manual])
+        svc.payee_repo.get = AsyncMock(return_value=None)
+        svc.txn_service.merge = AsyncMock(
+            side_effect=InvariantViolation("Cannot merge away a split")
+        )
+        monkeypatch.setattr(
+            "igab.services.transaction_matching_service.calculate_confidence", lambda *a: 0.95
+        )
 
-        await svc._accept_link(synced, manual, 0.9)
+        await svc.try_match(synced)
 
-        update_params = _statement_params(svc.session.execute.call_args_list[1])
-        assert "bank_posted_date" not in update_params
-        assert "bank_amount" not in update_params
-        assert "bank_payee" not in update_params
-        assert "cleared" not in update_params
+        assert svc.match_repo.create.await_args.kwargs["status"] == "pending"
 
-
-class TestClearedPropagationToChildren:
-    async def test_split_keeper_cleared_upgrade_propagates(self) -> None:
+    async def test_below_threshold_is_pending_without_a_merge(self, monkeypatch) -> None:
         svc = make_service()
-        synced = make_txn(sync_id="t-1", sync_source="simplefin", cleared="cleared")
-        manual = make_txn(is_split=True, cleared="uncleared")
+        synced, manual = make_txn(sync_id="t-1", sync_source="simplefin"), make_txn()
+        svc.txn_repo.find_match_candidates = AsyncMock(return_value=[manual])
+        svc.payee_repo.get = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            "igab.services.transaction_matching_service.calculate_confidence", lambda *a: 0.7
+        )
 
-        await svc._accept_link(synced, manual, 0.9)
+        await svc.try_match(synced)
 
-        svc.txn_repo.set_children_cleared.assert_awaited_once_with(manual.id, "cleared")
-
-    async def test_flat_keeper_does_not_touch_children(self) -> None:
-        svc = make_service()
-        synced = make_txn(sync_id="t-1", sync_source="simplefin", cleared="cleared")
-        manual = make_txn(cleared="uncleared")
-
-        await svc._accept_link(synced, manual, 0.9)
-
-        svc.txn_repo.set_children_cleared.assert_not_awaited()
-
-    async def test_no_cleared_upgrade_means_no_child_update(self) -> None:
-        svc = make_service()
-        synced = make_txn(sync_id="t-1", sync_source="simplefin", cleared="uncleared")
-        manual = make_txn(is_split=True, cleared="uncleared")
-
-        await svc._accept_link(synced, manual, 0.9)
-
-        svc.txn_repo.set_children_cleared.assert_not_awaited()
+        svc.txn_service.merge.assert_not_awaited()
+        assert svc.match_repo.create.await_args.kwargs["status"] == "pending"
 
 
 class TestAcceptMatch:
@@ -364,9 +189,7 @@ class TestAcceptMatch:
         synced_result.scalar_one_or_none = MagicMock(return_value=synced)
         manual_result = MagicMock()
         manual_result.scalar_one_or_none = MagicMock(return_value=manual)
-        svc.session.execute = AsyncMock(
-            side_effect=[synced_result, manual_result, None, None]
-        )
+        svc.session.execute = AsyncMock(side_effect=[synced_result, manual_result, None, None])
 
         await svc.accept_match(match.id)
 
@@ -401,6 +224,9 @@ class TestAcceptMatch:
 
         svc.match_repo.get = AsyncMock(return_value=match)
         svc.match_repo.update_status = AsyncMock()
+        svc.txn_service.merge = AsyncMock(
+            side_effect=InvariantViolation("Cannot merge away a split")
+        )
 
         synced_result = MagicMock()
         synced_result.scalar_one_or_none = MagicMock(return_value=synced)

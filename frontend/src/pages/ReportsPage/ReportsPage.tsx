@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { useAppStore } from '../../stores/appStore'
 import {
   useReportStore,
@@ -5,11 +6,13 @@ import {
   TAB_GROUPS,
   getTabGroup,
   getGroupTabs,
+  type ReportTab,
   type TabGroup,
 } from '../../stores/reportStore'
 import { ReportFiltersBar } from '../../components/reports/ReportFilters/ReportFiltersBar'
 import { DrillDownPanel } from '../../components/reports/DrillDownPanel/DrillDownPanel'
 import { OverviewReport } from '../../components/reports/OverviewReport'
+import { EssentialsReport } from '../../components/reports/charts/EssentialsReport'
 import { NetWorthReport } from '../../components/reports/charts/NetWorthChart'
 import { AccountCompositionReport } from '../../components/reports/charts/AccountCompositionChart'
 import { IncomeExpenseReport } from '../../components/reports/charts/IncomeExpenseChart'
@@ -54,6 +57,16 @@ export function ReportsPage() {
       setActiveTab('overview')
     }
   }, [activeTab, setActiveTab])
+
+  // A link can name a tab (`/reports?tab=essentials`) — the Guide's roadmap
+  // points at specific reports. Read once, then the stored tab takes over.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const wanted = searchParams.get('tab')
+    if (!wanted) return
+    if (REPORT_TABS.some((t) => t.id === wanted)) setActiveTab(wanted as ReportTab)
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setActiveTab, setSearchParams])
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -101,6 +114,7 @@ export function ReportsPage() {
       case 'liabilities': return <LiabilitiesReport budgetId={budgetId!} />
       case 'savings': return <SavingsReport budgetId={budgetId!} />
       case 'savings-rate': return <SavingsRateReport budgetId={budgetId!} />
+      case 'essentials': return <EssentialsReport budgetId={budgetId!} />
       case 'income-expense': return <IncomeExpenseReport budgetId={budgetId!} />
       case 'burn-rate': return <BurnRateReport budgetId={budgetId!} />
       case 'cash-flow': return <CashFlowSankeyReport budgetId={budgetId!} />

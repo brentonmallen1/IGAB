@@ -21,23 +21,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, AccountType, Category, Liability, Transaction
 from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
-from igab.domain.carryover import available_through
-from igab.domain.dates import month_end, month_start
+from igab.domain.dates import month_start
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
+    ESSENTIALS_WINDOW_DAYS,
     HIGH_INTEREST_APR,
     MODERATE_INTEREST_APR,
     MORTGAGE_KINDS,
 )
+from igab.repositories.account_repo import AccountRepository
+from igab.repositories.category_repo import (
+    BudgetAssignmentRepository,
+    CategoryGroupRepository,
+    CategoryRepository,
+)
+from igab.repositories.liability_repo import LiabilityRepository
+from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.tag_repo import TagRepository
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     BALANCE_ROW,
     COUNTERPART_ACCOUNT_ID,
     LEAF,
     NOT_DELETED,
-    ON_BUDGET_ACCOUNT,
     POSTED,
 )
+from igab.services.budget_service import BudgetService
+from igab.services.liability_service import LiabilityService
 
 TWO_PLACES = Decimal("0.01")
 
@@ -55,9 +65,6 @@ def _cents(value: Decimal) -> Decimal:
 #: Names that suggest an emergency fund. Deliberately narrow — a false match
 #: here tells someone they are covered when they are not.
 EMERGENCY_NAME = re.compile(r"emergency|rainy.?day|buffer", re.I)
-
-#: How far back "what a lean month costs" looks.
-ESSENTIALS_WINDOW_DAYS = 90
 
 
 @dataclass
@@ -82,10 +89,47 @@ class Finding:
     gaps: list[str] = field(default_factory=list)
 
 
+def budget_service_from(session: AsyncSession) -> BudgetService:
+    """The budget page's own service, built the way the DI layer builds it.
+
+    Detection reads envelope balances through it rather than re-deriving them,
+    so the Guide's figure for a category is the budget page's figure by
+    construction — not by a comment asking two queries to stay in step.
+    """
+    return BudgetService(
+        AccountRepository(session),
+        CategoryRepository(session),
+        CategoryGroupRepository(session),
+        BudgetAssignmentRepository(session),
+        TransactionRepository(session),
+        snapshot_repo=SnapshotRepository(session),
+    )
+
+
+def liability_service_from(session: AsyncSession) -> LiabilityService:
+    """The liabilities page's service — the one home of "what is owed"."""
+    return LiabilityService(
+        LiabilityRepository(session),
+        AccountRepository(session),
+        CategoryRepository(session),
+        TransactionRepository(session),
+    )
+
+
 class GuideDetection:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        budget_service: BudgetService | None = None,
+        liability_service: LiabilityService | None = None,
+    ) -> None:
         self.session = session
         self.tags = TagRepository(session)
+        self.txns = TransactionRepository(session)
+        # Optional so a test can say `GuideDetection(session)`; the request
+        # path passes the instances the rest of the request already built.
+        self.budget = budget_service or budget_service_from(session)
+        self.liabilities = liability_service or liability_service_from(session)
 
     # ── money the household has set aside ────────────────────────────────────
 
@@ -174,32 +218,24 @@ class GuideDetection:
     async def essential_expenses(
         self, budget_id: uuid.UUID, bound: dict[str, tuple[uuid.UUID, ...]] | None = None
     ) -> Finding:
-        """Roughly what a month costs — what an emergency fund is measured against."""
-        since = date.today() - timedelta(days=ESSENTIALS_WINDOW_DAYS)
-        conditions = [
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            LEAF,
-            ON_BUDGET_ACCOUNT,
-            Transaction.date >= since,
-            ACTIVITY_CLASS == ActivityClass.SPENDING,
-        ]
-        reason = "your average spending over the last 90 days"
-        if bound and bound.get("category"):
-            conditions.append(Transaction.category_id.in_(list(bound["category"])))
-            reason = "the categories you told us are essential"
+        """Roughly what a month costs — what an emergency fund is measured against.
 
-        total = (
-            await self.session.execute(
-                apply_class_joins(
-                    select(func.coalesce(func.sum(Transaction.amount), 0))
-                    .select_from(Transaction)
-                    .where(*conditions)
-                )
-            )
-        ).scalar_one()
-        monthly = _cents(abs(Decimal(total)) / 3)
+        One query (TransactionRepository.essential_spend) answers this, the
+        Overview's essentials card and the Essentials report, so the roadmap's
+        target and the reports quote one figure. Precedence: categories the
+        user bound here, else what they tagged Essential, else all spending.
+        """
+        today = date.today()
+        since = today - timedelta(days=ESSENTIALS_WINDOW_DAYS)
+        total, basis = await self.txns.essential_spend(
+            budget_id, since, today, bound.get("category") if bound else None
+        )
+        reason = {
+            "bound": "the categories you told us are essential",
+            "tag": "the categories and payees you tagged Essential",
+            "all": "your average spending over the last 90 days",
+        }[basis]
+        monthly = _cents(abs(total) / 3)
         return Finding(
             concept_key="essential_expenses",
             met=monthly > 0,
@@ -261,16 +297,18 @@ class GuideDetection:
         gaps: list[str] = []
 
         for lia in liabilities:
-            kind = await self._debt_kind(lia)
             if lia.interest_rate is None:
                 gaps.append(lia.name)
                 continue
-            if exclude_mortgages and kind in MORTGAGE_KINDS:
+            if exclude_mortgages and await self.liabilities.resolve_type(lia) in MORTGAGE_KINDS:
                 continue
             rate = Decimal(lia.interest_rate)
             if rate < low or (high is not None and rate >= high):
                 continue
-            balance = await self._liability_balance(lia)
+            # The liabilities page's number, not a second reading of the
+            # ledger: a copy here once counted pending holds and read an
+            # overpaid loan as debt.
+            balance = await self.liabilities.get_balance(lia)
             if balance <= 0:
                 continue
             counted.append(lia.id)
@@ -284,35 +322,6 @@ class GuideDetection:
             entities={"liability": counted},
             gaps=gaps,
         )
-
-    async def _debt_kind(self, liability: Liability) -> str:
-        """Mirror of LiabilityService.resolve_type.
-
-        A managed liability's kind is its account's type — the account is the
-        thing the user actually chose a type for. Duplicated rather than
-        imported to keep detection free of the service graph; if the rule ever
-        changes, both must move.
-        """
-        if liability.linked_account_id is None:
-            return liability.liability_type or "other"
-        account = await self.session.get(Account, liability.linked_account_id)
-        if account is None:
-            return liability.liability_type or "other"
-        return account.account_type
-
-    async def _liability_balance(self, liability: Liability) -> Decimal:
-        if liability.linked_account_id is None:
-            return abs(Decimal(liability.manual_balance or 0))
-        total = (
-            await self.session.execute(
-                select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                    Transaction.account_id == liability.linked_account_id,
-                    NOT_DELETED,
-                    LEAF,
-                )
-            )
-        ).scalar_one()
-        return abs(Decimal(total))
 
     # ── retirement ───────────────────────────────────────────────────────────
 
@@ -436,47 +445,20 @@ class GuideDetection:
         this figure decides whether the roadmap tells someone they have no
         emergency fund.
 
-        The simulation runs per category and the totals are summed after,
-        because the zero floor is per category: two categories, one $50 over
-        and one $50 under, carry $0 and $50 — not $0 between them.
+        It then re-ran the budget page's two queries here and called the same
+        carryover simulation — a second copy of one rule, pinned equal by a
+        test. Now it asks the budget service, so there is one reading to pin.
+        The totals are summed per category because the zero floor is per
+        category: two categories, one $50 over and one $50 under, carry $0 and
+        $50 — not $0 between them.
         """
         if not category_ids:
             return Decimal("0")
-        from igab.db.models import BudgetAssignment
-
         month = month_start(date.today())
         total = Decimal("0")
         for category_id in category_ids:
-            assignments = (
-                await self.session.execute(
-                    select(BudgetAssignment.month, BudgetAssignment.assigned).where(
-                        BudgetAssignment.category_id == category_id,
-                        BudgetAssignment.month <= month,
-                    )
-                )
-            ).all()
-            activity = (
-                await self.session.execute(
-                    select(
-                        func.date_trunc("month", Transaction.date).label("m"),
-                        func.coalesce(func.sum(Transaction.amount), 0),
-                    )
-                    .where(
-                        Transaction.budget_id == budget_id,
-                        Transaction.category_id == category_id,
-                        NOT_DELETED,
-                        POSTED,
-                        LEAF,
-                        Transaction.date <= month_end(month),
-                    )
-                    .group_by("m")
-                )
-            ).all()
-            total += available_through(
-                {m: Decimal(a) for m, a in assignments},
-                {r[0].date(): Decimal(r[1]) for r in activity},
-                month,
-            )
+            balance = await self.budget.get_category_balance(category_id, month)
+            total += balance.available
         return _cents(total)
 
     async def _account_balance(self, account_ids: list[uuid.UUID]) -> Decimal:

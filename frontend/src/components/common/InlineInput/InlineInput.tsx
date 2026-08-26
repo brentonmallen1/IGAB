@@ -5,6 +5,9 @@ interface Props {
   value: string
   onCommit: (value: string) => void
   onCancel?: () => void
+  /** Tab / Shift+Tab: commit, then let the caller move editing on (the
+   *  register's cells unmount on commit, so native Tab would land nowhere). */
+  onTabOut?: (direction: 1 | -1) => void
   placeholder?: string
   type?: 'text' | 'currency'
   className?: string
@@ -17,6 +20,7 @@ export function InlineInput({
   value,
   onCommit,
   onCancel,
+  onTabOut,
   placeholder = '',
   type = 'text',
   className = '',
@@ -26,6 +30,9 @@ export function InlineInput({
 }: Props) {
   const [draft, setDraft] = useState(value)
   const inputRef = useRef<HTMLInputElement>(null)
+  // A commit ends this input's life (the caller unmounts it); a blur that
+  // fires on the way out must not commit the same value a second time.
+  const settled = useRef(false)
 
   useEffect(() => {
     if (autoFocus) {
@@ -35,6 +42,8 @@ export function InlineInput({
   }, [autoFocus])
 
   function commit() {
+    if (settled.current) return
+    settled.current = true
     const trimmed = draft.trim()
     if (trimmed !== value) onCommit(trimmed)
     else onCancel?.()
@@ -46,8 +55,13 @@ export function InlineInput({
       commit()
     } else if (e.key === 'Escape') {
       e.preventDefault()
+      settled.current = true
       setDraft(value)
       onCancel?.()
+    } else if (e.key === 'Tab' && onTabOut) {
+      e.preventDefault()
+      commit()
+      onTabOut(e.shiftKey ? -1 : 1)
     }
   }
 

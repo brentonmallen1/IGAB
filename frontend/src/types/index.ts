@@ -61,6 +61,9 @@ export interface CategoryGroup {
   sort_order: number
   is_hidden: boolean
   is_system: boolean
+  /** 'wishlist' for the group the Guide keeps: rename and delete are refused,
+   *  hide is not. Served from `CategoryGroup.system_key`. */
+  system_key: string | null
 }
 
 export interface TagSimple {
@@ -196,6 +199,11 @@ export interface Transaction {
   date: string
   /** The user's originally-entered date when bank data overwrote `date` */
   entered_date: string | null
+  /** The amount this row had before the bank's posted amount replaced it —
+   *  a hold posting as a larger charge, or an accepted amount-change review.
+   *  Null when the bank never changed it. Provenance for the bank tooltip;
+   *  never money. Home: `Transaction.entered_amount` (backend models.py). */
+  entered_amount: number | null
   /** The bank's posted date; `date` stays the user's ledger date */
   bank_posted_date: string | null
   amount: number
@@ -240,8 +248,14 @@ export interface Transaction {
   import_description: string | null
   sync_id: string | null
   sync_source: string | null
-  /** AI provenance: 'ai_receipt' | 'ai_nl'; null for manual/import/sync rows */
+  /** Where the row came from: 'manual' | 'import' | 'sync' | 'scheduled' |
+   *  'ai_receipt' | 'ai_nl'; null = unknown (rows older than the stamp).
+   *  Home: `Transaction.created_via` (backend models.py). Presentation only —
+   *  it is what lets a row the bank matched say it was entered by you. */
   created_via: string | null
+  /** The schedule this row was entered from, or null. Home:
+   *  `Transaction.scheduled_transaction_id`. */
+  scheduled_transaction_id: string | null
   has_sync_source: boolean
   created_at: string
   updated_at: string
@@ -300,6 +314,8 @@ export interface SplitCreate {
   payee_id?: string
   payee_name?: string
   memo?: string
+  /** An existing line to update in place (PUT …/splits); omit for a new one. */
+  id?: string
 }
 
 export interface SpendingCategory {
@@ -395,6 +411,12 @@ export interface DashboardMetrics {
   net_worth_prev: number
   burn_rate_30: number
   burn_rate_90: number
+  /** Monthly essential spending over the Guide's 90-day window — the number
+   *  the roadmap's emergency-fund target is built from. null until something
+   *  is tagged Essential (untagged it would equal burn rate). Server-computed:
+   *  TransactionRepository.essential_spend. */
+  essentials_monthly: number | null
+  essentials_tagged: boolean
   /** null when no income was recorded in the window — a gap, not a floor.
    *  "No income" and "saved nothing" are different facts. */
   savings_rate: number | null
@@ -644,6 +666,28 @@ export interface SeasonalityReport {
   categories: { id: string; name: string }[]
 }
 
+/** What a lean month costs — GET /reports/essentials. `essentials_90d` is the
+ *  Guide's figure and the Overview card's; the table averages complete months. */
+export interface EssentialsReport {
+  tagged: boolean
+  months: number
+  window_start: string
+  window_end: string
+  essentials_90d: number
+  monthly_total_average: number
+  categories: {
+    category_id: string | null
+    name: string
+    group_name: string | null
+    total: number
+    monthly_average: number
+    months_with_spend: number
+  }[]
+  monthly_series: { month: string; total: number }[]
+  reserve: { months: number; amount: number }[]
+  roadmap_range: [number, number]
+}
+
 export interface PayeeSpending {
   payee_id: string
   payee_name: string
@@ -738,10 +782,29 @@ export interface SavingsSummary {
   category_count: number
 }
 
+export interface ReportDrainMove {
+  move_id: string
+  month: string
+  date: string
+  amount: number
+  from_category_id: string
+  from_name: string
+  to_category_id: string | null
+  to_name: string
+}
+
+/** Money moved out of the report's envelopes in its window — the audit
+ *  trail, named on both sides. Shaped by backend domain/drains.py. */
+export interface ReportDrains {
+  total: number
+  moves: ReportDrainMove[]
+}
+
 export interface SavingsReport {
   categories: SavingsCategory[]
   summary: SavingsSummary
   months: string[]
+  drains: ReportDrains
 }
 
 export interface AnomalyItem {

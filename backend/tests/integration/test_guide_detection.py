@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from igab.guide.detection import GuideDetection
+from igab.guide.detection import GuideDetection, liability_service_from
 from igab.repositories.tag_repo import TagRepository
 
 from .factories import (
@@ -189,6 +189,50 @@ class TestEssentialExpenses:
         assert found.value == Decimal("1000.00")
         assert "you told us are essential" in found.reason
 
+    async def test_an_essential_tag_narrows_detection(self, db_session):
+        from igab.repositories.tag_repo import TagRepository, seed_system_tags
+
+        budget = await _budget(db_session)
+        account = await create_account(db_session, budget, account_type="checking")
+        group = await create_category_group(db_session, budget, "Spending")
+        rent = await create_category(db_session, budget, group, "Rent")
+        fun = await create_category(db_session, budget, group, "Dining")
+        await create_transaction(db_session, budget, account, "-3000.00", TODAY, category=rent)
+        await create_transaction(db_session, budget, account, "-600.00", TODAY, category=fun)
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        essential = next(
+            t for t in await tags.list_for_budget(budget.id) if t.system_key == "essential"
+        )
+        await tags.set_category_tags(rent.id, [essential.id])
+
+        found = await GuideDetection(db_session).essential_expenses(budget.id)
+        assert found.value == Decimal("1000.00")
+        assert "tagged Essential" in found.reason
+
+    async def test_a_binding_still_beats_the_tag(self, db_session):
+        from igab.repositories.tag_repo import TagRepository, seed_system_tags
+
+        budget = await _budget(db_session)
+        account = await create_account(db_session, budget, account_type="checking")
+        group = await create_category_group(db_session, budget, "Spending")
+        rent = await create_category(db_session, budget, group, "Rent")
+        fun = await create_category(db_session, budget, group, "Dining")
+        await create_transaction(db_session, budget, account, "-3000.00", TODAY, category=rent)
+        await create_transaction(db_session, budget, account, "-600.00", TODAY, category=fun)
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        essential = next(
+            t for t in await tags.list_for_budget(budget.id) if t.system_key == "essential"
+        )
+        await tags.set_category_tags(rent.id, [essential.id])
+
+        found = await GuideDetection(db_session).essential_expenses(
+            budget.id, bound={"category": (fun.id,)}
+        )
+        assert found.value == Decimal("200.00"), "the user's explicit binding wins"
+        assert "you told us are essential" in found.reason
+
 
 class TestDebtBands:
     async def test_high_interest_counts_debts_at_ten_or_above(self, db_session):
@@ -317,6 +361,83 @@ class TestDebtBands:
         assert found.met is False
         assert found.value == Decimal("0")
         assert found.gaps == []
+
+    # The four below are named for the ways a copy of the liabilities page's
+    # balance rule, kept here, had drifted from it. There is one rule now.
+
+    async def test_a_pending_charge_is_not_debt_yet(self, db_session):
+        # BALANCE_ROW leaves pending auth holds out everywhere else in the app;
+        # the copy summed NOT_DELETED + LEAF and counted them.
+        budget = await _budget(db_session)
+        account = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        await create_transaction(db_session, budget, account, "-1200.00", TODAY)
+        await create_transaction(
+            db_session, budget, account, "-300.00", TODAY, cleared="pending"
+        )
+        await create_liability(
+            db_session, budget, "Visa",
+            liability_type=None, linked_account_id=account.id,
+            interest_rate=Decimal("22.9000"),
+        )
+
+        found = await GuideDetection(db_session).high_interest_debt(budget.id)
+        assert found.value == Decimal("1200.00")
+
+    async def test_an_overpaid_loan_is_not_debt(self, db_session):
+        # abs() of a positive balance read an overpayment as money owed.
+        budget = await _budget(db_session)
+        account = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        await create_transaction(db_session, budget, account, "50.00", TODAY)
+        await create_liability(
+            db_session, budget, "Visa",
+            liability_type=None, linked_account_id=account.id,
+            interest_rate=Decimal("22.9000"),
+        )
+
+        found = await GuideDetection(db_session).high_interest_debt(budget.id)
+        assert found.met is False
+        assert found.entities["liability"] == []
+        assert found.value == Decimal("0")
+
+    async def test_an_empty_register_keeps_its_manual_balance(self, db_session):
+        # A card freshly linked to a transaction-less account must not read as
+        # paid off — the liabilities page falls back to the manual balance.
+        budget = await _budget(db_session)
+        account = await create_account(
+            db_session, budget, "Store card", account_type="credit_card", on_budget=True
+        )
+        await create_liability(
+            db_session, budget, "Store card",
+            liability_type=None, linked_account_id=account.id,
+            interest_rate=Decimal("26.0000"), manual_balance=Decimal("890.00"),
+        )
+
+        found = await GuideDetection(db_session).high_interest_debt(budget.id)
+        assert found.value == Decimal("890.00")
+
+    async def test_the_guide_and_the_liabilities_page_quote_one_balance(self, db_session):
+        budget = await _budget(db_session)
+        account = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        await create_transaction(db_session, budget, account, "-1200.00", TODAY)
+        await create_transaction(db_session, budget, account, "25.00", TODAY)
+        await create_transaction(
+            db_session, budget, account, "-300.00", TODAY, cleared="pending"
+        )
+        lia = await create_liability(
+            db_session, budget, "Visa",
+            liability_type=None, linked_account_id=account.id,
+            interest_rate=Decimal("22.9000"),
+        )
+
+        found = await GuideDetection(db_session).high_interest_debt(budget.id)
+        page = await liability_service_from(db_session).get_balance(lia)
+        assert found.value == page == Decimal("1175.00")
 
 
 class TestRetirementContributions:

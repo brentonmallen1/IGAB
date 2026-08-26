@@ -2,17 +2,21 @@
 Tests for TransactionService edit/delete invariants around reconciled state.
 
 Core invariants:
-  - Reconciled transactions CANNOT be edited (raises InvariantViolation)
+  - A reconciled transaction's MONEY cannot change: amount, date, cleared,
+    account (domain.reconciliation.RECONCILED_LOCKED_FIELDS)
+  - Its BOOKKEEPING can: category, payee, memo, approval
   - Reconciled transactions CANNOT be deleted (raises InvariantViolation)
   - All other cleared states (pending, uncleared, cleared) CAN be edited and deleted
 
-These rules maintain financial record integrity: once a transaction has been
-verified against a bank statement and locked via reconciliation, it must not
-change. Any corrections must be handled via new transactions.
+Once a transaction has been verified against a bank statement, what the
+statement vouched for must not move. Fixing a wrong category or memo was
+never part of that verification, and a blanket "cannot edit" used to force
+the user to unreconcile (and re-reconcile) just to file a row correctly.
 
 The reconciliation flow:
   1. finish() bulk-updates all 'cleared' transactions → 'reconciled'
-  2. From that point on, update() and delete() block those transactions
+  2. From that point on, update() refuses changes to the locked fields and
+     delete() refuses the row
 """
 
 import uuid
@@ -37,6 +41,9 @@ def D(s: str) -> Decimal:
 class MockTransaction:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     budget_id: uuid.UUID = BUDGET_ID
+    account_id: uuid.UUID = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
+    amount: Decimal = Decimal("-10.00")
+    date: date = date(2026, 7, 10)
     cleared: str = "uncleared"
     transfer_id: uuid.UUID | None = None
     parent_transaction_id: uuid.UUID | None = None
@@ -71,58 +78,74 @@ def make_service(txn: MockTransaction) -> TransactionService:
 
 
 class TestUpdateReconciled:
-    """update() must raise InvariantViolation for reconciled transactions."""
+    """update() refuses to move a reconciled transaction's money and nothing else."""
 
-    async def test_edit_reconciled_raises(self):
+    async def test_edit_reconciled_amount_blocked(self):
         txn = MockTransaction(cleared="reconciled")
         svc = make_service(txn)
-        with pytest.raises(InvariantViolation, match="Cannot edit a reconciled transaction"):
-            await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="new memo"))
+        with pytest.raises(InvariantViolation, match="reconciled — unlock it to change amount"):
+            await svc.update(BUDGET_ID, txn.id, TransactionUpdate(amount=D("999.00")))
 
-    async def test_edit_reconciled_does_not_call_repo_update(self):
-        """The update should be blocked before any repo mutation happens."""
+    async def test_edit_reconciled_blocked_before_any_repo_write(self):
         txn = MockTransaction(cleared="reconciled")
         svc = make_service(txn)
         with pytest.raises(InvariantViolation):
             await svc.update(BUDGET_ID, txn.id, TransactionUpdate(amount=D("100.00")))
         svc.transaction_repo.update.assert_not_called()
 
-    async def test_edit_reconciled_amount_blocked(self):
-        txn = MockTransaction(cleared="reconciled")
-        svc = make_service(txn)
-        with pytest.raises(InvariantViolation):
-            await svc.update(BUDGET_ID, txn.id, TransactionUpdate(amount=D("999.00")))
-
     async def test_edit_reconciled_date_blocked(self):
         txn = MockTransaction(cleared="reconciled")
         svc = make_service(txn)
-        with pytest.raises(InvariantViolation):
+        with pytest.raises(InvariantViolation, match="date"):
             await svc.update(BUDGET_ID, txn.id, TransactionUpdate(date=date(2025, 1, 1)))
-
-    async def test_edit_reconciled_category_blocked(self):
-        txn = MockTransaction(cleared="reconciled")
-        svc = make_service(txn)
-        with pytest.raises(InvariantViolation):
-            await svc.update(BUDGET_ID, txn.id, TransactionUpdate(category_id=uuid.uuid4()))
-
-    async def test_edit_reconciled_memo_blocked(self):
-        txn = MockTransaction(cleared="reconciled")
-        svc = make_service(txn)
-        with pytest.raises(InvariantViolation):
-            await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="changed"))
-
-    async def test_edit_reconciled_payee_blocked(self):
-        txn = MockTransaction(cleared="reconciled")
-        svc = make_service(txn)
-        with pytest.raises(InvariantViolation):
-            await svc.update(BUDGET_ID, txn.id, TransactionUpdate(payee_id=uuid.uuid4()))
 
     async def test_attempt_to_change_cleared_status_from_reconciled_blocked(self):
         """Cannot change cleared from 'reconciled' to anything else."""
         txn = MockTransaction(cleared="reconciled")
         svc = make_service(txn)
-        with pytest.raises(InvariantViolation):
+        with pytest.raises(InvariantViolation, match="cleared"):
             await svc.update(BUDGET_ID, txn.id, TransactionUpdate(cleared="cleared"))
+
+    async def test_edit_reconciled_memo_allowed(self):
+        txn = MockTransaction(cleared="reconciled")
+        svc = make_service(txn)
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="changed"))
+        svc.transaction_repo.update.assert_called_once_with(txn.id, memo="changed")
+
+    async def test_edit_reconciled_category_allowed(self, monkeypatch):
+        txn = MockTransaction(cleared="reconciled")
+        svc = make_service(txn)
+        # The budget-ownership lookup needs a real session; it is not what is
+        # under test here.
+        monkeypatch.setattr("igab.services.transaction_service.require_in_budget", AsyncMock())
+        cat_id = uuid.uuid4()
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(category_id=cat_id))
+        svc.transaction_repo.update.assert_called_once_with(txn.id, category_id=cat_id)
+
+    async def test_edit_reconciled_payee_allowed(self):
+        txn = MockTransaction(cleared="reconciled")
+        svc = make_service(txn)
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(payee_id=None))
+        svc.transaction_repo.update.assert_called_once_with(txn.id, payee_id=None)
+
+    async def test_edit_reconciled_approved_allowed(self):
+        txn = MockTransaction(cleared="reconciled")
+        svc = make_service(txn)
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(approved=True))
+        svc.transaction_repo.update.assert_called_once_with(txn.id, approved=True)
+
+    async def test_edit_reconciled_with_unchanged_amount_and_date_is_allowed(self):
+        """The editor sends every field it shows; an unchanged amount beside a
+        new memo is not an attempt to change the amount — and it must not be
+        written either, or it would trip the transfer and split rules."""
+        txn = MockTransaction(cleared="reconciled")
+        svc = make_service(txn)
+        await svc.update(
+            BUDGET_ID,
+            txn.id,
+            TransactionUpdate(amount=D("-10.0000"), date=date(2026, 7, 10), memo="filed"),
+        )
+        svc.transaction_repo.update.assert_called_once_with(txn.id, memo="filed")
 
 
 class TestUpdateNonReconciled:
@@ -131,19 +154,19 @@ class TestUpdateNonReconciled:
     async def test_edit_uncleared_succeeds(self):
         txn = MockTransaction(cleared="uncleared")
         svc = make_service(txn)
-        result = await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
         svc.transaction_repo.update.assert_called_once()
 
     async def test_edit_cleared_succeeds(self):
         txn = MockTransaction(cleared="cleared")
         svc = make_service(txn)
-        result = await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
         svc.transaction_repo.update.assert_called_once()
 
     async def test_edit_pending_succeeds(self):
         txn = MockTransaction(cleared="pending")
         svc = make_service(txn)
-        result = await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
+        await svc.update(BUDGET_ID, txn.id, TransactionUpdate(memo="updated"))
         svc.transaction_repo.update.assert_called_once()
 
     async def test_edit_uncleared_amount_succeeds(self):

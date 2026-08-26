@@ -56,6 +56,7 @@ class InsertRow(TypedDict):
     import_batch_id: uuid.UUID
     is_split: bool
     is_deleted: bool
+    created_via: str
     import_id: str
 
 
@@ -610,6 +611,7 @@ async def import_csv(
                 "import_batch_id": batch_id,
                 "is_split": False,
                 "is_deleted": False,
+                "created_via": "import",
                 "import_id": generate_import_id(account_id, txn_date, amount, payee_name),
             }
         )

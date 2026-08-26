@@ -5,6 +5,9 @@ import { stepColor } from './stepColor'
 import { NodeCard } from './NodeCard'
 import { SignalBindingSheet } from './SignalBindingSheet'
 import { useGuideSignalMap } from './useGuideSignalMap'
+import { useCheckupLeds } from './useCheckupLeds'
+import { StepLed } from './StepLed'
+import { StageMark } from './StageMark'
 import type { SignalKey } from '../../content/roadmap'
 
 /**
@@ -24,6 +27,7 @@ export function RoadmapBrowse() {
   // deliberately folded away to get them out of the way.
   const [collapsed, setCollapsed] = useState<string[]>([])
   const guide = useGuideSignalMap()
+  const { leds } = useCheckupLeds()
   const [correcting, setCorrecting] = useState<SignalKey | null>(null)
   const concept = correcting ? guide.concepts.get(correcting) : undefined
 
@@ -31,6 +35,7 @@ export function RoadmapBrowse() {
     <div className="guide-browse">
       {ROADMAP.map((stage) => {
         const isCollapsed = collapsed.includes(stage.id)
+        const led = leds.get(stage.id)
         return (
           <section
             key={stage.id}
@@ -39,7 +44,10 @@ export function RoadmapBrowse() {
             aria-labelledby={`browse-${stage.id}`}
           >
             <div className="guide-browse__header">
-              <span className="guide-browse__step">Step {stage.step}</span>
+              <span className="guide-browse__step">
+                Step {stage.step}
+                {led && <StepLed reason={led.title} />}
+              </span>
               <h3 className="guide-browse__title" id={`browse-${stage.id}`}>
                 {stage.title}
               </h3>
@@ -57,6 +65,14 @@ export function RoadmapBrowse() {
               </button>
             </div>
             <p className="guide-browse__summary">{stage.summary}</p>
+            {guide.budgetId && (
+              <StageMark
+                budgetId={guide.budgetId}
+                stageId={stage.id}
+                mark={guide.progress[stage.id]}
+                showControls={!isCollapsed}
+              />
+            )}
 
             {!isCollapsed &&
               stage.nodes.map((node) => (

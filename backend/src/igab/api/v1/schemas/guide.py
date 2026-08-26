@@ -1,6 +1,7 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -89,11 +90,13 @@ class BindingUpdate(BaseModel):
 class PreferencesUpdate(BaseModel):
     personalization: bool | None = None
     checkup: bool | None = None
+    wishlist: bool | None = None
 
 
 class PreferencesResponse(BaseModel):
     personalization: bool
     checkup: bool
+    wishlist: bool
 
 
 class StepUpdate(BaseModel):
@@ -108,3 +111,193 @@ class GuideOverview(BaseModel):
     thresholds: dict[str, int]
     preferences: PreferencesResponse
     progress: dict[str, str]
+
+
+class CheckupMetric(BaseModel):
+    """One row of the checkup: a figure against the target the roadmap states."""
+
+    key: str
+    label: str
+    value: Decimal | None = None
+    target: Decimal | None = None
+    #: 'money' | 'months' | 'percent' | 'count'
+    unit: str
+    detail: str = ""
+    #: Finding kinds this row is the home of, so the client can mark it.
+    finding_kinds: list[str] = Field(default_factory=list)
+    #: A report tab with the numbers behind this row, when one exists.
+    report: str | None = None
+    #: What the figure counts, by name — the whole list; the client paces it.
+    names: list[str] = Field(default_factory=list)
+
+
+class CheckupFinding(BaseModel):
+    kind: str
+    rank: int
+    concept_key: str | None = None
+    title: str
+    detail: str = ""
+    value: Decimal | None = None
+    target: Decimal | None = None
+    names: list[str] = Field(default_factory=list)
+
+
+class CheckupResponse(BaseModel):
+    """Metrics, and every finding that fired, most severe first.
+
+    All findings are returned: the roadmap's step markers need every kind, and
+    how many the health report shows is the client's call.
+    """
+
+    enabled: bool
+    as_of: date
+    last_run: datetime | None = None
+    metrics: list[CheckupMetric]
+    findings: list[CheckupFinding]
+
+
+# ── scenario calculators ─────────────────────────────────────────────────────
+#
+# Nothing here is persisted. Inputs are what the user typed (or what the
+# planner seeded from their liabilities, which they may have edited); the
+# server answers with arithmetic it can show its working for.
+
+Money = Decimal
+
+
+class CascadeDebtIn(BaseModel):
+    key: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=120)
+    balance: Money = Field(ge=0)
+    annual_rate: Decimal = Field(ge=0, le=100)
+    minimum_payment: Money = Field(ge=0)
+
+
+class PayoffPlanRequest(BaseModel):
+    debts: list[CascadeDebtIn] = Field(min_length=1, max_length=50)
+    extra: Money = Field(default=Decimal("0"), ge=0)
+
+    @model_validator(mode="after")
+    def unique_keys(self) -> "PayoffPlanRequest":
+        keys = [d.key for d in self.debts]
+        if len(set(keys)) != len(keys):
+            raise ValueError("debt keys must be unique")
+        return self
+
+
+class CascadeDebtOut(BaseModel):
+    key: str
+    name: str
+    order: int
+    payoff_date: date | None
+    months: int
+    never_pays_off: bool
+    total_interest: Decimal
+    total_principal: Decimal
+
+
+class CascadeMonthOut(BaseModel):
+    month_index: int
+    date: date
+    payment: Decimal
+    principal_paid: Decimal
+    interest_paid: Decimal
+    balance: Decimal
+    balances: dict[str, Decimal]
+
+
+class CascadeOut(BaseModel):
+    order: str
+    debts: list[CascadeDebtOut]
+    months: list[CascadeMonthOut]
+    debt_free_date: date | None
+    never_pays_off: bool
+    total_interest: Decimal
+    total_paid: Decimal
+
+
+class PayoffPlanResponse(BaseModel):
+    as_of: date
+    extra: Decimal
+    avalanche: CascadeOut
+    snowball: CascadeOut
+    #: Minimums only, nothing rolled — what happens if nothing changes.
+    minimums_only: CascadeOut
+
+
+class PayVsSaveRequest(BaseModel):
+    balance: Money = Field(ge=0)
+    annual_rate: Decimal = Field(ge=0, le=100)
+    minimum_payment: Money = Field(ge=0)
+    extra: Money = Field(ge=0)
+    #: A rate the user can get today, typed by them. Never assumed.
+    savings_apy: Decimal = Field(ge=0, le=100)
+
+
+class PayVsSaveResponse(BaseModel):
+    horizon_months: int
+    baseline_total_interest: Decimal
+    baseline_never_pays_off: bool
+    pay_months: int
+    pay_payoff_date: date | None
+    pay_total_interest: Decimal
+    pay_never_pays_off: bool
+    debt_interest_saved: Decimal
+    months_sooner: int
+    savings_contributed: Decimal
+    savings_balance: Decimal
+    savings_interest_earned: Decimal
+    breakeven_apy: Decimal | None
+    favours: Literal["pay", "save", "even"]
+
+
+class LoanIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    principal: Money = Field(ge=0)
+    annual_rate: Decimal = Field(ge=0, le=100)
+    term_months: int | None = Field(default=None, ge=1, le=600)
+    payment: Money | None = Field(default=None, ge=0)
+    fees: Money = Field(default=Decimal("0"), ge=0)
+
+    @model_validator(mode="after")
+    def term_or_payment(self) -> "LoanIn":
+        if self.term_months is None and self.payment is None:
+            raise ValueError("give a term or a payment")
+        return self
+
+
+class LoanCompareRequest(BaseModel):
+    loans: list[LoanIn] = Field(min_length=1, max_length=10)
+
+
+class LoanOutcomeOut(BaseModel):
+    name: str
+    payment: Decimal
+    months: int
+    payoff_date: date | None
+    never_pays_off: bool
+    total_interest: Decimal
+    total_cost: Decimal
+
+
+class LoanCompareResponse(BaseModel):
+    loans: list[LoanOutcomeOut]
+    cheapest: str | None
+
+
+class EmergencyFundRequest(BaseModel):
+    months: int = Field(ge=1, le=12)
+    monthly_contribution: Money = Field(default=Decimal("0"), ge=0)
+
+
+class EmergencyFundResponse(BaseModel):
+    """Sized from the roadmap's own essentials and emergency-fund figures."""
+
+    months: int
+    monthly_contribution: Decimal
+    essentials_monthly: Decimal | None
+    current: Decimal | None
+    target: Decimal | None
+    gap: Decimal | None
+    months_to_fund: int | None
+    funded_by: date | None

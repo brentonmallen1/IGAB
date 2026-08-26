@@ -152,6 +152,15 @@
   font-size: var(--font-size-xs);
 }
 
+/* Terms that are names, not syntax: the mono accent face above says "type
+   this"; a tag name is read, not typed. */
+.info-pop__terms--plain dt {
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 /* A closing aside of a different kind than the body above it — a rule earns
    its place here precisely because the change is one of kind, not of topic. */
 .info-pop__note {
@@ -160,4 +169,11 @@
   border-top: 1px solid var(--border-color);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+}
+
+/* A term that carries a scope ("on payees") ahead of its definition. */
+.info-pop__term-on {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  margin-right: 4px;
 }

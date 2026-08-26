@@ -8,6 +8,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { TransactionSearch } from './TransactionSearch'
+import { SearchHelp } from './SearchHelp'
 
 function setup(value = '') {
   const onChange = vi.fn()
@@ -52,8 +53,20 @@ describe('TransactionSearch suggestions', () => {
  * whole feature invisible unless you happened to click into the box.
  */
 describe('search help', () => {
+  // The ⓘ lives beside the box, not in it (it used to share an edge with the
+  // clear ✕ and take its clicks) — rendered here the way the register's
+  // toolbar arranges the two.
+  function setupWithHelp() {
+    render(
+      <div>
+        <TransactionSearch value="" onChange={vi.fn()} />
+        <SearchHelp />
+      </div>
+    )
+  }
+
   it('offers help without having to focus the field first', () => {
-    setup()
+    setupWithHelp()
     expect(screen.getByLabelText('How to search transactions')).toBeInTheDocument()
     // Not open until asked: a panel that greets everyone is one people learn
     // to dismiss without reading.
@@ -61,7 +74,7 @@ describe('search help', () => {
   })
 
   it('explains the concepts the token list cannot', () => {
-    setup()
+    setupWithHelp()
     fireEvent.click(screen.getByLabelText('How to search transactions'))
     expect(screen.getByText('Searching transactions')).toBeInTheDocument()
     expect(screen.getByText(/narrows/)).toBeInTheDocument()
@@ -70,7 +83,7 @@ describe('search help', () => {
   })
 
   it('closes on Escape and gives focus back to the button', () => {
-    setup()
+    setupWithHelp()
     const trigger = screen.getByLabelText('How to search transactions')
     fireEvent.click(trigger)
     fireEvent.keyDown(document, { key: 'Escape' })
@@ -81,7 +94,7 @@ describe('search help', () => {
   it('opening help does not pop the syntax dropdown open', () => {
     // They are different answers to different questions, and stacking both
     // over the register hides the thing being searched.
-    setup()
+    setupWithHelp()
     fireEvent.click(screen.getByLabelText('How to search transactions'))
     expect(screen.queryByText('Search syntax')).not.toBeInTheDocument()
   })

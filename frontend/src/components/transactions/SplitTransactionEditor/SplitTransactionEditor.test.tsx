@@ -1,135 +1,107 @@
 /**
- * Money-critical tests for the inline split editor: integer-cents remainder
- * math (float sums must not reject valid splits), save gating, and the
- * create-then-delete replacement payload that keeps totals intact.
+ * The inline split editor edits a split's lines in place. Its lines come from
+ * the server — never from the loaded register page, which holds parent rows
+ * only. Before this, an existing split opened with two empty lines and a
+ * save replaced the real ones with them.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const createMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ id: 'new-split' })))
-const deleteMutate = vi.hoisted(() => vi.fn(() => Promise.resolve()))
+const replaceMutate = vi.hoisted(() =>
+  vi.fn((_payload: Record<string, unknown>) => Promise.resolve({ id: 't1', lines: [] }))
+)
+const convertMutate = vi.hoisted(() =>
+  vi.fn((_payload: Record<string, unknown>) => Promise.resolve({}))
+)
+let serverLines: unknown[] | undefined
 
 vi.mock('../../../api/transactions', () => ({
-  useCreateTransaction: () => ({ mutateAsync: createMutate, isPending: false }),
-  useDeleteTransaction: () => ({ mutateAsync: deleteMutate, isPending: false }),
+  useTransactionSplits: () => ({ data: serverLines }),
+  useConvertToSplit: () => ({ mutateAsync: convertMutate, isPending: false }),
+  useReplaceSplits: () => ({ mutateAsync: replaceMutate, isPending: false }),
 }))
-// The real store is persist-backed; tests only need the current budget id
-vi.mock('../../../stores/appStore', () => ({
-  useAppStore: (selector: (s: { currentBudgetId: string }) => unknown) =>
-    selector({ currentBudgetId: 'budget-1' }),
-}))
+vi.mock('react-hot-toast', () => ({ default: { error: vi.fn(), success: vi.fn() } }))
 
 import { SplitTransactionEditor } from './SplitTransactionEditor'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
-import type { Category, CategoryGroup, Transaction } from '../../../types'
+import { useAppStore } from '../../../stores/appStore'
+import type { Transaction } from '../../../types'
 
-const TXN = {
-  id: 'txn-1',
-  account_id: 'acc-1',
-  date: '2026-08-01',
-  amount: -10,
-  payee_id: null,
-  memo: null,
-  cleared: 'uncleared',
-} as unknown as Transaction
+const PARENT = { id: 't1', account_id: 'a1', amount: -100, is_split: true, cleared: 'uncleared' } as Transaction
+const FLAT = { id: 't2', account_id: 'a1', amount: -100, is_split: false, cleared: 'uncleared' } as Transaction
 
-const GROUPS = [{ id: 'g1', name: 'Everyday' }] as unknown as CategoryGroup[]
-const CATEGORIES = [
-  { id: 'c1', category_group_id: 'g1', name: 'Groceries' },
-  { id: 'c2', category_group_id: 'g1', name: 'Fun' },
-] as unknown as Category[]
-
-function startSplit(totalAmount: number, splits: { amount: string; categoryId: string | null }[]) {
-  useTransactionEditStore.getState().startSplitEditing(
-    'txn-1',
-    totalAmount,
-    splits.map((s, i) => ({ tempId: `s${i}`, amount: s.amount, categoryId: s.categoryId, memo: '' }))
-  )
-}
-
-function renderEditor() {
+function renderEditor(txn: Transaction) {
+  const qc = new QueryClient()
   return render(
-    <SplitTransactionEditor transaction={TXN} categories={CATEGORIES} categoryGroups={GROUPS} />
+    <QueryClientProvider client={qc}>
+      <SplitTransactionEditor transaction={txn} categories={[]} categoryGroups={[]} />
+    </QueryClientProvider>
   )
 }
 
-function saveButton() {
-  return screen.getByRole('button', { name: 'Save Split' })
-}
+const amountInputs = () => screen.getAllByPlaceholderText('0.00') as HTMLInputElement[]
 
-describe('SplitTransactionEditor cents math', () => {
+describe('SplitTransactionEditor', () => {
   beforeEach(() => {
-    createMutate.mockClear()
-    deleteMutate.mockClear()
+    replaceMutate.mockClear()
+    convertMutate.mockClear()
+    useAppStore.setState({ currentBudgetId: 'b1' })
     useTransactionEditStore.getState().stopSplitEditing()
   })
 
-  it('computes the remainder in integer cents', () => {
-    startSplit(-10, [
-      { amount: '3.33', categoryId: 'c1' },
-      { amount: '3.33', categoryId: 'c2' },
-    ])
-    renderEditor()
-    expect(screen.getByText('Remaining: $3.34')).toBeInTheDocument()
-    expect(saveButton()).toBeDisabled()
-  })
+  it('opens populated from the server lines even when the page holds none', async () => {
+    serverLines = [
+      { id: 'l1', amount: -60, category_id: 'cat-1', memo: 'food' },
+      { id: 'l2', amount: -40, category_id: 'cat-2', memo: null },
+    ]
+    useTransactionEditStore.getState().startSplitEditing(PARENT.id, -100, true)
+    renderEditor(PARENT)
 
-  it('accepts splits that float addition would reject (0.10 problems)', () => {
-    // 1.10 !== 1.00 + 0.10 in binary floats; integer cents must say "done"
-    startSplit(-1.1, [
-      { amount: '1.00', categoryId: 'c1' },
-      { amount: '0.10', categoryId: 'c2' },
-    ])
-    renderEditor()
+    await waitFor(() => expect(amountInputs()).toHaveLength(2))
+    expect(amountInputs().map((i) => i.value)).toEqual(['60', '40'])
     expect(screen.getByText('Fully assigned')).toBeInTheDocument()
-    expect(saveButton()).toBeEnabled()
+
+    fireEvent.click(screen.getByText('Save Split'))
+    await waitFor(() => expect(replaceMutate).toHaveBeenCalledTimes(1))
+    expect(replaceMutate.mock.calls[0][0]).toEqual({
+      id: 't1',
+      splits: [
+        { id: 'l1', amount: -60, category_id: 'cat-1', memo: 'food' },
+        { id: 'l2', amount: -40, category_id: 'cat-2', memo: undefined },
+      ],
+    })
+    expect(convertMutate).not.toHaveBeenCalled()
   })
 
-  it('blocks saving when a fully-assigned split is missing a category', () => {
-    startSplit(-10, [
-      { amount: '6.00', categoryId: 'c1' },
-      { amount: '4.00', categoryId: null },
-    ])
-    renderEditor()
-    expect(screen.getByText('Fully assigned')).toBeInTheDocument()
-    expect(saveButton()).toBeDisabled()
+  it('cannot save while an existing split’s lines are still loading', () => {
+    serverLines = undefined
+    useTransactionEditStore.getState().startSplitEditing(PARENT.id, -100, true)
+    renderEditor(PARENT)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading lines')
+    expect(screen.getByText('Save Split')).toBeDisabled()
   })
 
-  it('updates the remainder as amounts are typed', () => {
-    startSplit(-10, [
-      { amount: '', categoryId: 'c1' },
-      { amount: '', categoryId: 'c2' },
-    ])
-    renderEditor()
-    const [first, second] = screen.getAllByPlaceholderText('0.00')
-    fireEvent.change(first, { target: { value: '7.25' } })
-    expect(screen.getByText('Remaining: $2.75')).toBeInTheDocument()
-    fireEvent.change(second, { target: { value: '2.75' } })
-    expect(screen.getByText('Fully assigned')).toBeInTheDocument()
-  })
+  it('a new split converts the row in place rather than replacing it', async () => {
+    serverLines = undefined
+    useTransactionEditStore.getState().startSplitEditing(FLAT.id, -100, false)
+    renderEditor(FLAT)
 
-  it('saves the split with signed line amounts, then deletes the original row', async () => {
-    startSplit(-25, [
-      { amount: '10.00', categoryId: 'c1' },
-      { amount: '15.00', categoryId: 'c2' },
-    ])
-    renderEditor()
-    fireEvent.click(saveButton())
+    // Amounts through the inputs; categories through the store (the
+    // combobox is its own component, and every line needs one to be valid).
+    const [first, second] = amountInputs()
+    fireEvent.change(first, { target: { value: '60' } })
+    fireEvent.change(second, { target: { value: '40' } })
+    const { splitEditing, updateSplit } = useTransactionEditStore.getState()
+    updateSplit(splitEditing!.splits[0].tempId, { categoryId: 'cat-1' })
+    updateSplit(splitEditing!.splits[1].tempId, { categoryId: 'cat-2' })
+    await waitFor(() => expect(screen.getByText('Save Split')).not.toBeDisabled())
 
-    await waitFor(() => expect(deleteMutate).toHaveBeenCalled())
-    expect(createMutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        account_id: 'acc-1',
-        date: '2026-08-01',
-        amount: -25,
-        splits: [
-          expect.objectContaining({ amount: -10, category_id: 'c1' }),
-          expect.objectContaining({ amount: -15, category_id: 'c2' }),
-        ],
-      })
-    )
-    expect(deleteMutate).toHaveBeenCalledWith({ id: 'txn-1', accountId: 'acc-1' })
-    // The editor closes itself: both rows surviving would double-count
-    expect(useTransactionEditStore.getState().splitEditing).toBeNull()
+    fireEvent.click(screen.getByText('Save Split'))
+    await waitFor(() => expect(convertMutate).toHaveBeenCalledTimes(1))
+    expect(convertMutate.mock.calls[0][0]).toMatchObject({ id: 't2' })
+    expect((convertMutate.mock.calls[0][0] as { splits: { id?: string }[] }).splits.every((s) => s.id === undefined)).toBe(true)
+    expect(replaceMutate).not.toHaveBeenCalled()
   })
 })

@@ -10,6 +10,7 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { ReportErrorState } from './ReportErrorState'
 import {
   clampedSavingsRate,
+  essentialsReserve,
   netWorthDelta,
   roundedDaysUntilZero,
   spendingDelta,
@@ -39,6 +40,7 @@ export function OverviewReport({ budgetId }: Props) {
   )
   const savingsRate = clampedSavingsRate(data.savings_rate)
   const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
+  const sixMonthReserve = essentialsReserve(data.essentials_monthly, 6)
 
   return (
     <div className="overview-report">
@@ -47,7 +49,7 @@ export function OverviewReport({ budgetId }: Props) {
           <h2 className="report-section__title">Overview</h2>
           <ReportInfoButton title="Overview Dashboard">
             <p>A snapshot of your financial health at a glance. All metrics use the selected date range except burn rates, which use rolling windows from today.</p>
-            <p><strong>Burn Rate</strong>: average monthly spending over the last 30 or 90 days. <strong>Savings Rate</strong>: Savings ÷ Income — money moved into savings or investments, not simply money left over. Shows “—” for a window with no income. <strong>Days Until Zero</strong>: current net worth ÷ daily burn rate — how long your money would last at this pace.</p>
+            <p><strong>Burn Rate</strong>: average monthly spending over the last 30 or 90 days. <strong>Essentials</strong>: the same 90-day average, counting only categories and payees tagged Essential — what a lean month costs, and the figure the Guide’s emergency-fund target is built from. Shows “—” until something is tagged. <strong>Savings Rate</strong>: Savings ÷ Income — money moved into savings or investments, not simply money left over. Shows “—” for a window with no income. <strong>Days Until Zero</strong>: current net worth ÷ daily burn rate — how long your money would last at this pace.</p>
             <ReportScopeNote scope="overview" />
           </ReportInfoButton>
           <div className="flex-row ms-auto">
@@ -65,6 +67,9 @@ export function OverviewReport({ budgetId }: Props) {
                 { metric: 'net_worth', value: Number(data.net_worth) },
                 { metric: 'burn_rate_30', value: Number(data.burn_rate_30) },
                 { metric: 'burn_rate_90', value: Number(data.burn_rate_90) },
+                ...(data.essentials_monthly != null
+                  ? [{ metric: 'essentials_monthly', value: Number(data.essentials_monthly) }]
+                  : []),
                 ...(savingsRate !== null ? [{ metric: 'savings_rate_pct', value: savingsRate }] : []),
                 ...(daysUntilZero !== null ? [{ metric: 'days_until_zero', value: daysUntilZero }] : []),
                 { metric: 'income_this_period', value: Number(data.income_this_month) },
@@ -92,6 +97,15 @@ export function OverviewReport({ budgetId }: Props) {
             label="30-Day Burn Rate"
             value={formatMoney(Number(data.burn_rate_30))}
             sub={`90-day avg: ${formatMoney(Number(data.burn_rate_90))}`}
+          />
+          <MetricCard
+            label="Essentials / month"
+            value={data.essentials_monthly != null ? formatMoney(Number(data.essentials_monthly)) : '—'}
+            sub={
+              sixMonthReserve != null
+                ? `6-month reserve: ${formatMoney(sixMonthReserve)}`
+                : 'Tag categories or payees Essential'
+            }
           />
           <MetricCard
             label="Savings Rate"

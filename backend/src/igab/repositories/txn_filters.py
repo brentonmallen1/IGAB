@@ -19,7 +19,7 @@ from datetime import date
 from sqlalchemy import Boolean, and_, func, not_, or_, select
 from sqlalchemy.orm import aliased
 
-from igab.db.models import Account, Payee, Transaction
+from igab.db.models import Account, Payee, Tag, Transaction, category_tags, payee_tags
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -36,6 +36,49 @@ BALANCE_ROW = and_(NOT_DELETED, PARENT_ROW, POSTED)
 #: set — but the two are kept separate because they answer different
 #: questions: POSTED is "has this moved", CLEARED is "has the bank agreed".
 CLEARED = Transaction.cleared.in_(("cleared", "reconciled"))
+
+#: Bank-identity states of a row, for the sync's candidate search.
+#:
+#: BANK_UNLINKED — no bank id at all: a YNAB/CSV import or a hand-typed row.
+#:
+#: PROVISIONALLY_LINKED — carries a bank id, but the bank has not posted
+#: against it yet (`bank_posted_date` is NULL): either a pending row the sync
+#: created, or a user row matched while the bank record was still an auth
+#: hold. A bank that re-identifies the record at posting reports a "new"
+#: posted record whose only existing counterpart is one of these — so a
+#: posted feed record may claim them (same amount, the usual date rules); a
+#: pending feed record never may.
+#:
+#: The `cleared` guard is load-bearing. Rows linked before `bank_posted_date`
+#: existed are `cleared` with a NULL posted date; without the guard every one
+#: of them could absorb a foreign same-amount bank id.
+BANK_UNLINKED = Transaction.sync_id.is_(None)
+PROVISIONALLY_LINKED = and_(
+    Transaction.sync_id.isnot(None),
+    Transaction.bank_posted_date.is_(None),
+    Transaction.cleared.in_(("pending", "uncleared")),
+)
+
+#: A row the user (or their file import) wrote and no bank feed has touched —
+#: what the review-queue matcher pairs a freshly synced row against.
+#: `sync_id` alone misses id-less feeds: a sync-created row without a bank id
+#: is still bank-sourced, never a "manual" match candidate.
+USER_ENTERED = and_(
+    Transaction.import_id.is_(None),
+    Transaction.sync_id.is_(None),
+    Transaction.sync_source.is_(None),
+    Transaction.linked_transaction_id.is_(None),
+)
+
+
+def sync_created_pending(source: str):
+    """A pending row the named feed itself wrote. Never a user row: only
+    the sync sets `pending`, and it always stamps its source."""
+    return and_(
+        Transaction.cleared == "pending",
+        Transaction.sync_source == source,
+        Transaction.sync_id.isnot(None),
+    )
 
 
 def not_future(as_of: date):
@@ -206,3 +249,47 @@ NEEDS_CATEGORY = and_(
     ON_BUDGET_ACCOUNT,
     CASH_FLOW_ROW,
 )
+
+
+# ─── Tags on the row's category or payee ─────────────────────────────────────
+#
+# Both are guarded by the NOT NULL test: `NULL IN (...)` is UNKNOWN, not FALSE,
+# and a CASE arm evaluating to UNKNOWN differs from one evaluating FALSE only
+# by luck of ordering. Keep every arm two-valued. `category_tagged` is what
+# the activity classifier reads for the savings and debt tags; it lived there
+# as `_tagged` until the essentials report needed the same shape.
+
+
+def _tag_ids(system_keys: tuple[str, ...]):
+    return select(Tag.id).where(
+        Tag.system_key.in_(system_keys),
+        Tag.is_deleted == False,  # noqa: E712
+    )
+
+
+def category_tagged(*system_keys: str):
+    """Rows whose category carries any of these system tags."""
+    return and_(
+        Transaction.category_id.isnot(None),
+        Transaction.category_id.in_(
+            select(category_tags.c.category_id).where(
+                category_tags.c.tag_id.in_(_tag_ids(system_keys))
+            )
+        ),
+    )
+
+
+def payee_tagged(*system_keys: str):
+    """Rows whose payee carries any of these system tags."""
+    return and_(
+        Transaction.payee_id.isnot(None),
+        Transaction.payee_id.in_(
+            select(payee_tags.c.payee_id).where(payee_tags.c.tag_id.in_(_tag_ids(system_keys)))
+        ),
+    )
+
+
+#: Spending the household could not do without: the category OR the payee is
+#: tagged Essential. Evaluated only by TransactionRepository.essential_spend*
+#: — the Guide, the Overview card and the Essentials report all read those.
+ESSENTIAL_TAGGED = or_(category_tagged("essential"), payee_tagged("essential"))

@@ -48,6 +48,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "account_id",
         "date",
         "entered_date",
+        "entered_amount",
         "bank_posted_date",
         "amount",
         "bank_amount",
@@ -97,6 +98,25 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
     "category_group": ("name", "sort_order", "is_hidden", "is_system"),
     "assignment": ("category_id", "month", "assigned"),
 }
+
+
+def source_for(created_via: str | None) -> str:
+    """The change-log `source` a row's origin implies.
+
+    `created_via` is where the row came from (domain: manual | import | sync
+    | scheduled | ai_receipt | ai_nl); `source` is who acted, as Activity
+    renders it. One mapping, so a sync-created row can no longer be logged
+    as a manual entry — which every one of them was, before this existed.
+    """
+    if created_via is None:
+        return "manual"
+    if created_via.startswith("ai"):
+        return "ai"
+    if created_via == "import":
+        return "import"
+    if created_via in ("sync", "scheduled"):
+        return "system"
+    return "manual"
 
 
 def serialize_value(value: Any) -> Any:

@@ -17,6 +17,7 @@ import {
 } from '../../../api/backups'
 import { useSettings, useUpdateSetting } from '../../../api/settings'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
+import { useFormatters } from '../../../hooks/useFormatters'
 import './BackupsPanel.css'
 
 const KIND_LABEL: Record<BackupFile['kind'], string> = {
@@ -158,6 +159,7 @@ interface RestoreModalProps {
 }
 
 function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreModalProps) {
+  const { formatDateTime } = useFormatters()
   const [preBackup, setPreBackup] = useState(true)
   const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
 
@@ -177,7 +179,7 @@ function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreMo
         <div className="bkp-modal__body">
           <p>
             This replaces <strong>all current data</strong> with the contents of{' '}
-            <code>{file.name}</code> from {new Date(file.modified_at).toLocaleString()}.
+            <code>{file.name}</code> from {formatDateTime(file.modified_at)}.
             Anything entered since that backup will be lost.
           </p>
           <p>The app will briefly go offline and restart once the restore finishes.</p>
@@ -285,6 +287,7 @@ function RestoringOverlay() {
 }
 
 export function BackupsPanel() {
+  const { formatDateTime } = useFormatters()
   const { data, isLoading } = useBackups()
   const runBackup = useRunBackup()
   const restoreBackup = useRestoreBackup()
@@ -357,7 +360,7 @@ export function BackupsPanel() {
           className={`bkp-job-note ${job.state === 'error' ? 'bkp-job-note--error' : ''}`}
         >
           Last manual backup: {job.state === 'done' ? 'completed' : `failed — ${job.detail}`}
-          {job.finished_at ? ` (${new Date(job.finished_at).toLocaleString()})` : ''}
+          {job.finished_at ? ` (${formatDateTime(job.finished_at)})` : ''}
         </div>
       )}
 
@@ -433,7 +436,7 @@ export function BackupsPanel() {
                     </td>
                     <td>{KIND_LABEL[f.kind]}</td>
                     <td>{formatBytes(f.size_bytes)}</td>
-                    <td>{new Date(f.modified_at).toLocaleString()}</td>
+                    <td>{formatDateTime(f.modified_at)}</td>
                     <td className="bkp-table__action">
                       {restorable ? (
                         <button

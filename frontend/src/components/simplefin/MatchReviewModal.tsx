@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Link2, ChevronLeft, ChevronRight, RefreshCw, ArrowRight } from 'lucide-react'
+import { X, Link2, ChevronLeft, ChevronRight, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '../../api/client'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
@@ -123,9 +123,14 @@ function MergedPreview({
       : syncedTxn.cleared
 
   // Accept logic: the manual transaction keeps its date/payee/category/memo;
-  // the bank's posted date and import data arrive as metadata.
+  // the bank's posted date and import data arrive as metadata. The amount is
+  // the one thing the bank overrides — a bank-sourced row's posted amount
+  // replaces the user's on accept (backend domain/bank_posting.py; the
+  // server decides, this only previews it).
   const bankPostedDate =
     manualTxn.bank_posted_date ?? syncedTxn.bank_posted_date ?? syncedTxn.date
+  const syncedIsBank = syncedTxn.has_sync_source || !!syncedTxn.sync_source
+  const mergedAmount = syncedIsBank ? syncedTxn.amount : manualTxn.amount
   const payeeName = manualTxn.payee_id
     ? (payeeMap.get(manualTxn.payee_id) ?? '—')
     : syncedTxn.payee_id
@@ -134,8 +139,8 @@ function MergedPreview({
   const categoryName = manualTxn.category_id
     ? categoryMap.get(manualTxn.category_id)
     : null
-  const outflow = manualTxn.amount < 0 ? Math.abs(manualTxn.amount) : 0
-  const inflow = manualTxn.amount >= 0 ? manualTxn.amount : 0
+  const outflow = mergedAmount < 0 ? Math.abs(mergedAmount) : 0
+  const inflow = mergedAmount >= 0 ? mergedAmount : 0
 
   return (
     <div className="match-modal__merged">
@@ -155,7 +160,7 @@ function MergedPreview({
       )}
       <div className="match-modal__merged-row">
         <span className="match-modal__txn-key">Amount</span>
-        <span className={manualTxn.amount < 0 ? 'txn-outflow' : 'txn-inflow'}>
+        <span className={mergedAmount < 0 ? 'txn-outflow' : 'txn-inflow'}>
           {outflow > 0 ? `-${formatMoney(outflow)}` : formatMoney(inflow)}
         </span>
       </div>
@@ -256,6 +261,17 @@ function MatchCard({
               />
             )}
           </div>
+
+          {syncedTxn && manualTxn && syncedTxn.amount !== manualTxn.amount && (
+            <div className="match-modal__callout" role="note">
+              <AlertTriangle size={13} aria-hidden />
+              <span>
+                Bank posted <strong>{formatMoney(Math.abs(syncedTxn.amount))}</strong>, your entry says{' '}
+                <strong>{formatMoney(Math.abs(manualTxn.amount))}</strong> — accepting updates your
+                entry to the bank's amount and keeps the original in its bank record.
+              </span>
+            </div>
+          )}
 
           {syncedTxn && manualTxn && (
             <MergedPreview

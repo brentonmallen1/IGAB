@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Lock } from 'lucide-react';
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag, type Tag } from '../../../api/tags';
 import { TagChip, type TagColorSlot } from '../../common/TagChip';
+import { Tooltip } from '../../common/Tooltip/Tooltip';
 import './TagsPanel.css';
 import { confirmAsync } from '../../../stores/confirmStore'
 
@@ -32,11 +33,14 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
 
   async function saveEdit() {
     if (!editingId || !editName.trim()) return;
-    await updateTag.mutateAsync({
-      id: editingId,
-      name: editName.trim(),
-      color_slot: editColor,
-    });
+    const editing = tags?.find((t) => t.id === editingId);
+    // A system tag's name is part of what it does (the server refuses a
+    // rename); only its colour is the user's to change.
+    await updateTag.mutateAsync(
+      editing?.system_key
+        ? { id: editingId, color_slot: editColor }
+        : { id: editingId, name: editName.trim(), color_slot: editColor }
+    );
     setEditingId(null);
   }
 
@@ -82,14 +86,23 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                     <TagChip name={editName || 'Preview'} colorSlot={editColor} />
                   </div>
                   <div className="tags-panel__edit-row">
-                    <input
-                      type="text"
-                      className="tags-panel__input"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="Tag name"
-                      autoFocus
-                    />
+                    {tag.system_key ? (
+                      <Tooltip content="System tag — its name is fixed">
+                        <span className="tags-panel__locked-name" aria-label={`${tag.name} — name is fixed`}>
+                          <Lock size={12} aria-hidden />
+                          {tag.name}
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <input
+                        type="text"
+                        className="tags-panel__input"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="Tag name"
+                        autoFocus
+                      />
+                    )}
                     <div className="tags-panel__colors">
                       {COLOR_SLOTS.map((slot) => (
                         <button
@@ -122,9 +135,11 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                       Edit
                     </button>
                     {tag.system_key ? (
-                      <span className="tags-panel__system-icon" title="System tag — used by reports. Rename or recolor only.">
-                        <Lock size={14} />
-                      </span>
+                      <Tooltip content="System tag — changes how money is counted (see the ⓘ beside the section title). Colour can be changed; the name cannot.">
+                        <span className="tags-panel__system-icon" role="img" aria-label="System tag">
+                          <Lock size={14} />
+                        </span>
+                      </Tooltip>
                     ) : (
                       <button
                         type="button"

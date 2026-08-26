@@ -173,4 +173,7 @@ async def test_no_tagged_categories_is_empty(db_session):
             "category_count": 0,
         },
         "months": [],
+        # Nothing tagged means nothing to drain from — an empty list, not an
+        # absent key, so the report's shape does not change with its contents.
+        "drains": {"total": Decimal("0"), "moves": []},
     }

@@ -119,7 +119,7 @@ export function MergePreviewModal({
         <p className="merge-modal__hint">
           {reconciledTxn
             ? 'The reconciled transaction will always be kept.'
-            : 'Click a transaction to keep it. The other will be deleted.'}
+            : 'Click a transaction to keep it. The other is removed — but nothing it has is lost: a memo, category, payee, receipt or bank details the kept one lacks carry over.'}
         </p>
 
         <div className="merge-modal__columns">

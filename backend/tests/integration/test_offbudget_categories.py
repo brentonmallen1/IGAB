@@ -8,13 +8,11 @@ including the "spending transfer missing its category" case.
 """
 
 from datetime import date, timedelta
-
 from decimal import Decimal
 
 from igab.api.v1.schemas.transaction import TransactionResponse
-from igab.services.transaction_service import SplitSpec
+from igab.services.transaction_service import SplitSpec, TransactionUpdate
 from igab.services.transaction_service import TransactionCreate as SvcTxnCreate
-from igab.services.transaction_service import TransactionUpdate
 
 from .factories import (
     create_account,
@@ -248,8 +246,13 @@ class TestTheServedFlagIsTheOnlyRule:
         by_account = await services.transaction_repo.get_for_account(checking.id)
         by_budget, _, _ = await services.transaction_repo.list_for_budget(budget.id, scope="leaf")
         one = await services.transaction_repo.get_or_raise(by_account[0].id)
+        plain = next(t for t in by_account if t.payee_id is None and not t.is_split)
+        await services.transactions.convert_to_split(
+            budget.id, plain.id, [SplitSpec(amount=plain.amount)]
+        )
+        lines = await services.transaction_repo.get_splits(plain.id)
 
-        for row in [*by_account, *by_budget, one]:
+        for row in [*by_account, *by_budget, one, *lines]:
             assert isinstance(row.needs_category, bool), f"{row.id} came back unpopulated"
 
     async def test_the_flag_survives_a_service_update(self, db_session):
@@ -291,6 +294,12 @@ class TestTheServedFlagIsTheOnlyRule:
         split = await services.transactions.convert_to_split(
             budget.id, plain.id, [SplitSpec(amount=Decimal("-12.00"))]
         )
+        [line] = await services.transaction_repo.get_splits(split.id)
+        replaced = await services.transactions.replace_splits(
+            budget.id,
+            split.id,
+            [SplitSpec(amount=Decimal("-5.00"), id=line.id), SplitSpec(amount=Decimal("-7.00"))],
+        )
         merge_a = await create_transaction(db_session, budget, checking, "-40.00", OLD)
         merge_b = await create_transaction(db_session, budget, checking, "-40.00", OLD)
         await db_session.flush()
@@ -302,6 +311,7 @@ class TestTheServedFlagIsTheOnlyRule:
             ("update", updated),
             ("approve", approved),
             ("convert_to_split", split),
+            *[("replace_splits", line) for line in replaced],
             ("merge", survivor),
             ("reconcile adjustment", adjustment),
         ]:
