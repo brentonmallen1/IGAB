@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.reconciliation import (
+    RECONCILED_LOCKED_FIELDS,
+    locked_changes,
+    locked_values,
+    reconciled_edit_message,
+)
 from igab.domain.splits import require_split_balances
 from igab.domain.transfers import (
     leg_may_carry_category,
@@ -315,8 +321,6 @@ class TransactionService:
         txn = await self.transaction_repo.get_or_raise(transaction_id)
         if str(txn.budget_id) != str(budget_id):
             raise InvariantViolation("Transaction does not belong to this budget")
-        if txn.cleared == "reconciled":
-            raise InvariantViolation("Cannot edit a reconciled transaction")
 
         changes = {k: v for k, v in vars(data).items() if v is not UNSET}
         # Not columns — pulled out before the generic column update. Handled
@@ -328,6 +332,17 @@ class TransactionService:
         for field in _REQUIRED_FIELDS:
             if field in changes and changes[field] is None:
                 raise InvariantViolation(f"{field} cannot be empty")
+
+        # Reconciled: the money is locked, the bookkeeping is not (see
+        # domain.reconciliation). Unchanged locked values are dropped rather
+        # than refused — the editor sends every field it shows — so they
+        # cannot trip the transfer or split-propagation rules below either.
+        if txn.cleared == "reconciled":
+            locked = locked_changes(locked_values(txn), changes)
+            if locked:
+                raise InvariantViolation(reconciled_edit_message(locked))
+            for field in RECONCILED_LOCKED_FIELDS & changes.keys():
+                del changes[field]
 
         if transfer_requested:
             if txn.is_split or txn.parent_transaction_id is not None:
