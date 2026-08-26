@@ -893,8 +893,12 @@
   position: relative;
   overflow: hidden;
   height: min(72vh, 780px);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  /* The map is a well inside the page: the sunken surface, so the raised
+     node cards sit one lightness step above it. Painting this --bg-secondary
+     made it the very colour --surface-raised resolves to, and the boxes
+     blended into the map with only a hairline to find them by. */
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius);
   cursor: grab;
   /* The canvas owns dragging; let the browser keep pinch-zoom. */
@@ -1023,8 +1027,8 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
   cursor: pointer;
