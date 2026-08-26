@@ -96,14 +96,16 @@ class TransactionUpdate:
 
 @dataclass
 class SplitSpec:
-    """One leg of a split conversion — everything else (account, date,
-    cleared, approved) is inherited from the parent transaction."""
+    """One line of a split — everything else (account, date, cleared,
+    approved) is inherited from the parent transaction. `id` names an
+    existing line to update in place; None means a new line."""
 
     amount: Decimal
     category_id: uuid.UUID | None = None
     payee_id: uuid.UUID | None = None
     payee_name: str | None = None
     memo: str | None = None
+    id: uuid.UUID | None = None
 
 
 # Fields that may never be set to NULL via PATCH
@@ -200,7 +202,7 @@ class TransactionService:
             return await self._create_transfer(budget_id, data, record=record)
 
         # Resolve or create payee
-        payee = await self._resolve_payee(budget_id, data)
+        payee = await self._resolve_payee(budget_id, data.payee_id, data.payee_name)
         payee_id = payee.id if payee else None
 
         # Auto-categorization: use the most recent category for this payee.
@@ -254,33 +256,29 @@ class TransactionService:
         self, budget_id: uuid.UUID, header: TransactionCreate, splits: list[TransactionCreate]
     ) -> Transaction:
         """Create a split transaction: one parent + N children."""
-        require_split_balances(header.amount, [s.amount for s in splits])
+        specs = [
+            SplitSpec(
+                amount=s.amount,
+                category_id=s.category_id,
+                payee_id=s.payee_id,
+                payee_name=s.payee_name,
+                memo=s.memo,
+            )
+            for s in splits
+        ]
+        require_split_balances(header.amount, [s.amount for s in specs])
 
         # Parent has no category (it's distributed across splits). Auto-
         # categorization in create() may have applied a payee default, so
         # force category back to NULL alongside the is_split flag.
         header.category_id = None
-        parent = await self.create(budget_id, header, record=False)
-        await self.transaction_repo.update(parent.id, is_split=True, category_id=None)
-
-        children: list[Transaction] = []
-        for split in splits:
-            split.parent_transaction_id = parent.id
-            split.account_id = header.account_id
-            # Children mirror the parent's date and posting state so account
-            # balances (parent rows) and category activity (leaf rows) always
-            # agree on when the money moved.
-            split.date = header.date
-            split.cleared = header.cleared
-            split.approved = header.approved
-            children.append(await self.create(budget_id, split, record=False))
-
-        await self.transaction_repo.refresh(parent)
-        # Recorded after the is_split flip so the snapshots hold final state.
         with self.changes.batch():
+            parent = await self.create(budget_id, header, record=False)
+            parent = await self.transaction_repo.update(parent.id, is_split=True, category_id=None)
+            # Recorded after the is_split flip so the snapshot holds final state.
             await self._record_txn(parent, "create", refresh=False)
-            for child in children:
-                await self._record_txn(child, "create")
+            await self._apply_split_legs(budget_id, parent, specs, existing=[])
+        await self.transaction_repo.refresh(parent)
         return parent
 
     async def convert_to_split(
@@ -291,13 +289,12 @@ class TransactionService:
         Unlike create-replacement-and-delete, this preserves the transaction's
         identity — attachments, AI-job links, import/sync ids, and provenance
         all stay put. Receipts made this mandatory: the image is attached to
-        the row being split.
+        the row being split. A reconciled row may be split: its amount does
+        not move (the lines must sum to it) and the lines lock with it.
         """
         txn = await self.transaction_repo.get_or_raise(transaction_id)
         if str(txn.budget_id) != str(budget_id):
             raise InvariantViolation("Transaction does not belong to this budget")
-        if txn.cleared == "reconciled":
-            raise InvariantViolation("Cannot split a reconciled transaction")
         if txn.is_split:
             raise InvariantViolation("Transaction is already split")
         if txn.parent_transaction_id is not None:
@@ -305,44 +302,113 @@ class TransactionService:
         if txn.transfer_id is not None:
             raise InvariantViolation("Cannot split a transfer")
 
-        require_split_balances(txn.amount, [s.amount for s in splits])
-
-        for split in splits:
-            await require_in_budget(
-                self.session, Category, split.category_id, budget_id, "Category"
-            )
-
         before = snapshot("transaction", txn)
-        await self.transaction_repo.update(txn.id, is_split=True, category_id=None)
-        children = []
-        for split in splits:
-            children.append(
-                await self.create(
+        # One batch: undoing it deletes the lines and restores the parent's
+        # pre-split category and is_split flag. Lines first — they validate
+        # (sum, categories) before anything is written — then the flip.
+        with self.changes.batch():
+            await self._apply_split_legs(budget_id, txn, splits, existing=[])
+            await self.transaction_repo.update(txn.id, is_split=True, category_id=None)
+            await self._record_txn(txn, "update", before=before)
+        await self.transaction_repo.refresh(txn)
+        return txn
+
+    async def replace_splits(
+        self, budget_id: uuid.UUID, parent_id: uuid.UUID, splits: list[SplitSpec]
+    ) -> list[Transaction]:
+        """Make these the split's lines: update the ones named by id, create
+        the rest, remove the missing. The parent's amount does not move — the
+        lines must still sum to it — so this is bookkeeping, and works on a
+        reconciled parent too (its lines stay reconciled). Returns the lines.
+        """
+        parent = await self.transaction_repo.get_or_raise(parent_id)
+        if str(parent.budget_id) != str(budget_id):
+            raise InvariantViolation("Transaction does not belong to this budget")
+        if not parent.is_split:
+            raise InvariantViolation("Transaction is not split")
+        existing = await self.transaction_repo.get_splits(parent.id)
+        with self.changes.batch():
+            lines = await self._apply_split_legs(budget_id, parent, splits, existing=existing)
+        return lines
+
+    async def _apply_split_legs(
+        self,
+        budget_id: uuid.UUID,
+        parent: Transaction,
+        specs: list[SplitSpec],
+        *,
+        existing: list[Transaction],
+    ) -> list[Transaction]:
+        """The one place a split's lines are written.
+
+        Lines mirror the parent's date, cleared state and approval — account
+        balances (parent rows) and category activity (leaf rows) have to
+        agree on when money moved — and they must sum to the parent's amount
+        exactly (domain.splits). A spec naming an id updates that line; an
+        id from some other transaction is refused (the route guards only the
+        parent); a line not named is removed, its attachments moved to the
+        parent and remembered so undo puts them back. Lines list oldest first;
+        lines written in one request share a created_at and order by id.
+        Three creation-time copies of the mirror rule used to exist; this is
+        the one. Records every step; callers own the batch.
+        """
+        require_split_balances(parent.amount, [s.amount for s in specs])
+        existing_by_id = {child.id: child for child in existing}
+        for spec in specs:
+            if spec.id is not None and spec.id not in existing_by_id:
+                raise InvariantViolation("Split line does not belong to this transaction")
+            await require_in_budget(self.session, Category, spec.category_id, budget_id, "Category")
+
+        kept: list[Transaction] = []
+        for spec in specs:
+            if spec.id is not None:
+                child = existing_by_id[spec.id]
+                child_before = snapshot("transaction", child)
+                changes: dict[str, Any] = {
+                    "amount": spec.amount,
+                    "category_id": spec.category_id,
+                    "memo": spec.memo,
+                }
+                if spec.payee_id is not None or spec.payee_name:
+                    payee = await self._resolve_payee(budget_id, spec.payee_id, spec.payee_name)
+                    changes["payee_id"] = payee.id if payee else None
+                updated = await self.transaction_repo.update(child.id, **changes)
+                await self._record_txn(updated, "update", before=child_before)
+                kept.append(updated)
+            else:
+                child = await self.create(
                     budget_id,
                     TransactionCreate(
-                        account_id=txn.account_id,
-                        date=txn.date,
-                        amount=split.amount,
-                        category_id=split.category_id,
-                        payee_id=split.payee_id,
-                        payee_name=split.payee_name,
-                        memo=split.memo,
-                        cleared=txn.cleared,
-                        approved=txn.approved,
-                        parent_transaction_id=txn.id,
+                        account_id=parent.account_id,
+                        date=parent.date,
+                        amount=spec.amount,
+                        category_id=spec.category_id,
+                        payee_id=spec.payee_id,
+                        payee_name=spec.payee_name,
+                        memo=spec.memo,
+                        cleared=parent.cleared,
+                        approved=parent.approved,
+                        parent_transaction_id=parent.id,
+                        created_via=parent.created_via,
                     ),
                     record=False,
                 )
-            )
-
-        await self.transaction_repo.refresh(txn)
-        # One batch: undoing it deletes the children and restores the parent's
-        # pre-split category and is_split flag.
-        with self.changes.batch():
-            await self._record_txn(txn, "update", before=before, refresh=False)
-            for child in children:
                 await self._record_txn(child, "create")
-        return txn
+                kept.append(child)
+
+        kept_ids = {child.id for child in kept}
+        for child in existing:
+            if child.id in kept_ids:
+                continue
+            child_before = snapshot("transaction", child)
+            if self.attachment_repo is not None:
+                child_before["_attachment_ids"] = [
+                    str(a.id) for a in await self.attachment_repo.get_for_transaction(child.id)
+                ]
+                await self.attachment_repo.reassign(child.id, parent.id)
+            await self.transaction_repo.soft_delete(child.id)
+            await self._record_txn(child, "delete", before=child_before, refresh=False)
+        return kept
 
     async def update(
         self, budget_id: uuid.UUID, transaction_id: uuid.UUID, data: TransactionUpdate
@@ -1112,22 +1178,24 @@ class TransactionService:
             await self._record_txn(survivor, "update", before=survivor_before, refresh=False)
         return survivor
 
-    async def _resolve_payee(self, budget_id: uuid.UUID, data: TransactionCreate) -> Payee | None:
-        if data.payee_id:
-            return await self.session.get(Payee, data.payee_id)
-        if not data.payee_name:
+    async def _resolve_payee(
+        self, budget_id: uuid.UUID, payee_id: uuid.UUID | None, payee_name: str | None
+    ) -> Payee | None:
+        if payee_id:
+            return await self.session.get(Payee, payee_id)
+        if not payee_name:
             return None
         # Exact match first
-        existing = await self.payee_repo.find_by_name(budget_id, data.payee_name)
+        existing = await self.payee_repo.find_by_name(budget_id, payee_name)
         if existing:
             return existing
         # User-defined regex patterns beat fuzzy matching — they are explicit intent
-        by_pattern = await self.payee_repo.find_by_pattern(budget_id, data.payee_name)
+        by_pattern = await self.payee_repo.find_by_pattern(budget_id, payee_name)
         if by_pattern:
             return by_pattern
         # Fuzzy match against names and mapping_samples
-        similar = await self.payee_repo.find_best_match(budget_id, data.payee_name)
+        similar = await self.payee_repo.find_best_match(budget_id, payee_name)
         if similar:
             return similar
         # Create new payee
-        return await self.payee_repo.create(budget_id=budget_id, name=data.payee_name)
+        return await self.payee_repo.create(budget_id=budget_id, name=payee_name)

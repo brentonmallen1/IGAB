@@ -16,9 +16,18 @@ class SplitCreate(BaseModel):
     payee_id: uuid.UUID | None = None
     payee_name: str | None = None
     memo: str | None = None
+    #: An existing line to update in place (PUT …/splits); omit for a new line.
+    id: uuid.UUID | None = None
 
 
 class ConvertToSplitRequest(BaseModel):
+    splits: list[SplitCreate]
+
+
+class ReplaceSplitsRequest(BaseModel):
+    """The split's lines as they should be: named lines are updated, unnamed
+    ones created, missing ones removed. They must sum to the parent."""
+
     splits: list[SplitCreate]
 
 

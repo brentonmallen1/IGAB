@@ -283,7 +283,7 @@ async def _apply_draft_to_existing(svcs: dict, job: AIJob, draft) -> Transaction
     Returns None when the transaction was deleted so the caller can create a
     replacement. An approved or cleared transaction belongs to the user —
     refuse rather than overwrite."""
-    from igab.services.transaction_service import TransactionCreate, TransactionUpdate
+    from igab.services.transaction_service import TransactionUpdate
 
     txn_svc = svcs["transactions"]
     txn = await txn_svc.transaction_repo.get(job.transaction_id)
@@ -295,15 +295,7 @@ async def _apply_draft_to_existing(svcs: dict, job: AIJob, draft) -> Transaction
             " — edit it directly, or delete it first to reprocess from scratch"
         )
 
-    payee = await txn_svc._resolve_payee(
-        job.budget_id,
-        TransactionCreate(
-            account_id=txn.account_id,
-            date=draft.date,
-            amount=draft.amount,
-            payee_name=draft.payee_name,
-        ),
-    )
+    payee = await txn_svc._resolve_payee(job.budget_id, None, draft.payee_name)
     category_id = await svcs["drafts"].resolve_category(job.budget_id, draft.category_name)
     return await txn_svc.update(
         job.budget_id,

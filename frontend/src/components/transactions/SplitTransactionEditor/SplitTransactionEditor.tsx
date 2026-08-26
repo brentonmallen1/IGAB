@@ -1,11 +1,18 @@
-import { Plus, Trash2, X } from 'lucide-react'
+import { useEffect } from 'react'
+import { Plus, Trash2, X, RefreshCw } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
-import { useCreateTransaction, useDeleteTransaction } from '../../../api/transactions'
+import {
+  useConvertToSplit,
+  useReplaceSplits,
+  useTransactionSplits,
+} from '../../../api/transactions'
 import { useAppStore } from '../../../stores/appStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { fromCents, toCents } from '../../../utils/money'
-import { checkSplit } from '../../../utils/splits'
+import { checkSplit, draftsFromLines } from '../../../utils/splits'
 import { expressionToCents } from '../../../utils/amountExpression'
+import { apiErrorMessage } from '../../../api/client'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import type { Category, CategoryGroup, Transaction } from '../../../types'
@@ -20,13 +27,20 @@ interface Props {
 export function SplitTransactionEditor({ transaction: txn, categories, categoryGroups }: Props) {
   const { formatMoney } = useFormatters()
   const budgetId = useAppStore((s) => s.currentBudgetId!)
-  const { splitEditing, updateSplit, addSplit, removeSplit, stopSplitEditing } = useTransactionEditStore()
-  const createTxn = useCreateTransaction(budgetId)
-  const deleteTxn = useDeleteTransaction(budgetId)
+  const { splitEditing, updateSplit, addSplit, removeSplit, stopSplitEditing, seedSplits } =
+    useTransactionEditStore()
+  const convertToSplit = useConvertToSplit(budgetId)
+  const replaceSplits = useReplaceSplits(budgetId)
+
+  // An existing split's lines live on the server, never in the loaded page.
+  const { data: lines } = useTransactionSplits(txn.id, txn.is_split)
+  useEffect(() => {
+    if (lines) seedSplits(txn.id, draftsFromLines(lines))
+  }, [lines, txn.id, seedSplits])
 
   if (!splitEditing || splitEditing.transactionId !== txn.id) return null
 
-  const { totalAmount, splits } = splitEditing
+  const { totalAmount, splits, loaded } = splitEditing
   const check = checkSplit(Math.abs(toCents(totalAmount)), splits)
   const { remainingCents, isValid } = check
   const remaining = fromCents(remainingCents)
@@ -37,26 +51,27 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   })
 
   async function handleSave() {
-    if (!isValid) return
+    if (!isValid || !loaded) return
     const sign = totalAmount < 0 ? -1 : 1
-    // Create the split version first, then remove the original row — the
-    // split replaces it (previously both survived and double-counted).
-    await createTxn.mutateAsync({
-      account_id: txn.account_id,
-      date: txn.date,
-      amount: totalAmount,
-      payee_id: txn.payee_id ?? undefined,
-      memo: txn.memo ?? undefined,
-      cleared: txn.cleared === 'reconciled' || txn.cleared === 'pending' ? 'cleared' : txn.cleared,
-      splits: splits.map((s) => ({
-        amount: (expressionToCents(s.amount) / 100) * sign,
-        category_id: s.categoryId ?? undefined,
-        memo: s.memo || undefined,
-      })),
-    })
-    await deleteTxn.mutateAsync({ id: txn.id, accountId: txn.account_id })
-    stopSplitEditing()
+    const lines = splits.map((s) => ({
+      id: s.serverId,
+      amount: (expressionToCents(s.amount) / 100) * sign,
+      category_id: s.categoryId ?? undefined,
+      memo: s.memo || undefined,
+    }))
+    try {
+      // In place either way: the row keeps its identity, receipt, bank link
+      // and provenance. (A create-new-and-delete replacement used to drop
+      // all of those and turned a pending row into a cleared one.)
+      if (txn.is_split) await replaceSplits.mutateAsync({ id: txn.id, splits: lines })
+      else await convertToSplit.mutateAsync({ id: txn.id, splits: lines })
+      stopSplitEditing()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not save the split'))
+    }
   }
+
+  const saving = convertToSplit.isPending || replaceSplits.isPending
 
   return (
     <div className="split-editor">
@@ -69,49 +84,56 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
         </button>
       </div>
 
-      <div className="split-editor__rows">
-        {splits.map((split, i) => (
-          <div key={split.tempId} className="split-editor__row">
-            <span className="split-editor__row-num">{i + 1}</span>
+      {!loaded ? (
+        <div className="split-editor__loading" role="status">
+          <RefreshCw size={14} className="spin" aria-hidden />
+          Loading lines…
+        </div>
+      ) : (
+        <div className="split-editor__rows">
+          {splits.map((split, i) => (
+            <div key={split.tempId} className="split-editor__row">
+              <span className="split-editor__row-num">{i + 1}</span>
 
-            <div className="split-editor__category">
-              <Combobox
-                value={split.categoryId}
-                options={categoryOptions}
-                onChange={(id) => updateSplit(split.tempId, { categoryId: id })}
-                placeholder="Category…"
+              <div className="split-editor__category">
+                <Combobox
+                  value={split.categoryId}
+                  options={categoryOptions}
+                  onChange={(id) => updateSplit(split.tempId, { categoryId: id })}
+                  placeholder="Category…"
+                />
+              </div>
+
+              <AmountInput
+                className="split-editor__amount"
+                value={split.amount}
+                onValueChange={(v) => updateSplit(split.tempId, { amount: v })}
+                placeholder="0.00"
               />
+
+              <input
+                className="split-editor__memo"
+                type="text"
+                value={split.memo}
+                onChange={(e) => updateSplit(split.tempId, { memo: e.target.value })}
+                placeholder="Memo…"
+              />
+
+              <button
+                className="split-editor__remove"
+                onClick={() => removeSplit(split.tempId)}
+                disabled={splits.length <= 2}
+                title="Remove split"
+              >
+                <Trash2 size={12} />
+              </button>
             </div>
-
-            <AmountInput
-              className="split-editor__amount"
-              value={split.amount}
-              onValueChange={(v) => updateSplit(split.tempId, { amount: v })}
-              placeholder="0.00"
-            />
-
-            <input
-              className="split-editor__memo"
-              type="text"
-              value={split.memo}
-              onChange={(e) => updateSplit(split.tempId, { memo: e.target.value })}
-              placeholder="Memo…"
-            />
-
-            <button
-              className="split-editor__remove"
-              onClick={() => removeSplit(split.tempId)}
-              disabled={splits.length <= 2}
-              title="Remove split"
-            >
-              <Trash2 size={12} />
-            </button>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div className="split-editor__footer">
-        <button className="split-editor__add-btn" onClick={addSplit}>
+        <button className="split-editor__add-btn" onClick={addSplit} disabled={!loaded}>
           <Plus size={12} />
           Add split
         </button>
@@ -127,7 +149,7 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
           <button
             className="split-editor__save"
             onClick={handleSave}
-            disabled={!isValid || createTxn.isPending || deleteTxn.isPending}
+            disabled={!isValid || !loaded || saving}
           >
             Save Split
           </button>

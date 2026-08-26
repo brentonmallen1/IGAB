@@ -157,3 +157,12 @@
     min-height: var(--tap-min);
   }
 }
+
+.split-editor__loading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

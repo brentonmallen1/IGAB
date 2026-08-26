@@ -11,6 +11,8 @@ import {
   useUpdateTransaction,
   useDeleteTransaction,
   useConvertToSplit,
+  useReplaceSplits,
+  useTransactionSplits,
   usePayees,
   useSimilarTransactions,
   useTransaction,
@@ -38,7 +40,7 @@ import {
   expressionToCents,
   parseAmountExpressionInput,
 } from '../../../utils/amountExpression'
-import { checkSplit } from '../../../utils/splits'
+import { checkSplit, draftsFromLines } from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import type { Transaction, Payee } from '../../../types'
@@ -93,6 +95,7 @@ export function TransactionEditor({
   // accountId for undo resolved after hooks; toastUndo called with final value
   const showUndo = useToastUndo(budgetId)
   const convertToSplit = useConvertToSplit(budgetId)
+  const replaceSplits = useReplaceSplits(budgetId)
   const suggestCategory = useSuggestCategory(budgetId)
 
   const { data: payees = [] } = usePayees(budgetId)
@@ -174,11 +177,28 @@ export function TransactionEditor({
   const [showPayeeDropdown, setShowPayeeDropdown] = useState(false)
   const [showSimilar, setShowSimilar] = useState(false)
   const [showAttachments, setShowAttachments] = useState(false)
-  const [isSplit, setIsSplit] = useState(false)
-  const [splits, setSplits] = useState<SplitDraft[]>([
-    { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
-    { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
-  ])
+  // An existing split opens AS a split, with its lines from the server —
+  // the register never holds them, and an editor that opened flat over a
+  // split was the only way to "see" one: by not seeing it at all.
+  const editingExistingSplit = !!transaction?.is_split
+  const { data: splitLines } = useTransactionSplits(transaction?.id ?? null, editingExistingSplit)
+  const [isSplit, setIsSplit] = useState(editingExistingSplit)
+  const [splits, setSplits] = useState<SplitDraft[]>(() =>
+    editingExistingSplit
+      ? []
+      : [
+          { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+          { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+        ]
+  )
+  // Seed once, as a render-phase state adjustment (the pattern Combobox
+  // uses for an outside value change): no effect, no ref read in render.
+  const [linesSeeded, setLinesSeeded] = useState(false)
+  if (splitLines && !linesSeeded) {
+    setLinesSeeded(true)
+    setSplits(draftsFromLines(splitLines))
+  }
+  const splitLinesPending = editingExistingSplit && !linesSeeded
 
   // Tab state: entry method in add mode
   const [activeTab, setActiveTab] = useState<'manual' | 'describe' | 'receipt'>('manual')
@@ -375,6 +395,7 @@ export function TransactionEditor({
 
     if (isSplit && !isTransfer) {
       const splitList = splits.map((s) => ({
+        id: s.serverId,
         amount: (expressionToCents(s.amount) / 100) * sign,
         category_id: s.categoryId ?? undefined,
         memo: s.memo || undefined,
@@ -390,7 +411,19 @@ export function TransactionEditor({
         formatMoney
       )
       if (!proceed) return
-      if (isEdit) {
+      if (isEdit && editingExistingSplit) {
+        // Lines in place: named lines update, new ones append, missing ones
+        // go. The parent's amount is the lines' sum and is not sent.
+        await updateTxn.mutateAsync({
+          id: transaction!.id,
+          date,
+          memo: memo || undefined,
+          cleared,
+          approved: true,
+          payee_id: selectedPayeeId || undefined,
+        })
+        await replaceSplits.mutateAsync({ id: transaction!.id, splits: splitList })
+      } else if (isEdit) {
         // Split in place: the row becomes the parent, keeping attachments and
         // AI links (a create+delete replacement would orphan the receipt).
         await updateTxn.mutateAsync({
@@ -493,7 +526,12 @@ export function TransactionEditor({
   }
 
   const isPending =
-    createTxn.isPending || updateTxn.isPending || deleteTxn.isPending || convertToSplit.isPending
+    createTxn.isPending ||
+    updateTxn.isPending ||
+    deleteTxn.isPending ||
+    convertToSplit.isPending ||
+    replaceSplits.isPending ||
+    splitLinesPending
 
   // What the bank reported, as distinct from the ledger values the user can
   // edit. The payee line prefers the bank's own string and falls back to the
@@ -915,16 +953,21 @@ export function TransactionEditor({
             <div className="txn-editor__field">
               <label className="txn-editor__label">
                 Split Transaction
-                <button
-                  type="button"
-                  className="txn-editor__ai-btn"
-                  onClick={() => { setIsSplit(false); setCategoryId('') }}
-                  title="Switch to single category"
-                >
-                  <X size={12} />
-                  Cancel split
-                </button>
+                {!editingExistingSplit && (
+                  <button
+                    type="button"
+                    className="txn-editor__ai-btn"
+                    onClick={() => { setIsSplit(false); setCategoryId('') }}
+                    title="Switch to single category"
+                  >
+                    <X size={12} />
+                    Cancel split
+                  </button>
+                )}
               </label>
+              {splitLinesPending && (
+                <div className="txn-editor__split-loading" role="status">Loading lines…</div>
+              )}
               <div className="txn-editor__splits">
                 {splits.map((s) => (
                   <div key={s.tempId} className="txn-editor__split-row">
@@ -1031,6 +1074,8 @@ export function TransactionEditor({
                 value={outflow}
                 onValueChange={handleOutflowChange}
                 placeholder="0.00"
+                disabled={editingExistingSplit}
+                title={editingExistingSplit ? 'A split’s total is the sum of its lines' : undefined}
               />
             </div>
             <div className="txn-editor__field">
@@ -1040,6 +1085,8 @@ export function TransactionEditor({
                 value={inflow}
                 onValueChange={handleInflowChange}
                 placeholder="0.00"
+                disabled={editingExistingSplit}
+                title={editingExistingSplit ? 'A split’s total is the sum of its lines' : undefined}
               />
             </div>
           </div>

@@ -455,11 +455,15 @@ class TransactionRepository(BaseRepository[Transaction]):
         }
 
     async def get_splits(self, parent_id: uuid.UUID) -> list[Transaction]:
+        """A parent's live lines, oldest first (new lines append). Carries the
+        served fields: this is what the split endpoints serialize."""
         result = await self.session.execute(
-            select(Transaction).where(
+            self.with_computed(select(Transaction))
+            .where(
                 Transaction.parent_transaction_id == parent_id,
                 Transaction.is_deleted == False,  # noqa: E712
             )
+            .order_by(Transaction.created_at, Transaction.id)
         )
         return list(result.scalars().all())
 

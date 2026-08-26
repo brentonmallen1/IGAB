@@ -27,6 +27,7 @@ from igab.api.v1.schemas.transaction import (
     PayeeUpdate,
     PayeeWithCount,
     PendingReviewCount,
+    ReplaceSplitsRequest,
     SimilarTransactionResponse,
     TransactionClassification,
     TransactionCreate,
@@ -448,20 +449,54 @@ async def convert_transaction_to_split(
     """Split an existing transaction in place (row becomes the parent),
     preserving attachments, AI links, and import/sync identity."""
     try:
-        splits = [
-            SplitSpec(
-                amount=s.amount,
-                category_id=s.category_id,
-                payee_id=s.payee_id,
-                payee_name=s.payee_name,
-                memo=s.memo,
-            )
-            for s in body.splits
-        ]
-        txn = await txn_service.convert_to_split(budget_id, transaction_id, splits)
+        txn = await txn_service.convert_to_split(budget_id, transaction_id, _split_specs(body))
     except (NotFoundError, InvariantViolation) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return TransactionResponse.model_validate(txn)
+
+
+def _split_specs(body: ConvertToSplitRequest | ReplaceSplitsRequest) -> list[SplitSpec]:
+    return [
+        SplitSpec(
+            amount=s.amount,
+            category_id=s.category_id,
+            payee_id=s.payee_id,
+            payee_name=s.payee_name,
+            memo=s.memo,
+            id=s.id,
+        )
+        for s in body.splits
+    ]
+
+
+@router.get("/transactions/{transaction_id}/splits", response_model=list[TransactionResponse])
+async def list_split_lines(
+    transaction_id: TransactionAccess,
+    current_user: CurrentUser,
+    txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+) -> list[TransactionResponse]:
+    """A split's lines. The register lists parent rows only, so this is how
+    a client sees — and then edits — what a split is made of."""
+    return [
+        TransactionResponse.model_validate(c) for c in await txn_repo.get_splits(transaction_id)
+    ]
+
+
+@router.put("/transactions/{transaction_id}/splits", response_model=list[TransactionResponse])
+async def replace_split_lines(
+    transaction_id: TransactionAccess,
+    body: ReplaceSplitsRequest,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    budget_id: BudgetAccess,
+) -> list[TransactionResponse]:
+    """Edit a split's lines in place: named lines update, unnamed create,
+    missing remove. The parent — its identity, receipts, amount — is untouched."""
+    try:
+        lines = await txn_service.replace_splits(budget_id, transaction_id, _split_specs(body))
+    except (NotFoundError, InvariantViolation) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return [TransactionResponse.model_validate(c) for c in lines]
 
 
 @router.delete("/transactions/{transaction_id}", response_model=DeleteTransactionResult)

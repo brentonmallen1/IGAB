@@ -305,6 +305,8 @@ export interface SplitCreate {
   payee_id?: string
   payee_name?: string
   memo?: string
+  /** An existing line to update in place (PUT …/splits); omit for a new one. */
+  id?: string
 }
 
 export interface SpendingCategory {

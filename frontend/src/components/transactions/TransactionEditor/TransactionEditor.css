@@ -753,3 +753,9 @@
 .txn-editor__partner-option:hover {
   background-color: var(--bg-hover);
 }
+
+.txn-editor__split-loading {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: var(--spacing-xs) 0;
+}

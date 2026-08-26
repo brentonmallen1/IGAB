@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Sparkles, Split, Trash2 } from 'lucide-react'
+import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Sparkles, Split, Trash2, ChevronRight } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
 import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction } from '../../../api/transactions'
 import { confirmDeleteTransaction } from '../../../api/attachments'
@@ -486,10 +486,17 @@ export const TransactionRow = memo(function TransactionRow({
       <div
         className="txn-col txn-col--category txn-text-clip"
         onClick={() => {
-          if (isMobile || isReconciled || !accountOnBudget) return
-          if (txn.is_split) onStartSplit(txn)
-          else startEditing(txn.id, 'category')
+          if (isMobile || !accountOnBudget) return
+          // A reconciled split's lines are still viewable and editable —
+          // through the editor, which locks the money and nothing else.
+          if (txn.is_split) {
+            if (isReconciled) onEdit(txn)
+            else onStartSplit(txn)
+            return
+          }
+          if (!isReconciled) startEditing(txn.id, 'category')
         }}
+        title={txn.is_split ? 'Split — click to view and edit the lines' : undefined}
       >
         {isEditing('category') ? (
           <Combobox
@@ -505,6 +512,7 @@ export const TransactionRow = memo(function TransactionRow({
           />
         ) : categoryName !== null ? (
           <span className={`txn-cell-text ${txn.is_split ? 'txn-split-label' : ''}`}>
+            {txn.is_split && <ChevronRight size={11} className="txn-split-label__chevron" aria-hidden />}
             {categoryName}
           </span>
         ) : txn.needs_category ? (

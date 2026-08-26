@@ -357,16 +357,11 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   }, [transactionSortColumn, transactionSortDirection, setTransactionSort])
 
   const handleStartSplit = useCallback((txn: Transaction) => {
-    const existingSplits = transactions
-      .filter((t) => t.parent_transaction_id === txn.id)
-      .map((t) => ({
-        tempId: t.id,
-        amount: String(Math.abs(Number(t.amount))),
-        categoryId: t.category_id,
-        memo: t.memo ?? '',
-      }))
-    startSplitEditing(txn.id, Number(txn.amount), existingSplits.length > 0 ? existingSplits : undefined)
-  }, [transactions, startSplitEditing])
+    // An existing split's lines come from the server (the editor fetches
+    // them); this page never holds them, so rebuilding from it produced an
+    // empty draft that saved over the real lines.
+    startSplitEditing(txn.id, Number(txn.amount), txn.is_split)
+  }, [startSplitEditing])
 
   // Bulk operations
   const handleBulkCategorize = useCallback((categoryId: string) => {
