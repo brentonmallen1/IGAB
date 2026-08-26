@@ -154,8 +154,8 @@ export function RoadmapMap() {
   )
 
   return (
-    <div className="flow">
-      <div className="flow__toolbar">
+    <div className="flow surface">
+      <div className="flow__toolbar surface surface--chrome">
         <p className="flow__hint">Drag to move · scroll to zoom · click a box to read it</p>
         <div className="flow__zoom">
           <button type="button" onClick={() => zoomBy(0.85)} aria-label="Zoom out" title="Zoom out">
@@ -172,7 +172,7 @@ export function RoadmapMap() {
       </div>
 
       <div
-        className="flow__viewport"
+        className="flow__viewport surface surface--sunken"
         ref={viewportRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

@@ -834,10 +834,18 @@
 /* The reading views are a 760px column; the chart wants the room. */
 .guide-roadmap--wide { max-width: none; }
 
+/* The map is a raised card (the `surface` class paints it) holding a chrome
+   toolbar and a sunken well for the canvas. Three steps — page, card, well —
+   and then the node cards, which are raised again on the well. Without the
+   card the well is the page's own colour and the map has no edge; without
+   the well the node cards are the map's own colour and have no edge either.
+   The roadmap's other views sit on the page directly, but they are lists of
+   cards, not a pannable area that needs a boundary. */
 .flow {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  overflow: hidden; /* the chrome bar follows the card's corners */
 }
 
 .flow__toolbar {
@@ -846,6 +854,7 @@
   justify-content: space-between;
   gap: var(--spacing-md);
   flex-wrap: wrap;
+  padding: var(--spacing-sm) var(--spacing-md);
 }
 
 .flow__hint {
@@ -893,13 +902,9 @@
   position: relative;
   overflow: hidden;
   height: min(72vh, 780px);
-  /* The map is a well inside the page: the sunken surface, so the raised
-     node cards sit one lightness step above it. Painting this --bg-secondary
-     made it the very colour --surface-raised resolves to, and the boxes
-     blended into the map with only a hairline to find them by. */
-  background: var(--surface-sunken);
-  border: 1px solid var(--edge);
-  border-radius: var(--border-radius);
+  /* Inset from the card so its raised colour shows around the well. Fill,
+     edge and radius come from `surface surface--sunken`, not from here. */
+  margin: 0 var(--spacing-sm) var(--spacing-sm);
   cursor: grab;
   /* The canvas owns dragging; let the browser keep pinch-zoom. */
   touch-action: pinch-zoom;
