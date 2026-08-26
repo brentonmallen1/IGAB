@@ -465,3 +465,49 @@ describe('TransactionEditor transfers', () => {
     expect(screen.queryByText(/which transaction in/i)).not.toBeInTheDocument()
   })
 })
+
+
+describe('TransactionEditor on a reconciled transaction', () => {
+  // Reconciliation locks the money (backend domain/reconciliation.py): the
+  // amount, date and cleared state are shown locked and never sent; the
+  // bookkeeping — memo, category, payee — still saves.
+  const reconciled = {
+    id: 't9',
+    account_id: 'acc-1',
+    date: '2030-01-10',
+    amount: -20,
+    category_id: 'cat-1',
+    payee_id: null,
+    memo: 'old note',
+    cleared: 'reconciled',
+    transfer_id: null,
+    is_split: false,
+  } as unknown as Transaction
+
+  beforeEach(() => {
+    updateMutate.mockClear()
+    confirmOverspend.mockClear()
+    confirmOverspend.mockImplementation(() => Promise.resolve(true))
+  })
+
+  it('locks the money and leaves the bookkeeping editable', async () => {
+    renderEditor({ transaction: reconciled, accountId: null })
+
+    expect(document.querySelector('input[type="date"]')).toBeDisabled()
+    amountInputs().forEach((input) => expect(input).toBeDisabled())
+    expect(screen.getByLabelText('Cleared: reconciled')).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('locked')
+
+    fireEvent.change(screen.getByPlaceholderText('Optional note...'), {
+      target: { value: 'filed properly' },
+    })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    const sent = updateMutate.mock.calls[0][0]
+    expect(sent).toMatchObject({ id: 't9', memo: 'filed properly' })
+    expect(sent).not.toHaveProperty('amount')
+    expect(sent).not.toHaveProperty('date')
+    expect(sent).not.toHaveProperty('cleared')
+  })
+})

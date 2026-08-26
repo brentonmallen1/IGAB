@@ -1,6 +1,6 @@
 import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw } from 'lucide-react'
+import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw, Lock } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { NLEntryForm } from '../../ai/NLEntryForm'
 import { ReceiptPane } from '../../ai/ReceiptPane'
@@ -155,12 +155,15 @@ export function TransactionEditor({
     if (Number(transaction.amount) < 0) return ''
     return String(Number(transaction.amount))
   })
-  const [cleared, setCleared] = useState<'uncleared' | 'cleared'>(() => {
+  // Reconciled: the money is locked — amount, date, cleared state — and
+  // everything else stays editable (domain/reconciliation.py, one rule).
+  // The locked fields are shown disabled and left out of the PATCH.
+  const isReconciled = transaction?.cleared === 'reconciled'
+  const [cleared, setCleared] = useState<'uncleared' | 'cleared' | 'reconciled'>(() => {
     // 'pending' belongs to bank sync and 'reconciled' to the reconciliation
     // flow — neither is user-settable via the API.
-    if (transaction?.cleared === 'cleared' || transaction?.cleared === 'reconciled') {
-      return 'cleared'
-    }
+    if (transaction?.cleared === 'reconciled') return 'reconciled'
+    if (transaction?.cleared === 'cleared') return 'cleared'
     return 'uncleared'
   })
   // counterpart_account_id, not transfer_id: an unpaired leg (the importer's
@@ -416,9 +419,8 @@ export function TransactionEditor({
         // go. The parent's amount is the lines' sum and is not sent.
         await updateTxn.mutateAsync({
           id: transaction!.id,
-          date,
+          ...(isReconciled ? {} : { date, cleared }),
           memo: memo || undefined,
-          cleared,
           approved: true,
           payee_id: selectedPayeeId || undefined,
         })
@@ -428,10 +430,8 @@ export function TransactionEditor({
         // AI links (a create+delete replacement would orphan the receipt).
         await updateTxn.mutateAsync({
           id: transaction!.id,
-          date,
-          amount,
+          ...(isReconciled ? {} : { date, amount, cleared }),
           memo: memo || undefined,
-          cleared,
           approved: true,
           payee_id: selectedPayeeId || undefined,
         })
@@ -457,10 +457,9 @@ export function TransactionEditor({
 
     const payload = {
       account_id: accountId,
-      date,
-      amount,
+      // Locked money never leaves the editor for a reconciled row.
+      ...(isReconciled ? {} : { date, amount, cleared }),
       memo: memo || undefined,
-      cleared,
       approved: true,
       ...(isTransfer
         ? {
@@ -507,7 +506,8 @@ export function TransactionEditor({
       }
       await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
     } else {
-      await createTxn.mutateAsync({ ...payload, ai_job_id: aiJobId })
+      // A new row is never reconciled; restate the money so the type says so.
+      await createTxn.mutateAsync({ ...payload, date, amount, cleared, ai_job_id: aiJobId })
       if (!fixedAccountId) setLastPickedAccountId(accountId)
     }
     onClose()
@@ -803,6 +803,13 @@ export function TransactionEditor({
           )}
           <div className="txn-editor__body">
           {accountField}
+          {isReconciled && (
+            <div className="txn-editor__lock-note" role="note">
+              <Lock size={12} aria-hidden />
+              Reconciled — the amount, date and cleared state are locked. Everything else
+              can be changed here; unlock from the row menu to change those.
+            </div>
+          )}
           <div className="txn-editor__row">
             <div className="txn-editor__field">
               <label className="txn-editor__label">Date</label>
@@ -812,19 +819,26 @@ export function TransactionEditor({
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 required
+                disabled={isReconciled}
               />
             </div>
             <div className="txn-editor__field">
               <label className="txn-editor__label">Cleared</label>
-              <select
-                className="txn-editor__select"
-                value={cleared}
-                onChange={(e) => setCleared(e.target.value as typeof cleared)}
-              >
-                <option value="uncleared">Uncleared</option>
-                <option value="cleared">Cleared</option>
-                <option value="reconciled">Reconciled</option>
-              </select>
+              {isReconciled ? (
+                <div className="txn-editor__input txn-editor__locked" aria-label="Cleared: reconciled">
+                  <Lock size={12} aria-hidden />
+                  Reconciled
+                </div>
+              ) : (
+                <select
+                  className="txn-editor__select"
+                  value={cleared}
+                  onChange={(e) => setCleared(e.target.value as 'uncleared' | 'cleared')}
+                >
+                  <option value="uncleared">Uncleared</option>
+                  <option value="cleared">Cleared</option>
+                </select>
+              )}
             </div>
           </div>
 
@@ -863,6 +877,7 @@ export function TransactionEditor({
                 type="checkbox"
                 checked={isTransfer}
                 onChange={(e) => setIsTransfer(e.target.checked)}
+                disabled={isReconciled}
               />
               <span className="txn-editor__toggle-slider" />
             </label>
@@ -1074,8 +1089,14 @@ export function TransactionEditor({
                 value={outflow}
                 onValueChange={handleOutflowChange}
                 placeholder="0.00"
-                disabled={editingExistingSplit}
-                title={editingExistingSplit ? 'A split’s total is the sum of its lines' : undefined}
+                disabled={editingExistingSplit || isReconciled}
+                title={
+                  isReconciled
+                    ? 'Reconciled — the amount is locked'
+                    : editingExistingSplit
+                      ? 'A split’s total is the sum of its lines'
+                      : undefined
+                }
               />
             </div>
             <div className="txn-editor__field">
@@ -1085,8 +1106,14 @@ export function TransactionEditor({
                 value={inflow}
                 onValueChange={handleInflowChange}
                 placeholder="0.00"
-                disabled={editingExistingSplit}
-                title={editingExistingSplit ? 'A split’s total is the sum of its lines' : undefined}
+                disabled={editingExistingSplit || isReconciled}
+                title={
+                  isReconciled
+                    ? 'Reconciled — the amount is locked'
+                    : editingExistingSplit
+                      ? 'A split’s total is the sum of its lines'
+                      : undefined
+                }
               />
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Sparkles, Split, Trash2, ChevronRight } from 'lucide-react'
+import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Sparkles, Split, Trash2, ChevronRight, Pencil, Unlock } from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
 import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction } from '../../../api/transactions'
 import { confirmDeleteTransaction } from '../../../api/attachments'
@@ -59,6 +59,9 @@ const APPROVE_MENU_ITEMS: ContextMenuItem[] = [
 ]
 
 const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
+  // The full editor, for every row. A reconciled row's only route to a
+  // memo or category fix used to be a 12px lock glyph and an unreconcile.
+  { id: 'edit', label: 'Edit…', icon: Pencil },
   { id: 'split', label: 'Split Transaction…' },
   { id: 'duplicate', label: 'Duplicate', shortcut: formatCombo(SHORTCUTS.duplicate.combo) },
   {
@@ -69,6 +72,7 @@ const ROW_CONTEXT_ITEMS: ContextMenuItem[] = [
   { id: 'separator1', label: '', separator: true },
   { id: 'enter_now', label: 'Enter Now' },
   { id: 'approve', label: 'Approve' },
+  { id: 'unlock', label: 'Unlock (unreconcile)…', icon: Unlock },
   { id: 'separator2', label: '', separator: true },
   {
     id: 'delete',
@@ -236,7 +240,7 @@ export const TransactionRow = memo(function TransactionRow({
       onSelect(txn.id, false)
       return
     }
-    if (!isReconciled) onEdit(txn)
+    onEdit(txn)
   }
 
   const longPress = useLongPress(() => {
@@ -270,6 +274,12 @@ export const TransactionRow = memo(function TransactionRow({
 
   function handleContextAction(id: string) {
     switch (id) {
+      case 'edit':
+        onEdit(txn)
+        break
+      case 'unlock':
+        void handleUnreconcile()
+        break
       case 'split':
         onStartSplit(txn)
         break
@@ -339,6 +349,10 @@ export const TransactionRow = memo(function TransactionRow({
     if (item.id === 'split') return !isReconciled
     if (item.id === 'enter_now') return isPending
     if (item.id === 'approve') return !txn.approved
+    if (item.id === 'unlock') return isReconciled
+    // The server refuses to delete a reconciled row; offering it and then
+    // failing silently was worse than not offering it.
+    if (item.id === 'delete') return !isReconciled
     return true
   })
 
@@ -347,7 +361,7 @@ export const TransactionRow = memo(function TransactionRow({
       data-txn-id={txn.id}
       className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''} ${highlighted ? 'transaction-row--highlighted' : ''}`}
       role="row"
-      onDoubleClick={() => !isMobile && !isReconciled && onEdit(txn)}
+      onDoubleClick={() => !isMobile && onEdit(txn)}
       onContextMenu={handleContextMenu}
       {...(isMobile ? longPress : {})}
     >

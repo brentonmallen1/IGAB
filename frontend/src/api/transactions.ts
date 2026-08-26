@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { apiClient } from './client'
+import { apiClient, apiErrorMessage } from './client'
 import type {
   BudgetTransactionsResponse,
   BulkActionResult,
@@ -361,6 +361,10 @@ export function useDeleteTransaction(budgetId: string) {
       )
       return { accountId, batchId: data.batch_id }
     },
+    // The server refuses some deletes (a reconciled row, the far side of a
+    // reconciled transfer). Without this the confirm dialog closed and
+    // nothing happened.
+    onError: (err) => toast.error(apiErrorMessage(err, 'Could not delete')),
     onSuccess: ({ accountId }) => {
       qc.refetchQueries({ queryKey: ['transactions', accountId] })
       qc.invalidateQueries({ queryKey: ['all-transactions'] })
