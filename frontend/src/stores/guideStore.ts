@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
-import type { StageId } from '../content/roadmap'
+import type { StageId, ToolId } from '../content/roadmap'
 
 export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'glossary' | 'wishlist'
 
@@ -38,8 +38,11 @@ interface GuideState {
    *  for now; these move to the server with the bindings work so a shared
    *  household budget agrees across devices. */
   answers: Record<string, string>
+  /** Which calculator the Tools tab shows. Null means the tab's default. */
+  activeTool: ToolId | null
   setActiveTab: (tab: GuideTab) => void
   setRoadmapView: (view: RoadmapView) => void
+  setActiveTool: (tool: ToolId) => void
   toggleStage: (id: StageId) => void
   openStage: (id: StageId) => void
   toggleDetail: (nodeId: string) => void
@@ -57,9 +60,11 @@ export const useGuideStore = create<GuideState>()(
       expandedStages: ['foundation'],
       expandedDetails: [],
       answers: {},
+      activeTool: null,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       setRoadmapView: (view) => set({ roadmapView: view }),
+      setActiveTool: (tool) => set({ activeTool: tool }),
 
       toggleStage: (id) =>
         set((s) => ({
@@ -97,6 +102,7 @@ export const useGuideStore = create<GuideState>()(
         expandedStages: s.expandedStages,
         expandedDetails: s.expandedDetails,
         answers: s.answers,
+        activeTool: s.activeTool,
       }),
     }
   )

@@ -1,10 +1,13 @@
 import { useEffect } from 'react'
-import { useGuideStore, GUIDE_TABS } from '../../stores/guideStore'
+import { useSearchParams } from 'react-router-dom'
+import { useGuideStore, GUIDE_TABS, type GuideTab } from '../../stores/guideStore'
+import { TOOL_IDS, type ToolId } from '../../content/roadmap'
 import { useAppStore } from '../../stores/appStore'
 import { useGuideOverview } from '../../api/guide'
 import { RoadmapPanel } from '../../components/guide/RoadmapPanel'
 import { GlossaryPanel } from '../../components/guide/GlossaryPanel'
 import { CheckupPanel } from '../../components/guide/CheckupPanel'
+import { ToolsPanel } from '../../components/guide/tools/ToolsPanel'
 import { GuidePlaceholder } from '../../components/guide/GuidePlaceholder'
 import './GuidePage.css'
 
@@ -19,6 +22,7 @@ import './GuidePage.css'
 export function GuidePage() {
   const activeTab = useGuideStore((s) => s.activeTab)
   const setActiveTab = useGuideStore((s) => s.setActiveTab)
+  const setActiveTool = useGuideStore((s) => s.setActiveTool)
   const roadmapView = useGuideStore((s) => s.roadmapView)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: overview } = useGuideOverview(budgetId)
@@ -41,6 +45,19 @@ export function GuidePage() {
     if (!valid.has(activeTab)) setActiveTab('roadmap')
   }, [activeTab, setActiveTab, tabs])
 
+  // A roadmap node can point at a tab and a calculator
+  // (`/guide?tab=tools&tool=payoff-plan`). Read once, then the stored state
+  // takes over — the same shape ReportsPage uses for `?tab=`.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    const tool = searchParams.get('tool')
+    if (!tab && !tool) return
+    if (tab && GUIDE_TABS.some((t) => t.id === tab)) setActiveTab(tab as GuideTab)
+    if (tool && (TOOL_IDS as readonly string[]).includes(tool)) setActiveTool(tool as ToolId)
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setActiveTab, setActiveTool, setSearchParams])
+
   function renderTab() {
     switch (activeTab) {
       case 'roadmap':
@@ -50,20 +67,7 @@ export function GuidePage() {
       case 'checkup':
         return <CheckupPanel />
       case 'tools':
-        return (
-          <GuidePlaceholder title="Scenario tools">
-            <p>
-              Calculators for the questions the roadmap raises. Avalanche against snowball
-              with your real debts, including what happens when a cleared debt frees up its
-              payment. Whether to pay a debt down or save the money instead. Which of two
-              loans costs less. How large an emergency fund actually needs to be.
-            </p>
-            <p>
-              These will only ever show arithmetic that can be shown its working — no
-              projected market returns, no tax modelling, no advice.
-            </p>
-          </GuidePlaceholder>
-        )
+        return <ToolsPanel />
       case 'wishlist':
         return (
           <GuidePlaceholder title="Wishlist">

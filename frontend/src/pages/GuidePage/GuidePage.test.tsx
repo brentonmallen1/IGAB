@@ -18,11 +18,11 @@ function prefs(preferences: GuidePreferences) {
   } as never)
 }
 
-function renderPage() {
+function renderPage(path = '/guide') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>
         <GuidePage />
       </MemoryRouter>
     </QueryClientProvider>
@@ -31,7 +31,7 @@ function renderPage() {
 
 beforeEach(() => {
   useAppStore.setState({ currentBudgetId: 'b1' })
-  useGuideStore.setState({ activeTab: 'roadmap' })
+  useGuideStore.setState({ activeTab: 'roadmap', activeTool: null })
 })
 
 describe('GuidePage', () => {
@@ -45,6 +45,21 @@ describe('GuidePage', () => {
     prefs({ personalization: true, checkup: false })
     renderPage()
     expect(screen.queryByRole('button', { name: 'Checkup' })).not.toBeInTheDocument()
+  })
+
+  it('a roadmap link opens the Tools tab on the named calculator', () => {
+    prefs({ personalization: true, checkup: true })
+    renderPage('/guide?tab=tools&tool=payoff-plan')
+    expect(useGuideStore.getState().activeTab).toBe('tools')
+    expect(useGuideStore.getState().activeTool).toBe('payoff-plan')
+    expect(screen.getByRole('heading', { name: 'Scenario tools' })).toBeInTheDocument()
+  })
+
+  it('ignores a tool it does not know', () => {
+    prefs({ personalization: true, checkup: true })
+    renderPage('/guide?tab=tools&tool=crystal-ball')
+    expect(useGuideStore.getState().activeTab).toBe('tools')
+    expect(useGuideStore.getState().activeTool).toBeNull()
   })
 
   it('falls back to the roadmap when the persisted tab is switched off', () => {

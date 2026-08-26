@@ -19,6 +19,7 @@ from igab.guide.bindings import Resolution, resolve_all
 from igab.guide.concepts import (
     CONCEPTS,
     CONCEPTS_BY_KEY,
+    FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
     HIGH_INTEREST_APR,
     RETIREMENT_TARGET_RATE,
@@ -32,7 +33,19 @@ from igab.guide.detection import (
 )
 from igab.guide.findings import CheckupInputs, evaluate, metrics
 from igab.guide.repo import GuideRepository
+from igab.guide.scenarios import (
+    EmergencyFundPlan,
+    LoanCandidate,
+    LoanComparison,
+    PayoffPlan,
+    PayVsSave,
+    emergency_fund,
+    loan_compare,
+    pay_vs_save,
+    payoff_plan,
+)
 from igab.repositories.target_repo import TargetRepository
+from igab.services.amortization import CascadeDebt
 from igab.services.budget_service import BudgetService
 from igab.services.liability_service import LiabilityService
 from igab.services.report_service import ReportService
@@ -339,6 +352,51 @@ class GuideService:
             "findings": [asdict(f) for f in evaluate(inputs)],
         }
 
+    # ── scenario calculators ─────────────────────────────────────────────────
+    #
+    # Three are pure and pass straight through; the router still comes here
+    # so it keeps talking to one object. The fourth reads the roadmap's own
+    # figures, which is the point of it.
+
+    @staticmethod
+    def payoff_plan(debts: list[CascadeDebt], extra: Decimal, as_of: date) -> PayoffPlan:
+        return payoff_plan(debts, extra, as_of)
+
+    @staticmethod
+    def pay_vs_save(
+        balance: Decimal,
+        annual_rate: Decimal,
+        minimum_payment: Decimal,
+        extra: Decimal,
+        savings_apy: Decimal,
+        as_of: date,
+    ) -> PayVsSave:
+        return pay_vs_save(balance, annual_rate, minimum_payment, extra, savings_apy, as_of)
+
+    @staticmethod
+    def loan_compare(loans: list[LoanCandidate], as_of: date) -> LoanComparison:
+        return loan_compare(loans, as_of)
+
+    async def emergency_fund_plan(
+        self, budget_id: uuid.UUID, months: int, monthly_contribution: Decimal
+    ) -> EmergencyFundPlan:
+        """Size an emergency fund from the signals the roadmap already shows.
+
+        The essentials figure and the emergency-fund figure are the ones on
+        the roadmap — including any amount the user declared they hold
+        elsewhere, which counts here as it does there and, as everywhere in
+        the Guide, nowhere else.
+        """
+        signals = await self.signals(budget_id)
+        by_key = {c["key"]: c for c in signals["concepts"]}
+        return emergency_fund(
+            current=by_key.get("emergency_fund", {}).get("value"),
+            essentials_monthly=by_key.get("essential_expenses", {}).get("value"),
+            months=months,
+            monthly_contribution=monthly_contribution,
+            today=date.today(),
+        )
+
     # ── candidates for the binding picker ────────────────────────────────────
 
     async def candidates(self, budget_id: uuid.UUID, concept_key: str) -> dict[str, list[dict]]:
@@ -451,4 +509,5 @@ class GuideService:
             "retirement_target_rate": RETIREMENT_TARGET_RATE,
             "starter_emergency_fund": STARTER_EMERGENCY_FUND,
             "emergency_fund_months": FULL_EMERGENCY_FUND_MONTHS_LOW,
+            "emergency_fund_months_high": FULL_EMERGENCY_FUND_MONTHS_HIGH,
         }
