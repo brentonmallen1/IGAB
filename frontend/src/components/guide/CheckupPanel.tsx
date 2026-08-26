@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { useGuideStore } from '../../stores/guideStore'
 import { useGuideCheckup, useGuideOverview, useRunHealthReport } from '../../api/guide'
-import type { CheckupMetric } from '../../api/guide'
+import type { CheckupFinding } from '../../api/guide'
+import type { StageId } from '../../content/roadmap'
 import { useFormatters } from '../../hooks/useFormatters'
-import { MetricCard } from '../reports/MetricCard'
 import { Surface } from '../common/Surface'
+import { CheckupBlock } from './CheckupBlock'
 import { HealthReportDialog } from './HealthReportDialog'
 
 /**
@@ -25,7 +27,16 @@ export function CheckupPanel() {
   const { data, isLoading } = useGuideCheckup(budgetId, enabled)
   const run = useRunHealthReport(budgetId ?? '')
   const [reportOpen, setReportOpen] = useState(false)
-  const { formatMoney, formatDateTime } = useFormatters()
+  const { formatDateTime } = useFormatters()
+  const setActiveTab = useGuideStore((s) => s.setActiveTab)
+  const setRoadmapView = useGuideStore((s) => s.setRoadmapView)
+  const openStage = useGuideStore((s) => s.openStage)
+
+  function goToStage(stage: StageId) {
+    setActiveTab('roadmap')
+    setRoadmapView('journey')
+    openStage(stage)
+  }
 
   if (prefs && !enabled) {
     return (
@@ -40,26 +51,9 @@ export function CheckupPanel() {
     )
   }
 
-  const fired = new Set((data?.findings ?? []).map((f) => f.kind))
-
-  function display(m: CheckupMetric): { value: string; target: string | null } {
-    const fmt = (raw: string | null): string | null => {
-      if (raw === null) return null
-      const n = Number(raw)
-      if (Number.isNaN(n)) return null
-      switch (m.unit) {
-        case 'money':
-          return formatMoney(n)
-        case 'months':
-          return `${n.toFixed(1)} mo`
-        case 'percent':
-          return `${n.toFixed(1)}%`
-        case 'count':
-          return String(Math.round(n))
-      }
-    }
-    return { value: fmt(m.value) ?? '—', target: fmt(m.target) }
-  }
+  // The most severe fired finding per kind; findings arrive ranked.
+  const firedByKind = new Map<string, CheckupFinding>()
+  for (const f of data?.findings ?? []) if (!firedByKind.has(f.kind)) firedByKind.set(f.kind, f)
 
   function runReport() {
     run.mutate(undefined, { onSuccess: () => setReportOpen(true) })
@@ -93,34 +87,16 @@ export function CheckupPanel() {
       </header>
 
       {data && (
-        <Surface as="div" className="guide-checkup__card guide-checkup__grid">
-          {data.metrics.map((m) => {
-            const { value, target } = display(m)
-            const warn = m.finding_kinds.some((k) => fired.has(k))
-            return (
-              <MetricCard
-                key={m.key}
-                label={m.label}
-                value={value}
-                warning={warn}
-                sub={
-                  <span className="guide-checkup__sub">
-                    {target !== null && (
-                      <span className="guide-checkup__target">
-                        {m.key === 'categories_funded' ? `of ${target} with targets` : `target ${target}`}
-                      </span>
-                    )}
-                    {m.detail && <span className="guide-checkup__detail">{m.detail}</span>}
-                    {m.report && (
-                      <Link to={`/reports?tab=${m.report}`} className="guide-checkup__report">
-                        See the report
-                      </Link>
-                    )}
-                  </span>
-                }
-              />
-            )
-          })}
+        <Surface as="div" className="guide-checkup__card">
+          {data.metrics.map((m) => (
+            <CheckupBlock
+              key={m.key}
+              metric={m}
+              finding={m.finding_kinds.map((k) => firedByKind.get(k)).find(Boolean)}
+              thresholds={overview?.thresholds ?? {}}
+              onGoToStage={goToStage}
+            />
+          ))}
         </Surface>
       )}
 

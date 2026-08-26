@@ -1554,27 +1554,147 @@
 
 .guide-checkup__error { color: var(--color-negative); }
 
-/* The metrics sit in one raised card as sunken wells — a report section's
-   shape — rather than as tiles loose on the canvas, where a well is the
-   canvas colour and nothing reads as a section. */
-.guide-checkup__card { padding: var(--spacing-lg); }
-
-.guide-checkup__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+/* The metrics sit in one raised card as a column of blocks — each a sunken
+   well with the figure on the left and what it helps you decide on the
+   right — rather than tiles in a grid, which said a number and nothing else. */
+.guide-checkup__card {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
   gap: var(--spacing-md);
 }
 
-.guide-checkup__sub {
+.checkup-block {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+}
+
+.checkup-block--warn {
+  border-color: color-mix(in srgb, var(--color-warning) 55%, var(--edge));
+  background: color-mix(in srgb, var(--color-warning) 6%, var(--surface-sunken));
+}
+
+.checkup-block__main,
+.checkup-block__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.checkup-block__head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.checkup-block__label {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.checkup-block__status {
+  margin-left: auto;
+  font-size: var(--font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.checkup-block__status--warn { color: var(--color-warning); }
+.checkup-block__status--good { color: var(--color-positive); }
+.checkup-block__status--neutral,
+.checkup-block__status--unknown { color: var(--text-muted); }
+
+.checkup-block__figure {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.checkup-block__value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.checkup-block__target {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.checkup-block__bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--edge);
+  overflow: hidden;
+  margin: 2px 0;
+}
+
+.checkup-block__bar-fill { height: 100%; background: var(--color-accent); }
+.checkup-block--warn .checkup-block__bar-fill { background: var(--color-warning); }
+
+.checkup-block__finding {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-warning);
+  line-height: 1.4;
+}
+
+.checkup-block__detail {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.checkup-block__side-label {
+  margin: 0;
+  font-size: var(--font-size-2xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.checkup-block__decide {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.guide-checkup__target { color: var(--text-secondary); }
-.guide-checkup__detail { line-height: 1.4; }
-.guide-checkup__report { color: var(--color-accent); font-size: var(--font-size-xs); }
-.guide-checkup__report:hover { text-decoration: underline; }
+.checkup-block__actions {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-xs);
+}
+
+.checkup-block__actions .guide-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  text-decoration: none;
+}
+
+@media (max-width: 720px) {
+  .checkup-block { grid-template-columns: 1fr; gap: var(--spacing-md); }
+}
 
 .guide-checkup__note {
   margin: 0;

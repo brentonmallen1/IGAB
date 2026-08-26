@@ -167,7 +167,8 @@ export const ROADMAP_STEPS: { step: number; label: string }[] = [
  *  "At this point you have some options" (S6) -> your-call
  *  Retire early?                         (S6) -> retire-early
  *  More immediate goals?                 (S6) -> immediate-goals
- *  Note on entertainment expenses             -> DISCRETIONARY_NOTE
+ *  Note on entertainment expenses             -> the Wishlist's note on spending for fun
+ *                                                (components/guide/wishlist/wishlistCopy.ts)
  *  Disclaimer                                 -> ROADMAP_DISCLAIMER
  *
  * ── Deliberate deviations ───────────────────────────────────────────────────
@@ -609,9 +610,6 @@ export const ROADMAP: RoadmapStage[] = [
 ]
 
 /** A standing note from the source chart, shown once beneath the roadmap. */
-export const DISCRETIONARY_NOTE =
-  'Discretionary spending is not a moral failing, and this roadmap is not an argument for having no fun. But while high-interest debt is outstanding — and arguably while moderate-interest debt is too — money spent on wants is money borrowed at that rate, which is the honest way to think about the tradeoff.'
-
 export const ROADMAP_ATTRIBUTION = {
   text: 'Adapted from the r/personalfinance Personal Income Spending Flowchart.',
   href: 'https://www.reddit.com/r/personalfinance/wiki/commontopics/',

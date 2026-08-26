@@ -62,3 +62,17 @@ export function projectLine(p: WishlistProject, fmt: Fmt): string {
   else if (s.state === 'unlinked') parts.push('no envelope yet')
   return parts.join(' · ')
 }
+
+/**
+ * The note on spending for fun. It began as the source flowchart's aside on
+ * entertainment expenses and lived on the roadmap; it belongs here, where
+ * wants are actually kept, and speaks about them rather than about the roadmap.
+ */
+export const FUN_NOTE = {
+  title: 'A note on spending for fun',
+  paragraphs: [
+    'Discretionary spending is not a moral failing, and a wishlist is not an argument for having no fun. Money you plan to enjoy is doing its job as much as money you save.',
+    'The one honest caveat: while high-interest debt is outstanding — and arguably while moderate-interest debt is too — money spent on wants is money borrowed at that rate. That is the whole tradeoff, and it is yours to make.',
+    'This list exists to make the tradeoff visible, not to win it. A want that sits through its cooling-off period, with an envelope filling for it, and is still wanted was never an impulse.',
+  ],
+}

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Settings2 } from 'lucide-react'
+import { Heart, Plus, Settings2 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useGuideStore, type WishlistSort } from '../../../stores/guideStore'
 import { useGuideOverview } from '../../../api/guide'
@@ -23,7 +23,8 @@ import { ProjectForm } from './ProjectForm'
 import { WishlistProjectSection } from './WishlistProjectSection'
 import { ReviewDialog } from './ReviewDialog'
 import { DeleteWishDialog } from './DeleteWishDialog'
-import { impactLabel, stillWantedLine } from './wishlistCopy'
+import { GuideDialog } from '../GuideDialog'
+import { FUN_NOTE, impactLabel, stillWantedLine } from './wishlistCopy'
 import { filterWishes, groupByProject, sortWishes, splitHero, splitProjects } from './wishlistView'
 import './Wishlist.css'
 
@@ -59,6 +60,7 @@ export function WishlistPanel() {
   const [editingProject, setEditingProject] = useState<WishlistProject | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pendingEnvelope, setPendingEnvelope] = useState<{
     wishName: string
@@ -146,7 +148,18 @@ export function WishlistPanel() {
     <section className="guide-wishlist">
       <header className="guide-wishlist__head">
         <div>
-          <h2 className="guide-wishlist__title">Wishlist</h2>
+          <h2 className="guide-wishlist__title">
+            Wishlist
+            <button
+              type="button"
+              className="guide-icon-button guide-wishlist__note"
+              onClick={() => setNoteOpen(true)}
+              aria-label={FUN_NOTE.title}
+              title={FUN_NOTE.title}
+            >
+              <Heart size={14} />
+            </button>
+          </h2>
           <p className="guide-wishlist__lede">
             Not a shopping list — the counterweight to one. Park a want, give it an envelope, and
             let time and funding decide whether it still matters.
@@ -367,6 +380,15 @@ export function WishlistPanel() {
           reviewDays={data.settings.review_after_days}
           onClose={() => setReviewOpen(false)}
         />
+      )}
+      {noteOpen && (
+        <GuideDialog title={FUN_NOTE.title} onClose={() => setNoteOpen(false)} historyKey="wishlist-fun">
+          {FUN_NOTE.paragraphs.map((text, i) => (
+            <p key={i} className={`guide-dialog__body ${i === FUN_NOTE.paragraphs.length - 1 ? 'guide-dialog__body--muted' : ''}`}>
+              {text}
+            </p>
+          ))}
+        </GuideDialog>
       )}
       {pendingEnvelope && (
         <DeleteWishDialog

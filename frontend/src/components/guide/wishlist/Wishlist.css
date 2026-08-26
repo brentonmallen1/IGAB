@@ -22,7 +22,12 @@
   font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
+
+.guide-wishlist__note { color: var(--text-muted); }
 
 .guide-wishlist__lede {
   margin: 0;
