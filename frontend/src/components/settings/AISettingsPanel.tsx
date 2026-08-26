@@ -6,6 +6,7 @@ import { useSettings, useUpdateSetting } from '../../api/settings'
 import { AIAdvancedSettings } from './AIAdvancedSettings'
 import { AIPromptSettings } from './AIPromptSettings'
 import './AISettingsPanel.css'
+import { Surface } from '../common/Surface'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(0)} MB`
@@ -114,21 +115,27 @@ export function AISettingsPanel() {
   )
 
   return (
-    <div className="settings-section" id="ai">
-      <div className="settings-section__header">
-        <div className="settings-section__title">
-          <Zap size={16} />
-          AI (Ollama)
-        </div>
-        {statusIcon}
-      </div>
+    <Surface
+      as="section"
+      className="settings-section"
+      id="ai"
+      header={
+        <>
+          <span className="section-label surface__title settings-section__title--icon">
+            <Zap size={16} />
+            AI (Ollama)
+          </span>
+          {statusIcon}
+        </>
+      }
+    >
       <div className="settings-section__body">
         {/* Enable toggle */}
         <div className="settings-row">
           <div>
             <div className="settings-row__label">Enable AI features</div>
             <div className="settings-row__desc">
-              Receipt scanning, category suggestions, payee normalization
+              Receipt scanning, category suggestions, natural-language entry
             </div>
           </div>
           <label className="ai-panel__toggle">
@@ -224,7 +231,7 @@ export function AISettingsPanel() {
             </div>
 
             {models && models.length > 0 && (
-              <div className="ai-panel__models">
+              <div className="ai-panel__models surface surface--sunken scroll-list">
                 {models.map((m) => (
                   <button
                     key={m.name}
@@ -287,6 +294,6 @@ export function AISettingsPanel() {
           </>
         )}
       </div>
-    </div>
+    </Surface>
   )
 }

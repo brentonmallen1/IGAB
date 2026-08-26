@@ -8,8 +8,6 @@
 /* ─── Navigation ─────────────────────────────────────────────────────────── */
 
 .reports-nav {
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
   padding: var(--spacing-sm) var(--spacing-lg);
 }
@@ -70,7 +68,7 @@
   padding: var(--spacing-xs);
   margin: 0;
   list-style: none;
-  background: var(--bg-primary);
+  background: var(--surface-overlay);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
@@ -161,9 +159,6 @@
 /* ─── Shared report section card ─────────────────────────────────────────── */
 
 .report-section {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
   padding: var(--spacing-lg);
   display: flex;
   flex-direction: column;

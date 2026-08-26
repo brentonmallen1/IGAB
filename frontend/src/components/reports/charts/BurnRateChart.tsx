@@ -37,7 +37,7 @@ export function BurnRateReport({ budgetId }: Props) {
   }))
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Rolling Burn Rate</h2>
         <ReportInfoButton title="Rolling Burn Rate">

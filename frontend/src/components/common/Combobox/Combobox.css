@@ -6,7 +6,7 @@
 .combobox__trigger {
   display: flex;
   align-items: center;
-  background-color: var(--bg-input);
+  background-color: var(--input-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   overflow: hidden;

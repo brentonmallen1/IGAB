@@ -87,15 +87,14 @@
   color: var(--text-muted);
 }
 
+/* A sunken well; each model is a raised option sitting on it. */
 .ai-panel__models {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-top: var(--spacing-sm);
-  max-height: 300px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 2px;
+  padding: var(--spacing-sm);
+  --scroll-list-max: 300px;
 }
 
 .ai-panel__model {
@@ -103,8 +102,8 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
   text-align: left;
   cursor: pointer;

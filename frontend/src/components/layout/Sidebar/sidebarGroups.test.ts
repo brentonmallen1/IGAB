@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Account } from '../../../types'
 import {
-  assetsTotal,
+  accountsTotal,
   buildLiabilityRows,
+  groupLabel,
+  groupedAccountsTotal,
   liabilityHeaderTotal,
   orderedOnBudgetKeys,
   partitionAccounts,
@@ -158,13 +160,91 @@ describe('buildLiabilityRows', () => {
   })
 })
 
-describe('assetsTotal', () => {
+describe('accountsTotal', () => {
   it('sums off-budget asset balances', () => {
     const p = partitionAccounts([
       acct({ on_budget: false, classification: 'asset', balance: 12_000 }),
       acct({ on_budget: false, classification: 'asset', balance: 500.5 }),
     ])
-    expect(assetsTotal(p.offBudgetAssets)).toBeCloseTo(12_500.5)
+    expect(accountsTotal(p.offBudgetAssets)).toBeCloseTo(12_500.5)
+  })
+
+  it('sums a negative balance as owed, not as nothing', () => {
+    expect(accountsTotal([acct({ balance: 100 }), acct({ balance: -250 })])).toBe(-150)
+  })
+
+  it('is zero for an empty group rather than NaN', () => {
+    expect(accountsTotal([])).toBe(0)
+  })
+})
+
+describe('groupedAccountsTotal', () => {
+  // The Budget Accounts header must equal the sum of the type subtotals drawn
+  // beneath it, collapsed or not — the header used to be computed from a
+  // separate filter over `accounts`, so any divergence between that filter and
+  // the partition would have shown as a header that did not add up.
+  it('equals the sum of the per-type subtotals it renders', () => {
+    const { onBudgetByType } = partitionAccounts([
+      acct({ account_type: 'checking', balance: 1200 }),
+      acct({ account_type: 'checking', balance: 340.25 }),
+      acct({ account_type: 'savings', balance: 8000 }),
+      acct({ account_type: 'credit_card', balance: -450.5 }),
+      acct({ on_budget: false, classification: 'asset', balance: 99_999 }),
+    ])
+    const perType = [...onBudgetByType.values()].map(accountsTotal)
+    expect(groupedAccountsTotal(onBudgetByType)).toBeCloseTo(
+      perType.reduce((a, b) => a + b, 0)
+    )
+    expect(groupedAccountsTotal(onBudgetByType)).toBeCloseTo(9089.75)
+  })
+
+  it('is zero with no on-budget accounts', () => {
+    expect(groupedAccountsTotal(new Map())).toBe(0)
+  })
+})
+
+describe('groupLabel', () => {
+  // Each of these was a hand-written case in the sidebar's own switch. They
+  // are asserted by name because that switch was a second copy of the built-in
+  // wording: renaming a type in the registry left the header on the old name.
+  it('pluralizes countable built-in type labels', () => {
+    expect(groupLabel('credit_card')).toBe('Credit Cards')
+    expect(groupLabel('mortgage')).toBe('Mortgages')
+    expect(groupLabel('auto_loan')).toBe('Auto Loans')
+    expect(groupLabel('student_loan')).toBe('Student Loans')
+    expect(groupLabel('loan')).toBe('Loans')
+    expect(groupLabel('investment')).toBe('Investments')
+    expect(groupLabel('other_asset')).toBe('Other Assets')
+    expect(groupLabel('other_liability')).toBe('Other Liabilities')
+  })
+
+  it('leaves labels that already name a set alone', () => {
+    expect(groupLabel('checking')).toBe('Checking')
+    expect(groupLabel('cash')).toBe('Cash')
+    expect(groupLabel('savings')).toBe('Savings')
+    expect(groupLabel('tracking')).toBe('Tracking')
+  })
+
+  it('takes the wording from the registry, so a renamed type renames its header', () => {
+    expect(groupLabel('credit_card', [{ key: 'credit_card', label: 'Charge Card' }])).toBe(
+      'Charge Cards'
+    )
+  })
+
+  it('pluralizes a consonant + y as -ies', () => {
+    expect(groupLabel('other_liability')).toBe('Other Liabilities')
+    expect(groupLabel('annuity', [{ key: 'annuity', label: 'Annuity' }])).toBe('Annuities')
+    // vowel + y is a plain -s: "Moneies" is not a word
+    expect(groupLabel('play_money', [{ key: 'play_money', label: 'Play Money' }])).toBe(
+      'Play Moneys'
+    )
+  })
+
+  it('pluralizes a custom type, and does not double an s', () => {
+    expect(groupLabel('crypto_wallet', [{ key: 'crypto_wallet', label: 'Crypto Wallet' }])).toBe(
+      'Crypto Wallets'
+    )
+    expect(groupLabel('premises', [{ key: 'premises', label: 'Premises' }])).toBe('Premises')
   })
 })
 

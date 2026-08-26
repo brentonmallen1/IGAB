@@ -4,6 +4,7 @@ import { useCoverOverspentPreview, useCoverOverspentApply } from '../../../api/b
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './CoverOverspentModal.css'
+import { useToastUndo } from '../../../utils/toastUndo'
 
 interface Props {
   budgetId: string
@@ -15,6 +16,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
   const { formatMoney } = useFormatters()
   const { data: preview, isLoading, refetch } = useCoverOverspentPreview(budgetId, month, true)
   const apply = useCoverOverspentApply(budgetId)
+  const showUndo = useToastUndo(budgetId)
   const [error, setError] = useState<string | null>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
@@ -24,13 +26,17 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
     if (!preview) return
     setError(null)
     try {
-      await apply.mutateAsync({
+      const result = await apply.mutateAsync({
         month,
         items: preview.items.map((i) => ({
           category_id: i.category_id,
           proposed_addition: i.proposed_addition,
         })),
       })
+      showUndo(
+        result.batch_id,
+        `Covered ${formatMoney(Number(preview.total_addition))} of overspending across ${preview.items.length} ${preview.items.length === 1 ? 'category' : 'categories'}`
+      )
       onClose()
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail

@@ -291,7 +291,7 @@
 
 /* Overspent category */
 .category-row--overspent {
-  border-left: 2px solid var(--color-negative);
+  border-left: 1px solid var(--color-negative);
 }
 
 .category-row--overspent .category-row__available {
@@ -553,7 +553,7 @@
 
 .category-row__available--clickable {
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
 }
 
 .category-row__available--clickable:hover {

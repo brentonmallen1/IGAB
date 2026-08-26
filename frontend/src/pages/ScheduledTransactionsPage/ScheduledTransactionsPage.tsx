@@ -45,7 +45,7 @@ export function ScheduledTransactionsPage() {
   }
 
   return (
-    <div className="sched-page">
+    <div className="sched-page page-fill">
       <div className="sched-header">
         <h1 className="sched-title">Scheduled Transactions</h1>
         <button className="sched-btn sched-btn--primary" onClick={() => setEditing('new')}>
@@ -64,7 +64,7 @@ export function ScheduledTransactionsPage() {
       {scheduled.length === 0 ? (
         <div className="sched-empty">No scheduled transactions. Create one to auto-post recurring bills.</div>
       ) : (
-        <div className="sched-table">
+        <div className="sched-table surface scroll-fill">
           <div className="sched-table__head">
             <span>Account</span>
             <span>Payee</span>

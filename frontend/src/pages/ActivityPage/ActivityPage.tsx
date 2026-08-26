@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useFormatters } from '../../hooks/useFormatters'
 import toast from 'react-hot-toast'
 import { groupChanges } from './groupChanges'
+import { actionTypeLabel, entityTypeLabel } from './changeLabels'
 import './ActivityPage.css'
 
 const PAGE_SIZE = 50
@@ -45,7 +46,7 @@ export function ActivityPage() {
   }
 
   return (
-    <div className="activity-page">
+    <div className="activity-page page-fill">
       <div className="activity-page__header">
         <h1 className="activity-page__title">Activity</h1>
         <span className="activity-page__count">{total} changes</span>
@@ -58,7 +59,7 @@ export function ActivityPage() {
         <p className="activity-page__empty">No changes recorded yet.</p>
       )}
 
-      <div className="activity-list">
+      <div className="activity-list surface scroll-fill">
         {grouped.map((group, i) => (
           <div key={group.batchId ?? `single-${i}`} className="activity-group">
             {group.changes.length > 1 && (
@@ -179,42 +180,6 @@ function actionIcon(action: string) {
       return <GitMerge size={14} />
     default:
       return <RefreshCw size={14} />
-  }
-}
-
-function entityTypeLabel(entityType: string): string {
-  switch (entityType) {
-    case 'transaction':
-      return 'transaction'
-    case 'payee':
-      return 'payee'
-    case 'category':
-      return 'category'
-    case 'category_group':
-      return 'category group'
-    case 'assignment':
-      return 'assignment'
-    default:
-      return entityType
-  }
-}
-
-function actionTypeLabel(action: string): string {
-  switch (action) {
-    case 'create':
-      return 'Created'
-    case 'update':
-      return 'Updated'
-    case 'delete':
-      return 'Deleted'
-    case 'approve':
-      return 'Approved'
-    case 'import':
-      return 'Imported'
-    case 'merge':
-      return 'Merged'
-    default:
-      return action
   }
 }
 

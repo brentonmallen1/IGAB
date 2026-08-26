@@ -214,3 +214,10 @@
   margin-left: var(--spacing-sm);
   color: var(--color-warning);
 }
+
+/* The AI section title carries an icon; the surface title is otherwise text-only */
+.settings-section__title--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}

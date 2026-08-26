@@ -141,7 +141,7 @@
 .users-panel__dialog {
   width: 400px;
   max-width: 100%;
-  background: var(--bg-primary);
+  background: var(--surface-overlay);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: var(--spacing-lg);

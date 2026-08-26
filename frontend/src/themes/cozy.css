@@ -1,27 +1,27 @@
 /* Cozy Dark — warm lamp-light, coffee shop at night */
 [data-theme="cozy-dark"] {
   --bg-primary: #1c1816;
-  --bg-secondary: #252220;
-  --bg-tertiary: #2e2a28;
-  --bg-elevated: #383432;
+  --bg-secondary: #332c28;
+  --bg-tertiary: #332c28;
+  --bg-elevated: #413833;
   --bg-hover: #2e2a28;
 
   --text-primary: #e8dcd0;
   --text-secondary: #c0b0a0;
-  --text-muted: #b2a190;
+  --text-muted: #b4a493;
   --text-inverse: #1c1816;
 
   --color-accent: #d4a574;
   --color-accent-hover: #e0b888;
   --accent-color: var(--color-accent);
-  --color-positive: #8fac7a;
-  --color-negative: #e68b7a;
+  --color-positive: #95b080;
+  --color-negative: #e78f7e;
   --color-warning: #d4a574;
-  --color-info: #85a8c4;
+  --color-info: #88aac6;
 
-  --border-color: #383432;
-  --border-subtle: #252220;
-  --input-bg: #252220;
+  --border-color: #4f4945;
+  --border-subtle: #4c4540;
+  --input-bg: #1c1816;
   --input-border: #746c63;
   --input-focus-ring: #d4a574;
 
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #161412;
   --header-bg: #161412;
-  --card-bg: #252220;
-  --card-border: #383432;
 
   --sidebar-text-primary: #e8dcd0;
   --sidebar-text-secondary: #c0b0a0;
@@ -58,23 +56,14 @@
   --chart-6: #7ab8a8;
   --chart-7: #c87060;
   --chart-8: #d8c080;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Cozy Light — warm cafe, natural light */
 [data-theme="cozy-light"] {
-  --bg-primary: #f8f4f0;
+  --bg-primary: #f2ebe3;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f0ebe5;
+  --bg-tertiary: #f2ebe3;
   --bg-elevated: #ffffff;
   --bg-hover: #f4efe8;
 
@@ -91,8 +80,8 @@
   --color-warning: #7d5730;
   --color-info: #426281;
 
-  --border-color: #e0d8d0;
-  --border-subtle: #f0ebe5;
+  --border-color: #c4bcb6;
+  --border-subtle: #e3e2e2;
   --input-bg: #ffffff;
   --input-border: #9a928b;
   --input-focus-ring: #7d5730;
@@ -106,8 +95,6 @@
 
   --sidebar-bg: #1c1816;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #e0d8d0;
 
   --sidebar-text-primary: #e8dcd0;
   --sidebar-text-secondary: #c0b0a0;
@@ -130,14 +117,5 @@
   --chart-6: #408878;
   --chart-7: #a85040;
   --chart-8: #908040;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

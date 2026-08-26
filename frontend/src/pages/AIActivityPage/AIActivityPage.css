@@ -1,4 +1,5 @@
 .ai-activity {
+  width: 100%;
   max-width: 860px;
   margin: 0 auto;
   padding: var(--spacing-lg);
@@ -50,7 +51,7 @@
   align-items: flex-start;
   gap: var(--spacing-md);
   padding: var(--spacing-md);
-  background: var(--card-bg);
+  background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--border-radius-md);
 }

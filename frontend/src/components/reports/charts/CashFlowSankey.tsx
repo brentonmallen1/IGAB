@@ -207,7 +207,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
 
   if (!sankeyData.nodes.length) {
     return (
-      <div className="report-section">
+      <div className="report-section surface">
         <h2 className="report-section__title">Cash Flow</h2>
         <div className="reports-empty">No transaction data for this period.</div>
       </div>
@@ -277,7 +277,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
   }
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Cash Flow</h2>
         <ReportInfoButton title="Cash Flow Sankey">

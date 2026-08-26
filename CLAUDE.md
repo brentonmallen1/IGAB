@@ -231,6 +231,18 @@ Used when the user has selected multiple items and bulk actions are available. F
 - **Divider**: `rgba(0, 0, 0, 0.2)` — subtle on the accent background
 - **Close button**: opacity 0.7, full opacity on hover
 
+### Surfaces
+One vocabulary for "what a section looks like", defined once in
+`src/themes/base.css` (roles and the `.surface` rules) with `components/common/Surface` as the React wiring:
+`--surface-canvas` (page), `--surface-raised` (cards, sections), `--surface-sunken`
+(wells inside a card — scroll boxes, table bodies), `--surface-chrome` (toolbars,
+filter bars, sticky headers), `--surface-overlay` (modals, popovers), with `--edge`
+(hairline) and `--edge-strong`. Page-level containers use `<Surface>` or the
+`surface` class; they do not paint `--bg-*` themselves. Themes author the
+four-grey ladder; `contrast.test.ts` holds every theme to the picked contract
+(raised one 8-pt lightness step above the canvas, hairlines visible on it) and
+`scripts/retune-surfaces.mjs` regenerates a theme's ladder to meet it.
+
 ### Design Principles
 1. **Meaning over decoration** — every visual element earns its place by carrying information or guiding attention
 2. **Calm by default** — restrained palette, color reserved for genuine state changes (overspent, funded, warning)

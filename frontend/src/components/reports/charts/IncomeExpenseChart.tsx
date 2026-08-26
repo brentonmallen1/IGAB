@@ -67,7 +67,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   }))
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Income vs Expenses</h2>
         <ReportInfoButton title="Income vs Expenses">

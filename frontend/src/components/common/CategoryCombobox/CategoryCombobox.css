@@ -7,7 +7,7 @@
   padding: 6px var(--spacing-sm);
   font-size: var(--font-size-sm);
   color: var(--text-primary);
-  background-color: var(--bg-input);
+  background-color: var(--input-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   text-align: left;

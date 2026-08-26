@@ -60,7 +60,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
   const hasData = subscriptions.length > 0
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Subscriptions</h2>
         <ReportInfoButton title="Subscriptions">

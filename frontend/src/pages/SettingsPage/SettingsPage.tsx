@@ -35,6 +35,7 @@ import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import './SettingsPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
+import { Surface } from '../../components/common/Surface'
 
 const NUMBER_FORMATS: { value: NumberFormat; label: string; example: string }[] = [
   { value: 'comma_dot', label: 'US/UK', example: '1,234.56' },
@@ -229,10 +230,7 @@ export function SettingsPage() {
       {/* Scrollable content */}
       <div className="settings-content">
       {/* Appearance */}
-      <div className="settings-section" id="appearance">
-        <div className="settings-section__header">
-          <div className="settings-section__title">Appearance</div>
-        </div>
+      <Surface as="section" className="settings-section" id="appearance" title="Appearance">
         <div className="settings-section__body">
           <div className="settings-row">
             <div>
@@ -269,13 +267,10 @@ export function SettingsPage() {
             </select>
           </div>
         </div>
-      </div>
+      </Surface>
 
       {/* Budget */}
-      <div className="settings-section" id="budget">
-        <div className="settings-section__header">
-          <div className="settings-section__title">Budget</div>
-        </div>
+      <Surface as="section" className="settings-section" id="budget" title="Budget">
         <div className="settings-section__body">
           {currentBudget ? (
             <>
@@ -393,14 +388,11 @@ export function SettingsPage() {
             />
           </div>
         </div>
-      </div>
+      </Surface>
 
       {/* Guide */}
       {budgetId && (
-        <div className="settings-section" id="guide">
-          <div className="settings-section__header">
-            <div className="settings-section__title">Guide</div>
-          </div>
+        <Surface as="section" className="settings-section" id="guide" title="Guide">
           <div className="settings-section__body">
             <div className="settings-row">
               <div>
@@ -437,26 +429,20 @@ export function SettingsPage() {
               />
             </div>
           </div>
-        </div>
+        </Surface>
       )}
 
       {/* Tags */}
       {budgetId && (
-        <div className="settings-section" id="tags">
-          <div className="settings-section__header">
-            <div className="settings-section__title">Tags</div>
-          </div>
+        <Surface as="section" className="settings-section" id="tags" title="Tags">
           <div className="settings-section__body">
             <TagsPanel budgetId={budgetId} />
           </div>
-        </div>
+        </Surface>
       )}
 
       {/* Mobile — per-device settings (not synced to the server) */}
-      <div className="settings-section" id="mobile">
-        <div className="settings-section__header">
-          <div className="settings-section__title">Mobile</div>
-        </div>
+      <Surface as="section" className="settings-section" id="mobile" title="Mobile">
         <div className="settings-section__body">
           <div className="settings-row">
             <div>
@@ -473,16 +459,13 @@ export function SettingsPage() {
             />
           </div>
         </div>
-      </div>
+      </Surface>
 
       {/* Accounts */}
       {budgetId && (
-        <div className="settings-section" id="accounts">
-          <div className="settings-section__header">
-            <div className="settings-section__title">Accounts</div>
-          </div>
+        <Surface as="section" className="settings-section" id="accounts" title="Accounts">
           <div className="settings-section__body">
-            <div className="settings-account-list">
+            <div className="settings-account-list scroll-list surface surface--sunken">
               {accounts?.map((acc) => (
                 <div key={acc.id} className={`settings-account-item ${acc.is_closed ? 'settings-account-item--closed' : ''}`}>
                   <div>
@@ -555,47 +538,35 @@ export function SettingsPage() {
               </button>
             </form>
           </div>
-        </div>
+        </Surface>
       )}
 
       {/* Data integrity — the health check belongs next to your data, not below
           the integrations */}
       {budgetId && (
-        <div className="settings-section" id="integrity">
-          <div className="settings-section__header">
-            <div className="settings-section__title">Data Integrity</div>
-          </div>
+        <Surface as="section" className="settings-section" id="integrity" title="Data Integrity">
           <div className="settings-section__body">
             <IntegrityPanel budgetId={budgetId} />
           </div>
-        </div>
+        </Surface>
       )}
 
       {/* Backups */}
-      <div className="settings-section" id="data">
-        <div className="settings-section__header">
-          <div className="settings-section__title">Backups</div>
-        </div>
+      <Surface as="section" className="settings-section" id="data" title="Backups">
         <div className="settings-section__body">
           <BackupsPanel />
         </div>
-      </div>
+      </Surface>
 
       {/* Updates */}
-      <div className="settings-section" id="updates">
-        <div className="settings-section__header">
-          <div className="settings-section__title">Updates</div>
-        </div>
+      <Surface as="section" className="settings-section" id="updates" title="Updates">
         <div className="settings-section__body">
           <UpdatesPanel />
         </div>
-      </div>
+      </Surface>
 
       {/* SimpleFIN */}
-      <div className="settings-section" id="simplefin">
-        <div className="settings-section__header">
-          <div className="settings-section__title">SimpleFIN Bank Connection</div>
-        </div>
+      <Surface as="section" className="settings-section" id="simplefin" title="SimpleFIN Bank Connection">
         <div className="settings-section__body">
           {sfConnections && sfConnections.length > 0 ? (
             sfConnections.map((conn) => (
@@ -709,17 +680,14 @@ export function SettingsPage() {
             <SimpleFINSetup onDone={() => {}} />
           )}
         </div>
-      </div>
+      </Surface>
 
 
       {/* AI Settings */}
       <AISettingsPanel />
 
       {/* Account */}
-      <div className="settings-section" id="account">
-        <div className="settings-section__header">
-          <div className="settings-section__title">Account</div>
-        </div>
+      <Surface as="section" className="settings-section" id="account" title="Account">
         <div className="settings-section__body">
           <div className="settings-row">
             <div>
@@ -738,18 +706,15 @@ export function SettingsPage() {
             </button>
           </div>
         </div>
-      </div>
+      </Surface>
 
       {/* Users — admin only */}
       {me?.is_admin && (
-        <div className="settings-section" id="users">
-          <div className="settings-section__header">
-            <div className="settings-section__title">Users</div>
-          </div>
+        <Surface as="section" className="settings-section" id="users" title="Users">
           <div className="settings-section__body">
             <UsersPanel />
           </div>
-        </div>
+        </Surface>
       )}
 
       {activeModal?.kind === 'account' && activeModal.editingId && (

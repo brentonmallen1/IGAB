@@ -4,7 +4,21 @@
 // liability must render exactly once.
 
 import type { Account } from '../../../types'
-import { BUILTIN_ACCOUNT_TYPES } from '../../../constants/accountTypes'
+import { BUILTIN_ACCOUNT_TYPES, accountTypeLabel } from '../../../constants/accountTypes'
+
+/** The collapsible groups the sidebar draws, by the id their collapsed state
+ * is stored under. Here rather than spelled out at the toggle and again at the
+ * `.has()` — a section whose header writes one id and whose body reads another
+ * is a group that never collapses, and nothing would fail loudly. */
+export const SIDEBAR_SECTION_IDS = {
+  budgetAccounts: 'budget-accounts',
+  assets: 'assets',
+  liabilities: 'liabilities',
+} as const
+
+export function sidebarTypeGroupId(typeKey: string): string {
+  return `type:${typeKey}`
+}
 
 /** The slice of a Liability these helpers need */
 export interface LiabilitySummary {
@@ -41,6 +55,22 @@ export function partitionAccounts(accounts: Account[]): AccountPartition {
 }
 
 const BUILTIN_ORDER = BUILTIN_ACCOUNT_TYPES.map((t) => t.key)
+
+/** Type keys whose label already names a set. "Checkings" is not a word. */
+const UNCOUNTABLE_TYPES = new Set(['checking', 'cash', 'savings', 'tracking'])
+
+/** A group header names a set of accounts, so it pluralizes the type label.
+ * The wording itself always comes from `accountTypeLabel`: the sidebar used to
+ * carry its own switch over every built-in key, which meant renaming a type in
+ * the registry left the header saying the old name and nothing failed. */
+export function groupLabel(typeKey: string, registry?: { key: string; label: string }[]): string {
+  const label = accountTypeLabel(typeKey, registry)
+  if (UNCOUNTABLE_TYPES.has(typeKey) || label.endsWith('s')) return label
+  // Consonant + y takes -ies. "Other Liability" is the one built-in that needs
+  // it, and a custom type is far likelier to want it than "Liabilitys".
+  if (/[^aeiou]y$/i.test(label)) return `${label.slice(0, -1)}ies`
+  return `${label}s`
+}
 
 /** On-budget type keys present, built-ins in canonical order first, then
  * custom keys alphabetically — custom-typed accounts always render. */
@@ -125,6 +155,19 @@ export function liabilityHeaderTotal(rows: LiabilityRow[]): number {
   return rows.reduce((sum, r) => sum + r.balance, 0)
 }
 
-export function assetsTotal(offBudgetAssets: Account[]): number {
-  return offBudgetAssets.reduce((sum, a) => sum + Number(a.balance), 0)
+/** The one place account ledgers are summed — the on-budget header, the
+ * Assets header, and every type-group subtotal all come through here. Three
+ * hand-written copies of this reduce is how a header stops agreeing with the
+ * rows beneath it. */
+export function accountsTotal(accounts: Account[]): number {
+  return accounts.reduce((sum, a) => sum + Number(a.balance), 0)
+}
+
+/** The Budget Accounts header total: the sum of exactly the group subtotals
+ * listed beneath it, so collapsing a group never makes the arithmetic stop
+ * adding up on screen. */
+export function groupedAccountsTotal(onBudgetByType: Map<string, Account[]>): number {
+  let sum = 0
+  for (const list of onBudgetByType.values()) sum += accountsTotal(list)
+  return sum
 }

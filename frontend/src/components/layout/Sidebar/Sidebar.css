@@ -1,4 +1,24 @@
 .sidebar {
+  /* The sidebar keeps a dark background in every theme, so it cannot borrow
+     the page's border and text tokens: those are picked for the page surface,
+     and only the sidebar-prefixed ones are held to AA against --sidebar-bg by
+     themes/contrast.test.ts. Every hairline and hover in here derives from
+     one of these three. */
+  --sidebar-hairline: color-mix(in srgb, var(--sidebar-text-muted) 22%, transparent);
+  --sidebar-hover: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  --sidebar-hover-strong: color-mix(in srgb, var(--sidebar-bg) 50%, white 50%);
+
+  /* One column for the whole account list: the disclosure chevron sits at
+     --sidebar-edge and every label — section header, type group, account
+     name — starts at --sidebar-indent. Section and type headers are told
+     apart by weight and case, not by a second indent step, which would cost
+     a 240px-wide sidebar most of its room for names. */
+  --sidebar-edge: var(--spacing-sm);
+  --sidebar-chevron: 16px;
+  --sidebar-indent: calc(var(--sidebar-edge) + var(--sidebar-chevron));
+  --sidebar-gutter: var(--spacing-md);
+
+  position: relative;
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   height: 100dvh;
@@ -6,14 +26,23 @@
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* The shell does not scroll — its inner column does — so the resize handle
+   can sit on the shell's outer edge, to the right of the scrollbar. */
+.sidebar__scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
-  flex-shrink: 0;
 }
 
 .sidebar__logo {
   padding: var(--spacing-md) var(--spacing-md) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--sidebar-hairline);
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -34,7 +63,7 @@
   color: var(--sidebar-text-muted);
   font-size: var(--font-size-xs);
   transition: color var(--transition-fast);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--sidebar-hairline);
   width: 100%;
   text-align: left;
 }
@@ -52,7 +81,7 @@
 
 .sidebar__nav {
   padding: var(--spacing-sm) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--sidebar-hairline);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -70,7 +99,7 @@
 }
 
 .sidebar__nav-item:hover {
-  background-color: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  background-color: var(--sidebar-hover);
   color: var(--sidebar-text-primary);
 }
 
@@ -85,38 +114,123 @@
   border: none;
   cursor: pointer;
   margin-top: var(--spacing-xs);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--sidebar-hairline);
   padding-top: var(--spacing-sm);
 }
 
-.sidebar__section-header {
+/* One line between sections. The first section needs none — .sidebar__nav
+   already closes with one — so this is an adjacent-sibling rule, not a
+   border on every header. */
+.sidebar__section + .sidebar__section {
+  border-top: 1px solid var(--sidebar-hairline);
+}
+
+.sidebar__section:last-child {
+  margin-bottom: var(--spacing-md);
+}
+
+/* Group header: chevron, label, total, actions. Sections (Budget Accounts,
+   Assets, Liabilities) and the type groups inside them are the same anatomy
+   and the same column — only weight, case and top spacing differ. `gap` is
+   deliberately 0: the chevron button is exactly --sidebar-chevron wide, so
+   the label starts at --sidebar-indent whether it shares the toggle button
+   or is its own link, and both header kinds line up with the rows. */
+.sidebar__group-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-md) var(--spacing-md) var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  gap: 0;
+  padding-left: var(--sidebar-edge);
+  padding-right: var(--sidebar-gutter);
   color: var(--sidebar-text-muted);
 }
 
-.sidebar__section-header-link {
+.sidebar__group-header--section {
+  padding-top: var(--spacing-md);
+  padding-bottom: var(--spacing-xs);
   font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--sidebar-text-muted);
+}
+
+.sidebar__group-header--type {
+  padding-top: var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.sidebar__group-toggle {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
   text-align: left;
   transition: color var(--transition-fast);
 }
 
-.sidebar__section-header-link:hover {
+/* When the label navigates somewhere it is its own button, and the toggle
+   shrinks to just the chevron. */
+.sidebar__group-toggle--chevron-only {
+  flex: 0 0 var(--sidebar-chevron);
+}
+
+.sidebar__group-toggle:hover:not(:disabled) {
   color: var(--sidebar-text-primary);
 }
 
+/* An empty group has nothing to fold; the header keeps its geometry so the
+   chevron column stays straight. */
+.sidebar__group-toggle:disabled {
+  cursor: default;
+}
+
+.sidebar__group-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sidebar-chevron);
+  height: var(--sidebar-chevron);
+  flex-shrink: 0;
+}
+
+.sidebar__group-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  transition: color var(--transition-fast);
+}
+
+button.sidebar__group-label:hover {
+  color: var(--sidebar-text-primary);
+}
+
+.sidebar__group-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+  padding-left: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+/* Totals share the right-hand column with the row balances below them, so
+   they share its size and shed the header's uppercase letter-spacing —
+   tracking on tabular figures makes columns of money stop lining up. */
 .sidebar__total {
   font-size: var(--font-size-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--sidebar-text-secondary);
 }
 
@@ -124,10 +238,7 @@
   color: var(--color-negative);
 }
 
-/* Add buttons for section headers */
-
-.sidebar__add-account,
-.sidebar__add-liability {
+.sidebar__group-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -135,20 +246,19 @@
   height: 18px;
   border-radius: var(--border-radius-sm);
   color: var(--sidebar-text-muted);
-  transition: color var(--transition-fast), background var(--transition-fast);
+  flex-shrink: 0;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.sidebar__add-account:hover,
-.sidebar__add-liability:hover {
+.sidebar__group-action:hover {
   color: var(--sidebar-text-primary);
-  background: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  background-color: var(--sidebar-hover);
 }
 
 /* Mode icon: Link2 = managed (tracked from an account), PenLine = manual */
 .sidebar__liability-icon {
   display: inline-flex;
   align-items: center;
-  margin-right: 4px;
   color: var(--sidebar-text-muted);
   flex-shrink: 0;
 }
@@ -157,15 +267,11 @@
   color: var(--color-accent);
 }
 
-.sidebar__account-group {
-  margin-bottom: var(--spacing-xs);
-}
-
-.sidebar__account-type {
-  padding: var(--spacing-xs) var(--spacing-md);
-  font-size: var(--font-size-xs);
-  color: var(--sidebar-text-muted);
-  font-weight: 500;
+/* Rows are separated by a hairline, not by whitespace alone. Scoped to
+   adjacent siblings so the line never crosses a group boundary — a header
+   already separates those. */
+.sidebar__account + .sidebar__account {
+  border-top: 1px solid var(--sidebar-hairline);
 }
 
 .sidebar__account {
@@ -173,53 +279,66 @@
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 5px var(--spacing-md);
+  padding: 5px var(--sidebar-gutter) 5px var(--sidebar-indent);
   font-size: var(--font-size-sm);
   color: var(--sidebar-text-secondary);
   border-radius: 0;
   transition: background-color var(--transition-fast), color var(--transition-fast);
   text-align: left;
-  /* rows render as <button> or, when they contain a nested action, as
-     <div role="button"> — keep both interactive */
+  /* every row is a div[role=button]: liability rows nest a real <button> for
+     the register shortcut, and a button inside a button is invalid HTML */
   cursor: pointer;
 }
 
-/* Shortcut from a managed-liability row to its account register */
+/* Shortcut from a managed-liability row to its account register. Hidden with
+   opacity rather than `display`, which took the button out of the flex row on
+   every unhovered frame and slid the balance sideways the moment the pointer
+   arrived. */
 .sidebar__register-btn {
-  display: none;
+  display: inline-flex;
   align-items: center;
   padding: 2px;
   border: none;
   background: none;
   color: var(--sidebar-text-secondary);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-sm);
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast), color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .sidebar__account:hover .sidebar__register-btn,
 .sidebar__register-btn:focus-visible {
-  display: inline-flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .sidebar__register-btn:hover {
-  color: var(--text-primary);
-  background-color: color-mix(in srgb, var(--sidebar-bg) 50%, white 50%);
+  color: var(--sidebar-text-primary);
+  background-color: var(--sidebar-hover-strong);
 }
 
 .sidebar__account:hover {
-  background-color: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  background-color: var(--sidebar-hover);
   color: var(--sidebar-text-primary);
 }
 
 .sidebar__account-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--spacing-xs);
+}
+
+/* The text itself truncates — a bare text node inside a flex row cannot */
+.sidebar__account-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar__uncategorized-badge {
@@ -232,7 +351,7 @@
   border-radius: 8px;
   background-color: var(--color-warning);
   color: var(--text-inverse);
-  font-size: var(--font-size-2xs);
+  font-size: var(--font-size-xs);
   font-weight: 600;
   flex-shrink: 0;
   line-height: 1;
@@ -250,64 +369,47 @@
 .sidebar__account-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--spacing-xs);
   flex-shrink: 0;
-  margin-left: var(--spacing-xs);
+  margin-left: var(--spacing-sm);
 }
 
+/* Balances sit a tone below the name so the two columns read apart even
+   when a long name is truncated right up against them. */
 .sidebar__account-balance {
   font-size: var(--font-size-xs);
   flex-shrink: 0;
+  color: var(--sidebar-text-muted);
 }
 
-.sidebar__account-balance.negative {
+.sidebar__account:hover .sidebar__account-balance {
+  color: var(--sidebar-text-secondary);
+}
+
+.sidebar__account-balance.negative,
+.sidebar__account:hover .sidebar__account-balance.negative {
   color: var(--color-negative);
 }
 
-.sidebar__section-header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
+/* Resize handle: straddles the shell's outer edge, outside the scroller and
+   its scrollbar, spanning the full height. */
+.sidebar__resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  z-index: 2;
+  cursor: col-resize;
+  outline: none;
+  transition: background-color var(--transition-fast);
 }
 
-.sidebar__sync-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  color: var(--sidebar-text-secondary);
-  font-size: var(--font-size-2xs);
-  opacity: 0.7;
-  transition: opacity 0.15s, background 0.15s;
-}
-
-.sidebar__sync-btn:hover:not(:disabled) {
-  opacity: 1;
-  background: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
-}
-
-.sidebar__sync-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.3;
-}
-
-.sidebar__sync-btn--spinning svg {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.sidebar__sync-badge {
-  font-size: var(--font-size-2xs);
-  font-weight: 600;
-  color: var(--color-accent);
-  min-width: 12px;
+.sidebar__resizer:hover,
+.sidebar__resizer:focus-visible,
+.sidebar__resizer--active {
+  background-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  box-shadow: none;
 }
 
 .sidebar__empty {
@@ -334,7 +436,7 @@
 }
 
 .sidebar__collapse-btn:hover {
-  background-color: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  background-color: var(--sidebar-hover);
   color: var(--sidebar-text-primary);
 }
 
@@ -349,7 +451,7 @@
 .sidebar__accounts-mini-divider {
   width: 28px;
   height: 1px;
-  background: var(--border-subtle);
+  background: var(--sidebar-hairline);
   margin-bottom: 4px;
 }
 
@@ -370,9 +472,9 @@
 }
 
 .sidebar__account-mini:hover {
-  background-color: color-mix(in srgb, var(--sidebar-bg) 70%, white 30%);
+  background-color: var(--sidebar-hover);
   color: var(--sidebar-text-primary);
-  border-color: color-mix(in srgb, var(--sidebar-bg) 50%, white 50%);
+  border-color: var(--sidebar-hover-strong);
 }
 
 .sidebar__account-mini-letter {
@@ -395,6 +497,9 @@
 .sidebar--collapsed {
   width: 52px;
   min-width: 52px;
+}
+
+.sidebar--collapsed .sidebar__scroll {
   overflow-x: hidden;
 }
 
@@ -429,8 +534,8 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  color: var(--sidebar-text-muted);
+  font-size: var(--font-size-sm);
   min-width: 0;
 }
 

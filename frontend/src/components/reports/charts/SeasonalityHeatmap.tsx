@@ -47,7 +47,7 @@ export function SeasonalityReport({ budgetId }: Props) {
   const maxVal = maxCellValue(cells)
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Seasonality Heatmap</h2>
         <ReportInfoButton title="Seasonality Heatmap">

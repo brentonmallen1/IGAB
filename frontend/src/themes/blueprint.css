@@ -1,14 +1,14 @@
 /* Blueprint Dark — technical drawing, white on blue */
 [data-theme="blueprint-dark"] {
   --bg-primary: #0a1628;
-  --bg-secondary: #0f1e34;
-  --bg-tertiary: #142640;
-  --bg-elevated: #1a304c;
+  --bg-secondary: #122849;
+  --bg-tertiary: #122849;
+  --bg-elevated: #18345f;
   --bg-hover: #142640;
 
   --text-primary: #e8f0ff;
   --text-secondary: #a8c0e0;
-  --text-muted: #7ea0c9;
+  --text-muted: #82a3cb;
   --text-inverse: #0a1628;
 
   --color-accent: #60c0ff;
@@ -19,9 +19,9 @@
   --color-warning: #ffc060;
   --color-info: #60c0ff;
 
-  --border-color: #1a3858;
-  --border-subtle: #0f1e34;
-  --input-bg: #0f1e34;
+  --border-color: #424d5e;
+  --border-subtle: #304462;
+  --input-bg: #0a1628;
   --input-border: #4a6b96;
   --input-focus-ring: #60c0ff;
 
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #061220;
   --header-bg: #061220;
-  --card-bg: #0f1e34;
-  --card-border: #1a3858;
 
   --sidebar-text-primary: #e8f0ff;
   --sidebar-text-secondary: #a8c0e0;
@@ -58,41 +56,32 @@
   --chart-6: #60e0e0;
   --chart-7: #ff7060;
   --chart-8: #ffa060;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Blueprint Light — inverted technical drawing */
 [data-theme="blueprint-light"] {
-  --bg-primary: #e8f0ff;
+  --bg-primary: #d6e4ff;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #d8e8f8;
+  --bg-tertiary: #d6e4ff;
   --bg-elevated: #ffffff;
   --bg-hover: #e0ecfa;
 
   --text-primary: #0a1628;
   --text-secondary: #283848;
-  --text-muted: #4d5d74;
+  --text-muted: #4b5b71;
   --text-inverse: #ffffff;
 
-  --color-accent: #005ca6;
+  --color-accent: #0059a1;
   --color-accent-hover: #1060a0;
   --accent-color: var(--color-accent);
-  --color-positive: #006846;
-  --color-negative: #ac2316;
-  --color-warning: #7d5300;
-  --color-info: #005ca6;
+  --color-positive: #006343;
+  --color-negative: #a72215;
+  --color-warning: #785000;
+  --color-info: #0059a1;
 
-  --border-color: #c0d0e8;
-  --border-subtle: #d8e8f8;
+  --border-color: #a3b0c9;
+  --border-subtle: #dddee1;
   --input-bg: #ffffff;
   --input-border: #7f96ad;
   --input-focus-ring: #005ca6;
@@ -106,8 +95,6 @@
 
   --sidebar-bg: #0a1628;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #c0d0e8;
 
   --sidebar-text-primary: #e8f0ff;
   --sidebar-text-secondary: #a8c0e0;
@@ -130,14 +117,5 @@
   --chart-6: #208888;
   --chart-7: #c84030;
   --chart-8: #c86820;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Surface } from '../../components/common/Surface'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ChevronDown, ChevronUp, HelpCircle, LogOut, MoreHorizontal, Pencil, Trash2, Users } from 'lucide-react'
@@ -57,17 +58,18 @@ function SelectorSection({
   open,
   onToggle,
   children,
-  className = '',
+  dashed = false,
 }: {
   title: string
   subtitle: string
   open: boolean
   onToggle: () => void
   children: React.ReactNode
-  className?: string
+  /** Demoted affordance (the throwaway sample budget). */
+  dashed?: boolean
 }) {
   return (
-    <div className={`selector-card ${className}`}>
+    <Surface as="section" className="selector-card" dashed={dashed}>
       <button
         type="button"
         className="selector-card__header selector-card__header--toggle"
@@ -75,13 +77,13 @@ function SelectorSection({
         aria-expanded={open}
       >
         <div>
-          <div className="selector-card__title">{title}</div>
+          <div className="section-label surface__title">{title}</div>
           <div className="selector-card__subtitle">{subtitle}</div>
         </div>
         {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
       {open && children}
-    </div>
+    </Surface>
   )
 }
 
@@ -355,7 +357,7 @@ export function BudgetSelectorPage() {
             <div className="budget-list">
               {budgets.map((b) =>
                 renamingId === b.id ? (
-                  <form key={b.id} className="budget-card budget-card--renaming" onSubmit={saveRename}>
+                  <form key={b.id} className="budget-card surface budget-card--renaming" onSubmit={saveRename}>
                     <input
                       className="budget-card__rename-input"
                       value={renameValue}
@@ -374,7 +376,7 @@ export function BudgetSelectorPage() {
                 ) : (
                   <div
                     key={b.id}
-                    className={`budget-card budget-card--clickable ${
+                    className={`budget-card surface budget-card--clickable ${
                       b.id === deletingId ? 'budget-card--deleting' : ''
                     }`}
                     role="button"
@@ -559,7 +561,7 @@ export function BudgetSelectorPage() {
                     to keep every transaction while leaving them out of your account pickers.
                   </p>
                 )}
-                <div className="ynab-mapping" role="group" aria-labelledby="ynab-accounts-label">
+                <Surface variant="sunken" className="ynab-mapping" role="group" aria-labelledby="ynab-accounts-label">
                   {groupAccounts(previewAccounts).map((section) => (
                     <div key={section.label ?? `solo-${section.accounts[0].name}`}>
                       {section.label && (
@@ -661,7 +663,7 @@ export function BudgetSelectorPage() {
                   })}
                     </div>
                   ))}
-                </div>
+                </Surface>
               </div>
             )}
 
@@ -692,7 +694,7 @@ export function BudgetSelectorPage() {
           subtitle="Explore IGAB with realistic, ready-made demo data"
           open={sampleOpen}
           onToggle={() => setSampleOpen((v) => !v)}
-          className="selector-card--secondary"
+          dashed
         >
           <div className="selector-card__body">
             <div className="sample-tier">

@@ -78,7 +78,7 @@ export function AnomaliesReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Spending Anomalies</h2>
         <ReportInfoButton title="Spending Anomalies">

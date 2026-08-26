@@ -139,8 +139,6 @@
 .accounts-overview__group-rows {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
   overflow: hidden;
 }
 
@@ -150,10 +148,9 @@
   justify-content: space-between;
   gap: var(--spacing-md);
   padding: var(--spacing-md) var(--spacing-lg);
-  background: var(--bg-primary);
   cursor: pointer;
   transition: background var(--transition-fast);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--edge);
 }
 
 .accounts-overview__row:last-child {

@@ -1,9 +1,9 @@
 /* Bauhaus Dark — primary colors on black */
 [data-theme="bauhaus-dark"] {
   --bg-primary: #0a0a0a;
-  --bg-secondary: #141414;
+  --bg-secondary: #1e1e1e;
   --bg-tertiary: #1e1e1e;
-  --bg-elevated: #282828;
+  --bg-elevated: #292929;
   --bg-hover: #1e1e1e;
 
   --text-primary: #f0f0f0;
@@ -19,9 +19,9 @@
   --color-warning: #ddaa00;
   --color-info: #5a90ff;
 
-  --border-color: #303030;
-  --border-subtle: #141414;
-  --input-bg: #141414;
+  --border-color: #444444;
+  --border-subtle: #3b3b3b;
+  --input-bg: #0a0a0a;
   --input-border: #636363;
   --input-focus-ring: #ff5847;
 
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #050505;
   --header-bg: #050505;
-  --card-bg: #141414;
-  --card-border: #303030;
 
   --sidebar-text-primary: #f0f0f0;
   --sidebar-text-secondary: #b0b0b0;
@@ -58,21 +56,12 @@
   --chart-6: #00aaaa;
   --chart-7: #dd0088;
   --chart-8: #dd6600;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Bauhaus Light — primary colors on white */
 [data-theme="bauhaus-light"] {
-  --bg-primary: #f5f5f5;
+  --bg-primary: #ebebeb;
   --bg-secondary: #ffffff;
   --bg-tertiary: #ebebeb;
   --bg-elevated: #ffffff;
@@ -91,8 +80,8 @@
   --color-warning: #795900;
   --color-info: #0033cc;
 
-  --border-color: #d0d0d0;
-  --border-subtle: #ebebeb;
+  --border-color: #b2b2b2;
+  --border-subtle: #dddddd;
   --input-bg: #ffffff;
   --input-border: #949494;
   --input-focus-ring: #b90000;
@@ -106,8 +95,6 @@
 
   --sidebar-bg: #0a0a0a;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #d0d0d0;
 
   --sidebar-text-primary: #f0f0f0;
   --sidebar-text-secondary: #b0b0b0;
@@ -130,14 +117,5 @@
   --chart-6: #008888;
   --chart-7: #cc0077;
   --chart-8: #cc5500;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

@@ -2,9 +2,9 @@
 [data-theme="nineties-dark"] {
   /* Backgrounds — deep warm gray with teal undertone */
   --bg-primary: #181a1c;
-  --bg-secondary: #222528;
-  --bg-tertiary: #2c3034;
-  --bg-elevated: #363a3f;
+  --bg-secondary: #2b2e32;
+  --bg-tertiary: #2d3034;
+  --bg-elevated: #383c41;
   --bg-hover: #2c3034;
 
   /* Text — warm off-white */
@@ -23,9 +23,9 @@
   --color-info: #84a9fc;
 
   /* Borders and inputs */
-  --border-color: #363a3f;
-  --border-subtle: #222528;
-  --input-bg: #222528;
+  --border-color: #4e4f4f;
+  --border-subtle: #47494b;
+  --input-bg: #181a1c;
   --input-border: #6b6f76;
   --input-focus-ring: #74b5bb;
 
@@ -41,8 +41,6 @@
   /* Chrome */
   --sidebar-bg: #141618;
   --header-bg: #141618;
-  --card-bg: #222528;
-  --card-border: #363a3f;
 
   /* Sidebar text — validated for contrast against --sidebar-bg: #141618 */
   --sidebar-text-primary: #f0ece8;
@@ -70,23 +68,15 @@
   --chart-8: #e0c060;
 
   /* Aliases */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* 90s Retro Light */
 [data-theme="nineties-light"] {
   /* Backgrounds — warm cream */
-  --bg-primary: #f8f5f0;
+  --bg-primary: #f2ece3;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f0ebe5;
+  --bg-tertiary: #f0eae0;
   --bg-elevated: #ffffff;
   --bg-hover: #f4f0ea;
 
@@ -106,8 +96,8 @@
   --color-info: #3a5aa0;
 
   /* Borders and inputs */
-  --border-color: #e0dcd5;
-  --border-subtle: #f0ebe5;
+  --border-color: #bfbbb5;
+  --border-subtle: #e1e1e1;
   --input-bg: #ffffff;
   --input-border: #97938d;
   --input-focus-ring: #28676f;
@@ -124,8 +114,6 @@
   /* Chrome — sidebar stays dark */
   --sidebar-bg: #181a1c;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #e0dcd5;
 
   /* Sidebar text — sidebar is dark (#181a1c) in light theme */
   --sidebar-text-primary: #f0ece8;
@@ -153,13 +141,5 @@
   --chart-8: #a09030;
 
   /* Aliases */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

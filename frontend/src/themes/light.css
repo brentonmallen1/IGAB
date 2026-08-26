@@ -1,26 +1,26 @@
 /* IGAB Light Theme */
 [data-theme="light"] {
-  --bg-primary: #f4f6f9;
+  --bg-primary: #e5e9f1;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #edf0f5;
+  --bg-tertiary: #e5e9f1;
   --bg-elevated: #ffffff;
   --bg-hover: #f0f3f8;
 
   --text-primary: #1a1d27;
   --text-secondary: #4b5563;
-  --text-muted: #5c626d;
+  --text-muted: #585e67;
   --text-inverse: #ffffff;
 
-  --color-accent: #3952d9;
-  --color-accent-hover: #395cf3;
+  --color-accent: #314ad7;
+  --color-accent-hover: #2f54f3;
   --accent-color: var(--color-accent);
-  --color-positive: #00702e;
-  --color-negative: #be0010;
-  --color-warning: #944f00;
-  --color-info: #1855dc;
+  --color-positive: #006b2c;
+  --color-negative: #b40010;
+  --color-warning: #8f4c00;
+  --color-info: #1751d2;
 
-  --border-color: #e2e6f0;
-  --border-subtle: #edf0f5;
+  --border-color: #b2b6be;
+  --border-subtle: #dfdfe1;
   --input-bg: #ffffff;
   --input-border: #90949a;
   --input-focus-ring: #3952d9;
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #1a1d27;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #e2e6f0;
 
   /* Sidebar text — sidebar stays dark (#1a1d27) in light theme */
   --sidebar-text-primary: #e8eaf0;
@@ -63,15 +61,5 @@
   --chart-6: #16a34a;
   --chart-7: #7c3aed;
   --chart-8: #dc2626;
-
-  /* Aliases used by older components */
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

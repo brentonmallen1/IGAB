@@ -42,7 +42,7 @@ export function OverviewReport({ budgetId }: Props) {
 
   return (
     <div className="overview-report">
-      <div className="overview-report__metrics-section">
+      <div className="overview-report__metrics-section surface">
         <div className="report-section__header">
           <h2 className="report-section__title">Overview</h2>
           <ReportInfoButton title="Overview Dashboard">
@@ -120,7 +120,7 @@ export function OverviewReport({ budgetId }: Props) {
       </div>
 
       {data.top_categories.length > 0 && (
-        <div className="overview-report__top">
+        <div className="overview-report__top surface">
           <h3 className="overview-report__section-heading">Top Spending</h3>
           <div className="overview-report__top-list">
             {data.top_categories.map((c, i) => (

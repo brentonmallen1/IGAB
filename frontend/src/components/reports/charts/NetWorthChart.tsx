@@ -36,7 +36,7 @@ export function NetWorthReport({ budgetId }: Props) {
   }))
 
   return (
-    <div className="report-section">
+    <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Net Worth Over Time</h2>
         <ReportInfoButton title="Net Worth Over Time">

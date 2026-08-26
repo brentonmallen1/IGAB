@@ -1,8 +1,5 @@
 .acct-types {
   margin-top: calc(var(--spacing-lg) * 2);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  background: var(--bg-primary);
   padding: var(--spacing-lg);
 }
 

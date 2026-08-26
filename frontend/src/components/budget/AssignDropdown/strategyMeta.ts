@@ -3,7 +3,7 @@ import type { AssignStrategy } from '../../../types'
 /** Labels + descriptions shared by the dropdown rows and the preview modal. */
 export const STRATEGY_META: Record<AssignStrategy, { label: string; description: string }> = {
   underfunded: {
-    label: 'Underfunded',
+    label: 'Underfunded Targets',
     description:
       'Fund each category up to its target, distributed proportionally within Ready to Assign.',
   },

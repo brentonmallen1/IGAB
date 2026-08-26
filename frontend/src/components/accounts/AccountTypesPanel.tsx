@@ -90,7 +90,7 @@ export function AccountTypesPanel({ budgetId }: Props) {
   const pending = createType.isPending || updateType.isPending
 
   return (
-    <div className="acct-types">
+    <div className="acct-types surface">
       <div className="acct-types__header">
         <div>
           <div className="acct-types__title">Account Types</div>

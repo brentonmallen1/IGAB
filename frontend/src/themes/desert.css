@@ -1,27 +1,27 @@
 /* Desert Dark — sunset desert, warm earth tones */
 [data-theme="desert-dark"] {
   --bg-primary: #1c1614;
-  --bg-secondary: #26201c;
-  --bg-tertiary: #302824;
-  --bg-elevated: #3a322c;
+  --bg-secondary: #342925;
+  --bg-tertiary: #342925;
+  --bg-elevated: #433430;
   --bg-hover: #302824;
 
   --text-primary: #f0e4d8;
   --text-secondary: #c8b8a8;
-  --text-muted: #b0a08f;
+  --text-muted: #b2a392;
   --text-inverse: #1c1614;
 
-  --color-accent: #e08e65;
+  --color-accent: #e19169;
   --color-accent-hover: #d89068;
   --accent-color: var(--color-accent);
-  --color-positive: #71af7f;
-  --color-negative: #f4806e;
+  --color-positive: #74b182;
+  --color-negative: #f48473;
   --color-warning: #d8a050;
-  --color-info: #6babbb;
+  --color-info: #6eadbd;
 
-  --border-color: #3a322c;
-  --border-subtle: #26201c;
-  --input-bg: #26201c;
+  --border-color: #514a45;
+  --border-subtle: #4e433e;
+  --input-bg: #1c1614;
   --input-border: #756a63;
   --input-focus-ring: #e08e65;
 
@@ -34,8 +34,6 @@
 
   --sidebar-bg: #141210;
   --header-bg: #141210;
-  --card-bg: #26201c;
-  --card-border: #3a322c;
 
   --sidebar-text-primary: #f0e4d8;
   --sidebar-text-secondary: #c8b8a8;
@@ -58,23 +56,14 @@
   --chart-6: #5080a8;
   --chart-7: #c85848;
   --chart-8: #c87888;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }
 
 /* Desert Light — daytime desert, sand and sage */
 [data-theme="desert-light"] {
-  --bg-primary: #faf6f0;
+  --bg-primary: #f5ede0;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f4ece0;
+  --bg-tertiary: #f4ebde;
   --bg-elevated: #ffffff;
   --bg-hover: #f8f0e4;
 
@@ -91,8 +80,8 @@
   --color-warning: #885406;
   --color-info: #2e6776;
 
-  --border-color: #e8dcd0;
-  --border-subtle: #f4ece0;
+  --border-color: #c6bdb2;
+  --border-subtle: #e3e2e1;
   --input-bg: #ffffff;
   --input-border: #9d9287;
   --input-focus-ring: #924c2c;
@@ -106,8 +95,6 @@
 
   --sidebar-bg: #1c1614;
   --header-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-border: #e8dcd0;
 
   --sidebar-text-primary: #f0e4d8;
   --sidebar-text-secondary: #c8b8a8;
@@ -130,14 +117,5 @@
   --chart-6: #406888;
   --chart-7: #a84838;
   --chart-8: #a86068;
-
-  --color-surface: var(--bg-secondary);
-  --color-border: var(--border-color);
-  --color-text: var(--text-primary);
-  --color-text-muted: var(--text-muted);
-  --hover-bg: var(--bg-hover);
-  --color-success: var(--color-positive);
-  --color-info-bg: color-mix(in srgb, var(--color-info) 12%, transparent);
-  --color-info-border: color-mix(in srgb, var(--color-info) 40%, transparent);
   --color-info-text: var(--color-info);
 }

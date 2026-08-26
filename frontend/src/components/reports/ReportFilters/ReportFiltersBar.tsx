@@ -10,6 +10,7 @@ import { DateRangePicker } from './DateRangePicker'
 import { MultiSelectCombobox } from './MultiSelectCombobox'
 import type { MultiSelectOption } from './MultiSelectCombobox'
 import './ReportFiltersBar.css'
+import { Surface } from '../../common/Surface'
 
 interface Props {
   budgetId: string
@@ -87,7 +88,7 @@ export function ReportFiltersBar({ budgetId }: Props) {
   }
 
   return (
-    <div className="rfb">
+    <Surface variant="chrome" className="rfb">
       <div className="rfb__row">
         {support.dates && (
           <DateRangePicker
@@ -169,6 +170,6 @@ export function ReportFiltersBar({ budgetId }: Props) {
           )}
         </div>
       )}
-    </div>
+    </Surface>
   )
 }

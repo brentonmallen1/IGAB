@@ -203,6 +203,22 @@ export function useMoveMoney(budgetId: string) {
   })
 }
 
+/** Undo one recorded move: assignments step back by its amount and the row
+ *  leaves the month's list. Not a reverse move — nothing new is recorded. */
+export function useUndoMove(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (move: { id: string; month: string }) =>
+      apiClient.post(`/${budgetId}/budget/moves/${move.id}/undo`),
+    onSuccess: (_, { month }) => {
+      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['assignStrategies', budgetId, month] })
+      qc.invalidateQueries({ queryKey: ['changes', budgetId] })
+    },
+  })
+}
+
 export function useMoveHistory(budgetId: string, month: string, enabled: boolean) {
   return useQuery({
     queryKey: ['budgetMoves', budgetId, month],
@@ -341,7 +357,10 @@ export function useCoverOverspentApply(budgetId: string) {
     mutationFn: (data: {
       month: string
       items: { category_id: string; proposed_addition: number }[]
-    }) => apiClient.post(`/${budgetId}/cover-overspent/apply`, data),
+    }) =>
+      apiClient
+        .post<{ batch_id: string | null }>(`/${budgetId}/cover-overspent/apply`, data)
+        .then((r) => r.data),
     onSuccess: (_, { month }) => {
       qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
       qc.invalidateQueries({ queryKey: ['coverOverspentPreview', budgetId, month] })

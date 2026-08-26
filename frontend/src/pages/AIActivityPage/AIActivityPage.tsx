@@ -365,7 +365,7 @@ export function AIActivityPage() {
 
 
   return (
-    <div className="ai-activity">
+    <div className="ai-activity page-fill">
       <div className="ai-activity__header">
         <h1 className="ai-activity__page-title">
           <Sparkles size={18} />
@@ -400,7 +400,7 @@ export function AIActivityPage() {
           {statusFilter ? 'No jobs with this status.' : 'No AI activity yet. Scan a receipt from the mobile quick-add to get started.'}
         </div>
       ) : (
-        <div className="ai-activity__list">
+        <div className="ai-activity__list scroll-fill">
           {jobs.map((job) => (
             <JobRow key={job.id} job={job} budgetId={budgetId!} />
           ))}

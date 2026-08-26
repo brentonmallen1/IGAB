@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { AlertTriangle, Check, GitMerge, Regex, Sparkles, X } from 'lucide-react'
 import type { PayeeWithCount } from '../../../api/payees'
-import { useAIStatus, useNormalizePayee, useSuggestRegex } from '../../../api/ai'
+import { useAIStatus, useSuggestRegex } from '../../../api/ai'
 import { useAppStore } from '../../../stores/appStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { Combobox } from '../../common/Combobox/Combobox'
@@ -67,18 +67,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   const customInputRef = useRef<HTMLInputElement>(null)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const aiAvailable = useAIStatus().data?.available === true
-  const normalizePayee = useNormalizePayee(budgetId ?? '')
   const suggestRegex = useSuggestRegex(budgetId ?? '')
-
-  // AI cleanup of the surviving name: feeds the messiest raw name through
-  // normalize-payee and drops the result into the custom-name input.
-  async function handleNormalize() {
-    const source = customName.trim() || sorted[0]?.name
-    if (!source) return
-    const normalized = await normalizePayee.mutateAsync(source)
-    setMode('custom')
-    setCustomName(normalized)
-  }
 
   useEffect(() => {
     if (mode === 'custom') customInputRef.current?.focus()
@@ -255,6 +244,9 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
         <div className="pmerge-modal__body">
           <p className="pmerge-section-label">Keep this name</p>
           <div className="pmerge-options">
+            {/* Only the candidate names scroll; the "existing payee" and
+                "custom name" choices stay in reach however many were selected. */}
+            <div className="pmerge-options__names scroll-list">
             {sorted.map((p) => (
               <label key={p.id} className={`pmerge-option ${mode === 'member' && targetId === p.id ? 'pmerge-option--selected' : ''}`}>
                 <input
@@ -268,6 +260,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                 <span className="pmerge-option__count">{p.transaction_count} txn</span>
               </label>
             ))}
+            </div>
             <label className={`pmerge-option pmerge-option--custom ${mode === 'external' ? 'pmerge-option--selected' : ''}`}>
               <input
                 type="radio"
@@ -311,22 +304,6 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
               ) : (
                 <span className="pmerge-option__name pmerge-option__name--placeholder">Enter a custom name…</span>
               )}
-              {aiAvailable && (
-                <button
-                  type="button"
-                  className="pmerge-ai-normalize"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    void handleNormalize()
-                  }}
-                  disabled={normalizePayee.isPending}
-                  title="Normalize with AI — clean up the bank name"
-                >
-                  <Sparkles size={12} />
-                  {normalizePayee.isPending ? 'Thinking…' : 'Normalize'}
-                </button>
-              )}
             </label>
           </div>
 
@@ -345,7 +322,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
           </p>
 
           {addToMappingSamples && (
-            <div className="pmerge-preview">
+            <div className="pmerge-preview scroll-list">
               <span className="pmerge-preview__label">Match samples after merge:</span>
               <span className="pmerge-preview__value">
                 {previewMappings || <em>none</em>}
@@ -475,7 +452,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                 </p>
               ) : (
                 previewPattern && (
-                  <ul className="pmerge-pattern__tests">
+                  <ul className="pmerge-pattern__tests scroll-list">
                     {patternResults.map(({ name, matches }) => (
                       <li
                         key={name}

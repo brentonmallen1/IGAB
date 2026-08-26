@@ -352,7 +352,7 @@ export function PayeesPage() {
 
   return (
     <div className={`payees-page ${selectedCount > 0 ? 'payees-page--with-bar' : ''}`}>
-      <div className="payees-header">
+      <div className="payees-header surface surface--chrome">
         <div className="payees-title-wrap">
           <h1 className="payees-title">Payees</h1>
           {!isLoading && (
@@ -471,7 +471,7 @@ export function PayeesPage() {
                 Uncheck any that don't belong, then merge the rest — you'll choose the surviving
                 name next.
               </p>
-              <div className="payees-wizard__options">
+              <div className="payees-wizard__options scroll-list">
                 {currentGroup.payees.map((p) => {
                   const isChecked = wizardChecked.has(p.id)
                   const isPeeking = wizardPeekId === p.id
@@ -565,7 +565,7 @@ export function PayeesPage() {
       ) : filtered.length === 0 ? (
         <div className="payees-empty">No payees found.</div>
       ) : (
-        <div className="payees-table">
+        <div className="payees-table surface">
           <div className="payees-table__head">
             <div className="payees-table__checkbox-cell">
               <input
@@ -636,7 +636,7 @@ export function PayeesPage() {
                         placeholder="Match samples (optional): ADP TOTALSOURCE, ADP PAYROLL"
                       />
                       <span className="payees-edit-hint">
-                        Bank names that should match this payee, comma-separated
+                        Payee names that should match this payee, comma-separated
                       </span>
                       <div className="payees-edit-pattern-row">
                         <input

@@ -280,7 +280,9 @@ async def test_months_endpoint_total_overspent_matches_preview(api_client, db_se
             ],
         },
     )
-    assert resp.status_code == 204
+    assert resp.status_code == 200
+    # The moves are one change-log batch, handed back so the client can undo it
+    assert resp.json()["batch_id"]
 
     resp = await api_client.post(
         f"/api/v1/{budget.id}/cover-overspent/apply",

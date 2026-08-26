@@ -78,7 +78,7 @@ export function DayPatternsReport({ budgetId }: Props) {
 
   return (
     <>
-      <div className="report-section">
+      <div className="report-section surface">
         <div className="report-section__header">
           <h2 className="report-section__title">Day-of-Week Spending Patterns</h2>
           <ReportInfoButton title="Day-of-Week Patterns">
@@ -166,7 +166,7 @@ export function DayPatternsReport({ budgetId }: Props) {
         </div>
       </div>
 
-      <div className="report-section" style={{ marginTop: 'var(--spacing-lg)' }}>
+      <div className="report-section surface" style={{ marginTop: 'var(--spacing-lg)' }}>
         <div className="report-section__controls">
           <h2 className="report-section__title">Payday Effect</h2>
           <ReportInfoButton title="Payday Effect">
