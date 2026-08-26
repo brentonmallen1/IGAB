@@ -91,14 +91,6 @@ export function useSuggestCategory(budgetId: string) {
   })
 }
 
-export function useNormalizePayee(budgetId: string) {
-  return useMutation({
-    mutationFn: (payee_name: string) =>
-      apiClient
-        .post<{ normalized_name: string }>(`/${budgetId}/ai/normalize-payee`, { payee_name })
-        .then((r) => r.data.normalized_name),
-  })
-}
 
 export function useSuggestRegex(budgetId: string) {
   return useMutation({

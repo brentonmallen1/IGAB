@@ -13,14 +13,6 @@ class SuggestCategoryResponse(BaseModel):
     confidence: float
 
 
-class NormalizePayeeRequest(BaseModel):
-    payee_name: str
-
-
-class NormalizePayeeResponse(BaseModel):
-    normalized_name: str
-
-
 class SuggestRegexRequest(BaseModel):
     names: list[str]
 

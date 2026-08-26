@@ -456,15 +456,6 @@ class AIService:
         except Exception:
             return None
 
-    async def normalize_payee(self, payee_name: str) -> str:
-        prompt = await self._prompt("ai_prompt_normalize_payee", {"payee_name": payee_name})
-        try:
-            client = await self._client()
-            result = await client.generate(prompt)
-            return result.strip().strip('"').strip("'")
-        except Exception:
-            return payee_name
-
     async def spending_insights(self, budget_id: uuid.UUID, month: date) -> str:
         month_start = month.replace(day=1)
         next_month = month_start.replace(
