@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from igab.guide.detection import GuideDetection
+from igab.guide.detection import GuideDetection, liability_service_from
 from igab.repositories.tag_repo import TagRepository
 
 from .factories import (
@@ -361,6 +361,83 @@ class TestDebtBands:
         assert found.met is False
         assert found.value == Decimal("0")
         assert found.gaps == []
+
+    # The four below are named for the ways a copy of the liabilities page's
+    # balance rule, kept here, had drifted from it. There is one rule now.
+
+    async def test_a_pending_charge_is_not_debt_yet(self, db_session):
+        # BALANCE_ROW leaves pending auth holds out everywhere else in the app;
+        # the copy summed NOT_DELETED + LEAF and counted them.
+        budget = await _budget(db_session)
+        account = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        await create_transaction(db_session, budget, account, "-1200.00", TODAY)
+        await create_transaction(
+            db_session, budget, account, "-300.00", TODAY, cleared="pending"
+        )
+        await create_liability(
+            db_session, budget, "Visa",
+            liability_type=None, linked_account_id=account.id,
+            interest_rate=Decimal("22.9000"),
+        )
+
+        found = await GuideDetection(db_session).high_interest_debt(budget.id)
+        assert found.value == Decimal("1200.00")
+
+    async def test_an_overpaid_loan_is_not_debt(self, db_session):
+        # abs() of a positive balance read an overpayment as money owed.
+        budget = await _budget(db_session)
+        account = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        await create_transaction(db_session, budget, account, "50.00", TODAY)
+        await create_liability(
+            db_session, budget, "Visa",
+            liability_type=None, linked_account_id=account.id,
+            interest_rate=Decimal("22.9000"),
+        )
+
+        found = await GuideDetection(db_session).high_interest_debt(budget.id)
+        assert found.met is False
+        assert found.entities["liability"] == []
+        assert found.value == Decimal("0")
+
+    async def test_an_empty_register_keeps_its_manual_balance(self, db_session):
+        # A card freshly linked to a transaction-less account must not read as
+        # paid off — the liabilities page falls back to the manual balance.
+        budget = await _budget(db_session)
+        account = await create_account(
+            db_session, budget, "Store card", account_type="credit_card", on_budget=True
+        )
+        await create_liability(
+            db_session, budget, "Store card",
+            liability_type=None, linked_account_id=account.id,
+            interest_rate=Decimal("26.0000"), manual_balance=Decimal("890.00"),
+        )
+
+        found = await GuideDetection(db_session).high_interest_debt(budget.id)
+        assert found.value == Decimal("890.00")
+
+    async def test_the_guide_and_the_liabilities_page_quote_one_balance(self, db_session):
+        budget = await _budget(db_session)
+        account = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        await create_transaction(db_session, budget, account, "-1200.00", TODAY)
+        await create_transaction(db_session, budget, account, "25.00", TODAY)
+        await create_transaction(
+            db_session, budget, account, "-300.00", TODAY, cleared="pending"
+        )
+        lia = await create_liability(
+            db_session, budget, "Visa",
+            liability_type=None, linked_account_id=account.id,
+            interest_rate=Decimal("22.9000"),
+        )
+
+        found = await GuideDetection(db_session).high_interest_debt(budget.id)
+        page = await liability_service_from(db_session).get_balance(lia)
+        assert found.value == page == Decimal("1175.00")
 
 
 class TestRetirementContributions:
