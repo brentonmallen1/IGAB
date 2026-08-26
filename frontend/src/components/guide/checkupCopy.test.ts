@@ -5,7 +5,7 @@ import { checkCopyIntegrity, formatMetricTarget, formatMetricValue, metricProgre
 const fmt = { formatMoney: (n: number) => `$${n}` }
 
 function metric(over: Partial<CheckupMetric>): CheckupMetric {
-  return { key: 'emergency_fund', label: 'Emergency fund', value: '1.8', target: '3', unit: 'months', detail: '', finding_kinds: [], report: null, ...over }
+  return { key: 'emergency_fund', label: 'Emergency fund', value: '1.8', target: '3', unit: 'months', detail: '', finding_kinds: [], report: null, names: [], ...over }
 }
 
 describe('checkup copy', () => {

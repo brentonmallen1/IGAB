@@ -6,6 +6,7 @@ import { useGuideStore } from '../../stores/guideStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import { GuideDialog } from './GuideDialog'
 import { splitFindings, stagesForFinding } from './checkupLeds'
+import { NameChips } from './NameChips'
 
 /**
  * What the app noticed, because the user asked.
@@ -85,9 +86,7 @@ export function HealthReportDialog({
                       {value && <span className="guide-report__value tabular"> — {value}</span>}
                     </p>
                     {f.detail && <p className="guide-report__detail">{f.detail}</p>}
-                    {f.names.length > 0 && (
-                      <p className="guide-report__names">{f.names.join(' · ')}</p>
-                    )}
+                    <NameChips names={f.names} limit={4} label={`${f.title}: what this counts`} />
                     <div className="guide-report__links">
                       {stageDef && (
                         <button
