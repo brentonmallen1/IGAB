@@ -31,6 +31,7 @@ from igab.db.models import (
     Transaction,
     new_uuid,
 )
+from igab.domain.payee_names import samples_from_legacy
 
 ENTITY_MODELS: dict[str, type] = {
     "transaction": Transaction,
@@ -141,6 +142,10 @@ def snapshot(entity_type: str, obj: Any) -> dict[str, Any]:
 
 def coerce_value(model: Any, field: str, value: Any) -> Any:
     """Convert a JSON snapshot value back to the column's Python type."""
+    if model is Payee and field == "mapping_samples":
+        # Snapshots recorded before the list migration hold the comma string;
+        # the column is a non-null list now, so null reads as empty.
+        return samples_from_legacy(value)
     if value is None:
         return None
     col_type = model.__table__.columns[field].type

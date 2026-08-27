@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { suggestPayeeRegex, testPattern, escapeRegex, unionPatterns } from './payeeRegex'
+import {
+  claimedNames,
+  escapeRegex,
+  matchSpan,
+  suggestPayeeRegex,
+  testPattern,
+  unionPatterns,
+} from './payeeRegex'
 
 describe('suggestPayeeRegex', () => {
   it('generalizes a shared prefix with random suffixes', () => {
@@ -87,6 +94,39 @@ describe('testPattern', () => {
 
   it('returns null for invalid patterns', () => {
     expect(testPattern('([bad', 'anything')).toBeNull()
+  })
+})
+
+describe('matchSpan', () => {
+  it('finds the first match case-insensitively', () => {
+    expect(matchSpan('payroll', 'ACH DEPOSIT PAYROLL 123')).toEqual({ start: 12, end: 19 })
+  })
+
+  it('honours anchors', () => {
+    expect(matchSpan('^ACH DEPOSIT PAYROLL ', 'ACH DEPOSIT PAYROLL 123')).toEqual({ start: 0, end: 20 })
+    expect(matchSpan('^PAYROLL', 'ACH DEPOSIT PAYROLL 123')).toBeNull()
+  })
+
+  it('is null for a miss or an invalid pattern', () => {
+    expect(matchSpan('RENT', 'ACH DEPOSIT PAYROLL 123')).toBeNull()
+    expect(matchSpan('([bad', 'anything')).toBeNull()
+  })
+})
+
+describe('claimedNames', () => {
+  const others = [
+    { name: 'ACH WITHDRAWAL 12', mapping_samples: [] },
+    { name: 'Rent', mapping_samples: ['ACH DEPOSIT RENT REFUND'] },
+    { name: 'Netflix', mapping_samples: null },
+  ]
+
+  it('names payees claimed by name or by a sample', () => {
+    expect(claimedNames('^ACH', others)).toEqual(['ACH WITHDRAWAL 12', 'Rent'])
+    expect(claimedNames('^ACH DEPOSIT PAYROLL ', others)).toEqual([])
+  })
+
+  it('claims nothing for an invalid pattern', () => {
+    expect(claimedNames('([bad', others)).toEqual([])
   })
 })
 

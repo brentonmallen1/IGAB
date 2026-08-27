@@ -239,7 +239,13 @@ class Payee(Base):
     transfer_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), index=True
     )
-    mapping_samples: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Raw bank names that should map to this payee, as a list — a bank name
+    # may itself contain a comma ("… DOE, JANE"), which is why this is
+    # not a delimited string. Trimmed, unique ignoring case; see
+    # igab.domain.payee_names.dedupe_samples.
+    mapping_samples: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     # Regex applied to incoming raw payee names; a match assigns the transaction
     # to this payee before fuzzy matching runs.
     match_pattern: Mapped[str | None] = mapped_column(String(500), nullable=True)

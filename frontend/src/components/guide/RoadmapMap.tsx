@@ -8,6 +8,8 @@ import { stepColor } from './stepColor'
 import { buildFlow, NODE_W, NODE_H, ROW_GAP, type FlowEdge } from './flowLayout'
 import { useGuideSignalMap } from './useGuideSignalMap'
 import { useCheckupLeds } from './useCheckupLeds'
+import { useRoadmapPosition } from './useRoadmapPosition'
+import { MarkGlyph } from './PositionStrip'
 import { StepLed } from './StepLed'
 import { SignalBindingSheet } from './SignalBindingSheet'
 import type { SignalKey } from '../../content/roadmap'
@@ -40,6 +42,7 @@ export function RoadmapMap() {
   const toggleDetail = useGuideStore((s) => s.toggleDetail)
   const guide = useGuideSignalMap()
   const { leds } = useCheckupLeds()
+  const position = useRoadmapPosition()
 
   const flow = useMemo(() => buildFlow(collapsedStages), [collapsedStages])
 
@@ -231,7 +234,7 @@ export function RoadmapMap() {
             <button
               key={c.stage.id}
               type="button"
-              className="flow-stage"
+              className={`flow-stage ${c.stage.id === position.currentStage ? 'flow-stage--current' : ''}`}
               style={{
                 left: c.x,
                 top: c.y,
@@ -245,6 +248,7 @@ export function RoadmapMap() {
               <span className="flow-node__step">
                 Step {c.stage.step}
                 {leds.get(c.stage.id) && <StepLed reason={leds.get(c.stage.id)!.title} />}
+                <MarkGlyph mark={guide.progress[c.stage.id]} />
               </span>
               <span className="flow-stage__title">{c.stage.title}</span>
               <span className="flow-stage__count">
@@ -258,7 +262,7 @@ export function RoadmapMap() {
             return (
               <div
                 key={n.node.id}
-                className={`flow-node flow-node--${n.node.kind}`}
+                className={`flow-node flow-node--${n.node.kind} ${n.stage.id === position.currentStage ? 'flow-node--current' : ''}`}
                 style={{
                   left: n.x,
                   top: n.y,
@@ -278,6 +282,7 @@ export function RoadmapMap() {
                       {leds.get(n.stage.id) && (
                         <StepLed reason={leds.get(n.stage.id)!.title} />
                       )}
+                      <MarkGlyph mark={guide.progress[n.stage.id]} />
                     </span>
                   )}
                   <span className="flow-node__title">{n.node.title}</span>

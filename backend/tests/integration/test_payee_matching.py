@@ -154,20 +154,22 @@ async def test_patch_sets_and_clears_pattern(api_client, db_session):
     assert resp.json()["match_pattern"] is None
 
 
-async def test_patch_clears_mapping_samples(api_client, db_session):
+async def test_patch_normalizes_and_clears_mapping_samples(api_client, db_session):
     user = api_client.test_user
     budget = await create_budget(db_session, user)
     payee = await create_payee(db_session, budget, "Paycheck")
 
+    # Trimmed, unique ignoring case, and a comma inside a name stays inside it.
     resp = await api_client.patch(
-        f"/api/v1/payees/{payee.id}", json={"mapping_samples": "NORTHWIND PAYROLL"}
+        f"/api/v1/payees/{payee.id}",
+        json={"mapping_samples": [" NORTHWIND PAYROLL ", "northwind payroll", "", "NORTHWIND … DOE, JANE"]},
     )
     assert resp.status_code == 200
-    assert resp.json()["mapping_samples"] == "NORTHWIND PAYROLL"
+    assert resp.json()["mapping_samples"] == ["NORTHWIND PAYROLL", "NORTHWIND … DOE, JANE"]
 
     resp = await api_client.patch(f"/api/v1/payees/{payee.id}", json={"mapping_samples": None})
     assert resp.status_code == 200
-    assert resp.json()["mapping_samples"] is None
+    assert resp.json()["mapping_samples"] == []
 
 
 async def test_patch_rejects_invalid_regex(api_client, db_session):

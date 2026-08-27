@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import UserClearedStatus
 from igab.domain.money import Money
+from igab.domain.payee_names import dedupe_samples
 
 
 class SplitCreate(BaseModel):
@@ -258,8 +259,15 @@ class PayeeCreate(BaseModel):
 class PayeeUpdate(BaseModel):
     name: str | None = None
     default_category_id: uuid.UUID | None = None
-    mapping_samples: str | None = None
+    mapping_samples: list[str] | None = None
     match_pattern: str | None = Field(default=None, max_length=500)
+
+    @field_validator("mapping_samples")
+    @classmethod
+    def normalize_samples(cls, v: list[str] | None) -> list[str]:
+        # An explicit null clears the list. An absent field stays absent — the
+        # endpoint dumps with exclude_unset, so this only runs when it was sent.
+        return dedupe_samples(v or [])
 
     @field_validator("match_pattern")
     @classmethod
@@ -282,7 +290,7 @@ class PayeeResponse(BaseModel):
     name: str
     default_category_id: uuid.UUID | None
     transfer_account_id: uuid.UUID | None
-    mapping_samples: str | None
+    mapping_samples: list[str]
     match_pattern: str | None = None
     tags: list[TagOutSimple] = []
 

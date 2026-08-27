@@ -4,30 +4,42 @@ import toast from 'react-hot-toast'
 import { useResetSetting, useSettings, useUpdateSetting } from '../../api/settings'
 import './AISettings.css'
 
-const PROMPT_TASKS: Array<{ key: string; label: string; placeholders: string[] }> = [
+// Labels and where each prompt runs — copy about the UI, so it lives with the
+// UI. Which placeholders a prompt takes is served with the setting, from the
+// backend's one registry.
+const PROMPT_TASKS: Array<{ key: string; label: string; usage: string }> = [
   {
     key: 'ai_prompt_receipt_gate',
     label: 'Receipt gate (is this a receipt?)',
-    placeholders: [],
+    usage:
+      'Runs first on every receipt photo — from Quick Add or the transaction editor’s Receipt tab — and decides whether the image is a receipt at all before the expensive read.',
   },
   {
     key: 'ai_prompt_receipt_extract',
     label: 'Receipt extraction',
-    placeholders: ['{categories}', '{today}'],
+    usage:
+      'Reads a receipt photo into a draft transaction — payee, total, date, category, line items and a suggested split — once the gate has passed.',
   },
   {
     key: 'ai_prompt_nl_parse',
     label: 'Natural-language entry',
-    placeholders: ['{text}', '{categories}', '{today}'],
+    usage:
+      'Turns a typed or dictated sentence into a draft transaction: the natural-language entry in Quick Add and in the transaction editor.',
   },
   {
     key: 'ai_prompt_suggest_category',
     label: 'Category suggestion',
-    placeholders: ['{payee_name}', '{amount}', '{memo}', '{categories}'],
+    usage: 'Answers the AI Suggest button beside the category field in the transaction editor.',
+  },
+  {
+    key: 'ai_prompt_suggest_regex',
+    label: 'Match pattern suggestion',
+    usage:
+      'Answers the AI button beside a payee’s match pattern — in the Payees page editor and the merge dialog — with up to three candidate patterns, tightest first.',
   },
 ]
 
-function PromptCard({ taskKey, label, placeholders }: { taskKey: string; label: string; placeholders: string[] }) {
+function PromptCard({ taskKey, label, usage }: { taskKey: string; label: string; usage: string }) {
   const { data: settings } = useSettings()
   const updateSetting = useUpdateSetting()
   const resetSetting = useResetSetting()
@@ -36,6 +48,7 @@ function PromptCard({ taskKey, label, placeholders }: { taskKey: string; label: 
   const [draft, setDraft] = useState<string | null>(null)
 
   const value = draft ?? setting?.value ?? ''
+  const placeholders = setting?.placeholders ?? []
   const isOverridden = setting?.is_overridden === true
   const dirty = draft !== null && draft !== (setting?.value ?? '')
 
@@ -58,18 +71,25 @@ function PromptCard({ taskKey, label, placeholders }: { taskKey: string; label: 
 
   return (
     <div className="ai-prompt-card">
-      <button className="ai-prompt-card__header" onClick={() => setOpen((v) => !v)}>
+      <button className="ai-prompt-card__header" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-        <span className="ai-prompt-card__label">{label}</span>
+        <span className="ai-prompt-card__heading">
+          <span className="ai-prompt-card__label">{label}</span>
+          {/* Where it runs, visible without opening the card — a prompt you
+              cannot place is one you will not dare to edit. */}
+          <span className="ai-prompt-card__usage">{usage}</span>
+        </span>
         {isOverridden && <span className="ai-prompt-card__edited">edited</span>}
       </button>
       {open && (
         <div className="ai-prompt-card__body">
           <div className="ai-prompt-card__placeholders">
             Placeholders:{' '}
-            {placeholders.map((p) => (
-              <code key={p}>{p}</code>
-            ))}
+            {placeholders.length === 0 ? (
+              <em>none</em>
+            ) : (
+              placeholders.map((p) => <code key={p}>{p}</code>)
+            )}
           </div>
           <textarea
             className="ai-settings__json ai-prompt-card__textarea"
@@ -114,13 +134,14 @@ export function AIPromptSettings() {
         <div>
           <div className="settings-row__label">Prompts</div>
           <div className="settings-row__desc">
-            Tune what the model is asked for each task. Broken placeholders fall back to
-            the default prompt rather than breaking the feature.
+            Tune what the model is asked for each task; each card says where that task
+            runs. Broken placeholders fall back to the default prompt rather than breaking
+            the feature.
           </div>
         </div>
       </div>
       {PROMPT_TASKS.map((t) => (
-        <PromptCard key={t.key} taskKey={t.key} label={t.label} placeholders={t.placeholders} />
+        <PromptCard key={t.key} taskKey={t.key} label={t.label} usage={t.usage} />
       ))}
     </div>
   )

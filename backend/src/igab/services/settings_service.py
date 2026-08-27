@@ -1,7 +1,7 @@
 import os
 
 from igab.repositories.settings_repo import SettingsRepository
-from igab.services.ai_prompts import DEFAULT_PROMPTS
+from igab.services.ai_prompts import DEFAULT_PROMPTS, PROMPT_PLACEHOLDERS
 
 DEFAULTS: dict[str, str] = {
     # Master switch for AI features — false until the user explicitly enables
@@ -81,6 +81,7 @@ class SettingsService:
                     "value": db_val if db_val is not None else (env_val or default),
                     "is_overridden": db_val is not None,
                     "default_value": default,
+                    "placeholders": PROMPT_PLACEHOLDERS.get(key),
                 }
             )
         return result

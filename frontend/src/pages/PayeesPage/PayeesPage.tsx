@@ -7,11 +7,14 @@ import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, useFetchPayee
 import { usePayeeTransactions } from '../../api/transactions'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useTags, useBulkAddPayeeTags, useCreateTag, useSetPayeeTags } from '../../api/tags'
-import { usePayeeCleanupSuggestions, useAIStatus, useSuggestRegex } from '../../api/ai'
+import { useAIStatus, useSuggestRegex } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
-import { testPattern } from '../../utils/payeeRegex'
+import { suggestPayeeRegex, testPattern } from '../../utils/payeeRegex'
+import { dedupeSamples, samplesFromLines } from '../../utils/payeeSamples'
+import { PatternCandidates, PatternMatchPreview } from '../../components/payees/PatternSuggest/PatternSuggest'
+import { NO_PATTERN_MESSAGE, patternCandidates } from '../../components/payees/PatternSuggest/patternCandidates'
 import { TagChip } from '../../components/common/TagChip'
 import { TagPicker, type TagOption } from '../../components/common/TagPicker'
 import './PayeesPage.css'
@@ -58,7 +61,6 @@ export function PayeesPage() {
   const updatePayee = useUpdatePayee(budgetId)
   const deletePayee = useDeletePayee(budgetId)
   const mergePayee = useMergePayee(budgetId)
-  const cleanup = usePayeeCleanupSuggestions(budgetId)
   const fetchDuplicates = useFetchPayeeDuplicates(budgetId)
   const aiStatus = useAIStatus()
   const suggestRegex = useSuggestRegex(budgetId ?? '')
@@ -79,6 +81,7 @@ export function PayeesPage() {
   const [editName, setEditName] = useState('')
   const [editMappings, setEditMappings] = useState('')
   const [editPattern, setEditPattern] = useState('')
+  const [editAiCandidates, setEditAiCandidates] = useState<string[]>([])
   const [search, setSearch] = useState(searchParams.get('q') ?? '')
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
@@ -88,7 +91,6 @@ export function PayeesPage() {
   const [wizardPeekId, setWizardPeekId] = useState<string | null>(null)
   const [wizardMergePayees, setWizardMergePayees] = useState<PayeeWithCount[] | null>(null)
   const [showCleanupModal, setShowCleanupModal] = useState(false)
-  const [cleanupMethod, setCleanupMethod] = useState<'fuzzy' | 'ai'>('fuzzy')
   const [sensitivity, setSensitivity] = useState<'strict' | 'balanced' | 'loose'>('balanced')
   const [showBulkTagPicker, setShowBulkTagPicker] = useState(false)
   const [sortColumn, setSortColumn] = useState<'name' | 'transactions'>('name')
@@ -101,7 +103,7 @@ export function PayeesPage() {
     return payees
       .filter((p) => {
         if (p.transfer_account_id) return false
-        const searchTarget = `${p.name} ${p.mapping_samples || ''} ${p.match_pattern || ''}`.toLowerCase()
+        const searchTarget = `${p.name} ${p.mapping_samples.join(' ')} ${p.match_pattern || ''}`.toLowerCase()
         return searchTarget.includes(term)
       })
       .sort((a, b) => {
@@ -161,11 +163,12 @@ export function PayeesPage() {
 
   const SortIcon = sortDirection === 'asc' ? ChevronUp : ChevronDown
 
-  function startEdit(id: string, name: string, mappings: string | null, pattern: string | null) {
+  function startEdit(id: string, name: string, samples: string[], pattern: string | null) {
     setEditingId(id)
     setEditName(name)
-    setEditMappings(mappings ?? '')
+    setEditMappings(samples.join('\n'))
     setEditPattern(pattern ?? '')
+    setEditAiCandidates([])
   }
 
   async function saveEdit(id: string) {
@@ -178,7 +181,7 @@ export function PayeesPage() {
       await updatePayee.mutateAsync({
         id,
         name: editName.trim(),
-        mapping_samples: editMappings.trim() || null,
+        mapping_samples: samplesFromLines(editMappings),
         match_pattern: pattern || null,
       })
     }
@@ -205,29 +208,18 @@ export function PayeesPage() {
 
     const absorbedPayees = customName ? mergeList : sources
 
-    const update: { name?: string; mapping_samples?: string | null; match_pattern?: string } = {}
+    const update: { name?: string; mapping_samples?: string[]; match_pattern?: string } = {}
     if (customName) update.name = customName
     if (matchPattern) update.match_pattern = matchPattern
 
     if (addToMappingSamples && absorbedPayees.length > 0) {
-      const parts = [
-        customName ? null : target.mapping_samples,
+      // The same list the modal previewed: the survivor's samples (unless it
+      // is being renamed), then the absorbed names and their samples.
+      update.mapping_samples = dedupeSamples([
+        ...(customName ? [] : target.mapping_samples),
         ...absorbedPayees.map((p) => p.name),
-        ...absorbedPayees.map((p) => p.mapping_samples),
-      ]
-      const seen = new Set<string>()
-      const deduped: string[] = []
-      for (const part of parts) {
-        if (!part) continue
-        for (const s of part.split(',')) {
-          const t = s.trim()
-          if (t && !seen.has(t.toLowerCase())) {
-            seen.add(t.toLowerCase())
-            deduped.push(t)
-          }
-        }
-      }
-      update.mapping_samples = deduped.join(', ') || null
+        ...absorbedPayees.flatMap((p) => p.mapping_samples),
+      ])
     }
 
     if (Object.keys(update).length > 0) {
@@ -249,27 +241,15 @@ export function PayeesPage() {
 
   async function runCleanup() {
     setShowCleanupModal(false)
-    if (cleanupMethod === 'fuzzy') {
-      const threshold = sensitivityThresholds[sensitivity]
-      const result = await fetchDuplicates.mutateAsync(threshold)
-      if (result && result.length > 0) {
-        openWizard(result.map((g) => ({
-          label: `${g.similarity}% similar`,
-          payees: g.payees,
-        })))
-      } else {
-        toast.success('No duplicate payees found.')
-      }
+    const threshold = sensitivityThresholds[sensitivity]
+    const result = await fetchDuplicates.mutateAsync(threshold)
+    if (result && result.length > 0) {
+      openWizard(result.map((g) => ({
+        label: `${g.similarity}% similar`,
+        payees: g.payees,
+      })))
     } else {
-      const result = await cleanup.refetch()
-      if (result.data && result.data.length > 0) {
-        openWizard(result.data.map((g) => ({
-          label: g.canonical,
-          payees: g.payees,
-        })))
-      } else {
-        toast.success('No duplicate payees found.')
-      }
+      toast.success('No duplicate payees found.')
     }
   }
 
@@ -373,10 +353,10 @@ export function PayeesPage() {
           <button
             className="payees-btn payees-btn--primary"
             onClick={() => setShowCleanupModal(true)}
-            disabled={fetchDuplicates.isPending || cleanup.isFetching}
+            disabled={fetchDuplicates.isPending}
             title="Find similar payees that may be duplicates"
           >
-            {fetchDuplicates.isPending || cleanup.isFetching ? 'Scanning…' : 'Cleanup'}
+            {fetchDuplicates.isPending ? 'Scanning…' : 'Cleanup'}
           </button>
         </div>
       </div>
@@ -390,26 +370,10 @@ export function PayeesPage() {
             </div>
             <div className="payees-wizard__body">
               <p className="payees-wizard__label">Find similar payees to merge</p>
-              <p className="payees-wizard__sub">Choose a detection method:</p>
-              <div className="payees-cleanup__toggle">
-                <button
-                  className={`payees-cleanup__toggle-btn ${cleanupMethod === 'fuzzy' ? 'payees-cleanup__toggle-btn--active' : ''}`}
-                  onClick={() => setCleanupMethod('fuzzy')}
-                >
-                  Fuzzy Match
-                </button>
-                <button
-                  className={`payees-cleanup__toggle-btn ${cleanupMethod === 'ai' ? 'payees-cleanup__toggle-btn--active' : ''}`}
-                  onClick={() => setCleanupMethod('ai')}
-                  disabled={!aiStatus.data?.available}
-                  title={!aiStatus.data?.available ? 'Requires Ollama (Settings → Integrations)' : undefined}
-                >
-                  AI
-                </button>
-              </div>
-
-              {cleanupMethod === 'fuzzy' && (
-                <>
+              <p className="payees-wizard__sub">
+                Names are compared with the bank's store numbers, reference codes and dates
+                set aside, so postings that differ only there read as one payee.
+              </p>
                   <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
                     Sensitivity:
                   </p>
@@ -433,23 +397,15 @@ export function PayeesPage() {
                       <strong>Loose</strong> — More suggestions, some may be wrong
                     </button>
                   </div>
-                </>
-              )}
-
-              {cleanupMethod === 'ai' && (
-                <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
-                  Uses Ollama to intelligently identify payees that represent the same vendor.
-                </p>
-              )}
             </div>
             <div className="payees-wizard__footer">
               <button className="payees-btn" onClick={() => setShowCleanupModal(false)}>Cancel</button>
               <button
                 className="payees-btn payees-btn--primary"
                 onClick={runCleanup}
-                disabled={fetchDuplicates.isPending || cleanup.isFetching}
+                disabled={fetchDuplicates.isPending}
               >
-                {fetchDuplicates.isPending || cleanup.isFetching ? 'Scanning…' : 'Find Duplicates'}
+                {fetchDuplicates.isPending ? 'Scanning…' : 'Find Duplicates'}
               </button>
             </div>
           </div>
@@ -597,6 +553,16 @@ export function PayeesPage() {
           </div>
           {filtered.map((p) => {
             const isSelected = selectedPayeeIds.has(p.id)
+            const editing = editingId === p.id
+            // What a pattern here is meant to claim — the name as typed plus
+            // the recorded bank-name samples — and the payees it must not.
+            const editNames = editing ? [editName.trim() || p.name, ...samplesFromLines(editMappings)] : []
+            const editOthers = editing
+              ? payees.filter((x) => x.id !== p.id && !x.transfer_account_id)
+              : []
+            const editCandidates = editing
+              ? patternCandidates(editAiCandidates, suggestPayeeRegex(editNames))
+              : []
             return (
               <div
                 key={p.id}
@@ -625,18 +591,19 @@ export function PayeesPage() {
                         }}
                         placeholder="Payee name"
                       />
-                      <input
+                      <textarea
                         className="payees-edit-input payees-edit-input--mappings"
                         value={editMappings}
+                        rows={2}
                         onChange={(e) => setEditMappings(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveEdit(p.id)
                           if (e.key === 'Escape') setEditingId(null)
                         }}
-                        placeholder="Match samples (optional): NORTHWIND PAYSERV, NORTHWIND PAYROLL"
+                        placeholder={'Match samples (optional), one per line:\nNORTHWIND PAYSERV PAYROLL 250915 …'}
+                        aria-label="Match samples, one per line"
                       />
                       <span className="payees-edit-hint">
-                        Payee names that should match this payee, comma-separated
+                        Bank names that should match this payee, one per line
                       </span>
                       <div className="payees-edit-pattern-row">
                         <input
@@ -655,16 +622,17 @@ export function PayeesPage() {
                             type="button"
                             className="payees-btn payees-btn--sm payees-edit-ai-suggest"
                             onClick={() => {
-                              const names = [
-                                editName.trim() || p.name,
-                                ...(editMappings.split(',').map((s) => s.trim()).filter(Boolean)),
-                              ]
-                              void suggestRegex
-                                .mutateAsync(names)
-                                .then((pat) => { if (pat) setEditPattern(pat) })
+                              void suggestRegex.mutateAsync(editNames).then((patterns) => {
+                                setEditAiCandidates(patterns)
+                                if (patterns.length === 0) {
+                                  toast.error(NO_PATTERN_MESSAGE)
+                                } else {
+                                  setEditPattern((current) => (current.trim() ? current : patterns[0]))
+                                }
+                              })
                             }}
                             disabled={suggestRegex.isPending}
-                            title="Ask the AI for a pattern generalizing this payee's names"
+                            title="Ask the AI for patterns generalizing this payee's names"
                           >
                             <Sparkles size={12} aria-hidden />
                             {suggestRegex.isPending ? 'Thinking…' : 'AI'}
@@ -674,6 +642,14 @@ export function PayeesPage() {
                       <span className="payees-edit-hint">
                         Incoming names matching this regex map here, case-insensitive
                       </span>
+                      <PatternCandidates
+                        candidates={editCandidates}
+                        value={editPattern.trim()}
+                        names={editNames}
+                        others={editOthers}
+                        onPick={setEditPattern}
+                      />
+                      <PatternMatchPreview pattern={editPattern.trim()} names={editNames} />
                       <div className="payees-edit-btns">
                         <button className="payees-btn payees-btn--sm payees-btn--primary" onClick={() => saveEdit(p.id)}>
                           Save
@@ -692,9 +668,12 @@ export function PayeesPage() {
                       >
                         {p.name}
                       </span>
-                      {p.mapping_samples && (
-                        <span className="payees-table__mappings" title={`Match samples: ${p.mapping_samples}`}>
-                          {p.mapping_samples}
+                      {p.mapping_samples.length > 0 && (
+                        <span
+                          className="payees-table__mappings"
+                          title={`Match samples: ${p.mapping_samples.join(' · ')}`}
+                        >
+                          {p.mapping_samples.join(' · ')}
                         </span>
                       )}
                       {p.match_pattern && (

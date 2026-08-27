@@ -6,6 +6,9 @@ import { NodeCard } from './NodeCard'
 import { SignalBindingSheet } from './SignalBindingSheet'
 import { useGuideSignalMap } from './useGuideSignalMap'
 import { useCheckupLeds } from './useCheckupLeds'
+import { useRoadmapPosition } from './useRoadmapPosition'
+import { StageStatusChip } from './PositionStrip'
+import { stageElementId } from './roadmapPosition'
 import { StepLed } from './StepLed'
 import { StageMark } from './StageMark'
 import type { SignalKey } from '../../content/roadmap'
@@ -28,6 +31,7 @@ export function RoadmapBrowse() {
   const [collapsed, setCollapsed] = useState<string[]>([])
   const guide = useGuideSignalMap()
   const { leds } = useCheckupLeds()
+  const position = useRoadmapPosition()
   const [correcting, setCorrecting] = useState<SignalKey | null>(null)
   const concept = correcting ? guide.concepts.get(correcting) : undefined
 
@@ -36,21 +40,26 @@ export function RoadmapBrowse() {
       {ROADMAP.map((stage) => {
         const isCollapsed = collapsed.includes(stage.id)
         const led = leds.get(stage.id)
+        const current = stage.id === position.currentStage
+        const mark = guide.progress[stage.id]
         return (
           <section
             key={stage.id}
-            className="guide-browse__stage"
+            className={`guide-browse__stage ${current ? 'guide-browse__stage--current' : ''}`}
             style={{ ['--stage-color' as string]: stepColor(stage.step) }}
-            aria-labelledby={`browse-${stage.id}`}
+            aria-labelledby={stageElementId('browse', stage.id)}
           >
             <div className="guide-browse__header">
               <span className="guide-browse__step">
                 Step {stage.step}
                 {led && <StepLed reason={led.title} />}
               </span>
-              <h3 className="guide-browse__title" id={`browse-${stage.id}`}>
+              <h3 className="guide-browse__title" id={stageElementId('browse', stage.id)}>
                 {stage.title}
               </h3>
+              {!mark && (
+                <StageStatusChip verdict={position.statuses.get(stage.id)} current={current} />
+              )}
               <button
                 type="button"
                 className="guide-link-button guide-browse__fold"
@@ -69,7 +78,7 @@ export function RoadmapBrowse() {
               <StageMark
                 budgetId={guide.budgetId}
                 stageId={stage.id}
-                mark={guide.progress[stage.id]}
+                mark={mark}
                 showControls={!isCollapsed}
               />
             )}

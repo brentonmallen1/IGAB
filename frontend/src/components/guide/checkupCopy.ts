@@ -1,6 +1,6 @@
 import { findStage, TOOL_IDS, type StageId, type ToolId } from '../../content/roadmap'
 import { GLOSSARY_IDS, type GlossaryId } from '../../content/glossary'
-import type { CheckupMetric } from '../../api/guide'
+import type { CheckupFinding, CheckupMetric, FindingKind } from '../../api/guide'
 
 /**
  * What each checkup figure means and what it helps you decide.
@@ -25,6 +25,7 @@ export interface CheckupExplainer {
 
 export const METRIC_KEYS = [
   'emergency_fund',
+  'essential_expenses',
   'high_interest_debt',
   'moderate_interest_debt',
   'retirement_contributions',
@@ -36,7 +37,7 @@ export type MetricKey = (typeof METRIC_KEYS)[number]
 
 export const CHECKUP_COPY: Record<MetricKey, CheckupExplainer> = {
   emergency_fund: {
-    what: 'How many months of essential spending your emergency fund would cover: the money set aside for genuine surprises, divided by what a lean month costs you. Until there is an essentials figure it is shown as money against the $1,000 starter amount instead.',
+    what: 'How many months of essential spending your emergency fund would cover: the money set aside for genuine surprises, divided by what a lean month costs you. Until there is an essentials figure it is shown as money against the starter amount instead — $1,000 or one month of essentials, whichever is larger.',
     why: 'The roadmap builds it in two passes — a small starter cushion before anything else, then three to six months once expensive debt is cleared. It is what keeps one bad month from becoming new debt.',
     decide: [
       'Whether to keep paying extra on debt, or pause and rebuild the cushion first',
@@ -46,6 +47,18 @@ export const CHECKUP_COPY: Record<MetricKey, CheckupExplainer> = {
     stage: 'full-emergency-fund',
     tool: 'emergency-fund',
     glossary: ['emergency-fund', 'essential-expenses'],
+  },
+  essential_expenses: {
+    what: 'What a lean month costs: your spending on the things you could not do without, averaged over the last 90 days. It is the yardstick the emergency fund is measured against — three months of this is the target.',
+    why: 'An emergency fund sized against everything you spend is bigger than it needs to be; one sized against essentials is what would actually carry you through a bad month. Until something is tagged Essential this falls back to all your spending, which overstates a lean month.',
+    decide: [
+      'Tag what you could not do without — rent, groceries, utilities, minimum payments — as Essential, and this narrows to those',
+      'Point the roadmap at specific categories if the tag is not the right shape',
+      'How big the emergency fund should be — the sizer works it through against this figure',
+    ],
+    stage: 'foundation',
+    tool: 'emergency-fund',
+    glossary: ['essential-expenses'],
   },
   high_interest_debt: {
     what: 'What you owe on debts at 10% APR or higher — cards, store financing, personal loans. Only debts with a rate on record are counted; any without one are named under Data gaps.',
@@ -117,12 +130,39 @@ export function explainerFor(key: string): CheckupExplainer | undefined {
   return (CHECKUP_COPY as Record<string, CheckupExplainer>)[key]
 }
 
-export type MetricStatus = 'warn' | 'good' | 'neutral' | 'unknown'
+export type MetricStatus = 'danger' | 'warn' | 'good' | 'neutral' | 'unknown'
+
+export type FindingTone = 'warn' | 'danger'
+
+/** How loudly a finding speaks. Presentational — the server ranks findings,
+ *  the client colours them. Amber is the checkup's voice; red is kept for the
+ *  one case that is not "worth a look" but "nothing there yet". */
+export const FINDING_TONE: Record<Exclude<FindingKind, 'stale_external'>, FindingTone> = {
+  high_interest_debt: 'warn',
+  ef_not_started: 'danger',
+  ef_below_starter: 'warn',
+  chronic_overspend: 'warn',
+  ef_below_full: 'warn',
+  moderate_debt: 'warn',
+  retirement_below_target: 'warn',
+  unknown_rates: 'warn',
+}
+
+export function findingTone(kind: FindingKind): FindingTone {
+  return kind === 'stale_external' ? 'warn' : FINDING_TONE[kind]
+}
 
 /** The one-word verdict beside the figure. Derived from what is served — a
  *  fired finding wins; otherwise the figure against its target. */
-export function metricStatus(m: CheckupMetric, fired: boolean): { status: MetricStatus; text: string } {
-  if (fired) return { status: 'warn', text: 'worth a look' }
+export function metricStatus(
+  m: CheckupMetric,
+  finding?: CheckupFinding
+): { status: MetricStatus; text: string } {
+  if (finding) {
+    return findingTone(finding.kind) === 'danger'
+      ? { status: 'danger', text: 'not started' }
+      : { status: 'warn', text: 'worth a look' }
+  }
   if (m.value === null) return { status: 'unknown', text: 'not known' }
   const value = Number(m.value)
   const target = m.target === null ? null : Number(m.target)
@@ -186,6 +226,25 @@ export function formatMetricTarget(
     case 'count':
       return t === 0 ? 'target: none' : `target ${Math.round(t)}`
   }
+}
+
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six']
+
+/** The money behind a months figure — "$1,240 of $9,720 — three months of
+ *  essentials" — because 0.4 months means nothing until you can see what a
+ *  month is worth. Null for a row served without one. */
+export function formatMoneyLine(
+  m: CheckupMetric,
+  fmt: Fmt,
+  thresholds: { emergency_fund_months?: number }
+): string | null {
+  if (m.money_value === null || m.money_target === null) return null
+  const value = Number(m.money_value)
+  const target = Number(m.money_target)
+  if (Number.isNaN(value) || Number.isNaN(target)) return null
+  const months = thresholds.emergency_fund_months ?? Number(m.target)
+  const word = NUMBER_WORDS[months] ?? String(months)
+  return `${fmt.formatMoney(value)} of ${fmt.formatMoney(target)} — ${word} ${months === 1 ? 'month' : 'months'} of essentials`
 }
 
 /** Guards the content: run in checkupCopy.test.ts. */

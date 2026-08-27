@@ -32,11 +32,12 @@ from igab.guide.concepts import (
     MODERATE_INTEREST_APR,
     RETIREMENT_TARGET_RATE,
     STALE_EXTERNAL_MONTHS,
-    STARTER_EMERGENCY_FUND,
+    starter_emergency_fund,
 )
 
 FindingKind = Literal[
     "high_interest_debt",
+    "ef_not_started",
     "ef_below_starter",
     "chronic_overspend",
     "ef_below_full",
@@ -47,8 +48,6 @@ FindingKind = Literal[
 ]
 
 Unit = Literal["money", "months", "percent", "count"]
-
-STARTER = Decimal(STARTER_EMERGENCY_FUND)
 
 
 @dataclass(frozen=True)
@@ -66,6 +65,10 @@ class CheckupInputs:
     with_targets: int
     unknown_rate_names: list[str]
     today: date
+    #: Where the essentials figure came from — the signal's own reason, so the
+    #: checkup row can say "tagged Essential" or "all spending" on its face.
+    essentials_tracked: bool = True
+    essentials_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -99,6 +102,11 @@ class Metric:
     #: decides how many to show at once; a list cut short here is information
     #: quietly lost.
     names: list[str] = field(default_factory=list)
+    #: The same figure in money, for a row whose unit is not money — the
+    #: emergency fund in months also says "$1,240 of $9,720", because the
+    #: months only mean something once you can see what a month costs.
+    money_value: Decimal | None = None
+    money_target: Decimal | None = None
 
 
 def _sig(inputs: CheckupInputs, key: str) -> Mapping[str, Any]:
@@ -108,6 +116,12 @@ def _sig(inputs: CheckupInputs, key: str) -> Mapping[str, Any]:
 def _unmet(sig: Mapping[str, Any]) -> bool:
     """Tracked, detected, and short of its target — the only shape that speaks."""
     return bool(sig.get("tracked")) and sig.get("met") is False
+
+
+def _starter(inputs: CheckupInputs) -> Decimal:
+    """The starter cushion this budget is measured against: the flat figure or
+    one month of essentials, whichever is larger."""
+    return starter_emergency_fund(inputs.essentials_monthly)
 
 
 # ── the rules ────────────────────────────────────────────────────────────────
@@ -130,10 +144,35 @@ def _high_interest(inputs: CheckupInputs) -> list[Finding]:
     ]
 
 
+def _ef_not_started(inputs: CheckupInputs) -> list[Finding]:
+    sig = _sig(inputs, "emergency_fund")
+    value = sig.get("value")
+    # An overspent emergency-fund envelope has nothing in it either.
+    if not sig.get("tracked") or value is None or value > 0:
+        return []
+    return [
+        Finding(
+            kind="ef_not_started",
+            rank=2,
+            concept_key="emergency_fund",
+            title="No emergency fund yet",
+            detail=(
+                "Nothing is set aside for a surprise. The roadmap starts here — "
+                "one small cushion before anything else."
+            ),
+            value=value,
+            target=_starter(inputs),
+        )
+    ]
+
+
 def _ef_below_starter(inputs: CheckupInputs) -> list[Finding]:
     sig = _sig(inputs, "emergency_fund")
     value = sig.get("value")
-    if not sig.get("tracked") or value is None or value >= STARTER:
+    starter = _starter(inputs)
+    # Below zero is "not started", above the starter is "below full": this
+    # rule owns the gap between, so no budget hears two nags for one problem.
+    if not sig.get("tracked") or value is None or value <= 0 or value >= starter:
         return []
     return [
         Finding(
@@ -143,7 +182,7 @@ def _ef_below_starter(inputs: CheckupInputs) -> list[Finding]:
             title="Emergency fund is below the starter amount",
             detail="One small cushion first, before anything else on the roadmap.",
             value=value,
-            target=STARTER,
+            target=starter,
         )
     ]
 
@@ -168,7 +207,7 @@ def _chronic(inputs: CheckupInputs) -> list[Finding]:
 def _ef_below_full(inputs: CheckupInputs) -> list[Finding]:
     sig = _sig(inputs, "emergency_fund")
     value = sig.get("value")
-    if not _unmet(sig) or value is None or value < STARTER:
+    if not _unmet(sig) or value is None or value < _starter(inputs):
         return []
     return [
         Finding(
@@ -264,6 +303,8 @@ Rule = tuple[FindingKind, int, Callable[[CheckupInputs], list[Finding]]]
 #: the table reads as the rule it is.
 RULES: tuple[Rule, ...] = (
     ("high_interest_debt", 1, _high_interest),
+    # The two starter rules are exclusive by construction and share a rank.
+    ("ef_not_started", 2, _ef_not_started),
     ("ef_below_starter", 2, _ef_below_starter),
     ("chronic_overspend", 3, _chronic),
     ("ef_below_full", 4, _ef_below_full),
@@ -300,6 +341,7 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
     retirement = _sig(inputs, "retirement_contributions")
     rows: list[Metric] = []
 
+    ef_kinds = ["ef_not_started", "ef_below_starter", "ef_below_full"]
     months = _ef_months(ef.get("value"), inputs.essentials_monthly)
     if months is not None:
         rows.append(
@@ -313,8 +355,12 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
                     f"Months of essential spending. The roadmap suggests "
                     f"{FULL_EMERGENCY_FUND_MONTHS_LOW}–{FULL_EMERGENCY_FUND_MONTHS_HIGH}."
                 ),
-                finding_kinds=["ef_below_starter", "ef_below_full"],
+                finding_kinds=ef_kinds,
                 report="essentials",
+                # The signal's target is the served three-month figure —
+                # computed once, quoted here rather than re-derived.
+                money_value=ef.get("value"),
+                money_target=ef.get("target"),
             )
         )
     else:
@@ -323,7 +369,7 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
                 key="emergency_fund",
                 label="Emergency fund",
                 value=ef.get("value") if ef.get("tracked") else None,
-                target=STARTER,
+                target=_starter(inputs),
                 unit="money",
                 detail=(
                     "Against the starter amount — tag what you could not do without "
@@ -331,10 +377,32 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
                     if ef.get("tracked")
                     else "Not tracked."
                 ),
-                finding_kinds=["ef_below_starter", "ef_below_full"],
+                finding_kinds=ef_kinds,
                 report="essentials",
             )
         )
+
+    # Directly under the fund it sizes, so the two read as one thought.
+    essentials = inputs.essentials_monthly if inputs.essentials_tracked else None
+    if not inputs.essentials_tracked:
+        essentials_detail = "Not tracked."
+    elif essentials is None:
+        essentials_detail = "Not known."
+    else:
+        essentials_detail = (
+            f"Based on {inputs.essentials_reason}." if inputs.essentials_reason else ""
+        )
+    rows.append(
+        Metric(
+            key="essential_expenses",
+            label="Essential spending, per month",
+            value=essentials,
+            target=None,
+            unit="money",
+            detail=essentials_detail,
+            report="essentials",
+        )
+    )
 
     rows.append(
         Metric(

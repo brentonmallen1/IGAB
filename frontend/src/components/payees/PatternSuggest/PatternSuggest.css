@@ -1,0 +1,104 @@
+/* Suggested patterns as chips, and the per-name preview under an input. */
+
+.pattern-candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.pattern-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: 100%;
+  padding: 4px var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pattern-chip:hover { border-color: var(--color-accent); }
+
+.pattern-chip[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--bg-secondary));
+}
+
+.pattern-chip__pattern {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.pattern-chip__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+}
+
+.pattern-chip__source {
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* A pattern that would also claim other payees: said in the warning colour,
+   because on import the longest matching pattern wins. */
+.pattern-chip__claims { color: var(--color-warning); }
+
+.pattern-preview {
+  list-style: none;
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  --scroll-list-max: 140px;
+}
+
+.pattern-preview__row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  min-width: 0;
+}
+
+.pattern-preview__row--match { color: var(--color-success); }
+.pattern-preview__row--miss { color: var(--text-muted); }
+
+.pattern-preview__name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pattern-preview__row--miss .pattern-preview__name { color: var(--text-muted); }
+
+/* The captured part: a light accent wash, never a colour change of the text
+   itself, so the name stays readable in every theme. */
+.pattern-preview__name mark {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.pattern-preview__label {
+  flex-shrink: 0;
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+}

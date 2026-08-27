@@ -1,6 +1,8 @@
-/* The Tools tab. Inputs follow the app's input tokens; results sit on the
-   raised surface as small cards. No colour beyond the shared chart ramp and
-   the accent — a calculator has nothing to be loud about. */
+/* The Tools tab. The fields themselves (.tool__field, .tool__grid, the input
+   paint) are the Guide's shared vocabulary in GuidePage.css — the wish and
+   project forms use them too. Results sit on the raised surface as small
+   cards. No colour beyond the shared chart ramp and the accent — a
+   calculator has nothing to be loud about. */
 
 .guide-tools {
   display: flex;
@@ -64,65 +66,6 @@
   gap: var(--spacing-md);
 }
 
-.tool__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--spacing-md);
-}
-
-.tool__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-}
-
-.tool__field--wide { grid-column: 1 / -1; }
-
-.tool__field--inline {
-  flex-direction: row;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.tool__field--inline input { width: 120px; }
-
-.tool__hint { color: var(--text-muted); font-weight: 400; }
-
-.tool input,
-.tool select {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-variant-numeric: tabular-nums;
-  min-height: var(--tap-min, 32px);
-  width: 100%;
-}
-
-.tool input:focus,
-.tool select:focus {
-  outline: none;
-  border-color: var(--input-focus-ring);
-  box-shadow: var(--input-focus-shadow);
-}
-
-.tool input.is-invalid,
-.tool tr.is-invalid input {
-  border-color: var(--color-negative);
-}
-
-.tool input[type='range'] {
-  min-height: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  accent-color: var(--color-accent);
-}
-
 .tool__table {
   width: 100%;
   border-collapse: collapse;
@@ -178,19 +121,6 @@
   gap: 3px;
   align-self: flex-start;
 }
-
-.tool__nudge,
-.tool__error,
-.tool__aside {
-  margin: 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  line-height: 1.5;
-  max-width: 64ch;
-}
-
-.tool__nudge { color: var(--color-warning); }
-.tool__error { color: var(--color-negative); }
 
 .tool__results {
   display: flex;

@@ -84,11 +84,58 @@ class TestSignals:
         assert ef["value"] is None
         assert ef["source"] == "off"
 
+    async def test_the_starter_step_gets_its_own_verdict(self, db_session, api_client):
+        """The roadmap asks about the fund twice. With $1,200/month of
+        essentials the starter is $1,200 (larger than the flat $1,000) and the
+        full target is $3,600 — so $1,500 clears the first and not the second."""
+        budget = await _budget(db_session, api_client)
+        account = await create_account(db_session, budget, account_type="checking")
+        bills = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, bills, "Rent")
+        for offset in (5, 35, 65):
+            await create_transaction(
+                db_session,
+                budget,
+                account,
+                "-1200.00",
+                TODAY - timedelta(days=offset),
+                category=rent,
+            )
+        savings = await create_category_group(db_session, budget, "Savings")
+        ef = await create_category(db_session, budget, savings, "Emergency Fund")
+        await create_budget_assignment(db_session, budget, ef, THIS_MONTH, "1500.00")
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/guide/signals")).json()
+        fund = _concept(body, "emergency_fund")
+
+        assert Decimal(fund["starter_target"]) == Decimal("1200.00")
+        assert fund["starter_met"] is True
+        assert Decimal(fund["target"]) == Decimal("3600.00")
+        assert fund["met"] is False
+        # Only the emergency fund has two targets.
+        debt = _concept(body, "high_interest_debt")
+        assert debt["starter_target"] is None
+        assert debt["starter_met"] is None
+
+    async def test_an_empty_fund_has_no_starter_verdict_to_clear(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        group = await create_category_group(db_session, budget, "Savings")
+        await create_category(db_session, budget, group, "Emergency Fund")
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/guide/signals")).json()
+        fund = _concept(body, "emergency_fund")
+        assert Decimal(fund["starter_target"]) == Decimal("1000")
+        assert fund["starter_met"] is False
+
     async def test_an_unknown_rate_surfaces_as_a_gap(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         await create_liability(
-            db_session, budget, "Mystery card",
-            interest_rate=None, minimum_payment=None, manual_balance=Decimal("900"),
+            db_session,
+            budget,
+            "Mystery card",
+            interest_rate=None,
+            minimum_payment=None,
+            manual_balance=Decimal("900"),
         )
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/signals")).json()
         assert _concept(body, "high_interest_debt")["gaps"] == ["Mystery card"]
@@ -239,9 +286,7 @@ class TestExternal:
         after = (await api_client.get(f"/api/v1/{budget.id}/reports/net-worth")).json()
         assert after == before
 
-    async def test_self_reported_money_never_reaches_the_savings_rate(
-        self, db_session, api_client
-    ):
+    async def test_self_reported_money_never_reaches_the_savings_rate(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         account = await create_account(db_session, budget, account_type="checking")
         await create_transaction(db_session, budget, account, "5000.00", TODAY)
@@ -263,9 +308,7 @@ class TestCandidates:
         await create_account(db_session, budget, account_type="savings")
         await create_liability(db_session, budget, "Visa")
 
-        ef = (
-            await api_client.get(f"/api/v1/{budget.id}/guide/candidates/emergency_fund")
-        ).json()
+        ef = (await api_client.get(f"/api/v1/{budget.id}/guide/candidates/emergency_fund")).json()
         assert set(ef["options"]) == {"category", "account"}
         # The picker must never offer a liability as an emergency fund.
         assert "liability" not in ef["options"]
@@ -334,8 +377,11 @@ class TestCheckup:
     async def test_checkup_off_returns_disabled_and_runs_nothing(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         await create_liability(
-            db_session, budget, "Visa",
-            interest_rate=Decimal("22.9000"), manual_balance=Decimal("3410.00"),
+            db_session,
+            budget,
+            "Visa",
+            interest_rate=Decimal("22.9000"),
+            manual_balance=Decimal("3410.00"),
         )
         await api_client.put(f"/api/v1/{budget.id}/guide/preferences", json={"checkup": False})
 
@@ -373,13 +419,14 @@ class TestCheckup:
             "last_run"
         ] is None
 
-    async def test_high_interest_debt_outranks_a_thin_emergency_fund(
-        self, db_session, api_client
-    ):
+    async def test_high_interest_debt_outranks_a_thin_emergency_fund(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         await create_liability(
-            db_session, budget, "Visa",
-            interest_rate=Decimal("22.9000"), manual_balance=Decimal("3410.00"),
+            db_session,
+            budget,
+            "Visa",
+            interest_rate=Decimal("22.9000"),
+            manual_balance=Decimal("3410.00"),
         )
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Emergency Fund")
@@ -391,6 +438,22 @@ class TestCheckup:
         assert kinds[:2] == ["high_interest_debt", "ef_below_starter"]
         assert Decimal(body["findings"][0]["value"]) == Decimal("3410.00")
         assert Decimal(body["findings"][1]["value"]) == Decimal("200.00")
+
+    async def test_an_empty_emergency_fund_is_not_started(self, db_session, api_client):
+        """$0 is a different sentence from "below the starter amount"."""
+        budget = await _budget(db_session, api_client)
+        group = await create_category_group(db_session, budget, "Savings")
+        await create_category(db_session, budget, group, "Emergency Fund")
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
+
+        fund = next(f for f in body["findings"] if f["concept_key"] == "emergency_fund")
+        assert fund["kind"] == "ef_not_started"
+        assert Decimal(fund["value"]) == Decimal("0")
+        assert Decimal(fund["target"]) == Decimal("1000")
+        # The essentials row sits directly under the fund it sizes.
+        keys = [m["key"] for m in body["metrics"]]
+        assert keys.index("essential_expenses") == keys.index("emergency_fund") + 1
 
     async def test_funded_count_matches_the_month_endpoint(self, db_session, api_client):
         """The checkup's "funded" is the budget page's pill, by construction."""
@@ -410,18 +473,14 @@ class TestCheckup:
         month = (
             await api_client.get(f"/api/v1/{budget.id}/months/{THIS_MONTH.isoformat()}")
         ).json()
-        statuses = [
-            b["target_status"] for b in month["category_balances"] if b["target_status"]
-        ]
+        statuses = [b["target_status"] for b in month["category_balances"] if b["target_status"]]
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
         metric = next(m for m in body["metrics"] if m["key"] == "categories_funded")
 
         assert Decimal(metric["value"]) == sum(1 for s in statuses if s != "underfunded") == 1
         assert Decimal(metric["target"]) == len(statuses) == 2
 
-    async def test_chronic_count_matches_the_plan_vs_reality_report(
-        self, db_session, api_client
-    ):
+    async def test_chronic_count_matches_the_plan_vs_reality_report(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         account = await create_account(db_session, budget, account_type="checking")
         group = await create_category_group(db_session, budget, "Fun")
@@ -430,9 +489,7 @@ class TestCheckup:
         for back in range(4):
             month = add_months(THIS_MONTH, -back)
             await create_budget_assignment(db_session, budget, dining, month, "100.00")
-            await create_transaction(
-                db_session, budget, account, "-150.00", month, category=dining
-            )
+            await create_transaction(db_session, budget, account, "-150.00", month, category=dining)
 
         report = (await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-reality")).json()
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
@@ -476,18 +533,26 @@ class TestCheckup:
 class TestScenarios:
     """The calculators: arithmetic on typed inputs, nothing persisted."""
 
-    async def test_payoff_plan_returns_both_strategies_and_a_baseline(
-        self, db_session, api_client
-    ):
+    async def test_payoff_plan_returns_both_strategies_and_a_baseline(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         r = await api_client.post(
             f"/api/v1/{budget.id}/guide/scenarios/payoff-plan",
             json={
                 "debts": [
-                    {"key": "visa", "name": "Visa", "balance": "3410", "annual_rate": "22.9",
-                     "minimum_payment": "85"},
-                    {"key": "car", "name": "Car", "balance": "14200", "annual_rate": "6.4",
-                     "minimum_payment": "310"},
+                    {
+                        "key": "visa",
+                        "name": "Visa",
+                        "balance": "3410",
+                        "annual_rate": "22.9",
+                        "minimum_payment": "85",
+                    },
+                    {
+                        "key": "car",
+                        "name": "Car",
+                        "balance": "14200",
+                        "annual_rate": "6.4",
+                        "minimum_payment": "310",
+                    },
                 ],
                 "extra": "200",
             },
@@ -519,8 +584,13 @@ class TestScenarios:
         budget = await _budget(db_session, api_client)
         r = await api_client.post(
             f"/api/v1/{budget.id}/guide/scenarios/pay-vs-save",
-            json={"balance": "3410", "annual_rate": "22.9", "minimum_payment": "85",
-                  "extra": "100", "savings_apy": "4"},
+            json={
+                "balance": "3410",
+                "annual_rate": "22.9",
+                "minimum_payment": "85",
+                "extra": "100",
+                "savings_apy": "4",
+            },
         )
         assert r.status_code == 200, r.text
         body = r.json()
@@ -533,11 +603,18 @@ class TestScenarios:
         url = f"/api/v1/{budget.id}/guide/scenarios/loan-compare"
         r = await api_client.post(
             url,
-            json={"loans": [
-                {"name": "A", "principal": "10000", "annual_rate": "6", "term_months": 12},
-                {"name": "B", "principal": "10000", "annual_rate": "5", "term_months": 12,
-                 "fees": "500"},
-            ]},
+            json={
+                "loans": [
+                    {"name": "A", "principal": "10000", "annual_rate": "6", "term_months": 12},
+                    {
+                        "name": "B",
+                        "principal": "10000",
+                        "annual_rate": "5",
+                        "term_months": 12,
+                        "fees": "500",
+                    },
+                ]
+            },
         )
         assert r.status_code == 200, r.text
         assert r.json()["cheapest"] == "A"
@@ -560,8 +637,12 @@ class TestScenarios:
         await create_budget_assignment(db_session, budget, ef, THIS_MONTH, "240.00")
         await api_client.put(
             f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
-            json={"mode": "manual", "entity_ids": {"category": [str(ef.id)]},
-                  "external": True, "external_amount": "500"},
+            json={
+                "mode": "manual",
+                "entity_ids": {"category": [str(ef.id)]},
+                "external": True,
+                "external_amount": "500",
+            },
         )
         net_before = (await api_client.get(f"/api/v1/{budget.id}/reports/net-worth")).json()
 

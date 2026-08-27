@@ -282,7 +282,9 @@ export interface Payee {
   name: string
   default_category_id: string | null
   transfer_account_id: string | null
-  mapping_samples: string | null
+  /** Raw bank names that map to this payee. A list — a bank name may itself
+   *  contain a comma. */
+  mapping_samples: string[]
   /** Regex applied to incoming raw payee names; a match assigns this payee */
   match_pattern: string | null
   tags?: TagSimple[]

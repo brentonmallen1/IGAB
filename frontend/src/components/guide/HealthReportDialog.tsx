@@ -6,6 +6,7 @@ import { useGuideStore } from '../../stores/guideStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import { GuideDialog } from './GuideDialog'
 import { splitFindings, stagesForFinding } from './checkupLeds'
+import { findingTone } from './checkupCopy'
 import { NameChips } from './NameChips'
 
 /**
@@ -36,6 +37,9 @@ export function HealthReportDialog({
     const n = Number(f.value)
     if (Number.isNaN(n)) return null
     switch (f.kind) {
+      case 'ef_not_started':
+        // "No emergency fund yet — $0.00" says the same thing twice.
+        return null
       case 'retirement_below_target':
         return `${n.toFixed(1)}%`
       case 'chronic_overspend':
@@ -77,11 +81,12 @@ export function HealthReportDialog({
               const stage = stagesForFinding(f)[0]
               const stageDef = stage ? findStage(stage) : undefined
               const value = figure(f)
+              const tone = findingTone(f.kind)
               return (
                 <li key={`${f.kind}:${f.concept_key ?? ''}`} className="guide-report__item">
-                  <span className="guide-report__led" aria-hidden />
+                  <span className={`guide-report__led guide-report__led--${tone}`} aria-hidden />
                   <div className="guide-report__text">
-                    <p className="guide-report__title">
+                    <p className={`guide-report__title guide-report__title--${tone}`}>
                       {f.title}
                       {value && <span className="guide-report__value tabular"> — {value}</span>}
                     </p>

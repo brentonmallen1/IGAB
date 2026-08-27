@@ -7,6 +7,9 @@ export interface AppSetting {
   /** Whether a stored override exists (vs env/default) */
   is_overridden?: boolean | null
   default_value?: string | null
+  /** Prompt settings only: the {placeholders} the template may use, served
+   *  from the backend's one registry. */
+  placeholders?: string[] | null
 }
 
 export async function fetchSettings(): Promise<AppSetting[]> {

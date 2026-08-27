@@ -112,18 +112,27 @@ DEFAULT_PROMPTS: dict[str, str] = {
     "ai_prompt_suggest_regex": (
         "These raw bank payee names all belong to the same real-world payee:\n"
         "{names}\n\n"
-        "Write ONE Python-compatible regular expression that matches every name above"
-        " and future variants of the same payee (banks append changing store numbers,"
-        " reference codes, or dates), while staying specific enough not to match"
-        " unrelated merchants.\n"
+        "Write up to THREE Python-compatible regular expressions, ordered from most"
+        " specific to most general, that each match every name above and future"
+        " variants of the same payee. Banks append changing store numbers, reference"
+        " codes, and dates — end each pattern before that noise rather than matching"
+        " it with \\d+. The most general pattern should be the shortest stem that"
+        " still identifies this payee and no other merchant, anchored with ^ when the"
+        " stem starts the name.\n"
         "Rules:\n"
-        "- It will be used with a case-insensitive, unanchored search; add ^ or $ only"
-        " when they make the pattern safer.\n"
-        "- Keep it as simple as possible: escaped literal text, '.*', '\\d+', and"
-        " character classes. No lookarounds, no named groups, no inline flags.\n"
+        "- Each will be used with a case-insensitive, unanchored search; add ^ or $"
+        " only when they make the pattern safer.\n"
+        "- Copy the text the names share literally, spaces included. Stand in for"
+        " each token that changes between names (a date, a reference code, a"
+        " person's name) with \\S+ or \\d+, keeping the spaces around it — never"
+        " a character class with a length.\n"
+        "- Keep them simple: escaped literal text, '.*', '\\d+', '\\S+'. No"
+        " lookarounds, no named groups, no inline flags.\n"
         "- Escape regex metacharacters that appear literally in the names"
-        " (* . ( ) [ ] etc).\n\n"
-        'Return ONLY a JSON object: {"pattern": "the regex"}'
+        " (* . ( ) [ ] etc).\n"
+        "- Check each pattern against every name above before answering; every"
+        " pattern must match every name.\n\n"
+        'Return ONLY a JSON object: {"patterns": ["most specific", "...", "most general"]}'
     ),
 }
 

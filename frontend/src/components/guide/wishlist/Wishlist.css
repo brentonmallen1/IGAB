@@ -82,22 +82,10 @@
   padding: var(--spacing-lg);
 }
 
+/* Painted by the Guide's field rule in GuidePage.css; only the layout is here. */
 .guide-wishlist__search {
   flex: 1 1 200px;
   min-width: 160px;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  min-height: var(--tap-min, 32px);
-}
-
-.guide-wishlist__search:focus {
-  outline: none;
-  border-color: var(--input-focus-ring);
-  box-shadow: var(--input-focus-shadow);
 }
 
 .guide-wishlist__sort {
@@ -106,16 +94,6 @@
   gap: var(--spacing-xs);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-}
-
-.guide-wishlist__sort select {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  min-height: var(--tap-min, 32px);
 }
 
 .guide-wishlist__settings {
@@ -342,16 +320,6 @@
 .wish-form__hint { margin: 0; font-size: var(--font-size-xs); color: var(--text-muted); }
 
 .wish-form__actions { display: flex; justify-content: flex-end; gap: var(--spacing-md); align-items: center; }
-
-.wish-form textarea {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-family: inherit;
-}
 
 .wish-review { display: flex; flex-direction: column; gap: var(--spacing-md); }
 .wish-review__progress { margin: 0; font-size: var(--font-size-2xs); color: var(--text-muted); }
