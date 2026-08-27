@@ -44,9 +44,14 @@ interface GuideState {
   answers: Record<string, string>
   /** Which calculator the Tools tab shows. Null means the tab's default. */
   activeTool: ToolId | null
+  /** The stage the "where you are" cursor last opened for the reader. Journey
+   *  opens the current stage once when the cursor moves; after that the
+   *  reader's own folding stands until it moves again. */
+  positionSeen: StageId | null
   wishlistView: WishlistView
   wishlistSort: WishlistSort
   setActiveTab: (tab: GuideTab) => void
+  setPositionSeen: (id: StageId | null) => void
   setRoadmapView: (view: RoadmapView) => void
   setActiveTool: (tool: ToolId) => void
   setWishlistView: (view: WishlistView) => void
@@ -69,10 +74,12 @@ export const useGuideStore = create<GuideState>()(
       expandedDetails: [],
       answers: {},
       activeTool: null,
+      positionSeen: null,
       wishlistView: 'flat',
       wishlistSort: 'reach',
 
       setActiveTab: (tab) => set({ activeTab: tab }),
+      setPositionSeen: (id) => set({ positionSeen: id }),
       setRoadmapView: (view) => set({ roadmapView: view }),
       setActiveTool: (tool) => set({ activeTool: tool }),
       setWishlistView: (view) => set({ wishlistView: view }),
@@ -115,6 +122,7 @@ export const useGuideStore = create<GuideState>()(
         expandedDetails: s.expandedDetails,
         answers: s.answers,
         activeTool: s.activeTool,
+        positionSeen: s.positionSeen,
         wishlistView: s.wishlistView,
         wishlistSort: s.wishlistSort,
       }),

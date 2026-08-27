@@ -1,17 +1,20 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight, Check, ArrowDown } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronDown, ChevronRight, ArrowDown } from 'lucide-react'
 import { ROADMAP, findStage, type RoadmapStage } from '../../content/roadmap'
 import { useGuideStore } from '../../stores/guideStore'
-import { stagePath, stageAnswered } from './journeyPath'
+import { stagePath } from './journeyPath'
 import { stepColor } from './stepColor'
 import { NodeCard, type NodeState } from './NodeCard'
 import { SignalBindingSheet } from './SignalBindingSheet'
 import { useGuideSignalMap } from './useGuideSignalMap'
 import { useCheckupLeds } from './useCheckupLeds'
+import { useRoadmapPosition } from './useRoadmapPosition'
+import { StageStatusChip } from './PositionStrip'
 import { StepLed } from './StepLed'
 import { StageMark } from './StageMark'
 import type { SignalKey } from '../../content/roadmap'
 import type { CheckupFinding } from '../../api/guide'
+import { stageElementId, type StageVerdict } from './roadmapPosition'
 
 /**
  * The roadmap as a path you walk — one stage at a time, collapsed by default.
@@ -27,9 +30,21 @@ export function RoadmapJourney() {
   const answers = useGuideStore((s) => s.answers)
   const guide = useGuideSignalMap()
   const { leds } = useCheckupLeds()
+  const position = useRoadmapPosition()
+  const positionSeen = useGuideStore((s) => s.positionSeen)
+  const setPositionSeen = useGuideStore((s) => s.setPositionSeen)
   const [correcting, setCorrecting] = useState<SignalKey | null>(null)
 
   const concept = correcting ? guide.concepts.get(correcting) : undefined
+
+  // Open the current stage once each time the cursor moves. After that the
+  // reader's own folding stands — a stage they closed stays closed until the
+  // numbers move them on.
+  useEffect(() => {
+    if (!position.ready || !position.currentStage || position.currentStage === positionSeen) return
+    openStage(position.currentStage)
+    setPositionSeen(position.currentStage)
+  }, [position.ready, position.currentStage, positionSeen, openStage, setPositionSeen])
 
   return (
     <>
@@ -44,6 +59,8 @@ export function RoadmapJourney() {
             answers={answers}
             onCorrect={setCorrecting}
             led={leds.get(stage.id)}
+            verdict={position.statuses.get(stage.id)}
+            current={stage.id === position.currentStage}
           />
         ))}
       </ol>
@@ -67,6 +84,8 @@ function StageRow({
   answers,
   onCorrect,
   led,
+  verdict,
+  current,
 }: {
   stage: RoadmapStage
   open: boolean
@@ -76,6 +95,9 @@ function StageRow({
   onCorrect: (key: SignalKey) => void
   /** The health finding that marks this stage, if one does. */
   led?: CheckupFinding
+  /** Where this stage stands, and whether the reader is on it. */
+  verdict?: StageVerdict
+  current: boolean
 }) {
   const toggleDetail = useGuideStore((s) => s.toggleDetail)
   const expandedDetails = useGuideStore((s) => s.expandedDetails)
@@ -85,10 +107,7 @@ function StageRow({
   const guide = useGuideSignalMap()
   const path = stagePath(stage, answers)
   const mark = guide.progress[stage.id]
-  // The "answered" chip gives way to the mark: one status per row.
-  const done =
-    !mark && stageAnswered(stage, answers) && stage.nodes.some((n) => n.kind === 'decision')
-  const bodyId = `stage-${stage.id}`
+  const bodyId = `stage-${stage.id}-body`
 
   function stateOf(nodeId: string): NodeState {
     if (path.skipped.includes(nodeId)) return 'skipped'
@@ -99,7 +118,11 @@ function StageRow({
   const exitStage = path.exitTo ? findStage(path.exitTo) : null
 
   return (
-    <li className="guide-stage" style={{ ['--stage-color' as string]: stepColor(stage.step) }}>
+    <li
+      id={stageElementId('journey', stage.id)}
+      className={`guide-stage ${current ? 'guide-stage--current' : ''}`}
+      style={{ ['--stage-color' as string]: stepColor(stage.step) }}
+    >
       <div className="guide-stage__rail">
         <span className="guide-stage__dot" aria-hidden />
         {led && <StepLed reason={led.title} />}
@@ -118,12 +141,8 @@ function StageRow({
           </span>
           <span className="guide-stage__step">Step {stage.step}</span>
           <span className="guide-stage__title">{stage.title}</span>
-          {done && (
-            <span className="guide-stage__done" title="You have answered this stage">
-              <Check size={12} aria-hidden />
-              answered
-            </span>
-          )}
+          {/* One status per row: the chip gives way to a mark, shown below. */}
+          {!mark && <StageStatusChip verdict={verdict} current={current} />}
         </button>
 
         {guide.budgetId && (

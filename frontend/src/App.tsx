@@ -81,7 +81,17 @@ function AppToaster() {
       }}
       toastOptions={{
         duration: 4000,
-        style: { fontSize: '13px', maxWidth: 'min(400px, calc(100vw - 32px))' },
+        style: {
+          fontSize: '13px',
+          maxWidth: 'min(400px, calc(100vw - 32px))',
+          // react-hot-toast's default is a white card with dark text — a
+          // stranger in every dark palette, and the update prompt painted its
+          // own themed text onto it. Toasts are overlays; paint them as one.
+          background: 'var(--surface-overlay)',
+          color: 'var(--text-primary)',
+          border: '1px solid var(--edge)',
+          boxShadow: 'var(--elevation-overlay)',
+        },
         ariaProps: { role: 'status', 'aria-live': 'polite' },
       }}
     />

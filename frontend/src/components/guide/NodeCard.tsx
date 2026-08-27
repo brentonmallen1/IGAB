@@ -140,7 +140,12 @@ export function NodeCard({
       )}
 
       {signal && onCorrectSignal && (
-        <SignalNote signal={signal} concept={concept} onCorrect={onCorrectSignal} />
+        <SignalNote
+          signal={signal}
+          concept={concept}
+          threshold={node.threshold}
+          onCorrect={onCorrectSignal}
+        />
       )}
 
       {node.glossary && node.glossary.length > 0 && <GlossaryChips terms={node.glossary} />}
