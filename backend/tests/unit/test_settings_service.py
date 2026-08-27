@@ -67,6 +67,18 @@ class TestSettingsServiceGetAll:
         assert result["ollama_host"] == "http://custom:11434"
 
 
+class TestPromptPlaceholders:
+    """The settings UI shows a prompt's placeholders; it must read them from
+    the one registry rather than keep a copy."""
+
+    async def test_prompt_rows_carry_their_placeholders(self):
+        svc = SettingsService(make_repo(None))
+        by_key = {r["key"]: r for r in await svc.get_all_detailed()}
+        assert by_key["ai_prompt_suggest_regex"]["placeholders"] == ["{names}"]
+        assert by_key["ai_prompt_receipt_gate"]["placeholders"] == []
+        assert by_key["ollama_host"]["placeholders"] is None
+
+
 class TestSeedFromEnv:
     async def test_seeds_when_not_in_db(self):
         repo = make_repo(None)

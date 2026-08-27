@@ -1,0 +1,9 @@
+{
+  "_comment": "One rule, two languages. `cases` is run by BOTH frontend/src/utils/payeeSamples.test.ts and backend/tests/unit/test_payee_names.py: the bank-name samples a payee keeps are trimmed, emptied of blanks, and unique ignoring case with the first spelling kept — and never split on anything, because a bank name may contain a comma. A rule changed on one side only fails on the other.",
+  "cases": [
+    { "parts": ["ADP PAYROLL", "adp payroll", " ADP TOTALSOURCE "], "samples": ["ADP PAYROLL", "ADP TOTALSOURCE"], "note": "case-insensitive, first spelling wins, trimmed" },
+    { "parts": ["", "  ", null], "samples": [], "note": "blanks and nulls vanish" },
+    { "parts": ["ADP TOTALSOURCE PAYROLL 250915 933837960785Q3N MALLEN, BRENTON"], "samples": ["ADP TOTALSOURCE PAYROLL 250915 933837960785Q3N MALLEN, BRENTON"], "note": "a comma inside a bank name is part of the name — the bug the list format fixes" },
+    { "parts": ["Costco", "COSTCO WHSE #1", "costco", null, "Costco "], "samples": ["Costco", "COSTCO WHSE #1"], "note": "order of first appearance is kept" }
+  ]
+}

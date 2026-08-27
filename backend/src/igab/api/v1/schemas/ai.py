@@ -18,21 +18,12 @@ class SuggestRegexRequest(BaseModel):
 
 
 class SuggestRegexResponse(BaseModel):
-    pattern: str | None
+    #: Most specific first; empty when the model produced nothing usable.
+    patterns: list[str]
 
 
 class InsightsResponse(BaseModel):
     insights: str
-
-
-class PayeeCleanupEntry(BaseModel):
-    id: str
-    name: str
-
-
-class PayeeCleanupGroup(BaseModel):
-    canonical: str
-    payees: list[PayeeCleanupEntry]
 
 
 class AIStatusResponse(BaseModel):

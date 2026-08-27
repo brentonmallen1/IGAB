@@ -153,12 +153,27 @@
   text-align: left;
 }
 
+.ai-prompt-card__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .ai-prompt-card__label {
   font-weight: 500;
 }
 
+.ai-prompt-card__usage {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .ai-prompt-card__edited {
   margin-left: auto;
+  flex-shrink: 0;
   font-size: var(--font-size-2xs);
   font-weight: 600;
   color: var(--color-accent);

@@ -11,6 +11,9 @@ class SettingResponse(BaseModel):
     # Whether a stored override exists (vs env/default). None on legacy paths.
     is_overridden: bool | None = None
     default_value: str | None = None
+    # Prompt settings only: the {placeholders} the template may use. Served
+    # from the one registry in ai_prompts so the settings UI never keeps a copy.
+    placeholders: list[str] | None = None
 
 
 class UpdateStatusResponse(BaseModel):

@@ -8,7 +8,6 @@ from igab.api.v1.schemas.ai import (
     InsightsResponse,
     OllamaModelInfo,
     OllamaModelsResponse,
-    PayeeCleanupGroup,
     SuggestCategoryRequest,
     SuggestCategoryResponse,
     SuggestRegexRequest,
@@ -58,19 +57,10 @@ async def suggest_regex(
     current_user: CurrentUser,
     ai_svc: Annotated[AIService, Depends(get_ai_service)],
 ) -> SuggestRegexResponse:
-    """Suggest a payee match pattern generalizing the given raw names."""
-    pattern = await ai_svc.suggest_regex(body.names)
-    return SuggestRegexResponse(pattern=pattern)
-
-
-@router.get("/{budget_id}/ai/payee-cleanup", response_model=list[PayeeCleanupGroup])
-async def payee_cleanup_suggestions(
-    budget_id: BudgetAccess,
-    current_user: CurrentUser,
-    ai_svc: Annotated[AIService, Depends(get_ai_service)],
-) -> list[PayeeCleanupGroup]:
-    groups = await ai_svc.suggest_payee_merges(budget_id)
-    return [PayeeCleanupGroup(**g) for g in groups]
+    """Candidate payee match patterns generalizing the given raw names,
+    most specific first."""
+    patterns = await ai_svc.suggest_regex(body.names)
+    return SuggestRegexResponse(patterns=patterns)
 
 
 @router.get("/{budget_id}/ai/insights", response_model=InsightsResponse)
