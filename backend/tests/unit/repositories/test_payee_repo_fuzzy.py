@@ -19,11 +19,11 @@ from igab.repositories.payee_repo import PayeeRepository
 BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
-def make_payee(name: str, mapping_samples: str | None = None) -> MagicMock:
+def make_payee(name: str, mapping_samples: list[str] | None = None) -> MagicMock:
     p = MagicMock()
     p.id = uuid.uuid4()
     p.name = name
-    p.mapping_samples = mapping_samples
+    p.mapping_samples = mapping_samples or []
     return p
 
 
@@ -60,6 +60,17 @@ class TestFuzzyMatchPayeeName:
         assert result is starbucks
 
     @pytest.mark.asyncio
+    async def test_two_raw_bank_names_for_one_payee_match(self) -> None:
+        # The first import created the payee under its raw name. The next
+        # posting differs only in the reference number and scored 73 on the
+        # raw strings — below the threshold — so it used to become a second
+        # payee, which is where the duplicates Cleanup finds come from.
+        payroll = make_payee("EMPLOYER PAYROLL #1234567890")
+        repo = make_repo(payroll)
+        result = await repo.find_best_match(BUDGET_ID, "EMPLOYER PAYROLL #9876543210")
+        assert result is payroll
+
+    @pytest.mark.asyncio
     async def test_unrelated_name_returns_none(self) -> None:
         publix = make_payee("Publix")
         repo = make_repo(publix)
@@ -78,23 +89,27 @@ class TestFuzzyMatchMappingSamples:
 
     @pytest.mark.asyncio
     async def test_mapping_sample_matches_raw_bank_name(self) -> None:
-        payroll = make_payee("Company Payroll", mapping_samples="ADP TOTALSOURCE, ADP PAYROLL")
+        payroll = make_payee("Company Payroll", mapping_samples=["ADP TOTALSOURCE", "ADP PAYROLL"])
         repo = make_repo(payroll)
         result = await repo.find_best_match(BUDGET_ID, "ADP TOTALSOURCE PAYROLL 260415 MALLEN")
         assert result is payroll
 
     @pytest.mark.asyncio
     async def test_second_mapping_sample_also_matches(self) -> None:
-        payroll = make_payee("Company Payroll", mapping_samples="ADP TOTALSOURCE, ADP PAYROLL")
+        payroll = make_payee("Company Payroll", mapping_samples=["ADP TOTALSOURCE", "ADP PAYROLL"])
         repo = make_repo(payroll)
         result = await repo.find_best_match(BUDGET_ID, "ADP PAYROLL DIRECT DEPOSIT")
         assert result is payroll
 
     @pytest.mark.asyncio
-    async def test_mapping_sample_whitespace_is_stripped(self) -> None:
-        payee = make_payee("Coffee Shop", mapping_samples="  COFFEE CORP  ,  COFFEE INC  ")
+    async def test_a_sample_with_a_comma_is_one_sample(self) -> None:
+        # The list format exists for this: a bank name that contains a comma.
+        sample = "ADP TOTALSOURCE PAYROLL 250915 933837960785Q3N MALLEN, BRENTON"
+        payee = make_payee("Paycheck", mapping_samples=[sample])
         repo = make_repo(payee)
-        result = await repo.find_best_match(BUDGET_ID, "COFFEE CORP 1234")
+        result = await repo.find_best_match(
+            BUDGET_ID, "ADP TOTALSOURCE PAYROLL 260814 380084115198 MALLEN, BRENTON"
+        )
         assert result is payee
 
     @pytest.mark.asyncio
@@ -131,8 +146,8 @@ class TestFuzzyMatchBestScoreWins:
 
     @pytest.mark.asyncio
     async def test_best_score_wins_among_multiple_candidates(self) -> None:
-        amazon = make_payee("Amazon", mapping_samples="AMAZON.COM")
-        amazon_fresh = make_payee("Amazon Fresh", mapping_samples="AMAZON FRESH")
+        amazon = make_payee("Amazon", mapping_samples=["AMAZON.COM"])
+        amazon_fresh = make_payee("Amazon Fresh", mapping_samples=["AMAZON FRESH"])
         repo = make_repo(amazon, amazon_fresh)
         # "AMAZON.COM PURCHASE" should better match "Amazon" / "AMAZON.COM"
         result = await repo.find_best_match(BUDGET_ID, "AMAZON.COM PURCHASE")

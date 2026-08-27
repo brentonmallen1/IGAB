@@ -13,6 +13,9 @@ written for users, following the precedent set by
 """
 
 from dataclasses import dataclass, field
+from decimal import Decimal
+
+from igab.domain.money import quantize_cents
 
 
 @dataclass(frozen=True)
@@ -165,6 +168,26 @@ STALE_EXTERNAL_MONTHS = 12
 #: signal and the Overview's essentials card share it, so the emergency-fund
 #: target and the card can never quote different months.
 ESSENTIALS_WINDOW_DAYS = 90
+
+
+def emergency_fund_target(essentials_monthly: Decimal, months: int) -> Decimal:
+    """`months` of essential spending, to the cent.
+
+    The one place the roadmap's emergency-fund arithmetic lives: the signal's
+    target, the checkup's money figures and the sizer all quote it.
+    """
+    return quantize_cents(essentials_monthly * months)
+
+
+def starter_emergency_fund(essentials_monthly: Decimal | None) -> Decimal:
+    """The starter cushion — the flat figure or one month of essentials,
+    whichever is larger, as the roadmap step says. With no essentials figure
+    the flat figure stands."""
+    floor = Decimal(STARTER_EMERGENCY_FUND)
+    if essentials_monthly is None or essentials_monthly <= 0:
+        return floor
+    return max(floor, emergency_fund_target(essentials_monthly, 1))
+
 
 #: Kinds of debt the roadmap sets aside when asking about moderate-interest
 #: debt. Matched against LiabilityService.resolve_type, which answers with an

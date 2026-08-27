@@ -12,10 +12,13 @@ import { useFormatters } from '../../hooks/useFormatters'
 export function SignalNote({
   signal,
   concept,
+  threshold,
   onCorrect,
 }: {
   signal: Signal
   concept?: ConceptInfo
+  /** The starter step reads the fund's smaller target, not the full one. */
+  threshold?: 'starter'
   onCorrect: () => void
 }) {
   const { formatMoney } = useFormatters()
@@ -47,7 +50,7 @@ export function SignalNote({
   const value = fmt(signal.value)
   const external = fmt(signal.external_value)
   const detected = fmt(signal.detected_value)
-  const target = fmt(signal.target)
+  const target = fmt(threshold === 'starter' ? signal.starter_target : signal.target)
 
   return (
     <div className={`signal ${signal.met === true ? 'signal--met' : ''}`}>

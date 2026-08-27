@@ -72,15 +72,50 @@ export function suggestPayeeRegex(rawNames: string[]): string | null {
 }
 
 /**
- * Test a pattern the way the backend will apply it: case-insensitive,
- * unanchored search. Returns null for an invalid pattern.
+ * The one place a match pattern is turned into a RegExp: case-insensitive,
+ * unanchored, the way the backend applies it. Returns null for a pattern
+ * that does not compile.
  */
-export function testPattern(pattern: string, name: string): boolean | null {
+export function compilePattern(pattern: string): RegExp | null {
   try {
-    return new RegExp(pattern, 'i').test(name)
+    return new RegExp(pattern, 'i')
   } catch {
     return null
   }
+}
+
+/** Test a pattern the way the backend will apply it. Null for an invalid pattern. */
+export function testPattern(pattern: string, name: string): boolean | null {
+  const re = compilePattern(pattern)
+  return re ? re.test(name) : null
+}
+
+/** Where a pattern first matches inside a name, so a preview can show the
+ *  part it captured. Null when the pattern is invalid or does not match. */
+export function matchSpan(pattern: string, name: string): { start: number; end: number } | null {
+  const re = compilePattern(pattern)
+  if (!re) return null
+  const m = re.exec(name)
+  return m ? { start: m.index, end: m.index + m[0].length } : null
+}
+
+export interface ClaimablePayee {
+  name: string
+  mapping_samples?: string[] | null
+}
+
+/**
+ * The other payees a pattern would also claim — by name or by any of their
+ * recorded bank-name samples. On import the longest matching pattern wins,
+ * so a general pattern that claims a neighbour is a real cost, not a
+ * curiosity; this is what lets a preview say so.
+ */
+export function claimedNames(pattern: string, others: ClaimablePayee[]): string[] {
+  const re = compilePattern(pattern)
+  if (!re) return []
+  return others
+    .filter((p) => re.test(p.name) || (p.mapping_samples ?? []).some((s) => re.test(s)))
+    .map((p) => p.name)
 }
 
 /** Split a pattern on top-level `|` (ignoring alternation inside groups,

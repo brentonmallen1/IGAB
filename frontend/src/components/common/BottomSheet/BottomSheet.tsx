@@ -8,6 +8,7 @@ import { isTopOverlay, popOverlay, pushOverlay } from '../../../utils/overlaySta
 import { hapticTick } from '../../../utils/haptics'
 import { shouldDismissDrag } from './dismissDrag'
 import './BottomSheet.css'
+import { prefersReducedMotion } from '../../../utils/motion'
 
 interface BottomSheetProps {
   open: boolean
@@ -33,9 +34,6 @@ interface BottomSheetProps {
 // Matches --transition-base (200ms) with headroom; fallback in case
 // animationend never fires (element removed mid-animation, tab backgrounded).
 const EXIT_FALLBACK_MS = 300
-
-const prefersReducedMotion = () =>
-  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
 /**
  * Gate: owns only the exit animation, so the panel below it mounts and

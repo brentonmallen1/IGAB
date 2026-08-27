@@ -24,6 +24,8 @@ from igab.guide.concepts import (
     HIGH_INTEREST_APR,
     RETIREMENT_TARGET_RATE,
     STARTER_EMERGENCY_FUND,
+    emergency_fund_target,
+    starter_emergency_fund,
 )
 from igab.guide.detection import (
     Finding,
@@ -239,7 +241,7 @@ class GuideService:
         target = self._target(key, essentials)
         met = self._met(key, finding, resolution, total, target)
 
-        return {
+        payload: dict[str, Any] = {
             "key": key,
             "tracked": True,
             "source": resolution.source,
@@ -255,6 +257,14 @@ class GuideService:
             "gaps": finding.gaps if finding else [],
             "note": resolution.note,
         }
+        if key == "emergency_fund":
+            # The roadmap asks about this fund twice — a starter cushion, then
+            # the full three to six months — so the signal answers twice.
+            # `met`/`target` are the full figure; these are the starter's.
+            starter = starter_emergency_fund(essentials.value if essentials else None)
+            payload["starter_target"] = starter
+            payload["starter_met"] = None if total is None else total >= starter
+        return payload
 
     def _target(self, key: str, essentials: Finding | None) -> Decimal | None:
         match key:
@@ -262,8 +272,8 @@ class GuideService:
                 # Three months of real spending once we know it; the flat
                 # starter figure until then.
                 if essentials and essentials.value:
-                    return essentials.value * FULL_EMERGENCY_FUND_MONTHS_LOW
-                return Decimal(STARTER_EMERGENCY_FUND)
+                    return emergency_fund_target(essentials.value, FULL_EMERGENCY_FUND_MONTHS_LOW)
+                return starter_emergency_fund(None)
             case "retirement_contributions":
                 return Decimal(RETIREMENT_TARGET_RATE)
             case "high_interest_debt" | "moderate_interest_debt":
@@ -343,15 +353,18 @@ class GuideService:
             and self.targets.calculate_status(t, b.assigned, b.available, today) != "underfunded"
         )
 
+        essentials = by_key.get("essential_expenses", {})
         inputs = CheckupInputs(
             signals=by_key,
-            essentials_monthly=by_key.get("essential_expenses", {}).get("value"),
+            essentials_monthly=essentials.get("value"),
             chronic_count=plan["chronic_count"],
             chronic_names=chronic_names,
             funded=funded,
             with_targets=len(targets),
             unknown_rate_names=list(by_key.get("high_interest_debt", {}).get("gaps", [])),
             today=today,
+            essentials_tracked=bool(essentials.get("tracked", True)),
+            essentials_reason=essentials.get("reason", ""),
         )
 
         if stamp:

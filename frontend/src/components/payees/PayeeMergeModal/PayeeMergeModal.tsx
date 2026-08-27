@@ -1,11 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { AlertTriangle, Check, GitMerge, Regex, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, GitMerge, Regex, Sparkles, X } from 'lucide-react'
+import toast from 'react-hot-toast'
 import type { PayeeWithCount } from '../../../api/payees'
 import { useAIStatus, useSuggestRegex } from '../../../api/ai'
 import { useAppStore } from '../../../stores/appStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { Combobox } from '../../common/Combobox/Combobox'
-import { suggestPayeeRegex, testPattern, unionPatterns } from '../../../utils/payeeRegex'
+import { claimedNames, suggestPayeeRegex, testPattern, unionPatterns } from '../../../utils/payeeRegex'
+import { dedupeSamples } from '../../../utils/payeeSamples'
+import { PatternCandidates, PatternMatchPreview } from '../PatternSuggest/PatternSuggest'
+import { NO_PATTERN_MESSAGE, patternCandidates } from '../PatternSuggest/patternCandidates'
 import './PayeeMergeModal.css'
 
 export interface MergeConfig {
@@ -27,26 +31,6 @@ interface Props {
 type TargetMode = 'member' | 'external' | 'custom'
 type PatternAction = 'keep' | 'extend' | 'replace'
 
-function deduplicateSamples(parts: (string | null | undefined)[]): string {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const part of parts) {
-    if (!part) continue
-    for (const sample of part.split(',')) {
-      const trimmed = sample.trim()
-      if (trimmed && !seen.has(trimmed.toLowerCase())) {
-        seen.add(trimmed.toLowerCase())
-        result.push(trimmed)
-      }
-    }
-  }
-  return result.join(', ')
-}
-
-function splitSamples(samples: string | null | undefined): string[] {
-  return samples?.split(',').map((s) => s.trim()).filter(Boolean) ?? []
-}
-
 function nameList(names: string[], max = 3): string {
   const shown = names.slice(0, max).map((n) => `"${n}"`)
   const rest = names.length - shown.length
@@ -63,6 +47,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   const [usePattern, setUsePattern] = useState(false)
   const [patternAction, setPatternAction] = useState<PatternAction>('keep')
   const [pattern, setPattern] = useState('')
+  const [aiCandidates, setAiCandidates] = useState<string[]>([])
   const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
   const customInputRef = useRef<HTMLInputElement>(null)
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -96,11 +81,15 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   const rawNames = useMemo(() => {
     const pool =
       mode === 'external' && effectiveTarget ? [...payees, effectiveTarget] : payees
-    const names = pool.flatMap((p) => [p.name, ...splitSamples(p.mapping_samples)])
+    const names = pool.flatMap((p) => [p.name, ...p.mapping_samples])
     return [...new Set(names.filter(Boolean))]
   }, [payees, mode, effectiveTarget])
 
   const suggestion = useMemo(() => suggestPayeeRegex(rawNames), [rawNames])
+  const candidates = useMemo(
+    () => patternCandidates(aiCandidates, suggestion),
+    [aiCandidates, suggestion]
+  )
 
   // Pattern reconciliation: when the surviving payee already has a match
   // pattern, the choice is keep it, extend it (union with a new one), or
@@ -147,9 +136,6 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
     : hasExistingPattern
       ? existingPattern
       : ''
-  const patternResults = previewPattern
-    ? rawNames.map((name) => ({ name, matches: testPattern(previewPattern, name) }))
-    : []
   const patternInvalid =
     patternEditing &&
     trimmedPattern.length > 0 &&
@@ -164,33 +150,34 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   // Names the surviving payee absorbs into its fuzzy match list — in custom
   // mode the renamed payee's old name becomes a sample too.
   const sampleSources = mode === 'custom' ? payees : sources
-  const previewMappings = addToMappingSamples
-    ? deduplicateSamples([
-        mode === 'custom' ? null : effectiveTarget?.mapping_samples,
+  const previewMappings: string[] = addToMappingSamples
+    ? dedupeSamples([
+        ...(mode === 'custom' ? [] : (effectiveTarget?.mapping_samples ?? [])),
         ...sampleSources.map((p) => p.name),
-        ...sampleSources.map((p) => p.mapping_samples),
+        ...sampleSources.flatMap((p) => p.mapping_samples),
       ])
-    : mode === 'custom' ? null : (effectiveTarget?.mapping_samples ?? '')
+    : mode === 'custom'
+      ? []
+      : (effectiveTarget?.mapping_samples ?? [])
 
-  // Non-blocking conflict checks against payees uninvolved in this merge:
-  // does our final pattern claim their names, or do their patterns claim the
-  // names we're absorbing?
-  const conflictWarnings = useMemo(() => {
+  // Payees uninvolved in this merge — the ones a pattern must not claim.
+  const others = useMemo(() => {
     const groupIds = new Set(payees.map((p) => p.id))
-    const others = allPayees.filter(
+    return allPayees.filter(
       (p) => !groupIds.has(p.id) && p.id !== effectiveTargetId && !p.transfer_account_id
     )
+  }, [allPayees, payees, effectiveTargetId])
+
+  // Non-blocking conflict checks against those payees: does our final pattern
+  // claim their names, or do their patterns claim the names we're absorbing?
+  const conflictWarnings = useMemo(() => {
     const warnings: string[] = []
 
-    if (finalPattern && testPattern(finalPattern, '') !== null) {
-      const claimed = others.filter(
-        (p) =>
-          testPattern(finalPattern, p.name) === true ||
-          splitSamples(p.mapping_samples).some((s) => testPattern(finalPattern, s) === true)
-      )
+    if (finalPattern) {
+      const claimed = claimedNames(finalPattern, others)
       if (claimed.length > 0) {
         warnings.push(
-          `This pattern also matches ${nameList(claimed.map((p) => p.name))} — imports for those names could map here instead.`
+          `This pattern also matches ${nameList(claimed)} — imports for those names could map here instead.`
         )
       }
     }
@@ -206,7 +193,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
       )
     }
     return warnings
-  }, [allPayees, payees, effectiveTargetId, finalPattern, rawNames])
+  }, [others, finalPattern, rawNames])
 
   const patternOk = !patternEditing || (trimmedPattern.length > 0 && !patternInvalid)
   const targetOk =
@@ -325,7 +312,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
             <div className="pmerge-preview scroll-list">
               <span className="pmerge-preview__label">Match samples after merge:</span>
               <span className="pmerge-preview__value">
-                {previewMappings || <em>none</em>}
+                {previewMappings.length > 0 ? previewMappings.join(' · ') : <em>none</em>}
               </span>
             </div>
           )}
@@ -415,27 +402,24 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                     aria-label={patternAction === 'extend' && hasExistingPattern ? 'Pattern to add' : 'Match pattern'}
                     aria-invalid={patternInvalid}
                   />
-                  {suggestion && pattern !== suggestion && (
-                    <button
-                      type="button"
-                      className="pmerge-pattern__suggest"
-                      onClick={() => setPattern(suggestion)}
-                      title="Use the pattern suggested from the selected payee names"
-                    >
-                      Suggest
-                    </button>
-                  )}
                   {aiAvailable && (
                     <button
                       type="button"
                       className="pmerge-pattern__suggest pmerge-pattern__suggest--ai"
                       onClick={() => {
-                        void suggestRegex
-                          .mutateAsync(rawNames)
-                          .then((p) => { if (p) setPattern(p) })
+                        void suggestRegex.mutateAsync(rawNames).then((patterns) => {
+                          setAiCandidates(patterns)
+                          if (patterns.length === 0) {
+                            toast.error(NO_PATTERN_MESSAGE)
+                          } else {
+                            // Fill an empty input with the tightest candidate;
+                            // never overwrite something the user typed.
+                            setPattern((current) => (current.trim() ? current : patterns[0]))
+                          }
+                        })
                       }}
                       disabled={suggestRegex.isPending}
-                      title="Ask the AI for a pattern generalizing these names"
+                      title="Ask the AI for patterns generalizing these names"
                     >
                       <Sparkles size={12} aria-hidden />
                       {suggestRegex.isPending ? 'Thinking…' : 'AI'}
@@ -443,28 +427,24 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                   )}
                 </div>
               )}
+              {patternEditing && (
+                <PatternCandidates
+                  candidates={candidates}
+                  value={trimmedPattern}
+                  names={rawNames}
+                  others={others}
+                  onPick={setPattern}
+                />
+              )}
               {patternInvalid ? (
                 <p className="pmerge-pattern__error">Invalid regular expression</p>
-              ) : patternEditing && !suggestion && !trimmedPattern ? (
+              ) : patternEditing && candidates.length === 0 && !trimmedPattern ? (
                 <p className="pmerge-hint">
-                  These names share no obvious structure — write a pattern by hand if you still
-                  want one.
+                  These names share no obvious structure — write a pattern by hand
+                  {aiAvailable ? ', or ask the AI,' : ''} if you still want one.
                 </p>
               ) : (
-                previewPattern && (
-                  <ul className="pmerge-pattern__tests scroll-list">
-                    {patternResults.map(({ name, matches }) => (
-                      <li
-                        key={name}
-                        className={`pmerge-pattern__test ${matches ? 'pmerge-pattern__test--match' : 'pmerge-pattern__test--miss'}`}
-                      >
-                        {matches ? <Check size={12} aria-hidden /> : <X size={12} aria-hidden />}
-                        <span className="pmerge-pattern__test-name">{name}</span>
-                        {!matches && <span className="pmerge-pattern__test-label">no match</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )
+                previewPattern && <PatternMatchPreview pattern={previewPattern} names={rawNames} />
               )}
             </div>
           )}

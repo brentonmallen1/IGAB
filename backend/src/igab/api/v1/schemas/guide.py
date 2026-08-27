@@ -38,6 +38,12 @@ class SignalResponse(BaseModel):
     external_declared: bool = False
     external_as_of: date | None = None
     target: Decimal | None = None
+    #: The emergency fund only: the starter cushion (the flat figure or one
+    #: month of essentials, whichever is larger) and whether the fund clears
+    #: it. The roadmap's starter step reads these; the full step reads
+    #: `target` / `met`. None on every other concept.
+    starter_target: Decimal | None = None
+    starter_met: bool | None = None
     reason: str = ""
     entities: dict[str, list[str]] = Field(default_factory=dict)
     #: Things worth mentioning that did not count — a debt with no rate on
@@ -129,6 +135,10 @@ class CheckupMetric(BaseModel):
     report: str | None = None
     #: What the figure counts, by name — the whole list; the client paces it.
     names: list[str] = Field(default_factory=list)
+    #: The same figure in money when `unit` is not money — the emergency fund
+    #: in months also says what those months are worth.
+    money_value: Decimal | None = None
+    money_target: Decimal | None = None
 
 
 class CheckupFinding(BaseModel):

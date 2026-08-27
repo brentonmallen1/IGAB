@@ -92,36 +92,17 @@ export function useSuggestCategory(budgetId: string) {
 }
 
 
+/** Candidate match patterns for a set of raw names, most specific first.
+ *  Empty when the model produced nothing that matches every name. */
 export function useSuggestRegex(budgetId: string) {
   return useMutation({
     mutationFn: (names: string[]) =>
       apiClient
-        .post<{ pattern: string | null }>(`/${budgetId}/ai/suggest-regex`, { names })
-        .then((r) => r.data.pattern),
+        .post<{ patterns: string[] }>(`/${budgetId}/ai/suggest-regex`, { names })
+        .then((r) => r.data.patterns),
   })
 }
 
-export interface PayeeCleanupEntry {
-  id: string
-  name: string
-}
-
-export interface PayeeCleanupGroup {
-  canonical: string
-  payees: PayeeCleanupEntry[]
-}
-
-export function usePayeeCleanupSuggestions(budgetId: string | null) {
-  return useQuery({
-    queryKey: ['ai-payee-cleanup', budgetId],
-    queryFn: async () => {
-      const { data } = await apiClient.get<PayeeCleanupGroup[]>(`/${budgetId}/ai/payee-cleanup`)
-      return data
-    },
-    enabled: false, // manual trigger only
-    staleTime: 0,
-  })
-}
 
 export function useSpendingInsights(budgetId: string | null, month?: string) {
   return useQuery({

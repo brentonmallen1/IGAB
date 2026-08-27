@@ -172,6 +172,75 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* ─── Where you are ──────────────────────────────────────────────────────── */
+
+/* One dot per stage in roadmap order. Shape carries the state — filled, ring,
+   hollow, dash — so the step colour stays what the legend says it is. */
+.guide-position {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs) var(--spacing-md);
+  padding: var(--spacing-sm) 0 0;
+}
+
+.guide-position__dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.guide-position__dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--stage-color);
+  background: var(--stage-color);
+  color: var(--bg-primary);
+  cursor: pointer;
+}
+
+.guide-position__dot--skipped {
+  background: color-mix(in srgb, var(--stage-color) 35%, transparent);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.guide-position__dot--current {
+  background: transparent;
+  box-shadow:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 3px color-mix(in srgb, var(--stage-color) 45%, transparent);
+}
+
+.guide-position__dot--ahead {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--stage-color) 45%, transparent);
+}
+
+.guide-position__dot:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.guide-position__caption {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.guide-position__where { font-weight: var(--font-weight-medium); }
+
+.guide-position__why { color: var(--text-muted); }
+
 /* ─── Journey: rail + stages ─────────────────────────────────────────────── */
 
 .guide-journey {
@@ -267,6 +336,23 @@
   margin-left: auto;
   font-size: var(--font-size-2xs);
   color: var(--color-positive);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* The current stage: a ring on its rail dot, and the chip that says so. */
+.guide-stage--current .guide-stage__dot {
+  box-shadow:
+    0 0 0 3px var(--bg-primary),
+    0 0 0 5px var(--stage-color);
+}
+
+.guide-stage__here {
+  margin-left: auto;
+  font-size: var(--font-size-2xs);
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -637,6 +723,14 @@
 
 .guide-browse__fold { margin-left: auto; }
 
+.guide-browse__stage--current {
+  border-left-width: 3px;
+  border-left-color: var(--stage-color);
+}
+
+.guide-browse__header .guide-stage__here,
+.guide-browse__header .guide-stage__done { margin-left: 0; }
+
 .guide-browse__summary {
   margin: 0 0 var(--spacing-xs);
   font-size: var(--font-size-sm);
@@ -645,22 +739,129 @@
   max-width: 62ch;
 }
 
+/* ─── Fields ─────────────────────────────────────────────────────────────── */
+
+/* One text-field rule for everything the Guide asks you to type into: the
+   calculators' inputs, the wish and project forms, the wishlist search and
+   sort, the glossary search, the binding sheet. Scoped on the field, the
+   form or the control — never on a wrapper. The wish and project dialogs
+   borrow the calculators' field markup without the calculator wrapper, and
+   rendered as the browser's own white in every palette until this rule was
+   theirs too. Layout (widths, flex) stays with each site below. Kept at
+   (0,1,1) / (0,2,1) on purpose: the range slider and .is-invalid overrides
+   below must still outrank it. */
+.tool__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.tool__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.tool__field--wide { grid-column: 1 / -1; }
+
+.tool__field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.tool__hint { color: var(--text-muted); font-weight: 400; }
+
+.tool input,
+.tool select,
+.tool textarea,
+.wish-form input:not([type='radio']),
+.wish-form select,
+.wish-form textarea,
+.guide-wishlist__search,
+.guide-wishlist__sort select,
+.guide-wishlist__settings input,
+.guide-glossary__search,
+.binding__field input {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  min-height: var(--tap-min, 32px);
+}
+
+.tool input:focus,
+.tool select:focus,
+.tool textarea:focus,
+.wish-form input:focus,
+.wish-form select:focus,
+.wish-form textarea:focus,
+.guide-wishlist__search:focus,
+.guide-wishlist__sort select:focus,
+.guide-wishlist__settings input:focus,
+.guide-glossary__search:focus-within,
+.binding__field input:focus {
+  outline: none;
+  border-color: var(--input-focus-ring);
+  box-shadow: var(--input-focus-shadow);
+}
+
+/* Fields fill their column; a table cell's input fills the cell. Calculator
+   inputs are numbers, so their digits line up. */
+.tool__field input,
+.tool__field select,
+.tool__field textarea,
+.tool__table input,
+.tool__table select { width: 100%; }
+
+.tool__field--inline input { width: 120px; }
+
+.tool input,
+.tool select { font-variant-numeric: tabular-nums; }
+
+.tool textarea,
+.wish-form textarea { resize: vertical; }
+
+.tool input.is-invalid,
+.tool tr.is-invalid input,
+.wish-form input.is-invalid { border-color: var(--color-negative); }
+
+.tool input[type='range'] {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: var(--color-accent);
+}
+
+.tool__nudge,
+.tool__error,
+.tool__aside {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 64ch;
+}
+
+.tool__nudge { color: var(--color-warning); }
+.tool__error { color: var(--color-negative); }
+
 /* ─── Glossary tab ───────────────────────────────────────────────────────── */
 
+/* The search is a field around an icon and a bare input: the wrapper takes
+   the field paint (above); the input inside is invisible. */
 .guide-glossary__search {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
   color: var(--text-muted);
-}
-
-.guide-glossary__search:focus-within {
-  border-color: var(--input-focus-ring);
-  box-shadow: var(--input-focus-shadow);
 }
 
 .guide-glossary__search input {
@@ -1012,6 +1213,20 @@
 }
 
 .flow-stage:hover { border-color: var(--color-accent); }
+
+/* The current stage's boxes, and the reader's marks — which the Map
+   otherwise never shows. */
+.flow-node--current,
+.flow-stage--current {
+  box-shadow:
+    0 0 0 2px var(--stage-color),
+    var(--shadow-sm);
+}
+
+.flow-node__step .guide-mark-glyph {
+  margin-left: 4px;
+  vertical-align: middle;
+}
 
 .flow-stage__title {
   font-size: var(--font-size-xs);
@@ -1370,22 +1585,6 @@
   color: var(--text-muted);
 }
 
-.binding__field input {
-  padding: var(--spacing-sm);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-family: inherit;
-}
-
-.binding__field input:focus {
-  outline: none;
-  border-color: var(--input-focus-ring);
-  box-shadow: var(--input-focus-shadow);
-}
-
 .binding__caveat {
   margin: 0;
   font-size: var(--font-size-2xs);
@@ -1579,6 +1778,12 @@
   background: color-mix(in srgb, var(--color-warning) 6%, var(--surface-sunken));
 }
 
+/* Red is kept for one finding: an emergency fund that has not started. */
+.checkup-block--danger {
+  border-color: color-mix(in srgb, var(--color-danger) 55%, var(--edge));
+  background: color-mix(in srgb, var(--color-danger) 6%, var(--surface-sunken));
+}
+
 .checkup-block__main,
 .checkup-block__side {
   display: flex;
@@ -1611,6 +1816,7 @@
 }
 
 .checkup-block__status--warn { color: var(--color-warning); }
+.checkup-block__status--danger { color: var(--color-danger); }
 .checkup-block__status--good { color: var(--color-positive); }
 .checkup-block__status--neutral,
 .checkup-block__status--unknown { color: var(--text-muted); }
@@ -1656,6 +1862,17 @@
   background: color-mix(in srgb, var(--color-warning) 14%, transparent);
 }
 
+.checkup-block--danger .name-chip {
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+}
+
+/* The money behind a months figure, under the figure it explains. */
+.checkup-block__money {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
 .name-chips__more { display: inline-flex; align-items: center; }
 
 .checkup-block__target {
@@ -1673,6 +1890,7 @@
 
 .checkup-block__bar-fill { height: 100%; background: var(--color-accent); }
 .checkup-block--warn .checkup-block__bar-fill { background: var(--color-warning); }
+.checkup-block--danger .checkup-block__bar-fill { background: var(--color-danger); }
 
 .checkup-block__finding {
   margin: 0;
@@ -1680,6 +1898,8 @@
   color: var(--color-warning);
   line-height: 1.4;
 }
+
+.checkup-block--danger .checkup-block__finding { color: var(--color-danger); }
 
 .checkup-block__detail {
   margin: 0;
@@ -1774,6 +1994,8 @@
   background: var(--color-warning);
 }
 
+.guide-report__led--danger { background: var(--color-danger); }
+
 .guide-report__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
 .guide-report__title {
@@ -1782,6 +2004,8 @@
   font-weight: 600;
   color: var(--text-primary);
 }
+
+.guide-report__title--danger { color: var(--color-danger); }
 
 .guide-report__value { font-weight: 500; }
 

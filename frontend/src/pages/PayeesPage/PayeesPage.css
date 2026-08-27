@@ -218,6 +218,9 @@
 .payees-edit-input--mappings {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+  font-family: inherit;
+  resize: vertical;
+  line-height: 1.4;
 }
 
 .payees-edit-hint {
@@ -308,7 +311,6 @@
   justify-content: flex-end;
   align-items: center;
 }
-
 
 /* AI Cleanup Wizard */
 .payees-wizard-overlay {
@@ -486,47 +488,6 @@
 }
 
 /* Cleanup method toggle */
-.payees-cleanup__toggle {
-  display: flex;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  overflow: hidden;
-}
-
-.payees-cleanup__toggle-btn {
-  flex: 1;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.payees-cleanup__toggle-btn:not(:last-child) {
-  border-right: 1px solid var(--border-color);
-}
-
-.payees-cleanup__toggle-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.payees-cleanup__toggle-btn--active {
-  background: var(--color-accent);
-  color: var(--bg-primary);
-}
-
-.payees-cleanup__toggle-btn--active:hover {
-  background: var(--color-accent-hover);
-}
-
-.payees-cleanup__toggle-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 .payees-wizard__option:disabled {
   opacity: 0.5;

@@ -1,10 +1,14 @@
-"""AIService.suggest_regex: the model's output is untrusted — anything that
-isn't a valid regex must come back as None so the frontend falls back to its
-structural heuristic."""
+"""AIService.suggest_regex: the model's output is untrusted. The service owns
+the shapes it accepts — the current `patterns` list and the older single
+`pattern` — and hands them to `rank_match_patterns` (tested in
+test_payee_names.py). Nothing usable comes back as an empty list so the
+frontend falls back to its structural heuristic."""
 
 from unittest.mock import AsyncMock, MagicMock
 
 from igab.services.ai_service import AIService
+
+NAMES = ["ACH DEPOSIT PAYROLL 88", "ACH DEPOSIT PAYROLL 99"]
 
 
 def make_service(response: str | Exception) -> AIService:
@@ -21,31 +25,29 @@ def make_service(response: str | Exception) -> AIService:
 
 
 class TestSuggestRegex:
-    async def test_returns_pattern_from_model_json(self):
+    async def test_returns_ranked_candidates(self):
+        svc = make_service('{"patterns": ["PAYROLL 88", "^ACH DEPOSIT PAYROLL ", "([bad"]}')
+        assert await svc.suggest_regex(NAMES) == ["^ACH DEPOSIT PAYROLL ", "PAYROLL 88"]
+
+    async def test_an_override_of_the_old_prompt_still_answers(self):
+        # A user's saved copy of the single-pattern prompt returns {"pattern"}.
         svc = make_service('{"pattern": "^ACH DEPOSIT PAYROLL "}')
-        assert await svc.suggest_regex(["ACH DEPOSIT PAYROLL 88", "ACH DEPOSIT PAYROLL 99"]) == (
-            "^ACH DEPOSIT PAYROLL "
-        )
+        assert await svc.suggest_regex(NAMES) == ["^ACH DEPOSIT PAYROLL "]
 
-    async def test_invalid_regex_from_model_returns_none(self):
-        svc = make_service('{"pattern": "([bad"}')
-        assert await svc.suggest_regex(["A", "B"]) is None
-
-    async def test_non_json_output_returns_none(self):
+    async def test_non_json_output_returns_nothing(self):
         svc = make_service("sure! here is a regex: ^A.*")
-        assert await svc.suggest_regex(["A", "B"]) is None
+        assert await svc.suggest_regex(NAMES) == []
 
-    async def test_missing_or_blank_pattern_returns_none(self):
-        assert await make_service('{"regex": "^A"}').suggest_regex(["A"]) is None
-        assert await make_service('{"pattern": "  "}').suggest_regex(["A"]) is None
-        assert await make_service('{"pattern": 42}').suggest_regex(["A"]) is None
+    async def test_missing_or_misshapen_patterns_return_nothing(self):
+        assert await make_service('{"regex": "^A"}').suggest_regex(["A"]) == []
+        assert await make_service('{"patterns": "^A"}').suggest_regex(["A"]) == []
 
-    async def test_empty_names_short_circuits_without_calling_model(self):
-        svc = make_service('{"pattern": "^A"}')
-        assert await svc.suggest_regex([]) is None
-        assert await svc.suggest_regex(["", "   "]) is None
+    async def test_empty_names_short_circuit_without_calling_model(self):
+        svc = make_service('{"patterns": ["^A"]}')
+        assert await svc.suggest_regex([]) == []
+        assert await svc.suggest_regex(["", "   "]) == []
         svc._client.assert_not_called()  # type: ignore[union-attr]
 
-    async def test_model_error_returns_none(self):
+    async def test_model_error_returns_nothing(self):
         svc = make_service(RuntimeError("ollama down"))
-        assert await svc.suggest_regex(["A", "B"]) is None
+        assert await svc.suggest_regex(NAMES) == []

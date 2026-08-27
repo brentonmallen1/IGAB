@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import json
-import re
 import time
 import uuid
 from datetime import date
@@ -11,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category, Transaction
+from igab.domain.payee_names import rank_match_patterns
 from igab.integrations.ollama.client import OllamaClient
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
 from igab.services.category_matching import match_category
@@ -21,6 +21,10 @@ from igab.services.settings_service import SettingsService
 # more reliable with JPEG, and base64 blowup makes big payloads slow.
 MODEL_IMAGE_MAX_DIM = 1536
 MODEL_IMAGE_JPEG_QUALITY = 85
+
+# How many candidate match patterns the suggester hands back. Enough to show
+# the tight-versus-general trade-off; few enough to pick from at a glance.
+REGEX_CANDIDATES = 3
 
 # /api/show capability probe cache: (host, model) -> (capabilities|None, expiry)
 _CAPS_TTL_S = 300
@@ -427,15 +431,18 @@ class AIService:
         except Exception:
             return {"category_id": None, "category_name": None, "confidence": 0.0}
 
-    async def suggest_regex(self, names: list[str]) -> str | None:
-        """Suggest a match pattern generalizing a set of raw payee names.
+    async def suggest_regex(self, names: list[str]) -> list[str]:
+        """Candidate match patterns generalizing a set of raw payee names,
+        widest coverage first.
 
-        Returns None when the model produces nothing usable — the caller falls
-        back to the frontend's structural heuristic.
+        The model's output is untrusted: `rank_match_patterns` keeps what
+        compiles and matches at least one name, ordered by how many. Nothing
+        usable is an empty list — the frontend has its own structural
+        heuristic to fall back on.
         """
         cleaned = [n.strip() for n in names if n.strip()]
         if not cleaned:
-            return None
+            return []
         prompt = await self._prompt("ai_prompt_suggest_regex", {"names": "\n".join(cleaned)})
         try:
             client = await self._client()
@@ -445,16 +452,14 @@ class AIService:
                 options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
             )
             data = _json_from_response(raw)
-            pattern = data.get("pattern")
-            if not isinstance(pattern, str) or not pattern.strip():
-                return None
-            # Trim newline junk only — a trailing space is significant in a
-            # regex ("^ACH DEPOSIT PAYROLL " must keep it).
-            pattern = pattern.strip("\r\n")
-            re.compile(pattern)
-            return pattern
         except Exception:
-            return None
+            return []
+
+        # A saved override of the older prompt still answers with one "pattern".
+        candidates = data.get("patterns")
+        if not isinstance(candidates, list):
+            candidates = [data.get("pattern")]
+        return rank_match_patterns(candidates, cleaned, REGEX_CANDIDATES)
 
     async def spending_insights(self, budget_id: uuid.UUID, month: date) -> str:
         month_start = month.replace(day=1)
@@ -502,57 +507,6 @@ class AIService:
             return await client.generate(prompt, system)
         except Exception:
             return "Unable to generate insights — check Ollama connection in Settings."
-
-    async def suggest_payee_merges(self, budget_id: uuid.UUID) -> list[dict]:
-        """Return groups of payees that appear to be the same vendor."""
-        from igab.db.models import Payee
-
-        result = await self.session.execute(
-            select(Payee.id, Payee.name)
-            .where(
-                Payee.budget_id == budget_id,
-                Payee.is_deleted == False,  # noqa: E712
-                Payee.transfer_account_id.is_(None),
-            )
-            .order_by(Payee.name)
-        )
-        payees = [{"id": str(r.id), "name": r.name} for r in result.all()]
-        if len(payees) < 2:
-            return []
-
-        names_list = "\n".join(f"- {p['id']}: {p['name']}" for p in payees)
-        prompt = (
-            "Below is a list of payee names from a personal budget app (id: name).\n"
-            "Identify groups of payees that are likely the same vendor "
-            "(e.g. 'AMAZON', 'Amazon.com', 'AMAZON PRIME' are all Amazon).\n"
-            "Return a JSON array of groups, each with:\n"
-            '  {"canonical": "<display name>", "ids": ["<uuid>", ...]}\n'
-            "Only include groups with 2+ entries. Output only valid JSON array.\n\n"
-            f"Payees:\n{names_list}"
-        )
-        system = "You are a data-deduplication assistant. Return only a JSON array."
-        try:
-            client = await self._client()
-            raw = await client.generate(prompt, system)
-            raw = raw.strip()
-            if raw.startswith("```"):
-                raw = "\n".join(raw.split("\n")[1:])
-                raw = raw.rstrip("`").strip()
-            groups = json.loads(raw)
-            payee_map = {p["id"]: p["name"] for p in payees}
-            result_groups = []
-            for g in groups:
-                valid_ids = [i for i in g.get("ids", []) if i in payee_map]
-                if len(valid_ids) >= 2:
-                    result_groups.append(
-                        {
-                            "canonical": g.get("canonical", payee_map[valid_ids[0]]),
-                            "payees": [{"id": i, "name": payee_map[i]} for i in valid_ids],
-                        }
-                    )
-            return result_groups
-        except Exception:
-            return []
 
     async def _get_categories(self, budget_id: uuid.UUID) -> list[dict]:
         from igab.db.models import CategoryGroup

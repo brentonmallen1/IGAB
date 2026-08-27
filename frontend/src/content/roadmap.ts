@@ -94,6 +94,10 @@ export interface RoadmapNode {
   appLinks?: { label: string; to: string }[]
   /** The user's own number this node would show, once detection exists. */
   signal?: SignalKey
+  /** Which of the concept's targets this node reads. Only the emergency fund
+   *  has two — a starter cushion, then the full three to six months — and
+   *  the starter node is the one that reads the smaller. */
+  threshold?: 'starter'
   /** The calculator that works this node's question through with real numbers. */
   tool?: ToolId
   /** US-specific account types and tax rules. */
@@ -275,6 +279,7 @@ export const ROADMAP: RoadmapStage[] = [
         glossary: ['emergency-fund', 'sinking-fund'],
         appLinks: [{ label: 'Open your budget', to: '/budget' }],
         signal: 'emergency_fund',
+        threshold: 'starter',
       },
       {
         id: 'nonessential-bills',

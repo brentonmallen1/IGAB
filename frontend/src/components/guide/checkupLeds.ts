@@ -15,6 +15,7 @@ import type { CheckupFinding, FindingKind } from '../../api/guide'
  *  instead: a stale emergency-fund figure marks both emergency-fund steps. */
 export const FINDING_STAGES: Record<Exclude<FindingKind, 'stale_external'>, StageId> = {
   high_interest_debt: 'high-interest-debt',
+  ef_not_started: 'starter-emergency-fund',
   ef_below_starter: 'starter-emergency-fund',
   chronic_overspend: 'foundation',
   ef_below_full: 'full-emergency-fund',

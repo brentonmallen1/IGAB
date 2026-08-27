@@ -15,6 +15,7 @@ from typing import Literal
 
 from igab.domain.dates import add_months
 from igab.domain.money import quantize_cents
+from igab.guide.concepts import emergency_fund_target
 from igab.services.amortization import (
     DEFAULT_CAP_MONTHS,
     CascadeDebt,
@@ -273,7 +274,7 @@ def emergency_fund(
     if essentials_monthly is None or essentials_monthly <= ZERO:
         return EmergencyFundPlan(months, contribution, None, current, None, None, None, None)
 
-    target = quantize_cents(essentials_monthly * months)
+    target = emergency_fund_target(essentials_monthly, months)
     plan = EmergencyFundPlan(
         months=months,
         monthly_contribution=contribution,

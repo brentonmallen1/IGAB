@@ -11,6 +11,7 @@ import { GuideDialog } from './GuideDialog'
 import { RoadmapJourney } from './RoadmapJourney'
 import { RoadmapBrowse } from './RoadmapBrowse'
 import { RoadmapMap } from './RoadmapMap'
+import { PositionStrip } from './PositionStrip'
 
 const VIEWS: { id: RoadmapView; label: string; hint: string }[] = [
   { id: 'journey', label: 'Journey', hint: 'One step at a time' },
@@ -68,6 +69,8 @@ export function RoadmapPanel() {
           </div>
         </div>
       </header>
+
+      <PositionStrip />
 
       <ol className="guide-legend" aria-label="What the step colours mean">
         {ROADMAP_STEPS.map((s) => (

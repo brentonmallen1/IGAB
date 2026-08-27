@@ -137,6 +137,12 @@ describe('roadmap integrity', () => {
     expect(bad).toEqual([])
   })
 
+  it('reads the starter threshold on exactly one node, and only where the fund has two', () => {
+    const readers = allNodes.filter((n) => n.threshold)
+    expect(readers.map((n) => n.id)).toEqual(['starter-ef'])
+    for (const n of readers) expect(n.signal).toBe('emergency_fund')
+  })
+
   it('resolves every glossary reference', () => {
     const dangling: string[] = []
     for (const node of allNodes) {

@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from igab.db.models import Payee, Transaction
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.payee_names import pattern_matches, similarity_key
 from igab.repositories.base import BaseRepository
 
 PAYEE_FUZZY_THRESHOLD = 80
@@ -139,7 +140,7 @@ class PayeeRepository(BaseRepository[Payee]):
             if not payee.match_pattern:
                 continue
             try:
-                if re.search(payee.match_pattern, raw_name, re.IGNORECASE):
+                if pattern_matches(payee.match_pattern, raw_name):
                     if best is None or len(payee.match_pattern) > len(best.match_pattern or ""):
                         best = payee
             except re.error:
@@ -152,21 +153,19 @@ class PayeeRepository(BaseRepository[Payee]):
     async def find_best_match(self, budget_id: uuid.UUID, raw_name: str) -> Payee | None:
         """Fuzzy-match raw_name against payee names and mapping_samples.
 
-        Scores each payee against its canonical name and any comma-separated
-        mapping_samples. Returns the best match above PAYEE_FUZZY_THRESHOLD.
+        Scores each payee against its canonical name and each of its
+        mapping_samples, on the names' `similarity_key` so a store number or
+        reference code the bank changed cannot sink the score. Returns the
+        best match above PAYEE_FUZZY_THRESHOLD.
         """
         payees = await self.get_all(budget_id)
-        raw_lower = raw_name.lower()
+        raw_key = similarity_key(raw_name)
         best_match: Payee | None = None
         best_score = 0
 
         for payee in payees:
-            candidates = [payee.name]
-            if payee.mapping_samples:
-                candidates.extend(s.strip() for s in payee.mapping_samples.split(",") if s.strip())
-
-            for candidate in candidates:
-                score = fuzz.token_set_ratio(raw_lower, candidate.lower())
+            for candidate in [payee.name, *payee.mapping_samples]:
+                score = fuzz.token_set_ratio(raw_key, similarity_key(candidate))
                 if score > best_score and score >= PAYEE_FUZZY_THRESHOLD:
                     best_score = score
                     best_match = payee
@@ -309,6 +308,10 @@ class PayeeRepository(BaseRepository[Payee]):
     ) -> list[DuplicateGroup]:
         """Find groups of similar payees using fuzzy matching.
 
+        Names are scored on their `similarity_key`, so two postings that differ
+        only in the bank's store number or reference code read as the same
+        payee rather than as 73% similar.
+
         Complete-linkage grouping: a payee joins a group only if its similarity
         to EVERY member is >= threshold, so a chain like A~B, B~C can never pull
         a dissimilar A and C into one group. The reported similarity is the
@@ -328,7 +331,7 @@ class PayeeRepository(BaseRepository[Payee]):
         if n < 2:
             return []
 
-        names = [p.name.lower() for p, _ in payees_with_counts]
+        names = [similarity_key(p.name) for p, _ in payees_with_counts]
         score = [[0] * n for _ in range(n)]
         pairs: list[tuple[int, int, int]] = []
         for i in range(n):

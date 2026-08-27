@@ -26,8 +26,13 @@ function overview(preferences: GuidePreferences) {
   return { data: { concepts: [], thresholds: {}, preferences, progress: {} } }
 }
 
-function finding(kind: FindingKind, rank: number, concept_key: string | null = null): CheckupFinding {
-  return { kind, rank, concept_key, title: `Finding ${kind}`, detail: '', value: null, target: null, names: [] }
+function finding(
+  kind: FindingKind,
+  rank: number,
+  concept_key: string | null = null,
+  value: string | null = null
+): CheckupFinding {
+  return { kind, rank, concept_key, title: `Finding ${kind}`, detail: '', value, target: null, names: [] }
 }
 
 function checkup(findings: CheckupFinding[]): Checkup {
@@ -36,6 +41,19 @@ function checkup(findings: CheckupFinding[]): Checkup {
     as_of: '2026-08-26',
     last_run: null,
     metrics: [
+      {
+        key: 'emergency_fund',
+        label: 'Emergency fund',
+        value: '0',
+        target: '1000',
+        unit: 'money',
+        detail: '',
+        finding_kinds: ['ef_not_started', 'ef_below_starter', 'ef_below_full'],
+        report: 'essentials',
+        names: [],
+        money_value: null,
+        money_target: null,
+      },
       {
         key: 'high_interest_debt',
         label: 'Debt at 10%+ APR',
@@ -46,6 +64,8 @@ function checkup(findings: CheckupFinding[]): Checkup {
         finding_kinds: ['high_interest_debt', 'unknown_rates'],
         report: 'liabilities',
         names: [],
+        money_value: null,
+        money_target: null,
       },
       {
         key: 'chronic_overspend',
@@ -57,6 +77,8 @@ function checkup(findings: CheckupFinding[]): Checkup {
         finding_kinds: ['chronic_overspend'],
         report: 'plan-reality',
         names: [],
+        money_value: null,
+        money_target: null,
       },
     ],
     findings,
@@ -140,6 +162,27 @@ describe('CheckupPanel', () => {
     expect(warned).toHaveLength(1)
     expect(warned[0].textContent).toContain('Debt at 10%+ APR')
     expect(warned[0].textContent).toContain('worth a look')
+  })
+
+  it('an emergency fund that has not started reads red, and the report drops the $0.00', async () => {
+    vi.mocked(useGuideCheckup).mockReturnValue({
+      data: checkup([finding('ef_not_started', 2, 'emergency_fund', '0')]),
+      isLoading: false,
+    } as never)
+    const { container } = renderPanel()
+    const danger = container.querySelectorAll('.checkup-block--danger')
+    expect(danger).toHaveLength(1)
+    expect(danger[0].textContent).toContain('Emergency fund')
+    expect(danger[0].textContent).toContain('not started')
+    expect(container.querySelectorAll('.checkup-block--warn')).toHaveLength(0)
+
+    await userEvent.click(screen.getByRole('button', { name: /run health report/i }))
+    const dialog = screen.getByRole('dialog')
+    const item = within(dialog).getByRole('listitem')
+    expect(item.textContent).toContain('Finding ef_not_started')
+    expect(item.textContent).not.toContain(' — $')
+    expect(item.querySelector('.guide-report__led--danger')).toBeTruthy()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
   })
 
   it('reads "Never run" until the report has been run', () => {
