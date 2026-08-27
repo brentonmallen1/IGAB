@@ -91,9 +91,11 @@ class TestRanking:
         assert kinds(found)[0] == "high_interest_debt"
         ranks = [f.rank for f in found]
         assert ranks == sorted(ranks)
-        # Every rule that can fire together did, in the table's order. The two
-        # emergency-fund rules are exclusive by design — one nag per problem.
-        assert kinds(found) == [kind for kind, _, _ in RULES if kind != "ef_below_starter"]
+        # Every rule that can fire together did, in the table's order. The
+        # three emergency-fund rules are exclusive by design — one nag per problem.
+        assert kinds(found) == [
+            kind for kind, _, _ in RULES if kind not in ("ef_not_started", "ef_below_starter")
+        ]
 
     def test_ties_within_a_rank_sort_by_concept_then_title(self):
         stale = add_months(TODAY, -STALE_EXTERNAL_MONTHS)
@@ -140,13 +142,44 @@ class TestPredicates:
         assert kinds(found) == ["ef_below_full"]
         assert found[0].target == Decimal("9720")
 
-    def test_negative_ef_value_reads_below_starter(self):
-        # An overspent emergency-fund category is worse than an empty one, and
-        # still one finding.
+    def test_empty_ef_reads_not_started(self):
+        # $0 is not "below the starter amount" — there is nothing to be below
+        # with. It is a different sentence, and the one people actually hear.
+        signals = {"emergency_fund": sig(met=False, value="0", target="9720")}
+        found = evaluate(inputs(signals))
+        assert kinds(found) == ["ef_not_started"]
+        assert found[0].value == Decimal("0")
+        assert found[0].target == Decimal("1000")
+
+    def test_negative_ef_value_reads_not_started(self):
+        # An overspent emergency-fund category has nothing in it either, and
+        # it is still one finding.
         signals = {"emergency_fund": sig(met=False, value="-50", target="9720")}
         found = evaluate(inputs(signals))
-        assert kinds(found) == ["ef_below_starter"]
+        assert kinds(found) == ["ef_not_started"]
         assert found[0].value == Decimal("-50")
+
+    def test_a_cent_saved_is_below_starter_not_not_started(self):
+        signals = {"emergency_fund": sig(met=False, value="0.01", target="9720")}
+        assert kinds(evaluate(inputs(signals))) == ["ef_below_starter"]
+
+    def test_starter_is_one_month_of_essentials_when_that_is_larger(self):
+        # The roadmap step says "$1,000 or one month of expenses, whichever is
+        # larger" — so with $3,200/month of essentials, $1,000 is still short.
+        signals = {"emergency_fund": sig(met=False, value="1000", target="9600")}
+        found = evaluate(inputs(signals, essentials_monthly=Decimal("3200")))
+        assert kinds(found) == ["ef_below_starter"]
+        assert found[0].target == Decimal("3200")
+
+        signals = {"emergency_fund": sig(met=False, value="3200", target="9600")}
+        found = evaluate(inputs(signals, essentials_monthly=Decimal("3200")))
+        assert kinds(found) == ["ef_below_full"]
+
+    def test_starter_floor_holds_when_essentials_are_small(self):
+        signals = {"emergency_fund": sig(met=False, value="900", target="2400")}
+        found = evaluate(inputs(signals, essentials_monthly=Decimal("800")))
+        assert kinds(found) == ["ef_below_starter"]
+        assert found[0].target == Decimal("1000")
 
     def test_external_declared_without_a_figure_is_met_and_silent(self):
         signals = {"emergency_fund": sig(met=True, value=None)}
@@ -216,6 +249,60 @@ class TestMetrics:
             assert ef.unit == "money"
             assert ef.value == Decimal("1240")
             assert ef.target == Decimal("1000")
+
+    def test_ef_months_row_carries_the_money_behind_the_months(self):
+        # "0.38 months" means nothing until you can see that a month is $3,240
+        # and three of them are $9,720 — the served target, not re-derived.
+        signals = {"emergency_fund": sig(met=False, value="1240", target="9720")}
+        rows = metrics(inputs(signals, essentials_monthly=Decimal("3240")))
+        ef = next(m for m in rows if m.key == "emergency_fund")
+        assert ef.money_value == Decimal("1240")
+        assert ef.money_target == Decimal("9720")
+
+    def test_ef_money_row_has_no_money_twin(self):
+        signals = {"emergency_fund": sig(met=False, value="1240", target="1000")}
+        rows = metrics(inputs(signals, essentials_monthly=None))
+        ef = next(m for m in rows if m.key == "emergency_fund")
+        assert ef.money_value is None
+        assert ef.money_target is None
+
+    def test_ef_money_row_target_is_the_starter_this_budget_faces(self):
+        # Zero essentials: the flat starter. (Non-zero essentials flips the row
+        # to months, so the money target only ever shows the floor.)
+        signals = {"emergency_fund": sig(met=False, value="500", target="1000")}
+        rows = metrics(inputs(signals, essentials_monthly=Decimal("0")))
+        ef = next(m for m in rows if m.key == "emergency_fund")
+        assert ef.target == Decimal("1000")
+
+    def test_essentials_row_sits_under_the_fund_and_says_where_it_came_from(self):
+        signals = {"emergency_fund": sig(met=False, value="1240", target="9720")}
+        rows = metrics(
+            inputs(
+                signals,
+                essentials_monthly=Decimal("3240"),
+                essentials_reason="the categories and payees you tagged Essential",
+            )
+        )
+        keys = [m.key for m in rows]
+        assert keys.index("essential_expenses") == keys.index("emergency_fund") + 1
+        row = rows[keys.index("essential_expenses")]
+        assert row.value == Decimal("3240")
+        assert row.target is None
+        assert row.unit == "money"
+        assert row.detail == "Based on the categories and payees you tagged Essential."
+        assert row.report == "essentials"
+        assert row.finding_kinds == []
+
+    def test_essentials_row_when_untracked_or_unknown(self):
+        untracked = metrics(inputs(essentials_monthly=Decimal("3240"), essentials_tracked=False))
+        row = next(m for m in untracked if m.key == "essential_expenses")
+        assert row.value is None
+        assert row.detail == "Not tracked."
+
+        unknown = metrics(inputs(essentials_monthly=None))
+        row = next(m for m in unknown if m.key == "essential_expenses")
+        assert row.value is None
+        assert row.detail == "Not known."
 
     def test_untracked_concept_reads_as_not_tracked(self):
         signals = {"high_interest_debt": sig(tracked=False)}

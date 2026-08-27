@@ -12,6 +12,7 @@ import {
   explainerFor,
   formatMetricTarget,
   formatMetricValue,
+  formatMoneyLine,
   metricProgress,
   metricStatus,
 } from './checkupCopy'
@@ -35,13 +36,13 @@ interface Props {
 export function CheckupBlock({ metric, finding, thresholds, onGoToStage }: Props) {
   const fmt = useFormatters()
   const copy = explainerFor(metric.key)
-  const fired = !!finding
-  const { status, text } = metricStatus(metric, fired)
+  const { status, text } = metricStatus(metric, finding)
   const progress = metricProgress(metric)
   const stage: StageId | undefined = finding ? stagesForFinding(finding)[0] : copy?.stage
   const stageDef = stage ? findStage(stage) : null
   const value = formatMetricValue(metric, fmt)
   const target = formatMetricTarget(metric, fmt, thresholds)
+  const money = formatMoneyLine(metric, fmt, thresholds)
 
   return (
     <article className={`checkup-block checkup-block--${status}`} aria-label={metric.label}>
@@ -60,6 +61,7 @@ export function CheckupBlock({ metric, finding, thresholds, onGoToStage }: Props
           <span className="checkup-block__value tabular">{value}</span>
           {target && <span className="checkup-block__target">{target}</span>}
         </div>
+        {money && <p className="checkup-block__money tabular">{money}</p>}
         {progress !== null && (
           <div
             className="checkup-block__bar"

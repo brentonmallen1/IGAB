@@ -1,26 +1,54 @@
 import { describe, it, expect } from 'vitest'
-import type { CheckupMetric } from '../../api/guide'
-import { checkCopyIntegrity, formatMetricTarget, formatMetricValue, metricProgress, metricStatus, METRIC_KEYS } from './checkupCopy'
+import type { CheckupFinding, CheckupMetric, FindingKind } from '../../api/guide'
+import {
+  checkCopyIntegrity,
+  FINDING_TONE,
+  findingTone,
+  formatMetricTarget,
+  formatMetricValue,
+  formatMoneyLine,
+  metricProgress,
+  metricStatus,
+  METRIC_KEYS,
+} from './checkupCopy'
 
 const fmt = { formatMoney: (n: number) => `$${n}` }
 
 function metric(over: Partial<CheckupMetric>): CheckupMetric {
-  return { key: 'emergency_fund', label: 'Emergency fund', value: '1.8', target: '3', unit: 'months', detail: '', finding_kinds: [], report: null, names: [], ...over }
+  return { key: 'emergency_fund', label: 'Emergency fund', value: '1.8', target: '3', unit: 'months', detail: '', finding_kinds: [], report: null, names: [], money_value: null, money_target: null, ...over }
+}
+
+function finding(kind: FindingKind): CheckupFinding {
+  return { kind, rank: 1, concept_key: null, title: kind, detail: '', value: null, target: null, names: [] }
 }
 
 describe('checkup copy', () => {
   it('every explainer is complete and points at content that exists', () => {
     expect(checkCopyIntegrity()).toEqual([])
-    expect(METRIC_KEYS.length).toBe(7)
+    expect(METRIC_KEYS.length).toBe(8)
   })
 
   it('status: a fired finding wins, then the figure against its target', () => {
-    expect(metricStatus(metric({}), true)).toEqual({ status: 'warn', text: 'worth a look' })
-    expect(metricStatus(metric({ value: null }), false)).toEqual({ status: 'unknown', text: 'not known' })
-    expect(metricStatus(metric({ value: '4' }), false)).toEqual({ status: 'good', text: 'on target' })
-    expect(metricStatus(metric({ key: 'high_interest_debt', value: '0', target: '0', unit: 'money' }), false).text).toBe('none')
-    expect(metricStatus(metric({ key: 'categories_funded', value: '18', target: '21', unit: 'count' }), false).text).toBe('3 underfunded')
-    expect(metricStatus(metric({ key: 'categories_funded', value: '21', target: '21', unit: 'count' }), false).text).toBe('all funded')
+    expect(metricStatus(metric({}), finding('ef_below_starter'))).toEqual({ status: 'warn', text: 'worth a look' })
+    expect(metricStatus(metric({ value: null }))).toEqual({ status: 'unknown', text: 'not known' })
+    expect(metricStatus(metric({ value: '4' }))).toEqual({ status: 'good', text: 'on target' })
+    expect(metricStatus(metric({ key: 'high_interest_debt', value: '0', target: '0', unit: 'money' })).text).toBe('none')
+    expect(metricStatus(metric({ key: 'categories_funded', value: '18', target: '21', unit: 'count' })).text).toBe('3 underfunded')
+    expect(metricStatus(metric({ key: 'categories_funded', value: '21', target: '21', unit: 'count' })).text).toBe('all funded')
+  })
+
+  it('only an emergency fund that has not started speaks in red', () => {
+    expect(metricStatus(metric({ value: '0' }), finding('ef_not_started'))).toEqual({ status: 'danger', text: 'not started' })
+    const kinds = Object.keys(FINDING_TONE) as FindingKind[]
+    expect(kinds.filter((k) => findingTone(k) === 'danger')).toEqual(['ef_not_started'])
+    expect(findingTone('stale_external')).toBe('warn')
+  })
+
+  it('says what the months are worth, when the row carries the money', () => {
+    const row = metric({ value: '0.38', money_value: '1240', money_target: '9720' })
+    expect(formatMoneyLine(row, fmt, { emergency_fund_months: 3 })).toBe('$1240 of $9720 — three months of essentials')
+    expect(formatMoneyLine(row, fmt, {})).toBe('$1240 of $9720 — three months of essentials')
+    expect(formatMoneyLine(metric({}), fmt, { emergency_fund_months: 3 })).toBeNull()
   })
 
   it('progress only where a bar means something', () => {

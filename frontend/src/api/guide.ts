@@ -41,6 +41,11 @@ export interface Signal {
   external_declared: boolean
   external_as_of: string | null
   target: string | null
+  /** Emergency fund only: the starter cushion ($1,000 or one month of
+   *  essentials, whichever is larger) and whether the fund clears it. The
+   *  roadmap's starter step reads these; the full step reads `target`/`met`. */
+  starter_target: string | null
+  starter_met: boolean | null
   reason: string
   entities: Partial<Record<EntityType, string[]>>
   /** Things that did not count and should be said out loud — a debt with no
@@ -161,6 +166,7 @@ export function useSetGuideStep(budgetId: string) {
  *  components/guide/checkupLeds.ts. */
 export type FindingKind =
   | 'high_interest_debt'
+  | 'ef_not_started'
   | 'ef_below_starter'
   | 'chronic_overspend'
   | 'ef_below_full'
@@ -195,6 +201,10 @@ export interface CheckupMetric {
   report: string | null
   /** What the figure counts, by name — the whole list; NameChips paces it. */
   names: string[]
+  /** The same figure in money when `unit` is not money — the emergency fund
+   *  in months also says what those months are worth. */
+  money_value: string | null
+  money_target: string | null
 }
 
 export interface Checkup {
