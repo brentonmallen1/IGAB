@@ -11,13 +11,22 @@ from igab.domain.money import Money
 
 class CategoryGroupCreate(BaseModel):
     name: str
-    sort_order: int = 0
+    #: Omit it and the group goes last — the server assigns positions, so a
+    #: client can no longer send a count of the rows it happened to be showing.
+    sort_order: int | None = None
 
 
 class CategoryGroupReorder(BaseModel):
-    #: Every live group in this budget, in the order they should appear.
-    #: Must name each exactly once — see CategoryGroupRepository.reorder.
+    #: The budget's visible groups, in the order they should appear. Each
+    #: exactly once; hidden and system groups may be omitted and keep their
+    #: slot — see CategoryGroupRepository.reorder.
     group_ids: list[uuid.UUID]
+
+
+class CategoryReorder(BaseModel):
+    #: One group's visible categories, in the order they should appear. Each
+    #: exactly once; hidden ones may be omitted — see CategoryRepository.reorder.
+    category_ids: list[uuid.UUID]
 
 
 class CategoryDeletePreviewResponse(BaseModel):
@@ -134,7 +143,8 @@ class CategoryCreate(BaseModel):
     category_group_id: uuid.UUID
     name: str
     subtitle: str | None = None
-    sort_order: int = 0
+    #: Omit it and the category goes last in its group — see CategoryGroupCreate.
+    sort_order: int | None = None
     note: str | None = None
 
 

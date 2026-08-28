@@ -8,7 +8,12 @@ from sqlalchemy import func, select
 
 from igab.db.models import Account, Transaction
 from igab.integrations.ynab.importer import YNABImporter
-from igab.integrations.ynab.models import YNABBudget, YNABSplitLeg, YNABTransaction
+from igab.integrations.ynab.models import (
+    YNABBudget,
+    YNABPlanRow,
+    YNABSplitLeg,
+    YNABTransaction,
+)
 from igab.repositories.category_repo import CategoryGroupRepository
 from igab.repositories.txn_filters import UNPAIRED_TRANSFER_LEG
 
@@ -921,3 +926,56 @@ class TestSpendingTransfersPair:
         assert predicate_count == result.transfer_legs_unpaired
 
 
+
+
+def _plan_row(month, group, category, assigned="0"):
+    return YNABPlanRow(
+        month=month,
+        category_group=group,
+        category=category,
+        assigned=Decimal(assigned),
+        activity=None,
+        available=None,
+    )
+
+
+async def test_the_imported_layout_follows_the_plans_final_month(db_session):
+    """Plan.csv lists the categories in the order the user arranged them in
+    YNAB. The final month is the current layout; every group and category
+    takes its position from it, and a category only the register knows about
+    goes last in its group."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    mar, apr = date(2026, 3, 1), date(2026, 4, 1)
+    plan = [
+        # An older month, in an older arrangement — ignored.
+        _plan_row(mar, "Bills", "Rent", "1200"),
+        _plan_row(mar, "Wants", "Games"),
+        # The final month: Wants before Bills, Water before Rent — neither alphabetical.
+        _plan_row(apr, "Wants", "Games", "50"),
+        _plan_row(apr, "Wants", "Dining"),
+        _plan_row(apr, "Bills", "Water"),
+        _plan_row(apr, "Bills", "Rent", "1200"),
+        _plan_row(apr, "Bills", "Power"),
+    ]
+    budget_data = YNABBudget(
+        transactions=[
+            _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+            _txn("Checking", "Landlord", "-1200.00", group="Bills", category="Rent"),
+            # Register-only: never in the plan.
+            _txn("Checking", "ISP", "-60.00", group="Bills", category="Internet"),
+        ],
+        budget_entries=[e for e in plan if e.assigned != 0],
+        plan_rows=plan,
+    )
+    await _importer(services, db_session, budget).import_budget(budget_data)
+
+    groups = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    assert [g.name for g in groups] == ["Wants", "Bills", "Income"]
+    by_name = {g.name: g for g in groups}
+    bills = await services.category_repo.get_by_group(by_name["Bills"].id)
+    assert [c.name for c in bills] == ["Water", "Rent", "Power", "Internet"]
+    assert [c.sort_order for c in bills] == [0, 1, 2, 3]
+    wants = await services.category_repo.get_by_group(by_name["Wants"].id)
+    assert [c.name for c in wants] == ["Games", "Dining"]

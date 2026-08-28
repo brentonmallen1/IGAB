@@ -157,6 +157,31 @@ class TestYNABParser:
         assert apr.category == "Groceries"
         assert apr.assigned == Decimal("500.00")
 
+    def test_parse_plan_rows_keeps_every_row_in_file_order(self):
+        """The plan's row order is YNAB's display order — the layout an
+        import restores — and Activity/Available are kept as YNAB's answers."""
+        rows = self.parser.parse_plan_rows(PLAN_CSV)
+        assert [(r.month, r.category) for r in rows] == [
+            (date(2026, 4, 1), "Groceries"),
+            (date(2026, 4, 1), "Restaurants"),
+            (date(2026, 3, 1), "Groceries"),
+        ]
+        assert rows[0].activity == Decimal("-45.00")
+        assert rows[0].available == Decimal("455.00")
+
+    def test_a_zero_assigned_row_is_a_plan_row_but_not_an_entry(self):
+        content = PLAN_CSV + '"Apr 2026","Food: Snacks","Food","Snacks",$0.00,,\n'
+        rows = self.parser.parse_plan_rows(content)
+        assert rows[-1].category == "Snacks"
+        assert rows[-1].assigned == Decimal("0")
+        assert rows[-1].activity is None
+        assert rows[-1].available is None
+        assert [e.category for e in self.parser.parse_plan_csv(content)] == [
+            "Groceries",
+            "Restaurants",
+            "Groceries",
+        ]
+
     def test_parse_zip(self, tmp_path: Path):
         path = _make_zip(tmp_path, REGISTER_CSV, PLAN_CSV)
         budget = self.parser.parse_zip(path)

@@ -23,6 +23,8 @@ import { parseAssignmentInput } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
+import type { DragReorder } from '../../../hooks/useDragReorder'
+import { DragHandle } from '../../common/DragHandle/DragHandle'
 import type { Category, CategoryBalance } from '../../../types'
 import './CategoryRow.css'
 
@@ -32,9 +34,23 @@ interface Props {
   budgetId: string
   month: string
   orderedIds?: string[]
+  /** This row's position within its group. */
+  index?: number
+  /** Present only where reordering is meaningful — the budget's own
+   *  arrangement, unfiltered, no view. The group owns the drag state; every
+   *  row of the group receives the same object, so memo still holds. */
+  reorder?: DragReorder
 }
 
-export const CategoryRow = memo(function CategoryRow({ category, balance, budgetId, month, orderedIds }: Props) {
+export const CategoryRow = memo(function CategoryRow({
+  category,
+  balance,
+  budgetId,
+  month,
+  orderedIds,
+  index = 0,
+  reorder,
+}: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
   const [showTargetEditor, setShowTargetEditor] = useState(false)
@@ -239,11 +255,36 @@ export const CategoryRow = memo(function CategoryRow({ category, balance, budget
         />
       )}
       <div
-        className={`category-row ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'compressed' ? 'category-row--compressed' : ''}`}
+        className={`category-row drag-handle-host ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'compressed' ? 'category-row--compressed' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
         role="row"
         {...(isMobile ? longPress : { onClick: handleRowClick })}
         style={{ cursor: 'default' }}
+        onDragOver={
+          reorder
+            ? (e) => {
+                e.preventDefault()
+                reorder.over(index)
+              }
+            : undefined
+        }
+        onDrop={
+          reorder
+            ? (e) => {
+                e.preventDefault()
+                reorder.drop(index)
+              }
+            : undefined
+        }
       >
+        {reorder && (
+          <DragHandle
+            label={category.name}
+            onDragStart={() => reorder.start(index)}
+            onDragEnd={reorder.end}
+            onMoveUp={index > 0 ? () => reorder.moveBy(index, -1) : undefined}
+            onMoveDown={() => reorder.moveBy(index, 1)}
+          />
+        )}
         <div className={`category-row__checkbox ${anySelected ? 'category-row__checkbox--visible' : ''}`}>
           <input
             type="checkbox"

@@ -146,6 +146,54 @@ class CategoryService:
         self.assignment_repo = assignment_repo
         self.changes = ChangeRecorder(session)
 
+    # ─── Order ────────────────────────────────────────────────────────────────
+
+    async def reorder_groups(self, budget_id: uuid.UUID, group_ids: list[uuid.UUID]) -> None:
+        """Set the budget's group order in one step, recorded for undo.
+
+        The record carries the complete order before and after — hidden and
+        system groups included — so an undo restores the arrangement exactly
+        rather than replaying the client's partial list. Nothing is recorded
+        when the order did not change.
+        """
+        before = await self._group_order(budget_id)
+        await self.group_repo.reorder(budget_id, group_ids)
+        after = await self._group_order(budget_id)
+        if before == after:
+            return
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="budget",
+            entity_id=budget_id,
+            action="reorder",
+            before={"_order": [str(i) for i in before]},
+            after={"_order": [str(i) for i in after]},
+        )
+
+    async def reorder_categories(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, category_ids: list[uuid.UUID]
+    ) -> None:
+        """Set one group's category order in one step, recorded for undo."""
+        before = await self._category_order(group_id)
+        await self.category_repo.reorder(group_id, category_ids)
+        after = await self._category_order(group_id)
+        if before == after:
+            return
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="category_group",
+            entity_id=group_id,
+            action="reorder",
+            before={"_order": [str(i) for i in before]},
+            after={"_order": [str(i) for i in after]},
+        )
+
+    async def _group_order(self, budget_id: uuid.UUID) -> list[uuid.UUID]:
+        return [g.id for g in await self.group_repo.get_all(budget_id, include_hidden=True)]
+
+    async def _category_order(self, group_id: uuid.UUID) -> list[uuid.UUID]:
+        return [c.id for c in await self.category_repo.get_by_group(group_id)]
+
     # ─── Preview ──────────────────────────────────────────────────────────────
 
     async def preview_delete(
