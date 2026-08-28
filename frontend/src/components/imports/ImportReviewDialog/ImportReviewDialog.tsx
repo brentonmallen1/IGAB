@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Surface } from '../../common/Surface'
 import { Dialog } from '../../common/Dialog/Dialog'
-import { TagChip } from '../../common/TagChip'
+import { TagChip, type TagColorSlot } from '../../common/TagChip'
+import { TagPicker, type TagOption } from '../../common/TagPicker'
 import { HygieneFindings } from '../../accounts/HygieneFindings'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import {
@@ -11,7 +12,12 @@ import {
   useUpdateAccount,
   type HygieneFinding,
 } from '../../../api/accounts'
-import { useBulkSetCategoryTags, useTagSuggestions, useTags } from '../../../api/tags'
+import {
+  useBulkSetCategoryTags,
+  useCreateTag,
+  useTagSuggestions,
+  useTags,
+} from '../../../api/tags'
 import { useMarkImportReviewed, type YnabImportResult } from '../../../api/imports'
 import { apiErrorMessage } from '../../../api/client'
 import { renderableGroups } from '../../budget/budgetGroups'
@@ -23,6 +29,7 @@ import {
   initialFilter,
   pendingUpdates,
   repairableTransferLegs,
+  setTags,
   stepsFor,
   toggleTag,
   type Draft,
@@ -69,6 +76,7 @@ export function ImportReviewDialog({
   const { data: suggestions } = useTagSuggestions(budgetId)
   const { data: hygiene } = useAccountHygiene(budgetId)
   const bulkSetTags = useBulkSetCategoryTags(budgetId)
+  const createTag = useCreateTag(budgetId)
   const markReviewed = useMarkImportReviewed(budgetId)
 
   const systemTags = useMemo(() => (tags ?? []).filter((t) => t.system_key), [tags])
@@ -79,6 +87,14 @@ export function ImportReviewDialog({
   const tagByKey = useMemo(
     () => Object.fromEntries(systemTags.map((t) => [t.system_key as string, t])),
     [systemTags]
+  )
+  const tagById = useMemo(() => Object.fromEntries((tags ?? []).map((t) => [t.id, t])), [tags])
+  // Every tag in the budget, system and the user's own alike. The review can
+  // replace a category's whole set, so it has to be able to offer the whole
+  // set — the suggestions are a shortcut, not the only way in.
+  const tagOptions: TagOption[] = useMemo(
+    () => (tags ?? []).map((t) => ({ id: t.id, name: t.name, color_slot: t.color_slot })),
+    [tags]
   )
 
   const reviewable: ReviewCategory[] = useMemo(() => {
@@ -172,7 +188,16 @@ export function ImportReviewDialog({
           filter={filter}
           onFilter={setFilter}
           tagByKey={tagByKey}
+          tagById={tagById}
+          tagOptions={tagOptions}
           onToggle={(category, tagId) => setDraft((d) => toggleTag(d, category, tagId))}
+          onSetTags={(category, tagIds) => setDraft((d) => setTags(d, category, tagIds))}
+          onCreateTag={async (name) => {
+            // The tag itself has to exist before it can be assigned, so this
+            // one call writes immediately. It lands on no category until Done.
+            const tag = await createTag.mutateAsync({ name })
+            return { id: tag.id, name: tag.name, color_slot: tag.color_slot }
+          }}
           onAcceptAll={() =>
             setDraft((d) =>
               shown.reduce(
@@ -372,7 +397,11 @@ function TagsStep({
   filter,
   onFilter,
   tagByKey,
+  tagById,
+  tagOptions,
   onToggle,
+  onSetTags,
+  onCreateTag,
   onAcceptAll,
 }: {
   rows: ReviewRow[]
@@ -380,7 +409,11 @@ function TagsStep({
   filter: RowFilter
   onFilter: (f: RowFilter) => void
   tagByKey: Record<string, { id: string; name: string; color_slot: string | null }>
+  tagById: Record<string, { id: string; name: string; color_slot: string | null }>
+  tagOptions: TagOption[]
   onToggle: (category: ReviewCategory, tagId: string) => void
+  onSetTags: (category: ReviewCategory, tagIds: string[]) => void
+  onCreateTag: (name: string) => Promise<TagOption>
   onAcceptAll: () => void
 }) {
   const decidedCount = rows.filter((r) => r.importTagged).length
@@ -452,14 +485,16 @@ function TagsStep({
               )}
             </div>
             <div className="import-review__tags">
-              {row.held.map((key) =>
-                tagByKey[key] ? (
+              {/* Every tag it carries, not only the system ones — this row can
+                  replace the whole set, so it has to show the whole set. */}
+              {row.tagIds.map((id) =>
+                tagById[id] ? (
                   <TagChip
-                    key={key}
-                    name={tagByKey[key].name}
-                    colorSlot={tagByKey[key].color_slot as never}
+                    key={id}
+                    name={tagById[id].name}
+                    colorSlot={tagById[id].color_slot as TagColorSlot | null}
                     size="sm"
-                    onRemove={() => onToggle(row.category, tagByKey[key].id)}
+                    onRemove={() => onToggle(row.category, id)}
                   />
                 ) : null
               )}
@@ -476,9 +511,18 @@ function TagsStep({
                   </label>
                 ) : null
               )}
-              {row.held.length === 0 && row.suggestions.length === 0 && (
-                <span className="import-review__none">no tags</span>
-              )}
+              {/* The way in for everything the hints never thought of: any tag
+                  in the budget, on any category, however many. Without it a
+                  row with no tags and no suggestion had nothing to offer. */}
+              <TagPicker
+                selectedTagIds={row.tagIds}
+                tags={tagOptions}
+                onChange={(tagIds) => onSetTags(row.category, tagIds)}
+                onCreateTag={onCreateTag}
+                allowCreate
+                triggerLabel="+ Tag"
+                ghost
+              />
             </div>
           </div>
         ))}

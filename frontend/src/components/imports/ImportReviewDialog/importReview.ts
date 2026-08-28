@@ -38,8 +38,12 @@ export interface RowSuggestion {
 
 export interface ReviewRow {
   category: ReviewCategory
-  /** System keys it carries now, in the draft. */
-  held: string[]
+  /** Every tag it carries in the draft — the user's own as well as the
+   *  system ones. Showing only the system tags made a Travel tag invisible in
+   *  a screen that can replace the whole set. */
+  tagIds: string[]
+  /** The system keys among those, for filtering redundant suggestions. */
+  heldKeys: string[]
   /** Keys its names point at that it does not carry. */
   suggestions: RowSuggestion[]
   /** This import put a tag on it — the rows the review opens on. */
@@ -79,12 +83,14 @@ export function buildRows(
   const importedBy = new Map(tagged.map((t) => [t.category_id, t]))
 
   return categories.map((category) => {
-    const held = heldKeys(draft[category.id] ?? category.tagIds, keyById)
+    const tagIds = draft[category.id] ?? category.tagIds
+    const keys = heldKeys(tagIds, keyById)
     const fromImport = importedBy.get(category.id)
     return {
       category,
-      held,
-      suggestions: (byCategory.get(category.id) ?? []).filter((s) => !held.includes(s.systemKey)),
+      tagIds,
+      heldKeys: keys,
+      suggestions: (byCategory.get(category.id) ?? []).filter((s) => !keys.includes(s.systemKey)),
       importTagged: fromImport !== undefined,
       importMatchedOn: fromImport?.matched_on ?? null,
     }
@@ -135,6 +141,16 @@ export function toggleTag(draft: Draft, category: ReviewCategory, tagId: string)
     ? current.filter((id) => id !== tagId)
     : [...current, tagId]
   return { ...draft, [category.id]: next }
+}
+
+/**
+ * Replace a category's whole tag set.
+ *
+ * What a picker hands back: it already knows the full selection, and the
+ * server replaces rather than merges, so there is nothing to reconcile.
+ */
+export function setTags(draft: Draft, category: ReviewCategory, tagIds: string[]): Draft {
+  return { ...draft, [category.id]: tagIds }
 }
 
 /** Order-insensitive: the draft appends, the server returns sorted by name. */

@@ -173,8 +173,7 @@
 }
 
 .import-review__cat-g,
-.import-review__why,
-.import-review__none {
+.import-review__why {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
