@@ -117,6 +117,45 @@ class TestLiabilityCrud:
         )
         assert resp.status_code == 422
 
+    async def test_a_liability_cannot_be_linked_to_an_asset_account(self, api_client, db_session):
+        """Nothing filtered the target before: a mortgage could be pointed at
+        Checking, from the mortgage account's own page."""
+        budget = await create_budget(db_session, api_client.test_user)
+        checking = await create_account(db_session, budget, "Checking")
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/liabilities",
+            json={
+                "name": "Loan",
+                "liability_type": "other",
+                "interest_rate": "5",
+                "minimum_payment": "100.00",
+                "linked_account_id": str(checking.id),
+            },
+        )
+        assert resp.status_code == 422
+        assert "not a liability account" in resp.json()["detail"]
+
+    async def test_a_companion_cannot_be_moved_to_another_account(self, api_client, db_session):
+        """A companion belongs to its account, the same way delete refuses."""
+        budget = await create_budget(db_session, api_client.test_user)
+        loan = await create_account(db_session, budget, "Loan", account_type="loan")
+        other = await create_account(db_session, budget, "Other Loan", account_type="loan")
+        liability = await create_liability(db_session, budget, linked_account_id=loan.id)
+
+        resp = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{liability.id}",
+            json={"linked_account_id": str(other.id)},
+        )
+        assert resp.status_code == 409
+        assert "belong to that account" in resp.json()["detail"]
+        # Re-sending its own account is not a move.
+        same = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{liability.id}",
+            json={"linked_account_id": str(loan.id), "name": "Renamed"},
+        )
+        assert same.status_code == 200
+        assert same.json()["name"] == "Renamed"
+
     async def test_patch_switches_managed_to_unmanaged(self, api_client, db_session):
         budget = await create_budget(db_session, api_client.test_user)
         loan = await create_account(db_session, budget, "Loan", account_type="loan")

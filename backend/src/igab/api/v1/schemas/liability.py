@@ -76,8 +76,17 @@ class LiabilityOut(BaseModel):
     # payoff copy compares payments against. Null without a rate.
     monthly_interest_now: Decimal | None
     # Average of recent positive payments (None until 2+ months of history).
-    # Observed, not projected, so it survives missing terms.
+    # Observed, not projected, so it survives missing terms. A payment is a
+    # transfer INTO the liability's account — see LOAN_PAYMENT_ROW.
     average_recent_payment: Decimal | None
+    # What the ledger says interest and fees came to per month over the same
+    # window (None until 2+ months carry any). The actual figure where one
+    # exists; `monthly_interest_now` is the modelled one.
+    recent_interest_average: Decimal | None
+    # Positive rows on the ledger with no partner account in the window. Not
+    # payments — a balance adjustment, or a payment typed without a transfer
+    # — and said out loud rather than silently left out.
+    uncounted_deposits: Decimal
     # Contractual term implied by origination + principal + minimum payment.
     # implied_never_pays_off=True flags the P&I-vs-escrow data-entry trap:
     # the entered minimum wouldn't have amortized the original loan at all.

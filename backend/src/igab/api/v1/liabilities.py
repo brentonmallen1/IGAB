@@ -58,6 +58,13 @@ async def _validate_linked_account(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Linked account not found"
         )
+    # A liability lives in a liability account. Nothing filtered the picker
+    # before, so a mortgage could be pointed at Checking.
+    if account.classification != LIABILITY_CLASSIFICATION:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f'"{account.name}" is not a liability account',
+        )
     existing = await liability_repo.get_by_linked_account(account_id)
     if existing is not None and existing.id != exclude_liability_id:
         raise HTTPException(
@@ -119,6 +126,8 @@ async def _liability_out(
         # From observed payments, so it stands even with no terms on file —
         # useful precisely there, beside an empty minimum-payment field.
         average_recent_payment=status_.average_payment,
+        recent_interest_average=status_.average_interest,
+        uncounted_deposits=status_.uncounted_deposits,
         implied_term_months=implied_term_months,
         implied_never_pays_off=implied_never_pays_off,
         promo_end_date=liability.promo_end_date,
@@ -226,6 +235,29 @@ async def update_liability(
     changes = body.model_dump(exclude_unset=True)
 
     new_account_id = changes.get("linked_account_id", liability.linked_account_id)
+    if (
+        "linked_account_id" in changes
+        and liability.linked_account_id is not None
+        and new_account_id != liability.linked_account_id
+    ):
+        # A companion belongs to its account — the same rule delete_liability
+        # applies. Unlinking to manual stays legal (that is how "account
+        # deleted, debt kept" works); moving the link to another account is
+        # not a thing anyone wants and was never offered on purpose.
+        current = await account_repo.get(liability.linked_account_id)
+        if (
+            current is not None
+            and not current.is_deleted
+            and current.classification == LIABILITY_CLASSIFICATION
+            and new_account_id is not None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f'"{liability.name}" lives in "{current.name}". Its details belong '
+                    "to that account; retype or delete the account instead."
+                ),
+            )
     if new_account_id is not None and "linked_account_id" in changes:
         await _validate_linked_account(
             account_repo,

@@ -4,7 +4,9 @@ A liability's current balance and payment history come from one of three places,
 in priority order:
 
 - managed (linked account): balance from the account ledger; monthly
-  payments are the account's net balance movement per month.
+  payments are the transfers INTO the account (LOAN_PAYMENT_ROW) — never the
+  net movement, which subtracts the ledger's own interest rows from the
+  payment and then lets the schedule accrue that interest a second time.
 - unmanaged + linked category: balance from manual_balance; payments are
   the category's monthly outflows.
 - unmanaged + snapshots only: balance from manual_balance; payments are
@@ -15,7 +17,7 @@ negative payment. Balances are always "amount owed", positive.
 """
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -171,6 +173,14 @@ class LiabilityStatus:
     # when there are no terms to project against.
     average_payment: Decimal | None
     promo: PromoOutlook | None = None  # set when the liability has a promo window
+    # What the ledger itself says was charged in interest and fees over the
+    # same window (managed only; positive figures). Shown beside the payment
+    # so "$3,000/mo, of which ~$1,619 is interest" is a fact, not an estimate.
+    recent_interest: list[Decimal] = field(default_factory=list)
+    average_interest: Decimal | None = None
+    # Positive rows on the ledger with no partner account over the window —
+    # not counted as payments, so the page can say so.
+    uncounted_deposits: Decimal = ZERO
 
 
 class LiabilityService:
@@ -262,11 +272,12 @@ class LiabilityService:
         last_complete_end = current  # exclusive upper bound: 1st of current month
 
         if liability.linked_account_id is not None:
-            by_month = await self.transaction_repo.sum_by_account_by_month(
+            # Money that arrived from another account — the payment. Net
+            # movement was the reading before, which took YNAB's interest
+            # rows off the payment and let the schedule charge them again.
+            by_month = await self.transaction_repo.sum_loan_payments_by_month(
                 liability.linked_account_id, end_date=last_complete_end
             )
-            # A loan account's balance rises toward zero as it's paid: the
-            # month's net movement IS the paydown.
             return [max(ZERO, by_month.get(m, ZERO)) for m in window]
 
         category = await self.category_repo.get_by_linked_liability(liability.id)
@@ -278,6 +289,46 @@ class LiabilityService:
 
         return self._payments_from_snapshots(
             await self.liability_repo.get_snapshots(liability.id), window
+        )
+
+    async def get_recent_monthly_interest(
+        self,
+        liability: Liability,
+        months: int = PAYMENT_LOOKBACK_MONTHS,
+        as_of: date | None = None,
+    ) -> tuple[list[Decimal], Decimal]:
+        """(interest and fees charged per trailing complete month, oldest
+        first, as positive figures; plain deposits over the window).
+
+        Tracked debts only — the line `activity_class` draws: on an on-budget
+        card a plain outflow is a purchase, not a charge. And only the months
+        a payment arrived in: the origination row is a plain outflow too, and
+        the month it lands in has no payment, so it is never read as a
+        charge. Both empty for an unmanaged liability — no ledger to read.
+        """
+        if liability.linked_account_id is None:
+            return [], ZERO
+        account = await self.account_repo.get(liability.linked_account_id)
+        if account is None or account.on_budget:
+            return [], ZERO
+        as_of = as_of or today_utc()
+        current = _month_start(as_of)
+        window = [add_months(current, -i) for i in range(months, 0, -1)]
+        payments = await self.transaction_repo.sum_loan_payments_by_month(
+            liability.linked_account_id, end_date=current
+        )
+        interest = await self.transaction_repo.sum_debt_interest_by_month(
+            liability.linked_account_id, end_date=current
+        )
+        deposits = await self.transaction_repo.sum_plain_deposits_by_month(
+            liability.linked_account_id, end_date=current
+        )
+        return (
+            [
+                max(ZERO, -interest.get(m, ZERO)) if payments.get(m, ZERO) > ZERO else ZERO
+                for m in window
+            ],
+            sum((deposits.get(m, ZERO) for m in window), ZERO),
         )
 
     @staticmethod
@@ -312,6 +363,7 @@ class LiabilityService:
         balance, balance_source = await self.get_balance_with_source(liability)
         payments = await self.get_recent_monthly_payments(liability, as_of=as_of)
         average = average_recent_payment(payments)
+        interest, uncounted = await self.get_recent_monthly_interest(liability, as_of=as_of)
 
         rate = liability.interest_rate
         minimum = liability.minimum_payment
@@ -354,6 +406,9 @@ class LiabilityService:
             recent_payments=payments,
             average_payment=average,
             promo=promo,
+            recent_interest=interest,
+            average_interest=average_recent_payment(interest),
+            uncounted_deposits=uncounted,
         )
 
     async def get_balance_history(

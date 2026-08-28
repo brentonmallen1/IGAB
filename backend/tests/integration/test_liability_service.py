@@ -19,7 +19,9 @@ from .factories import (
     create_category_group,
     create_liability,
     create_liability_snapshot,
+    create_payee,
     create_transaction,
+    create_transfer,
     create_user,
     make_services,
 )
@@ -84,25 +86,26 @@ class TestBalanceResolution:
 
 
 class TestManagedPaymentHistory:
-    async def test_monthly_account_movement_is_the_paydown(self, db_session):
+    async def test_transfers_into_the_account_are_the_payments(self, db_session):
         services, budget = await _base(db_session)
+        checking = await create_account(db_session, budget, "Checking")
         loan = await create_account(
             db_session, budget, "Loan", account_type="loan", on_budget=False
         )
         await create_transaction(db_session, budget, loan, "-10000.00", date(2026, 1, 5))
         # Payments in May and June; nothing in the other window months
-        await create_transaction(db_session, budget, loan, "275.00", date(2026, 5, 10))
-        await create_transaction(db_session, budget, loan, "275.00", date(2026, 6, 10))
+        await create_transfer(db_session, budget, checking, loan, "275.00", date(2026, 5, 10))
+        await create_transfer(db_session, budget, checking, loan, "275.00", date(2026, 6, 10))
         # July (current month) payment must NOT count — incomplete month
-        await create_transaction(db_session, budget, loan, "275.00", date(2026, 7, 10))
+        await create_transfer(db_session, budget, checking, loan, "275.00", date(2026, 7, 10))
         liability = await create_liability(db_session, budget, linked_account_id=loan.id)
         svc = make_liability_service(db_session, services)
 
         payments = await svc.get_recent_monthly_payments(liability, as_of=AS_OF)
 
-        # Window: Jan..Jun. January nets -10000 (origination) → floored to 0.
+        # Window: Jan..Jun. January's origination is not a payment of any sign.
         assert payments == [
-            Decimal("0"),  # Jan: balance increase is not a negative payment
+            Decimal("0"),  # Jan: the origination row is not a negative payment
             Decimal("0"),  # Feb
             Decimal("0"),  # Mar
             Decimal("0"),  # Apr
@@ -112,12 +115,13 @@ class TestManagedPaymentHistory:
 
     async def test_live_projection_uses_actual_velocity(self, db_session):
         services, budget = await _base(db_session)
+        checking = await create_account(db_session, budget, "Checking")
         loan = await create_account(
             db_session, budget, "Loan", account_type="loan", on_budget=False
         )
         await create_transaction(db_session, budget, loan, "-1000.00", date(2025, 12, 1))
-        await create_transaction(db_session, budget, loan, "300.00", date(2026, 5, 10))
-        await create_transaction(db_session, budget, loan, "500.00", date(2026, 6, 10))
+        await create_transfer(db_session, budget, checking, loan, "300.00", date(2026, 5, 10))
+        await create_transfer(db_session, budget, checking, loan, "500.00", date(2026, 6, 10))
         liability = await create_liability(
             db_session,
             budget,
@@ -136,6 +140,112 @@ class TestManagedPaymentHistory:
         # 200 owed at 400/mo pays off in one payment
         assert status.live.payoff_date == date(2026, 8, 25)
         assert not status.baseline.never_pays_off  # 50/mo also retires 200
+
+
+class TestInterestRowsAreNotNegativePayments:
+    """The regression the user reported from a YNAB mortgage: a $3,000
+    payment beside a −$1,618 interest row read as a $1,382 payment, which the
+    schedule — accruing the same interest again from the rate — called
+    "never pays off". The payment is the transfer in; the interest row is
+    what the ledger says interest was; the balance still moves by the net."""
+
+    async def _mortgage(self, db_session):
+        services, budget = await _base(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        loan = await create_account(
+            db_session, budget, "Mortgage", account_type="mortgage", on_budget=False
+        )
+        await create_transaction(db_session, budget, loan, "-620000.00", date(2026, 3, 1))
+        for month in (4, 5, 6):
+            await create_transfer(
+                db_session, budget, checking, loan, "3000.00", date(2026, month, 1)
+            )
+            await create_transaction(
+                db_session, budget, loan, "-1618.00", date(2026, month, 2), memo="Interest"
+            )
+        liability = await create_liability(
+            db_session,
+            budget,
+            "Mortgage",
+            liability_type=None,
+            linked_account_id=loan.id,
+            interest_rate=Decimal("3.125"),
+            minimum_payment=Decimal("3000.00"),
+        )
+        return services, budget, checking, loan, liability
+
+    async def test_the_payment_is_the_transfer_not_the_net_movement(self, db_session):
+        services, _, _, _, liability = await self._mortgage(db_session)
+        svc = make_liability_service(db_session, services)
+        payments = await svc.get_recent_monthly_payments(liability, as_of=AS_OF)
+        assert payments[-3:] == [Decimal("3000.00")] * 3
+
+        status = await svc.get_status(liability, as_of=AS_OF)
+        assert status.average_payment == Decimal("3000.00")
+        assert status.live is not None
+        assert status.live.never_pays_off is False
+        # The ledger's own interest is reported beside the payment.
+        assert status.recent_interest[-3:] == [Decimal("1618.00")] * 3
+        assert status.average_interest == Decimal("1618.00")
+
+    async def test_the_balance_and_its_history_still_move_by_the_net(self, db_session):
+        services, _, _, _, liability = await self._mortgage(db_session)
+        svc = make_liability_service(db_session, services)
+        # 620000 − 3 × (3000 − 1618)
+        assert await svc.get_balance(liability) == Decimal("615854.00")
+        history = dict(await svc.get_balance_history(liability, as_of=AS_OF))
+        assert history[date(2026, 4, 1)] == Decimal("618618.00")
+
+    async def test_a_balance_adjustment_is_neither_payment_nor_interest(self, db_session):
+        """YNAB writes a positive adjustment onto a loan when its interest
+        estimate ran high. Not a payment — and said so."""
+        services, budget, _, loan, liability = await self._mortgage(db_session)
+        await create_transaction(
+            db_session, budget, loan, "1384.71", date(2026, 6, 10), memo="Balance adjustment"
+        )
+        svc = make_liability_service(db_session, services)
+        status = await svc.get_status(liability, as_of=AS_OF)
+        assert status.average_payment == Decimal("3000.00")
+        assert status.recent_interest[-1] == Decimal("1618.00")
+        assert status.uncounted_deposits == Decimal("1384.71")
+
+    async def test_an_unpaired_transfer_leg_still_counts(self, db_session):
+        """A YNAB leg whose partner never imported is a transfer by its payee
+        (TRANSFER_LEG), and so a payment."""
+        services, budget = await _base(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        loan = await create_account(
+            db_session, budget, "Loan", account_type="loan", on_budget=False
+        )
+        from_checking = await create_payee(
+            db_session, budget, "Transfer : Checking", transfer_account_id=checking.id
+        )
+        await create_transaction(db_session, budget, loan, "-5000.00", date(2026, 1, 5))
+        await create_transaction(
+            db_session, budget, loan, "400.00", date(2026, 5, 10), payee=from_checking
+        )
+        await create_transaction(
+            db_session, budget, loan, "400.00", date(2026, 6, 10), payee=from_checking
+        )
+        liability = await create_liability(db_session, budget, linked_account_id=loan.id)
+        svc = make_liability_service(db_session, services)
+        payments = await svc.get_recent_monthly_payments(liability, as_of=AS_OF)
+        assert payments[-2:] == [Decimal("400.00"), Decimal("400.00")]
+
+    async def test_a_plain_deposit_is_not_a_payment_but_is_reported(self, db_session):
+        services, budget = await _base(db_session)
+        loan = await create_account(
+            db_session, budget, "Loan", account_type="loan", on_budget=False
+        )
+        await create_transaction(db_session, budget, loan, "-5000.00", date(2026, 1, 5))
+        await create_transaction(db_session, budget, loan, "400.00", date(2026, 5, 10))
+        await create_transaction(db_session, budget, loan, "400.00", date(2026, 6, 10))
+        liability = await create_liability(db_session, budget, linked_account_id=loan.id)
+        svc = make_liability_service(db_session, services)
+        status = await svc.get_status(liability, as_of=AS_OF)
+        assert status.recent_payments == [Decimal("0")] * 6
+        assert status.average_payment is None
+        assert status.uncounted_deposits == Decimal("800.00")
 
 
 class TestLinkedCategoryPaymentHistory:
@@ -215,12 +325,8 @@ class TestSnapshotPaymentHistory:
     async def test_balance_increase_contributes_nothing(self, db_session):
         services, budget = await _base(db_session)
         liability = await create_liability(db_session, budget, manual_balance=Decimal("5500.00"))
-        await create_liability_snapshot(
-            db_session, liability, date(2026, 5, 1), Decimal("5000.00")
-        )
-        await create_liability_snapshot(
-            db_session, liability, date(2026, 6, 1), Decimal("5500.00")
-        )
+        await create_liability_snapshot(db_session, liability, date(2026, 5, 1), Decimal("5000.00"))
+        await create_liability_snapshot(db_session, liability, date(2026, 6, 1), Decimal("5500.00"))
         svc = make_liability_service(db_session, services)
 
         payments = await svc.get_recent_monthly_payments(liability, as_of=AS_OF)
@@ -241,9 +347,7 @@ class TestSnapshotPaymentHistory:
     async def test_single_snapshot_no_live_projection(self, db_session):
         services, budget = await _base(db_session)
         liability = await create_liability(db_session, budget, manual_balance=Decimal("5000.00"))
-        await create_liability_snapshot(
-            db_session, liability, date(2026, 6, 1), Decimal("5000.00")
-        )
+        await create_liability_snapshot(db_session, liability, date(2026, 6, 1), Decimal("5000.00"))
         svc = make_liability_service(db_session, services)
 
         status = await svc.get_status(liability, as_of=AS_OF)

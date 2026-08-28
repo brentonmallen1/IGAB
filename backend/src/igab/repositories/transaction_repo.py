@@ -37,12 +37,15 @@ from igab.repositories.txn_filters import (
     BANK_UNLINKED,
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
+    DEBT_INTEREST_ROW,
     ESSENTIAL_TAGGED,
     LEAF,
+    LOAN_PAYMENT_ROW,
     NEEDS_CATEGORY,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
     PARENT_ROW,
+    PLAIN_DEPOSIT_ROW,
     POSTED,
     PROVISIONALLY_LINKED,
     UNPAIRED_TRANSFER_LEG,
@@ -558,6 +561,45 @@ class TransactionRepository(BaseRepository[Transaction]):
             .group_by(yr, mo)
         )
         return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+
+    async def _sum_account_rows_by_month(
+        self, account_id: uuid.UUID, end_date: date, *predicates
+    ) -> dict[date, Decimal]:
+        yr = cast(func.extract("year", Transaction.date), Integer)
+        mo = cast(func.extract("month", Transaction.date), Integer)
+        result = await self.session.execute(
+            select(
+                yr.label("yr"),
+                mo.label("mo"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            )
+            .where(Transaction.account_id == account_id, Transaction.date <= end_date, *predicates)
+            .group_by(yr, mo)
+        )
+        return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+
+    async def sum_loan_payments_by_month(
+        self, account_id: uuid.UUID, end_date: date
+    ) -> dict[date, Decimal]:
+        """{month_start: money that arrived from another account} on a debt's
+        ledger — its payments. See LOAN_PAYMENT_ROW for why net movement is
+        the wrong reading."""
+        return await self._sum_account_rows_by_month(account_id, end_date, LOAN_PAYMENT_ROW)
+
+    async def sum_debt_interest_by_month(
+        self, account_id: uuid.UUID, end_date: date
+    ) -> dict[date, Decimal]:
+        """{month_start: interest and fees charged (negative)} on a debt's
+        ledger — the plain outflows YNAB and a hand-kept register put there."""
+        return await self._sum_account_rows_by_month(account_id, end_date, DEBT_INTEREST_ROW)
+
+    async def sum_plain_deposits_by_month(
+        self, account_id: uuid.UUID, end_date: date
+    ) -> dict[date, Decimal]:
+        """{month_start: positive rows with no partner account} on a debt's
+        ledger — balance adjustments, or payments typed without a transfer,
+        which the payment reading leaves out and the page should mention."""
+        return await self._sum_account_rows_by_month(account_id, end_date, PLAIN_DEPOSIT_ROW)
 
     async def sum_category_outflows_by_month(
         self,

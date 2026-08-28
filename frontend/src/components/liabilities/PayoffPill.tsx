@@ -18,6 +18,22 @@ interface Props {
 export function PayoffPill({ liability }: Props) {
   const { formatMonth, formatMoney } = useFormatters()
 
+  // The ledger's own interest where it has any (a YNAB loan account carries a
+  // row a month), the modelled figure otherwise — labelled as such.
+  const interestLine =
+    liability.recent_interest_average !== null
+      ? `of which ~${formatMoney(Number(liability.recent_interest_average))} was interest`
+      : liability.monthly_interest_now !== null
+        ? `this month's interest is ~${formatMoney(Number(liability.monthly_interest_now))}`
+        : null
+  // Payments are transfers into the account. A deposit typed straight onto
+  // the loan is left out, and that has to be said rather than silently
+  // shown as a lower pace.
+  const uncounted =
+    Number(liability.uncounted_deposits) > 0
+      ? `${formatMoney(Number(liability.uncounted_deposits))} of plain deposits on this account were not counted as payments — record payments as transfers from the paying account so they are.`
+      : null
+
   if (Number(liability.current_balance) === 0) {
     return (
       <div className="payoff-pill payoff-pill--paid">
@@ -41,9 +57,10 @@ export function PayoffPill({ liability }: Props) {
           <div className="payoff-pill__main">No payoff estimate yet</div>
           <div className="payoff-pill__sub">
             {paying
-              ? `You're paying about ${paying}/mo — add the APR and minimum payment for a payoff date`
+              ? `You're paying about ${paying}/mo${interestLine ? ` (${interestLine})` : ''} — add the APR and minimum payment for a payoff date`
               : 'Add the APR and minimum payment for a payoff date'}
           </div>
+          {uncounted && <div className="payoff-pill__sub">{uncounted}</div>}
         </div>
       </div>
     )
@@ -68,12 +85,13 @@ export function PayoffPill({ liability }: Props) {
           <div className="payoff-pill__main">Your recent payments won't pay this off</div>
           <div className="payoff-pill__sub">
             {avg
-              ? `Recent payments average ${avg}/mo — below this month's ~${interestNow} interest`
+              ? `Recent payments average ${avg}/mo (transfers into this account) — below this month's ~${interestNow} interest`
               : `Recent payments fall below this month's ~${interestNow} interest`}
             {!baselineNever && liability.baseline_payoff_date
               ? ` · at the ${minimum} minimum: ${formatMonth(liability.baseline_payoff_date)}`
               : ''}
           </div>
+          {uncounted && <div className="payoff-pill__sub">{uncounted}</div>}
         </div>
       </div>
     )
@@ -105,12 +123,16 @@ export function PayoffPill({ liability }: Props) {
             Paid off around <strong>{formatMonth(liability.live_payoff_date)}</strong>
           </div>
           <div className="payoff-pill__sub">
+            {liability.average_recent_payment !== null
+              ? `Recent payments average ${formatMoney(Number(liability.average_recent_payment))}/mo${interestLine ? `, ${interestLine}` : ''}`
+              : 'Based on your recent payments'}
             {baselineNever
-              ? `The ${minimum} minimum alone wouldn't cover interest — this date reflects what you actually pay`
+              ? ` · the ${minimum} minimum alone wouldn't cover interest`
               : differs && liability.baseline_payoff_date
-                ? `At the ${minimum} minimum: ${formatMonth(liability.baseline_payoff_date)}`
-                : 'Based on your recent payments'}
+                ? ` · at the ${minimum} minimum: ${formatMonth(liability.baseline_payoff_date)}`
+                : ''}
           </div>
+          {uncounted && <div className="payoff-pill__sub">{uncounted}</div>}
         </div>
       </div>
     )
