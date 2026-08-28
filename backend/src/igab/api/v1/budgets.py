@@ -185,6 +185,10 @@ async def import_ynab_as_budget(
             transactions_excluded=result.transactions_excluded,
             transfer_legs_unpaired=result.transfer_legs_unpaired,
             categories_tagged=result.categories_tagged,
+            credit_card_payment_assignments_skipped=(
+                result.credit_card_payment_assignments_skipped
+            ),
+            credit_card_payment_reserves_skipped=result.credit_card_payment_reserves_skipped,
             errors=result.errors,
         ),
     )

@@ -545,17 +545,18 @@ async def get_budget_month(
             CategoryBalance(
                 category_id=b.category_id,
                 month=b.month,
-                assigned=b.assigned,
+                # An income category has no envelope money — see the schema.
+                assigned=None if b.in_system_group else b.assigned,
                 activity=b.activity,
-                available=b.available,
+                available=None if b.in_system_group else b.available,
                 target_status=(
                     target_service.calculate_status(t, b.assigned, b.available)
-                    if (t := targets.get(b.category_id))
+                    if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
                 needed_this_month=(
                     target_service.calculate_needed(t, b.assigned, b.available)
-                    if (t := targets.get(b.category_id))
+                    if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
             )
@@ -761,7 +762,10 @@ async def set_category_assignment(
     budget_id: BudgetAccess,
     month: date = Query(...),
 ) -> None:
-    await budget_service.set_assignment(budget_id, category_id, month, body.amount)
+    try:
+        await budget_service.set_assignment(budget_id, category_id, month, body.amount)
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.post("/{budget_id}/budget/move-money", status_code=status.HTTP_204_NO_CONTENT)

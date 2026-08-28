@@ -12,6 +12,7 @@ import {
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { groupByView, visibleCategoryIds } from './viewGrouping'
+import { renderableCategoryIds, renderableGroups } from '../budgetGroups'
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
@@ -36,7 +37,9 @@ export function BudgetTable() {
   const [newGroupName, setNewGroupName] = useState('')
   const addGroupRef = useRef<HTMLInputElement>(null)
 
-  const { data: groups, isLoading: groupsLoading } = useCategoryGroups(budgetId, showHidden)
+  const { data: allGroups, isLoading: groupsLoading } = useCategoryGroups(budgetId, showHidden)
+  // The budget's envelope groups: the system (Income) group is not drawn.
+  const groups = useMemo(() => (allGroups ? renderableGroups(allGroups) : allGroups), [allGroups])
   const { data: categories, isLoading: catsLoading } = useCategories(budgetId, showHidden)
   const { data: budgetMonth, isLoading: monthLoading } = useBudgetMonth(budgetId, month)
   const { data: filters } = useBudgetFilters(budgetId)
@@ -124,7 +127,7 @@ export function BudgetTable() {
   // These spanned every balance the month returned — including system and
   // hidden categories the table never renders — so the chip promised rows it
   // could not show.
-  const renderableIds = new Set((categories ?? []).map((c) => c.id))
+  const renderableIds = renderableCategoryIds(groups ?? [], categories ?? [])
   const chipBalances = (budgetMonth?.category_balances ?? []).filter(
     (b) => renderableIds.has(b.category_id) && (!viewVisibleIds || viewVisibleIds.has(b.category_id))
   )

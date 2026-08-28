@@ -29,6 +29,11 @@ export interface YnabImportResult {
    *  savings report has something to show. A tag changes how a category's
    *  spending is classified, so it is reported rather than applied quietly. */
   categories_tagged: number
+  /** YNAB's Credit Card Payments reserves, left out on purpose: IGAB nets a
+   *  card's balance against cash in Ready to Assign, so importing them would
+   *  reserve the same debt twice. The money is what Ready to Assign keeps. */
+  credit_card_payment_assignments_skipped: number
+  credit_card_payment_reserves_skipped: string
   errors: string[]
 }
 

@@ -150,9 +150,12 @@ export type TargetStatus = 'funded' | 'underfunded' | 'overfunded'
 export interface CategoryBalance {
   category_id: string
   month: string
-  assigned: number
+  /** Null on a category in a system (Income) group: income is filed there,
+   *  not budgeted there, so there is no envelope money to show. Served that
+   *  way — see `CategoryBalance` in api/v1/schemas/category.py. */
+  assigned: number | null
   activity: number
-  available: number
+  available: number | null
   /**
    * The target verdict, computed by the server's TargetService — the same
    * function Fill Underfunded asks. `null` when the category has no target.

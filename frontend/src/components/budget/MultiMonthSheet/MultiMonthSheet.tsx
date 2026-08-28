@@ -11,6 +11,7 @@ import { toCents } from '../../../utils/money'
 import { parseAssignmentInput } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import type { BudgetMonth, Category, CategoryBalance } from '../../../types'
+import { renderableGroups } from '../budgetGroups'
 import './MultiMonthSheet.css'
 
 interface Props {
@@ -133,8 +134,7 @@ export function MultiMonthSheet({ budgetId }: Props) {
   })
 
   const query = search.trim().toLowerCase()
-  const visibleGroups = groups
-    .filter((g) => !g.is_system)
+  const visibleGroups = renderableGroups(groups)
     .map((g) => ({
       group: g,
       cats: categories.filter(

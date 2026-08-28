@@ -90,6 +90,12 @@ class YNABImportResult(BaseModel):
     #: changes how that category's spending is classified, so the count is
     #: shown rather than applied quietly.
     categories_tagged: int = 0
+    #: YNAB's Credit Card Payments reserves, left out on purpose: IGAB nets a
+    #: card's balance against cash in Ready to Assign, so importing them
+    #: would reserve the same debt twice. The money is what Ready to Assign
+    #: keeps as a result.
+    credit_card_payment_assignments_skipped: int = 0
+    credit_card_payment_reserves_skipped: Decimal = Decimal("0")
     errors: list[str]
 
 

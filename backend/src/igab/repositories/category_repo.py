@@ -240,7 +240,10 @@ class CategoryRepository(BaseRepository[Category]):
         # (every category a YNAB import ever created, before positions were
         # assigned) came back in a different order on every read.
         q = q.order_by(Category.sort_order, Category.name)
-        result = await self.session.execute(q)
+        # populate_existing is load-bearing here as in `get`: a category the
+        # session already holds keeps whatever `is_assignable` it was loaded
+        # with, so hiding its group mid-session left it eligible to assign to.
+        result = await self.session.execute(q.execution_options(populate_existing=True))
         return list(result.scalars().all())
 
     async def get_all_with_group_names(
@@ -264,7 +267,7 @@ class CategoryRepository(BaseRepository[Category]):
         if not include_hidden:
             q = q.where(Category.is_hidden == False)  # noqa: E712
         q = q.order_by(Category.sort_order, Category.name)
-        result = await self.session.execute(q)
+        result = await self.session.execute(q.execution_options(populate_existing=True))
         return [(row[0], row[1]) for row in result.all()]
 
     async def get_with_tags(self, category_id: uuid.UUID) -> Category | None:

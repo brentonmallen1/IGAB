@@ -178,9 +178,15 @@ class CategoryTargetResponse(BaseModel):
 class CategoryBalance(BaseModel):
     category_id: uuid.UUID
     month: datetime.date
-    assigned: Decimal
+    #: Null on a category in a system (Income) group: income is filed there,
+    #: not budgeted there, so it has no envelope money. Its `activity` is the
+    #: income received that month; what is free to assign is `to_be_assigned`.
+    #: Served as null rather than the lifetime total the carryover arithmetic
+    #: would otherwise produce — 1.6M on one imported budget, directly under a
+    #: hero named Ready to Assign.
+    assigned: Decimal | None
     activity: Decimal
-    available: Decimal
+    available: Decimal | None
     #: The target verdict, computed by TargetService — the same function Fill
     #: Underfunded asks. The budget row's pill renders this; it does not
     #: recompute it. A second implementation in the client drifted from this
@@ -230,6 +236,8 @@ class CategoryResponse(BaseModel):
 class BudgetMonthResponse(BaseModel):
     month: datetime.date
     to_be_assigned: Decimal
+    #: Envelope categories only — income appears in `to_be_assigned` and in
+    #: its own rows' `activity`, never here.
     total_assigned: Decimal
     total_activity: Decimal
     total_overspent: Decimal
