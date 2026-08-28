@@ -1,6 +1,7 @@
 import { Info } from 'lucide-react'
 import type { ConceptInfo, Signal } from '../../api/guide'
 import { useFormatters } from '../../hooks/useFormatters'
+import { formatSignalFigure, signalHeadline } from './signalHeadline'
 
 /**
  * What the app worked out about one concept, shown inside a roadmap node.
@@ -40,27 +41,22 @@ export function SignalNote({
 
   const label = concept?.label ?? signal.key
   const kind = concept?.kind ?? 'amount'
-  const fmt = (raw: string | null) => {
-    if (raw === null) return null
-    const n = Number(raw)
-    if (Number.isNaN(n)) return null
-    return kind === 'rate' ? `${n.toFixed(1)}%` : formatMoney(n)
-  }
+  const figure = (raw: string | null) => formatSignalFigure(raw, kind, formatMoney)
 
-  const value = fmt(signal.value)
-  const external = fmt(signal.external_value)
-  const detected = fmt(signal.detected_value)
-  const target = fmt(threshold === 'starter' ? signal.starter_target : signal.target)
+  const headline = signalHeadline(signal, kind, formatMoney)
+  const external = figure(signal.external_value)
+  const detected = figure(signal.detected_value)
+  const target = figure(threshold === 'starter' ? signal.starter_target : signal.target)
 
   return (
     <div className={`signal ${signal.met === true ? 'signal--met' : ''}`}>
       <div className="signal__head">
         <span className="signal__label">{label}</span>
-        {value !== null ? (
-          <span className="signal__value tabular">{value}</span>
-        ) : (
-          <span className="signal__value signal__value--unknown">not known</span>
-        )}
+        <span
+          className={`signal__value ${headline.known ? 'tabular' : 'signal__value--unknown'}`}
+        >
+          {headline.text}
+        </span>
         {target !== null && signal.value !== null && (
           <span className="signal__target">of {target}</span>
         )}
