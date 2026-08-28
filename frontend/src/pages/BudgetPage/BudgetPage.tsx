@@ -10,6 +10,7 @@ import { ManageViewsModal } from '../../components/budget/ManageViewsModal/Manag
 import { ManageFiltersModal } from '../../components/budget/ManageFiltersModal/ManageFiltersModal'
 import { MultiMonthSheet } from '../../components/budget/MultiMonthSheet/MultiMonthSheet'
 import { TbaHero } from '../../components/budget/TbaHero/TbaHero'
+import { ImportReviewGate } from '../../components/imports/ImportReviewDialog/ImportReviewGate'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
 import { useAppStore } from '../../stores/appStore'
@@ -146,6 +147,8 @@ export function BudgetPage() {
 
   return (
     <div className="budget-page" {...(isMobile ? swipeHandlers : {})}>
+      {/* A fresh import lands here; the review it produced opens once. */}
+      <ImportReviewGate budgetId={budgetId} />
       <TbaHero budgetId={budgetId} month={month} />
       <div className="budget-page__body">
         <div

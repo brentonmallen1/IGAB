@@ -383,7 +383,7 @@ export function WishlistPanel() {
       {noteOpen && (
         <GuideDialog title={FUN_NOTE.title} onClose={() => setNoteOpen(false)} historyKey="wishlist-fun">
           {FUN_NOTE.paragraphs.map((text, i) => (
-            <p key={i} className={`guide-dialog__body ${i === FUN_NOTE.paragraphs.length - 1 ? 'guide-dialog__body--muted' : ''}`}>
+            <p key={i} className={`dialog__body ${i === FUN_NOTE.paragraphs.length - 1 ? 'dialog__body--muted' : ''}`}>
               {text}
             </p>
           ))}

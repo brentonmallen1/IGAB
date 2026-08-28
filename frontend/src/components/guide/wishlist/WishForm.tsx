@@ -103,7 +103,7 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
 
   return (
     <GuideDialog title={editing ? 'Edit wish' : 'Add a wish'} onClose={onClose} historyKey="wishlist-form">
-      <form className="guide-dialog__body wish-form" onSubmit={submit}>
+      <form className="dialog__body wish-form" onSubmit={submit}>
         <label className="tool__field">
           <span>What</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="A bike, a trip, a better chair…" autoFocus />

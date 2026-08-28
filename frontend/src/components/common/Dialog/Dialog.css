@@ -1,0 +1,107 @@
+/* The shell every dialog shares. Moved here verbatim from GuidePage.css,
+   where it was reachable only by importing a page's stylesheet. */
+
+.dialog__overlay {
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+}
+
+.dialog {
+  width: min(var(--dialog-w), 100%);
+  max-height: 80vh;
+  /* The panel no longer scrolls; its body does, so the header and footer stay
+     put on a long list. `hidden` rather than `auto` is what keeps the rounded
+     corners from being cut by an inner scrollbar. */
+  overflow: hidden;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.dialog--md { --dialog-w: 520px; }
+/* Wide enough for a row that carries a name, a group, a tag and a control
+   without any of them wrapping. */
+.dialog--lg { --dialog-w: 760px; }
+
+.dialog__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  /* min-height:0 is load-bearing: a flex child will not shrink below its
+     content without it, and the panel grows past max-height instead. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 72px;
+}
+
+.dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.dialog__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.dialog__head button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+}
+
+.dialog__head button:hover { color: var(--text-primary); }
+
+.dialog__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--edge);
+}
+
+.dialog__body {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.dialog__body--muted { color: var(--text-muted); }
+
+.dialog__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.dialog__link:hover { text-decoration: underline; }
+
+@media (max-width: 768px) {
+  /* The bottom sheet supplies the panel, the title and the footer slot, so
+     the dialog inside it is layout only. */
+  .dialog {
+    width: 100%;
+    border: none;
+    padding: 0;
+    max-height: none;
+    overflow: visible;
+  }
+  .dialog__scroll { overflow-y: visible; }
+}

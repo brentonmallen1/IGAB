@@ -22,6 +22,7 @@ import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPane
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
 import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
+import { ImportReviewButton } from '../../components/imports/ImportReviewDialog/ImportReviewButton'
 import { AISettingsPanel } from '../../components/settings/AISettingsPanel'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
@@ -462,6 +463,7 @@ export function SettingsPage() {
               <SystemTagsHelp />
             </span>
           }
+          actions={<ImportReviewButton budgetId={budgetId} />}
         >
           <div className="settings-section__body">
             <TagsPanel budgetId={budgetId} />

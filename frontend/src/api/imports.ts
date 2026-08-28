@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 
 export interface CsvImportResult {
@@ -29,7 +30,22 @@ export interface YnabParity {
   /** Envelopes that differ by exactly their uncleared rows this month —
    *  YNAB counts an imported row only once it is approved. */
   categories_pending: number
-  top_differences: { name: string; igab: string; ynab: string }[]
+  top_differences: {
+    name: string
+    igab: string
+    ynab: string
+    /** Uncleared rows this month. When it equals the gap, the difference is
+     *  YNAB not having approved an import yet rather than a disagreement. */
+    pending: string
+  }[]
+}
+
+/** One tag the import applied, and the name that made it. */
+export interface YnabTaggedCategory {
+  category_id: string
+  system_key: string
+  /** The category's own name or its group's — whichever triggered the hint. */
+  matched_on: string
 }
 
 export interface YnabImportResult {
@@ -49,10 +65,16 @@ export interface YnabImportResult {
   /** Transfer legs imported without their partner. Non-zero means some rows
    *  that are really internal money movement could not be identified as such. */
   transfer_legs_unpaired: number
+  /** How many of those are one line of a split — unpairable by design, since
+   *  a split's money lives on its parent. The rest are worth chasing. */
+  transfer_legs_in_splits: number
   /** Categories tagged Savings / Long-term expense from their names, so the
    *  savings report has something to show. A tag changes how a category's
    *  spending is classified, so it is reported rather than applied quietly. */
   categories_tagged: number
+  /** Which ones, and why. The count alone cannot answer "show me what you
+   *  did", and nothing on the join table records that a tag was guessed. */
+  tagged_categories: YnabTaggedCategory[]
   /** YNAB's Credit Card Payments reserves, left out on purpose: IGAB nets a
    *  card's balance against cash in Ready to Assign, so importing them would
    *  reserve the same debt twice. The money is what Ready to Assign keeps. */
@@ -77,4 +99,42 @@ export async function importCsv(
     headers: MULTIPART_HEADERS,
   })
   return data
+}
+
+/** What an import did, and whether anyone has looked at it yet.
+ *
+ * `summary` is null for a budget that was not created by a YNAB import, and
+ * for one imported before this was recorded. Both are ordinary — the review
+ * still opens, it just has nothing to report about the event and goes straight
+ * to what can still be changed. */
+export interface ImportSummary {
+  summary: YnabImportResult | null
+  reviewed_at: string | null
+}
+
+export const importSummaryKey = (budgetId: string | null) => ['importSummary', budgetId]
+
+export function useImportSummary(budgetId: string | null) {
+  return useQuery({
+    queryKey: importSummaryKey(budgetId),
+    queryFn: async () => {
+      const { data } = await apiClient.get<ImportSummary>(`/${budgetId}/import-summary`)
+      return data
+    },
+    enabled: !!budgetId,
+    // A record of a past event: it changes once, when an import writes it.
+    staleTime: Infinity,
+  })
+}
+
+/** Stamp the review as seen, so it stops opening unasked.
+ *
+ * It stays reachable afterwards — this governs only whether it appears by
+ * itself. */
+export function useMarkImportReviewed(budgetId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiClient.post(`/${budgetId}/import-summary/reviewed`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: importSummaryKey(budgetId) }),
+  })
 }

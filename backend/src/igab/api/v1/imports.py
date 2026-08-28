@@ -3,15 +3,17 @@ import json
 import re
 import uuid
 from collections.abc import Sequence
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import TypedDict
 
 import polars as pl
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import ChangeLog, new_uuid
+from igab.db.models import Budget, ChangeLog, new_uuid
+from igab.db.session import get_session
 from igab.dependencies import (
     AccountAccess,
     BudgetAccess,
@@ -32,6 +34,19 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import snapshot
 
 router = APIRouter()
+
+
+class ImportSummaryOut(BaseModel):
+    """What an import did, and whether anyone has looked at it yet.
+
+    `summary` is null for a budget that was not created by a YNAB import, and
+    for one imported before this was recorded. Both are ordinary cases, not
+    errors — the review still opens, it just has nothing to report about the
+    event and goes straight to what can still be changed.
+    """
+
+    summary: "YNABImportResult | None" = None
+    reviewed_at: datetime | None = None
 
 
 class InsertRow(TypedDict):
@@ -72,6 +87,9 @@ class YNABParityDifference(BaseModel):
     name: str
     igab: Decimal
     ynab: Decimal
+    #: Uncleared rows this month. When it equals the gap, the difference is
+    #: YNAB not having approved an import yet rather than a disagreement.
+    pending: Decimal = Decimal("0")
 
 
 class YNABParityOut(BaseModel):
@@ -101,6 +119,14 @@ class YNABParityOut(BaseModel):
     top_differences: list[YNABParityDifference]
 
 
+class YNABTaggedCategory(BaseModel):
+    """One tag the import applied, and the name that made it."""
+
+    category_id: uuid.UUID
+    system_key: str
+    matched_on: str
+
+
 class YNABImportResult(BaseModel):
     accounts: int
     category_groups: int
@@ -119,10 +145,17 @@ class YNABImportResult(BaseModel):
     #: Transfer legs imported without their partner. Non-zero means some rows
     #: that are really internal movement could not be identified as such.
     transfer_legs_unpaired: int = 0
+    #: How many of those are one line of a split. Unpairable by design (money
+    #: fields live on a split's parent), so a review can say which part of the
+    #: total is worth chasing and which is not.
+    transfer_legs_in_splits: int = 0
     #: Categories tagged Savings / Long-term expense from their names. A tag
     #: changes how that category's spending is classified, so the count is
     #: shown rather than applied quietly.
     categories_tagged: int = 0
+    #: Which ones, and why. The count cannot answer "show me what you did",
+    #: and nothing on the join table records that a tag was guessed.
+    tagged_categories: list[YNABTaggedCategory] = Field(default_factory=list)
     #: YNAB's Credit Card Payments reserves, left out on purpose: IGAB nets a
     #: card's balance against cash in Ready to Assign, so importing them
     #: would reserve the same debt twice. The money is what Ready to Assign
@@ -564,7 +597,7 @@ async def ynab_parity_or_none(
         categories_differing=report.categories_differing,
         categories_pending=report.categories_pending,
         top_differences=[
-            YNABParityDifference(name=d.name, igab=d.igab, ynab=d.ynab)
+            YNABParityDifference(name=d.name, igab=d.igab, ynab=d.ynab, pending=d.pending)
             for d in report.top_differences
         ],
     )
@@ -759,3 +792,38 @@ async def import_csv(
         errors=errors,
         batch_id=batch_id if new_rows else None,
     )
+
+
+@router.get("/{budget_id}/import-summary", response_model=ImportSummaryOut)
+async def get_import_summary(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> ImportSummaryOut:
+    budget = await session.get(Budget, budget_id)
+    if budget is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    summary = (
+        YNABImportResult.model_validate(budget.import_summary)
+        if budget.import_summary is not None
+        else None
+    )
+    return ImportSummaryOut(summary=summary, reviewed_at=budget.import_reviewed_at)
+
+
+@router.post("/{budget_id}/import-summary/reviewed", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_import_reviewed(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    """Stamp the review as seen, so it stops opening by itself.
+
+    Idempotent on purpose: re-stamping moves the timestamp and nothing else.
+    The review stays reachable afterwards — this only governs whether it
+    appears unasked.
+    """
+    budget = await session.get(Budget, budget_id)
+    if budget is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    budget.import_reviewed_at = datetime.now(UTC)

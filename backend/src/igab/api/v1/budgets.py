@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Canonical result schema lives with the import endpoints — a local copy here
 # drifted the moment imports.py gained fields (imports.py has no module-level
 # api.v1 imports, so this cannot cycle).
-from igab.api.v1.imports import YNABImportResult
+from igab.api.v1.imports import YNABImportResult, YNABTaggedCategory
 from igab.db.models import Budget, BudgetMember
 from igab.db.session import get_session
 from igab.dependencies import (
@@ -185,27 +185,41 @@ async def import_ynab_as_budget(
         skip_accounts=skip_accounts,
     )
 
+    summary = YNABImportResult(
+        accounts=result.accounts_imported,
+        category_groups=result.category_groups_imported,
+        categories=result.categories_imported,
+        transactions=result.transactions_imported,
+        skipped=result.transactions_skipped,
+        assignments=result.assignments_imported,
+        accounts_skipped=result.accounts_skipped,
+        accounts_closed=result.accounts_closed,
+        transactions_excluded=result.transactions_excluded,
+        transfer_legs_unpaired=result.transfer_legs_unpaired,
+        transfer_legs_in_splits=result.transfer_legs_in_splits,
+        categories_tagged=result.categories_tagged,
+        tagged_categories=[
+            YNABTaggedCategory(
+                category_id=tagged.category_id,
+                system_key=tagged.system_key,
+                matched_on=tagged.matched_on,
+            )
+            for tagged in result.tagged_categories
+        ],
+        credit_card_payment_assignments_skipped=(result.credit_card_payment_assignments_skipped),
+        credit_card_payment_reserves_skipped=result.credit_card_payment_reserves_skipped,
+        parity=parity,
+        errors=result.errors,
+    )
+    # Kept, not just returned. This records an event -- counts, the parity
+    # check, which plan rows were left out -- and none of it is recoverable
+    # from the resulting budget. It used to live only in a stack of toasts
+    # fired while the app was changing route.
+    budget.import_summary = summary.model_dump(mode="json")
+
     return YNABImportBudgetResponse(
         budget=BudgetResponse.model_validate(budget),
-        import_result=YNABImportResult(
-            accounts=result.accounts_imported,
-            category_groups=result.category_groups_imported,
-            categories=result.categories_imported,
-            transactions=result.transactions_imported,
-            skipped=result.transactions_skipped,
-            assignments=result.assignments_imported,
-            accounts_skipped=result.accounts_skipped,
-            accounts_closed=result.accounts_closed,
-            transactions_excluded=result.transactions_excluded,
-            transfer_legs_unpaired=result.transfer_legs_unpaired,
-            categories_tagged=result.categories_tagged,
-            credit_card_payment_assignments_skipped=(
-                result.credit_card_payment_assignments_skipped
-            ),
-            credit_card_payment_reserves_skipped=result.credit_card_payment_reserves_skipped,
-            parity=parity,
-            errors=result.errors,
-        ),
+        import_result=summary,
     )
 
 

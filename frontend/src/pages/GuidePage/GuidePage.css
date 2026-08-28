@@ -1358,74 +1358,12 @@
 
 /* ─── Shared dialog ──────────────────────────────────────────────────────── */
 
-.guide-dialog__overlay {
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-lg);
-}
-
-.guide-dialog {
-  width: min(520px, 100%);
-  max-height: 80vh;
-  overflow-y: auto;
-  background: var(--surface-overlay);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  padding: var(--spacing-lg);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  /* Node cards rendered inside pick up their stage rule from here. */
-  --stage-color: var(--color-accent);
-}
-
-.guide-dialog__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.guide-dialog__title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
-.guide-dialog__head button {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-}
-
-.guide-dialog__head button:hover { color: var(--text-primary); }
-
-.guide-dialog__body {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: 1.65;
-}
-
-.guide-dialog__body--muted { color: var(--text-muted); }
-
-.guide-dialog__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  align-self: flex-start;
-  font-size: var(--font-size-sm);
-  color: var(--color-accent);
-  text-decoration: none;
-}
-
-.guide-dialog__link:hover { text-decoration: underline; }
+/* The dialog shell itself lives in components/common/Dialog. This is the one
+   thing about it that is the Guide's: node cards rendered inside a dialog have
+   no stage ancestor to take their colour from. */
+.guide-dialog { --stage-color: var(--color-accent); }
 
 @media (max-width: 768px) {
-  .guide-dialog { width: 100%; border: none; padding: 0; max-height: none; }
   .guide-roadmap__controls { width: 100%; }
   .guide-roadmap--map .guide-legend { display: none; }
 }
