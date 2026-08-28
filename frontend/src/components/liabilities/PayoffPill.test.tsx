@@ -28,6 +28,8 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     original_principal: null,
     monthly_interest_now: 45,
     average_recent_payment: null,
+    recent_interest_average: null,
+    uncounted_deposits: 0,
     implied_term_months: null,
     implied_never_pays_off: null,
     promo_end_date: null,
@@ -82,6 +84,32 @@ describe('PayoffPill', () => {
 
     expect(screen.getByText(/Paid off by/)).toBeInTheDocument()
     expect(screen.queryByText('No payoff estimate yet')).not.toBeInTheDocument()
+  })
+
+  it("says what the ledger's own interest came to beside the payment", () => {
+    // A YNAB loan account carries an interest row a month. The payment is the
+    // transfer in (3,000), the interest is that row (1,619) — not 3,000 minus
+    // 1,619 fed back into the schedule as the payment.
+    render(
+      <PayoffPill
+        liability={liability({
+          average_recent_payment: 3000,
+          recent_interest_average: 1619,
+          has_live_projection: true,
+          live_payoff_date: '2051-03-01',
+        })}
+      />
+    )
+
+    expect(screen.getByText(/average \$3,000(\.00)?\/mo, of which ~\$1,619(\.00)? was interest/)).toBeInTheDocument()
+    expect(screen.queryByText(/won't pay this off/i)).not.toBeInTheDocument()
+  })
+
+  it('says when deposits on the account were not counted as payments', () => {
+    render(<PayoffPill liability={liability({ ...blankTerms, uncounted_deposits: 1384.71 })} />)
+
+    expect(screen.getByText(/\$1,384\.71 of plain deposits/)).toBeInTheDocument()
+    expect(screen.getByText(/record payments as transfers/)).toBeInTheDocument()
   })
 
   it('still warns when a real minimum cannot cover interest', () => {
