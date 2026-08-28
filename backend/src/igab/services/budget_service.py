@@ -268,22 +268,23 @@ class BudgetService:
         """
         Compute TBA and all category balances for a given month.
 
-        TBA = sum(on-budget account balances) - sum(category balances)
+        TBA = sum(on-budget account balances through the month's end)
+              - sum(envelope category balances through the month)
               - sum(assignments in months after the viewed month)
 
         The future-assignment deduction is what makes TBA consistent across
         months (YNAB behavior): assigning $500 in September must reduce
         August's TBA too, or the same dollars could be assigned twice. With
         it, a budget whose only allocation is that $500 shows the same TBA
-        whether August or September is on screen.
+        whether August or September is on screen. The balance term is bounded
+        the same way the activity term is, and includes closed accounts — see
+        `AccountRepository.sum_on_budget_balance` for both reasons.
         """
         month_start = first_of_month(month)
 
-        # On-budget account total
-        accounts = await self.account_repo.get_on_budget(budget_id)
-        total_account_balance = Decimal("0")
-        for acc in accounts:
-            total_account_balance += await self.account_repo.get_balance(acc.id)
+        total_account_balance = await self.account_repo.sum_on_budget_balance(
+            budget_id, last_of_month(month_start)
+        )
 
         # All category balances
         categories = await self.category_repo.get_all(budget_id, include_hidden=True)

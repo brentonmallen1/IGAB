@@ -207,6 +207,12 @@ async def test_import_skips_accounts_marked_skip(api_client, db_session):
     assert body["accounts_skipped"] == 1
     assert body["transactions_excluded"] == 1
     assert body["skipped"] == 0
+    # The summary checks the budget against the file it came from: 2000 in,
+    # nothing assigned, no cards — the two figures agree.
+    parity = body["parity"]
+    assert parity is not None and parity["matches"] is True
+    assert Decimal(parity["igab_ready_to_assign"]) == Decimal("2000.00")
+    assert Decimal(parity["ynab_ready_to_assign"]) == Decimal("2000.00")
 
     budget_id = uuid.UUID(resp.json()["budget"]["id"])
     accounts = {a.name for a in await services.account_repo.get_all(budget_id)}

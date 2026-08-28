@@ -8,6 +8,30 @@ export interface CsvImportResult {
   batch_id: string | null
 }
 
+/** How the imported budget compares with the export's own figures. */
+export interface YnabParity {
+  month: string
+  /** What YNAB's numbers say Ready to Assign is. */
+  ynab_ready_to_assign: string
+  /** That figure, adjusted by the one difference IGAB makes on purpose:
+   *  card debt YNAB parks unfunded (`uncovered_card_debt`). */
+  expected_ready_to_assign: string
+  igab_ready_to_assign: string
+  uncovered_card_debt: string
+  /** Uncategorized rows on budget accounts: out of Ready to Assign here
+   *  until filed, out of YNAB's plan entirely. */
+  uncategorized_net: string
+  /** expected == igab AND every envelope equals YNAB's Available. */
+  matches: boolean
+  categories_compared: number
+  /** Envelopes that differ by something other than their pending rows. */
+  categories_differing: number
+  /** Envelopes that differ by exactly their uncleared rows this month —
+   *  YNAB counts an imported row only once it is approved. */
+  categories_pending: number
+  top_differences: { name: string; igab: string; ynab: string }[]
+}
+
 export interface YnabImportResult {
   accounts: number
   category_groups: number
@@ -34,6 +58,8 @@ export interface YnabImportResult {
    *  reserve the same debt twice. The money is what Ready to Assign keeps. */
   credit_card_payment_assignments_skipped: number
   credit_card_payment_reserves_skipped: string
+  /** Null when the check could not run. */
+  parity: YnabParity | null
   errors: string[]
 }
 

@@ -19,6 +19,7 @@ from igab.repositories.txn_filters import (
     NEEDS_CATEGORY,
     NOT_DELETED,
     POSTED,
+    not_future,
 )
 
 LiabilityDisposition = Literal["keep", "delete"]
@@ -105,16 +106,37 @@ class AccountRepository(BaseRepository[Account]):
         )
         return result.scalar_one()
 
-    async def get_on_budget(self, budget_id: uuid.UUID) -> list[Account]:
+    async def sum_on_budget_balance(self, budget_id: uuid.UUID, as_of: date) -> Decimal:
+        """The budget's cash as of the end of a day — the balance term of
+        Ready to Assign.
+
+        Closed accounts are IN. Closing an account moves no money: its
+        transactions stay, its categorized history stays in the envelopes, so
+        leaving its balance out changed Ready to Assign by exactly that
+        balance with no transaction to show for it. The import flow offers to
+        close every dormant account, which made this the largest single
+        distortion on a real multi-year import.
+
+        Bounded to `as_of` (the viewed month's end). Category activity is
+        bounded to the month — a row dated next month reaches no envelope
+        until then — so an unbounded balance let a future-dated mortgage
+        payment lower today's Ready to Assign with nothing to explain it.
+        The account header's working balance is deliberately NOT bounded
+        (`get_balance`; see `not_future`): a register shows what it holds.
+        """
         result = await self.session.execute(
-            select(Account).where(
+            select(func.coalesce(func.sum(Transaction.amount), 0))
+            .select_from(Transaction)
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
                 Account.budget_id == budget_id,
                 Account.on_budget == True,  # noqa: E712
                 Account.is_deleted == False,  # noqa: E712
-                Account.is_closed == False,  # noqa: E712
+                BALANCE_ROW,
+                not_future(as_of),
             )
         )
-        return list(result.scalars().all())
+        return Decimal(str(result.scalar_one()))
 
     async def soft_delete(
         self, id: uuid.UUID, *, liability_disposition: LiabilityDisposition = "keep"

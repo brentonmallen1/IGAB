@@ -68,14 +68,13 @@ def make_service(
     activity_by_category = activity_by_category or {}
 
     account_repo = MagicMock()
-    account_repo.get_on_budget = AsyncMock(
-        return_value=[a for a in accounts if a.on_budget and not a.is_closed]
-    )
 
-    async def _get_balance(account_id):
-        return balances.get(account_id, D("0"))
+    async def _sum_on_budget_balance(budget_id, as_of):
+        # Every on-budget account funds TBA, closed ones included — see
+        # AccountRepository.sum_on_budget_balance.
+        return sum((balances.get(a.id, D("0")) for a in accounts if a.on_budget), D("0"))
 
-    account_repo.get_balance = AsyncMock(side_effect=_get_balance)
+    account_repo.sum_on_budget_balance = AsyncMock(side_effect=_sum_on_budget_balance)
 
     category_repo = MagicMock()
     category_repo.get_all = AsyncMock(return_value=categories)
@@ -342,7 +341,11 @@ class TestTBAAccountFiltering:
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
         assert result.to_be_assigned == D("1000.00")
 
-    async def test_closed_account_excluded(self):
+    async def test_closed_account_still_funds_tba(self):
+        """Closing an account moves no money: its transactions stay and its
+        categorized history stays in the envelopes, so leaving its balance
+        out changed Ready to Assign by exactly that balance with nothing to
+        show for it."""
         active = MockAccount(is_closed=False)
         closed = MockAccount(is_closed=True)
         svc = make_service(
@@ -350,9 +353,9 @@ class TestTBAAccountFiltering:
             balances={active.id: D("800.00"), closed.id: D("2000.00")},
         )
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
-        assert result.to_be_assigned == D("800.00")
+        assert result.to_be_assigned == D("2800.00")
 
-    async def test_off_budget_and_closed_both_excluded(self):
+    async def test_off_budget_out_closed_in(self):
         active = MockAccount(on_budget=True, is_closed=False)
         off_budget = MockAccount(on_budget=False, is_closed=False)
         closed = MockAccount(on_budget=True, is_closed=True)
@@ -361,7 +364,7 @@ class TestTBAAccountFiltering:
             balances={active.id: D("500.00"), off_budget.id: D("1000.00"), closed.id: D("2000.00")},
         )
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
-        assert result.to_be_assigned == D("500.00")
+        assert result.to_be_assigned == D("2500.00")
 
     async def test_zero_balance_account_is_neutral(self):
         acct = MockAccount()

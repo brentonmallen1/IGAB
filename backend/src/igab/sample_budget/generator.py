@@ -562,8 +562,9 @@ class SampleBudgetGenerator:
         # Sweep the surplus so TBA lands exactly on target. Uses the same
         # balance simulation as BudgetService: TBA = on-budget balances −
         # Σ non-system category available (computed on INSERTED rows only).
-        # Mirror BudgetService.get_on_budget: closed accounts don't fund TBA
-        on_budget_names = {a.name for a in spec.accounts if a.on_budget and not a.is_closed}
+        # Mirror AccountRepository.sum_on_budget_balance: every on-budget
+        # account funds TBA, closed ones included — closing moves no money.
+        on_budget_names = {a.name for a in spec.accounts if a.on_budget}
         on_budget_ids = {self._accounts[n].id for n in on_budget_names}
         balances = sum(
             (

@@ -18,6 +18,7 @@ from igab.dependencies import (
     CurrentUser,
     get_account_repo,
     get_assignment_repo,
+    get_budget_service,
     get_category_group_repo,
     get_category_repo,
     get_liability_repo,
@@ -44,6 +45,7 @@ from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import ensure_account_types_seeded
+from igab.services.budget_service import BudgetService
 from igab.services.transaction_service import TransactionService
 
 router = APIRouter()
@@ -124,11 +126,13 @@ async def import_ynab_as_budget(
     transaction_repo: TransactionRepository = Depends(get_transaction_repo),
     assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
     txn_service: TransactionService = Depends(get_transaction_service),
+    budget_service: BudgetService = Depends(get_budget_service),
 ) -> YNABImportBudgetResponse:
     from igab.api.v1.imports import (
         parse_account_types_form,
         parse_uploaded_ynab_zip,
         run_ynab_import,
+        ynab_parity_or_none,
     )
 
     # Validate the mapping and the zip BEFORE creating the budget so a bad
@@ -170,6 +174,16 @@ async def import_ynab_as_budget(
     # On failure this raises a 400; get_session rolls back, discarding the
     # budget created above along with every partial row.
     result = await run_ynab_import(importer, ynab_budget)
+    # Checked here, where the evidence is: the export's own figures against
+    # the budget just built from them.
+    parity = await ynab_parity_or_none(
+        budget_service,
+        category_repo,
+        budget.id,
+        ynab_budget,
+        type_map=type_map,
+        skip_accounts=skip_accounts,
+    )
 
     return YNABImportBudgetResponse(
         budget=BudgetResponse.model_validate(budget),
@@ -189,6 +203,7 @@ async def import_ynab_as_budget(
                 result.credit_card_payment_assignments_skipped
             ),
             credit_card_payment_reserves_skipped=result.credit_card_payment_reserves_skipped,
+            parity=parity,
             errors=result.errors,
         ),
     )
