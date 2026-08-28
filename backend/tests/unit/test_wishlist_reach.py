@@ -10,6 +10,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from igab.domain.dates import add_months
+from igab.domain.ordering import renumber
 from igab.guide.wishlist import (
     DEFAULT_COOLING_DAYS,
     Funding,
@@ -20,7 +21,6 @@ from igab.guide.wishlist import (
     effective_category,
     project_summary,
     reach_for,
-    renumber,
     review_due,
     still_wanted,
     trailing_average,

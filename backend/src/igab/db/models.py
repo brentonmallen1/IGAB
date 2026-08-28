@@ -296,7 +296,7 @@ class CategoryGroup(Base):
 
     budget: Mapped["Budget"] = relationship(back_populates="category_groups")
     categories: Mapped[list["Category"]] = relationship(
-        back_populates="group", order_by="Category.sort_order"
+        back_populates="group", order_by="[Category.sort_order, Category.name]"
     )
 
 

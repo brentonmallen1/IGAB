@@ -39,6 +39,7 @@ from igab.db.models import (
 from igab.domain.enums import ClearedStatus
 from igab.domain.exceptions import NotFoundError, UndoConflict
 from igab.domain.reconciliation import RECONCILED_LOCKED_FIELDS, locked_changes
+from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.change_log_repo import ChangeLogRepository
 from igab.services.change_log import ENTITY_MODELS, coerce_value, snapshot, snapshots_match
 
@@ -181,6 +182,8 @@ class UndoService:
             if getattr(entity, "is_deleted", False):
                 raise UndoConflict("The item is already deleted")
             entity.is_deleted = True
+        elif change.action == "reorder":
+            await self._apply_order(change, force, target="after")
         else:
             raise UndoConflict(f"Changes of type '{change.action}' cannot be redone")
 
@@ -240,8 +243,44 @@ class UndoService:
             await self._undo_delete(change, entity)
         elif change.action == "merge":
             await self._undo_merge(change, entity)
+        elif change.action == "reorder":
+            await self._apply_order(change, force, target="before")
         else:
             raise UndoConflict(f"Changes of type '{change.action}' cannot be undone")
+
+    async def _apply_order(self, change: ChangeLog, force: bool, *, target: str) -> None:
+        """Put a reordered list back the way the record says.
+
+        `_order` is bookkeeping, hidden from `snapshots_match`, so staleness is
+        checked here: the rows the record knows about must still stand in the
+        order this step left them (`after` for an undo, `before` for a redo)
+        unless `force`. Rows created since go to the end and rows deleted
+        since are skipped — an undo of "move Groceries up" must not lose a
+        category added an hour later, nor fail because one was deleted. The
+        restore goes through the same repository `reorder` the endpoint uses.
+        """
+        expected_key = "after" if target == "before" else "before"
+        expected = [uuid.UUID(x) for x in (getattr(change, expected_key) or {}).get("_order", [])]
+        wanted = [uuid.UUID(x) for x in (getattr(change, target) or {}).get("_order", [])]
+        if change.entity_type == "budget":
+            groups = CategoryGroupRepository(self.session)
+            live = [g.id for g in await groups.get_all(change.entity_id, include_hidden=True)]
+        elif change.entity_type == "category_group":
+            categories = CategoryRepository(self.session)
+            live = [c.id for c in await categories.get_by_group(change.entity_id)]
+        else:
+            raise UndoConflict("This reorder cannot be undone")
+
+        live_set, expected_set = set(live), set(expected)
+        still_there = [i for i in live if i in expected_set]
+        if not force and still_there != [i for i in expected if i in live_set]:
+            raise UndoConflict("The order has changed since this reorder")
+        wanted_set = set(wanted)
+        restored = [i for i in wanted if i in live_set] + [i for i in live if i not in wanted_set]
+        if change.entity_type == "budget":
+            await CategoryGroupRepository(self.session).reorder(change.entity_id, restored)
+        else:
+            await CategoryRepository(self.session).reorder(change.entity_id, restored)
 
     def _undo_create(self, change: ChangeLog, entity, force: bool) -> None:
         if not hasattr(entity, "is_deleted"):

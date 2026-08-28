@@ -22,6 +22,7 @@ from igab.domain.dates import month_start
 from igab.domain.drains import drains_total, shape_drains
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.domain.money import quantize_cents
+from igab.domain.ordering import renumber
 from igab.guide.detection import budget_service_from
 from igab.guide.repo import GuideRepository
 from igab.guide.service import DEFAULT_PREFS, PREFS_KEY
@@ -38,7 +39,6 @@ from igab.guide.wishlist import (
     effective_category,
     project_summary,
     reach_for,
-    renumber,
     review_due,
     still_wanted,
     trailing_average,
@@ -366,19 +366,11 @@ class WishlistService:
                 f"A category named '{name}' already exists — pick a different name, "
                 "or fund the wish from that category"
             )
-        last = (
-            await self.session.execute(
-                select(func.coalesce(func.max(Category.sort_order), -1)).where(
-                    Category.category_group_id == group.id,
-                    Category.is_deleted == False,  # noqa: E712
-                )
-            )
-        ).scalar_one()
+        # The repository puts a new category last in its group.
         category = await self.categories.create(
             budget_id=budget_id,
             category_group_id=group.id,
             name=name,
-            sort_order=int(last) + 1,
         )
         await self.targets.upsert(category.id, "savings_balance", quantize_cents(cost), want_by)
         return category

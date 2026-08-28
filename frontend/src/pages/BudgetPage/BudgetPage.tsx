@@ -18,7 +18,13 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation'
 import { addMonths } from '../../utils/dates'
 import { useBudgets, useCreateBudget } from '../../api/budgets'
-import { useCategories, useCategoryGroups, useUpdateCategory } from '../../api/categories'
+import {
+  useCategories,
+  useCategoryGroups,
+  useReorderCategories,
+  useUpdateCategory,
+} from '../../api/categories'
+import { moveItem } from '../../utils/listOrder'
 import { useDeleteCategoryFlow } from '../../components/budget/DeleteCategoryModal/useDeleteCategoryFlow'
 import './BudgetPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
@@ -36,6 +42,13 @@ export function BudgetPage() {
   const mobileInspectorOpen = useUIStore((s) => s.mobileInspectorOpen)
   const closeMobileInspector = useUIStore((s) => s.closeMobileInspector)
   const multiMonthOpen = useUIStore((s) => s.multiMonthOpen)
+  // The sheet's Move up/down follow the grid's own rule: only on the budget's
+  // own arrangement, with nothing filtered away.
+  const activeViewId = useUIStore((s) => s.activeViewId)
+  const activeFilterId = useUIStore((s) => s.activeFilterId)
+  const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
+  const categorySearch = useUIStore((s) => s.categorySearch)
+  const canReorder = !activeViewId && !activeFilterId && !activeQuickFilter && !categorySearch.trim()
   const isMobile = useIsMobile()
   const swipeHandlers = useSwipeNavigation(
     () => setSelectedMonth(addMonths(month, -1)),
@@ -46,6 +59,7 @@ export function BudgetPage() {
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const updateCategory = useUpdateCategory(budgetId ?? '')
+  const reorderCategories = useReorderCategories(budgetId ?? '')
   const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(
     budgetId ?? '',
     clearCategorySelection
@@ -162,7 +176,18 @@ export function BudgetPage() {
           <CategoryInspector budgetId={budgetId} forceOpen />
           {selectedCategoryIds.size === 1 && (() => {
             const selected = categories.find((c) => selectedCategoryIds.has(c.id))
-            return selected ? (
+            if (!selected) return null
+            // Siblings in server order — the same list the grid draws.
+            const siblings = categories
+              .filter((c) => c.category_group_id === selected.category_group_id)
+              .map((c) => c.id)
+            const at = siblings.indexOf(selected.id)
+            const moveBy = (delta: -1 | 1) =>
+              reorderCategories.mutate({
+                groupId: selected.category_group_id,
+                categoryIds: [...moveItem(siblings, at, at + delta)],
+              })
+            return (
               <CategoryMobileActions
                 budgetId={budgetId}
                 category={selected}
@@ -170,8 +195,10 @@ export function BudgetPage() {
                   closeMobileInspector()
                   clearCategorySelection()
                 }}
+                onMoveUp={canReorder && at > 0 ? () => moveBy(-1) : undefined}
+                onMoveDown={canReorder && at < siblings.length - 1 ? () => moveBy(1) : undefined}
               />
-            ) : null
+            )
           })()}
         </BottomSheet>
       )}

@@ -122,9 +122,41 @@ class YNABImporter:
         # Carried through rather than swallowed: the import summary is the
         # only place a user would ever learn a row did not make it.
         result.errors.extend(budget.errors[:_MAX_ERRORS])
+        await self._seed_arrangement(budget, result)
         await self._import_transactions(budget, result)
         await self._import_assignments(budget, result)
         return result
+
+    async def _seed_arrangement(self, budget: YNABBudget, result: ImportResult) -> None:
+        """Create the groups and categories in YNAB's own order, before any
+        row needs them.
+
+        Plan.csv lists every category in every month in the arrangement the
+        user sees in YNAB — not alphabetically — so the export's final month
+        is the layout to keep. Without this every imported group and category
+        landed at position 0 and the grid showed them in whatever order
+        Postgres returned that day. Categories that appear only in the
+        register are created later and go last in their group.
+        """
+        if not budget.plan_rows:
+            return
+        last = max(row.month for row in budget.plan_rows)
+        group_positions: dict[str, int] = {}
+        next_in_group: dict[str, int] = {}
+        for row in budget.plan_rows:
+            if row.month != last:
+                continue
+            if row.category_group not in group_positions:
+                group_positions[row.category_group] = len(group_positions)
+            position = next_in_group.get(row.category_group, 0)
+            next_in_group[row.category_group] = position + 1
+            await self._get_or_create_category(
+                row.category_group,
+                row.category,
+                result,
+                group_sort_order=group_positions[row.category_group],
+                sort_order=position,
+            )
 
     async def _get_or_create_account(self, name: str, result: ImportResult) -> Account:
         if name in self._account_cache:
@@ -178,8 +210,19 @@ class YNABImporter:
         )
 
     async def _get_or_create_category(
-        self, group_name: str, category_name: str, result: ImportResult
+        self,
+        group_name: str,
+        category_name: str,
+        result: ImportResult,
+        *,
+        group_sort_order: int | None = None,
+        sort_order: int | None = None,
     ) -> Category:
+        """The category, created on first sight.
+
+        Positions come from `_seed_arrangement`; left None, the repository
+        appends the row after the last one in its budget or group.
+        """
         # Map YNAB's "Inflow" category group to the system "Income" group
         if group_name == _YNAB_INFLOW_GROUP:
             group_name = _SYSTEM_INCOME_GROUP
@@ -197,6 +240,7 @@ class YNABImporter:
                 group = await self.category_group_repo.create(
                     budget_id=self.budget_id,
                     name=group_name,
+                    sort_order=group_sort_order,
                     is_system=(group_name == _SYSTEM_INCOME_GROUP),
                 )
                 result.category_groups_imported += 1
@@ -219,6 +263,7 @@ class YNABImporter:
                     budget_id=self.budget_id,
                     category_group_id=group.id,
                     name=category_name,
+                    sort_order=sort_order,
                 )
                 result.categories_imported += 1
                 await self._suggest_tag(category, group.name, result)
