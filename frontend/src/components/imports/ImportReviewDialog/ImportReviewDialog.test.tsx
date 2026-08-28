@@ -6,7 +6,7 @@
  * categories that moved — in one request, because each change is a
  * classification override and half a review applied is worse than none.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
@@ -26,6 +26,14 @@ const categories = [
     tags: [{ id: 't-lte', name: 'Long-term expense', color_slot: 'teal' }],
   },
   { id: 'rent', category_group_id: 'g1', name: 'Rent', is_hidden: false, tags: [] },
+  {
+    id: 'groc',
+    category_group_id: 'g1',
+    name: 'Groceries',
+    is_hidden: false,
+    tags: [{ id: 't-travel', name: 'Travel', color_slot: 'blue' }],
+  },
+  { id: 'odds', category_group_id: 'g1', name: 'Odds and Ends', is_hidden: false, tags: [] },
   { id: 'income', category_group_id: 'sys', name: 'Inflow', is_hidden: false, tags: [] },
 ]
 const groups = [
@@ -36,6 +44,7 @@ const tags = [
   { id: 't-lte', name: 'Long-term expense', system_key: 'long_term_expense', color_slot: 'teal' },
   { id: 't-sub', name: 'Subscription', system_key: 'subscription', color_slot: 'purple' },
   { id: 't-ess', name: 'Essential', system_key: 'essential', color_slot: 'blue' },
+  { id: 't-travel', name: 'Travel', system_key: null, color_slot: 'blue' },
 ]
 const suggestions = [
   { category_id: 'prime', system_key: 'subscription', matched_on: 'Amazon Prime', applied_on_import: false },
@@ -57,10 +66,12 @@ vi.mock('../../../api/accounts', () => ({
   useUpdateAccount: () => ({ mutate: updateAccount, isPending: false }),
   useRepairTransfers: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
+const createTag = vi.fn()
 vi.mock('../../../api/tags', () => ({
   useTags: () => ({ data: tags }),
   useTagSuggestions: () => ({ data: suggestions }),
   useBulkSetCategoryTags: () => ({ mutateAsync: bulkSet, isPending: false }),
+  useCreateTag: () => ({ mutateAsync: createTag, isPending: false }),
 }))
 vi.mock('../../../api/imports', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -228,5 +239,67 @@ describe('the accounts step', () => {
     expect(updateAccount).toHaveBeenCalledWith({ id: 'a1', is_closed: false })
     // And not for one that is open.
     expect(screen.queryByRole('button', { name: /Reopen Checking/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('adding a tag the hints never thought of', () => {
+  async function allRows(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: /Categories & tags/ }))
+    await user.click(screen.getByRole('button', { name: /^All/ }))
+  }
+
+  function row(name: string) {
+    return screen.getByText(name).closest('.import-review__row') as HTMLElement
+  }
+
+  it('offers a picker on a category with no tags and no suggestions', async () => {
+    // The gap: such a row used to read "no tags" and offer nothing at all.
+    const user = userEvent.setup()
+    open()
+    await allRows(user)
+    expect(within(row('Odds and Ends')).getByRole('button', { name: '+ Tag' })).toBeInTheDocument()
+  })
+
+  it('assigns any tag in the budget, not just the suggested one', async () => {
+    const user = userEvent.setup()
+    open()
+    await allRows(user)
+
+    await user.click(within(row('Odds and Ends')).getByRole('button', { name: '+ Tag' }))
+    await user.click(screen.getByText('Essential'))
+
+    await user.click(screen.getByRole('button', { name: /Accounts/ }))
+    await user.click(screen.getByRole('button', { name: /Save and close/ }))
+    await waitFor(() =>
+      expect(bulkSet).toHaveBeenCalledWith([{ category_id: 'odds', tag_ids: ['t-ess'] }])
+    )
+  })
+
+  it('takes more than one, ad hoc', async () => {
+    const user = userEvent.setup()
+    open()
+    await allRows(user)
+
+    const picker = within(row('Odds and Ends')).getByRole('button', { name: '+ Tag' })
+    await user.click(picker)
+    await user.click(screen.getByText('Essential'))
+    await user.click(screen.getByText('Subscription'))
+
+    await user.click(screen.getByRole('button', { name: /Accounts/ }))
+    await user.click(screen.getByRole('button', { name: /Save and close/ }))
+    await waitFor(() =>
+      expect(bulkSet).toHaveBeenCalledWith([
+        { category_id: 'odds', tag_ids: ['t-ess', 't-sub'] },
+      ])
+    )
+  })
+
+  it('shows a tag the user added themselves, which is not a system one', async () => {
+    // Only system tags were rendered, so a Travel tag was invisible on a row
+    // whose whole set the review can replace.
+    const user = userEvent.setup()
+    open()
+    await allRows(user)
+    expect(within(row('Groceries')).getByText('Travel')).toBeInTheDocument()
   })
 })

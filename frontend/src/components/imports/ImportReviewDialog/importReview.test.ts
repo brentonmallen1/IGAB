@@ -5,6 +5,7 @@ import {
   initialFilter,
   pendingUpdates,
   repairableTransferLegs,
+  setTags,
   stepsFor,
   toggleTag,
   type Draft,
@@ -65,10 +66,13 @@ describe('stepsFor', () => {
 })
 
 describe('buildRows', () => {
-  it('reads held keys through the tag map, ignoring the user’s own tags', () => {
+  it('carries every tag, and names the system keys among them', () => {
+    // Both halves matter: the row renders all of them, and only the system
+    // keys can make a suggestion redundant.
     const cat = category({ tagIds: [SAVINGS, TRAVEL] })
     const [row] = buildRows([cat], [], [], KEY_BY_ID, {})
-    expect(row.held).toEqual(['savings'])
+    expect(row.tagIds).toEqual([SAVINGS, TRAVEL])
+    expect(row.heldKeys).toEqual(['savings'])
   })
 
   it('marks the rows this import decided, and says what matched', () => {
@@ -97,7 +101,7 @@ describe('buildRows', () => {
     const draft: Draft = { c1: [SUBSCRIPTION] }
     const after = buildRows([cat], suggestions, [], KEY_BY_ID, draft)
     expect(after[0].suggestions).toEqual([])
-    expect(after[0].held).toEqual(['subscription'])
+    expect(after[0].heldKeys).toEqual(['subscription'])
   })
 })
 
@@ -204,5 +208,30 @@ describe('initialFilter', () => {
     // reopened from Settings, or built by hand, with no tags at all.
     expect(initialFilter(null)).toBe('suggested')
     expect(initialFilter(summary({ tagged_categories: [] }))).toBe('suggested')
+  })
+})
+
+describe('setTags', () => {
+  it('replaces the whole set, which is what a picker hands back', () => {
+    const cat = category({ tagIds: [SAVINGS] })
+    expect(setTags({}, cat, [TRAVEL, SUBSCRIPTION])).toEqual({ c1: [TRAVEL, SUBSCRIPTION] })
+  })
+
+  it('can clear a category outright', () => {
+    const cat = category({ tagIds: [SAVINGS, TRAVEL] })
+    expect(pendingUpdates(setTags({}, cat, []), [cat])).toEqual([
+      { category_id: 'c1', tag_ids: [] },
+    ])
+  })
+
+  it('reaches a category with no tags and no suggestions', () => {
+    // The gap this closes: such a row had nothing to offer at all.
+    const bare = category({ id: 'bare', name: 'Odds and Ends', tagIds: [] })
+    const [row] = buildRows([bare], [], [], KEY_BY_ID, {})
+    expect(row.tagIds).toEqual([])
+    expect(row.suggestions).toEqual([])
+    expect(pendingUpdates(setTags({}, bare, [TRAVEL, SAVINGS]), [bare])).toEqual([
+      { category_id: 'bare', tag_ids: [TRAVEL, SAVINGS] },
+    ])
   })
 })
