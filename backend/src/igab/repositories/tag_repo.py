@@ -31,34 +31,6 @@ SYSTEM_TAGS = [
     ("wishlist", "Wishlist", "pink"),
 ]
 
-#: Name fragments that suggest a system tag on import, checked against the
-#: category's own name and its group's.
-#:
-#: Only for a fresh import, where the alternative is a savings report that is
-#: empty until the user finds a tag UI they have no reason to look for. It is
-#: a suggestion made out loud — the import summary reports the count, and a
-#: wrong guess is one click to remove — so the list stays short and obvious
-#: rather than clever. Nothing here ever re-tags an existing category.
-IMPORT_TAG_HINTS: list[tuple[str, tuple[str, ...]]] = [
-    ("savings", ("saving", "emergency fund", "rainy day", "nest egg")),
-    ("long_term_expense", ("true expense", "long term", "long-term", "sinking fund")),
-]
-
-
-def suggest_system_tag(category_name: str, group_name: str) -> str | None:
-    """The system tag an imported category's names point at, if any.
-
-    The category's own name wins: a "Vacation" category inside a "True
-    Expenses" group is a long-term expense, but a "Savings" category in that
-    same group is savings.
-    """
-    for haystack in (category_name, group_name):
-        lowered = haystack.lower()
-        for system_key, fragments in IMPORT_TAG_HINTS:
-            if any(fragment in lowered for fragment in fragments):
-                return system_key
-    return None
-
 
 class TagRepository(BaseRepository[Tag]):
     model = Tag

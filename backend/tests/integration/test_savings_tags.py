@@ -15,12 +15,8 @@ from sqlalchemy import select
 
 from igab.db.models import Tag
 from igab.integrations.ynab.models import YNABBudget, YNABTransaction
-from igab.repositories.tag_repo import (
-    SYSTEM_TAGS,
-    TagRepository,
-    seed_system_tags,
-    suggest_system_tag,
-)
+from igab.domain.tag_hints import suggest_system_tag
+from igab.repositories.tag_repo import SYSTEM_TAGS, TagRepository, seed_system_tags
 
 from .factories import create_budget, create_category, create_category_group, create_user
 from .test_ynab_import import _importer
@@ -39,14 +35,14 @@ async def _system_keys(db_session, budget) -> set[str]:
 
 class TestSuggestSystemTag:
     def test_reads_the_obvious_names(self):
-        assert suggest_system_tag("Savings", "Goals") == "savings"
-        assert suggest_system_tag("Emergency Fund", "Goals") == "savings"
-        assert suggest_system_tag("Car Repairs", "True Expenses") == "long_term_expense"
-        assert suggest_system_tag("Sinking Fund", "Whatever") == "long_term_expense"
+        assert suggest_system_tag("Savings", "Goals").system_key == "savings"
+        assert suggest_system_tag("Emergency Fund", "Goals").system_key == "savings"
+        assert suggest_system_tag("Car Repairs", "True Expenses").system_key == "long_term_expense"
+        assert suggest_system_tag("Sinking Fund", "Whatever").system_key == "long_term_expense"
 
     def test_the_categorys_own_name_wins_over_its_group(self):
         # A "Savings" category inside "True Expenses" is savings.
-        assert suggest_system_tag("Savings", "True Expenses") == "savings"
+        assert suggest_system_tag("Savings", "True Expenses").system_key == "savings"
 
     def test_says_nothing_when_nothing_is_obvious(self):
         assert suggest_system_tag("Groceries", "Everyday") is None

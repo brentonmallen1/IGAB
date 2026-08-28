@@ -81,6 +81,21 @@ class Budget(Base):
     number_format: Mapped[str] = mapped_column(String(20), default="comma_dot", nullable=False)
     date_format: Mapped[str] = mapped_column(String(10), default="mdy", nullable=False)
     time_format: Mapped[str] = mapped_column(String(5), default="12h", nullable=False)
+    #: What an import decided, as it decided it. A YNAB import always creates
+    #: exactly one budget (the route 409s on a name clash), so this is 1:1 and
+    #: needs no table of its own.
+    #:
+    #: Persisted rather than re-derived because it records an *event*: how many
+    #: rows arrived, what the parity check found, which plan rows were left
+    #: out. None of that is recoverable from the resulting budget, and it used
+    #: to live only in a stack of toasts fired during a route change. The
+    #: adjustable half of a review -- tags, account state -- is deliberately
+    #: NOT stored here; it is read live, so a review reopened months later is
+    #: about the budget as it is rather than as it arrived.
+    import_summary: Mapped[dict | None] = mapped_column(JSONB)
+    #: When someone last worked through that summary. Null means the review has
+    #: not been seen, which is what makes it open by itself exactly once.
+    import_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

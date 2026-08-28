@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
+from igab.domain.tag_hints import suggest_system_tag
 from igab.domain.transfers import linking_breaks_category_rule
 from igab.integrations.ynab.models import YNABBudget
 from igab.repositories.account_repo import AccountRepository
@@ -17,7 +18,7 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.payee_repo import PayeeRepository
-from igab.repositories.tag_repo import TagRepository, seed_system_tags, suggest_system_tag
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.liability_service import ensure_for_account
@@ -62,6 +63,18 @@ def is_credit_card_payments_group(group: str) -> bool:
 
 
 @dataclass
+class TaggedCategory:
+    """One tag the import applied, and why."""
+
+    category_id: uuid.UUID
+    system_key: str
+    #: The name that triggered the hint -- the category's own or its group's.
+    #: Shown in the review so a person can check the guess rather than take it
+    #: on faith.
+    matched_on: str
+
+
+@dataclass
 class ImportResult:
     accounts_imported: int = 0
     category_groups_imported: int = 0
@@ -95,6 +108,11 @@ class ImportResult:
     #: is classified in reports — applying it silently would be a number
     #: moving for a reason the user never saw.
     categories_tagged: int = 0
+    #: Which categories, and what key each was given. The count alone cannot
+    #: answer the question the review exists for -- "show me what you did" --
+    #: and it cannot be recovered later either, because nothing on the join
+    #: table records whether a tag was guessed or chosen.
+    tagged_categories: list["TaggedCategory"] = field(default_factory=list)
     #: Plan rows in YNAB's Credit Card Payments group, left out on purpose —
     #: see `is_credit_card_payments_group`. Reported with the money they would
     #: have taken out of Ready to Assign, so the user can see why the figure
@@ -323,15 +341,26 @@ class YNABImporter:
         classified must not be applied silently.
 
         New categories only — an existing category's tags are the user's.
+
+        Records which category got which key, not just how many: the import
+        review opens on exactly these rows, and no other source can say which
+        of a category's tags the app guessed.
         """
-        system_key = suggest_system_tag(category.name, group_name)
-        if system_key is None:
+        suggestion = suggest_system_tag(category.name, group_name)
+        if suggestion is None:
             return
-        tag = await self.tag_repo.get_system_tag(self.budget_id, system_key)
+        tag = await self.tag_repo.get_system_tag(self.budget_id, suggestion.system_key)
         if tag is None:
             return
         await self.tag_repo.set_category_tags(category.id, [tag.id])
         result.categories_tagged += 1
+        result.tagged_categories.append(
+            TaggedCategory(
+                category_id=category.id,
+                system_key=suggestion.system_key,
+                matched_on=suggestion.matched_on,
+            )
+        )
 
     async def _resolve_payees(
         self, budget: YNABBudget, payee_names: set[str], result: ImportResult
