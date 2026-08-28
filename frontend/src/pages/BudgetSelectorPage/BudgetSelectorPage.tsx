@@ -314,6 +314,45 @@ export function BudgetSelectorPage() {
           { duration: 15000, icon: '💳' }
         )
       }
+      // The budget checked against the file it came from. A number that has
+      // to be trusted is checked where the evidence is, not explained later.
+      if (r.parity) {
+        const p = r.parity
+        const igab = formatMoney(parseApiDecimal(p.igab_ready_to_assign))
+        const ynab = formatMoney(parseApiDecimal(p.ynab_ready_to_assign))
+        const debt = parseApiDecimal(p.uncovered_card_debt)
+        const debtNote =
+          debt !== 0
+            ? ` YNAB shows ${ynab}; the ${formatMoney(Math.abs(debt))} difference is card debt YNAB has not charged to Ready to Assign yet.`
+            : ''
+        const unfiled = parseApiDecimal(p.uncategorized_net)
+        const unfiledNote =
+          unfiled !== 0
+            ? ` ${formatMoney(Math.abs(unfiled))} of uncategorized transactions is out of Ready to Assign until you file them; YNAB leaves them out of its plan.`
+            : ''
+        const pendingNote =
+          p.categories_pending > 0
+            ? ` ${p.categories_pending} categor${p.categories_pending === 1 ? 'y differs' : 'ies differ'} only by uncleared rows YNAB has not approved yet.`
+            : ''
+        if (p.matches) {
+          toast.success(`Ready to Assign matches YNAB (${igab}).${debtNote}${unfiledNote}${pendingNote}`, {
+            duration: 15000,
+          })
+        } else {
+          const expected = formatMoney(parseApiDecimal(p.expected_ready_to_assign))
+          const top = p.top_differences
+            .slice(0, 3)
+            .map((d) => `${d.name} ${formatMoney(parseApiDecimal(d.igab))} vs ${formatMoney(parseApiDecimal(d.ynab))}`)
+            .join('; ')
+          toast(
+            `Ready to Assign is ${igab}; YNAB's own figures say ${expected}. ` +
+              `${p.categories_differing} of ${p.categories_compared} categories differ` +
+              (top ? ` (${top})` : '') +
+              `.${debtNote}${unfiledNote}${pendingNote}`,
+            { duration: 25000, icon: '🔍' }
+          )
+        }
+      }
       if (r.errors.length > 0) {
         toast.error(
           `${r.errors.length} rows had problems — first: ${r.errors[0]}`,

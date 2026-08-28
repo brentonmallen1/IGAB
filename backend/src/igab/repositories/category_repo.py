@@ -3,13 +3,17 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, func, not_, select, update
 from sqlalchemy.orm import selectinload, with_expression
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup
 from igab.domain.ordering import merge_reorder
 from igab.repositories.base import BaseRepository
-from igab.repositories.category_filters import IS_ASSIGNABLE, IS_CATEGORIZABLE
+from igab.repositories.category_filters import (
+    IN_SYSTEM_GROUP,
+    IS_ASSIGNABLE,
+    IS_CATEGORIZABLE,
+)
 
 #: Groups the app seeds and protects by key. Kept the way SYSTEM_TAGS is —
 #: (key, name) — and seeded the same lazy way: adopt a same-named group the
@@ -348,11 +352,24 @@ class BudgetAssignmentRepository(BaseRepository[BudgetAssignment]):
         return list(result.scalars().all())
 
     async def sum_after_month(self, budget_id: uuid.UUID, month: date) -> Decimal:
-        """Total assigned across all months strictly after the given month."""
+        """Total assigned across all months strictly after the given month.
+
+        System-group categories are left out, as the category term of Ready
+        to Assign leaves them out: an assignment on an income category
+        (refused now, but rows from before exist) was deducted here while its
+        category was excluded there. Deleted categories stay IN on purpose —
+        an old-style delete left their assignments behind, and this term is
+        how that stranded money still shows until the hygiene repair
+        releases it (test_category_delete.py pins the figure).
+        """
         result = await self.session.execute(
-            select(func.coalesce(func.sum(BudgetAssignment.assigned), 0)).where(
+            select(func.coalesce(func.sum(BudgetAssignment.assigned), 0))
+            .select_from(BudgetAssignment)
+            .join(Category, Category.id == BudgetAssignment.category_id)
+            .where(
                 BudgetAssignment.budget_id == budget_id,
                 BudgetAssignment.month > month,
+                not_(IN_SYSTEM_GROUP),
             )
         )
         return Decimal(str(result.scalar_one()))

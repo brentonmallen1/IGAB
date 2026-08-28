@@ -1,6 +1,7 @@
 import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -100,6 +101,9 @@ class ImportResult:
     #: differs from YNAB's by exactly that.
     credit_card_payment_assignments_skipped: int = 0
     credit_card_payment_reserves_skipped: Decimal = Decimal("0")
+    #: How the imported budget compares with the export's own figures — set
+    #: by the import route after the import, None if the check could not run.
+    parity: Any = None
     errors: list[str] = field(default_factory=list)
 
 

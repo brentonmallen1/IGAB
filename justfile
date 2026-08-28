@@ -256,6 +256,13 @@ release VERSION:
     echo "  CI will build and publish images to ghcr.io"
     echo "  Release: https://github.com/brentonmallen1/IGAB/releases/tag/$version"
 
+# What YNAB's own export says Ready to Assign should be — run it beside the
+# figure YNAB shows, then import and read the parity line in the summary.
+#   just ynab-oracle "~/Downloads/YNAB Export.zip" --credit-card Visa --categories
+[positional-arguments]
+ynab-oracle FILE *ARGS:
+    cd backend && PYTHONPATH=src uv run python scripts/ynab_rta_oracle.py "$@"
+
 # ─── Utility ──────────────────────────────────────────────────────────────────
 
 # Show running containers

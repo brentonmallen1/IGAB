@@ -102,6 +102,11 @@ def not_future(as_of: date):
       statement cannot reflect what has not happened. `get_status` therefore
       adds this cutoff, and `finish()` sizes its adjustment against the
       result — so the adjustment is correct even while the header differs.
+    - Ready to Assign is a statement about a month:
+      `AccountRepository.sum_on_budget_balance` bounds the budget's cash to
+      the viewed month's end, as category activity already is, so a row
+      dated next month cannot lower this month's figure before it reaches
+      any envelope.
 
     The divergence is bounded to exactly the future-dated cleared rows, and
     is pinned by a test. Do not "fix" it into agreement.

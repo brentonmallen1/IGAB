@@ -68,6 +68,39 @@ class ImportResult(BaseModel):
     batch_id: uuid.UUID | None = None
 
 
+class YNABParityDifference(BaseModel):
+    name: str
+    igab: Decimal
+    ynab: Decimal
+
+
+class YNABParityOut(BaseModel):
+    """How the imported budget compares with the export's own figures.
+
+    `ynab_ready_to_assign` is what YNAB's numbers say; `expected` is that
+    figure adjusted by the one difference IGAB makes on purpose (card debt
+    YNAB parks unfunded — `uncovered_card_debt`); `igab` is what the budget
+    actually shows. `matches` means expected == igab AND every envelope's
+    balance equals the Available column YNAB shipped.
+    """
+
+    month: date
+    ynab_ready_to_assign: Decimal
+    expected_ready_to_assign: Decimal
+    igab_ready_to_assign: Decimal
+    uncovered_card_debt: Decimal
+    #: Uncategorized rows on budget accounts: out of Ready to Assign here
+    #: until filed, out of YNAB's plan entirely.
+    uncategorized_net: Decimal
+    matches: bool
+    categories_compared: int
+    categories_differing: int
+    #: Envelopes that differ from YNAB's Available by exactly their uncleared
+    #: rows this month — YNAB counts imported rows only once approved.
+    categories_pending: int
+    top_differences: list[YNABParityDifference]
+
+
 class YNABImportResult(BaseModel):
     accounts: int
     category_groups: int
@@ -96,6 +129,8 @@ class YNABImportResult(BaseModel):
     #: keeps as a result.
     credit_card_payment_assignments_skipped: int = 0
     credit_card_payment_reserves_skipped: Decimal = Decimal("0")
+    #: None when the check could not run; never a failed import.
+    parity: YNABParityOut | None = None
     errors: list[str]
 
 
@@ -463,6 +498,75 @@ def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
         accounts=accounts,
         transaction_count=len(ynab_budget.transactions),
         budget_entry_count=len(ynab_budget.budget_entries),
+    )
+
+
+async def ynab_parity_or_none(
+    budget_service,
+    category_repo,
+    budget_id: uuid.UUID,
+    ynab_budget,
+    *,
+    type_map: dict[str, tuple[str, bool]],
+    skip_accounts: set[str],
+) -> YNABParityOut | None:
+    """The parity line for the import summary, or None if it cannot be
+    computed. A failed check must never fail the import: the budget is
+    already built, and the summary without the line is still the summary."""
+    import logging
+
+    from igab.domain.dates import month_start
+    from igab.integrations.ynab.parity import check_parity
+    from igab.utils.clock import today_utc
+
+    try:
+        # The last month the export knows about, or today's if it is older.
+        # A file with no plan cannot show overspending written off after its
+        # last month, so comparing later than that would compare against
+        # nothing.
+        month = month_start(today_utc())
+        known = [row.month for row in ynab_budget.plan_rows] or [
+            month_start(t.date) for t in ynab_budget.transactions
+        ]
+        if known:
+            month = min(month, max(known))
+        skipped = {name.lower() for name in skip_accounts}
+        kept = {
+            t.account_name
+            for t in ynab_budget.transactions
+            if t.account_name.lower() not in skipped
+        }
+        cards = {name for name, (kind, _) in type_map.items() if kind == "credit_card"}
+        # Unmapped accounts import as on-budget checking (importer default).
+        tracking = {name for name in kept if not type_map.get(name, ("checking", True))[1]}
+        report = await check_parity(
+            budget_service,
+            category_repo,
+            budget_id,
+            ynab_budget,
+            month,
+            accounts=kept,
+            credit_card_accounts=cards,
+            tracking_accounts=tracking,
+        )
+    except Exception:  # noqa: BLE001 — the summary is still the summary
+        logging.getLogger(__name__).exception("YNAB parity check failed")
+        return None
+    return YNABParityOut(
+        month=report.month,
+        ynab_ready_to_assign=report.ynab_ready_to_assign,
+        expected_ready_to_assign=report.expected_ready_to_assign,
+        igab_ready_to_assign=report.igab_ready_to_assign,
+        uncovered_card_debt=report.uncovered_card_debt,
+        uncategorized_net=report.uncategorized_net,
+        matches=report.matches,
+        categories_compared=report.categories_compared,
+        categories_differing=report.categories_differing,
+        categories_pending=report.categories_pending,
+        top_differences=[
+            YNABParityDifference(name=d.name, igab=d.igab, ynab=d.ynab)
+            for d in report.top_differences
+        ],
     )
 
 
