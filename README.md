@@ -35,9 +35,9 @@ subscription, and without your financial history living on someone else's
 servers.
 
 It also tries to answer the question a ledger can't: **what should I do
-next?** A guided roadmap reads your real numbers to show where you stand,
-explains every inference it makes, and lets you correct any of it — with a
-checkup, calculators and a wishlist that all work from the same numbers.
+next?** A guided roadmap reads your real numbers, shows where you stand, and
+explains itself — with a checkup, calculators, and a wishlist that all work
+from the same numbers.
 
 Built for a small household (1–2 people) that budgets daily or weekly and
 wants a tool that is **steady, clear, and trustworthy** — not a fintech
@@ -66,7 +66,7 @@ Twenty-one reports across six groups give you the visibility you need to plan an
 | Spending | Pareto breakdown, treemap, seasonality heatmap, subscriptions |
 | Insights | Plan vs. reality, anomaly detection, payee analysis, day-of-week patterns (with payday effect), event timeline |
 
-Reports use date-range and category/payee/account filtering where applicable. Monthly reports (net worth, burn rate, etc.) have their own time horizon selectors.
+Filter by date range, category, payee, or account; monthly reports have their own time horizons.
 
 ---
 
@@ -99,145 +99,104 @@ Reports use date-range and category/payee/account filtering where applicable. Mo
 - Custom saved budget views (filter and arrange the grid the way you think)
 
 ### Guidance & Tools
-- **A personal-finance roadmap that reads your budget** — the well-known
-  r/personalfinance spending flowchart, re-authored as data so it renders in
-  your theme, works on a phone, and can show you where you actually are. Three
-  ways in: follow it one step at a time, read the whole thing end to end, or
-  open the map and explore the shape of it, branches you won't take included
-- **Every inference is explained, correctable, and optional.** IGAB guesses
-  which of your categories or accounts is the emergency fund, and then shows
-  how it decided. If it guessed wrong, point it at the right one. If the money
-  lives somewhere IGAB can't see — another bank, a workplace 401(k) — say so
-  and it counts without ever being invented into your balances. If you'd
-  rather it didn't look at all, one switch in Settings turns personalization
-  off and no detection query runs
-- **A plain-language glossary** — sinking fund, APR, avalanche, TBA — each
-  entry saying what the term means *and* how it maps onto this app
-- **It never pushes.** No notifications, no email digests, no badge following
-  you around the nav. Guidance is somewhere you go, not something that
-  interrupts you
-- Educational only, and it says so: no advice, no market-return projections,
-  no single "financial health score" — only arithmetic IGAB can defend
-
-- **A financial checkup with no score.** Each figure against the target the
-  roadmap states — emergency fund in months of *your* essential spending, debt
-  above 10%, retirement saving, categories overspent month after month — and
-  a health report you run when you want it: at most five findings, ranked,
-  each leading to a step or a report. When nothing stands out it says so. The
-  only ambient signal is a small amber dot on the roadmap step concerned; mark
-  a step done and the dot defers to you
-- **Scenario calculators you can check by hand** — avalanche against
-  snowball over your real debts with a true rollover cascade, measured against
-  paying minimums; pay a debt down or save the money instead, at a rate you
-  type in; which of two loans costs less once fees are counted; how large an
-  emergency fund needs to be and how long the gap takes to close
-- **A wishlist that lives inside the budget.** Not a shopping list — the
-  counterweight to one. A want gets an envelope (by default a category of its
-  own in a Wishlist group, with a goal), a cooling-off period, and a place in
-  the queue; the budget's own numbers then say when. Group wants into projects,
-  get asked "still want it?" after a while, and see what pulled money out of
-  those envelopes this month — the audit trail, named on both sides, with how
-  much further away each want now is. Nothing is inferred about why
+- **A roadmap that reads your budget** — the r/personalfinance flowchart,
+  re-authored as data: walk it one step at a time, read it end to end, or
+  explore the map. It marks where you actually are
+- **Every inference is explained, correctable, and optional** — IGAB shows
+  how it decided; point it at the right category or account, tell it about
+  money it can't see, or switch personalization off entirely
+- **A checkup with no score** — each figure against the target the roadmap
+  states, plus a health report you run when you want it. The only ambient
+  signal is a small amber dot on the step concerned
+- **Calculators you can check by hand** — avalanche vs. snowball, pay down
+  vs. save, compare two loans, size an emergency fund
+- **A wishlist inside the budget** — a want gets an envelope, a cooling-off
+  period, and a place in line; the numbers say when, and IGAB shows what
+  pulled money out of it
+- **A plain-language glossary** — what each term means, and where it lives in
+  the app
+- **It never pushes** — no notifications, digests, or badges. Educational
+  only: no advice, no market projections, no single health score
 
 ### Accounts & Transactions
-- On-budget and tracking accounts: checking, savings, cash, credit cards, loans, investments, and other assets/liabilities — plus your own custom account types per budget
+- On-budget and tracking accounts — checking, savings, cash, credit cards, loans, investments — plus custom account types
 - Full transaction editor: splits, transfers, memos, flags, file attachments
 - Bulk actions — categorize, approve, or clean up many transactions at once
 - Payee management with merge tooling and fuzzy duplicate detection
 - Scheduled/recurring transactions
 - Statement reconciliation with adjustment handling
-- **Loans and liabilities** — amortization schedules, interest and origination
-  insight, promotional-financing periods, and a live payoff estimate drawn from
-  what you have actually been paying rather than the contractual minimum
+- **Loans and liabilities** — amortization schedules, promotional-financing
+  periods, and a payoff estimate based on what you actually pay, not the
+  minimum
 
 ### Bank Sync & Import
-- **SimpleFIN sync** — link multiple banks; encrypted token storage,
-  similarity-scored deduplication (payee, date, amount), and a review queue
-  for uncertain matches
-- **Four clearing states, one meaning each** — *pending* is a bank hold that
-  has not posted (never counted), *uncleared* is a row you entered that the
-  bank has not confirmed, *cleared* is bank-confirmed, *reconciled* is checked
-  against a statement and locked. A hold that posts under the same record
-  clears in place; a changed amount against something you entered goes to the
-  review queue instead of being applied silently
-- **YNAB import** — switching from YNAB? Import your full export (accounts,
-  categories, transactions, budget history) and run both in parallel until
-  you trust the numbers. Note: YNAB's export does not include saved views — those
-  are not available in the data file, so they cannot be imported.
+- **SimpleFIN sync** — link multiple banks, with encrypted tokens, scored
+  deduplication, and a review queue for uncertain matches
+- **Four clearing states, one meaning each** — pending, uncleared, cleared,
+  reconciled. A hold that posts clears in place; a changed amount goes to
+  review instead of being applied silently
+- **YNAB import** — bring over your full export (accounts, categories,
+  transactions, budget history) and run both in parallel until you trust the
+  numbers. Every import checks Ready to Assign against the export's own
+  figures and says where the two differ. Saved views aren't in YNAB's export,
+  and YNAB's credit-card payment reserves are left out on purpose: IGAB
+  reserves card debt from the card's own balance
 - **CSV import** — per-account bank CSV import with configurable parsing
   (including EU decimal formats) and hash-based dedup
 
 ### AI Assist *(optional)*
 
-Everything here runs against your own [Ollama](https://ollama.com/) server — no
-third-party API, nothing leaving your network — and every feature switches off
-cleanly when AI is disabled or the server is unreachable.
+Everything here runs against your own [Ollama](https://ollama.com/) server —
+nothing leaves your network — and switches off cleanly when AI is disabled or
+unreachable.
 
-- **Receipt → transaction in one step** — photograph a receipt, or pick an image
-  or PDF from your library, and a local vision model reads it: payee, amount,
-  date, memo, and a category, with a one-line reason for the category it picked.
-  IGAB then creates the transaction *and* files the image against it as an
-  attachment, so the record and its proof arrive together. Itemized receipts
-  become splits.
-- **Yours to approve** — scanned transactions land **unapproved**, queued for
-  review rather than dropping silently into your budget. Scanning runs as a
-  background job, so you can submit and keep moving.
-- **A bad scan never costs you the photo** — if extraction fails you still get a
-  transaction with the receipt attached and a memo telling you to fill in the
-  rest by hand, instead of an error and a lost image
+- **Receipt → transaction** — photograph a receipt (or pick an image or PDF)
+  and a local vision model drafts the transaction, files the image as its
+  attachment, and turns itemized lines into splits
+- **Yours to approve** — scans land unapproved in a review queue, and run in
+  the background so you can keep moving
+- **A bad scan never costs you the photo** — if extraction fails you still get
+  a transaction with the receipt attached
 - **Type it or say it** — "coffee at Starbucks 5.50 yesterday" becomes a drafted
   transaction, by keyboard or by microphone
 - **Payee normalization and category suggestions** on ordinary manual entry
-- **AI Activity page** — every job with the model it used, the prompt, the raw
-  response, and the words behind each entry, so you can see why it guessed what
-  it did
+- **AI Activity page** — every job with its model, prompt, and raw response, so
+  you can see why it guessed what it did
 
-Configured in Settings → AI, with a connection test and a model picker.
-Receipt scanning needs a **vision-capable** model — set one as the dedicated
-vision model there, or it falls back to your main model, which will not read
-images unless it happens to support them. The text features work with any
-general model.
+Configured in Settings → AI. Receipt scanning needs a **vision-capable** model;
+the text features work with any general model.
 
 ### Mobile & PWA
-- **Installable app** — add IGAB to your phone's home screen (manifest +
-  service worker); the app shell is precached for instant launches, new
-  versions arrive via an in-app update prompt, and an explicit banner appears
-  if the server is unreachable (data is always live — never stale from cache)
-- **Phone-first UI** — bottom tab navigation, bottom-sheet interactions,
-  card layouts for the budget and transaction lists, long-press multi-select
-- **Quick-add** — the center ＋ opens amount-first entry built for the
-  checkout line: payee memory prefills the category, the account sticks
-  between entries, "save & add another" chains purchases, and one receipt can
-  be split across categories without leaving the sheet
-- **Receipt camera** — snap a photo (or pick from the library) while adding a
-  transaction; images are converted server-side to WebP with thumbnails, HEIC
-  from iPhones included. Hand it to the scanner above and the transaction fills
-  itself in.
-- **Nearby payees** *(opt-in, per device)* — with location enabled, quick-add
-  suggests payees you've used near where you're standing; coordinates stay on
-  your server and never touch budget math
+- **Installable app** — add IGAB to your home screen; the shell is precached
+  for instant launches, data is always live, and new versions arrive via an
+  in-app prompt
+- **Phone-first UI** — bottom tab navigation, bottom sheets, card layouts,
+  long-press multi-select
+- **Quick-add** — amount-first entry built for the checkout line: payee memory
+  prefills the category, "save & add another" chains purchases, and a receipt
+  splits without leaving the sheet
+- **Receipt camera** — snap a photo while adding a transaction (HEIC included);
+  hand it to the scanner and the transaction fills itself in
+- **Nearby payees** *(opt-in, per device)* — quick-add suggests payees you've
+  used near where you're standing; coordinates stay on your server
 
 ### Comfort & Polish
 - **20 themes, each in light and dark** — 40 variants in all: Default, Gruvbox,
   Catppuccin, Rosé Pine (+ Moon), Nord (+ Aurora), Synthwave, Cozy, Vapor,
   Kodachrome, Phosphor, Blueprint, Desert, Bauhaus, Paper, E-Ink, 90's, 80's,
-  and 80's Pop — built on CSS custom properties throughout, so every theme picks
-  up new UI for free
+  and 80's Pop
 - **Contrast is tested, not assumed** — an automated suite holds every palette to
   WCAG AA across all its surfaces, and the UI honors `prefers-contrast`
 - **⌘K command palette** — navigation, budget actions, theme switching, and live
   search from one prompt
-- Information-dense, keyboard-friendly UI designed to stay calm: color is
-  reserved for state that matters (overspent, funded, needs attention)
+- Information-dense, keyboard-friendly, and calm — color is reserved for state
+  that matters
 
 ### Household & History
-- **Share a budget** — invite another person and grant them owner or member
-  access. Owners manage membership and can delete the budget; members do
-  everything day-to-day. A budget always keeps at least one owner — the API
-  refuses to remove the last one.
-- **Undo** — a change log records edits so they can be reversed, individually or
-  as a whole batch. A CSV import that went wrong is one undo, not an evening of
-  cleanup.
+- **Share a budget** — invite another person as owner or member; owners manage
+  membership, members do everything day-to-day
+- **Undo** — edits are reversible one at a time or as a batch; a bad CSV import
+  is one undo, not an evening of cleanup
 
 ### Operations Built In
 - Automated **daily database backups** with retention pruning (production
@@ -271,9 +230,8 @@ automatically on first run.
 
 ### Explore with a Sample Budget
 
-Want to see how IGAB works before entering your own data? Generate a realistic
-sample budget (also available from the budget selector's "Try a Sample Budget"
-section):
+Generate a realistic sample budget before entering your own data (also
+available from the budget selector's "Try a Sample Budget"):
 
 ```sh
 # Make sure the database is running
@@ -286,20 +244,10 @@ just sample-budget your@email.com "Demo Budget"
 just sample-budget your@email.com "Big Demo" full
 ```
 
-The quick demo creates a complete budget with:
-- Realistic category groups and categories with targets
-- Multiple accounts (checking, savings, credit cards, a loan, a brokerage)
-- A year of transaction history with varied payees
-- Scheduled recurring transactions
-- Sample reconciliations
-
-The full household layers on a mortgage with payoff tracking, retirement and
-HSA accounts, sinking-fund categories, hidden categories with history, a
-0%-promo deferred-interest loan, and authentically messy bank-feed payees —
-calibrated to the shape of a real multi-year budget.
-
-Perfect for exploring reports, testing the mobile interface, or just getting
-a feel for the workflow before importing your real data.
+The quick demo is a complete budget — categories with targets, five accounts,
+a year of history, scheduled transactions, reconciliations. The full household
+adds a mortgage, retirement and HSA accounts, sinking funds, a deferred-interest
+loan, and authentically messy bank-feed payees.
 
 ### Production Deployment
 
@@ -352,9 +300,8 @@ For more control, use the multi-container production profile:
 just prod
 ```
 
-This runs separate containers for PostgreSQL, the API, nginx, and backups.
-Useful when you want to use an external database, scale components independently,
-or integrate with existing infrastructure.
+Separate containers for PostgreSQL, the API, nginx, and backups — for an
+external database or existing infrastructure.
 
 Tagged releases publish multi-arch (amd64/arm64) images to GHCR —
 `ghcr.io/brentonmallen1/igab-api`, `igab-web`, `igab-backup`, and `igab-aio`.
@@ -367,10 +314,8 @@ appdata folder.
 
 ### Install on Your Phone (PWA)
 
-IGAB is an installable web app: add it to your home screen and it opens
-full-screen with its own icon, no browser chrome. Install requires the app to
-be served over **HTTPS** (service workers and geolocation need a secure
-context; `localhost` is exempt for testing). Two good ways to get there:
+Installing requires **HTTPS** (service workers and geolocation need a secure
+context; `localhost` is exempt). Two good ways to get there:
 
 **Option A — Tailscale (no ports exposed, automatic certs):**
 
@@ -387,10 +332,8 @@ app* (Android Chrome menu).
 (Caddy/Traefik/Nginx Proxy Manager/SWAG) at `http://<host>:${NGINX_PORT}`
 with a real certificate, then install from that domain.
 
-The app is network-required by design — it caches its own shell for instant
-launches, but your data always comes live from the server. When the server is
-unreachable you get an explicit banner, not stale numbers. New versions show
-an in-app "Update" prompt.
+The app caches its own shell, but your data always comes live from the server
+— when it's unreachable you get a banner, not stale numbers.
 
 ### Configuration
 
@@ -413,12 +356,10 @@ All configuration lives in `.env` (see `.env.example` for the full list):
 
 Financial data needs a backup story before it needs anything else.
 
-- **In-app (Settings → Backups):** see the backup service status and every
-  existing backup, change the schedule/retention/encryption settings (applied
-  by the agent within seconds, no restart), trigger a backup now, and restore
-  from a database dump. Restoring asks for confirmation, offers to back up the
-  current data first (kept as a `igab-prerestore-*.dump`), then the app goes
-  briefly into maintenance mode and restarts itself onto the restored
+- **In-app (Settings → Backups):** service status, every existing backup,
+  schedule/retention/encryption settings (applied live, no restart), back up
+  now, and restore from a dump. Restore offers to back up the current data
+  first (`igab-prerestore-*.dump`), then restarts the app onto the restored
   database.
 - `just backup` — writes `backups/igab-<timestamp>.dump` (pg_dump custom
   format) from the running `db` container.
@@ -431,28 +372,26 @@ Financial data needs a backup story before it needs anything else.
   - `igab-<timestamp>.dump` — the database (pg_dump custom format)
   - `igab-attachments-<timestamp>.tar.gz` — receipts/attachments, only when
     their contents changed since the last archive
-- Settings precedence: values set in the app (stored in the database) win;
-  the `BACKUP_*` env vars are the fallback and the boot-time defaults. If the
-  database is unreachable the agent falls back to env values, so backups keep
-  running even when the app can't.
-- Retention: files older than `backup_keep_days` (default 30) are pruned,
-  but the newest `backup_keep_min` (default 7) of each kind are always kept —
-  a silent stretch of failed backups can't delete your last good ones. Writes
-  are atomic (temp file + rename), a failed dump skips pruning entirely, and
-  a failed cycle retries after 15 minutes instead of waiting a full interval.
-- **Encryption (optional):** set the encryption key in Settings → Backups (or
+- Settings precedence: values set in the app win; the `BACKUP_*` env vars are
+  the fallback and boot-time defaults, so backups keep running even when the
+  app can't reach the database.
+- Retention: files older than `backup_keep_days` (default 30) are pruned, but
+  the newest `backup_keep_min` (default 7) of each kind are always kept, so a
+  stretch of failed backups can't delete your last good ones. Writes are
+  atomic, a failed dump skips pruning, and a failed cycle retries after 15
+  minutes.
+- **Encryption (optional):** set the key in Settings → Backups (or
   `BACKUP_AGE_RECIPIENT`) to an [age](https://age-encryption.org) public key
-  and both file kinds are written as `.age`-encrypted. Generate a keypair with
-  `age-keygen` and keep the private key somewhere that isn't this server.
-  Because the server deliberately has no private key, encrypted backups (and
-  attachment archives) can't be restored from the app — restore with
+  and both file kinds are written `.age`-encrypted. Keep the private key
+  somewhere that isn't this server — which means encrypted backups can't be
+  restored from the app. Restore with
   `BACKUP_AGE_KEY_FILE=<identity file> just restore <file>.dump.age`;
   attachments:
   `age -d -i <identity file> <file>.tar.gz.age | tar -xz -C data/attachments`.
 - Point `BACKUP_DIR` at a disk that is not the database's disk. There is no
-  database/field-level encryption at rest by design — the server needs
-  plaintext to run queries; use host disk encryption (e.g. LUKS) if stolen
-  disks are in your threat model.
+  encryption at rest by design — the server needs plaintext to run queries;
+  use host disk encryption (e.g. LUKS) if stolen disks are in your threat
+  model.
 
 ### Updating
 
@@ -475,19 +414,17 @@ one-time notes for specific releases.
 ### Update Notifications
 
 Settings → Updates has an opt-in check against this repo's GitHub releases —
-**off by default**, and nothing is sent anywhere until you enable it. When a
-newer tagged release exists, a small dot appears next to Settings in the
-sidebar and the Settings page links to the release notes. Dev builds
-(`APP_VERSION=dev`, i.e. anything not built from a version tag) never nag.
+**off by default**, nothing is sent until you enable it. A newer release shows
+as a small dot next to Settings, with a link to the notes. Dev builds never
+nag.
 
 ### Data Integrity
 
-Settings → Data Integrity runs the live invariant suite against your budget
-(also `GET /api/v1/budgets/{id}/integrity`): money conservation between
-account balances and category activity, split and transfer integrity,
-orphaned review matches, stale bank authorizations. Run it after imports and
-before reconciling if anything ever looks off — drift shows up here first,
-with the offending transaction ids.
+Settings → Data Integrity runs the invariant suite against your budget (also
+`GET /api/v1/budgets/{id}/integrity`): money conservation, split and transfer
+integrity, orphaned review matches, stale bank authorizations. Run it after
+imports or whenever something looks off — drift shows up here first, with the
+offending transaction ids.
 
 ### Fresh Install / Reset
 
