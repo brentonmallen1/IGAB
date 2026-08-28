@@ -5,7 +5,12 @@ import { Dialog } from '../../common/Dialog/Dialog'
 import { TagChip } from '../../common/TagChip'
 import { HygieneFindings } from '../../accounts/HygieneFindings'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
-import { useAccountHygiene, type HygieneFinding } from '../../../api/accounts'
+import {
+  useAccountHygiene,
+  useAccounts,
+  useUpdateAccount,
+  type HygieneFinding,
+} from '../../../api/accounts'
 import { useBulkSetCategoryTags, useTagSuggestions, useTags } from '../../../api/tags'
 import { useMarkImportReviewed, type YnabImportResult } from '../../../api/imports'
 import { apiErrorMessage } from '../../../api/client'
@@ -493,6 +498,10 @@ function AccountsStep({
   budgetId: string
   onNavigate: () => void
 }) {
+  const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
+  const update = useUpdateAccount(budgetId)
+  const closed = (accounts ?? []).filter((a) => a.is_closed)
+
   return (
     <>
       {findings.length > 0 ? (
@@ -510,26 +519,42 @@ function AccountsStep({
         </p>
       )}
 
-      {summary && (summary.accounts_closed > 0 || summary.accounts_skipped > 0) && (
-        <Surface variant="sunken" title="What the import did" className="import-review__block">
-          <ul className="import-review__notes">
-            {summary.accounts_closed > 0 && (
-              <li>
-                {summary.accounts_closed} account
-                {summary.accounts_closed === 1 ? ' was' : 's were'} imported and closed. Closing
-                keeps every transaction — reports and net worth are untouched — and only takes
-                the account out of pickers. Reopen one from its settings.
-              </li>
-            )}
-            {summary.accounts_skipped > 0 && (
-              <li>
-                {summary.accounts_skipped} account
-                {summary.accounts_skipped === 1 ? ' was' : 's were'} left out entirely, along with{' '}
-                {summary.transactions_excluded.toLocaleString()} of their transactions. That is
-                usually what leaves transfers without their other side.
-              </li>
-            )}
-          </ul>
+      {closed.length > 0 && (
+        <Surface
+          variant="sunken"
+          title={`${closed.length} account${closed.length === 1 ? '' : 's'} imported and closed`}
+          className="import-review__block"
+        >
+          <p className="dialog__body dialog__body--muted">
+            Every transaction arrived — reports and net worth are untouched. Closing only takes
+            an account out of the pickers and report filters. This is the one thing the import
+            did that nothing else offers to undo.
+          </p>
+          <div className="import-review__reopen">
+            {closed.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className="import-review__btn"
+                disabled={update.isPending}
+                onClick={() => update.mutate({ id: a.id, is_closed: false })}
+              >
+                Reopen {a.name}
+              </button>
+            ))}
+          </div>
+        </Surface>
+      )}
+
+      {summary && summary.accounts_skipped > 0 && (
+        <Surface variant="sunken" title="What was left out" className="import-review__block">
+          <p className="dialog__body">
+            {summary.accounts_skipped} account
+            {summary.accounts_skipped === 1 ? ' was' : 's were'} left out entirely, along with{' '}
+            {summary.transactions_excluded.toLocaleString()} of their transactions. That is
+            usually what leaves transfers without their other side. Re-import the export to
+            bring one in.
+          </p>
         </Surface>
       )}
     </>

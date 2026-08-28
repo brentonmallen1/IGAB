@@ -46,8 +46,15 @@ vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: categories }),
   useCategoryGroups: () => ({ data: groups }),
 }))
+const updateAccount = vi.fn()
+const accounts = [
+  { id: 'a1', name: 'Old Savings', is_closed: true },
+  { id: 'a2', name: 'Checking', is_closed: false },
+]
 vi.mock('../../../api/accounts', () => ({
   useAccountHygiene: () => ({ data: { findings: [], clean: true } }),
+  useAccounts: () => ({ data: accounts }),
+  useUpdateAccount: () => ({ mutate: updateAccount, isPending: false }),
   useRepairTransfers: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('../../../api/tags', () => ({
@@ -102,6 +109,7 @@ function open(over: Partial<YnabImportResult> | null = {}) {
 beforeEach(() => {
   bulkSet.mockClear()
   markReviewed.mockClear()
+  updateAccount.mockClear()
 })
 
 describe('the report', () => {
@@ -206,5 +214,19 @@ describe('the tag step', () => {
     await goToTags(user)
     await user.click(screen.getByRole('button', { name: /^Suggested/ }))
     expect(screen.getByText('Rent')).toBeInTheDocument()
+  })
+})
+
+describe('the accounts step', () => {
+  it('offers to reopen an account the import closed', async () => {
+    // The one decision the import made that nothing else offers to undo.
+    const user = userEvent.setup()
+    open({ accounts_closed: 1 })
+    await user.click(screen.getByRole('button', { name: /Accounts/ }))
+
+    await user.click(screen.getByRole('button', { name: 'Reopen Old Savings' }))
+    expect(updateAccount).toHaveBeenCalledWith({ id: 'a1', is_closed: false })
+    // And not for one that is open.
+    expect(screen.queryByRole('button', { name: /Reopen Checking/ })).not.toBeInTheDocument()
   })
 })
