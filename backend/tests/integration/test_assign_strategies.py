@@ -18,6 +18,7 @@ from igab.services.target_service import TargetService
 from .factories import (
     create_account,
     create_budget,
+    create_budget_assignment,
     create_category,
     create_category_group,
     create_transaction,
@@ -311,11 +312,16 @@ async def test_reset_assigned_pulls_negative_assignment_from_tba(db_session):
 async def test_system_and_hidden_categories_are_excluded(db_session):
     services, budget, checking, groceries, dining = await _history_setup(db_session)
     # Hide dining (it has June history that would otherwise re-fund it) and
-    # give the system Inflow category a June assignment.
+    # give the system Inflow category a June assignment. Planted directly:
+    # the service refuses to assign to an income category now, but rows
+    # written before it did still exist in real budgets.
     dining.is_hidden = True
+    # Listings refresh every row's served fields, so a pending edit has to
+    # be flushed first — as the update endpoint does before it lists.
+    await db_session.flush()
     categories = await services.category_repo.get_all(budget.id, include_hidden=True)
     inflow = next(c for c in categories if c.name == "Inflow")
-    await services.budgets.set_assignment(budget.id, inflow.id, PREV_MONTH, Decimal("999.00"))
+    await create_budget_assignment(db_session, budget, inflow, PREV_MONTH, "999.00")
     await db_session.flush()
     assign = make_assign(db_session, services)
 

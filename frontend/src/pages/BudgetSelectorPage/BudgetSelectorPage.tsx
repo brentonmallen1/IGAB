@@ -18,7 +18,7 @@ import {
 import { useLogout } from '../../api/auth'
 import { useAppStore } from '../../stores/appStore'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
-import { formatMoney } from '../../utils/money'
+import { formatMoney, parseApiDecimal } from '../../utils/money'
 import './BudgetSelectorPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import { SharingModal } from '../../components/budgets/SharingModal'
@@ -301,6 +301,17 @@ export function BudgetSelectorPage() {
         toast(
           `${n} ${leg} couldn't be matched to the other side — see Accounts for the list.`,
           { duration: 12000, icon: '⚠️' }
+        )
+      }
+      // Said out loud because it is the one place Ready to Assign will differ
+      // from YNAB's by construction, and by exactly this much.
+      if (r.credit_card_payment_assignments_skipped > 0) {
+        const n = r.credit_card_payment_assignments_skipped.toLocaleString()
+        toast(
+          `${n} credit-card payment assignment${r.credit_card_payment_assignments_skipped === 1 ? '' : 's'} ` +
+            `(${formatMoney(parseApiDecimal(r.credit_card_payment_reserves_skipped))}) left out — ` +
+            "IGAB reserves card debt from the card's own balance, so they would count it twice.",
+          { duration: 15000, icon: '💳' }
         )
       }
       if (r.errors.length > 0) {

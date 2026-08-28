@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,10 +24,40 @@ from igab.services.transaction_service import TransactionService
 
 _TRANSFER_PREFIX = "Transfer : "
 _YNAB_INFLOW_GROUP = "Inflow"
+_YNAB_INFLOW_CATEGORY = "Ready to Assign"
+_YNAB_HIDDEN_GROUP = "Hidden Categories"
+_YNAB_CREDIT_CARD_PAYMENTS_GROUP = "Credit Card Payments"
 _MAX_ERRORS = 50
 
 
 _SYSTEM_INCOME_GROUP = "Income"
+#: What YNAB's inflow category is called here. YNAB names it after the
+#: budget-wide figure it feeds ("Ready to Assign"); in IGAB that figure is the
+#: hero, and a category row of the same name sat directly under it showing a
+#: number that was neither.
+_INFLOW_CATEGORY = "Inflow"
+
+
+def map_ynab_names(group: str, category: str) -> tuple[str, str]:
+    """YNAB's (group, category) → IGAB's. The one mapping, used by the
+    importer and by the parity check that reads YNAB's own figures back."""
+    if group == _YNAB_INFLOW_GROUP:
+        return _SYSTEM_INCOME_GROUP, (
+            _INFLOW_CATEGORY if category == _YNAB_INFLOW_CATEGORY else category
+        )
+    return group, category
+
+
+def is_credit_card_payments_group(group: str) -> bool:
+    """YNAB's own group of card-payment reserves.
+
+    Its categories exist only in the plan (never in the register) and hold
+    the cash YNAB sets aside to pay each card. IGAB has no such reserve: a
+    card is an on-budget account whose balance already nets against cash in
+    Ready to Assign, so importing these assignments reserved the same debt
+    twice and lowered Ready to Assign by every dollar ever assigned there.
+    """
+    return group == _YNAB_CREDIT_CARD_PAYMENTS_GROUP
 
 
 @dataclass
@@ -63,6 +94,12 @@ class ImportResult:
     #: is classified in reports — applying it silently would be a number
     #: moving for a reason the user never saw.
     categories_tagged: int = 0
+    #: Plan rows in YNAB's Credit Card Payments group, left out on purpose —
+    #: see `is_credit_card_payments_group`. Reported with the money they would
+    #: have taken out of Ready to Assign, so the user can see why the figure
+    #: differs from YNAB's by exactly that.
+    credit_card_payment_assignments_skipped: int = 0
+    credit_card_payment_reserves_skipped: Decimal = Decimal("0")
     errors: list[str] = field(default_factory=list)
 
 
@@ -144,7 +181,7 @@ class YNABImporter:
         group_positions: dict[str, int] = {}
         next_in_group: dict[str, int] = {}
         for row in budget.plan_rows:
-            if row.month != last:
+            if row.month != last or is_credit_card_payments_group(row.category_group):
                 continue
             if row.category_group not in group_positions:
                 group_positions[row.category_group] = len(group_positions)
@@ -223,9 +260,7 @@ class YNABImporter:
         Positions come from `_seed_arrangement`; left None, the repository
         appends the row after the last one in its budget or group.
         """
-        # Map YNAB's "Inflow" category group to the system "Income" group
-        if group_name == _YNAB_INFLOW_GROUP:
-            group_name = _SYSTEM_INCOME_GROUP
+        group_name, category_name = map_ynab_names(group_name, category_name)
 
         if group_name not in self._group_cache:
             row = await self.session.execute(
@@ -242,6 +277,9 @@ class YNABImporter:
                     name=group_name,
                     sort_order=group_sort_order,
                     is_system=(group_name == _SYSTEM_INCOME_GROUP),
+                    # Hidden in YNAB stays hidden here: the history still
+                    # imports, the rows just do not clutter the grid.
+                    is_hidden=(group_name == _YNAB_HIDDEN_GROUP),
                 )
                 result.category_groups_imported += 1
             self._group_cache[group_name] = group
@@ -420,7 +458,11 @@ class YNABImporter:
                     children: list[dict] = []
                     for leg in txn.splits:
                         leg_category_id: uuid.UUID | None = None
-                        if leg.category_group and leg.category:
+                        if (
+                            leg.category_group
+                            and leg.category
+                            and not is_credit_card_payments_group(leg.category_group)
+                        ):
                             cat = await self._get_or_create_category(
                                 leg.category_group, leg.category, result
                             )
@@ -465,7 +507,11 @@ class YNABImporter:
                     continue
 
                 category_id: uuid.UUID | None = None
-                if txn.category_group and txn.category:
+                if (
+                    txn.category_group
+                    and txn.category
+                    and not is_credit_card_payments_group(txn.category_group)
+                ):
                     cat = await self._get_or_create_category(
                         txn.category_group, txn.category, result
                     )
@@ -599,6 +645,10 @@ class YNABImporter:
 
     async def _import_assignments(self, budget: YNABBudget, result: ImportResult) -> None:
         for entry in budget.budget_entries:
+            if is_credit_card_payments_group(entry.category_group):
+                result.credit_card_payment_assignments_skipped += 1
+                result.credit_card_payment_reserves_skipped += entry.assigned
+                continue
             try:
                 cat = await self._get_or_create_category(
                     entry.category_group, entry.category, result

@@ -12,6 +12,7 @@ from igab.domain.carryover import available_through
 # is how the shadowing bug in report_service started.
 from igab.domain.dates import month_end as _month_end
 from igab.domain.dates import month_start as _month_start
+from igab.domain.exceptions import InvariantViolation
 from igab.domain.money import quantize_cents
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -59,6 +60,14 @@ class CategoryBalance:
     assigned: Decimal
     activity: Decimal
     available: Decimal
+    #: The category sits in a system (Income) group. Its `activity` is income
+    #: received; its `assigned` and `available` are not envelope money —
+    #: nothing can be assigned to it and nothing drains it, so `available`
+    #: would only ever accumulate every dollar ever received. Decided here,
+    #: where the TBA arithmetic already excludes it, and served as such: the
+    #: month endpoint blanks both figures rather than letting a lifetime total
+    #: sit under a hero showing what is actually free to assign.
+    in_system_group: bool = False
 
 
 @dataclass
@@ -199,23 +208,20 @@ class BudgetService:
             after=after,
         )
 
-    async def _budget_math_category_ids(self, budget_id: uuid.UUID) -> set[uuid.UUID]:
-        """Categories that participate in the TBA arithmetic.
+    async def _require_envelope(self, budget_id: uuid.UUID, category_id: uuid.UUID) -> None:
+        """Refuse to put money into, or take it out of, an income category.
 
-        Non-system only: income adds to To Be Assigned rather than reducing it,
-        so a system-group category must not count against it.
-
-        **This is not `is_assignable`, and must not be replaced by it.** Hidden
-        categories are included here on purpose — they still hold money and
-        still overspend, so leaving them out would make TBA wrong and make
-        Cover Overspent unable to zero the budget. `is_assignable` answers a
-        different question: what a picker may *offer*, which a hidden category
-        never is.
+        A category in a system group is where income is *filed*, not an
+        envelope: money assigned there would neither reduce To Be Assigned nor
+        ever come back out. The pickers already hide such categories
+        (`is_assignable`); this is the same rule where the money actually moves.
         """
-        groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
-        system_group_ids = {g.id for g in groups if g.is_system}
-        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
-        return {c.id for c in categories if c.category_group_id not in system_group_ids}
+        category = await self.category_repo.get(category_id)
+        if category is None or str(category.budget_id) != str(budget_id):
+            raise InvariantViolation("Category does not belong to this budget")
+        group = await self.category_group_repo.get(category.category_group_id)
+        if group is not None and group.is_system:
+            raise InvariantViolation("Income categories do not hold money")
 
     async def get_category_balance(
         self,
@@ -309,13 +315,22 @@ class BudgetService:
 
         for cat in categories:
             bal = balance_map[cat.id]
+            # Decided once, here, and carried on the row: every consumer —
+            # the month endpoint, Cover Overspent, the Guide's checkup — reads
+            # the flag rather than re-deriving which groups are system.
+            bal.in_system_group = cat.category_group_id in system_group_ids
             balances.append(bal)
-            # Exclude system (Income) categories: income adds to TBA, not reduces it
-            if cat.category_group_id not in system_group_ids:
-                total_category_balance += bal.available
-                if bal.available < 0:
-                    total_overspent += -bal.available
-                    overspent_count += 1
+            # Exclude system (Income) categories: income adds to TBA, not
+            # reduces it — and it is not envelope money, so the month's
+            # envelope totals leave it out as well. Hidden categories stay in:
+            # they still hold money and still overspend. (This is not
+            # `is_assignable`, which answers what a picker may *offer*.)
+            if bal.in_system_group:
+                continue
+            total_category_balance += bal.available
+            if bal.available < 0:
+                total_overspent += -bal.available
+                overspent_count += 1
             total_assigned += bal.assigned
             total_activity += bal.activity
 
@@ -465,6 +480,7 @@ class BudgetService:
         month: date,
         amount: Decimal,
     ) -> None:
+        await self._require_envelope(budget_id, category_id)
         month_start = first_of_month(month)
         assignment = await self.assignment_repo.get_or_create(
             budget_id=budget_id,
@@ -556,8 +572,6 @@ class BudgetService:
         into a category; to=None releases a category's money back to TBA.
         The move is recorded in the budget_moves audit trail.
         """
-        from igab.domain.exceptions import InvariantViolation
-
         if amount <= 0:
             raise InvariantViolation("Amount to move must be positive")
         if from_category_id == to_category_id:
@@ -566,11 +580,8 @@ class BudgetService:
         month_start = first_of_month(month)
 
         for category_id in (from_category_id, to_category_id):
-            if category_id is None:
-                continue
-            category = await self.category_repo.get(category_id)
-            if category is None or str(category.budget_id) != str(budget_id):
-                raise InvariantViolation("Category does not belong to this budget")
+            if category_id is not None:
+                await self._require_envelope(budget_id, category_id)
 
         # The audit row first, so both assignment change rows can carry its id.
         move = None
@@ -615,15 +626,14 @@ class BudgetService:
     async def _overspent_shortfalls(
         self, budget_id: uuid.UUID, month: date
     ) -> tuple["BudgetSummary", dict[uuid.UUID, Decimal]]:
-        """Current summary plus {category_id: overspent amount} for non-system
+        """Current summary plus {category_id: overspent amount} for envelope
         categories. Hidden categories are included on purpose — they participate
         in the TBA math, so covering them is required to zero out overspending."""
         summary = await self.get_budget_summary(budget_id, month)
-        non_system_ids = await self._budget_math_category_ids(budget_id)
         shortfalls = {
             b.category_id: -b.available
             for b in summary.category_balances
-            if b.available < 0 and b.category_id in non_system_ids
+            if b.available < 0 and not b.in_system_group
         }
         return summary, shortfalls
 
@@ -671,8 +681,6 @@ class BudgetService:
         current TBA. Each cover routes through move_money, so it lands in the
         budget_moves audit trail as "TBA → category".
         """
-        from igab.domain.exceptions import InvariantViolation
-
         summary, shortfalls = await self._overspent_shortfalls(budget_id, month)
         available_tba = max(Decimal("0"), summary.to_be_assigned)
 

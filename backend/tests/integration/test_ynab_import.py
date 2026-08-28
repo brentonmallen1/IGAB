@@ -979,3 +979,63 @@ async def test_the_imported_layout_follows_the_plans_final_month(db_session):
     assert [c.sort_order for c in bills] == [0, 1, 2, 3]
     wants = await services.category_repo.get_by_group(by_name["Wants"].id)
     assert [c.name for c in wants] == ["Games", "Dining"]
+
+
+async def test_the_inflow_category_is_named_inflow_not_ready_to_assign(db_session):
+    """YNAB names its inflow category after the budget-wide figure it feeds.
+    In IGAB that figure is the hero, and a row of the same name sat directly
+    under it showing a number that was neither."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await _importer(services, db_session, budget).import_budget(_budget_with_transfer())
+
+    groups = {g.name: g for g in await CategoryGroupRepository(db_session).get_all(budget.id)}
+    assert groups["Income"].is_system
+    income = await services.category_repo.get_by_group(groups["Income"].id)
+    assert [c.name for c in income] == ["Inflow"]
+
+
+async def test_hidden_categories_stay_hidden_and_card_payment_reserves_are_skipped(db_session):
+    """YNAB's Hidden Categories group imports hidden (the history still
+    arrives); its Credit Card Payments group does not import at all — IGAB
+    nets a card's balance against cash, so those reserves would count the
+    same debt twice — and the summary says what was left out and how much."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    # The register helper dates every row JAN5, so the plan is January too.
+    jan = date(2026, 1, 1)
+    plan = [
+        _plan_row(jan, "Everyday", "Groceries", "300"),
+        _plan_row(jan, "Hidden Categories", "Old Hobby", "25"),
+        _plan_row(jan, "Credit Card Payments", "Visa", "410.50"),
+        _plan_row(jan, "Credit Card Payments", "Amex", "89.50"),
+    ]
+    data = YNABBudget(
+        transactions=[
+            _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+            _txn("Checking", "Corner Market", "-60.00", group="Everyday", category="Groceries"),
+            _txn("Checking", "Hobby Shop", "-20.00", group="Hidden Categories", category="Old Hobby"),
+        ],
+        budget_entries=[e for e in plan if e.assigned != 0],
+        plan_rows=plan,
+    )
+    result = await _importer(services, db_session, budget).import_budget(data)
+
+    everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    by_name = {g.name: g for g in everyone}
+    assert "Credit Card Payments" not in by_name
+    assert by_name["Hidden Categories"].is_hidden
+    assert not by_name["Everyday"].is_hidden
+    assert result.credit_card_payment_assignments_skipped == 2
+    assert result.credit_card_payment_reserves_skipped == Decimal("500.00")
+    assert result.assignments_imported == 2
+    # The hidden category's history is there, just out of the grid.
+    hidden = await services.category_repo.get_by_group(by_name["Hidden Categories"].id)
+    assert [c.name for c in hidden] == ["Old Hobby"]
+    # And Ready to Assign is what the register and the kept assignments say:
+    # 2000 in, 80 spent, 325 assigned of which 80 was spent → 1920 − 245.
+    # With the 500 of card reserves imported it would have read 1175.
+    month = await services.budgets.get_budget_summary(budget.id, jan)
+    assert month.to_be_assigned == Decimal("1675.00")
