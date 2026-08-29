@@ -492,7 +492,23 @@ a {
    never fight over one box-shadow property; .more-sheet__theme-swatch--* sits
    inside the nested data-theme palette preview and would light every swatch;
    .txn-checkbox and .msc__check are tick marks; toggle knobs are too small to
-   read as anything but smeared; .nl-form__mic--listening has its own pulse. */
+   read as anything but smeared; .nl-form__mic--listening has its own pulse.
+
+   ALSO excluded, as a category: the accent-FILLED active state of every
+   segmented control and tab row — .reports-nav__tab--active,
+   .guide-nav__tab--active, .report-toggle-btn--active, .report-btn--active,
+   .drp__preset--active, .mm-sheet__count-btn--active,
+   .rfb__groupby-btn--active, .rfb__view-select--active,
+   .quick-add__direction-btn--active. A glow needs air around it, and these
+   have none. Their rows fail in one of two ways, neither of which any radius
+   fixes: the scrollers (.reports-nav__tabs, .guide-nav__tabs) and the
+   segmented groups (.report-toggle-group, .quick-add__direction) clip
+   overflow, so the bloom gets a hard straight cut at the container edge; and
+   the rows with opaque siblings (.report-btn, .drp__preset,
+   .mm-sheet__count-btn — 2-4px gaps over --bg-secondary) let later siblings
+   paint their background over the glow, so it is severed on one side only and
+   reads as a rendering bug. These states are already accent-filled, which is
+   a strong enough selected signal without the bloom. */
 [class*='btn--primary'],
 .integrity-panel__run-btn,
 .pmerge-btn--confirm,
@@ -524,15 +540,6 @@ a {
 .selector-btn,
 .tba-hero__assign-main,
 .toast-undo-button,
-/* selected / active states that fill with accent */
-.quick-add__direction-btn--active,
-.report-toggle-btn--active,
-.drp__preset--active,
-.rfb__groupby-btn--active,
-.rfb__view-select--active,
-.mm-sheet__count-btn--active,
-.guide-nav__tab--active,
-.report-btn--active,
 /* solid accent dots and badges */
 .sidebar__update-badge,
 .more-sheet__update-badge,
