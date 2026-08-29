@@ -290,7 +290,7 @@ data lives in `/data` (database, attachments, backups) — just mount one volume
 | `BACKUP_INTERVAL_HOURS` | | `24` | Hours between backups |
 | `BACKUP_KEEP_DAYS` | | `30` | Prune backups older than this |
 | `BACKUP_AGE_RECIPIENT` | | — | age public key for encrypted backups |
-| `SIMPLEFIN_ENCRYPTION_KEY` | | — | Fernet key for bank sync |
+| `SIMPLEFIN_ENCRYPTION_KEY` | | — | Fernet key for bank sync — see [Bank sync key](#bank-sync-key). Not a hex string; `openssl rand -hex 32` will not work |
 
 #### Multi-Container (Advanced)
 
@@ -344,9 +344,31 @@ All configuration lives in `.env` (see `.env.example` for the full list):
 | Database | `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`, `DATABASE_URL` |
 | Auth | `SECRET_KEY`, token lifetimes, `ADMIN_EMAIL`, `ADMIN_PASSWORD` |
 | Ports | `API_PORT`, `FRONTEND_PORT`, `NGINX_PORT` |
-| Bank sync | `SIMPLEFIN_ENCRYPTION_KEY` (Fernet key for access tokens) |
+| Bank sync | `SIMPLEFIN_ENCRYPTION_KEY` (Fernet key for access tokens — see [Bank sync key](#bank-sync-key)) |
 | AI (optional) | `OLLAMA_HOST`, `OLLAMA_MODEL` |
 | Email (optional) | `SMTP_*` |
+
+#### Bank sync key
+
+SimpleFIN access URLs are stored encrypted, so bank sync needs
+`SIMPLEFIN_ENCRYPTION_KEY` before you can connect. Generate one with:
+
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Two things to know:
+
+- **It is not the `SECRET_KEY` recipe.** A Fernet key is 32 url-safe base64
+  bytes; a hex string from `openssl rand -hex 32` is rejected.
+- **Keep it.** Connections are encrypted with this key and cannot be read with
+  any other. If it is lost or changed, every SimpleFIN connection has to be
+  removed and set up again.
+
+On Unraid the field is on the container's edit page with **Advanced View**
+turned on. Settings → SimpleFIN reports what is wrong when the key is missing
+or malformed, and refuses to spend your (single-use) setup token until it is
+fixed.
 
 ---
 

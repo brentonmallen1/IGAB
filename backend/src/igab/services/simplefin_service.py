@@ -13,7 +13,13 @@ from igab.domain.bank_posting import FeedRecord, Review
 from igab.domain.exceptions import IGABError
 from igab.domain.matching import best_payee_similarity, date_proximity, payee_similarity
 from igab.integrations.simplefin.client import SimpleFINClient
-from igab.integrations.simplefin.encryption import decrypt, encrypt
+from igab.integrations.simplefin.encryption import (
+    SimpleFINKeyMismatch,
+    SimpleFINNotConfigured,
+    decrypt,
+    encrypt,
+    require_configured,
+)
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -202,6 +208,10 @@ class SimpleFINService:
         self.client = SimpleFINClient()
 
     async def setup(self, user_id: uuid.UUID, setup_token: str) -> SimpleFINConnection:
+        # Before the exchange, not after: a setup token is single-use, so a
+        # server with no encryption key would otherwise burn the user's token
+        # and then refuse to store the result.
+        require_configured()
         access_url = await self.client.claim_access_url(setup_token)
         encrypted = encrypt(access_url)
         return await self.repo.create(user_id=user_id, access_url_encrypted=encrypted)
@@ -316,7 +326,19 @@ class SimpleFINService:
         is_first_sync = any(not a.first_sync_complete for a in targets)
         since = await self._get_lookback_since(target_ids, is_first_sync)
 
-        access_url = decrypt(conn.access_url_encrypted)
+        try:
+            access_url = decrypt(conn.access_url_encrypted)
+        except (SimpleFINNotConfigured, SimpleFINKeyMismatch) as exc:
+            # Recorded like any other sync failure so the connection carries
+            # the reason in the UI, rather than the request 500-ing with
+            # "Internal server error" every time the scheduler runs.
+            error_msg = str(exc)
+            await self.repo.update(
+                connection_id,
+                last_sync_error=error_msg,
+                last_sync_error_at=datetime.now(UTC),
+            )
+            return {"imported": 0, "skipped": 0, "error": error_msg}
 
         txns_raw: list[dict] = []
         last_error: Exception | None = None

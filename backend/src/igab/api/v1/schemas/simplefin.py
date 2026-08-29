@@ -9,6 +9,24 @@ class SimpleFINSetupRequest(BaseModel):
     setup_token: str
 
 
+class SimpleFINConfigResponse(BaseModel):
+    """Whether this server can store bank credentials at all.
+
+    The client cannot work this out — the encryption key is server-side env —
+    so it asks before offering the setup form. All three fields are required:
+    a path that forgets one must raise, not report a misconfigured server as
+    ready and let the user spend a single-use token finding out.
+
+    ``generate_key_command`` is served rather than written into the frontend so
+    the recipe lives in exactly one place (``simplefin.encryption``), beside
+    the check that decides whether a key is acceptable.
+    """
+
+    configured: bool
+    problem: str | None
+    generate_key_command: str
+
+
 class SimpleFINUpdateRequest(BaseModel):
     sync_interval_hours: int | None = None
     sync_enabled: bool | None = None
