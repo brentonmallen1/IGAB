@@ -103,9 +103,10 @@
   position: relative;
 }
 
-.header__theme-btn,
-.header__privacy-btn,
-.header__mode-btn {
+/* One rule for every square icon button in the header. It was written three
+   times — theme, privacy, mode — and undo/redo would have made five copies of
+   the same 32px box before the two of them were even wired up. */
+.header__icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -116,21 +117,27 @@
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
-.header__theme-btn:hover,
-.header__privacy-btn:hover,
-.header__mode-btn:hover:not(:disabled) {
+.header__icon-btn:hover:not(:disabled) {
   background-color: var(--bg-hover);
   color: var(--text-primary);
 }
 
-.header__privacy-btn--active {
+/* On, and saying so — privacy mode today */
+.header__icon-btn--active {
   color: var(--color-accent);
 }
 
-/* A single-look palette has no other mode to switch to */
-.header__mode-btn:disabled {
+/* Nothing to do: a single-look palette has no other mode to switch to */
+.header__icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Undo sits beside redo with no gap between them: one control, two
+   directions. The group keeps the header's own spacing on the outside. */
+.header__undo-group {
+  display: flex;
+  align-items: center;
 }
 
 .header__theme-dropdown {
@@ -209,9 +216,7 @@
     height: 44px;
   }
 
-  .header__theme-btn,
-  .header__privacy-btn,
-  .header__mode-btn {
+  .header__icon-btn {
     width: 44px;
     height: 44px;
   }
