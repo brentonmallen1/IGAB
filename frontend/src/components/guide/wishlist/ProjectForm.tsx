@@ -21,8 +21,12 @@ export function ProjectForm({ budgetId, project, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const { data: categories } = useCategories(budgetId)
   const { data: groups } = useCategoryGroups(budgetId)
+  // `is_assignable` — a project funds a category, so the question is what
+  // money may be budgeted into, not what a row may be filed to. Without it
+  // the ungrouped fallback surfaced every card's set-aside envelope under
+  // "Other", because their group is hidden and never arrives with them.
   const sections = useMemo(
-    () => groupedCategorySections(categories ?? [], groups ?? []),
+    () => groupedCategorySections((categories ?? []).filter((c) => c.is_assignable), groups ?? []),
     [categories, groups]
   )
   const create = useCreateProject(budgetId)

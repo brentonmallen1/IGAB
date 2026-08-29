@@ -105,6 +105,9 @@ def make_service(payee: MockPayee | None) -> TransactionService:
     ownership_result = MagicMock()
     ownership_result.scalar_one_or_none = MagicMock(return_value=MagicMock())
     session.execute = AsyncMock(return_value=ownership_result)
+    # require_not_card_envelope runs session.scalar(...) for the category's
+    # linked_account_id; None means "an ordinary envelope, file away".
+    session.scalar = AsyncMock(return_value=None)
 
     return TransactionService(
         session=session,

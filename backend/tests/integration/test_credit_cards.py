@@ -11,6 +11,8 @@ and a payment moves reserved cash without touching the figure.
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from igab.services.card_payment import ensure_payment_category
 
 from .factories import (
@@ -19,6 +21,7 @@ from .factories import (
     create_budget_assignment,
     create_category,
     create_category_group,
+    create_liability,
     create_transaction,
     create_user,
     make_services,
@@ -297,3 +300,107 @@ class TestTheIdentity:
         assert s.total_overspent == D("50.00"), "groceries only — the card is not overspending"
         preview = await services.budgets.cover_overspent_preview(budget.id, JUL)
         assert [i.category_id for i in preview.items] == [groceries.id]
+
+
+class TestNothingIsFiledToACardEnvelope:
+    """A card's set-aside envelope takes assignments, never transactions.
+
+    `get_budget_summary` overwrites that envelope's balance from card
+    arithmetic, so a filed row shows in no envelope, no total, and no red —
+    the money simply leaves the budget. The register's category dropdown
+    offered it (a card envelope is not hidden; only its group is), so this
+    was reachable in the most-used control in the app.
+    """
+
+    async def test_creating_a_row_there_is_refused(self, db_session):
+        from igab.domain.exceptions import InvariantViolation
+        from igab.services.transaction_service import TransactionCreate
+
+        services, budget, checking, _, linked, _ = await _setup(db_session)
+        with pytest.raises(InvariantViolation, match="payment envelope"):
+            await services.transactions.create(
+                budget.id,
+                TransactionCreate(
+                    account_id=checking.id,
+                    date=date(2026, 7, 9),
+                    amount=D("-40.00"),
+                    category_id=linked.id,
+                ),
+            )
+
+    async def test_repointing_an_existing_row_there_is_refused(self, db_session):
+        from igab.domain.exceptions import InvariantViolation
+        from igab.services.transaction_service import TransactionUpdate
+
+        services, budget, checking, _, linked, groceries = await _setup(db_session)
+        txn = await create_transaction(
+            db_session, budget, checking, "-40.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+        with pytest.raises(InvariantViolation, match="payment envelope"):
+            await services.transactions.update(
+                budget.id, txn.id, TransactionUpdate(category_id=linked.id)
+            )
+
+    async def test_a_split_line_there_is_refused(self, db_session):
+        from igab.domain.exceptions import InvariantViolation
+        from igab.services.transaction_service import SplitSpec
+
+        services, budget, checking, _, linked, groceries = await _setup(db_session)
+        txn = await create_transaction(db_session, budget, checking, "-100.00", date(2026, 7, 9))
+        await db_session.flush()
+        with pytest.raises(InvariantViolation, match="payment envelope"):
+            await services.transactions.convert_to_split(
+                budget.id,
+                txn.id,
+                [
+                    SplitSpec(amount=D("-60.00"), category_id=groceries.id),
+                    SplitSpec(amount=D("-40.00"), category_id=linked.id),
+                ],
+            )
+
+    async def test_a_liability_envelope_is_still_assignable(self, db_session):
+        """The exclusion names the card term, not `LINKED`: a debt category
+        owned by a liability is an ordinary envelope you budget into, and
+        the liability screen needs its current binding offered back."""
+        services, budget, _, _, linked, groceries = await _setup(db_session)
+        liability = await create_liability(
+            db_session, budget, "Car loan", manual_balance=D("-5000.00")
+        )
+        groceries.linked_liability_id = liability.id
+        await db_session.flush()
+
+        rows = await services.category_repo.get_all(budget.id, include_hidden=True)
+        by_id = {c.id: c for c in rows}
+        assert by_id[groceries.id].is_assignable is True
+        assert by_id[groceries.id].is_categorizable is False
+        assert by_id[linked.id].is_assignable is False
+
+    async def test_auto_categorization_never_inherits_a_card_envelope(self, db_session):
+        """The caller's category is validated, then auto-categorization
+        resolves one afterwards — so the payee's history and default are the
+        two ways an unvalidated category reaches the row. One bad historical
+        row would otherwise re-file every future transaction for that payee
+        into money the budget cannot show."""
+        from igab.services.transaction_service import TransactionCreate
+
+        services, budget, checking, _, linked, _ = await _setup(db_session)
+        payee = await services.payee_repo.find_or_create(budget.id, "Card Company")
+        # A bad row from before the guard existed, written behind the service.
+        bad = await create_transaction(
+            db_session, budget, checking, "-10.00", date(2026, 7, 1), payee=payee
+        )
+        bad.category_id = linked.id
+        payee.default_category_id = linked.id
+        await db_session.flush()
+
+        txn = await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 20),
+                amount=D("-12.00"),
+                payee_id=payee.id,
+            ),
+        )
+        assert txn.category_id is None, "inherited a card envelope past the guard"
