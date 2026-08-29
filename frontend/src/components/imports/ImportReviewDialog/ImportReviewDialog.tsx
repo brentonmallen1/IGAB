@@ -20,7 +20,7 @@ import {
 } from '../../../api/tags'
 import { useMarkImportReviewed, type YnabImportResult } from '../../../api/imports'
 import { apiErrorMessage } from '../../../api/client'
-import { renderableGroups } from '../../budget/budgetGroups'
+import { renderableCategories, renderableGroups } from '../../budget/budgetGroups'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { parseApiDecimal } from '../../../utils/money'
 import {
@@ -103,7 +103,10 @@ export function ImportReviewDialog({
     // server scopes suggestions by: income holds no envelope money, so
     // classifying its spending is meaningless.
     const names = new Map(renderableGroups(groups).map((g) => [g.id, g.name]))
-    return categories
+    // `renderableGroups` drops system groups, not hidden ones, so the card
+    // envelopes' group survives it — and a set-aside envelope cannot carry a
+    // classification tag, since nothing is ever filed to it.
+    return renderableCategories(categories)
       .filter((c) => names.has(c.category_group_id))
       .map((c) => ({
         id: c.id,

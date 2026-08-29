@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
+import { renderableCategories } from '../budgetGroups'
 import {
   useBudgetFilters,
   useCreateBudgetFilter,
@@ -20,7 +21,13 @@ interface Props {
 export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId, true)
-  const { data: categories = [] } = useCategories(budgetId, true)
+  const { data: allCategories = [] } = useCategories(budgetId, true)
+  // Hidden categories are offered here on purpose — a filter may name one.
+  // A card's set-aside envelope is different: it is never a grid row, so
+  // there is nothing to filter it into or out of. The same rule the grid
+  // draws by, from the same place, or "Credit Card Payments" appears here
+  // as a group of checkboxes that change nothing.
+  const categories = useMemo(() => renderableCategories(allCategories), [allCategories])
   const createFilter = useCreateBudgetFilter(budgetId)
   const updateFilter = useUpdateBudgetFilter(budgetId)
   const deleteFilter = useDeleteBudgetFilter(budgetId)

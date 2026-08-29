@@ -72,8 +72,12 @@ def make_service(txn: MockTransaction) -> TransactionService:
     # tests about reconciliation, not about the rule.
     account_repo = MagicMock()
     account_repo.get_or_raise = AsyncMock(return_value=MagicMock(on_budget=True))
+    # require_not_card_envelope runs session.scalar(...) for the category's
+    # linked_account_id; None means "an ordinary envelope, file away".
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=None)
     return TransactionService(
-        session=AsyncMock(),
+        session=session,
         transaction_repo=txn_repo,
         account_repo=account_repo,
         category_repo=MagicMock(),

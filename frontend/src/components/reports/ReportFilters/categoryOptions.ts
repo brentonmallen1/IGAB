@@ -1,4 +1,5 @@
 import type { BudgetView, Category } from '../../../types'
+import { renderableCategories } from '../../budget/budgetGroups'
 import { groupByView } from '../../budget/BudgetTable/viewGrouping'
 import type { MultiSelectOption } from './MultiSelectCombobox'
 
@@ -17,7 +18,12 @@ export function categoryOptions(
   groupName: Map<string, string>,
   view: BudgetView | null
 ): MultiSelectOption[] {
-  const visible = categories.filter((c) => !c.is_hidden)
+  // Hidden categories are left out; card set-aside envelopes too, and for a
+  // stronger reason — nothing can ever be filed to one, so offering it here
+  // is a filter that can only ever return an empty chart. `is_hidden` is
+  // kept rather than swapped for `is_categorizable`: a category in a hidden
+  // *group* still holds real spending worth charting.
+  const visible = renderableCategories(categories).filter((c) => !c.is_hidden)
   if (!view) {
     return visible.map((c) => ({
       id: c.id,

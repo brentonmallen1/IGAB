@@ -19,7 +19,9 @@ load-bearing:
 Both exclude hidden categories. `IS_CATEGORIZABLE` also excludes categories
 linked to an account or a liability: those are credit-card payment and debt
 categories, whose activity is maintained by the transfer and the loan, not by
-filing a row into them.
+filing a row into them. `IS_ASSIGNABLE` keeps both — money really is budgeted
+into a card's set-aside and into a debt envelope — and what keeps a card
+envelope out of the pickers is its hidden group, not this flag.
 
 **Why these are served rather than computed on the client.** `is_hidden` is on
 the category row, so it looks like the client has everything it needs. It does
@@ -71,14 +73,26 @@ IN_HIDDEN_GROUP = (
     .exists()
 )
 
+#: A card's set-aside envelope, owned by the account rather than by the user.
+#: The cards section is its only home: it is drawn there with liability
+#: columns (Balance / Ready to pay / Uncovered), assigned there, and nothing
+#: may be filed to it — `get_budget_summary` overwrites its balance from card
+#: arithmetic, so a row filed here is money that leaves the budget silently.
+LINKED_TO_CARD = Category.linked_account_id.isnot(None)
+
 #: Maintained by something other than the user filing a row: a credit-card
 #: payment category, or a debt category owned by a liability.
-LINKED = or_(
-    Category.linked_account_id.isnot(None),
-    Category.linked_liability_id.isnot(None),
-)
+LINKED = or_(LINKED_TO_CARD, Category.linked_liability_id.isnot(None))
 
 #: Money may be budgeted or moved into this envelope.
+#:
+#: Deliberately does NOT exclude `LINKED_TO_CARD`, though no picker offers a
+#: card envelope: money genuinely is assigned to one — that is how a card is
+#: paid down — and `ensure_payment_category` puts it in a hidden group, which
+#: is what keeps it out of the pickers. Excluding it here would also stop the
+#: auto-assign strategies from ever funding a card's paydown target, which is
+#: the one thing that target is for. Pinned by
+#: `test_a_linked_payment_category_may_be_assigned_but_not_filed`.
 IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP))
 
 #: A transaction leg may be filed here. System groups stay in — that is where
