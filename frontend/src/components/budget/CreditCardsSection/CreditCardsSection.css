@@ -1,5 +1,11 @@
-/* The cards section: liability-truthful columns, deliberately calm.
-   Uncovered is information, not an alarm — no state colors here. */
+/* The cards strip: liability-truthful columns, deliberately calm.
+   Uncovered is information, not an alarm — no state colors here.
+
+   Row separation follows the budget grid's own two-tone system: the table
+   is a sunken well in the card (body rows on --surface-sunken), the column
+   header sits on chrome like the grid's group headers, and rows divide with
+   --border-subtle hairlines plus --row-hover-bg on hover. Everything on one
+   background with bare hairlines was tried first and read as a single slab. */
 
 .credit-cards {
   /* Above the category grid, below the filter bar. */
@@ -35,10 +41,14 @@
   white-space: nowrap;
 }
 
+/* The well: a hole cut into the card, the way the import review's blocks
+   and the grid body sit against their containers. overflow keeps the chrome
+   header and row hovers inside the radius. */
 .credit-cards__table {
-  display: flex;
-  flex-direction: column;
-  overflow-x: auto;
+  background-color: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden auto;
 }
 
 .credit-cards__head,
@@ -47,19 +57,27 @@
   grid-template-columns: minmax(120px, 1fr) repeat(4, minmax(84px, 110px));
   gap: var(--spacing-sm);
   align-items: center;
-  padding: var(--spacing-xs) var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
 }
 
+/* Chrome, like the grid's group headers — the two-tone step is what makes
+   the body rows read as rows. */
 .credit-cards__head {
+  background-color: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  border-bottom: 1px solid var(--edge);
 }
 
 .credit-cards__row {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background-color var(--transition-fast);
+}
+
+.credit-cards__row:hover {
+  background-color: var(--row-hover-bg);
 }
 
 .credit-cards__row:last-child {
@@ -92,7 +110,7 @@
 .credit-cards__assign-btn {
   background: none;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   color: inherit;
   font: inherit;
   padding: 2px var(--spacing-xs);
@@ -115,9 +133,9 @@
   text-align: right;
   font: inherit;
   color: var(--text-primary);
-  background: var(--bg-primary);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-focus-ring);
+  border-radius: var(--border-radius-sm);
   padding: 2px var(--spacing-xs);
 }
 
