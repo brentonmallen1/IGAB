@@ -82,7 +82,8 @@ function AppToaster() {
       toastOptions={{
         duration: 4000,
         style: {
-          fontSize: '13px',
+          // Follows the text-size setting like everything else does.
+          fontSize: 'var(--font-size-sm)',
           maxWidth: 'min(400px, calc(100vw - 32px))',
           // react-hot-toast's default is a white card with dark text — a
           // stranger in every dark palette, and the update prompt painted its
