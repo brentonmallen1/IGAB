@@ -502,3 +502,83 @@ class TestACategoryMayNotLandOnATrackingAccount:
         db_session.expunge_all()
         assert (await services.transaction_repo.get_or_raise(bad1.id)).category_id == groceries.id
         assert (await services.transaction_repo.get_or_raise(bad2.id)).category_id == groceries.id
+
+
+class TestHistoryBeforeAnAccountJoinedTheBudget:
+    """Rows older than `Account.budget_start_date` are opening position.
+
+    A synced account arrives with whatever history the bank kept. A card
+    carried in on the 29th came with three months of it, and every guess made
+    against that history landed in an envelope funded for one month — so the
+    grid filled with red for money spent before the budget knew the card
+    existed. That debt is not overspending anyone can act on: it belongs in
+    the card's Uncovered, retired by assigning to the card.
+
+    So those rows are left uncategorized deliberately, and this is what stops
+    the app asking about them forever. Asserted through the served flag, the
+    account badge and the register filter together, because all three read the
+    one expression (`NEEDS_CATEGORY`) and the whole point of that consolidation
+    was that they can never again answer differently.
+    """
+
+    async def _world(self, db_session, start=None):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        card = await create_account(
+            db_session, budget, "Sapphire Visa", account_type="credit_card"
+        )
+        card.budget_start_date = start
+        # One row on each side of the line, both plain purchases with no
+        # category — identical in every respect except their date.
+        await create_transaction(db_session, budget, card, "-40.00", TODAY - timedelta(days=30))
+        await create_transaction(db_session, budget, card, "-25.00", TODAY - timedelta(days=2))
+        await db_session.flush()
+        return services, card
+
+    async def test_with_no_start_date_both_rows_still_need_a_category(self, db_session):
+        """Every account until someone answers the question. The migration adds
+        a nullable column and moves no number anywhere."""
+        services, card = await self._world(db_session, start=None)
+
+        rows = await services.transaction_repo.get_for_account(card.id)
+        assert [t.needs_category for t in rows] == [True, True]
+        assert await services.account_repo.get_uncategorized_count(card.id) == 2
+
+    async def test_a_row_before_the_start_date_is_not_unfiled_work(self, db_session):
+        services, card = await self._world(db_session, start=TODAY - timedelta(days=7))
+
+        rows = await services.transaction_repo.get_for_account(card.id)
+        flagged = [t for t in rows if t.needs_category]
+
+        assert len(flagged) == 1, "only the row dated after the account joined"
+        assert flagged[0].amount == Decimal("-25.00")
+        # The badge and the register filter read the same expression, so they
+        # cannot disagree with the flag above or with each other.
+        assert await services.account_repo.get_uncategorized_count(card.id) == 1
+        filtered = await services.transaction_repo.get_for_account(card.id, uncategorized=True)
+        assert [t.amount for t in filtered] == [Decimal("-25.00")]
+
+    async def test_a_row_on_the_start_date_itself_counts(self, db_session):
+        """The boundary is inclusive: the day you joined is a day you budgeted."""
+        services, card = await self._world(db_session, start=TODAY - timedelta(days=30))
+
+        assert await services.account_repo.get_uncategorized_count(card.id) == 2
+
+    async def test_one_account_start_date_does_not_reach_another(self, db_session):
+        """The predicate is correlated to the row's own account. Written as a
+        bare column comparison it would have cross-joined every account in the
+        budget and multiplied the badge by their number."""
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+        card.budget_start_date = TODAY
+        checking = await create_account(db_session, budget, "Checking")
+        await create_transaction(db_session, budget, card, "-40.00", TODAY - timedelta(days=30))
+        await create_transaction(db_session, budget, checking, "-40.00", TODAY - timedelta(days=30))
+        await db_session.flush()
+
+        assert await services.account_repo.get_uncategorized_count(card.id) == 0
+        assert await services.account_repo.get_uncategorized_count(checking.id) == 1
+

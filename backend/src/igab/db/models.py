@@ -218,6 +218,24 @@ class Account(Base):
     simplefin_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     last_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_reconciled_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    #: The day this account joined the budget. Rows dated before it are opening
+    #: position, not budgeted activity: nothing is auto-categorized there on
+    #: first sync, and an uncategorized one is not flagged as needing a
+    #: category (`NEEDS_CATEGORY`).
+    #:
+    #: A card carried in with three months of bank history is the case. Every
+    #: swipe before you started lands in an envelope funded for one month, and
+    #: the grid fills with red for money spent before the budget existed. That
+    #: debt is opening balance — it belongs in the card's Uncovered, retired by
+    #: assigning to the card, not covered from Ready to Assign.
+    #:
+    #: NULL means "behave as before", which is every account until someone
+    #: answers the question — so the migration changes no figure anywhere. A
+    #: `date`, not `created_at`: that timestamp is the right *default* to offer
+    #: and the wrong rule to obey. It resets when an account is re-added, it
+    #: cannot be corrected, and it is UTC where transaction dates are local,
+    #: which puts a midnight boundary between them.
+    budget_start_date: Mapped[date | None] = mapped_column(Date)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

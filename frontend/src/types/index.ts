@@ -42,6 +42,19 @@ export interface Account {
   last_reconciled_at: string | null
   /** Always sent (may be null) — the balance the last reconciliation locked. */
   last_reconciled_balance: number | null
+  /**
+   * The day this account joined the budget. Rows dated before it are opening
+   * position: nothing is auto-categorized there on first sync, and an
+   * uncategorized one is not flagged as needing a category.
+   *
+   * A card carried in with three months of bank history is the case — that
+   * spending predates the budget, so it belongs in the card's Uncovered and is
+   * retired by assigning to the card, not by filling envelopes after the fact.
+   *
+   * Null on every account that has never been asked, which behaves exactly as
+   * before the field existed. See `Account.budget_start_date` on the server.
+   */
+  budget_start_date: string | null
   uncategorized_count: number
   created_at: string
   updated_at: string

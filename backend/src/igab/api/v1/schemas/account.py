@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -21,6 +21,11 @@ class AccountCreate(BaseModel):
 
 class AccountUpdate(BaseModel):
     name: str | None = None
+    #: The day this account joined the budget — see `Account.budget_start_date`.
+    #: Omitted leaves it alone; an explicit null clears it back to "treat all
+    #: history as budgeted". Both are meaningful, which is why the endpoint
+    #: keeps it in the null-allowed set beside `note`.
+    budget_start_date: date | None = None
     account_type: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,30}$")
     on_budget: bool | None = None
     is_closed: bool | None = None
@@ -40,6 +45,10 @@ class AccountResponse(BaseModel):
     note: str | None
     last_reconciled_at: datetime | None
     last_reconciled_balance: Decimal | None
+    #: Rows before this are opening position: not auto-categorized on first
+    #: sync, and not flagged as needing a category. Null on every account that
+    #: has never been asked, which behaves exactly as before the field existed.
+    budget_start_date: date | None = None
     created_at: datetime
     updated_at: datetime
     # SimpleFIN sync
