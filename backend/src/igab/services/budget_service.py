@@ -5,7 +5,7 @@ from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 from igab.db.models import BudgetMove, Category
-from igab.domain.cards import card_funding
+from igab.domain.cards import card_funding, set_aside_through, synthetic_activity
 from igab.domain.carryover import available_through, monthly_end_balances
 
 # Aliased: `month_start` is also a local variable throughout this module
@@ -402,11 +402,14 @@ class BudgetService:
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
             for account in card_accounts:
                 linked = linked_by_account.get(account.id)
-                synthetic = dict(funded_by_card.get(account.id, {}))
-                for m, paid in payments.get(account.id, {}).items():
-                    synthetic[m] = synthetic.get(m, zero) - paid
+                synthetic = synthetic_activity(
+                    funded_by_card.get(account.id, {}), payments.get(account.id, {})
+                )
                 card_assignments = assignments_by_cat.get(linked.id, {}) if linked else {}
-                set_aside = available_through(card_assignments, synthetic, month_start)
+                # A running total, not `available_through`: an overpaid month
+                # is a credit balance carried forward, not an overspend for
+                # Ready to Assign to absorb — see set_aside_through.
+                set_aside = set_aside_through(card_assignments, synthetic, month_start)
                 if linked is not None:
                     # The linked category's balance is this computation, not
                     # the transaction sums — nothing can be filed there, and
@@ -427,9 +430,10 @@ class BudgetService:
                         category_id=linked.id if linked else None,
                         balance=balance,
                         set_aside=set_aside,
-                        # Owed beyond the reserve. An overpaid-in-month
-                        # envelope (negative set-aside) reserves nothing, so
-                        # it is floored before subtracting.
+                        # Owed beyond the reserve. An overpaid envelope
+                        # (negative set-aside — a credit balance on the card)
+                        # reserves nothing, so it is floored before
+                        # subtracting.
                         uncovered=max(zero, -balance - max(zero, set_aside)),
                     )
                 )

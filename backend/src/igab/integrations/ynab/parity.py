@@ -68,6 +68,16 @@ class ParityReport:
     #: without this they would leave no trace but a smaller `compared`.
     categories_unmatched: int
     top_differences: list[ParityDifference]
+    #: Card set-asides held against the Credit Card Payments reserve YNAB
+    #: shipped for the same card. Both sides simulate the same rules over
+    #: the same history, so a card that fails here is a card whose envelope
+    #: has detached from its ledger — exactly the drift "The Unreleased
+    #: Reservation" accumulated silently across an entire import. An import
+    #: is the one moment this is severe and the user has no baseline to
+    #: notice it against, so it is checked where the evidence is.
+    cards_compared: int
+    cards_differing: int
+    card_differences: list[ParityDifference]
     #: Whether the export's own numbers agree with each other. When they do
     #: not, `categories_differing` measures the file, not the import.
     consistency: ExportConsistency
@@ -123,6 +133,21 @@ async def check_parity(
     unexplained = [d for d in differences if not d.explained]
     unexplained.sort(key=lambda d: abs(d.igab - d.ynab), reverse=True)
 
+    # Cards: IGAB's simulated set-aside against the CCP Available YNAB
+    # shipped for the same card (named after the card, matched the way the
+    # importer matched it). Only cards the export priced are compared — a
+    # card created outside the import has no YNAB answer to check against.
+    card_differences: list[ParityDifference] = []
+    cards_compared = 0
+    for card in summary.cards:
+        theirs = oracle.ccp_available_by_card.get(card.name.lower())
+        if theirs is None:
+            continue
+        cards_compared += 1
+        if quantize_cents(card.set_aside) != quantize_cents(theirs):
+            card_differences.append(ParityDifference(card.name, card.set_aside, theirs))
+    card_differences.sort(key=lambda d: abs(d.igab - d.ynab), reverse=True)
+
     igab = summary.to_be_assigned
     return ParityReport(
         month=oracle.month,
@@ -131,11 +156,16 @@ async def check_parity(
         igab_ready_to_assign=quantize_cents(igab),
         uncovered_card_debt=quantize_cents(oracle.uncovered_card_debt),
         uncategorized_net=quantize_cents(oracle.uncategorized_net),
-        matches=quantize_cents(igab) == quantize_cents(oracle.expected_igab) and not unexplained,
+        matches=quantize_cents(igab) == quantize_cents(oracle.expected_igab)
+        and not unexplained
+        and not card_differences,
         categories_compared=compared,
         categories_differing=len(unexplained),
         categories_pending=len(differences) - len(unexplained),
         categories_unmatched=unmatched,
         top_differences=unexplained[:max_differences],
+        cards_compared=cards_compared,
+        cards_differing=len(card_differences),
+        card_differences=card_differences[:max_differences],
         consistency=export_consistency(ynab_budget),
     )
