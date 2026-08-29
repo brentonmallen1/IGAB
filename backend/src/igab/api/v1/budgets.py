@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Canonical result schema lives with the import endpoints — a local copy here
 # drifted the moment imports.py gained fields (imports.py has no module-level
 # api.v1 imports, so this cannot cycle).
-from igab.api.v1.imports import YNABImportResult
+from igab.api.v1.imports import YNABImportResult, YNABTaggedCategory
 from igab.db.models import Budget, BudgetMember
 from igab.db.session import get_session
 from igab.dependencies import (
@@ -18,6 +18,7 @@ from igab.dependencies import (
     CurrentUser,
     get_account_repo,
     get_assignment_repo,
+    get_budget_service,
     get_category_group_repo,
     get_category_repo,
     get_liability_repo,
@@ -44,6 +45,7 @@ from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import ensure_account_types_seeded
+from igab.services.budget_service import BudgetService
 from igab.services.transaction_service import TransactionService
 
 router = APIRouter()
@@ -124,11 +126,13 @@ async def import_ynab_as_budget(
     transaction_repo: TransactionRepository = Depends(get_transaction_repo),
     assignment_repo: BudgetAssignmentRepository = Depends(get_assignment_repo),
     txn_service: TransactionService = Depends(get_transaction_service),
+    budget_service: BudgetService = Depends(get_budget_service),
 ) -> YNABImportBudgetResponse:
     from igab.api.v1.imports import (
         parse_account_types_form,
         parse_uploaded_ynab_zip,
         run_ynab_import,
+        ynab_parity_or_none,
     )
 
     # Validate the mapping and the zip BEFORE creating the budget so a bad
@@ -170,23 +174,53 @@ async def import_ynab_as_budget(
     # On failure this raises a 400; get_session rolls back, discarding the
     # budget created above along with every partial row.
     result = await run_ynab_import(importer, ynab_budget)
+    # Checked here, where the evidence is: the export's own figures against
+    # the budget just built from them.
+    parity = await ynab_parity_or_none(
+        budget_service,
+        category_repo,
+        budget.id,
+        ynab_budget,
+        type_map=type_map,
+        skip_accounts=skip_accounts,
+    )
+
+    summary = YNABImportResult(
+        accounts=result.accounts_imported,
+        category_groups=result.category_groups_imported,
+        categories=result.categories_imported,
+        transactions=result.transactions_imported,
+        skipped=result.transactions_skipped,
+        assignments=result.assignments_imported,
+        accounts_skipped=result.accounts_skipped,
+        accounts_closed=result.accounts_closed,
+        transactions_excluded=result.transactions_excluded,
+        transfer_legs_unpaired=result.transfer_legs_unpaired,
+        transfer_legs_in_splits=result.transfer_legs_in_splits,
+        categories_tagged=result.categories_tagged,
+        tagged_categories=[
+            YNABTaggedCategory(
+                category_id=tagged.category_id,
+                system_key=tagged.system_key,
+                matched_on=tagged.matched_on,
+            )
+            for tagged in result.tagged_categories
+        ],
+        credit_card_payment_assignments_skipped=(result.credit_card_payment_assignments_skipped),
+        credit_card_payment_reserves_skipped=result.credit_card_payment_reserves_skipped,
+        tracking_account_categories_stripped=result.tracking_account_categories_stripped,
+        parity=parity,
+        errors=result.errors,
+    )
+    # Kept, not just returned. This records an event -- counts, the parity
+    # check, which plan rows were left out -- and none of it is recoverable
+    # from the resulting budget. It used to live only in a stack of toasts
+    # fired while the app was changing route.
+    budget.import_summary = summary.model_dump(mode="json")
 
     return YNABImportBudgetResponse(
         budget=BudgetResponse.model_validate(budget),
-        import_result=YNABImportResult(
-            accounts=result.accounts_imported,
-            category_groups=result.category_groups_imported,
-            categories=result.categories_imported,
-            transactions=result.transactions_imported,
-            skipped=result.transactions_skipped,
-            assignments=result.assignments_imported,
-            accounts_skipped=result.accounts_skipped,
-            accounts_closed=result.accounts_closed,
-            transactions_excluded=result.transactions_excluded,
-            transfer_legs_unpaired=result.transfer_legs_unpaired,
-            categories_tagged=result.categories_tagged,
-            errors=result.errors,
-        ),
+        import_result=summary,
     )
 
 

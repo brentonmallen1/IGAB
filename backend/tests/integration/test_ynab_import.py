@@ -8,7 +8,12 @@ from sqlalchemy import func, select
 
 from igab.db.models import Account, Transaction
 from igab.integrations.ynab.importer import YNABImporter
-from igab.integrations.ynab.models import YNABBudget, YNABSplitLeg, YNABTransaction
+from igab.integrations.ynab.models import (
+    YNABBudget,
+    YNABPlanRow,
+    YNABSplitLeg,
+    YNABTransaction,
+)
 from igab.repositories.category_repo import CategoryGroupRepository
 from igab.repositories.txn_filters import UNPAIRED_TRANSFER_LEG
 
@@ -921,3 +926,160 @@ class TestSpendingTransfersPair:
         assert predicate_count == result.transfer_legs_unpaired
 
 
+
+
+def _plan_row(month, group, category, assigned="0"):
+    return YNABPlanRow(
+        month=month,
+        category_group=group,
+        category=category,
+        assigned=Decimal(assigned),
+        activity=None,
+        available=None,
+    )
+
+
+async def test_the_imported_layout_follows_the_plans_final_month(db_session):
+    """Plan.csv lists the categories in the order the user arranged them in
+    YNAB. The final month is the current layout; every group and category
+    takes its position from it, and a category only the register knows about
+    goes last in its group."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    mar, apr = date(2026, 3, 1), date(2026, 4, 1)
+    plan = [
+        # An older month, in an older arrangement — ignored.
+        _plan_row(mar, "Bills", "Rent", "1200"),
+        _plan_row(mar, "Wants", "Games"),
+        # The final month: Wants before Bills, Water before Rent — neither alphabetical.
+        _plan_row(apr, "Wants", "Games", "50"),
+        _plan_row(apr, "Wants", "Dining"),
+        _plan_row(apr, "Bills", "Water"),
+        _plan_row(apr, "Bills", "Rent", "1200"),
+        _plan_row(apr, "Bills", "Power"),
+    ]
+    budget_data = YNABBudget(
+        transactions=[
+            _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+            _txn("Checking", "Landlord", "-1200.00", group="Bills", category="Rent"),
+            # Register-only: never in the plan.
+            _txn("Checking", "ISP", "-60.00", group="Bills", category="Internet"),
+        ],
+        budget_entries=[e for e in plan if e.assigned != 0],
+        plan_rows=plan,
+    )
+    await _importer(services, db_session, budget).import_budget(budget_data)
+
+    groups = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    assert [g.name for g in groups] == ["Wants", "Bills", "Income"]
+    by_name = {g.name: g for g in groups}
+    bills = await services.category_repo.get_by_group(by_name["Bills"].id)
+    assert [c.name for c in bills] == ["Water", "Rent", "Power", "Internet"]
+    assert [c.sort_order for c in bills] == [0, 1, 2, 3]
+    wants = await services.category_repo.get_by_group(by_name["Wants"].id)
+    assert [c.name for c in wants] == ["Games", "Dining"]
+
+
+async def test_the_inflow_category_is_named_inflow_not_ready_to_assign(db_session):
+    """YNAB names its inflow category after the budget-wide figure it feeds.
+    In IGAB that figure is the hero, and a row of the same name sat directly
+    under it showing a number that was neither."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await _importer(services, db_session, budget).import_budget(_budget_with_transfer())
+
+    groups = {g.name: g for g in await CategoryGroupRepository(db_session).get_all(budget.id)}
+    assert groups["Income"].is_system
+    income = await services.category_repo.get_by_group(groups["Income"].id)
+    assert [c.name for c in income] == ["Inflow"]
+
+
+async def test_hidden_categories_stay_hidden_and_card_payment_reserves_are_skipped(db_session):
+    """YNAB's Hidden Categories group imports hidden (the history still
+    arrives); its Credit Card Payments group does not import at all — IGAB
+    nets a card's balance against cash, so those reserves would count the
+    same debt twice — and the summary says what was left out and how much."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    # The register helper dates every row JAN5, so the plan is January too.
+    jan = date(2026, 1, 1)
+    plan = [
+        _plan_row(jan, "Everyday", "Groceries", "300"),
+        _plan_row(jan, "Hidden Categories", "Old Hobby", "25"),
+        _plan_row(jan, "Credit Card Payments", "Visa", "410.50"),
+        _plan_row(jan, "Credit Card Payments", "Amex", "89.50"),
+    ]
+    data = YNABBudget(
+        transactions=[
+            _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+            _txn("Checking", "Corner Market", "-60.00", group="Everyday", category="Groceries"),
+            _txn("Checking", "Hobby Shop", "-20.00", group="Hidden Categories", category="Old Hobby"),
+        ],
+        budget_entries=[e for e in plan if e.assigned != 0],
+        plan_rows=plan,
+    )
+    result = await _importer(services, db_session, budget).import_budget(data)
+
+    everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    by_name = {g.name: g for g in everyone}
+    assert "Credit Card Payments" not in by_name
+    assert by_name["Hidden Categories"].is_hidden
+    assert not by_name["Everyday"].is_hidden
+    assert result.credit_card_payment_assignments_skipped == 2
+    assert result.credit_card_payment_reserves_skipped == Decimal("500.00")
+    assert result.assignments_imported == 2
+    # The hidden category's history is there, just out of the grid.
+    hidden = await services.category_repo.get_by_group(by_name["Hidden Categories"].id)
+    assert [c.name for c in hidden] == ["Old Hobby"]
+    # And Ready to Assign is what the register and the kept assignments say:
+    # 2000 in, 80 spent, 325 assigned of which 80 was spent → 1920 − 245.
+    # With the 500 of card reserves imported it would have read 1175.
+    month = await services.budgets.get_budget_summary(budget.id, jan)
+    assert month.to_be_assigned == Decimal("1675.00")
+
+
+async def test_a_tracking_rows_category_is_stripped_and_counted(db_session):
+    """A category on a tracking-account row imports as no category.
+
+    Off-budget activity is net-worth movement (domain/transfers.py); the bulk
+    insert bypasses the service guard, so the rule is applied at the
+    row-build site and the count surfaces in the summary rather than rows
+    silently changing shape.
+    """
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    data = YNABBudget(
+        transactions=[
+            _txn("Brokerage", "Vanguard", "-500.00", group="Savings", category="Index Funds"),
+            _txn("Checking", "Corner Market", "-60.00", group="Everyday", category="Groceries"),
+            _split_txn(
+                "Brokerage",
+                "Vanguard",
+                [
+                    ("-300.00", "Savings", "Index Funds", None),
+                    ("-200.00", None, None, None),
+                ],
+            ),
+        ]
+    )
+    result = await _importer(
+        services,
+        db_session,
+        budget,
+        account_types={"Brokerage": ("investment", False)},
+    ).import_budget(data)
+
+    assert result.tracking_account_categories_stripped == 2
+    rows = await services.transaction_repo.get_for_budget(budget.id)
+    accounts = {a.id: a for a in await services.account_repo.get_all(budget.id)}
+    for row in rows:
+        if not accounts[row.account_id].on_budget:
+            assert row.category_id is None, "tracking rows must import uncategorized"
+    # The on-budget row keeps its category — the rule is about the account.
+    checking_rows = [r for r in rows if accounts[r.account_id].on_budget and not r.is_split]
+    assert any(r.category_id is not None for r in checking_rows)

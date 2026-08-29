@@ -31,6 +31,7 @@ from igab.api.v1.schemas.category import (
     CategoryGroupUpdate,
     CategoryHistoryBatchRequest,
     CategoryHistoryResponse,
+    CategoryReorder,
     CategoryResponse,
     CategoryTargetCreate,
     CategoryTargetResponse,
@@ -137,15 +138,40 @@ async def reorder_category_groups(
     budget_id: BudgetAccess,
     body: CategoryGroupReorder,
     current_user: CurrentUser,
-    group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
 ) -> None:
     """Set the order of the budget's category groups in one request.
 
     One request rather than a PATCH per group: a drag that half-applies leaves
-    an order the user did not choose and cannot see the shape of.
+    an order the user did not choose and cannot see the shape of. Recorded in
+    the change log, so it shows in Activity and undoes. (A reorder touches
+    `categories`, which the snapshot cache watches, so the next month read
+    rebuilds — rare enough to leave as is.)
     """
     try:
-        await group_repo.reorder(budget_id, body.group_ids)
+        await category_service.reorder_groups(budget_id, body.group_ids)
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.post(
+    "/{budget_id}/category-groups/{group_id}/categories/reorder",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def reorder_categories(
+    budget_id: BudgetAccess,
+    group_id: uuid.UUID,
+    body: CategoryReorder,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> None:
+    """Set the order of one group's categories in one request — the same
+    contract as the group reorder, scoped to a group."""
+    try:
+        await require_in_budget(
+            category_service.session, CategoryGroup, group_id, budget_id, "Category group"
+        )
+        await category_service.reorder_categories(budget_id, group_id, body.category_ids)
     except InvariantViolation as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
@@ -307,11 +333,22 @@ async def update_category(
     recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> CategoryResponse:
     try:
-        before = snapshot("category", await category_repo.get_or_raise(category_id))
+        current = await category_repo.get_or_raise(category_id)
+        before = snapshot("category", current)
         changes = body.model_dump(exclude_unset=True)
+        new_group = changes.get("category_group_id")
+        if new_group is not None and new_group != current.category_group_id:
+            await require_in_budget(
+                category_repo.session, CategoryGroup, new_group, current.budget_id, "Category group"
+            )
+            # Moved to another group, it goes last there unless told where.
+            if changes.get("sort_order") is None:
+                changes["sort_order"] = await category_repo.next_sort_order(new_group)
         cat = await category_repo.update(category_id, **changes)
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     after = snapshot("category", cat)
     if snapshots_match(after, before):
         await recorder.record(
@@ -508,17 +545,18 @@ async def get_budget_month(
             CategoryBalance(
                 category_id=b.category_id,
                 month=b.month,
-                assigned=b.assigned,
+                # An income category has no envelope money — see the schema.
+                assigned=None if b.in_system_group else b.assigned,
                 activity=b.activity,
-                available=b.available,
+                available=None if b.in_system_group else b.available,
                 target_status=(
                     target_service.calculate_status(t, b.assigned, b.available)
-                    if (t := targets.get(b.category_id))
+                    if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
                 needed_this_month=(
                     target_service.calculate_needed(t, b.assigned, b.available)
-                    if (t := targets.get(b.category_id))
+                    if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
             )
@@ -724,7 +762,10 @@ async def set_category_assignment(
     budget_id: BudgetAccess,
     month: date = Query(...),
 ) -> None:
-    await budget_service.set_assignment(budget_id, category_id, month, body.amount)
+    try:
+        await budget_service.set_assignment(budget_id, category_id, month, body.amount)
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 
 @router.post("/{budget_id}/budget/move-money", status_code=status.HTTP_204_NO_CONTENT)

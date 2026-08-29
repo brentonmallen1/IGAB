@@ -3,13 +3,17 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, func, not_, select, update
 from sqlalchemy.orm import selectinload, with_expression
 
 from igab.db.models import BudgetAssignment, Category, CategoryGroup
-from igab.domain.exceptions import InvariantViolation
+from igab.domain.ordering import merge_reorder
 from igab.repositories.base import BaseRepository
-from igab.repositories.category_filters import IS_ASSIGNABLE, IS_CATEGORIZABLE
+from igab.repositories.category_filters import (
+    IN_SYSTEM_GROUP,
+    IS_ASSIGNABLE,
+    IS_CATEGORIZABLE,
+)
 
 #: Groups the app seeds and protects by key. Kept the way SYSTEM_TAGS is —
 #: (key, name) — and seeded the same lazy way: adopt a same-named group the
@@ -59,6 +63,15 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
             claimed.system_key = system_key
             await self.session.flush()
             return claimed
+        return await self.create(
+            budget_id=budget_id,
+            name=name,
+            system_key=system_key,
+            is_system=False,
+        )
+
+    async def next_sort_order(self, budget_id: uuid.UUID) -> int:
+        """The position after the budget's last live group."""
         last = (
             await self.session.execute(
                 select(func.coalesce(func.max(CategoryGroup.sort_order), -1)).where(
@@ -67,29 +80,29 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
                 )
             )
         ).scalar_one()
-        return await self.create(
-            budget_id=budget_id,
-            name=name,
-            system_key=system_key,
-            sort_order=int(last) + 1,
-            is_system=False,
-        )
+        return int(last) + 1
+
+    async def create(self, **kwargs: Any) -> CategoryGroup:
+        # A new group goes last unless the caller says where it belongs. The
+        # one rule for a new row's position: the budget page used to send its
+        # own count of the rows it happened to be showing, the API took
+        # whatever it was sent, and the importer sent nothing.
+        if kwargs.get("sort_order") is None:
+            kwargs["sort_order"] = await self.next_sort_order(kwargs["budget_id"])
+        return await super().create(**kwargs)
 
     async def reorder(self, budget_id: uuid.UUID, group_ids: list[uuid.UUID]) -> None:
         """Set every group's sort_order from its position in `group_ids`.
 
         The list must name each of the budget's *visible* live groups exactly
-        once; **hidden** groups may be omitted, because the budget page drags
+        once. **Hidden** groups may be omitted, because the budget page drags
         against the list it shows and by default that list excludes them —
         demanding completeness the caller structurally cannot provide made
-        every reorder fail for any budget that had ever hidden a group. An
-        omitted hidden group keeps its old position among the others (stable
-        interleave), so it re-appears where the user left it when re-shown.
-
-        Everything else is still refused: a duplicate, an unknown or deleted
-        id, or a *visible* group missing from the list — that last one is the
-        stale client (a group added in another tab), which must fail loudly
-        rather than shuffle rows the user never saw.
+        every reorder fail for any budget that had ever hidden a group. So may
+        **system** groups (Income), which the grid never draws. An omitted
+        group keeps its old position among the others (stable interleave), so
+        it re-appears where the user left it when shown. The rule itself is
+        `domain.ordering.merge_reorder`, shared with categories.
         """
         live = list(
             (
@@ -103,25 +116,9 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
                 )
             ).scalars()
         )
-        given = set(group_ids)
-        if len(group_ids) != len(given):
-            raise InvariantViolation("Reorder must list each group at most once")
-        live_ids = {g.id for g in live}
-        if given - live_ids:
-            raise InvariantViolation("Reorder names a group this budget does not have")
-        visible = {g.id for g in live if not g.is_hidden}
-        if visible - given:
-            raise InvariantViolation("Reorder must list each of this budget's visible groups")
-
-        # Omitted hidden groups hold their old slot; the given ids fill the
-        # remaining slots in the given order.
-        order: list[uuid.UUID | None] = [None] * len(live)
-        for old_index, group in enumerate(live):
-            if group.id not in given:
-                order[old_index] = group.id
-        it = iter(group_ids)
-        final = [slot if slot is not None else next(it) for slot in order]
-
+        final = merge_reorder(
+            [(g.id, g.is_hidden or g.is_system) for g in live], group_ids, noun="group"
+        )
         for position, group_id in enumerate(final):
             await self.session.execute(
                 update(CategoryGroup)
@@ -175,13 +172,62 @@ class CategoryRepository(BaseRepository[Category]):
         ).execution_options(populate_existing=True)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def next_sort_order(self, group_id: uuid.UUID) -> int:
+        """The position after the group's last live category."""
+        last = (
+            await self.session.execute(
+                select(func.coalesce(func.max(Category.sort_order), -1)).where(
+                    Category.category_group_id == group_id,
+                    Category.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one()
+        return int(last) + 1
+
     async def create(self, **kwargs: Any) -> Category:
+        # A new category goes last in its group unless the caller says where
+        # it belongs — see CategoryGroupRepository.create.
+        if kwargs.get("sort_order") is None:
+            kwargs["sort_order"] = await self.next_sort_order(kwargs["category_group_id"])
         # BaseRepository.create ends in session.refresh(), which takes no
         # loader options and would drop the expressions. Same round-trip count.
         obj = Category(**kwargs)
         self.session.add(obj)
         await self.session.flush()
         return await self.get_or_raise(obj.id)
+
+    async def reorder(self, group_id: uuid.UUID, category_ids: list[uuid.UUID]) -> None:
+        """Set the order of one group's categories from `category_ids`.
+
+        Same contract as CategoryGroupRepository.reorder: every visible live
+        category of the group exactly once, hidden ones may be omitted and
+        keep their slot, anything else refused. Positions are per group —
+        the grid buckets by group before it reads them.
+        """
+        live = list(
+            (
+                await self.session.execute(
+                    select(Category)
+                    .where(
+                        Category.category_group_id == group_id,
+                        Category.is_deleted == False,  # noqa: E712
+                    )
+                    .order_by(Category.sort_order, Category.name)
+                )
+            ).scalars()
+        )
+        final = merge_reorder(
+            [(c.id, c.is_hidden) for c in live],
+            category_ids,
+            noun="category",
+            plural="categories",
+            scope="group",
+        )
+        for position, category_id in enumerate(final):
+            await self.session.execute(
+                update(Category).where(Category.id == category_id).values(sort_order=position)
+            )
+        await self.session.flush()
 
     async def get_all(self, budget_id: uuid.UUID, include_hidden: bool = False) -> list[Category]:
         q = (
@@ -194,8 +240,14 @@ class CategoryRepository(BaseRepository[Category]):
         )
         if not include_hidden:
             q = q.where(Category.is_hidden == False)  # noqa: E712
-        q = q.order_by(Category.sort_order)
-        result = await self.session.execute(q)
+        # Name breaks ties, as the group listing does: rows sharing a position
+        # (every category a YNAB import ever created, before positions were
+        # assigned) came back in a different order on every read.
+        q = q.order_by(Category.sort_order, Category.name)
+        # populate_existing is load-bearing here as in `get`: a category the
+        # session already holds keeps whatever `is_assignable` it was loaded
+        # with, so hiding its group mid-session left it eligible to assign to.
+        result = await self.session.execute(q.execution_options(populate_existing=True))
         return list(result.scalars().all())
 
     async def get_all_with_group_names(
@@ -218,7 +270,37 @@ class CategoryRepository(BaseRepository[Category]):
         )
         if not include_hidden:
             q = q.where(Category.is_hidden == False)  # noqa: E712
-        q = q.order_by(Category.sort_order)
+        q = q.order_by(Category.sort_order, Category.name)
+        result = await self.session.execute(q.execution_options(populate_existing=True))
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def get_taggable_with_group_names(
+        self, budget_id: uuid.UUID
+    ) -> list[tuple[Category, str]]:
+        """Every category a tag may be reviewed on, paired with its group name.
+
+        Hidden categories are IN. A tag overrides how spending is classified
+        (`domain.activity_class`), so a hidden category carrying a wrong
+        Savings tag still moves the savings report — and hiding it is exactly
+        how it stays wrong. A real import put "Discover Savings" in YNAB's
+        Hidden Categories group and tagged it.
+
+        System groups are OUT: income does not hold envelope money, so
+        classifying its spending is meaningless.
+        """
+        q = (
+            select(Category, CategoryGroup.name)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Category.budget_id == budget_id,
+                Category.is_deleted == False,  # noqa: E712
+                CategoryGroup.is_deleted == False,  # noqa: E712
+                not_(IN_SYSTEM_GROUP),
+            )
+            .order_by(
+                CategoryGroup.sort_order, CategoryGroup.name, Category.sort_order, Category.name
+            )
+        )
         result = await self.session.execute(q)
         return [(row[0], row[1]) for row in result.all()]
 
@@ -253,7 +335,7 @@ class CategoryRepository(BaseRepository[Category]):
                 Category.category_group_id == group_id,
                 Category.is_deleted == False,  # noqa: E712
             )
-            .order_by(Category.sort_order)
+            .order_by(Category.sort_order, Category.name)
         )
         return list(result.scalars().all())
 
@@ -300,11 +382,24 @@ class BudgetAssignmentRepository(BaseRepository[BudgetAssignment]):
         return list(result.scalars().all())
 
     async def sum_after_month(self, budget_id: uuid.UUID, month: date) -> Decimal:
-        """Total assigned across all months strictly after the given month."""
+        """Total assigned across all months strictly after the given month.
+
+        System-group categories are left out, as the category term of Ready
+        to Assign leaves them out: an assignment on an income category
+        (refused now, but rows from before exist) was deducted here while its
+        category was excluded there. Deleted categories stay IN on purpose —
+        an old-style delete left their assignments behind, and this term is
+        how that stranded money still shows until the hygiene repair
+        releases it (test_category_delete.py pins the figure).
+        """
         result = await self.session.execute(
-            select(func.coalesce(func.sum(BudgetAssignment.assigned), 0)).where(
+            select(func.coalesce(func.sum(BudgetAssignment.assigned), 0))
+            .select_from(BudgetAssignment)
+            .join(Category, Category.id == BudgetAssignment.category_id)
+            .where(
                 BudgetAssignment.budget_id == budget_id,
                 BudgetAssignment.month > month,
+                not_(IN_SYSTEM_GROUP),
             )
         )
         return Decimal(str(result.scalar_one()))

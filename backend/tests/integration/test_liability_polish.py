@@ -8,6 +8,7 @@ from .factories import (
     create_account,
     create_budget,
     create_transaction,
+    create_transfer,
 )
 
 TODAY = date.today()
@@ -30,7 +31,9 @@ async def test_manual_fallback_until_register_has_transactions(api_client, db_se
     owed ('Paid off') — the pre-link manual balance stands in until the
     register gets its first transaction."""
     budget = await create_budget(db_session, api_client.test_user)
-    loan = await create_account(db_session, budget, "Mortgage", account_type="loan", on_budget=False)
+    loan = await create_account(
+        db_session, budget, "Mortgage", account_type="loan", on_budget=False
+    )
 
     created = await api_client.post(
         f"/api/v1/{budget.id}/liabilities",
@@ -166,13 +169,16 @@ async def test_no_promo_projection_without_promo_date(api_client, db_session):
 
 async def test_average_recent_payment_from_ledger(api_client, db_session):
     budget = await create_budget(db_session, api_client.test_user)
-    loan = await create_account(db_session, budget, "Car Loan", account_type="loan", on_budget=False)
-    await create_transaction(db_session, budget, loan, "-7000.00", _month_start(TODAY, 4))
-    await create_transaction(
-        db_session, budget, loan, "275.00", _month_start(TODAY, 2) + timedelta(days=9)
+    checking = await create_account(db_session, budget, "Checking")
+    loan = await create_account(
+        db_session, budget, "Car Loan", account_type="loan", on_budget=False
     )
-    await create_transaction(
-        db_session, budget, loan, "275.00", _month_start(TODAY, 1) + timedelta(days=9)
+    await create_transaction(db_session, budget, loan, "-7000.00", _month_start(TODAY, 4))
+    await create_transfer(
+        db_session, budget, checking, loan, "275.00", _month_start(TODAY, 2) + timedelta(days=9)
+    )
+    await create_transfer(
+        db_session, budget, checking, loan, "275.00", _month_start(TODAY, 1) + timedelta(days=9)
     )
 
     resp = await api_client.post(

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback } from 'react'
 import { X, GripVertical, Pencil, Trash2, Plus, Lock, ChevronUp, ChevronDown } from 'lucide-react'
 import { useBudgetFilters, useDeleteBudgetFilter } from '../../../api/budgetFilters'
 import {
@@ -8,6 +8,8 @@ import {
   QUICK_FILTER_VARIANTS,
 } from '../../../stores/uiStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
+import { useDragReorder } from '../../../hooks/useDragReorder'
+import { moveItem } from '../../../utils/listOrder'
 import './ManageFiltersModal.css'
 
 interface Props {
@@ -24,47 +26,13 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
   const activeFilterId = useUIStore((s) => s.activeFilterId)
   const setActiveFilter = useUIStore((s) => s.setActiveFilter)
 
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
-  function moveFilter(index: number, delta: -1 | 1) {
-    const target = index + delta
-    if (target < 0 || target >= quickFilterOrder.length) return
-    const next = [...quickFilterOrder]
-    const [moved] = next.splice(index, 1)
-    next.splice(target, 0, moved)
-    reorderQuickFilters(next)
-  }
-
-  function handleDragStart(index: number) {
-    setDragIndex(index)
-  }
-
-  function handleDragOver(e: React.DragEvent, index: number) {
-    e.preventDefault()
-    setDragOverIndex(index)
-  }
-
-  function handleDrop(e: React.DragEvent, dropIndex: number) {
-    e.preventDefault()
-    if (dragIndex === null || dragIndex === dropIndex) {
-      setDragIndex(null)
-      setDragOverIndex(null)
-      return
-    }
-    const next = [...quickFilterOrder]
-    const [moved] = next.splice(dragIndex, 1)
-    next.splice(dropIndex, 0, moved)
-    reorderQuickFilters(next)
-    setDragIndex(null)
-    setDragOverIndex(null)
-  }
-
-  function handleDragEnd() {
-    setDragIndex(null)
-    setDragOverIndex(null)
-  }
+  const moveFilter = useCallback(
+    (from: number, to: number) => reorderQuickFilters([...moveItem(quickFilterOrder, from, to)]),
+    [quickFilterOrder, reorderQuickFilters]
+  )
+  const drag = useDragReorder(quickFilterOrder.length, moveFilter)
 
   async function handleDeleteFilter(id: string) {
     await deleteFilter.mutateAsync(id)
@@ -105,12 +73,18 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
               {quickFilterOrder.map((filter, index) => (
                 <div
                   key={filter}
-                  className={`manage-filters-modal__row manage-filters-modal__row--quick ${dragOverIndex === index ? 'drag-over' : ''} ${dragIndex === index ? 'dragging' : ''}`}
+                  className={`manage-filters-modal__row manage-filters-modal__row--quick ${drag.overIndex === index ? 'drag-over' : ''} ${drag.dragIndex === index ? 'dragging' : ''}`}
                   draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDrop={(e) => handleDrop(e, index)}
-                  onDragEnd={handleDragEnd}
+                  onDragStart={() => drag.start(index)}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    drag.over(index)
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    drag.drop(index)
+                  }}
+                  onDragEnd={drag.end}
                 >
                   <GripVertical size={14} className="manage-filters-modal__grip" />
                   <span className={`manage-filters-modal__filter-badge manage-filters-modal__filter-badge--${QUICK_FILTER_VARIANTS[filter]}`}>
@@ -127,7 +101,7 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                     <button
                       type="button"
                       className="manage-filters-modal__icon-btn"
-                      onClick={() => moveFilter(index, -1)}
+                      onClick={() => drag.moveBy(index, -1)}
                       disabled={index === 0}
                       aria-label={`Move ${QUICK_FILTER_LABELS[filter]} up`}
                       title="Move up"
@@ -137,7 +111,7 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                     <button
                       type="button"
                       className="manage-filters-modal__icon-btn"
-                      onClick={() => moveFilter(index, 1)}
+                      onClick={() => drag.moveBy(index, 1)}
                       disabled={index === quickFilterOrder.length - 1}
                       aria-label={`Move ${QUICK_FILTER_LABELS[filter]} down`}
                       title="Move down"

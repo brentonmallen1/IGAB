@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import {
@@ -11,6 +11,8 @@ import { apiErrorMessage } from '../../../api/client'
 import { useUIStore } from '../../../stores/uiStore'
 import { confirmAsync } from '../../../stores/confirmStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
+import { useDragReorder } from '../../../hooks/useDragReorder'
+import { moveItem } from '../../../utils/listOrder'
 import './BudgetViewModal.css'
 
 interface Props {
@@ -65,8 +67,14 @@ function ViewEditor({
     () => existing?.groups.map((g) => g.name) ?? []
   )
   const [newGroup, setNewGroup] = useState('')
-  const [dragging, setDragging] = useState<string | null>(null)
-  const [dragOver, setDragOver] = useState<string | null>(null)
+  // A view's group order is its array order (the server assigns sort_order
+  // from position), so reordering here needs no extra persistence — only a
+  // way to say it.
+  const moveGroup = useCallback(
+    (from: number, to: number) => setGroupNames((current) => [...moveItem(current, from, to)]),
+    []
+  )
+  const drag = useDragReorder(groupNames.length, moveGroup)
   const [hideUnassigned, setHideUnassigned] = useState(existing?.hide_unassigned ?? false)
   const [assignment, setAssignment] = useState<Assignment>(() => {
     if (!existing) return {}
@@ -120,16 +128,6 @@ function ViewEditor({
       )
     )
     return true
-  }
-
-  /** Move a group to a position. Order is what the view saves, so this is
-   *  the whole feature — no ids, no extra request. */
-  function moveGroupTo(name: string, index: number) {
-    setGroupNames((current) => {
-      const next = current.filter((n) => n !== name)
-      next.splice(index, 0, name)
-      return next
-    })
   }
 
   function removeGroup(target: string) {
@@ -299,20 +297,21 @@ function ViewEditor({
             <span
               key={g}
               className={
-                'view-editor__chip' + (dragOver === g ? ' view-editor__chip--drag-over' : '')
+                'view-editor__chip' +
+                (drag.overIndex === index && drag.dragIndex !== index
+                  ? ' view-editor__chip--drag-over'
+                  : '')
               }
-              // A view's group order is its array order (the server assigns
-              // sort_order from position), so reordering here needs no extra
-              // persistence — only a way to say it.
               draggable
-              onDragStart={() => setDragging(g)}
-              onDragEnd={() => { setDragging(null); setDragOver(null) }}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(g) }}
+              onDragStart={() => drag.start(index)}
+              onDragEnd={drag.end}
+              onDragOver={(e) => {
+                e.preventDefault()
+                drag.over(index)
+              }}
               onDrop={(e) => {
                 e.preventDefault()
-                if (dragging && dragging !== g) moveGroupTo(dragging, index)
-                setDragging(null)
-                setDragOver(null)
+                drag.drop(index)
               }}
             >
               {/* Editable in place: a group name is the whole label the user

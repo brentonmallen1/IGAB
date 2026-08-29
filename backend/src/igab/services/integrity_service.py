@@ -26,6 +26,7 @@ from igab.db.models import (
     TransactionMatch,
 )
 from igab.domain.splits import split_balances, split_sum
+from igab.domain.transfers import leg_may_carry_category
 from igab.repositories.category_filters import UNDER_DELETED_GROUP
 from igab.utils.clock import today_utc
 
@@ -260,7 +261,11 @@ class IntegrityService:
             if leg.category_id is not None:
                 own = accounts.get(leg.account_id)
                 partner_acct = accounts.get(partner.account_id)
-                if not (own and partner_acct and own.on_budget and not partner_acct.on_budget):
+                if not (
+                    own
+                    and partner_acct
+                    and leg_may_carry_category(own.on_budget, partner_acct.on_budget)
+                ):
                     problems.append(
                         f"transfer leg {leg.id} is categorized but is not the "
                         "on-budget side of an off-budget transfer"

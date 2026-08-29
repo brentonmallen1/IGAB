@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ChevronsDownUp, ChevronsUpDown, Eye, Plus } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -12,6 +12,9 @@ import {
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { groupByView, visibleCategoryIds } from './viewGrouping'
+import { renderableCategoryIds, renderableGroups } from '../budgetGroups'
+import { useDragReorder } from '../../../hooks/useDragReorder'
+import { moveItem } from '../../../utils/listOrder'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
 import type { CategoryBalance, CategoryGroup } from '../../../types'
@@ -32,17 +35,23 @@ export function BudgetTable() {
   const [showHidden, setShowHidden] = useState(false)
   const [isAddingGroup, setIsAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
-  const [dragGroupIndex, setDragGroupIndex] = useState<number | null>(null)
-  const [dragOverGroupIndex, setDragOverGroupIndex] = useState<number | null>(null)
   const addGroupRef = useRef<HTMLInputElement>(null)
 
-  const { data: groups, isLoading: groupsLoading } = useCategoryGroups(budgetId, showHidden)
+  const { data: allGroups, isLoading: groupsLoading } = useCategoryGroups(budgetId, showHidden)
+  // The budget's envelope groups: the system (Income) group is not drawn.
+  const groups = useMemo(() => (allGroups ? renderableGroups(allGroups) : allGroups), [allGroups])
   const { data: categories, isLoading: catsLoading } = useCategories(budgetId, showHidden)
   const { data: budgetMonth, isLoading: monthLoading } = useBudgetMonth(budgetId, month)
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: views } = useBudgetViews(budgetId)
   const createGroup = useCreateCategoryGroup(budgetId ?? '')
-  const reorderGroups = useReorderCategoryGroups(budgetId ?? '')
+  const { mutate: reorderGroups } = useReorderCategoryGroups(budgetId ?? '')
+  const groupIds = useMemo(() => groups?.map((g) => g.id) ?? [], [groups])
+  const moveGroup = useCallback(
+    (from: number, to: number) => reorderGroups([...moveItem(groupIds, from, to)]),
+    [groupIds, reorderGroups]
+  )
+  const groupDrag = useDragReorder(groupIds.length, moveGroup)
 
   if (!budgetId) {
     return (
@@ -118,7 +127,7 @@ export function BudgetTable() {
   // These spanned every balance the month returned — including system and
   // hidden categories the table never renders — so the chip promised rows it
   // could not show.
-  const renderableIds = new Set((categories ?? []).map((c) => c.id))
+  const renderableIds = renderableCategoryIds(groups ?? [], categories ?? [])
   const chipBalances = (budgetMonth?.category_balances ?? []).filter(
     (b) => renderableIds.has(b.category_id) && (!viewVisibleIds || viewVisibleIds.has(b.category_id))
   )
@@ -135,23 +144,12 @@ export function BudgetTable() {
   // Dragging is offered only on the budget's own arrangement, showing every
   // group. A filtered or searched grid hides groups, so a drop there would
   // reorder against a list the user cannot see; a view has its own order,
-  // which is edited in the view editor.
+  // which is edited in the view editor. Categories follow the same rule
+  // within their group.
   const canReorderGroups =
     !isFiltered && !activeView && (groups?.length ?? 0) > 1 && visibleGroups === groups
+  const canReorderCategories = !isFiltered && !activeView
 
-  function moveGroup(from: number, to: number) {
-    if (!groups || from === to || to < 0 || to >= groups.length) return
-    const next = groups.map((g) => g.id)
-    const [moved] = next.splice(from, 1)
-    next.splice(to, 0, moved)
-    reorderGroups.mutate(next)
-  }
-
-  function handleGroupDrop(dropIndex: number) {
-    if (dragGroupIndex !== null) moveGroup(dragGroupIndex, dropIndex)
-    setDragGroupIndex(null)
-    setDragOverGroupIndex(null)
-  }
   const allCollapsed = allGroupIds.length > 0 && allGroupIds.every((id) => collapsedGroups.has(id))
 
   function startAddGroup() {
@@ -162,7 +160,7 @@ export function BudgetTable() {
 
   function commitAddGroup() {
     const name = newGroupName.trim()
-    if (name) createGroup.mutate({ name, sort_order: groups?.length ?? 0 })
+    if (name) createGroup.mutate({ name })
     setIsAddingGroup(false)
     setNewGroupName('')
   }
@@ -230,29 +228,9 @@ export function BudgetTable() {
             budgetId={budgetId}
             month={month}
             readOnlyGroup={activeView != null}
-            reorder={
-              canReorderGroups
-                ? {
-                    isDragging: dragGroupIndex === index,
-                    isDragOver: dragOverGroupIndex === index && dragGroupIndex !== index,
-                    onDragStart: () => setDragGroupIndex(index),
-                    onDragOver: () => setDragOverGroupIndex(index),
-                    onDrop: () => handleGroupDrop(index),
-                    onDragEnd: () => {
-                      setDragGroupIndex(null)
-                      setDragOverGroupIndex(null)
-                    },
-                    // Keyboard equivalent: dragging is not reachable without a
-                    // pointer, and the order of a budget is not a mouse-only
-                    // decision.
-                    onMoveUp: index > 0 ? () => moveGroup(index, index - 1) : undefined,
-                    onMoveDown:
-                      index < (visibleGroups?.length ?? 0) - 1
-                        ? () => moveGroup(index, index + 1)
-                        : undefined,
-                  }
-                : undefined
-            }
+            index={index}
+            reorder={canReorderGroups ? groupDrag : undefined}
+            canReorderCategories={canReorderCategories}
           />
         ))}
       </div>

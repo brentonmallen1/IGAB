@@ -41,6 +41,19 @@
   background-color: var(--bg-secondary);
 }
 
+/* Something in that section needs attention — currently only SimpleFIN with
+   no usable encryption key. A dot rather than a count: it is a yes/no state,
+   and the section itself carries the explanation. */
+.settings-nav__warn {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background-color: var(--color-warning);
+}
+
 .settings-nav__link--active {
   color: var(--color-accent);
   background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);

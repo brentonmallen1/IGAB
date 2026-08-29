@@ -30,7 +30,7 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
 
   return (
     <GuideDialog title="Still want these?" onClose={onClose} historyKey="wishlist-review">
-      <div className="guide-dialog__body wish-review">
+      <div className="dialog__body wish-review">
         {current ? (
           <>
             <p className="wish-review__progress">

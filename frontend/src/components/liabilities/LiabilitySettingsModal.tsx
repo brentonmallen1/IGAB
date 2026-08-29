@@ -82,13 +82,23 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [error, setError] = useState<string | null>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
-  // Accounts already backing another liability can't back this one too
+  // A companion liability belongs to its account: the account is where it
+  // lives, not a setting on it. Type is already read-only for that reason;
+  // the account itself gets the same treatment — the modal opens from the
+  // account's own page, and the old picker offered Checking and Savings.
+  const isCompanion = liability !== null && liability.mode === 'managed'
+  const ownAccount = accounts.find((a) => a.id === liability?.linked_account_id)
+
+  // Creating: only accounts that are liabilities and are not already backing
+  // another one.
   const linkedElsewhere = new Set(
     liabilities
       .filter((l) => l.id !== liability?.id && l.linked_account_id)
       .map((l) => l.linked_account_id)
   )
-  const linkableAccounts = accounts.filter((a) => !linkedElsewhere.has(a.id))
+  const linkableAccounts = accounts.filter(
+    (a) => a.classification === 'liability' && !linkedElsewhere.has(a.id)
+  )
 
   const isPending =
     createLiability.isPending || updateLiability.isPending || deleteLiability.isPending
@@ -102,7 +112,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
     if (isNaN(rateNum) || rateNum < 0) return setError('Enter a non-negative interest rate')
     const paymentNum = parseAmountInput(minimumPayment)
     if (isNaN(paymentNum) || paymentNum < 0) return setError('Enter the minimum monthly payment')
-    if (mode === 'managed' && !accountId)
+    if (mode === 'managed' && !isCompanion && !accountId)
       return setError('Choose the account this liability lives in')
     const balanceNum = parseAmountInput(balance)
     if (mode === 'unmanaged' && (isNaN(balanceNum) || balanceNum < 0)) {
@@ -133,9 +143,12 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
         await updateLiability.mutateAsync({
           liabilityId: liability.id,
           ...shared,
-          ...(mode === 'managed'
-            ? { linked_account_id: accountId }
-            : { linked_account_id: null, manual_balance: balanceNum }),
+          // A companion's account is not sent at all: it cannot change here.
+          ...(isCompanion
+            ? {}
+            : mode === 'managed'
+              ? { linked_account_id: accountId }
+              : { linked_account_id: null, manual_balance: balanceNum }),
         })
       } else {
         await createLiability.mutateAsync({
@@ -255,6 +268,17 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </label>
           </div>
 
+          {isCompanion ? (
+            <label className="liability-modal__field">
+              <span>Account</span>
+              <input
+                type="text"
+                value={ownAccount?.name ?? ''}
+                readOnly
+                title="Set by the account this liability lives in — its balance and payments come from that ledger"
+              />
+            </label>
+          ) : (
           <fieldset className="liability-modal__mode">
             <legend>Where does the balance come from?</legend>
             <label
@@ -315,6 +339,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               </label>
             )}
           </fieldset>
+          )}
 
           <details className="liability-modal__optional">
             <summary>Loan details — enables progress &amp; term insights</summary>

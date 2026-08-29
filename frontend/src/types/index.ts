@@ -150,9 +150,12 @@ export type TargetStatus = 'funded' | 'underfunded' | 'overfunded'
 export interface CategoryBalance {
   category_id: string
   month: string
-  assigned: number
+  /** Null on a category in a system (Income) group: income is filed there,
+   *  not budgeted there, so there is no envelope money to show. Served that
+   *  way — see `CategoryBalance` in api/v1/schemas/category.py. */
+  assigned: number | null
   activity: number
-  available: number
+  available: number | null
   /**
    * The target verdict, computed by the server's TargetService — the same
    * function Fill Underfunded asks. `null` when the category has no target.
@@ -883,6 +886,20 @@ export interface SimpleFINConnection {
   last_sync_error_at: string | null
   created_at: string
   updated_at: string
+}
+
+/**
+ * Served by GET /simplefin/config. The client cannot decide any of this: the
+ * encryption key is server-side env, so the server is the only one that knows
+ * whether bank sync can store credentials at all.
+ * Home: backend/src/igab/integrations/simplefin/encryption.py
+ */
+export interface SimpleFINConfig {
+  configured: boolean
+  /** Null when configured; otherwise what is wrong, in the user's words. */
+  problem: string | null
+  /** The one command that produces an acceptable key — served, not duplicated here. */
+  generate_key_command: string
 }
 
 export interface SimpleFINRateLimitStatus {

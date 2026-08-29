@@ -116,6 +116,28 @@ async def repair_transfers(
     )
 
 
+class RepairTrackingCategoriesResponse(BaseModel):
+    #: Rows whose category was removed. Zero means the budget was clean.
+    stripped: int
+
+
+@router.post("/{budget_id}/accounts/hygiene/repair-tracking-categories")
+async def repair_tracking_categories(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+) -> RepairTrackingCategoriesResponse:
+    """Strip categories from rows on off-budget accounts.
+
+    Those categories count nowhere — the budget's activity sums exclude
+    off-budget rows — so this moves no money; it makes the register agree
+    with the budget. One undoable batch; idempotent.
+    """
+    return RepairTrackingCategoriesResponse(
+        **await txn_service.repair_tracking_categories(budget_id)
+    )
+
+
 @router.post(
     "/{budget_id}/accounts", response_model=AccountResponse, status_code=status.HTTP_201_CREATED
 )

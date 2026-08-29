@@ -1,4 +1,5 @@
 import type { EditableField } from '../../../stores/transactionEditStore'
+import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 
 /**
  * Which register cell Tab moves to next — one rule for the row, pure so it
@@ -31,7 +32,7 @@ export function isFieldEditable(field: EditableField, ctx: FieldContext): boolea
     case 'payee':
       return !ctx.isTransfer
     case 'category':
-      return !ctx.isSplit && ctx.onBudget
+      return !ctx.isSplit && rowMayCarryCategory(ctx.onBudget)
     default:
       return true
   }

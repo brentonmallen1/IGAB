@@ -62,7 +62,7 @@ export function HealthReportDialog({
 
   return (
     <GuideDialog title="Health report" onClose={onClose} historyKey="guide-health-report">
-      <div className="guide-dialog__body guide-report">
+      <div className="dialog__body guide-report">
         <p className="guide-report__meta">
           {formatDate(asOf)} ·{' '}
           {findings.length === 0

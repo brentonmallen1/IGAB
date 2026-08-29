@@ -8,6 +8,7 @@ from igab.api.v1.schemas.simplefin import (
     AccountSyncStatusResponse,
     LinkSimpleFINRequest,
     RateLimitStatus,
+    SimpleFINConfigResponse,
     SimpleFINConnectionResponse,
     SimpleFINSetupRequest,
     SimpleFINUpdateRequest,
@@ -24,6 +25,11 @@ from igab.dependencies import (
     get_simplefin_service,
     get_transaction_matching_service,
 )
+from igab.integrations.simplefin.encryption import (
+    GENERATE_KEY_COMMAND,
+    SimpleFINNotConfigured,
+    key_problem,
+)
 from igab.repositories.account_repo import AccountRepository
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_matching_service import TransactionMatchingService
@@ -39,7 +45,18 @@ def _setup_error_message(exc: Exception) -> str:
     name = type(exc).__name__
     msg = str(exc)
 
-    if "base64" in msg.lower() or "decode" in msg.lower() or isinstance(exc, ValueError):
+    if isinstance(exc, SimpleFINNotConfigured):
+        # Never blame the token for this: setup() checks the key *before* the
+        # exchange, so the token the user pasted is still unused.
+        return (
+            f"{msg} Your setup token was not used — it will still work once the key is "
+            f"set. Generate one with: {GENERATE_KEY_COMMAND}"
+        )
+    # Only the token's own decode failure, matched on the message the client
+    # raises. A blanket `isinstance(exc, ValueError)` used to land here, which
+    # is how a missing encryption key was reported as an invalid token — and
+    # sent people back to burn a fresh token on every retry.
+    if "base64" in msg.lower() or "decode" in msg.lower():
         return (
             "Invalid setup token — make sure you copied the full token from "
             f"{_CREATE_URL} and haven't used it before."
@@ -63,6 +80,22 @@ def _setup_error_message(exc: Exception) -> str:
     return f"Setup failed ({name}): {msg}"
 
 
+@router.get("/simplefin/config", response_model=SimpleFINConfigResponse)
+async def get_simplefin_config(current_user: CurrentUser) -> SimpleFINConfigResponse:
+    """Whether bank sync can run on this server, and what to do if it cannot.
+
+    The UI asks before showing the setup form, so a server without an
+    encryption key says so up front instead of after the user has spent a
+    single-use SimpleFIN token on it.
+    """
+    problem = key_problem()
+    return SimpleFINConfigResponse(
+        configured=problem is None,
+        problem=problem,
+        generate_key_command=GENERATE_KEY_COMMAND,
+    )
+
+
 @router.post("/simplefin/setup", response_model=SimpleFINConnectionResponse, status_code=201)
 async def setup_simplefin(
     body: SimpleFINSetupRequest,
@@ -74,7 +107,11 @@ async def setup_simplefin(
     except Exception as e:
         logger.exception("SimpleFIN setup failed")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+                if isinstance(e, SimpleFINNotConfigured)
+                else status.HTTP_400_BAD_REQUEST
+            ),
             detail=_setup_error_message(e),
         ) from e
     return SimpleFINConnectionResponse.model_validate(conn)

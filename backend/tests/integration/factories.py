@@ -220,6 +220,43 @@ async def create_transaction(
     return txn
 
 
+async def create_transfer(
+    session: AsyncSession,
+    budget: Budget,
+    from_account: Account,
+    to_account: Account,
+    amount: str | Decimal,
+    txn_date: date,
+    *,
+    category: Category | None = None,
+    cleared: str = "cleared",
+) -> tuple[Transaction, Transaction]:
+    """Both legs of a transfer, mutually linked — the shape a payment into a
+    loan account really has. `category` goes on the from-leg (a YNAB
+    spending transfer to a tracked account). Returns (from_leg, to_leg)."""
+    from_leg = await create_transaction(
+        session,
+        budget,
+        from_account,
+        -Decimal(str(amount)),
+        txn_date,
+        category=category,
+        cleared=cleared,
+    )
+    to_leg = await create_transaction(
+        session,
+        budget,
+        to_account,
+        Decimal(str(amount)),
+        txn_date,
+        cleared=cleared,
+        transfer_id=from_leg.id,
+    )
+    from_leg.transfer_id = to_leg.id
+    await session.flush()
+    return from_leg, to_leg
+
+
 async def create_budget_assignment(
     session: AsyncSession,
     budget: Budget,

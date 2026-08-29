@@ -44,7 +44,7 @@ export function ProjectForm({ budgetId, project, onClose }: Props) {
 
   return (
     <GuideDialog title={editing ? 'Edit project' : 'Add a project'} onClose={onClose} historyKey="wishlist-project-form">
-      <form className="guide-dialog__body wish-form" onSubmit={submit}>
+      <form className="dialog__body wish-form" onSubmit={submit}>
         <label className="tool__field">
           <span>Project</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Japan trip, workshop, nursery…" autoFocus />

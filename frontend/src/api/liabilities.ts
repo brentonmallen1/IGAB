@@ -32,9 +32,18 @@ export interface Liability {
   original_principal: number | null
   /** This month's interest at the current balance; null without a rate */
   monthly_interest_now: number | null
-  /** Average of recent positive payments; null until 2+ months of history.
-   * Observed from the ledger, so it survives missing terms. */
+  /** Average of recent payments — transfers into the liability's account;
+   * null until 2+ months of history. Observed from the ledger, so it
+   * survives missing terms. */
   average_recent_payment: number | null
+  /** What the ledger itself says interest and fees came to per month over
+   * the same window; null until 2+ months carry any. The actual figure where
+   * one exists — `monthly_interest_now` is the modelled one. */
+  recent_interest_average: number | null
+  /** Positive rows with no partner account in the window — a balance
+   * adjustment, or a payment typed without a transfer. Not counted as
+   * payments, and said so. */
+  uncounted_deposits: number
   /** Contractual term implied by origination + principal + minimum payment */
   implied_term_months: number | null
   /** True = the entered minimum couldn't have amortized the original loan

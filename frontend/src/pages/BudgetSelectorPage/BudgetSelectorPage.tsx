@@ -256,59 +256,16 @@ export function BudgetSelectorPage() {
         file,
         accountTypes: accountChoices,
       })
+      // One line, and then the review. Everything this used to say — the
+      // parity check against the export's own figures, which plan rows were
+      // left out, which categories were given a classification-overriding tag,
+      // and up to fifty per-row errors of which one was shown — went out as six
+      // stacked toasts, fired while this navigated away. It is stored on the
+      // budget now, and ImportReviewGate opens it on the other side.
       const r = result.import_result
-      const parts = [
-        `${r.transactions.toLocaleString()} transactions`,
-        `${r.accounts} accounts`,
-        `${r.categories} categories`,
-      ]
-      if (r.assignments) parts.push(`${r.assignments.toLocaleString()} budget assignments`)
-      if (r.skipped) parts.push(`${r.skipped.toLocaleString()} skipped`)
-      if (r.accounts_closed) {
-        parts.push(
-          `${r.accounts_closed} imported and closed`
-        )
-      }
-      if (r.accounts_skipped) {
-        parts.push(
-          `${r.accounts_skipped} account${r.accounts_skipped !== 1 ? 's' : ''} left out as requested`
-        )
-      }
-      toast.success(`Imported ${parts.join(', ')}`, { duration: 15000 })
-      // A tag decides how a category's spending is classified in reports, so
-      // guessing at one from a name has to be said out loud — and said as
-      // something the user can change, not as a fact.
-      if (r.categories_tagged > 0) {
-        toast(
-          `${r.categories_tagged} categor${r.categories_tagged === 1 ? 'y looks' : 'ies look'} ` +
-            'like savings, so they are tagged for the Savings report. Change that on any ' +
-            'category if it is wrong.',
-          { duration: 12000, icon: '🏷️' }
-        )
-      }
-      // Unlinked transfer legs still balance the accounts they sit on, but they
-      // can't be told apart from real income and expense, so reports will read
-      // high. Warn rather than bury it in a count — it means the export wasn't
-      // shaped the way we expected, and the numbers can't be trusted until it's
-      // understood.
-      if (r.transfer_legs_unpaired > 0) {
-        const n = r.transfer_legs_unpaired.toLocaleString()
-        const leg = r.transfer_legs_unpaired === 1 ? 'transfer' : 'transfers'
-        // Shorter than it was, on purpose. A toast is the wrong home for a
-        // thousand-row reconciliation task: it explained the whole problem and
-        // then vanished, with no way to reach the rows. The Accounts page
-        // keeps the finding and links to them.
-        toast(
-          `${n} ${leg} couldn't be matched to the other side — see Accounts for the list.`,
-          { duration: 12000, icon: '⚠️' }
-        )
-      }
-      if (r.errors.length > 0) {
-        toast.error(
-          `${r.errors.length} rows had problems — first: ${r.errors[0]}`,
-          { duration: 15000 },
-        )
-      }
+      toast.success(
+        `Imported ${r.transactions.toLocaleString()} transactions across ${r.accounts} accounts.`
+      )
       setCurrentBudgetId(result.budget.id)
       navigate('/budget')
     } catch (err: unknown) {

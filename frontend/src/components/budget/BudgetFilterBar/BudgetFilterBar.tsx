@@ -77,9 +77,9 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
   // — the same function Fill Underfunded asks — so a chip's count always
   // matches what the rows show and what the button will do.
   const counts = {
-    overspent: categoryBalances.filter((b) => b.available < 0).length,
+    overspent: categoryBalances.filter((b) => (b.available ?? 0) < 0).length,
     underfunded: categoryBalances.filter((b) => b.target_status === 'underfunded').length,
-    'money-available': categoryBalances.filter((b) => b.available > 0).length,
+    'money-available': categoryBalances.filter((b) => (b.available ?? 0) > 0).length,
     overfunded: categoryBalances.filter((b) => b.target_status === 'overfunded').length,
   }
 
