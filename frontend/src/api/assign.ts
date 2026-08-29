@@ -15,6 +15,10 @@ export interface AssignStrategyTotalsResponse {
   month: string
   tba: number
   total_overspent: number
+  /** The part of `total_overspent` Cover Overspending would actually fund;
+   *  the rest rode onto a card and no assignment retires it. The dropdown row
+   *  reads this so its number matches the dialog it opens. */
+  total_overspent_cash: number
   strategies: AssignStrategyTotal[]
 }
 

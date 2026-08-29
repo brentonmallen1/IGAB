@@ -91,6 +91,12 @@ export const CategoryRow = memo(function CategoryRow({
   // `available` (domain/cards.py), so the only job here is to say so — an
   // unexplained deduction is the defect this whole mechanism exists to fix.
   const refusedCardInflows = Number(balance?.refused_card_inflows ?? 0)
+  // How much of this row's red was swiped on a card (domain/cards.py). That
+  // part costs nothing: it never charges Ready to Assign, and at the month
+  // boundary it rides onto the card as debt rather than being written off.
+  // Red funded entirely that way is a fact, not a task — so it reads calmly.
+  const creditOverspent = Number(balance?.credit_overspent ?? 0)
+  const overspentOnCardOnly = available < 0 && creditOverspent >= -available
 
   const handleStartEdit = useCallback(() => {
     committedRef.current = false
@@ -201,7 +207,13 @@ export const CategoryRow = memo(function CategoryRow({
     if (!anySelected) toggleCategorySelection(category.id)
   }, handleRowClick)
 
-  const availableClass = available < 0 ? 'negative' : available > 0 ? 'positive' : 'zero'
+  const availableClass = overspentOnCardOnly
+    ? 'negative-on-card'
+    : available < 0
+      ? 'negative'
+      : available > 0
+        ? 'positive'
+        : 'zero'
 
   const isTargetExpired = !!(target?.target_date && String(target.target_date) < today())
 
@@ -260,7 +272,7 @@ export const CategoryRow = memo(function CategoryRow({
         />
       )}
       <div
-        className={`category-row drag-handle-host ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'compressed' ? 'category-row--compressed' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
+        className={`category-row drag-handle-host ${category.is_hidden ? 'category-row--hidden' : ''} ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 && !overspentOnCardOnly ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'compressed' ? 'category-row--compressed' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
         role="row"
         {...(isMobile ? longPress : { onClick: handleRowClick })}
         style={{ cursor: 'default' }}
@@ -447,9 +459,16 @@ export const CategoryRow = memo(function CategoryRow({
               ? `${formatMoney(refusedCardInflows)} of card inflows filed here paid down ` +
                 'card debt instead of returning to this envelope, because this envelope ' +
                 'had not reserved that money on the card. Not included above.'
-              : available < 0
-                ? 'Overspent — click to cover from another envelope'
-                : 'Click to move money to another envelope'
+              : overspentOnCardOnly
+                ? `${formatMoney(-available)} of this was spent on a card, so it rides there as ` +
+                  'debt. It never charges To Be Assigned — pay it down by assigning to the card.'
+                : available < 0
+                  ? creditOverspent > 0
+                    ? `${formatMoney(creditOverspent)} of this was spent on a card and rides ` +
+                      'there as debt; the rest comes out of To Be Assigned when the month turns. ' +
+                      'Click to cover it from another envelope.'
+                    : 'Overspent — click to cover from another envelope'
+                  : 'Click to move money to another envelope'
           }
         >
           {formatMoney(available)}

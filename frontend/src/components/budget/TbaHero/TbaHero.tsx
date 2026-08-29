@@ -42,7 +42,13 @@ export function TbaHero({ budgetId, month }: Props) {
   const assignRef = useRef<HTMLDivElement>(null)
 
   const tba = budgetMonth?.to_be_assigned ?? 0
-  const overspent = Number(budgetMonth?.total_overspent ?? 0)
+  // The cash part leads, because it is the only part an action can change:
+  // it is written off from Ready to Assign at the month boundary. Credit
+  // overspending rode onto a card, is already counted in that card's
+  // Uncovered, and rolls onto it when the month turns — there is nothing to
+  // do about it, so it must not be dressed as work. See domain/cards.py.
+  const overspent = Number(budgetMonth?.total_overspent_cash ?? 0)
+  const overspentOnCards = Number(budgetMonth?.total_overspent_credit ?? 0)
   const assignedInFuture = Number(budgetMonth?.assigned_in_future ?? 0)
   const tbaClass = tba > 0 ? 'positive' : tba < 0 ? 'negative' : 'zero'
 
@@ -50,7 +56,7 @@ export function TbaHero({ budgetId, month }: Props) {
   // here it read the client's category list, which excludes hidden categories
   // — so the count undercounted next to an amount that included them, and next
   // to a Cover Overspent that would act on them.
-  const overspentCount = budgetMonth?.overspent_count ?? 0
+  const overspentCount = budgetMonth?.overspent_count_cash ?? 0
 
   function handlePickStrategy(strategy: AssignStrategy) {
     setAssignOpen(false)
@@ -109,11 +115,38 @@ export function TbaHero({ budgetId, month }: Props) {
             <button
               className="tba-hero__overspent-chip"
               onClick={() => setShowCover(true)}
-              title="Cover overspending"
+              title={
+                overspentOnCards > 0
+                  ? `${formatMoney(-overspent)} overspent in cash — covered from To Be Assigned ` +
+                    `when the month turns. A further ${formatMoney(overspentOnCards)} was spent ` +
+                    `on cards and rides there as debt instead; it never charges To Be Assigned.`
+                  : 'Cover overspending'
+              }
             >
               {formatMoney(-overspent)}
               <span className="tba-hero__chip-word"> overspent</span>
             </button>
+          )}
+
+          {/* Card-funded red, stated and not alarmed about: it costs nothing
+              and there is no action attached, so it gets the same calm
+              treatment as Uncovered in the cards section. Shown even when the
+              cash chip is absent — otherwise a month overspent entirely on a
+              card looks like a month with no overspending at all, and the
+              grid's red would have nothing explaining it. */}
+          {overspentOnCards > 0 && (
+            <span
+              className="tba-hero__on-cards"
+              title={
+                `${formatMoney(overspentOnCards)} of this month's overspending was spent on a ` +
+                `card. It is already counted in that card's Uncovered and never charges To Be ` +
+                `Assigned — when the month turns it rides onto the card as debt rather than ` +
+                `being written off. Pay it down by assigning to the card.`
+              }
+            >
+              {formatMoney(-overspentOnCards)}
+              <span className="tba-hero__chip-word"> on cards</span>
+            </span>
           )}
 
           <button

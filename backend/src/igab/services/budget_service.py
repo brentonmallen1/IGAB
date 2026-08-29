@@ -84,6 +84,20 @@ class CategoryBalance:
     #: section, not something Cover Overspent offers to fix). Decided once,
     #: here, like `in_system_group`.
     is_card_payment: bool = False
+    #: The part of this month's shortfall that was spent on a card, straight
+    #: out of `card_funding`'s `floored_by_category` — the same dict
+    #: `uncovered_current` is summed from, so a row and the Ready to Assign
+    #: arithmetic cannot tell different stories about the same dollars.
+    #:
+    #: It is the answer to "does this red cost me anything": it does not.
+    #: Filing a card charge moves Ready to Assign by exactly zero — the
+    #: covered part raises the card's set-aside (itself in the envelope
+    #: total), the rest is subtracted here as `uncovered_current`, and the
+    #: envelope's own fall raises the figure by the whole charge. At the
+    #: month boundary this part rides onto the card as Uncovered instead of
+    #: being written off. Only `available + credit_overspent` — the cash
+    #: part — ever charges Ready to Assign.
+    credit_overspent: Decimal = Decimal("0")
 
 
 @dataclass
@@ -139,6 +153,18 @@ class BudgetSummary:
     #: from the client's category list, which excludes hidden categories, so it
     #: undercounted next to an amount that included them.
     overspent_count: int
+    #: `total_overspent` split by what funds it. Credit overspending rode onto
+    #: a card and is already reflected in Uncovered; it never charges Ready to
+    #: Assign, this month or at the boundary. Cash overspending is written off
+    #: from Ready to Assign when the month rolls. The headline stays whole —
+    #: the red on the grid is real either way — but every figure that implies
+    #: an action reads the cash one, because that is the only part an action
+    #: can change. The glossary promised this before the code did.
+    total_overspent_cash: Decimal
+    total_overspent_credit: Decimal
+    #: How many categories carry a cash shortfall — what Cover Overspent lists.
+    #: Counted in the same loop as the amount, for the reason above.
+    overspent_count_cash: int
     # Dollars already committed to months after the viewed month; deducted
     # from to_be_assigned so the same dollars can't be assigned twice.
     assigned_in_future: Decimal
@@ -170,7 +196,13 @@ class CoverOverspentItem:
 @dataclass
 class CoverOverspentPreview:
     items: list[CoverOverspentItem]
+    #: What `items` sums to before any distribution — the cash shortfall, which
+    #: is the whole of what this dialog can act on.
     total_overspent: Decimal
+    #: Overspending left out of `items` because it rode onto a card. Shown so
+    #: the difference between this dialog and the grid's red is stated rather
+    #: than left for the reader to notice and distrust.
+    total_overspent_credit: Decimal
     total_addition: Decimal
     tba_before: Decimal
     tba_after: Decimal
@@ -382,6 +414,7 @@ class BudgetService:
         cards: list[CardStatus] = []
         uncovered_current = zero
         truncated_by_category: dict[uuid.UUID, dict[date, Decimal]] = {}
+        floored_by_category: dict[uuid.UUID, dict[date, Decimal]] = {}
         card_accounts = [
             a
             for a in await self.account_repo.get_all(budget_id, include_closed=True)
@@ -477,7 +510,9 @@ class BudgetService:
         total_assigned = Decimal("0")
         total_activity = Decimal("0")
         total_overspent = Decimal("0")
+        total_overspent_credit = Decimal("0")
         overspent_count = 0
+        overspent_count_cash = 0
 
         for cat in categories:
             bal = balance_map[cat.id]
@@ -524,8 +559,24 @@ class BudgetService:
                 # overspending — see the flag's comment.
                 continue
             if bal.available < 0:
+                # Straight out of the dict `uncovered_current` is summed from,
+                # so the row and the Ready to Assign arithmetic cannot tell
+                # different stories. It cannot exceed the shortfall:
+                # `credit_floored_by_month` already caps it at the raw
+                # month-end deficit, and `available` only ever falls further
+                # from there (the `refused_card_inflows` deduction above).
+                #
+                # Which means red created *by* that deduction counts as cash —
+                # `card_funding` reads the raw series, where the envelope was
+                # still in surplus, so it floored nothing. That is the
+                # conservative direction: Cover Overspent offers to cover it
+                # rather than quietly calling it the card's problem.
+                bal.credit_overspent = floored_by_category.get(cat.id, {}).get(month_start, zero)
                 total_overspent += -bal.available
+                total_overspent_credit += bal.credit_overspent
                 overspent_count += 1
+                if -bal.available > bal.credit_overspent:
+                    overspent_count_cash += 1
             total_activity += bal.activity
 
         assigned_in_future = await self.assignment_repo.sum_after_month(budget_id, month_start)
@@ -538,7 +589,10 @@ class BudgetService:
             total_assigned=total_assigned,
             total_activity=total_activity,
             total_overspent=total_overspent,
+            total_overspent_cash=total_overspent - total_overspent_credit,
+            total_overspent_credit=total_overspent_credit,
             overspent_count=overspent_count,
+            overspent_count_cash=overspent_count_cash,
             assigned_in_future=assigned_in_future,
             category_balances=balances,
             cards=cards,
@@ -822,16 +876,28 @@ class BudgetService:
     async def _overspent_shortfalls(
         self, budget_id: uuid.UUID, month: date
     ) -> tuple["BudgetSummary", dict[uuid.UUID, Decimal]]:
-        """Current summary plus {category_id: overspent amount} for envelope
+        """Current summary plus {category_id: cash shortfall} for envelope
         categories. Hidden categories are included on purpose — they participate
-        in the TBA math, so covering them is required to zero out overspending."""
+        in the TBA math, so covering them is required to zero out overspending.
+
+        The **cash** part only. Credit-funded overspending is money that rode
+        onto a card: it is already counted in that card's Uncovered, it does not
+        charge Ready to Assign now, and at the month boundary it rolls onto the
+        card rather than being written off. Assigning cash to it buys nothing —
+        the debt stays, and the dollars leave Ready to Assign for an envelope
+        that will floor to zero regardless. A category overspent entirely on a
+        card therefore produces no row here at all.
+
+        The glossary has said this since the credit model shipped ("Cover
+        Overspent handles only the cash kind, on purpose"); until now only the
+        glossary said it."""
         summary = await self.get_budget_summary(budget_id, month)
         shortfalls = {
-            b.category_id: -b.available
+            b.category_id: -b.available - b.credit_overspent
             for b in summary.category_balances
             if b.available < 0 and not b.in_system_group and not b.is_card_payment
         }
-        return summary, shortfalls
+        return summary, {k: v for k, v in shortfalls.items() if v > 0}
 
     async def cover_overspent_preview(
         self, budget_id: uuid.UUID, month: date
@@ -857,7 +923,8 @@ class BudgetService:
 
         return CoverOverspentPreview(
             items=items,
-            total_overspent=summary.total_overspent,
+            total_overspent=sum(shortfalls.values(), Decimal("0")),
+            total_overspent_credit=summary.total_overspent_credit,
             total_addition=total_addition,
             tba_before=summary.to_be_assigned,
             tba_after=summary.to_be_assigned - total_addition,

@@ -130,6 +130,24 @@
   background-color: color-mix(in srgb, var(--color-negative) 20%, transparent);
 }
 
+/* Overspending that rode onto a card. Deliberately NOT the negative colour and
+   deliberately not a button: it costs nothing and there is no action attached.
+   Same reading as `.credit-cards__uncovered`, which is the same money seen from
+   the card's side — if one of these ever starts shouting, so should the other. */
+.tba-hero__on-cards {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background-color: var(--surface-sunken);
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: default;
+}
+
 /* History button — opens the month's move log in a modal */
 .tba-hero__history-btn {
   display: inline-flex;
@@ -362,7 +380,8 @@
     min-height: 44px;
   }
 
-  .tba-hero__overspent-chip {
+  .tba-hero__overspent-chip,
+  .tba-hero__on-cards {
     min-height: 32px;
   }
 

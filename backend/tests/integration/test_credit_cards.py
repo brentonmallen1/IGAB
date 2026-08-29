@@ -299,7 +299,90 @@ class TestTheIdentity:
         assert linked_bal.available == D("-50.00")  # paid 150, only 100 funded
         assert s.total_overspent == D("50.00"), "groceries only — the card is not overspending"
         preview = await services.budgets.cover_overspent_preview(budget.id, JUL)
-        assert [i.category_id for i in preview.items] == [groceries.id]
+        assert linked.id not in [i.category_id for i in preview.items]
+        # Groceries is absent too, for the other reason: its whole 50 was
+        # swiped on the card, so it is credit overspending and Cover
+        # Overspent has nothing to fund. The mixed case is the test below.
+        assert preview.items == []
+        assert preview.total_overspent == D("0")
+        assert preview.total_overspent_credit == D("50.00")
+
+    async def test_cover_overspent_offers_the_cash_part_and_not_the_credit_part(self, db_session):
+        """The split, through the dialog that spends real money on it.
+
+        Overspent 50 with 20 of it swiped on the card: 30 is cash the
+        boundary will write off from Ready to Assign, and 20 rode onto the
+        card, where it is already counted in Uncovered. Assigning cash to
+        that 20 buys nothing — the debt stays and the envelope floors to
+        zero regardless — so the dialog offers 30.
+
+        The glossary has promised exactly this since the credit model
+        shipped ("Cover Overspent handles only the cash kind, on purpose").
+        Until this test, only the glossary said it: the predicate read
+        `-available` and offered the whole 50.
+        """
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, checking, "-130.00", date(2026, 7, 8), category=groceries
+        )
+        await create_transaction(db_session, budget, visa, "-20.00", date(2026, 7, 9), category=groceries)
+        await db_session.flush()
+
+        s = await _summary(services, budget, JUL)
+        bal = next(b for b in s.category_balances if b.category_id == groceries.id)
+        assert bal.available == D("-50.00")
+        assert bal.credit_overspent == D("20.00")
+        assert (s.total_overspent, s.total_overspent_cash, s.total_overspent_credit) == (
+            D("50.00"),
+            D("30.00"),
+            D("20.00"),
+        )
+        assert (s.overspent_count, s.overspent_count_cash) == (1, 1)
+
+        preview = await services.budgets.cover_overspent_preview(budget.id, JUL)
+        assert [(i.category_id, i.overspent) for i in preview.items] == [(groceries.id, D("30.00"))]
+        assert preview.total_overspent == D("30.00")
+        assert preview.total_overspent_credit == D("20.00")
+
+    async def test_filing_a_card_charge_does_not_move_ready_to_assign(self, db_session):
+        """The claim the interface makes in words, pinned in code.
+
+        Filing a card charge splits three ways that cancel: the part the
+        envelope covers raises the card's set-aside (itself in the envelope
+        total), the part it cannot is subtracted as `uncovered_current`, and
+        the envelope's own fall raises the figure by the whole charge. Sum:
+        zero — whatever state the envelope was in, and whatever month the
+        charge is dated.
+
+        This is why categorizing months of imported card history is free. It
+        only moves red from invisible (the card's Uncovered) to visible (a
+        named envelope) — the number on screen grows and nothing is owed
+        that was not owed before.
+        """
+        for name, assigned, prior_cash, charge, charge_date in [
+            ("surplus", "150.00", None, "-40.00", date(2026, 7, 9)),
+            ("crossing zero", "50.00", None, "-90.00", date(2026, 7, 9)),
+            ("already negative", "50.00", "-80.00", "-40.00", date(2026, 7, 9)),
+            ("a past month", "50.00", None, "-40.00", date(2026, 6, 9)),
+        ]:
+            services, budget, checking, visa, _, groceries = await _setup(db_session)
+            await create_budget_assignment(db_session, budget, groceries, JUL, assigned)
+            if prior_cash:
+                await create_transaction(
+                    db_session, budget, checking, prior_cash, date(2026, 7, 8), category=groceries
+                )
+            await db_session.flush()
+            before = await _summary(services, budget, JUL)
+
+            await create_transaction(
+                db_session, budget, visa, charge, charge_date, category=groceries
+            )
+            await db_session.flush()
+            after = await _summary(services, budget, JUL)
+
+            assert after.to_be_assigned == before.to_be_assigned, name
+            assert after.total_overspent_cash == before.total_overspent_cash, name
 
 
 class TestNothingIsFiledToACardEnvelope:

@@ -26,7 +26,10 @@ export function AssignAutoTab({ totals, isLoading, overspentCount, onPickStrateg
   }
 
   const byStrategy = new Map(totals.strategies.map((s) => [s.strategy, s]))
-  const overspent = Number(totals.total_overspent)
+  // The cash part: what this row would actually fund. Credit-funded red rode
+  // onto a card and no assignment retires it, so offering to cover it would
+  // name a number the dialog then refuses to act on.
+  const overspent = Number(totals.total_overspent_cash)
   const underfundedNeeded = Number(byStrategy.get('underfunded')?.total_needed ?? 0)
   // Overspending and underfunding measure different things: a category with
   // no target is never "underfunded" however overspent it is. When the two

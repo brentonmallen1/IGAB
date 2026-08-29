@@ -193,3 +193,13 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* The card-funded remainder, named so the gap between this dialog and the
+   grid's red is explained rather than discovered. Secondary text, not the
+   negative colour: it costs nothing and there is no action here to take. */
+.cover-modal__on-cards {
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}

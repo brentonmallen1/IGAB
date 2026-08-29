@@ -142,6 +142,7 @@ class AssignTotals:
     month: date
     tba: Decimal
     total_overspent: Decimal
+    total_overspent_cash: Decimal
     strategies: list[AssignPreview]
 
 
@@ -293,6 +294,7 @@ class AssignService:
             month=ctx.month,
             tba=ctx.summary.to_be_assigned,
             total_overspent=ctx.summary.total_overspent,
+            total_overspent_cash=ctx.summary.total_overspent_cash,
             strategies=[self._build_preview(ctx, s) for s in ASSIGN_STRATEGIES],
         )
 

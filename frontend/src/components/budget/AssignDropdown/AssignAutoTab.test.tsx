@@ -15,7 +15,14 @@ function totals(overrides: Partial<AssignStrategyTotalsResponse> = {}, underfund
     affected_count: 1,
     to_assign: 500,
   })) as AssignStrategyTotalsResponse['strategies']
-  return { month: '2026-08', tba: 500, total_overspent: 0, strategies, ...overrides }
+  return {
+    month: '2026-08',
+    tba: 500,
+    total_overspent: 0,
+    total_overspent_cash: 0,
+    strategies,
+    ...overrides,
+  }
 }
 
 function setup(t: AssignStrategyTotalsResponse, overspentCount = 0) {
@@ -40,7 +47,7 @@ describe('AssignAutoTab', () => {
   })
 
   it('shows the overspent amount and count, and opens the cover flow', () => {
-    const { rows, onCoverOverspent } = setup(totals({ total_overspent: 123.45 }), 3)
+    const { rows, onCoverOverspent } = setup(totals({ total_overspent: 123.45, total_overspent_cash: 123.45 }), 3)
     expect(rows[0]).toBeEnabled()
     expect(rows[0]).toHaveTextContent('3 categories')
     expect(rows[0]).toHaveTextContent('123.45')
@@ -49,12 +56,12 @@ describe('AssignAutoTab', () => {
   })
 
   it('explains a $0 underfunded row that sits beside overspending', () => {
-    setup(totals({ total_overspent: 50 }), 1)
+    setup(totals({ total_overspent: 50, total_overspent_cash: 50 }), 1)
     expect(screen.getByText(/isn't a target shortfall/)).toBeInTheDocument()
   })
 
   it('does not explain when targets genuinely need money', () => {
-    setup(totals({ total_overspent: 50 }, 200), 1)
+    setup(totals({ total_overspent: 50, total_overspent_cash: 50 }, 200), 1)
     expect(screen.queryByText(/isn't a target shortfall/)).toBeNull()
   })
 })

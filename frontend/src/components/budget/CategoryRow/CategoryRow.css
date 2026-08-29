@@ -372,6 +372,15 @@
   color: var(--text-muted);
 }
 
+/* Red that was swiped on a card and rides there as debt. Still negative, still
+   reads as money owed — but not the alarm colour, because nothing is owed that
+   the card was not already owed and Ready to Assign is never charged for it.
+   The same restraint the cards section gives Uncovered, which is this money
+   seen from the other side. */
+.negative-on-card {
+  color: var(--text-secondary);
+}
+
 /* ─── Compressed row mode ───────────────────────────────────────────────── */
 
 /* Desktop density mode: tighter rows, smaller text, no subtitle. Scoped above 768px —

@@ -62,13 +62,36 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
           {isLoading ? (
             <div className="cover-modal__loading">Calculating…</div>
           ) : !preview || preview.items.length === 0 ? (
-            <div className="cover-modal__empty">Nothing is overspent this month.</div>
+            <div className="cover-modal__empty">
+              {preview && Number(preview.total_overspent_credit) > 0 ? (
+                <>
+                  <p>Nothing here needs covering.</p>
+                  <p className="cover-modal__on-cards">
+                    This month&rsquo;s {formatMoney(preview.total_overspent_credit)} of overspending
+                    was all spent on a card, so it rides there as debt instead of being covered from
+                    Ready to Assign. Pay it down by assigning to the card.
+                  </p>
+                </>
+              ) : (
+                'Nothing is overspent this month.'
+              )}
+            </div>
           ) : (
             <>
               <p className="cover-modal__description">
                 Ready to Assign ({formatMoney(preview.tba_before)}) will cover overspent
                 categories — in full when it stretches, proportionally when it doesn't.
               </p>
+              {/* The grid's red is larger than this table, on purpose. Saying so
+                  here is cheaper than letting someone find the gap and stop
+                  trusting both numbers. */}
+              {Number(preview.total_overspent_credit) > 0 && (
+                <p className="cover-modal__on-cards">
+                  A further {formatMoney(preview.total_overspent_credit)} was spent on a card. That
+                  rides on the card as debt, never charges Ready to Assign, and is not listed here —
+                  assigning cash to it would not retire it. Pay it down by assigning to the card.
+                </p>
+              )}
               <table className="cover-modal__table">
                 <caption className="sr-only">Overspent categories and proposed coverage</caption>
                 <thead>

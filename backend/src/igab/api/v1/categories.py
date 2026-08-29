@@ -540,6 +540,9 @@ async def get_budget_month(
         total_assigned=summary.total_assigned,
         total_activity=summary.total_activity,
         total_overspent=summary.total_overspent,
+        total_overspent_cash=summary.total_overspent_cash,
+        total_overspent_credit=summary.total_overspent_credit,
+        overspent_count_cash=summary.overspent_count_cash,
         overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,
         cards=[
@@ -574,6 +577,7 @@ async def get_budget_month(
                 ),
                 is_card_payment=b.is_card_payment,
                 refused_card_inflows=b.refused_card_inflows,
+                credit_overspent=b.credit_overspent,
             )
             for b in summary.category_balances
         ],
@@ -921,6 +925,7 @@ async def assign_strategy_totals(
         month=totals.month,
         tba=totals.tba,
         total_overspent=totals.total_overspent,
+        total_overspent_cash=totals.total_overspent_cash,
         strategies=[
             AssignStrategyTotal(
                 strategy=p.strategy,
@@ -1000,6 +1005,7 @@ async def cover_overspent_preview(
             for i in preview.items
         ],
         total_overspent=preview.total_overspent,
+        total_overspent_credit=preview.total_overspent_credit,
         total_addition=preview.total_addition,
         tba_before=preview.tba_before,
         tba_after=preview.tba_after,
