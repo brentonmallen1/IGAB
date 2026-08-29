@@ -198,6 +198,7 @@ test-frontend:
 ci:
     #!/usr/bin/env bash
     set -euo pipefail
+    echo "── personal data ──"             && python3 scripts/check-pii.py
     echo "── backend: ruff check ──"        && cd backend && uv run ruff check src/
     echo "── backend: ruff format check ──" && uv run ruff format --check src/
     echo "── backend: ty ──"                && uv run ty check src/
@@ -262,6 +263,10 @@ release VERSION:
 [positional-arguments]
 ynab-oracle FILE *ARGS:
     cd backend && PYTHONPATH=src uv run python scripts/ynab_rta_oracle.py "$@"
+
+# Refuse to ship personal data. Runs first in `just ci`; run it before committing.
+check-pii:
+    python3 scripts/check-pii.py
 
 # Repair budgets damaged before synced transfer legs were paired: unlinked
 # transfer pairs, card charges filed as income, stranded card envelopes.

@@ -58,7 +58,7 @@ def _sanitize(obj: object, depth: int = 0) -> object:
             elif k in ("description", "payee", "memo"):
                 # All three carry the bank's free text, and all three carried
                 # a real name the first time this ran: `payee` was simply not
-                # in this list, so "Clinicpay Account Payment <name>" was
+                # in this list, so "<merchant> Account Payment <name>" was
                 # written verbatim into a public repo.
                 out[k] = _sanitize_description(str(v))
             elif k in ("balance", "available-balance", "amount"):
