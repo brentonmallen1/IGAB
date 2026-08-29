@@ -6,6 +6,7 @@ import { useUIStore } from '../../../stores/uiStore'
 import { parseAmountExpressionInput } from '../../../utils/amountExpression'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
+import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import './CreditCardsSection.css'
 
 /**
@@ -35,6 +36,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [infoOpen, setInfoOpen] = useState(false)
+  const [peek, setPeek] = useState<{ accountId: string; accountName: string } | null>(null)
 
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
@@ -157,11 +159,22 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       </button>
                     )}
                   </span>
-                  <span className="credit-cards__col--num tabular" role="cell">
-                    {formatMoney(card.set_aside)}
-                    {Number(card.set_aside) < 0 && (
-                      <span className="credit-cards__hint"> overpaid</span>
-                    )}
+                  <span className="credit-cards__col--num" role="cell">
+                    {/* The drill-in, like the grid's Activity cell: the
+                        number is the door to the rows behind it. */}
+                    <button
+                      type="button"
+                      className="credit-cards__peek-btn tabular"
+                      title={`Transactions on ${card.name}`}
+                      onClick={() =>
+                        setPeek({ accountId: card.account_id, accountName: card.name })
+                      }
+                    >
+                      {formatMoney(card.set_aside)}
+                      {Number(card.set_aside) < 0 && (
+                        <span className="credit-cards__hint"> overpaid</span>
+                      )}
+                    </button>
                   </span>
                   <span
                     className="credit-cards__col--num tabular credit-cards__uncovered"
@@ -174,6 +187,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             })}
           </div>
         </div>
+      )}
+      {peek && (
+        <TransactionsPeekModal
+          budgetId={budgetId}
+          scope={{ kind: 'account', accountId: peek.accountId, accountName: peek.accountName }}
+          onClose={() => setPeek(null)}
+        />
       )}
       {infoOpen && (
         <Dialog

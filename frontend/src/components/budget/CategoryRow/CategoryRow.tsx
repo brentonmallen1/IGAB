@@ -17,7 +17,7 @@ import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
 import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { TransactionEditor } from '../../transactions/TransactionEditor/TransactionEditor'
-import { CategoryTransactionsModal } from '../CategoryTransactionsModal/CategoryTransactionsModal'
+import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import { toCents } from '../../../utils/money'
 import { parseAssignmentInput } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -243,10 +243,9 @@ export const CategoryRow = memo(function CategoryRow({
         />
       )}
       {showTxnList && (
-        <CategoryTransactionsModal
+        <TransactionsPeekModal
           budgetId={budgetId}
-          categoryId={category.id}
-          categoryName={category.name}
+          scope={{ kind: 'category', categoryId: category.id, categoryName: category.name }}
           onClose={() => setShowTxnList(false)}
           onAddTransaction={() => {
             setShowTxnList(false)
