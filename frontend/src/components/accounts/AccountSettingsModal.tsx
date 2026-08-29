@@ -51,6 +51,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const [accountType, setAccountType] = useState(account?.account_type ?? 'checking')
   const [onBudget, setOnBudget] = useState(account?.on_budget ?? true)
   const [note, setNote] = useState(account?.note ?? '')
+  const [budgetStart, setBudgetStart] = useState(account?.budget_start_date ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [closeError, setCloseError] = useState<string | null>(null)
   const [showTypeInfo, setShowTypeInfo] = useState(false)
@@ -64,6 +65,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
       setAccountType(account.account_type)
       setOnBudget(account.on_budget)
       setNote(account.note ?? '')
+      setBudgetStart(account.budget_start_date ?? '')
     }
   }, [account])
 
@@ -82,6 +84,9 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
         account_type: accountType,
         on_budget: onBudget,
         note: note.trim() || null,
+        // Empty clears it: null means "treat all history as budgeted",
+        // which is what an account that was never asked does.
+        budget_start_date: budgetStart || null,
       })
       onClose()
     } catch {
@@ -208,6 +213,29 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="Optional note…"
                 />
+              </div>
+              {/* The answer to "my card came in with three months of history
+                  and now everything is red". That spending predates the
+                  budget: it is opening debt, not overspending to cover. */}
+              <div className="acct-modal__field">
+                <label className="acct-modal__label" htmlFor="acct-budget-start">
+                  Budget starts
+                </label>
+                <input
+                  id="acct-budget-start"
+                  type="date"
+                  className="acct-modal__input"
+                  value={budgetStart}
+                  onChange={(e) => setBudgetStart(e.target.value)}
+                />
+                <p className="acct-modal__hint">
+                  {budgetStart
+                    ? 'Anything before this is opening balance — kept in the register, left ' +
+                      'uncategorized, and not counted as needing a category. On a card it shows ' +
+                      'as Uncovered and is paid down by assigning to the card.'
+                    : 'Leave empty to treat this account’s whole history as part of your budget. ' +
+                      'Set a date when an account arrives with history from before you tracked it.'}
+                </p>
               </div>
             </div>
 

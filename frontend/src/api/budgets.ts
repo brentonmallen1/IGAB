@@ -155,6 +155,10 @@ export function useSetAssignment(budgetId: string) {
                 // Nothing was refused: this row is an assignment the user just
                 // made, not a card inflow the reservation walk had to cap.
                 refused_card_inflows: 0,
+                // An optimistic row starts at `assigned` with no activity, so
+                // it cannot be overspent at all, let alone on a card. The
+                // refetch brings the real split a moment later.
+                credit_overspent: 0,
               },
             ]
         qc.setQueryData<BudgetMonth>(['budgetMonth', budgetId, month], {
@@ -335,7 +339,12 @@ export interface CoverOverspentPreviewItem {
 
 export interface CoverOverspentPreviewResponse {
   items: CoverOverspentPreviewItem[]
+  /** What `items` sums to: the cash shortfall, all this dialog can act on. */
   total_overspent: number
+  /** Overspending left out of `items` because it rode onto a card — already
+   *  counted in that card's Uncovered, and never charged to Ready to Assign.
+   *  Served so the dialog can state the gap between itself and the grid. */
+  total_overspent_credit: number
   total_addition: number
   tba_before: number
   tba_after: number

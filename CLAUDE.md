@@ -18,6 +18,7 @@ Self-hosted YNAB-like envelope budgeting app. Single-user, zero-based budgeting.
 - `just lint-backend` / `just format-backend` — ruff check/format
 - `just typecheck-backend` — ty type checking
 - `just check-backend` — run all backend quality checks (lint + typecheck)
+- `just check-pii` — refuse to ship personal data; runs first in `just ci`
 - `just typecheck` — frontend TypeScript type check (`tsc`)
 - `just test-backend` / `just test-frontend` — run tests in Docker
 
@@ -170,6 +171,73 @@ with a test that fails if the gap widens.
 `parseApiDecimal` for a canonical server string. Never bare `parseFloat` — eslint
 enforces this. Never `|| 0` on a parsed amount: unparseable input must surface an
 error, never silently book zero.
+
+## Never Commit Personal Data — Not Negotiable
+
+**This repository is public.** Read that again before pasting anything from a
+real budget into a test, a fixture, a docstring, or a commit message.
+
+It has already leaked. A captured SimpleFIN response was committed verbatim:
+250 real transactions on one checking account, 53 rows carrying a person's
+name, 26 reference numbers — a mortgage loan number, a student loan number, a
+life insurance policy number, a medical payment plan, a state tax refund line.
+The account's own name carried its last four digits and its balance. It went in
+under a sanitizer whose docstring promised to replace "personal names in
+descriptions" and whose code had no name handling at all. No test ever loaded
+the file. Removing it meant rewriting published history.
+
+**`just check-pii` is the gate, and it runs first in `just ci`.** Prose did not
+stop this the first time; a comment is not a mechanism here either.
+
+### What counts
+
+Anything that identifies a **person**, an **employer**, or an **account**:
+
+- Names — yours, a partner's, anyone's. In test data, in a docstring, anywhere.
+- Employers and payroll descriptors — the bank string for a direct deposit
+  carries the payroll provider *and* the employee name.
+- Institutions tied to *your* accounts: the bank, the card issuer, the loan
+  servicer, the insurer. Merchant chains are fine — `Nordstrom` identifies
+  nobody; a named mortgage servicer plus a loan number identifies a house.
+- Account and reference numbers, partial account numbers, last-four digits.
+- Real balances and real amounts from a live budget.
+
+### What to do instead
+
+Docstrings here are good *because* they cite the budget that produced the bug —
+the amount, the payee, the envelope it landed in. **Keep the specificity and
+make the facts fictional.**
+
+- Use the shared invented vocabulary: `Sapphire Visa`, `Harborstone`,
+  `Cascade Point HYSA`, `Northwind Payserv`, `Jane Doe`.
+- Rescale amounts. A comment teaches with the *ratio*, never the digits.
+  `$4,180 on a card owing $2,690` explains exactly what the real pair did.
+- Never commit a captured API response you have not read end to end.
+  `capture_simplefin_fixtures.py` now requires `--redact` per person, reaches
+  `description`/`payee`/`memo`, and `assert_clean` refuses to write output that
+  still carries a redact term or a run of 5+ digits.
+- A fixture under `tests/fixtures/` that looks like a bank feed must be listed
+  in `REVIEWED_FIXTURES` in `scripts/check-pii.py`. Adding the line *is* the
+  review. Do not add one for a file you have not opened.
+- Found a real identifier? Remove it **and add it to the deny-list**:
+  `python3 scripts/check-pii.py --add "Some Name"` prints the digest to paste
+  in. That list is a ratchet — the only part of the check that knows what your
+  real data looks like.
+- **The deny-list is hashed on purpose.** A plaintext list of strings you must
+  never publish is itself a list of strings you must never publish; the first
+  version of that file leaked six of them into the commit that added the check.
+  Hashes also survive a history rewrite, where a `--replace-text` pass would
+  otherwise leave the list denying the fictional names and passing the real
+  ones.
+
+### If something real does get committed
+
+Assume it is public the moment it is pushed. Scrubbing the working tree does
+not unpublish it: the blob stays in history, and on GitHub it also stays behind
+`refs/pull/<n>/head`, which a force-push cannot reach. Removal means rewriting
+history *and* asking GitHub Support to purge the stale refs — or deleting and
+recreating the repository. Say so plainly rather than implying a `git commit`
+fixed it.
 
 ## Code Quality
 - Before finishing any backend change: run `just quality` (ruff fix + format + ty)

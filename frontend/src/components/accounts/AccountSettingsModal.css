@@ -349,3 +349,14 @@
   margin-top: var(--spacing-xs);
   font-style: italic;
 }
+
+/* Explains what a "Budget starts" date does, in the field itself: leaving rows
+   deliberately unflagged is exactly the kind of behaviour that becomes a
+   mystery six months later if nothing on screen says it is happening. */
+.acct-modal__hint {
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+

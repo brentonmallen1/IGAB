@@ -11,7 +11,13 @@ Usage:
     # Load from .env (reads SIMPLEFIN_API_TOKEN and optionally SIMPLEFIN_ACCESS_URL):
     python scripts/capture_simplefin_fixtures.py
 
-Outputs (sanitized) fixtures to tests/fixtures/simplefin/.
+Outputs fixtures to tests/fixtures/simplefin/, with account and reference
+numbers masked and every --redact term struck from descriptions, payees and
+memos. `assert_clean` refuses to write anything that still carries one.
+
+Pass --redact once per person who appears on the accounts:
+
+    python scripts/capture_simplefin_fixtures.py --redact 'First Last'
 """
 
 import argparse
@@ -31,6 +37,11 @@ FIXTURES_DIR = Path(__file__).parent.parent / "tests" / "fixtures" / "simplefin"
 ACCESS_URL_CACHE = Path(__file__).parent.parent / ".simplefin_access_url"
 
 
+#: Terms the operator has told us are personal — names, mostly. Populated from
+#: --redact before anything is written, and enforced by `save_fixture`.
+REDACT: list[str] = []
+
+
 def _sanitize(obj: object, depth: int = 0) -> object:
     """Redact personal data fields while preserving structure."""
     if depth > 10:
@@ -44,7 +55,11 @@ def _sanitize(obj: object, depth: int = 0) -> object:
             elif k == "name" and depth == 1:
                 # Account name - strip partial account numbers
                 out[k] = _sanitize_account_name(str(v))
-            elif k == "description":
+            elif k in ("description", "payee", "memo"):
+                # All three carry the bank's free text, and all three carried
+                # a real name the first time this ran: `payee` was simply not
+                # in this list, so "<merchant> Account Payment <name>" was
+                # written verbatim into a public repo.
                 out[k] = _sanitize_description(str(v))
             elif k in ("balance", "available-balance", "amount"):
                 # Keep numeric structure but shift values slightly
@@ -60,13 +75,24 @@ def _sanitize(obj: object, depth: int = 0) -> object:
 
 
 def _sanitize_description(desc: str) -> str:
-    """Replace card numbers, account numbers, and personal names in descriptions."""
+    """Mask account/reference numbers and the names given to --redact.
+
+    The docstring here used to promise it replaced "personal names" and no
+    code did: there was no name handling at all, `payee` was not routed
+    through it, and the digit floor of 9 let reference numbers like a
+    7-digit student loan account through. 250 real transactions reached a
+    public repository on the strength of that sentence. Whatever this claims
+    is now enforced by `assert_clean` before anything is written.
+    """
+    for term in REDACT:
+        desc = re.sub(re.escape(term), "REDACTED", desc, flags=re.IGNORECASE)
     # Mask explicit card references like CARD3951 or CARD 1234
     desc = re.sub(r"CARD\s*\d{4,}", "CARDXXXX", desc)
     # Mask 16-digit card numbers
     desc = re.sub(r"\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b", "****-****-****-****", desc)
-    # Mask standalone 9-17 digit numbers (account/routing numbers)
-    desc = re.sub(r"\b\d{9,17}\b", "XXXXX", desc)
+    # Mask any run of 5+ digits: loan, policy and reference numbers are
+    # routinely shorter than the old 9-digit floor.
+    desc = re.sub(r"\b\d{5,}\b", "XXXXX", desc)
     # Mask partial account numbers like ...2177 or #2177
     desc = re.sub(r"[\.#]{2,}\d{4,}", "....XXXX", desc)
     return desc
@@ -80,6 +106,23 @@ def _sanitize_account_name(name: str) -> str:
     # Patterns like "EVERYDAY CHECKING ...2177 (2177)"
     sanitized = re.sub(r"\s*[\.\(]+\s*\d{4,}\s*[\)\s]*", "", name).strip()
     return sanitized or "Test Account"
+
+
+def assert_clean(text: str) -> None:
+    """Refuse to write output that still carries a redact term or a long number.
+
+    The gate, not the intention, is what keeps this honest — a sanitizer that
+    quietly does nothing looks exactly like one that works.
+    """
+    residue = [t for t in REDACT if re.search(re.escape(t), text, re.IGNORECASE)]
+    if residue:
+        raise SystemExit(f"refusing to write: redact term(s) survived sanitizing: {residue}")
+    leftover = re.findall(r"\b\d{5,}\b", text)
+    if leftover:
+        raise SystemExit(
+            f"refusing to write: {len(leftover)} long number(s) survived sanitizing, "
+            f"e.g. {sorted(set(leftover))[:5]}"
+        )
 
 
 async def claim_token(setup_token: str) -> str:
@@ -105,7 +148,9 @@ def save_fixture(name: str, data: dict) -> None:
     FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
     path = FIXTURES_DIR / f"{name}.json"
     sanitized = _sanitize(data)
-    path.write_text(json.dumps(sanitized, indent=2))
+    payload = json.dumps(sanitized, indent=2)
+    assert_clean(payload)
+    path.write_text(payload)
     txn_count = sum(len(a.get("transactions", [])) for a in data.get("accounts", []))
     print(f"  Saved {path.name}: {len(data.get('accounts', []))} accounts, {txn_count} transactions")
 
@@ -116,7 +161,27 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--setup-token", help="Base64-encoded SimpleFIN setup token")
     parser.add_argument("--access-url", help="Already-claimed SimpleFIN access URL")
+    parser.add_argument(
+        "--redact",
+        action="append",
+        default=[],
+        metavar="TERM",
+        help="A name to strike from every description, payee and memo. Repeatable. "
+        "Required unless --no-redact-check: a capture with no names given is "
+        "how 250 real transactions reached a public repo.",
+    )
+    parser.add_argument(
+        "--no-redact-check",
+        action="store_true",
+        help="Capture without naming anything to redact. Say so deliberately.",
+    )
     args = parser.parse_args()
+    if not args.redact and not args.no_redact_check:
+        raise SystemExit(
+            "refusing to capture: pass --redact 'First Last' for every person who "
+            "appears on these accounts, or --no-redact-check to say there are none."
+        )
+    REDACT[:] = args.redact
 
     access_url = args.access_url
 

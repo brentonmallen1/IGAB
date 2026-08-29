@@ -42,6 +42,19 @@ export interface Account {
   last_reconciled_at: string | null
   /** Always sent (may be null) — the balance the last reconciliation locked. */
   last_reconciled_balance: number | null
+  /**
+   * The day this account joined the budget. Rows dated before it are opening
+   * position: nothing is auto-categorized there on first sync, and an
+   * uncategorized one is not flagged as needing a category.
+   *
+   * A card carried in with three months of bank history is the case — that
+   * spending predates the budget, so it belongs in the card's Uncovered and is
+   * retired by assigning to the card, not by filling envelopes after the fact.
+   *
+   * Null on every account that has never been asked, which behaves exactly as
+   * before the field existed. See `Account.budget_start_date` on the server.
+   */
+  budget_start_date: string | null
   uncategorized_count: number
   created_at: string
   updated_at: string
@@ -187,6 +200,22 @@ export interface CategoryBalance {
    * explain it.
    */
   refused_card_inflows: number
+  /**
+   * How much of this row's red was spent on a card. 0 whenever `available`
+   * is not negative.
+   *
+   * Served, not derived — home is `domain/cards.py` (`credit_floored_by_month`,
+   * read out of `card_funding`'s `floored_by_category`), the same figure Ready
+   * to Assign subtracts as `uncovered_current`.
+   *
+   * It answers whether this red costs anything, and it does not: filing a card
+   * charge moves Ready to Assign by exactly zero, and at the month boundary
+   * this part rides onto the card as Uncovered instead of being written off.
+   * Only `available + credit_overspent` — the cash part — is ever charged.
+   * So a row where this equals the whole shortfall gets the calm treatment,
+   * and Cover Overspent does not offer to fund it.
+   */
+  credit_overspent: number
 }
 
 /** One card in the budget's cards section — see `CardStatusOut` on the
@@ -206,6 +235,11 @@ export interface CardStatus {
   /** A settled closed card sends no row at all; a closed one with a residual
    *  balance or reserve keeps its row, tagged. Served, never derived here. */
   is_closed: boolean
+  /** The part of this month's overspending riding on this card — already
+   *  inside `uncovered`. It names which card carries the red, which only
+   *  matters with more than one, since cards are paid separately. Attributed
+   *  exactly, not apportioned: see `card_funding` in domain/cards.py. */
+  overspent_this_month: number
 }
 
 export interface BudgetMonth {
@@ -218,6 +252,16 @@ export interface BudgetMonth {
    *  same loop — so the count and the amount are always about the same set,
    *  and both match what Cover Overspent will act on. */
   overspent_count: number
+  /** `total_overspent` split by what funded it. The headline stays whole — the
+   *  red on the grid is real either way — but only `total_overspent_cash` can
+   *  ever charge Ready to Assign, so every call to action reads that one.
+   *  `total_overspent_credit` rolls onto its card at the month boundary and
+   *  needs no action at all. See `domain/cards.py`. */
+  total_overspent_cash: number
+  total_overspent_credit: number
+  /** How many categories carry a cash shortfall — what Cover Overspent lists.
+   *  At most `overspent_count`. */
+  overspent_count_cash: number
   /** Committed to months after this one; already deducted from to_be_assigned */
   assigned_in_future: number
   category_balances: CategoryBalance[]

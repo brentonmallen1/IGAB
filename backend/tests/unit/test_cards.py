@@ -105,21 +105,21 @@ class TestCardFunding:
         # Assigned 150, spent 150 on the card: everything funds the card's
         # set-aside, nothing rides — the swipe is Ready-to-Assign-neutral.
         ends = {"groceries": monthly_end_balances({JAN: D("150")}, {JAN: D("-150")})}
-        funded, floored, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
+        funded, floored, _, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
         assert funded == {VISA: {JAN: D("150")}}
         assert floored == {}
 
     def test_the_overspent_swipe_scenario(self):
         # Assigned 100, spent 150 on the card: 100 funds, 50 rides.
         ends = {"groceries": monthly_end_balances({JAN: D("100")}, {JAN: D("-150")})}
-        funded, floored, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
+        funded, floored, _, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
         assert funded == {VISA: {JAN: D("100")}}
         assert floored == {"groceries": {JAN: D("50")}}
 
     def test_the_wholly_unfunded_swipe_funds_nothing(self):
         # Nothing assigned: the whole 150 rides as uncovered debt.
         ends = {"groceries": monthly_end_balances({}, {JAN: D("-150")})}
-        funded, floored, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
+        funded, floored, _, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
         assert funded == {}
         assert floored == {"groceries": {JAN: D("150")}}
 
@@ -128,7 +128,7 @@ class TestCardFunding:
             "groceries": monthly_end_balances({JAN: D("100")}, {JAN: D("-100")}),
             "fuel": monthly_end_balances({JAN: D("40")}, {JAN: D("-40")}),
         }
-        funded, floored, _ = card_funding(
+        funded, floored, _, _ = card_funding(
             ends,
             {"groceries": {VISA: {JAN: D("100")}}, "fuel": {VISA: {JAN: D("40")}}},
         )
@@ -140,7 +140,7 @@ class TestCardFunding:
         # greedily (amex holds 40, visa the remaining 20) and each card's
         # envelope receives only what was actually covered on it.
         ends = {"groceries": monthly_end_balances({JAN: D("80")}, {JAN: D("-140")})}
-        funded, floored, _ = card_funding(
+        funded, floored, _, _ = card_funding(
             ends, {"groceries": {VISA: {JAN: D("100")}, AMEX: {JAN: D("40")}}}
         )
         assert floored == {"groceries": {JAN: D("60")}}
@@ -148,7 +148,7 @@ class TestCardFunding:
 
     def test_a_category_with_no_card_spending_contributes_nothing(self):
         ends = {"rent": monthly_end_balances({JAN: D("1200")}, {JAN: D("-1200")})}
-        funded, floored, _ = card_funding(ends, {})
+        funded, floored, _, _ = card_funding(ends, {})
         assert funded == {} and floored == {}
 
     def test_a_cross_month_refund_releases_its_reservation(self):
@@ -158,7 +158,7 @@ class TestCardFunding:
         ends = {
             "groceries": monthly_end_balances({JAN: D("100")}, {JAN: D("-100"), FEB: D("100")})
         }
-        funded, floored, _ = card_funding(
+        funded, floored, _, _ = card_funding(
             ends, {"groceries": {VISA: {JAN: D("100"), FEB: D("-100")}}}
         )
         assert funded == {VISA: {JAN: D("100"), FEB: D("-100")}}
@@ -171,7 +171,7 @@ class TestCardFunding:
         ends = {
             "groceries": monthly_end_balances({JAN: D("60")}, {JAN: D("-100"), FEB: D("100")})
         }
-        funded, floored, _ = card_funding(
+        funded, floored, _, _ = card_funding(
             ends, {"groceries": {VISA: {JAN: D("100"), FEB: D("-100")}}}
         )
         assert funded == {VISA: {JAN: D("60"), FEB: D("-60")}}
@@ -185,7 +185,7 @@ class TestCardFunding:
                 {JAN: D("140")}, {JAN: D("-140"), FEB: D("100")}
             )
         }
-        funded, floored, _ = card_funding(
+        funded, floored, _, _ = card_funding(
             ends,
             {"groceries": {VISA: {JAN: D("100"), FEB: D("-100")}, AMEX: {JAN: D("40")}}},
         )
@@ -199,7 +199,7 @@ class TestCardFunding:
         ends = {
             "groceries": monthly_end_balances({FEB: D("40")}, {JAN: D("100"), FEB: D("-40")})
         }
-        funded, floored, _ = card_funding(
+        funded, floored, _, _ = card_funding(
             ends, {"groceries": {VISA: {JAN: D("-100"), FEB: D("40")}}}
         )
         assert funded == {VISA: {FEB: D("40")}}
@@ -282,7 +282,7 @@ class TestReservationInvariant:
                 }
                 for c, by_card in outflows.items()
             }
-            funded, _floored, _ = card_funding(ends, outflows)
+            funded, _floored, _, _ = card_funding(ends, outflows)
             synthetic = synthetic_activity(funded.get(VISA, {}), payments)
             set_aside = set_aside_through({}, synthetic, upto)
             uncovered = max(D("0"), -balance - max(D("0"), set_aside))
@@ -335,3 +335,54 @@ class TestReservationInvariant:
                 (MAR, "pay", None, D("300")),
             ],
         )
+
+
+class TestTheRiddenAmountIsAttributedToTheCardThatCarriedIt:
+    """`floored_by_card` — the same red as `floored_by_category`, split by card.
+
+    Two cards are paid separately, so "which one is this riding on" is a real
+    question. The split is exact rather than apportioned, and that is what
+    makes it safe to show: `month_floored` is capped at the month's *net*
+    outflow, while the allocation pool is the cards that netted to spending —
+    which sums to at least the net. So the greedy walk always exhausts the
+    amount and the per-card figures sum to the per-category one.
+    """
+
+    def test_one_card_carries_the_whole_ride(self) -> None:
+        ends = {"groceries": {JAN: D("-50")}}
+        _, floored, _, by_card = card_funding(ends, {"groceries": {VISA: {JAN: D("70")}}})
+
+        assert floored == {"groceries": {JAN: D("50")}}
+        assert by_card == {VISA: {JAN: D("50")}}
+
+    def test_two_cards_split_it_and_the_parts_sum_to_the_whole(self) -> None:
+        ends = {"groceries": {JAN: D("-90")}}
+        _, floored, _, by_card = card_funding(
+            ends, {"groceries": {VISA: {JAN: D("60")}, AMEX: {JAN: D("40")}}}
+        )
+
+        assert floored == {"groceries": {JAN: D("90")}}
+        assert sum(v[JAN] for v in by_card.values()) == D("90")
+        # Each card carries at most what was actually swiped on it.
+        assert by_card[AMEX][JAN] <= D("40")
+        assert by_card[VISA][JAN] <= D("60")
+
+    def test_a_card_that_netted_to_a_refund_carries_nothing(self) -> None:
+        """The pool is the cards with positive net that month. A card whose
+        month nets to an inflow reduced its own debt; it cannot also be
+        carrying someone else's overspending."""
+        ends = {"groceries": {JAN: D("-30")}}
+        _, floored, _, by_card = card_funding(
+            ends, {"groceries": {VISA: {JAN: D("50")}, AMEX: {JAN: D("-20")}}}
+        )
+
+        assert floored == {"groceries": {JAN: D("30")}}
+        assert by_card == {VISA: {JAN: D("30")}}
+
+    def test_a_month_with_nothing_ridden_names_no_card(self) -> None:
+        ends = {"groceries": {JAN: D("20")}}
+        _, floored, _, by_card = card_funding(ends, {"groceries": {VISA: {JAN: D("50")}}})
+
+        assert floored == {}
+        assert by_card == {}
+

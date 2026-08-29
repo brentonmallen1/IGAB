@@ -720,7 +720,22 @@ class SimpleFINService:
         self, budget_id: uuid.UUID, account: Account, feed: FeedRecord
     ) -> Transaction | None:
         """Write a feed record as a new row, or None when its identity already
-        exists (the partial unique index on (account_id, sync_id))."""
+        exists (the partial unique index on (account_id, sync_id)).
+
+        Rows dated before `account.budget_start_date` arrive uncategorized.
+        The bank hands over whatever history it kept, and history from before
+        an account joined the budget is opening position: every guess made
+        there lands in an envelope that was never funded for it, so the grid
+        fills with red for money spent before the budget existed. A card
+        carried in with three months of history is the case this exists for —
+        that debt belongs in the card's Uncovered, paid down by assigning to
+        the card. `NEEDS_CATEGORY` then leaves those rows alone rather than
+        asking about them forever, and anyone who wants one in their reports
+        can still file it by hand.
+        """
+        before_start = (
+            account.budget_start_date is not None and feed.date < account.budget_start_date
+        )
         try:
             # Savepoint so a duplicate-identity IntegrityError skips this row
             # without poisoning the session.
@@ -740,6 +755,7 @@ class SimpleFINService:
                         bank_posted_date=feed.date if feed.posted else None,
                         bank_amount=feed.amount,
                         bank_payee=feed.payee,
+                        auto_categorize=not before_start,
                     ),
                 )
         except IntegrityError:

@@ -215,6 +215,18 @@ class CategoryBalance(BaseModel):
     #: moving with nothing on screen to explain it, and an unexplained
     #: counterweight would be the same bug wearing a different hat.
     refused_card_inflows: Decimal
+    #: How much of this row's red was spent on a card (domain/cards.py). Zero
+    #: whenever `available` is not negative.
+    #:
+    #: It answers "does this cost me anything": it does not. Credit-funded red
+    #: never charges Ready to Assign — at the month boundary it rides onto the
+    #: card as Uncovered instead of being written off — so a row where this
+    #: equals the whole shortfall wants a calmer treatment than one funded by
+    #: cash, and Cover Overspent does not offer to fund it.
+    #:
+    #: Required, not optional. A default of 0 would quietly re-draw every
+    #: credit overspend as cash, which is the failure this field exists to end.
+    credit_overspent: Decimal
 
 
 class CategoryResponse(BaseModel):
@@ -271,6 +283,10 @@ class CardStatusOut(BaseModel):
     #: knows to tag it. Required, not optional — a path that forgets must
     #: raise, not render a closed card as open.
     is_closed: bool
+    #: The part of this month's overspending riding on this card. Included in
+    #: `uncovered` already; served so a budget with more than one card can say
+    #: which card carries it, since they are paid separately.
+    overspent_this_month: Decimal
 
 
 class BudgetMonthResponse(BaseModel):
@@ -288,6 +304,19 @@ class BudgetMonthResponse(BaseModel):
     #: report "nothing overspent" rather than raising, which is the wrong
     #: failure direction for a number the user reads as a workload.
     overspent_count: int
+    #: `total_overspent` split by what funded it. The headline stays whole —
+    #: the red on the grid is real either way — but only the cash part can ever
+    #: charge Ready to Assign, so that is the figure any call to action reads.
+    #: The credit part rolls onto its card at the month boundary and needs no
+    #: action at all.
+    #:
+    #: Required for the same reason `overspent_count` is: a default would let a
+    #: path that forgets report the calm number as the whole story.
+    total_overspent_cash: Decimal
+    total_overspent_credit: Decimal
+    #: How many categories carry a cash shortfall — the count Cover Overspent
+    #: will list, which is at most `overspent_count`.
+    overspent_count_cash: int
     # Committed to months after this one; already deducted from to_be_assigned
     assigned_in_future: Decimal = Decimal("0")
     category_balances: list[CategoryBalance]
@@ -375,7 +404,13 @@ class CoverOverspentPreviewItem(BaseModel):
 
 class CoverOverspentPreviewResponse(BaseModel):
     items: list[CoverOverspentPreviewItem]
+    #: What `items` sums to: the cash shortfall, the whole of what this dialog
+    #: can act on.
     total_overspent: Decimal
+    #: Overspending deliberately left out of `items` because it rode onto a
+    #: card. Served so the dialog can state the difference between itself and
+    #: the grid's red, rather than leaving a gap for the reader to find.
+    total_overspent_credit: Decimal
     total_addition: Decimal
     tba_before: Decimal
     tba_after: Decimal
@@ -404,6 +439,10 @@ class AssignStrategyTotalsResponse(BaseModel):
     month: datetime.date
     tba: Decimal
     total_overspent: Decimal
+    #: The part of `total_overspent` that Cover Overspending would actually
+    #: fund — the rest rode onto a card and needs no assignment. The dropdown
+    #: row reads this, so the number on it matches the dialog it opens.
+    total_overspent_cash: Decimal
     strategies: list[AssignStrategyTotal]
 
 

@@ -203,10 +203,17 @@ async def update_account(
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> AccountResponse:
     # exclude_unset (not exclude_none): fields the client omitted stay
-    # untouched, while an explicit null still clears the one nullable field
-    # (note); null on any non-nullable field is dropped, not written.
+    # untouched, while an explicit null still clears the nullable ones; null on
+    # any non-nullable field is dropped, not written.
+    #
+    # `budget_start_date` is nullable on purpose and both states mean something:
+    # a date says "history before this is opening position", null says "treat
+    # all of it as budgeted" — which is every account that has never been asked.
+    nullable = {"note", "budget_start_date"}
     changes = {
-        k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None or k == "note"
+        k: v
+        for k, v in body.model_dump(exclude_unset=True).items()
+        if v is not None or k in nullable
     }
     try:
         if changes.get("account_type") is not None:

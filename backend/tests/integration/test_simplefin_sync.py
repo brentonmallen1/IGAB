@@ -1312,3 +1312,62 @@ async def test_a_card_anchor_lands_as_uncovered_debt(db_session):
     assert row.set_aside == Decimal("0")
     # And Ready to Assign never heard about any of it.
     assert summary.to_be_assigned == Decimal("0")
+
+
+async def test_history_before_the_budget_start_date_arrives_uncategorized(db_session):
+    """A bank hands over whatever history it kept, and history from before an
+    account joined the budget is opening position.
+
+    Auto-categorizing it is what put three months of card swipes into envelopes
+    funded for one month, so the grid filled with red for money spent before
+    the budget knew the card existed. The rows still arrive — balances and
+    history are preserved, and anyone who wants one in their reports can file
+    it by hand — they simply arrive without a guess attached, which is where
+    `NEEDS_CATEGORY` then leaves them alone.
+    """
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    account.budget_start_date = today - timedelta(days=7)
+    group = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    # A payee whose history would ordinarily decide the category on sight.
+    await create_payee(db_session, budget, "CORNER MARKET", default_category_id=groceries.id)
+    await db_session.flush()
+
+    svc = _service(
+        services,
+        [
+            bank_txn("t-old", "-40.00", today - timedelta(days=30)),
+            bank_txn("t-new", "-25.00", today - timedelta(days=2)),
+        ],
+    )
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    await db_session.flush()
+
+    rows = {t.sync_id: t for t in await _live_rows(db_session, account.id) if t.sync_id}
+    assert rows["t-old"].category_id is None, "before the start date: opening position"
+    assert rows["t-new"].category_id == groceries.id, "after it: an ordinary guess"
+    # And the one that arrived bare is not then nagged about forever.
+    assert await services.account_repo.get_uncategorized_count(account.id) == 0
+
+
+async def test_without_a_budget_start_date_every_row_is_categorized_as_before(db_session):
+    """The migration adds a nullable column; an account that never answered the
+    question behaves exactly as it did before the column existed."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    assert account.budget_start_date is None
+    group = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    await create_payee(db_session, budget, "CORNER MARKET", default_category_id=groceries.id)
+    await db_session.flush()
+
+    svc = _service(services, [bank_txn("t-old", "-40.00", today - timedelta(days=30))])
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    await db_session.flush()
+
+    rows = await _live_rows(db_session, account.id)
+    assert [t.category_id for t in rows if t.sync_id == "t-old"] == [groceries.id]
+

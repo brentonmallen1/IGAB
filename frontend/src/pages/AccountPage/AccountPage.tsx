@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
+  CalendarClock,
   CheckCircle,
   CircleDot,
   Link as LinkIcon,
@@ -42,7 +43,7 @@ function formatReconcileAge(lastReconciledAt: string | null): string {
 }
 
 export function AccountPage() {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatDate } = useFormatters()
   const { accountId } = useParams<{ accountId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const highlightId = searchParams.get('highlight')
@@ -166,6 +167,23 @@ export function AccountPage() {
                 <Lock size={12} />
                 {formatReconcileAge(account.last_reconciled_at)}
               </Pill>
+              {/* Rows before this date are deliberately not flagged as needing
+                  a category, so the date has to be visible somewhere. An
+                  unexplained absence of nagging is as confusing as the nagging
+                  it replaced. */}
+              {account.budget_start_date && (
+                <Pill
+                  tone="outline"
+                  title={
+                    'Anything before this date is opening balance: kept in the register, left ' +
+                    'uncategorized on purpose, and not counted as needing a category. On a card ' +
+                    'it shows as Uncovered and is paid down by assigning to the card.'
+                  }
+                >
+                  <CalendarClock size={12} />
+                  Budget starts {formatDate(account.budget_start_date)}
+                </Pill>
+              )}
             </div>
           </div>
           <div className="account-page__balances">

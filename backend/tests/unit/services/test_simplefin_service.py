@@ -71,6 +71,7 @@ def make_account(
     simplefin_sync_enabled: bool = True,
     first_sync_complete: bool = True,
     budget_id: uuid.UUID | None = None,
+    budget_start_date: date | None = None,
 ) -> MagicMock:
     acct = MagicMock()
     acct.id = uuid.uuid4()
@@ -78,6 +79,10 @@ def make_account(
     acct.simplefin_account_id = simplefin_account_id
     acct.simplefin_sync_enabled = simplefin_sync_enabled
     acct.first_sync_complete = first_sync_complete
+    # Explicit: a bare MagicMock attribute is not None, so the import path's
+    # "did this row predate the account?" check would compare a date against a
+    # Mock and raise. The default is the real default — no start date set.
+    acct.budget_start_date = budget_start_date
     return acct
 
 

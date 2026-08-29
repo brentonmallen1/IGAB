@@ -234,6 +234,38 @@ ON_CARD_ACCOUNT = Transaction.account_id.in_(
     .where(CARD_ACCOUNT, Account.budget_id == Transaction.budget_id)
     .correlate(Transaction)
 )
+#: The row is not older than its account's place in the budget.
+#:
+#: A synced account arrives with whatever history the bank kept, and that
+#: history is opening balance, not activity anyone budgeted for. A card
+#: brought in with three months of it filled the grid with red for money
+#: spent before the budget knew the card existed — and the answer to that
+#: red is to pay the card down, not to cover it from Ready to Assign.
+#:
+#: So such rows are left uncategorized on purpose, and this is what stops
+#: the app asking about them forever. Written once, here, because "unfiled
+#: work" is decided in exactly one place (`NEEDS_CATEGORY`) and a second
+#: spelling of the date comparison is how the badge and the filter would
+#: come to disagree about the same row.
+#:
+#: NULL `budget_start_date` — every account until someone answers — passes.
+#: Correlated like `ON_BUDGET_ACCOUNT`, not a bare column comparison: every
+#: caller of `NEEDS_CATEGORY` selects from Transaction alone, and a reference
+#: to `Account.budget_start_date` would quietly add a cross join and multiply
+#: the badge's count by the number of accounts.
+AFTER_BUDGET_START = (
+    select(Account.id)
+    .where(
+        Account.id == Transaction.account_id,
+        or_(
+            Account.budget_start_date.is_(None),
+            Transaction.date >= Account.budget_start_date,
+        ),
+    )
+    .correlate(Transaction)
+    .exists()
+)
+
 #: The budget's cash: on-budget and not a card. This is the balance term of
 #: Ready to Assign; a card's debt lives beside its set-aside, not in cash.
 CASH_ACCOUNT = and_(
@@ -303,11 +335,17 @@ UNPAIRED_TRANSFER_LEG = and_(
 #: match rather than tallying a workload. That divergence is intended, is
 #: bounded to exactly the pending uncategorized rows, and is pinned by a test —
 #: do not "fix" it into agreement.
+#:
+#: The second narrowing is `AFTER_BUDGET_START`: a row that predates its own
+#: account's arrival in the budget is opening position, not unfiled work. See
+#: `Account.budget_start_date` — NULL there means the account never answered
+#: the question, and nothing changes.
 NEEDS_CATEGORY = and_(
     Transaction.category_id.is_(None),
     LEAF,
     ON_BUDGET_ACCOUNT,
     CASH_FLOW_ROW,
+    AFTER_BUDGET_START,
 )
 
 

@@ -517,6 +517,8 @@ class TestSimpleFINSyncDeduplication:
         account.simplefin_account_id = "sf-acct-1"
         account.simplefin_sync_enabled = True
         account.first_sync_complete = True
+        # Not a MagicMock: the import path compares it against a row's date.
+        account.budget_start_date = None
 
         existing_txn = MagicMock()
         # Typed defaults for everything the posting rule reads; a MagicMock
@@ -598,6 +600,8 @@ class TestSimpleFINSyncDeduplication:
         account.simplefin_account_id = "sf-acct-1"
         account.simplefin_sync_enabled = True
         account.first_sync_complete = True
+        # Not a MagicMock: the import path compares it against a row's date.
+        account.budget_start_date = None
 
         existing_txn = MagicMock()
         # Typed defaults for everything the posting rule reads; a MagicMock
@@ -682,6 +686,8 @@ class TestSimpleFINSyncDeduplication:
         account.simplefin_account_id = "sf-acct-1"
         account.simplefin_sync_enabled = True
         account.first_sync_complete = True
+        # Not a MagicMock: the import path compares it against a row's date.
+        account.budget_start_date = None
 
         # Transaction imported from YNAB (has import_id, no sync_id)
         existing_txn = MagicMock()
@@ -854,6 +860,8 @@ class TestDedupScoring:
         account.simplefin_account_id = "sf-acct-1"
         account.simplefin_sync_enabled = True
         account.first_sync_complete = True
+        # Not a MagicMock: the import path compares it against a row's date.
+        account.budget_start_date = None
 
         # Candidate with completely different payee — should NOT match
         unrelated_txn = MagicMock()
