@@ -21,6 +21,7 @@ import pytest
 from sqlalchemy import select
 
 from igab.db.models import ChangeLog, Transaction
+from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.domain.exceptions import InvariantViolation
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_service import SplitSpec, TransactionUpdate
@@ -42,11 +43,12 @@ SF_ACCT = "sf-acct-1"
 
 
 class FakeClient:
-    def __init__(self, payload: list[dict]):
+    def __init__(self, payload: list[dict], balances: dict[str, Decimal] | None = None):
         self.payload = payload
+        self.balances = balances or {}
 
-    async def get_transactions(self, access_url: str, since=None) -> list[dict]:
-        return self.payload
+    async def get_feed(self, access_url: str, since=None) -> SimpleFINFeed:
+        return SimpleFINFeed(transactions=self.payload, balances=dict(self.balances))
 
     async def get_accounts(self, access_url: str) -> list[dict]:
         return []
@@ -89,7 +91,9 @@ async def _sync_setup(db_session):
     return services, user, budget, account, conn
 
 
-def _service(services, payload: list[dict]) -> SimpleFINService:
+def _service(
+    services, payload: list[dict], balances: dict[str, Decimal] | None = None
+) -> SimpleFINService:
     svc = SimpleFINService(
         session=services.session,
         repo=services.simplefin_repo,
@@ -98,7 +102,7 @@ def _service(services, payload: list[dict]) -> SimpleFINService:
         txn_service=services.transactions,
         matching_service=services.matching,
     )
-    svc.client = FakeClient(payload)
+    svc.client = FakeClient(payload, balances)
     return svc
 
 
@@ -1208,3 +1212,103 @@ async def test_sweep_delete_is_undoable(db_session):
     await UndoService(db_session).undo_change(budget.id, deletes[0].id)
     await db_session.refresh(pending)
     assert pending.is_deleted is False and pending.memo == "filed"
+
+
+# ─── Opening-balance anchor ──────────────────────────────────────────────────
+# The fetch window is 90 days; anything older lives only in the balance the
+# bank reports alongside the transactions. The first sync writes one
+# uncategorized "Starting Balance" row so the ledger equals that balance —
+# without it a carried-balance card showed only the window's activity,
+# thousands short of what was owed, and nothing ever noticed.
+
+
+async def test_first_sync_anchors_the_ledger_to_the_reported_balance(db_session):
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    payload = [bank_txn("t-1", "-100.00", today - timedelta(days=5))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2400.00")})
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result.get("error") is None, result
+    assert result["anchored"] == 1
+    rows = await _live_rows(db_session, account.id)
+    anchor = next(r for r in rows if r.sync_id is None)
+    # 2400 reported − (−100 imported) = 2500, dated before the oldest row so
+    # history genuinely starts there, reconciled because the bank is the
+    # source, uncategorized so the gap lands where unfiled money goes.
+    assert anchor.amount == Decimal("2500.00")
+    assert anchor.date == today - timedelta(days=6)
+    assert anchor.cleared == "reconciled"
+    assert anchor.category_id is None
+    assert await services.account_repo.get_balance(account.id) == Decimal("2400.00")
+    await db_session.refresh(account)
+    assert account.simplefin_balance == Decimal("2400.00")
+
+
+async def test_second_sync_never_re_anchors(db_session):
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    payload = [bank_txn("t-1", "-100.00", today - timedelta(days=5))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2400.00")})
+
+    with PATCH_DECRYPT:
+        first = await svc.sync(conn.id, budget.id)
+        # The bank now reports a different figure (a pending hold cleared, a
+        # row outside the window changed) — drift is for Reconcile, not for
+        # a second silent adjustment.
+        svc.client.balances[SF_ACCT] = Decimal("2350.00")
+        second = await svc.sync(conn.id, budget.id)
+
+    assert first["anchored"] == 1
+    assert second["anchored"] == 0
+    assert len(await _live_rows(db_session, account.id)) == 2
+    # The reported balance still updates every sync, so the account page can
+    # show the drift.
+    await db_session.refresh(account)
+    assert account.simplefin_balance == Decimal("2350.00")
+
+
+async def test_a_ledger_already_matching_gets_no_anchor(db_session):
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    payload = [bank_txn("t-1", "-100.00", today - timedelta(days=5))]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("-100.00")})
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result["anchored"] == 0
+    assert len(await _live_rows(db_session, account.id)) == 1
+
+
+async def test_a_card_anchor_lands_as_uncovered_debt(db_session):
+    """The user's own case: a carried-balance card whose first sync brings
+    90 days of activity against years of debt. The anchor closes the gap and
+    the whole pre-history balance shows as the card's Uncovered — not in any
+    envelope, not charged to Ready to Assign."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    card = await create_account(
+        db_session, budget, "Visa", account_type="credit_card", simplefin_account_id="sf-visa"
+    )
+    from igab.services.card_payment import ensure_payment_category
+
+    await ensure_payment_category(db_session, card)
+    today = date.today()
+    payload = [bank_txn("v-1", "-200.00", today - timedelta(days=5)) | {"account_id": "sf-visa"}]
+    svc = _service(services, payload, balances={"sf-visa": Decimal("-2690.00")})
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert result.get("error") is None, result
+    assert result["anchored"] == 1
+    assert await services.account_repo.get_balance(card.id) == Decimal("-2690.00")
+    summary = await services.budgets.get_budget_summary(budget.id, today.replace(day=1))
+    row = next(c for c in summary.cards if c.account_id == card.id)
+    assert row.balance == Decimal("-2690.00")
+    assert row.uncovered == Decimal("2690.00")
+    assert row.set_aside == Decimal("0")
+    # And Ready to Assign never heard about any of it.
+    assert summary.to_be_assigned == Decimal("0")
