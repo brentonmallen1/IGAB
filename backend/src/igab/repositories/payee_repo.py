@@ -163,7 +163,7 @@ class PayeeRepository(BaseRepository[Payee]):
         "Payment" as the payee on a card payment; `token_set_ratio` scores a
         subset 100, so that one word tied at 100 against every payee
         containing it and the winner was whichever came first — here
-        "Att Payment Jane Doe", whose history then filed a $4,600 debt
+        "Att Payment Jane Doe", whose history then filed a $1,800 debt
         payment into the Internet envelope. Scoring cannot rank candidates
         that all score identically; the only fix is to decline.
         """

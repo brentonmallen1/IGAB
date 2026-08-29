@@ -171,6 +171,26 @@ with a test that fails if the gap widens.
 enforces this. Never `|| 0` on a parsed amount: unparseable input must surface an
 error, never silently book zero.
 
+## Worked Examples Use Fake Data — Always
+
+**This repository is public.** Docstrings here are good precisely because they
+cite the real budget that produced the bug — the amount, the payee, the envelope
+it landed in. Keep that specificity and make the facts fictional.
+
+A captured SimpleFIN fixture once put 250 real transactions into this repo: two
+people's names, a mortgage account number, a student loan number, a life
+insurance policy number, a medical payment plan. It was committed under a
+sanitizer whose docstring said it "replaced personal names" and whose code had
+no name handling at all. Nothing ever loaded the file.
+
+- Use the anonymized vocabulary already in the tests: `Sapphire Visa`,
+  `Harborstone`, `Cascade Point HYSA`, `Northwind Payserv`, `Jane Doe`.
+- Rescale real amounts. The *ratio* is what a comment teaches, never the digits.
+- Never commit a captured API response without reading it end to end first.
+  `capture_simplefin_fixtures.py` requires `--redact` per person and refuses to
+  write output that still contains one, or any run of 5+ digits.
+- A sanitizer is a gate or it is a wish. Assert on the output, not the intent.
+
 ## Code Quality
 - Before finishing any backend change: run `just quality` (ruff fix + format + ty)
 - Before finishing any frontend change: run `just typecheck` (tsc)
