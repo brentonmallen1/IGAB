@@ -153,6 +153,12 @@ export const ROADMAP_STEPS: { step: number; label: string }[] = [
  *    yes -> Contribute to the full match (S2) -> contribute-to-match
  *  High interest debt (>=10%)?           (S3) -> high-interest-question
  *    yes -> Avalanche / Snowball         (S3) -> choose-payoff-method
+ *  (not a chart box)                     (S3) -> pay-down-card-in-igab
+ *  (not a chart box)                     (S3) -> card-carries-again-note
+ *      IGAB-native additions: how this app runs a card paydown (the
+ *      set-aside/Uncovered mechanics, domain/cards.py) and what to do when
+ *      the card must carry an emergency again. The chart prescribes the
+ *      order of operations; these two describe the machinery for its S3.
  *  Increase EF to 3-6 months             (S1) -> full-ef
  *  Moderate interest debt (>4-5%)?       (S3) -> moderate-interest-question
  *    yes -> Avalanche / Snowball         (S3) -> pay-moderate-debt
@@ -361,6 +367,29 @@ export const ROADMAP: RoadmapStage[] = [
           'Avalanche wins on arithmetic, usually by a modest amount. Snowball wins on momentum: closing a debt entirely is a visible finish line, and people who need to see progress are measurably more likely to keep going.\n\nThe source chart is deliberate about this — it says to weigh the financial and the psychological together rather than always taking the cheaper path. The best method is the one you will still be following in a year.',
         glossary: ['avalanche', 'snowball'],
         appLinks: [{ label: 'Your liabilities', to: '/liabilities' }],
+      },
+      {
+        id: 'pay-down-card-in-igab',
+        kind: 'action',
+        title: 'Run a card paydown as an envelope in IGAB',
+        body: 'Categorize everything the card syncs, then assign what you can to the card itself each month. Old debt sits calmly as Uncovered until you cover it.',
+        detail:
+          "Categorizing a card transaction never takes money you do not have. Money moves from the category into the card's Ready to pay only up to what the category could actually cover; any shortfall rides on the card as Uncovered, and To Be Assigned never hears about it. So categorize everything — the spending reports come free, and the debt cannot charge you twice.\n\nThe monthly loop: assign what you can afford to the card in the Credit cards section (To Be Assigned goes down, Uncovered goes down, one for one), then pay the card with a transfer from checking — the transfer drains Ready to pay and the balance together. A paydown target on the card row keeps the number honest month to month.\n\nEnter the card's APR and minimum payment on its liability page. That is what places the card in the payoff planner's avalanche and snowball schedules, and what lets the checkup call it high-interest debt instead of guessing.",
+        glossary: ['carried-balance', 'uncovered', 'ready-to-pay', 'card-payment'],
+        appLinks: [
+          { label: 'Open your budget', to: '/budget' },
+          { label: 'Your liabilities', to: '/liabilities' },
+        ],
+      },
+      {
+        id: 'card-carries-again-note',
+        kind: 'note',
+        title: 'When the card has to carry something again',
+        body: 'Put the expense in its real category and let it go red. At month end the shortfall becomes the card\'s Uncovered — the same paydown loop, just smaller.',
+        detail:
+          "The category does not stay negative waiting to heal. At the month boundary it resets to zero, and the part the envelope could not fund moves to the card's Uncovered column — visible, calm, charged to nothing until you cover it. Fund the category first when you can: Ready to pay picks that cash up automatically the moment the spending is covered.\n\nNone of this is a failure state in the app. Uncovered exists to hold exactly this without alarms, so an emergency re-entering the card is a loop you already know how to run.",
+        glossary: ['credit-overspending', 'uncovered'],
+        appLinks: [{ label: 'Open your budget', to: '/budget' }],
       },
     ],
   },
