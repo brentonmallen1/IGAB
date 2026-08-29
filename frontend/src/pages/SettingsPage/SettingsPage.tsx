@@ -82,7 +82,7 @@ const CURRENCIES: { value: string; label: string; symbol: string }[] = [
 
 
 export function SettingsPage() {
-  const { formatMoney, formatDateTime } = useFormatters()
+  const { formatMoney, formatDateTime, formatTime } = useFormatters()
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const fontScale = useAppStore((s) => s.fontScale)
@@ -669,7 +669,10 @@ export function SettingsPage() {
                           const utcHour = parseInt(conn.daily_sync_time.split(':')[0], 10)
                           const d = new Date()
                           d.setUTCHours(utcHour, 0, 0, 0)
-                          return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                          // formatTime, not toLocaleTimeString: the latter
+                          // reads the browser locale and printed 12-hour
+                          // clocks to budgets set to 24-hour.
+                          return formatTime(d.getHours(), d.getMinutes())
                         })()} your time
                       </span>
                     )}

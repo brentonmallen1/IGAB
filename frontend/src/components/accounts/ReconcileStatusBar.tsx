@@ -6,6 +6,7 @@ import {
 } from '../../api/reconciliation'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
+import { fromCents, toCents } from '../../utils/money'
 import './ReconcileStatusBar.css'
 
 interface Props {
@@ -37,8 +38,14 @@ export function ReconcileStatusBar({ accountId }: Props) {
 
   const clearedBalance = Number(status?.cleared_balance ?? 0)
   const statementBalance = reconcileStatementBalance ?? 0
-  const difference = statementBalance - clearedBalance
-  const isBalanced = Math.abs(difference) < 0.005
+  // In cents, not floats. `100.10 - 7865.90` is -7765.799999999999 in IEEE
+  // 754, and the API's Money type rejects anything past four decimal places —
+  // so the float difference 422'd on most real statement pairs. Every other
+  // amount the client posts already goes through cents (MoveMoneyForm,
+  // AssignManualTab); this was the straggler.
+  const differenceCents = toCents(statementBalance) - toCents(clearedBalance)
+  const difference = fromCents(differenceCents)
+  const isBalanced = differenceCents === 0
 
   async function handleCreateAdjustment() {
     const txn = await createAdjustment.mutateAsync(difference)
@@ -47,7 +54,7 @@ export function ReconcileStatusBar({ accountId }: Props) {
 
   async function handleFinish() {
     await finish.mutateAsync({
-      statement_balance: statementBalance,
+      statement_balance: fromCents(toCents(statementBalance)),
       adjustment_transaction_id: reconcileAdjustmentTxnId,
     })
     cancelReconciliation()
