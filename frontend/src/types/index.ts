@@ -888,6 +888,20 @@ export interface SimpleFINConnection {
   updated_at: string
 }
 
+/**
+ * Served by GET /simplefin/config. The client cannot decide any of this: the
+ * encryption key is server-side env, so the server is the only one that knows
+ * whether bank sync can store credentials at all.
+ * Home: backend/src/igab/integrations/simplefin/encryption.py
+ */
+export interface SimpleFINConfig {
+  configured: boolean
+  /** Null when configured; otherwise what is wrong, in the user's words. */
+  problem: string | null
+  /** The one command that produces an acceptable key — served, not duplicated here. */
+  generate_key_command: string
+}
+
 export interface SimpleFINRateLimitStatus {
   global_used: number
   global_remaining: number
