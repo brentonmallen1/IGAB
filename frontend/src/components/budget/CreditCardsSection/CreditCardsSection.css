@@ -168,6 +168,23 @@
   line-height: 1.6;
 }
 
+/* Ready to pay is a door, styled like the assign cell's quiet button. */
+.credit-cards__peek-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-sm);
+  color: inherit;
+  font: inherit;
+  padding: 2px var(--spacing-xs);
+  width: 100%;
+  text-align: right;
+  cursor: pointer;
+}
+
+.credit-cards__peek-btn:hover {
+  border-color: var(--edge-strong);
+}
+
 .credit-cards__assign-btn {
   background: none;
   border: 1px solid transparent;

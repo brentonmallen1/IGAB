@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Plus, X } from 'lucide-react'
-import { useCategoryTransactions, usePayees } from '../../../api/transactions'
+import { usePayees, useTransactionsPeek } from '../../../api/transactions'
 import { useAccounts } from '../../../api/accounts'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -9,34 +9,33 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { Transaction } from '../../../types'
-import './CategoryTransactionsModal.css'
+import './TransactionsPeekModal.css'
 
 const RECENT_LIMIT = 10
 const ALL_LIMIT = 1000
 
+/** What the peek is about: one category across accounts (the grid's
+ *  Activity click), or one account whole (the cards strip's Ready to pay). */
+export type PeekScope =
+  | { kind: 'category'; categoryId: string; categoryName: string }
+  | { kind: 'account'; accountId: string; accountName: string }
+
 interface Props {
   budgetId: string
-  categoryId: string
-  categoryName: string
+  scope: PeekScope
   onClose: () => void
-  /** Optional hand-off into the add-transaction flow for this category. */
+  /** Optional hand-off into the add-transaction flow (category scope). */
   onAddTransaction?: () => void
 }
 
 /**
- * Budget-row drill-in: the most recent transactions for one category across
- * all accounts, narrowable to a single account. "View all" expands the list
- * in place so the user stays in the budget context; rows click through to the
- * account register, and "Open in Transactions" hands the same filters to the
- * all-accounts register page.
+ * Budget-page drill-in: the most recent transactions for one category across
+ * all accounts (narrowable to a single account), or for one account whole.
+ * "View all" expands the list in place so the user stays in the budget
+ * context; rows click through to the account register, and "Open in
+ * Transactions" hands the same filter to the all-accounts register page.
  */
-export function CategoryTransactionsModal({
-  budgetId,
-  categoryId,
-  categoryName,
-  onClose,
-  onAddTransaction,
-}: Props) {
+export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransaction }: Props) {
   const [accountFilter, setAccountFilter] = useState('')
   const [showAll, setShowAll] = useState(false)
   const navigate = useNavigate()
@@ -45,11 +44,12 @@ export function CategoryTransactionsModal({
   const isMobile = useIsMobile()
   useHistoryDismissable(isMobile, onClose, 'category-txns')
 
-  const { data, isPending } = useCategoryTransactions(
+  const { data, isPending } = useTransactionsPeek(
     budgetId,
-    categoryId,
-    showAll ? ALL_LIMIT : RECENT_LIMIT,
-    accountFilter || null
+    scope.kind === 'category'
+      ? { categoryId: scope.categoryId, accountId: accountFilter || null }
+      : { accountId: scope.accountId },
+    showAll ? ALL_LIMIT : RECENT_LIMIT
   )
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: payees = [] } = usePayees(budgetId)
@@ -80,12 +80,16 @@ export function CategoryTransactionsModal({
   }
 
   function openInTransactions() {
-    // Land on the all-accounts register pre-filtered to this category (and
-    // account, if narrowed here) via the shared search-token state
-    const accountToken = accountFilter
-      ? ` account:"${accountName.get(accountFilter) ?? ''}"`
-      : ''
-    setTransactionSearch(`category:"${categoryName}"${accountToken}`)
+    // Land on the all-accounts register pre-filtered to this peek's scope
+    // via the shared search-token state
+    if (scope.kind === 'account') {
+      setTransactionSearch(`account:"${scope.accountName}"`)
+    } else {
+      const accountToken = accountFilter
+        ? ` account:"${accountName.get(accountFilter) ?? ''}"`
+        : ''
+      setTransactionSearch(`category:"${scope.categoryName}"${accountToken}`)
+    }
     onClose()
     navigate('/transactions')
   }
@@ -100,23 +104,25 @@ export function CategoryTransactionsModal({
       <div className="category-txns" role="dialog" aria-modal aria-labelledby="category-txns-title">
         <div className="category-txns__header">
           <span id="category-txns-title" className="category-txns__title">
-            {categoryName}
+            {scope.kind === 'category' ? scope.categoryName : scope.accountName}
             <span className="category-txns__subtitle">
               {showAll ? 'All transactions' : 'Recent transactions'}
             </span>
           </span>
           <div className="category-txns__header-actions">
-            <select
-              className="category-txns__account-filter"
-              value={accountFilter}
-              onChange={(e) => setAccountFilter(e.target.value)}
-              aria-label="Filter by account"
-            >
-              <option value="">All accounts</option>
-              {accounts.filter((a) => !a.is_closed).map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
+            {scope.kind === 'category' && (
+              <select
+                className="category-txns__account-filter"
+                value={accountFilter}
+                onChange={(e) => setAccountFilter(e.target.value)}
+                aria-label="Filter by account"
+              >
+                <option value="">All accounts</option>
+                {accounts.filter((a) => !a.is_closed).map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            )}
             <button type="button" className="category-txns__close" onClick={onClose} aria-label="Close">
               <X size={18} />
             </button>
@@ -128,9 +134,11 @@ export function CategoryTransactionsModal({
             <div className="category-txns__empty">Loading…</div>
           ) : transactions.length === 0 ? (
             <div className="category-txns__empty">
-              {accountFilter
-                ? 'No transactions in this category for that account.'
-                : 'No transactions in this category yet.'}
+              {scope.kind === 'account'
+                ? 'No transactions on this account yet.'
+                : accountFilter
+                  ? 'No transactions in this category for that account.'
+                  : 'No transactions in this category yet.'}
             </div>
           ) : (
             <table className="category-txns__table">
@@ -138,7 +146,7 @@ export function CategoryTransactionsModal({
                 <tr>
                   <th scope="col">Date</th>
                   <th scope="col">Payee</th>
-                  <th scope="col">Account</th>
+                  {scope.kind === 'category' && <th scope="col">Account</th>}
                   <th scope="col" className="category-txns__amount-col">Amount</th>
                 </tr>
               </thead>
@@ -154,7 +162,11 @@ export function CategoryTransactionsModal({
                       <span className="category-txns__payee-name">{describePayee(t)}</span>
                       {t.memo && <span className="category-txns__memo">{t.memo}</span>}
                     </td>
-                    <td className="category-txns__account">{accountName.get(t.account_id) ?? '—'}</td>
+                    {scope.kind === 'category' && (
+                      <td className="category-txns__account">
+                        {accountName.get(t.account_id) ?? '—'}
+                      </td>
+                    )}
                     <td
                       className={`category-txns__amount tabular ${Number(t.amount) < 0 ? 'negative' : 'positive'}`}
                     >
@@ -182,7 +194,11 @@ export function CategoryTransactionsModal({
             type="button"
             className="category-txns__footer-btn"
             onClick={openInTransactions}
-            title="Open the all-accounts register filtered to this category"
+            title={
+              scope.kind === 'category'
+                ? 'Open the all-accounts register filtered to this category'
+                : 'Open the all-accounts register filtered to this account'
+            }
           >
             <ArrowUpRight size={13} />
             Open in Transactions

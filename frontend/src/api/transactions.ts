@@ -168,16 +168,21 @@ export function useBudgetTransactions(
 
 /** Recent transactions for a single category across all accounts, newest first.
  * Pass accountId to narrow to one account. */
-export function useCategoryTransactions(
+/** One row-peek query for the budget page's drill-ins. Category scope uses
+ *  leaf rows (categories live on split children); account scope uses parent
+ *  rows (an account's register counts each split once, via its parent). */
+export function useTransactionsPeek(
   budgetId: string | null,
-  categoryId: string | null,
+  scope: { categoryId?: string | null; accountId?: string | null },
   limit: number,
-  accountId?: string | null,
 ) {
+  const { categoryId = null, accountId = null } = scope
   return useQuery({
-    queryKey: ['category-transactions', budgetId, categoryId, limit, accountId ?? null],
+    queryKey: ['transactions-peek', budgetId, categoryId, accountId, limit],
     queryFn: async () => {
-      const params: Record<string, unknown> = { category_ids: categoryId, scope: 'leaf', limit }
+      const params: Record<string, unknown> = categoryId
+        ? { category_ids: categoryId, scope: 'leaf', limit }
+        : { scope: 'parent', limit }
       if (accountId) params.account_ids = accountId
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
@@ -185,7 +190,7 @@ export function useCategoryTransactions(
       )
       return data
     },
-    enabled: !!budgetId && !!categoryId,
+    enabled: !!budgetId && (!!categoryId || !!accountId),
     staleTime: 10_000,
   })
 }
