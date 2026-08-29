@@ -24,12 +24,17 @@ PLAN_CSV = """\
 """
 
 
-def _make_zip(tmp_path: Path, register: str, plan: str | None = None) -> Path:
+def _make_zip(
+    tmp_path: Path,
+    register: str,
+    plan: str | None = None,
+    plan_member: str = "Budget Export - Plan.csv",
+) -> Path:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("Budget Export - Register.csv", register)
         if plan is not None:
-            zf.writestr("Budget Export - Plan.csv", plan)
+            zf.writestr(plan_member, plan)
     buf.seek(0)
     path = tmp_path / "test_ynab_export.zip"
     path.write_bytes(buf.read())
@@ -413,12 +418,12 @@ class TestAnUnreadableAmountIsReportedNotInvented:
 
     def test_the_errors_reach_the_parsed_budget(self, tmp_path: Path):
         parser = YNABParser()
-        path = _make_zip(tmp_path, SPLIT_HEADER + _reg_row(outflow="N/A"))
+        path = _make_zip(tmp_path, SPLIT_HEADER + _reg_row(outflow="N/A"), PLAN_CSV)
 
         budget = parser.parse_zip(path)
 
         assert budget.transactions == []
-        assert len(budget.errors) == 1
+        assert budget.errors == ["Checking 06/18/2026: cannot parse amount 'N/A'"]
 
     def test_a_clean_export_reports_nothing(self, tmp_path: Path):
         parser = YNABParser()
@@ -427,3 +432,54 @@ class TestAnUnreadableAmountIsReportedNotInvented:
         budget = parser.parse_zip(path)
 
         assert budget.errors == []
+
+
+#: The same plan under the spelling YNAB used before "Budgeted" became
+#: "Assigned" and Budget.csv became Plan.csv.
+LEGACY_PLAN_CSV = PLAN_CSV.replace('"Assigned"', '"Budgeted"')
+
+
+class TestOlderExportsStillCarryTheirAssignments:
+    """An export naming the member Budget.csv, or its column Budgeted, used
+    to import with zero assignments and no error — indistinguishable from a
+    budget nobody had ever funded. Each spelling is read on its own, because
+    a file may have been renamed without its header changing."""
+
+    def setup_method(self):
+        self.parser = YNABParser()
+
+    def _entries(self, path: Path):
+        return {(e.category, e.month): e.assigned for e in self.parser.parse_zip(path).budget_entries}
+
+    def test_the_modern_spelling_is_the_baseline(self, tmp_path: Path):
+        entries = self._entries(_make_zip(tmp_path, REGISTER_CSV, PLAN_CSV))
+        assert entries[("Groceries", date(2026, 4, 1))] == Decimal("500.00")
+        assert len(entries) == 3
+
+    def test_the_old_member_name_reads_the_same(self, tmp_path: Path):
+        path = _make_zip(tmp_path, REGISTER_CSV, PLAN_CSV, "Budget Export - Budget.csv")
+        assert self._entries(path) == self._entries(_make_zip(tmp_path, REGISTER_CSV, PLAN_CSV))
+
+    def test_the_old_column_name_reads_the_same(self, tmp_path: Path):
+        path = _make_zip(tmp_path, REGISTER_CSV, LEGACY_PLAN_CSV)
+        assert self._entries(path) == self._entries(_make_zip(tmp_path, REGISTER_CSV, PLAN_CSV))
+
+    def test_both_old_spellings_together_read_the_same(self, tmp_path: Path):
+        path = _make_zip(tmp_path, REGISTER_CSV, LEGACY_PLAN_CSV, "Budget Export - Budget.csv")
+        assert self._entries(path) == self._entries(_make_zip(tmp_path, REGISTER_CSV, PLAN_CSV))
+
+    def test_an_unknown_column_is_absent_not_zero(self, tmp_path: Path):
+        """A header IGAB does not know must not silently read as $0 — that is
+        the failure this class exists to stop, and it has to stay loud."""
+        path = _make_zip(tmp_path, REGISTER_CSV, PLAN_CSV.replace('"Assigned"', '"Allocated"'))
+        budget = self.parser.parse_zip(path)
+        assert budget.budget_entries == []
+
+    def test_a_register_only_zip_imports_but_says_so(self, tmp_path: Path):
+        budget = self.parser.parse_zip(_make_zip(tmp_path, REGISTER_CSV))
+        assert len(budget.transactions) == 4
+        assert budget.budget_entries == []
+        assert any("no monthly assignments" in e for e in budget.errors)
+
+    def test_a_zip_with_a_plan_reports_nothing(self, tmp_path: Path):
+        assert self.parser.parse_zip(_make_zip(tmp_path, REGISTER_CSV, PLAN_CSV)).errors == []

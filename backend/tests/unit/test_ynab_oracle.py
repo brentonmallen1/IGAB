@@ -9,7 +9,7 @@ from igab.integrations.ynab.models import (
     YNABSplitLeg,
     YNABTransaction,
 )
-from igab.integrations.ynab.oracle import subset_sums, ynab_rta
+from igab.integrations.ynab.oracle import export_consistency, subset_sums, ynab_rta
 
 JUL, AUG, SEP = date(2026, 7, 1), date(2026, 8, 1), date(2026, 9, 1)
 D = Decimal
@@ -33,13 +33,13 @@ def inflow(account, day, amount):
     return txn(account, day, amount, "Inflow", "Ready to Assign")
 
 
-def plan(month, group, category, assigned="0", available=None):
+def plan(month, group, category, assigned="0", available=None, activity=None):
     return YNABPlanRow(
         month=month,
         category_group=group,
         category=category,
         assigned=D(assigned),
-        activity=None,
+        activity=None if activity is None else D(activity),
         available=None if available is None else D(available),
     )
 
@@ -220,3 +220,128 @@ class TestUncategorized:
             ]
         )
         assert ynab_rta(b, AUG).uncategorized_net == D("0")
+
+
+class TestExportConsistency:
+    """Does the file agree with itself? Parity compares IGAB's recomputed
+    Available against the column YNAB shipped, so a file whose own numbers
+    contradict each other makes that comparison meaningless — and the report
+    has to be able to say so instead of blaming the import."""
+
+    def test_a_faithful_export_is_consistent(self):
+        b = budget(
+            [txn("Checking", date(2026, 7, 9), "-30", "Everyday", "Groceries")],
+            [
+                plan(JUL, "Everyday", "Groceries", assigned="100", activity="-30", available="70"),
+                plan(AUG, "Everyday", "Groceries", assigned="50", activity="0", available="120"),
+            ],
+        )
+        c = export_consistency(b)
+        assert c.carryover_rows_violating == 0
+        assert c.activity_cells_disagreeing == 0
+        assert c.self_consistent
+
+    def test_the_earliest_month_seeds_the_walk_rather_than_being_checked(self):
+        """A category's first exported month has nothing to carry from. It is
+        not evidence of anything, so it is not counted either way."""
+        b = budget(
+            plan_rows=[
+                plan(JUL, "Everyday", "Groceries", assigned="0", activity="0", available="900"),
+                plan(AUG, "Everyday", "Groceries", assigned="0", activity="0", available="900"),
+            ]
+        )
+        c = export_consistency(b)
+        assert c.carryover_rows_checked == 1
+        assert c.carryover_rows_violating == 0
+
+    def test_a_perturbed_available_is_a_carryover_violation(self):
+        b = budget(
+            plan_rows=[
+                plan(JUL, "Everyday", "Groceries", assigned="100", activity="-30", available="70"),
+                plan(AUG, "Everyday", "Groceries", assigned="50", activity="0", available="118.88"),
+            ]
+        )
+        c = export_consistency(b)
+        assert (c.carryover_rows_violating, c.carryover_rows_checked) == (1, 1)
+        assert not c.self_consistent
+
+    def test_cash_overspending_reset_to_zero_holds(self):
+        """YNAB takes a negative month-end out of Ready to Assign and starts
+        the next month at zero. That is YNAB behaving, not a broken file."""
+        b = budget(
+            plan_rows=[
+                plan(JUL, "Everyday", "Groceries", assigned="100", activity="-150", available="-50"),
+                plan(AUG, "Everyday", "Groceries", assigned="0", activity="0", available="0"),
+            ]
+        )
+        assert export_consistency(b).carryover_rows_violating == 0
+
+    def test_credit_overspending_riding_forward_holds(self):
+        """The other half of the rule: overspending on a card stays negative
+        rather than being written off, so available == expected."""
+        b = budget(
+            plan_rows=[
+                plan(JUL, "Everyday", "Groceries", assigned="100", activity="-150", available="-50"),
+                plan(AUG, "Everyday", "Groceries", assigned="0", activity="-10", available="-60"),
+            ]
+        )
+        assert export_consistency(b).carryover_rows_violating == 0
+
+    def test_activity_is_checked_against_the_register_shipped_beside_it(self):
+        b = budget(
+            [txn("Checking", date(2026, 7, 9), "-30", "Everyday", "Groceries")],
+            [plan(JUL, "Everyday", "Groceries", assigned="100", activity="-31", available="69")],
+        )
+        c = export_consistency(b)
+        assert (c.activity_cells_disagreeing, c.activity_cells_checked) == (1, 1)
+        assert not c.self_consistent
+
+    def test_split_legs_count_toward_the_register_side(self):
+        legs = [
+            YNABSplitLeg("Everyday", "Groceries", None, D("-30")),
+            YNABSplitLeg("Everyday", "Fuel", None, D("-20")),
+        ]
+        b = budget(
+            [txn("Checking", date(2026, 7, 9), "-50", splits=legs)],
+            [
+                plan(JUL, "Everyday", "Groceries", activity="-30", available="-30"),
+                plan(JUL, "Everyday", "Fuel", activity="-20", available="-20"),
+            ],
+        )
+        assert export_consistency(b).activity_cells_disagreeing == 0
+
+    def test_card_payment_categories_are_left_out_of_both_checks(self):
+        """YNAB generates their activity internally and never ships a register
+        row for them, so counting them would fire on every healthy export."""
+        b = budget(
+            plan_rows=[
+                plan(JUL, "Credit Card Payments", "Visa", activity="-500", available="500"),
+                plan(AUG, "Credit Card Payments", "Visa", activity="-500", available="999"),
+            ]
+        )
+        c = export_consistency(b)
+        assert (c.carryover_rows_checked, c.activity_cells_checked) == (0, 0)
+        assert c.self_consistent
+
+    def test_a_register_only_export_checks_nothing_and_is_not_thereby_suspect(self):
+        b = budget([txn("Checking", date(2026, 7, 9), "-30", "Everyday", "Groceries")])
+        c = export_consistency(b)
+        assert (c.carryover_rows_checked, c.activity_cells_checked) == (0, 0)
+        assert c.self_consistent
+
+    def test_a_blank_advisory_column_is_not_evidence_either_way(self):
+        """`activity`/`available` are None when YNAB left the cell blank or it
+        could not be read. Neither check may invent a zero for them."""
+        b = budget(plan_rows=[plan(JUL, "Everyday", "Groceries", assigned="100")])
+        c = export_consistency(b)
+        assert (c.carryover_rows_checked, c.activity_cells_checked) == (0, 0)
+
+    def test_every_account_is_in_scope(self):
+        """Consistency is a property of the file. The plan reflects the whole
+        budget, so skipping an account at import cannot make the file
+        disagree with itself — and this check takes no account argument."""
+        b = budget(
+            [txn("Brokerage", date(2026, 7, 9), "-30", "Savings", "Vanguard")],
+            [plan(JUL, "Savings", "Vanguard", activity="-30", available="-30")],
+        )
+        assert export_consistency(b).activity_cells_disagreeing == 0

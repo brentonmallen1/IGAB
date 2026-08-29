@@ -15,6 +15,12 @@ from igab.integrations.ynab.models import (
     YNABTransaction,
 )
 
+# YNAB renamed the plan export's member and its column when "Budgeted"
+# became "Assigned". Newest spelling first; both are accepted, because an
+# older export that matched neither imported zero assignments in silence.
+_PLAN_MEMBER_SUFFIXES = ("- plan.csv", "- budget.csv")
+_ASSIGNED_COLUMNS = ("Assigned", "Budgeted")
+
 _CLEARED_MAP = {
     "Uncleared": "uncleared",
     "Cleared": "cleared",
@@ -166,13 +172,26 @@ class YNABParser:
                 if lower.endswith("- register.csv"):
                     with zf.open(name) as f:
                         register_content = f.read().decode("utf-8-sig")
-                elif lower.endswith("- plan.csv"):
+                # YNAB renamed this member Budget.csv → Plan.csv (and its
+                # column Budgeted → Assigned). Both names are read: an older
+                # export used to import with every envelope unfunded and
+                # nothing said, because no assignment row was found.
+                elif lower.endswith(_PLAN_MEMBER_SUFFIXES):
                     with zf.open(name) as f:
                         plan_content = f.read().decode("utf-8-sig")
 
         if register_content is None:
             raise ValueError(
                 "Register CSV not found in ZIP (expected a file ending in '- Register.csv')"
+            )
+
+        if plan_content is None:
+            # Not fatal — a register-only zip is a real thing to import. But
+            # the result has no assignments at all, which looks identical to
+            # a budget nobody ever funded, so it is said out loud.
+            self.errors.append(
+                "No Plan CSV in ZIP (expected a file ending in '- Plan.csv' or "
+                "'- Budget.csv'): no monthly assignments were imported."
             )
 
         transactions = self.parse_register_csv(register_content)
@@ -260,7 +279,7 @@ class YNABParser:
             raw_month = row.get("Month", "").strip()
             category_group = row.get("Category Group", "").strip()
             category = row.get("Category", "").strip()
-            raw_assigned = row.get("Assigned", "").strip()
+            raw_assigned = _column(row, _ASSIGNED_COLUMNS)
 
             if not raw_month or not category_group or not category:
                 continue
@@ -287,6 +306,16 @@ class YNABParser:
             )
 
         return rows
+
+
+def _column(row: dict[str, str], names: tuple[str, ...]) -> str:
+    """The first of `names` the row actually carries, stripped. A header
+    IGAB does not know reads as absent, never as zero."""
+    for name in names:
+        value = row.get(name)
+        if value is not None:
+            return value.strip()
+    return ""
 
 
 def _optional_currency(raw: str) -> Decimal | None:

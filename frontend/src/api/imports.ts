@@ -9,6 +9,21 @@ export interface CsvImportResult {
   batch_id: string | null
 }
 
+/** Whether the export's own numbers agree with each other.
+ *
+ *  Parity holds IGAB's recomputed Available against the Available column
+ *  YNAB shipped, which only means something if the file hangs together.
+ *  `carryover` checks each category's months against YNAB's own running
+ *  balance; `activity` checks each Plan Activity cell against the register
+ *  rows shipped beside it. */
+export interface YnabExportConsistency {
+  self_consistent: boolean
+  carryover_rows_checked: number
+  carryover_rows_violating: number
+  activity_cells_checked: number
+  activity_cells_disagreeing: number
+}
+
 /** How the imported budget compares with the export's own figures. */
 export interface YnabParity {
   month: string
@@ -30,6 +45,12 @@ export interface YnabParity {
   /** Envelopes that differ by exactly their uncleared rows this month —
    *  YNAB counts an imported row only once it is approved. */
   categories_pending: number
+  /** Envelopes YNAB priced that no IGAB category answered to. Not compared;
+   *  reported so `categories_compared` is explainable. */
+  categories_unmatched: number
+  /** Whether the export's own numbers agree with each other. When they do
+   *  not, `categories_differing` measures the file, not the import. */
+  consistency: YnabExportConsistency
   top_differences: {
     name: string
     igab: string

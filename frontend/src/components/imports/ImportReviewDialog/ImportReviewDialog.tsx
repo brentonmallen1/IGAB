@@ -271,7 +271,6 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function SummaryStep({ summary }: { summary: YnabImportResult }) {
   const { formatMoney } = useFormatters()
-  const n = (v: number) => v.toLocaleString()
   const reserves = parseApiDecimal(summary.credit_card_payment_reserves_skipped)
   const repairable = repairableTransferLegs(summary)
 
@@ -331,6 +330,20 @@ function SummaryStep({ summary }: { summary: YnabImportResult }) {
   )
 }
 
+/** A grouped count, so five figures read as counts and not as amounts. */
+const n = (v: number) => v.toLocaleString()
+
+/** A whole-number share, for counts the reader is meant to weigh rather
+ *  than audit. Zero out of zero is 0%, never NaN%. */
+function percent(part: number, whole: number): string {
+  return whole === 0 ? '0%' : `${Math.round((part / whole) * 100)}%`
+}
+
+function verdictModifier(matches: boolean, incoherent: boolean): string {
+  if (incoherent) return 'import-review__verdict--warn'
+  return matches ? 'import-review__verdict--ok' : ''
+}
+
 function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity']> }) {
   const { formatMoney, formatDate } = useFormatters()
   const igab = parseApiDecimal(parity.igab_ready_to_assign)
@@ -339,13 +352,28 @@ function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity'
   const debt = parseApiDecimal(parity.uncovered_card_debt)
   const unfiled = parseApiDecimal(parity.uncategorized_net)
 
+  // An export whose own numbers contradict each other cannot be compared
+  // against: IGAB rebuilds every balance from the transactions in the file,
+  // while the figure it is held to is the Available column shipped beside
+  // them. Where those two disagree, the difference measures the file.
+  const { consistency } = parity
+  const incoherent = !consistency.self_consistent
+
   const notes = [
+    incoherent &&
+      consistency.carryover_rows_violating > 0 &&
+      `${percent(consistency.carryover_rows_violating, consistency.carryover_rows_checked)} of its plan rows (${n(consistency.carryover_rows_violating)} of ${n(consistency.carryover_rows_checked)}) do not match YNAB's own running balance.`,
+    incoherent &&
+      consistency.activity_cells_disagreeing > 0 &&
+      `${percent(consistency.activity_cells_disagreeing, consistency.activity_cells_checked)} of its activity figures (${n(consistency.activity_cells_disagreeing)} of ${n(consistency.activity_cells_checked)}) do not match the transactions shipped in the same file.`,
     debt !== 0 &&
       `${formatMoney(Math.abs(debt))} of that is card debt YNAB has not charged to Ready to Assign yet — IGAB nets it against cash instead.`,
     unfiled !== 0 &&
       `${formatMoney(Math.abs(unfiled))} of uncategorized transactions stays out of Ready to Assign until you file it; YNAB leaves it out of its plan entirely.`,
     parity.categories_pending > 0 &&
       `${parity.categories_pending} categor${parity.categories_pending === 1 ? 'y differs' : 'ies differ'} only by uncleared rows YNAB has not approved yet.`,
+    parity.categories_unmatched > 0 &&
+      `${parity.categories_unmatched} categor${parity.categories_unmatched === 1 ? 'y YNAB priced was' : 'ies YNAB priced were'} not compared — no category here answers to that name.`,
   ].filter(Boolean) as string[]
 
   return (
@@ -361,11 +389,13 @@ function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity'
         {expected !== ynab && <Stat label="expected here" value={formatMoney(expected)} />}
       </div>
       <p
-        className={`import-review__verdict ${parity.matches ? 'import-review__verdict--ok' : ''}`}
+        className={`import-review__verdict ${verdictModifier(parity.matches, incoherent)}`}
       >
-        {parity.matches
-          ? `Ready to Assign matches YNAB, and every envelope agrees across ${parity.categories_compared} categories.`
-          : `${parity.categories_differing} of ${parity.categories_compared} categories differ.`}
+        {incoherent
+          ? `This export does not agree with itself, so it cannot say whether the import was faithful. ${parity.categories_differing} of ${parity.categories_compared} categories differ from the figures it shipped.`
+          : parity.matches
+            ? `Ready to Assign matches YNAB, and every envelope agrees across ${parity.categories_compared} categories.`
+            : `${parity.categories_differing} of ${parity.categories_compared} categories differ.`}
       </p>
       {!parity.matches && parity.top_differences.length > 0 && (
         <ul className="import-review__diffs">

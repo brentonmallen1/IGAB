@@ -18,7 +18,12 @@ from decimal import Decimal
 
 from igab.domain.money import quantize_cents
 from igab.integrations.ynab.models import YNABBudget
-from igab.integrations.ynab.oracle import subset_sums, ynab_rta
+from igab.integrations.ynab.oracle import (
+    ExportConsistency,
+    export_consistency,
+    subset_sums,
+    ynab_rta,
+)
 from igab.repositories.category_repo import CategoryRepository
 from igab.services.budget_service import BudgetService
 
@@ -58,7 +63,14 @@ class ParityReport:
     categories_differing: int
     #: Envelopes that differ by exactly their uncleared rows this month.
     categories_pending: int
+    #: Envelopes YNAB priced that no IGAB category answered to — a name or
+    #: casing the importer stored differently. They are not compared, and
+    #: without this they would leave no trace but a smaller `compared`.
+    categories_unmatched: int
     top_differences: list[ParityDifference]
+    #: Whether the export's own numbers agree with each other. When they do
+    #: not, `categories_differing` measures the file, not the import.
+    consistency: ExportConsistency
 
 
 async def check_parity(
@@ -87,10 +99,12 @@ async def check_parity(
 
     differences: list[ParityDifference] = []
     compared = 0
+    unmatched = 0
     for (group, name), theirs in oracle.available.items():
         category_id = by_name.get((group, name))
         balance = balances.get(category_id) if category_id is not None else None
         if balance is None:
+            unmatched += 1
             continue
         compared += 1
         if quantize_cents(balance.available) != quantize_cents(theirs):
@@ -121,5 +135,7 @@ async def check_parity(
         categories_compared=compared,
         categories_differing=len(unexplained),
         categories_pending=len(differences) - len(unexplained),
+        categories_unmatched=unmatched,
         top_differences=unexplained[:max_differences],
+        consistency=export_consistency(ynab_budget),
     )

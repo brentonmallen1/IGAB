@@ -136,7 +136,21 @@ async def assert_ynab_agreement(
             credit_card_accounts=credit_card_accounts,
             tracking_accounts=tracking_accounts,
         )
+        # First, because an export that contradicts itself makes every
+        # figure below it a measurement of the file rather than of IGAB.
+        assert report.consistency.self_consistent, (
+            f"{month:%b %Y}: the export disagrees with itself — "
+            f"{report.consistency.carryover_rows_violating}/"
+            f"{report.consistency.carryover_rows_checked} plan rows break YNAB's own "
+            f"running balance, {report.consistency.activity_cells_disagreeing}/"
+            f"{report.consistency.activity_cells_checked} Activity cells disagree with "
+            "the register shipped beside them. Envelope parity means nothing here."
+        )
         assert report.categories_compared > 0, f"{month:%b %Y}: nothing to compare"
+        assert report.categories_unmatched == 0, (
+            f"{month:%b %Y}: {report.categories_unmatched} envelope(s) YNAB priced "
+            "matched no IGAB category — a name or casing the importer stored differently"
+        )
         assert report.categories_differing == 0, (
             f"{month:%b %Y}: {report.categories_differing} envelope(s) differ from YNAB "
             f"({report.categories_pending} more differ only by uncleared rows) — "
