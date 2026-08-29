@@ -49,6 +49,14 @@
   gap: var(--spacing-md);
 }
 
+/* Quiet, one line: the bank disagreeing with the ledger is information,
+   not an alarm — Reconcile is the calm way back to agreement. */
+.account-page__bank-reports {
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
 .account-page__balance-item {
   display: flex;
   flex-direction: column;

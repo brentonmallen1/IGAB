@@ -12,7 +12,7 @@ from igab.db.models import Account, SimpleFINConnection, Transaction
 from igab.domain.bank_posting import FeedRecord, Review
 from igab.domain.exceptions import IGABError
 from igab.domain.matching import best_payee_similarity, date_proximity, payee_similarity
-from igab.integrations.simplefin.client import SimpleFINClient
+from igab.integrations.simplefin.client import SimpleFINClient, SimpleFINFeed
 from igab.integrations.simplefin.encryption import (
     SimpleFINKeyMismatch,
     SimpleFINNotConfigured,
@@ -237,6 +237,7 @@ class SimpleFINService:
             "review_queued": 0,
             "cleared": 0,
             "removed_pending": 0,
+            "anchored": 0,
         }
         outcomes: list[dict] = []
         for conn in await self.repo.get_all_for_user(user_id):
@@ -357,7 +358,11 @@ class SimpleFINService:
             return {"imported": 0, "skipped": 0, "error": "No linked accounts to sync"}
 
         target_ids = [a.id for a in targets]
-        is_first_sync = any(not a.first_sync_complete for a in targets)
+        # Which accounts have never completed a sync — captured before the
+        # flag flips below, because those are the ones whose ledger gets an
+        # opening anchor once this run's rows are in.
+        first_sync_ids = {a.id for a in targets if not a.first_sync_complete}
+        is_first_sync = bool(first_sync_ids)
         since = await self._get_lookback_since(target_ids, is_first_sync)
 
         try:
@@ -374,11 +379,11 @@ class SimpleFINService:
             )
             return {"imported": 0, "skipped": 0, "error": error_msg}
 
-        txns_raw: list[dict] = []
+        feed_data = SimpleFINFeed(transactions=[])
         last_error: Exception | None = None
         for attempt in range(MAX_RETRY_ATTEMPTS):
             try:
-                txns_raw = await self.client.get_transactions(access_url, since=since)
+                feed_data = await self.client.get_feed(access_url, since=since)
                 last_error = None
                 break
             except Exception as exc:
@@ -395,6 +400,7 @@ class SimpleFINService:
             )
             return {"imported": 0, "skipped": 0, "error": error_msg}
 
+        txns_raw = feed_data.transactions
         target_sf_ids = {a.simplefin_account_id for a in targets}
         imported = 0
         skipped = 0
@@ -553,6 +559,24 @@ class SimpleFINService:
                     if await self._queue_reidentified_review(row, fresh):
                         review_queued += 1
 
+        # The bank's reported balance, kept every sync (the account page can
+        # show drift against the ledger) — and, on an account's FIRST sync,
+        # the opening anchor: the window is 90 days, so any balance older
+        # than that never imports, and a ledger that is a bare sum of
+        # imported rows starts thousands short on a carried-balance card.
+        # One uncategorized "Starting Balance" row closes the gap: on a cash
+        # account it lands in Ready to Assign, on a card it shows as
+        # Uncovered — exactly where pre-history debt belongs.
+        anchored = 0
+        for account in targets:
+            reported = feed_data.balances.get(account.simplefin_account_id or "")
+            if reported is None:
+                continue
+            await self.account_repo.update(account.id, simplefin_balance=reported)
+            if account.id in first_sync_ids:
+                if await self._anchor_opening_balance(budget_id, account, reported) is not None:
+                    anchored += 1
+
         # Update per-account sync state
         now = datetime.now(UTC)
         for account in targets:
@@ -578,8 +602,46 @@ class SimpleFINService:
             "review_queued": review_queued,
             "cleared": cleared,
             "removed_pending": removed_pending,
+            "anchored": anchored,
             **rate_status,
         }
+
+    async def _anchor_opening_balance(
+        self, budget_id: uuid.UUID, account: Account, reported: Decimal
+    ) -> Transaction | None:
+        """One row that makes the ledger equal what the bank says — first
+        sync only.
+
+        The fetch window is 90 days and later syncs never reach further
+        back, so everything older lives only in the reported balance. Dated
+        the day before the oldest imported row (history genuinely starts
+        there), reconciled (the bank itself is the source), and
+        uncategorized on purpose — the reconciliation adjustment's rule:
+        on a cash account the gap belongs in Ready to Assign, on a card it
+        is pre-history debt and shows as Uncovered. Through the service, so
+        it is change-logged and undoable. None when the ledger already
+        agrees.
+        """
+        ledger = Decimal(str(await self.account_repo.get_balance(account.id)))
+        gap = reported - ledger
+        if gap == 0:
+            return None
+        oldest = await self.txn_repo.get_oldest_cleared_date_for_account(account.id)
+        anchor_date = oldest - timedelta(days=1) if oldest is not None else today_utc()
+        return await self.txn_service.create(
+            budget_id,
+            TransactionCreate(
+                account_id=account.id,
+                date=anchor_date,
+                amount=gap,
+                payee_name="Starting Balance",
+                category_id=None,
+                memo="Anchors this account to the balance your bank reported",
+                cleared="reconciled",
+                approved=True,
+                auto_categorize=False,
+            ),
+        )
 
     async def _import_feed_row(
         self, budget_id: uuid.UUID, account: Account, feed: FeedRecord

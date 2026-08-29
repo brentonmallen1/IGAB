@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
+from igab.integrations.simplefin.client import SimpleFINFeed
 
 # ─── Import ID Generation Tests ──────────────────────────────────────────────
 
@@ -463,7 +464,6 @@ class TestSimpleFINSyncDeduplication:
     def mock_svc(self):
         """Create SimpleFINService with mocked dependencies."""
         from igab.services.simplefin_service import SimpleFINService
-
         from igab.services.transaction_service import TransactionService
 
         svc = SimpleFINService(
@@ -558,7 +558,7 @@ class TestSimpleFINSyncDeduplication:
         ]
 
         with (
-            patch.object(mock_svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -639,7 +639,7 @@ class TestSimpleFINSyncDeduplication:
         ]
 
         with (
-            patch.object(mock_svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -725,7 +725,7 @@ class TestSimpleFINSyncDeduplication:
         ]
 
         with (
-            patch.object(mock_svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -882,7 +882,7 @@ class TestDedupScoring:
         ]
 
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
