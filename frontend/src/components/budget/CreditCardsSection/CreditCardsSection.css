@@ -2,7 +2,37 @@
    Uncovered is information, not an alarm — no state colors here. */
 
 .credit-cards {
-  margin-top: var(--spacing-md);
+  /* Above the category grid, below the filter bar. */
+  margin-bottom: var(--spacing-md);
+}
+
+/* The whole header is the fold control: one obvious click target, and the
+   collapsed strip still answers "is anything uncovered?" */
+.credit-cards__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.credit-cards__header svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.credit-cards__summary {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .credit-cards__table {

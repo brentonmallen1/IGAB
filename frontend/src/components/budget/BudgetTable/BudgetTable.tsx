@@ -13,6 +13,7 @@ import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { groupByView, visibleCategoryIds } from './viewGrouping'
 import { renderableCategories, renderableCategoryIds, renderableGroups } from '../budgetGroups'
+import { CreditCardsSection } from '../CreditCardsSection/CreditCardsSection'
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
@@ -190,6 +191,9 @@ export function BudgetTable() {
   return (
     <div className="budget-table">
       <BudgetFilterBar budgetId={budgetId} categoryBalances={chipBalances} />
+      {/* Above the category headers so the cards read as part of the month,
+          not an afterthought below the fold; folds shut and stays folded. */}
+      <CreditCardsSection budgetId={budgetId} month={month} />
       <div className="budget-table__header">
         <div className="budget-table__col budget-table__col--name">
           Category
