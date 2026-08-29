@@ -1,10 +1,14 @@
 import type { ReactNode } from 'react'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { balanceTone } from './sidebarGroups'
 
 interface Props {
   name: string
-  /** Signed: negative renders in the negative colour, wherever the row lives. */
+  /** Signed. What the sign MEANS depends on `kind` — see balanceTone. */
   balance: number
+  /** Asset or debt. Passed rather than derived here so the liability rows,
+   *  which have no Account to read a classification off, say it too. */
+  kind: 'asset' | 'debt'
   onClick: () => void
   /** Liability mode marker (managed / manual); nothing elsewhere. */
   leadingIcon?: ReactNode
@@ -25,6 +29,10 @@ interface Props {
  * muted grey as a positive one. A budgeting app that shows a debt in the colour
  * of a surplus is the drift that costs trust.
  *
+ * The balance sits in a chip rather than as bare text: a long name truncated
+ * right up against a number was two columns reading as one, and the chip is
+ * where the tone lives when there is one to show.
+ *
  * Rendered as `div role="button"` rather than `<button>` in every case,
  * including rows with no nested control: the liability rows contain a real
  * `<button>` for the register shortcut, and a button inside a button is invalid
@@ -33,12 +41,14 @@ interface Props {
 export function SidebarAccountRow({
   name,
   balance,
+  kind,
   onClick,
   leadingIcon,
   badgeCount = 0,
   trailing,
 }: Props) {
   const { formatMoney } = useFormatters()
+  const tone = balanceTone(balance, kind)
 
   return (
     <div
@@ -68,7 +78,7 @@ export function SidebarAccountRow({
       </span>
       <span className="sidebar__account-right">
         {trailing}
-        <span className={`sidebar__account-balance tabular ${balance < 0 ? 'negative' : ''}`}>
+        <span className={`sidebar__account-balance tabular sidebar__account-balance--${tone}`}>
           {formatMoney(balance)}
         </span>
       </span>

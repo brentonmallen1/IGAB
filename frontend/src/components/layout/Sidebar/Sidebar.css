@@ -374,21 +374,36 @@ button.sidebar__group-label:hover {
   margin-left: var(--spacing-sm);
 }
 
-/* Balances sit a tone below the name so the two columns read apart even
-   when a long name is truncated right up against them. */
+/* Balances sit in a chip, so the number is a column of its own rather than
+   text running on from a truncated name.
+   The wash is derived from the sidebar's own text colour, so it lifts off
+   whatever background the theme gives the sidebar — light or dark — and stays
+   readable over the row hover, which paints underneath it. */
 .sidebar__account-balance {
   font-size: var(--font-size-xs);
   flex-shrink: 0;
-  color: var(--sidebar-text-muted);
+  padding: 1px var(--spacing-xs);
+  border-radius: var(--border-radius-sm);
+  background-color: color-mix(in srgb, var(--sidebar-text-primary) 8%, var(--sidebar-bg));
+  color: var(--sidebar-text-primary);
+  transition: background-color var(--transition-fast);
 }
 
+/* The chip lifts on hover; the number does not change colour, because on a
+   chip the label wants all the contrast it can keep. --sidebar-text-secondary
+   was the resting colour before the chip existed and fails AA on the wash in
+   five themes — the tone the chip adds has to be paid for somewhere. */
 .sidebar__account:hover .sidebar__account-balance {
-  color: var(--sidebar-text-secondary);
+  background-color: color-mix(in srgb, var(--sidebar-text-primary) 14%, var(--sidebar-bg));
 }
 
-.sidebar__account-balance.negative,
-.sidebar__account:hover .sidebar__account-balance.negative {
-  color: var(--color-negative);
+/* Colour only where the sign means trouble — an asset in the red. A card or
+   a mortgage showing what it owes is the normal state of a debt, and five
+   red chips on an ordinary Tuesday is how a person learns to stop looking.
+   See balanceTone in sidebarGroups.ts, which decides this. */
+.sidebar__account-balance--negative,
+.sidebar__account:hover .sidebar__account-balance--negative {
+  background-color: color-mix(in srgb, var(--color-negative) 24%, var(--sidebar-bg));
 }
 
 /* Resize handle: straddles the shell's outer edge, outside the scroller and

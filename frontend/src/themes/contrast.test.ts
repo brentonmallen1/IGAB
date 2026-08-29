@@ -22,6 +22,10 @@ const AA_NON_TEXT = 3.0 // WCAG 1.4.11, for a border that is the only cue a cont
 /** Kept in step with the caps applied in component CSS. */
 const BADGE_TINT = 12
 const CHIP_TINT = 18
+/** Sidebar.css: the account balance chip, resting / hovered / negative. */
+const BALANCE_CHIP_TINT = 8
+const BALANCE_CHIP_HOVER_TINT = 14
+const NEGATIVE_CHIP_TINT = 24
 
 type RGBA = [number, number, number, number]
 
@@ -314,6 +318,34 @@ function checksFor(theme: string): Check[] {
   for (const fg of ['sidebar-text-primary', 'sidebar-text-secondary', 'sidebar-text-muted']) {
     add(`${fg} on sidebar-bg`, token(theme, fg), token(theme, 'sidebar-bg'), AA_TEXT)
   }
+
+  // The account balance chip. Its wash is derived from the sidebar's own text
+  // colour, which means it moves the background TOWARD the text — so the
+  // label loses a little contrast for the sake of the chip being visible at
+  // all, and that trade has to be measured rather than assumed. The negative
+  // variant is a tint of --color-negative, which is not otherwise checked
+  // against sidebar-bg anywhere.
+  const sidebarBg = token(theme, 'sidebar-bg')
+  const neutralChip =
+    sidebarBg && token(theme, 'sidebar-text-primary')
+      ? tint(token(theme, 'sidebar-text-primary')!, sidebarBg, BALANCE_CHIP_TINT)
+      : null
+  const label = token(theme, 'sidebar-text-primary')
+  add('balance chip label, resting', label, neutralChip, AA_TEXT)
+  add(
+    'balance chip label, row hovered',
+    label,
+    sidebarBg && label ? tint(label, sidebarBg, BALANCE_CHIP_HOVER_TINT) : null,
+    AA_TEXT
+  )
+  add(
+    'balance chip label on the negative chip',
+    label,
+    sidebarBg && token(theme, 'color-negative')
+      ? tint(token(theme, 'color-negative')!, sidebarBg, NEGATIVE_CHIP_TINT)
+      : null,
+    AA_TEXT
+  )
 
   add(
     'input-border on input-bg',
