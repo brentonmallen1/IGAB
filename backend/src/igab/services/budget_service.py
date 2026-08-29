@@ -272,12 +272,17 @@ class BudgetService:
               - sum(envelope category balances through the month)
               - sum(assignments in months after the viewed month)
 
-        The future-assignment deduction is what makes TBA consistent across
-        months (YNAB behavior): assigning $500 in September must reduce
-        August's TBA too, or the same dollars could be assigned twice. With
-        it, a budget whose only allocation is that $500 shows the same TBA
-        whether August or September is on screen. The balance term is bounded
-        the same way the activity term is, and includes closed accounts — see
+        The future-assignment deduction is YNAB's rule: assigning $500 in
+        September must reduce August's TBA too, or the same dollars could be
+        assigned twice. With it, a budget whose only allocation is that $500
+        shows the same TBA whether August or September is on screen — but
+        only while the later months' spending is funded by money already on
+        hand, because the balance term is month-bounded while the deduction
+        is not (future income raises only its own month). The test that pins
+        this carries the qualifier in its name:
+        `test_ready_to_assign_agrees_across_months_when_next_months_spending_is_covered`.
+        The balance term is bounded the same way the activity term is, and
+        includes closed accounts — see
         `AccountRepository.sum_on_budget_balance` for both reasons.
         """
         month_start = first_of_month(month)

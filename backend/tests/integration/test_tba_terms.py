@@ -86,3 +86,28 @@ async def test_a_future_assignment_on_an_income_category_is_not_deducted(db_sess
     services, budget, _, inflow, _ = await _budget(db_session)
     await create_budget_assignment(db_session, budget, inflow, SEP, "999.00")
     assert await _tba(services, budget, AUG) == D("1800.00")
+
+
+async def test_a_categorized_row_on_a_tracking_account_moves_nothing(db_session):
+    """The fourth term that must not exist: off-budget activity in an envelope.
+
+    A categorized row on a tracking account used to reduce that envelope
+    (and, once the floor absorbed the overspend, Ready to Assign) while its
+    account contributed to no balance term — money moving with no on-budget
+    event. The activity sums now span the same accounts as the balance term,
+    so such a row moves neither the envelope nor TBA.
+    """
+    services, budget, checking, inflow, rent = await _budget(db_session)
+    brokerage = await create_account(
+        db_session, budget, "Brokerage", account_type="investment", on_budget=False
+    )
+    before_tba = await _tba(services, budget, AUG)
+    before_rent = (await services.budgets.get_category_balance(rent.id, AUG)).available
+
+    # Written directly (an import or a pre-rule sync would have) — the
+    # service refuses to create this row now.
+    await create_transaction(db_session, budget, brokerage, "-450.00", date(2026, 8, 9), category=rent)
+    await db_session.flush()
+
+    assert await _tba(services, budget, AUG) == before_tba
+    assert (await services.budgets.get_category_balance(rent.id, AUG)).available == before_rent

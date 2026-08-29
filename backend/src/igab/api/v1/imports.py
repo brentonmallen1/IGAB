@@ -185,6 +185,10 @@ class YNABImportResult(BaseModel):
     #: keeps as a result.
     credit_card_payment_assignments_skipped: int = 0
     credit_card_payment_reserves_skipped: Decimal = Decimal("0")
+    #: Register rows on tracking accounts whose export line named a category,
+    #: imported without one — off-budget activity is net-worth movement, and
+    #: a category here would move the budget with no on-budget event.
+    tracking_account_categories_stripped: int = 0
     #: None when the check could not run; never a failed import.
     parity: YNABParityOut | None = None
     errors: list[str]

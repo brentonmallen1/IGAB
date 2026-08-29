@@ -121,6 +121,30 @@ export interface RepairTransfersResult {
   remaining: number
 }
 
+export interface RepairTrackingCategoriesResult {
+  stripped: number
+}
+
+/** Strip categories from rows on off-budget accounts. Those categories count
+ *  nowhere — the budget's sums exclude off-budget rows — so this moves no
+ *  money; it makes the register agree with the budget. One undoable batch. */
+export function useRepairTrackingCategories(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      apiClient
+        .post<RepairTrackingCategoriesResult>(
+          `/${budgetId}/accounts/hygiene/repair-tracking-categories`
+        )
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: ['all-transactions'] })
+      qc.invalidateQueries({ queryKey: ['account-hygiene', budgetId] })
+    },
+  })
+}
+
 /** Link the unpaired transfer legs whose partner is unmistakable.
  *
  *  Repairs history the fixed importer cannot reach. Writes no money and
