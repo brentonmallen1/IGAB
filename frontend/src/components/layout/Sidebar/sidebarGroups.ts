@@ -16,6 +16,27 @@ export const SIDEBAR_SECTION_IDS = {
   liabilities: 'liabilities',
 } as const
 
+/**
+ * Whether an account's balance is showing trouble or just showing a number.
+ *
+ * A negative balance means two different things depending on what the account
+ * is. On a chequing or savings account it means overdrawn — something to act
+ * on. On a credit card or a mortgage it means what is owed, which is the
+ * normal state of a debt and not news. Colouring both the same is what made
+ * the sidebar read as five alarms on an ordinary Tuesday, and it is the same
+ * judgement the cards strip already makes about Uncovered.
+ */
+export type BalanceTone = 'neutral' | 'negative'
+
+export function balanceTone(balance: number, kind: 'asset' | 'debt'): BalanceTone {
+  return kind === 'asset' && balance < 0 ? 'negative' : 'neutral'
+}
+
+/** Which of the two an account is. A credit card is on-budget and a debt. */
+export function accountKind(account: Pick<Account, 'classification'>): 'asset' | 'debt' {
+  return account.classification === 'liability' ? 'debt' : 'asset'
+}
+
 export function sidebarTypeGroupId(typeKey: string): string {
   return `type:${typeKey}`
 }

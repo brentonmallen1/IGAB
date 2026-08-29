@@ -93,13 +93,29 @@ export const THEMES: { value: Theme; label: string }[] = [
   { value: 'eink-light', label: 'E-Ink Light' },
 ]
 
-export type FontScale = 'small' | 'medium' | 'large'
+export type FontScale = 'small' | 'medium' | 'large' | 'xlarge' | 'xxlarge'
 
+/** Five steps, ~7% apart; the sizes themselves live in themes/base.css. */
 export const FONT_SCALES: { value: FontScale; label: string }[] = [
   { value: 'small', label: 'Small' },
   { value: 'medium', label: 'Medium' },
   { value: 'large', label: 'Large' },
+  { value: 'xlarge', label: 'X-Large' },
+  { value: 'xxlarge', label: 'XX-Large' },
 ]
+
+/**
+ * The ladder gained two rungs and the names shifted down one: what used to be
+ * "Medium" is this ladder's "Large", and the old "Large" is "XX-Large".
+ *
+ * Renaming a step must not resize anyone's app, so a stored value is moved to
+ * whichever new name renders at the size it always did. 'small' is unchanged
+ * and needs no entry.
+ */
+const FONT_SCALE_RENAMES: Record<string, FontScale> = {
+  medium: 'large',
+  large: 'xxlarge',
+}
 
 interface AppState {
   theme: Theme
@@ -171,6 +187,14 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: PERSIST_KEYS.app,
+      version: 1,
+      migrate: (persisted: unknown, from: number) => {
+        const state = persisted as { fontScale?: string } | null
+        if (from < 1 && state?.fontScale) {
+          state.fontScale = FONT_SCALE_RENAMES[state.fontScale] ?? state.fontScale
+        }
+        return state as never
+      },
       onRehydrateStorage: () => (state) => {
         // Apply theme and font scale on hydration
         if (state?.theme) {

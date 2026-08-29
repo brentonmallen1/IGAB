@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Account } from '../../../types'
 import {
+  accountKind,
   accountsTotal,
+  balanceTone,
   buildLiabilityRows,
   groupLabel,
   groupedAccountsTotal,
@@ -342,5 +344,41 @@ describe('buildLiabilityRows with a companion on every liability account', () =>
 
     expect(rows).toHaveLength(1)
     expect(rows[0].icon).toBe('manual')
+  })
+})
+
+/**
+ * What a minus sign means depends on what the account is, and the sidebar
+ * used to ignore that: every negative balance rendered red, so a mortgage, a
+ * car loan and three credit cards showed as five alarms on an ordinary
+ * Tuesday. A person learns to stop reading red that is always there.
+ */
+describe('balanceTone', () => {
+  it('marks an asset in the red — that is overdrawn, and it is news', () => {
+    expect(balanceTone(-55.68, 'asset')).toBe('negative')
+  })
+
+  it('leaves a debt showing what it owes alone', () => {
+    expect(balanceTone(-1204.13, 'debt')).toBe('neutral')
+  })
+
+  it('has nothing to say about money in the bank', () => {
+    expect(balanceTone(7865.9, 'asset')).toBe('neutral')
+    expect(balanceTone(0, 'asset')).toBe('neutral')
+  })
+
+  it('says nothing about an overpaid card either', () => {
+    // A positive balance on a debt is a credit — unusual, not a problem.
+    expect(balanceTone(40, 'debt')).toBe('neutral')
+  })
+})
+
+describe('accountKind', () => {
+  it('reads a credit card as a debt even though it is on budget', () => {
+    expect(accountKind(acct({ classification: 'liability', on_budget: true }))).toBe('debt')
+  })
+
+  it('reads everything else as an asset', () => {
+    expect(accountKind(acct({ classification: 'asset' }))).toBe('asset')
   })
 })
