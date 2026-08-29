@@ -144,10 +144,10 @@
   color: var(--bg-primary);
   border-color: var(--accent-color);
   font-weight: 600;
-  /* Appended, not replaced: this shadow is live in all 40 variants, and
-     --glow-accent is inert outside Synthwave. */
-  box-shadow: 0 1px 6px color-mix(in srgb, var(--color-accent) 35%, transparent),
-    var(--glow-accent);
+  /* No var(--glow-accent) here: .reports-nav__tabs is overflow-x:auto, so a
+     wide bloom is cut off square at the scroller edge. This tight 6px shadow
+     stays inside it. See the tab-row exclusion note in base.css. */
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 /* ─── Content area ────────────────────────────────────────────────────────── */
