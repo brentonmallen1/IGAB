@@ -144,7 +144,10 @@
   color: var(--bg-primary);
   border-color: var(--accent-color);
   font-weight: 600;
-  box-shadow: 0 1px 6px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  /* Appended, not replaced: this shadow is live in all 40 variants, and
+     --glow-accent is inert outside Synthwave. */
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--color-accent) 35%, transparent),
+    var(--glow-accent);
 }
 
 /* ─── Content area ────────────────────────────────────────────────────────── */

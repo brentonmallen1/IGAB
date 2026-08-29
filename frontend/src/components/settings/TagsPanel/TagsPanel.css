@@ -129,8 +129,11 @@
   box-shadow: var(--focus-ring);
 }
 
+/* Deliberately --bg-secondary, not --focus-ring's --bg-primary: the swatch
+   sits on a raised panel, and selected must stay distinguishable from focused. */
 .tags-panel__color-btn--selected {
-  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 4px var(--color-accent);
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 4px var(--color-accent),
+    var(--glow-accent);
 }
 
 .tags-panel__color-btn--red { background-color: var(--tag-red); }
