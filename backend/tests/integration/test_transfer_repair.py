@@ -606,6 +606,43 @@ class TestRepairPass:
         assert result["ambiguous"] >= 1
         assert (await TransactionRepository(db_session).get_or_raise(near.id)).transfer_id is None
 
+    async def test_ambiguity_is_seen_from_the_crowded_side_or_not_at_all(self, db_session):
+        """The same cluster, walked from the other end.
+
+        `list_unpaired_transfer_legs` orders by (date, created_at), and every
+        row one import wrote shares both — `func.now()` is the transaction's
+        start time — so Postgres may hand back the two savings legs before the
+        checking leg they both match. Each of THOSE sees exactly one
+        candidate, and the pass used to link an arbitrary half of the pair:
+        precisely the guess it exists to refuse. It surfaced as a CI flake
+        rather than as a wrong number in a report, which was the lucky
+        version.
+        """
+        budget, checking, savings = await _setup(db_session)
+        to_savings = await _transfer_payee(db_session, budget, savings)
+        to_checking = await _transfer_payee(db_session, budget, checking)
+        near = await create_transaction(
+            db_session, budget, checking, "-500.00", TODAY, payee=to_savings
+        )
+        for _ in range(2):
+            await create_transaction(
+                db_session, budget, savings, "500.00", TODAY, payee=to_checking
+            )
+
+        services = make_services(db_session)
+        original = services.transaction_repo.list_unpaired_transfer_legs
+
+        async def crowded_side_last(budget_id):
+            legs = await original(budget_id)
+            return sorted(legs, key=lambda leg: 0 if leg.account_id == savings.id else 1)
+
+        services.transaction_repo.list_unpaired_transfer_legs = crowded_side_last
+        result = await services.transactions.repair_transfers(budget.id)
+
+        assert result["linked"] == 0, "linked one of two identical candidates"
+        assert result["ambiguous"] >= 1
+        assert (await TransactionRepository(db_session).get_or_raise(near.id)).transfer_id is None
+
     async def test_a_leg_with_no_far_side_is_reported_not_invented(self, db_session):
         budget, checking, savings = await _setup(db_session)
         to_savings = await _transfer_payee(db_session, budget, savings)
