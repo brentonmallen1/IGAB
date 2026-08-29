@@ -24,7 +24,7 @@ from decimal import ROUND_DOWN, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
-from igab.domain.cards import card_funding
+from igab.domain.cards import card_funding, set_aside_through, synthetic_activity
 from igab.domain.carryover import available_through, monthly_end_balances
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -625,7 +625,7 @@ class SampleBudgetGenerator:
                         per = by_card.setdefault(r["account_id"], {})
                         per[key] = per.get(key, _ZERO) - r["amount"]
                 for card_id, outflows in by_card.items():
-                    net = {m: v for m, v in outflows.items() if v > 0}
+                    net = {m: v for m, v in outflows.items() if v != 0}
                     if net:
                         credit_outflows.setdefault(category.id, {})[card_id] = net
 
@@ -649,10 +649,10 @@ class SampleBudgetGenerator:
                 per = payments.setdefault(leg["account_id"], {})
                 per[key] = per.get(key, _ZERO) + leg["amount"]
         for card_id in card_ids:
-            synthetic = dict(funded_by_card.get(card_id, {}))
-            for m, paid in payments.get(card_id, {}).items():
-                synthetic[m] = synthetic.get(m, _ZERO) - paid
-            available_total += available_through(
+            synthetic = synthetic_activity(
+                funded_by_card.get(card_id, {}), payments.get(card_id, {})
+            )
+            available_total += set_aside_through(
                 card_assigned.get(card_id, {}), synthetic, current_month
             )
         uncovered_current = sum(

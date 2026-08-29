@@ -694,15 +694,19 @@ class TransactionRepository(BaseRepository[Transaction]):
         category_ids: list[uuid.UUID],
         end_date: date,
     ) -> dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]]:
-        """Net categorized card spending: {category: {card: {month: amount ≥ 0}}}.
+        """Net categorized card spending: {category: {card: {month: SIGNED net}}}.
 
         The funding-source input of domain/cards.py: how much of each
-        category's month was spent on each card. NET per month — refunds
-        subtract, and a month that nets to a refund is clamped to zero, so a
-        refunded purchase releases its set-aside reservation rather than
-        inflating it. Same row predicates as `sum_all_categories_by_month`,
-        narrowed to card accounts (`ON_CARD_ACCOUNT`), so the split can never
-        claim more credit spending than the activity sum counted.
+        category's month was spent on each card. NET per month and signed —
+        refunds subtract, and a month that nets to a refund arrives
+        NEGATIVE, never clamped: the release it carries belongs to a
+        reservation made in an earlier month, and `card_funding`'s running
+        walk is what decides how much of it releases. (Clamping here is how
+        every cross-month refund got discarded and the set-asides ratcheted
+        upward — "The Unreleased Reservation".) Same row predicates as
+        `sum_all_categories_by_month`, narrowed to card accounts
+        (`ON_CARD_ACCOUNT`), so the split can never claim more credit
+        spending than the activity sum counted.
         """
         if not category_ids:
             return {}
@@ -729,7 +733,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         out: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
         for row in result.mappings():
             net = Decimal(str(row["outflow"]))
-            if net <= 0:
+            if net == 0:
                 continue
             month = date(row["yr"], row["mo"], 1)
             out.setdefault(row["category_id"], {}).setdefault(row["account_id"], {})[month] = net

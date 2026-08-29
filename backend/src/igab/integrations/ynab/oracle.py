@@ -78,6 +78,12 @@ class RTAOracle:
     rta: Decimal
     card_balances: Decimal
     ccp_available: Decimal
+    #: YNAB's Available per card-payment reserve at `month`, keyed by the
+    #: CCP category's name lowercased — which is the card account's name,
+    #: exactly how YNAB names the reserve and how the importer matches it.
+    #: The per-card half of `ccp_available`: what each card's set-aside must
+    #: reconcile to after an import.
+    ccp_available_by_card: dict[str, Decimal]
     uncovered_current: Decimal
     #: Card debt reset out of the envelopes and charged to no one — what the
     #: card section shows as Uncovered. IGAB follows the same rule, so this
@@ -162,6 +168,7 @@ def ynab_rta(
     written_off = ZERO
     uncovered_current = ZERO
     ccp_available = ZERO
+    ccp_available_by_card: dict[str, Decimal] = {}
     available: dict[tuple[str, str], Decimal] = {}
     for row in budget.plan_rows:
         assigned += row.assigned
@@ -177,6 +184,9 @@ def ynab_rta(
         if row.month == month:
             if is_ccp:
                 ccp_available += row.available
+                ccp_available_by_card[row.category.lower()] = (
+                    ccp_available_by_card.get(row.category.lower(), ZERO) + row.available
+                )
             else:
                 available[map_ynab_names(row.category_group, row.category)] = row.available
                 if row.available < 0:
@@ -195,6 +205,7 @@ def ynab_rta(
         rta=rta,
         card_balances=card_balances,
         ccp_available=ccp_available,
+        ccp_available_by_card=ccp_available_by_card,
         uncovered_current=uncovered_current,
         uncovered_card_debt=uncovered_card_debt,
         uncategorized_net=uncategorized_net,

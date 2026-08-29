@@ -141,6 +141,13 @@ class YNABParityOut(BaseModel):
     #: reported so `categories_compared` is explainable.
     categories_unmatched: int
     top_differences: list[YNABParityDifference]
+    #: Card set-asides held against the per-card Credit Card Payments
+    #: reserve YNAB shipped. A differing card is an envelope that detached
+    #: from its ledger over the imported history — the import is when that
+    #: drift is largest and least noticeable, so it is checked here.
+    cards_compared: int
+    cards_differing: int
+    card_differences: list[YNABParityDifference]
     consistency: YNABExportConsistencyOut
 
 
@@ -628,6 +635,12 @@ async def ynab_parity_or_none(
         top_differences=[
             YNABParityDifference(name=d.name, igab=d.igab, ynab=d.ynab, pending=d.pending)
             for d in report.top_differences
+        ],
+        cards_compared=report.cards_compared,
+        cards_differing=report.cards_differing,
+        card_differences=[
+            YNABParityDifference(name=d.name, igab=d.igab, ynab=d.ynab)
+            for d in report.card_differences
         ],
         consistency=YNABExportConsistencyOut(
             self_consistent=report.consistency.self_consistent,

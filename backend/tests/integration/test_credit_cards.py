@@ -146,6 +146,67 @@ class TestTheIdentity:
         assert august.cards[0].uncovered == D("50.00")
         assert august.cards[0].set_aside == D("20.00")  # the funded 70 − 50 riding
 
+    async def test_a_cross_month_refund_releases_the_reservation(self, db_session):
+        """The Unreleased Reservation, walked through the service: July's
+        funded swipe reserves 150; August's refund of it releases the 150.
+        The per-month clamp used to discard the release, leaving the reserve
+        in the envelope forever and Ready to Assign 150 lower for good."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
+        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(db_session, budget, visa, "150.00", date(2026, 8, 9), category=groceries)
+        await db_session.flush()
+
+        august = await _summary(services, budget, AUG)
+        card = august.cards[0]
+        # The card owes nothing and reserves nothing — the two agree again.
+        assert (card.balance, card.set_aside, card.uncovered) == (D("0.00"), D("0.00"), D("0"))
+        # The refund restored the envelope, so: 1000 − 150 groceries − 0 reserve.
+        assert august.to_be_assigned == D("850.00")
+
+    async def test_a_refund_of_ridden_spending_pays_down_uncovered(self, db_session):
+        """100 funded of a 150 swipe (50 rides as Uncovered); a full refund
+        next month releases the funded 100 and the other 50 clears the debt
+        through the balance. Nothing is left on either side."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(db_session, budget, visa, "150.00", date(2026, 8, 9), category=groceries)
+        await db_session.flush()
+
+        august = await _summary(services, budget, AUG)
+        card = august.cards[0]
+        assert (card.balance, card.set_aside, card.uncovered) == (D("0.00"), D("0.00"), D("0"))
+
+    async def test_an_overpayment_carries_as_a_credit_balance(self, db_session):
+        """Defect B walked: paying 150 against a 100 reserve reads −50 in
+        July AND still −50 in August — the boundary floor used to absorb the
+        surplus into Ready to Assign, ratcheting the reserve upward by every
+        overpaid month."""
+        services, budget, checking, visa, linked, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        from igab.services.transaction_service import TransactionCreate
+
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 25),
+                amount=D("-150.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+
+        july = await _summary(services, budget, JUL)
+        august = await _summary(services, budget, AUG)
+        assert july.cards[0].set_aside == D("-50.00")
+        assert august.cards[0].set_aside == D("-50.00")
+        # And the figure agrees with itself across the boundary: 1000 income
+        # − 100 assigned, the credit overspending riding on the card.
+        assert july.to_be_assigned == august.to_be_assigned == D("900.00")
+
     async def test_card_envelopes_stay_out_of_cover_overspent(self, db_session):
         services, budget, checking, visa, linked, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
