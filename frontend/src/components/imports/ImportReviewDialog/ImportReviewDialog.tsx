@@ -280,7 +280,7 @@ function SummaryStep({ summary }: { summary: YnabImportResult }) {
     summary.accounts_closed > 0 &&
       `${n(summary.accounts_closed)} account${summary.accounts_closed === 1 ? '' : 's'} imported in full and then closed — every transaction arrived, only the account is hidden from pickers.`,
     summary.credit_card_payment_assignments_skipped > 0 &&
-      `${n(summary.credit_card_payment_assignments_skipped)} credit-card payment assignment${summary.credit_card_payment_assignments_skipped === 1 ? '' : 's'} (${formatMoney(reserves)}) left out on purpose: IGAB reserves card debt from the card's own balance, so importing these would reserve it twice.`,
+      `${n(summary.credit_card_payment_assignments_skipped)} credit-card payment assignment${summary.credit_card_payment_assignments_skipped === 1 ? '' : 's'} (${formatMoney(reserves)}) had no matching card here — the card was left out of the import or is not on budget — so those reserves were not carried over.`,
     summary.tracking_account_categories_stripped > 0 &&
       `${n(summary.tracking_account_categories_stripped)} row${summary.tracking_account_categories_stripped === 1 ? '' : 's'} on tracking accounts arrived with a category and imported without one — off-budget activity is net-worth movement, not budget spending.`,
     summary.skipped > 0 &&
@@ -369,7 +369,7 @@ function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity'
       consistency.activity_cells_disagreeing > 0 &&
       `${percent(consistency.activity_cells_disagreeing, consistency.activity_cells_checked)} of its activity figures (${n(consistency.activity_cells_disagreeing)} of ${n(consistency.activity_cells_checked)}) do not match the transactions shipped in the same file.`,
     debt !== 0 &&
-      `${formatMoney(Math.abs(debt))} of that is card debt YNAB has not charged to Ready to Assign yet — IGAB nets it against cash instead.`,
+      `${formatMoney(Math.abs(debt))} is card debt with nothing set aside behind it — both apps leave it out of Ready to Assign; here it shows as Uncovered in the cards section.`,
     unfiled !== 0 &&
       `${formatMoney(Math.abs(unfiled))} of uncategorized transactions stays out of Ready to Assign until you file it; YNAB leaves it out of its plan entirely.`,
     parity.categories_pending > 0 &&

@@ -38,6 +38,9 @@ class MockAccount:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     on_budget: bool = True
     is_closed: bool = False
+    # The summary's card block reads classification; "asset" keeps these
+    # tests about their own subject — no card accounts, block short-circuits.
+    classification: str = "asset"
 
 
 def make_service_with_balance(account: MockAccount, balance: Decimal) -> BudgetService:
@@ -47,6 +50,7 @@ def make_service_with_balance(account: MockAccount, balance: Decimal) -> BudgetS
     account_repo.sum_on_budget_balance = AsyncMock(
         return_value=balance if account.on_budget else Decimal("0")
     )
+    account_repo.get_all = AsyncMock(return_value=[account])
 
     return BudgetService(
         account_repo=account_repo,

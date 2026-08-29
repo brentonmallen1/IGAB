@@ -24,6 +24,8 @@ from decimal import ROUND_DOWN, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
+from igab.domain.cards import card_funding
+from igab.domain.carryover import available_through, monthly_end_balances
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -44,6 +46,7 @@ from igab.sample_budget.spec import (
     ScheduledSpec,
     shift_months,
 )
+from igab.services.card_payment import ensure_payment_category
 from igab.services.liability_service import ensure_for_account
 from igab.utils.clock import today_utc
 
@@ -145,7 +148,7 @@ class SampleBudgetGenerator:
         await self.transaction_repo.bulk_link_transfers(links)
         result.transactions = len(inserted)
 
-        result.assignments = await self._create_assignments(anchor, inserted, projected)
+        result.assignments = await self._create_assignments(anchor, inserted, projected, links)
         result.scheduled = await self._create_scheduled(anchor)
         result.reconciliations = await self._create_reconciliation(inserted)
 
@@ -292,6 +295,9 @@ class SampleBudgetGenerator:
         for account in self._accounts.values():
             if await ensure_for_account(self.session, account) is not None:
                 result.liabilities += 1
+            # Cards additionally get their set-aside envelope; the showcase
+            # spec may have made one already, which ensure() then adopts.
+            await ensure_payment_category(self.session, account)
 
     # ─── Transactions ─────────────────────────────────────────────────────────
 
@@ -514,7 +520,11 @@ class SampleBudgetGenerator:
     # ─── Assignments ──────────────────────────────────────────────────────────
 
     async def _create_assignments(
-        self, anchor: date, inserted: list[dict], projected: list[dict]
+        self,
+        anchor: date,
+        inserted: list[dict],
+        projected: list[dict],
+        transfer_links: list[tuple[uuid.UUID, uuid.UUID]],
     ) -> int:
         spec = self.spec
         months = [date(*shift_months(anchor, n), 1) for n in range(spec.months_of_history, -1, -1)]
@@ -559,41 +569,98 @@ class SampleBudgetGenerator:
                         assigned[(category.id, m)] = amount
                     carry = max(_ZERO, carry + amount + full_activity.get(m, _ZERO))
 
-        # Sweep the surplus so TBA lands exactly on target. Uses the same
-        # balance simulation as BudgetService: TBA = on-budget balances −
-        # Σ non-system category available (computed on INSERTED rows only).
-        # Mirror AccountRepository.sum_on_budget_balance: every on-budget
-        # account funds TBA, closed ones included — closing moves no money.
+        # Sweep the surplus so TBA lands exactly on target, mirroring
+        # BudgetService's identity with the domain's own functions:
+        #   TBA = cash balances − Σ envelope available (cards' set-aside
+        #   envelopes included) − uncovered_current
+        # computed on INSERTED rows only. Cash excludes cards — a card's debt
+        # lives beside its set-aside, not in cash (domain/cards.py). Closed
+        # accounts stay in; closing moves no money.
         on_budget_names = {a.name for a in spec.accounts if a.on_budget}
         on_budget_ids = {self._accounts[n].id for n in on_budget_names}
+        card_ids = {
+            aid
+            for aid in on_budget_ids
+            for a in [next(a for a in self._accounts.values() if a.id == aid)]
+            if a.classification == "liability"
+        }
+        cash_ids = on_budget_ids - card_ids
         balances = sum(
             (
                 r["amount"]
                 for r in inserted
-                if r["account_id"] in on_budget_ids and r["parent_transaction_id"] is None
+                if r["account_id"] in cash_ids and r["parent_transaction_id"] is None
             ),
             _ZERO,
         )
 
         available_total = _ZERO
+        ends_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
+        credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
+        card_assigned: dict[uuid.UUID, dict[date, Decimal]] = {}
         for group_spec in spec.groups:
             if group_spec.name == spec.income_group:
                 continue
             for cat_spec in group_spec.categories:
                 category = self._categories[cat_spec.name]
+                asg = {
+                    m: assigned[(category.id, m)] for m in months if (category.id, m) in assigned
+                }
+                if cat_spec.linked_account:
+                    # A card's set-aside envelope — simulated below from
+                    # funded credit and payments, not from the spec loop.
+                    card_assigned[self._accounts[cat_spec.linked_account].id] = asg
+                    continue
                 inserted_activity = activity_by_month(inserted, category.id)
-                carry = _ZERO
-                end = _ZERO
-                for m in months:
-                    end = (
-                        carry
-                        + assigned.get((category.id, m), _ZERO)
-                        + inserted_activity.get(m, _ZERO)
-                    )
-                    carry = max(_ZERO, end)
-                available_total += end  # current month may be negative
+                ends_by_cat[category.id] = monthly_end_balances(asg, inserted_activity)
+                available_total += available_through(asg, inserted_activity, current_month)
+                by_card: dict[uuid.UUID, dict[date, Decimal]] = {}
+                for r in inserted:
+                    if (
+                        r["category_id"] == category.id
+                        and not r["is_split"]
+                        and r["account_id"] in card_ids
+                    ):
+                        key = r["date"].replace(day=1)
+                        per = by_card.setdefault(r["account_id"], {})
+                        per[key] = per.get(key, _ZERO) - r["amount"]
+                for card_id, outflows in by_card.items():
+                    net = {m: v for m, v in outflows.items() if v > 0}
+                    if net:
+                        credit_outflows.setdefault(category.id, {})[card_id] = net
 
-        surplus = balances - available_total - spec.tba_target
+        funded_by_card, floored_by_category = card_funding(ends_by_cat, credit_outflows)
+        # Payments come from the captured link pairs — generate() strips
+        # `transfer_id` off these very dicts before bulk insert, so the rows
+        # themselves no longer say they are transfers.
+        rows_by_id = {r["id"]: r for r in inserted}
+        payments: dict[uuid.UUID, dict[date, Decimal]] = {}
+        for leg_id, partner_id in transfer_links:
+            leg = rows_by_id.get(leg_id)
+            partner = rows_by_id.get(partner_id)
+            if (
+                leg is not None
+                and partner is not None
+                and leg["account_id"] in card_ids
+                and partner["account_id"] in cash_ids
+                and leg["amount"] > 0
+            ):
+                key = leg["date"].replace(day=1)
+                per = payments.setdefault(leg["account_id"], {})
+                per[key] = per.get(key, _ZERO) + leg["amount"]
+        for card_id in card_ids:
+            synthetic = dict(funded_by_card.get(card_id, {}))
+            for m, paid in payments.get(card_id, {}).items():
+                synthetic[m] = synthetic.get(m, _ZERO) - paid
+            available_total += available_through(
+                card_assigned.get(card_id, {}), synthetic, current_month
+            )
+        uncovered_current = sum(
+            (by_month.get(current_month, _ZERO) for by_month in floored_by_category.values()),
+            _ZERO,
+        )
+
+        surplus = balances - available_total - uncovered_current - spec.tba_target
         if sweep_category is None or surplus < 0:
             raise ValueError(
                 f"sample spec cannot reach TBA target {spec.tba_target}: surplus={surplus}, "

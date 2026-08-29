@@ -96,9 +96,8 @@ export interface YnabImportResult {
   /** Which ones, and why. The count alone cannot answer "show me what you
    *  did", and nothing on the join table records that a tag was guessed. */
   tagged_categories: YnabTaggedCategory[]
-  /** YNAB's Credit Card Payments reserves, left out on purpose: IGAB nets a
-   *  card's balance against cash in Ready to Assign, so importing them would
-   *  reserve the same debt twice. The money is what Ready to Assign keeps. */
+  /** YNAB's Credit Card Payments reserves whose card was never imported —
+   *  the matched ones become the card's set-aside assignments. */
   credit_card_payment_assignments_skipped: number
   credit_card_payment_reserves_skipped: string
   /** Register rows on tracking accounts whose export line named a category,

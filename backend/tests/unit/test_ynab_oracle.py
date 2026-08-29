@@ -123,13 +123,21 @@ class TestWriteOffs:
 
 
 class TestCardAdjustment:
-    def test_reset_credit_overspending_is_the_gap_between_ynab_and_igab(self):
+    def test_reset_credit_overspending_no_longer_separates_ynab_and_igab(self):
         b = budget(
             [
                 inflow("Checking", date(2026, 7, 1), "1000"),
                 txn("Visa", date(2026, 7, 5), "-350", "Everyday", "Groceries"),
-                txn("Checking", date(2026, 7, 25), "-300"),  # card payment leg
-                txn("Visa", date(2026, 7, 25), "300"),
+                # The payment pair, named the way an export names it — an
+                # unmarked leg would read as an unfiled cash row.
+                YNABTransaction(
+                    "Checking", date(2026, 7, 25), "Transfer : Visa",
+                    None, None, None, D("-300"), "cleared",
+                ),
+                YNABTransaction(
+                    "Visa", date(2026, 7, 25), "Transfer : Checking",
+                    None, None, None, D("300"), "cleared",
+                ),
             ],
             [
                 plan(JUL, "Everyday", "Groceries", "300", "-50"),
@@ -141,8 +149,10 @@ class TestCardAdjustment:
         o = ynab_rta(b, AUG, credit_card_accounts={"Visa"})
         assert o.rta == D("700")  # 1000 − 300, nothing written off (credit)
         assert o.card_balances == D("-50")
+        # Still computed — it is what the card section shows as Uncovered —
+        # but IGAB follows the same rule now, so it explains no gap.
         assert o.uncovered_card_debt == D("50")
-        assert o.expected_igab == D("650")
+        assert o.expected_igab == D("700")
 
     def test_while_the_overspent_month_is_open_the_two_agree(self):
         b = budget(
@@ -155,7 +165,7 @@ class TestCardAdjustment:
         o = ynab_rta(b, JUL, credit_card_accounts={"Visa"})
         assert o.uncovered_current == D("50")
         assert o.uncovered_card_debt == D("300")  # −(−350) − 0 − 50: the covered part, still unpaid
-        assert o.expected_igab == o.rta - D("300")
+        assert o.expected_igab == o.rta
 
 
 class TestAvailable:

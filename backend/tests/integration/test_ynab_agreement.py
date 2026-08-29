@@ -42,8 +42,9 @@ async def test_the_oracle_reads_the_fixture_the_way_ynab_does(db_session, tmp_pa
     Utilities ended July 50 overspent, all of it cash → written off.
     Groceries ended June 50 overspent, all of it on the Visa → NOT written
     off; that 50 rides on the card, which owes 350 − 300 = 50 with no
-    reserve behind it. YNAB: 15000 − 5170 − 50 = 9780. IGAB nets the card:
-    9780 − 50 = 9730."""
+    reserve behind it. YNAB: 15000 − 5170 − 50 = 9780 — and IGAB follows the
+    same credit rules now (domain/cards.py), so it expects 9780 too; the 50
+    shows as the card's Uncovered, not as a Ready to Assign difference."""
     _, _, ynab_budget = await _imported(db_session, tmp_path)
     o = oracle_for(
         ynab_budget, AUG, accounts=TYPES, credit_card_accounts=CARDS, tracking_accounts=TRACKING
@@ -57,7 +58,7 @@ async def test_the_oracle_reads_the_fixture_the_way_ynab_does(db_session, tmp_pa
     assert o.uncovered_current == Decimal("0")
     assert o.uncovered_card_debt == Decimal("50.00")
     assert o.uncategorized_net == Decimal("0")  # the brokerage's rows are tracking
-    assert o.expected_igab == Decimal("9730.00")
+    assert o.expected_igab == Decimal("9780.00")
     assert o.available[("Everyday", "Groceries")] == Decimal("300.00")
     assert ("Credit Card Payments", "Visa") not in o.available
 
@@ -66,7 +67,8 @@ async def test_every_envelope_and_ready_to_assign_agree_in_every_month(db_sessio
     """June: Groceries −50 in both (credit overspending is visible while the
     month is open, so YNAB and IGAB agree exactly: 9000 − 5170 = 3830).
     July: Utilities −50 in both. August: Groceries 300, everything else 0,
-    and Ready to Assign 9730 against YNAB's 9780 — the reset card debt."""
+    and Ready to Assign 9780 in both — the reset card debt is the card's
+    Uncovered, not a gap."""
     services, budget_id, ynab_budget = await _imported(db_session, tmp_path)
     await assert_ynab_agreement(
         services,
@@ -87,7 +89,7 @@ async def test_every_envelope_and_ready_to_assign_agree_in_every_month(db_sessio
         tracking_accounts=TRACKING,
     )
     assert report.matches
-    assert report.igab_ready_to_assign == cents("9730")
+    assert report.igab_ready_to_assign == cents("9780")
     assert report.ynab_ready_to_assign == cents("9780")
     assert report.uncovered_card_debt == cents("50")
     june = await parity(
@@ -111,14 +113,14 @@ async def test_closing_every_dormant_account_leaves_ready_to_assign_unchanged(db
     accounts = {a.name: a for a in await services.account_repo.get_all(budget_id)}
     await services.account_repo.update(accounts["Savings"].id, is_closed=True)
     after = (await services.budgets.get_budget_summary(budget_id, AUG)).to_be_assigned
-    assert after == before == cents("9730")
+    assert after == before == cents("9780")
 
     # And a fresh import that closes it on the way in says the same.
     closed_services, closed_id, closed_ynab = await _imported(
         db_session, tmp_path, close_accounts={"Savings"}
     )
     assert (await closed_services.budgets.get_budget_summary(closed_id, AUG)).to_be_assigned == (
-        cents("9730")
+        cents("9780")
     )
 
 
@@ -129,8 +131,8 @@ async def test_a_future_dated_row_does_not_touch_this_months_figure(db_session, 
     services, budget_id, ynab_budget = await _imported(db_session, tmp_path)
     august = await services.budgets.get_budget_summary(budget_id, AUG)
     september = await services.budgets.get_budget_summary(budget_id, SEP)
-    assert august.to_be_assigned == cents("9730")
-    assert september.to_be_assigned == cents("9730")
+    assert august.to_be_assigned == cents("9780")
+    assert september.to_be_assigned == cents("9780")
     # The header, deliberately, still shows the money leaving.
     accounts = {a.name: a for a in await services.account_repo.get_all(budget_id)}
     assert await services.account_repo.get_balance(accounts["Checking"].id) == cents("7680")

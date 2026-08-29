@@ -15,6 +15,8 @@ from igab.db.models import (
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     BALANCE_ROW,
+    CARD_ACCOUNT,
+    CASH_ACCOUNT,
     CLEARED,
     NEEDS_CATEGORY,
     NOT_DELETED,
@@ -123,6 +125,11 @@ class AccountRepository(BaseRepository[Account]):
         payment lower today's Ready to Assign with nothing to explain it.
         The account header's working balance is deliberately NOT bounded
         (`get_balance`; see `not_future`): a register shows what it holds.
+
+        Cards are OUT (`CASH_ACCOUNT`): an on-budget liability's debt does
+        not net against cash. It lives beside the card's set-aside envelope,
+        and the only way a card moves Ready to Assign is money assigned to
+        it — see domain/cards.py for the model.
         """
         result = await self.session.execute(
             select(func.coalesce(func.sum(Transaction.amount), 0))
@@ -130,13 +137,34 @@ class AccountRepository(BaseRepository[Account]):
             .join(Account, Account.id == Transaction.account_id)
             .where(
                 Account.budget_id == budget_id,
-                Account.on_budget == True,  # noqa: E712
+                CASH_ACCOUNT,
                 Account.is_deleted == False,  # noqa: E712
                 BALANCE_ROW,
                 not_future(as_of),
             )
         )
         return Decimal(str(result.scalar_one()))
+
+    async def card_balances(self, budget_id: uuid.UUID, as_of: date) -> dict[uuid.UUID, Decimal]:
+        """Each card's balance through `as_of` — what is owed, as a negative,
+        for the budget's card section. Same predicates and bound as the cash
+        sum, so the two partition the on-budget balance exactly. Closed cards
+        are IN for the same reason closed cash accounts are: closing moves no
+        money. Cards with no rows simply do not appear."""
+        result = await self.session.execute(
+            select(Transaction.account_id, func.coalesce(func.sum(Transaction.amount), 0))
+            .select_from(Transaction)
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Account.budget_id == budget_id,
+                CARD_ACCOUNT,
+                Account.is_deleted == False,  # noqa: E712
+                BALANCE_ROW,
+                not_future(as_of),
+            )
+            .group_by(Transaction.account_id)
+        )
+        return {account_id: Decimal(str(total)) for account_id, total in result.all()}
 
     async def soft_delete(
         self, id: uuid.UUID, *, liability_disposition: LiabilityDisposition = "keep"
