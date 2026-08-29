@@ -168,6 +168,25 @@
   line-height: 1.6;
 }
 
+/* Ready to pay is a door, not a field: underline on hover, exactly the
+   grid's Activity cell. The border-on-hover treatment next door is this
+   app's "editable" signal and belongs to the Assigned cell alone. */
+.credit-cards__peek-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 2px 0;
+  width: 100%;
+  text-align: right;
+  cursor: pointer;
+}
+
+.credit-cards__peek-btn:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .credit-cards__assign-btn {
   background: none;
   border: 1px solid transparent;
