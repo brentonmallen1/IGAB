@@ -7,6 +7,7 @@ import { useAccounts } from '../../../api/accounts'
 import { useAccountTypes } from '../../../api/accountTypes'
 import {
   SIDEBAR_SECTION_IDS,
+  accountKind,
   accountsTotal,
   buildLiabilityRows,
   groupLabel,
@@ -304,6 +305,7 @@ export function Sidebar() {
                         key={acc.id}
                         name={acc.name}
                         balance={Number(acc.balance)}
+                        kind={accountKind(acc)}
                         badgeCount={acc.uncategorized_count}
                         onClick={() => handleAccountClick(acc)}
                         trailing={
@@ -353,6 +355,7 @@ export function Sidebar() {
                 key={acc.id}
                 name={acc.name}
                 balance={Number(acc.balance)}
+                kind={accountKind(acc)}
                 onClick={() => handleAccountClick(acc)}
               />
             ))}
@@ -390,6 +393,7 @@ export function Sidebar() {
                 key={row.key}
                 name={row.name}
                 balance={row.balance}
+                kind="debt"
                 onClick={() => {
                   const target = row.target
                   if (target.kind === 'liability') {
