@@ -1,6 +1,6 @@
 """What a bank's payee string says about the merchant, once the noise is off.
 
-Two rules live here, both pure:
+Three rules live here, all pure:
 
 - `similarity_key` — the part of a raw payee name worth comparing. Banks
   append store numbers, reference codes and dates that change on every
@@ -10,6 +10,13 @@ Two rules live here, both pure:
   scores 73 raw and 100 on its key. Payee Cleanup and import matching both
   score on this key, so a posting that would once have spawned a second
   payee on import is the same string Cleanup later groups.
+- `distinctive_key` — the part of that key that names a *merchant* rather
+  than a banking operation. `token_set_ratio` scores 100 whenever one side's
+  tokens are a subset of the other's, which is right for `ADP Totalsource`
+  against `ADP` and catastrophic for the literal string SimpleFIN sends on a
+  card payment: `Payment` scored 100 against `Att Payment Brenton Mallen`,
+  `Interest Payment`, and every other payee containing the word. The subset
+  rule is not the bug; a subset made only of banking vocabulary is.
 - `pattern_matches` — how a stored `match_pattern` applies to a raw name.
   The repository's matcher and the AI suggester both call it, so a pattern
   the suggester says "matches every name" is judged the way import judges it.
@@ -59,6 +66,61 @@ def similarity_key(name: str) -> str:
     if sum(c.isalnum() for c in key) < 3:
         return _collapse(name)
     return key
+
+
+#: Words a bank writes about a *transaction* rather than about a merchant.
+#: A raw name built only from these says nothing about who was paid, so it is
+#: no evidence for a fuzzy match — see `distinctive_key`. Kept deliberately
+#: narrow: every entry must be a word no merchant would be identified by on
+#: its own. `interest` earns its place because "Interest" as a bank payee is
+#: an interest charge, never the merchant "Interest".
+GENERIC_BANK_WORDS = frozenset(
+    {
+        "ach",
+        "authorized",
+        "bank",
+        "card",
+        "charge",
+        "charged",
+        "check",
+        "credit",
+        "debit",
+        "deposit",
+        "fee",
+        "fees",
+        "interest",
+        "online",
+        "payment",
+        "payments",
+        "pending",
+        "pos",
+        "purchase",
+        "recurring",
+        "refund",
+        "thank",
+        "transfer",
+        "withdrawal",
+        "you",
+    }
+)
+
+
+def distinctive_key(name: str) -> str:
+    """`similarity_key` with banking vocabulary removed — what is left that
+    could name a merchant.
+
+    Empty means the name is *all* operation and no merchant ("Payment",
+    "Interest Charge", "ONLINE PAYMENT, THANK YOU"). A caller matching one
+    raw name against a list of payees must not match on an empty key: the
+    result is decided by which unrelated payee happens to contain the word.
+
+    Deliberately NOT folded into `similarity_key`, which Payee Cleanup and
+    import matching both run against `shared/sample_cases.json`: dropping
+    these words from the comparison key would make "Interest Payment" and
+    "Att Payment Brenton Mallen" *more* alike, not less. This is a separate
+    question — "is there a merchant in here at all?" — asked before scoring.
+    """
+    return " ".join(t for t in similarity_key(name).split() if t not in GENERIC_BANK_WORDS)
 
 
 def dedupe_samples(parts: Iterable[str | None]) -> list[str]:
