@@ -1,11 +1,24 @@
 import base64
 import logging
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SimpleFINFeed:
+    """One `/accounts` fetch: the transactions in the window, and the balance
+    the bank reported for each account (keyed by SimpleFIN account id).
+    Both come from the same response — a second request would double the
+    hit against the bridge's rate limit for data it already sent."""
+
+    transactions: list[dict]
+    balances: dict[str, Decimal] = field(default_factory=dict)
 
 
 def _extract_auth(access_url: str) -> tuple[str, tuple[str, str]]:
@@ -68,11 +81,16 @@ class SimpleFINClient:
             data = resp.json()
             return data.get("accounts", [])
 
-    async def get_transactions(
+    async def get_feed(
         self,
         access_url: str,
         since: datetime | None = None,
-    ) -> list[dict]:
+    ) -> "SimpleFINFeed":
+        """One `/accounts` request: the window's transactions AND each
+        account's reported balance. The balance rides in the same response —
+        discarding it (as the old `get_transactions` did) is how a first
+        sync's 90-day window shipped a ledger thousands short of what the
+        bank said, with nothing anchoring the difference."""
         bare_url, auth = _extract_auth(access_url)
         params: dict[str, str | int] = {"version": "2", "pending": "1"}
         if since:
@@ -89,8 +107,17 @@ class SimpleFINClient:
             logger.warning("SimpleFIN errlist: %s", data["errors"])
 
         transactions = []
+        balances: dict[str, Decimal] = {}
         for account in data.get("accounts", []):
             acct_id = account.get("id")
+            raw_balance = account.get("balance")
+            if acct_id and raw_balance is not None:
+                try:
+                    # The posted balance — pending activity is in
+                    # "available-balance", which the ledger also excludes.
+                    balances[acct_id] = Decimal(str(raw_balance))
+                except (InvalidOperation, ValueError):
+                    logger.warning("Unparseable SimpleFIN balance %r for %s", raw_balance, acct_id)
             for txn in account.get("transactions", []):
                 transactions.append({**txn, "account_id": acct_id})
-        return transactions
+        return SimpleFINFeed(transactions=transactions, balances=balances)

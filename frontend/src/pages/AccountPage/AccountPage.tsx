@@ -196,6 +196,21 @@ export function AccountPage() {
               <span className="account-page__balance-label">Working Balance</span>
             </div>
           </div>
+          {/* The bank's own figure, written every sync. Shown only when it
+              disagrees with the cleared balance — agreement is the normal
+              state and needs no line — and it names the fix rather than
+              adjusting anything itself: drift is Reconcile's job. */}
+          {account.simplefin_balance !== null &&
+            Number(account.simplefin_balance) !== Number(account.cleared_balance) && (
+              <div className="account-page__bank-reports">
+                Bank reports {formatMoney(Number(account.simplefin_balance))} — differs from the
+                cleared balance by{' '}
+                {formatMoney(
+                  Math.abs(Number(account.simplefin_balance) - Number(account.cleared_balance)),
+                )}
+                . Reconcile to bring them together.
+              </div>
+            )}
         </div>
 
         {/* Right: Actions (vertically centered) */}
