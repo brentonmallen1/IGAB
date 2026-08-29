@@ -51,6 +51,17 @@ export interface YnabParity {
   /** Whether the export's own numbers agree with each other. When they do
    *  not, `categories_differing` measures the file, not the import. */
   consistency: YnabExportConsistency
+  /** Card set-asides held against the per-card Credit Card Payments reserve
+   *  YNAB shipped. A differing card is an envelope that detached from its
+   *  ledger over the imported history — checked at import because that is
+   *  when the drift is largest and the user has no baseline to notice it. */
+  cards_compared: number
+  cards_differing: number
+  card_differences: {
+    name: string
+    igab: string
+    ynab: string
+  }[]
   top_differences: {
     name: string
     igab: string

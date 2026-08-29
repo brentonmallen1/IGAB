@@ -412,6 +412,26 @@ function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity'
           ))}
         </ul>
       )}
+      {parity.cards_differing > 0 && (
+        <>
+          <p className="import-review__verdict import-review__verdict--warn">
+            {parity.cards_differing} of {parity.cards_compared} card reserve
+            {parity.cards_differing === 1 ? ' differs' : 's differ'} from the amount YNAB had set
+            aside — the card's Ready to pay may not match what it owes.
+          </p>
+          <ul className="import-review__diffs">
+            {parity.card_differences.map((d) => (
+              <li key={d.name}>
+                <span className="import-review__diff-n">{d.name}</span>
+                <span className="tabular">
+                  {formatMoney(parseApiDecimal(d.igab))} here vs{' '}
+                  {formatMoney(parseApiDecimal(d.ynab))} in YNAB
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {notes.length > 0 && (
         <ul className="import-review__notes">
           {notes.map((line) => (
