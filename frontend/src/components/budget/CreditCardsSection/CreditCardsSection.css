@@ -1,15 +1,22 @@
 /* The cards strip: liability-truthful columns, deliberately calm.
    Uncovered is information, not an alarm — no state colors here.
 
-   Row separation follows the budget grid's own two-tone system: the table
-   is a sunken well in the card (body rows on --surface-sunken), the column
-   header sits on chrome like the grid's group headers, and rows divide with
-   --border-subtle hairlines plus --row-hover-bg on hover. Everything on one
-   background with bare hairlines was tried first and read as a single slab. */
+   The strip is CHROME in the table's stack — filter bar, cards bar, column
+   headers are all full-bleed bands, and a rounded card wedged between two
+   bars read as neither a card nor a bar. Collapsed it is simply another
+   thin bar; expanded, the table sits as a sunken well inset in the band
+   (the grid's own two-tone system: body rows on --surface-sunken, the
+   column header on chrome, --border-subtle hairlines, --row-hover-bg on
+   hover). One background with bare hairlines was tried first and read as a
+   single slab; a raised card was tried second and read as a lost widget. */
 
-.credit-cards {
-  /* Above the category grid, below the filter bar. */
-  margin-bottom: var(--spacing-md);
+/* Full-bleed band: surface--chrome supplies the bottom edge, and the
+   parent .budget-table's min-width keeps the bands scrolling as one. */
+
+/* Header row: the same density as the filter bar above it. */
+.credit-cards__header-row {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-bottom: none; /* the surface's own bottom edge is the divider */
 }
 
 /* The whole header is the fold control: one obvious click target, and the
@@ -41,7 +48,12 @@
   white-space: nowrap;
 }
 
-/* The well: a hole cut into the card, the way the import review's blocks
+/* Expanded body: the well sits inset in the band. */
+.credit-cards__body {
+  padding: 0 var(--spacing-md) var(--spacing-sm);
+}
+
+/* The well: a hole cut into the band, the way the import review's blocks
    and the grid body sit against their containers. overflow keeps the chrome
    header and row hovers inside the radius. */
 .credit-cards__table {
@@ -140,7 +152,7 @@
 }
 
 .credit-cards__note {
-  margin: var(--spacing-sm) 0 0;
+  margin: var(--spacing-xs) 0 0;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   line-height: 1.5;
