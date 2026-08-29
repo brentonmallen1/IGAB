@@ -134,6 +134,18 @@ TRANSFER_PAYEE = (
 TRANSFER_LEG = or_(Transaction.transfer_id.isnot(None), TRANSFER_PAYEE)
 NON_TRANSFER = ~TRANSFER_LEG
 
+#: A row that could still be joined to a partner: live, whole (not a split
+#: parent and not one of its children), and not already linked.
+#:
+#: Composed rather than respelled because two callers need exactly this set and
+#: they must not drift: the editor's candidate picker
+#: (`find_transfer_candidates`) and the sync-time pairing pass
+#: (`list_pairable_legs`). Note it deliberately does NOT require a transfer
+#: payee — that is the whole point. Two synced legs of one movement arrive with
+#: ordinary bank payees on both sides, which is why nothing paired them and why
+#: an unpaired savings transfer inflated Ready to Assign by its own amount.
+PAIRABLE_LEG = and_(NOT_DELETED, PARENT_ROW, LEAF, Transaction.transfer_id.is_(None))
+
 _partner = aliased(Transaction)
 
 #: The account on the other side of a transfer. The partner link is the strong

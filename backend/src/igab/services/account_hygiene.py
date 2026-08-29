@@ -26,8 +26,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
-from igab.db.models import Account, Liability, Transaction
+from igab.db.models import Account, Category, CategoryGroup, Liability, Transaction
 from igab.repositories.txn_filters import (
+    CARD_ACCOUNT,
     LEAF,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
@@ -84,6 +85,7 @@ class AccountHygieneService:
             await self._liability_with_positive_balance(accounts),
             await self._unpaired_transfer_legs(budget_id),
             await self._categorized_tracking_rows(budget_id),
+            await self._card_rows_filed_as_income(budget_id),
             await self._dormant_open_accounts(accounts, budget_id),
             await self._stale_companion_liabilities(budget_id, accounts),
         ]
@@ -179,6 +181,63 @@ class AccountHygieneService:
                 "Match them up links every leg whose other side is unmistakable, "
                 "without touching a single amount. Whatever is left is ambiguous or "
                 "genuinely one-sided — open one to pick its partner or add the missing row."
+            ),
+            transaction_count=int(count),
+        )
+
+    async def _card_rows_filed_as_income(self, budget_id: uuid.UUID) -> HygieneFinding | None:
+        """Money going OUT on a credit card, filed to an income category.
+
+        A charge on a card is not income under any reading, and filing it there
+        makes it reach nothing: the envelope term skips system groups, and the
+        card's reservation arithmetic only walks spending categories. The
+        balance moves and the budget never mentions it — the charge ends up in
+        Uncovered with no envelope ever naming it.
+
+        Not an integrity failure, which is why it lives here: the arithmetic is
+        the same as leaving the row uncategorized, so no money is lost. It is a
+        *visibility* defect, and it is worth surfacing because the way rows get
+        here is automatic. Three months of card interest landed on "Ready to
+        Assign" because the payee carried a mapping sample of "Interest" and
+        the bank called the row "Interest Charge".
+
+        Cash accounts are deliberately excluded. There, an outflow filed to an
+        income category is arithmetically identical to an uncategorized one and
+        is YNAB's own convention for a reconciliation adjustment — flagging
+        those would bury this signal under decades of correct rows.
+        """
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(Transaction)
+            .join(Category, Category.id == Transaction.category_id)
+            .join(CategoryGroup, CategoryGroup.id == Category.category_group_id)
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                Transaction.amount < 0,
+                CategoryGroup.is_system == True,  # noqa: E712
+                CARD_ACCOUNT,
+            )
+        )
+        count = result.scalar_one()
+        if not count:
+            return None
+        return HygieneFinding(
+            kind="card_rows_filed_as_income",
+            title=f"{count:,} card charge{'s' if count != 1 else ''} filed as income",
+            detail=(
+                "A charge on a credit card is not income, and filing it to an income "
+                "category means no envelope ever sees it — the card's balance moves, the "
+                "debt lands in Uncovered, and nothing in the budget names the spending. "
+                "Interest charges reach this state on their own, because a payee whose "
+                "history is bank interest will happily categorize a card's interest "
+                "charge the same way."
+            ),
+            action=(
+                "Give them a real envelope — an Interest or Bank Fees category — so the "
+                "money is budgeted and shows up in reports. Leaving them uncategorized is "
+                "also honest; it keeps them in Uncovered without claiming they were income."
             ),
             transaction_count=int(count),
         )

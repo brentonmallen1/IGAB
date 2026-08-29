@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, cast
@@ -23,6 +24,7 @@ from igab.domain.transfers import (
     leg_may_carry_category,
     linking_breaks_category_rule,
     pair_may_carry_category,
+    transfer_link_fields,
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
@@ -840,6 +842,46 @@ class TransactionService:
                 stripped += 1
         return {"stripped": stripped}
 
+    async def link_legs(
+        self,
+        budget_id: uuid.UUID,
+        outflow: Transaction,
+        inflow: Transaction,
+        *,
+        clear_categories: Collection[uuid.UUID] = (),
+    ) -> None:
+        """Join two existing rows as one transfer, writing both sides.
+
+        The unattended counterpart of the editor's `link` action: same field
+        set (`transfer_link_fields`), same transfer-payee convention, so a pair
+        linked by a sync is indistinguishable from one linked by hand.
+
+        `clear_categories` names the legs whose category must go, decided by
+        `domain/transfers.pair_legs` — an internal on↔on movement is not
+        spending, so a category on either leg would count moving money as
+        money spent. The caller has already established that each of those
+        categories was a guess, not a person's choice.
+
+        Change-logged like any other write, so the whole pairing is undoable.
+        """
+        accounts = {
+            leg.id: await self.account_repo.get_or_raise(leg.account_id)
+            for leg in (outflow, inflow)
+        }
+        out_payee = await self._get_transfer_payee(budget_id, accounts[inflow.id])
+        in_payee = await self._get_transfer_payee(budget_id, accounts[outflow.id])
+        out_fields, in_fields = transfer_link_fields(
+            out_payee.id, in_payee.id, own_id=outflow.id, partner_id=inflow.id
+        )
+        to_clear = set(clear_categories)
+        with self.changes.batch():
+            for leg, fields in ((outflow, out_fields), (inflow, in_fields)):
+                before = snapshot("transaction", leg)
+                if leg.id in to_clear:
+                    fields = {**fields, "category_id": None}
+                updated = await self.transaction_repo.update(leg.id, **fields)
+                await self._record_txn(updated, "update", before=before)
+
     async def repair_transfers(
         self, budget_id: uuid.UUID, *, date_tolerance_days: int = 0
     ) -> dict[str, int]:
@@ -1134,12 +1176,13 @@ class TransactionService:
 
         if action == "link":
             assert partner is not None
-            partner_before = snapshot("transaction", partner)
-            linked = await self.transaction_repo.update(
-                partner.id, transfer_id=txn.id, payee_id=partner_payee.id
+            own_fields, partner_fields = transfer_link_fields(
+                own_payee.id, partner_payee.id, own_id=txn.id, partner_id=partner.id
             )
+            partner_before = snapshot("transaction", partner)
+            linked = await self.transaction_repo.update(partner.id, **partner_fields)
             await self._record_txn(linked, "update", before=partner_before)
-            return {"payee_id": own_payee.id, "transfer_id": partner.id}
+            return own_fields
 
         # create: the far leg never existed (a skipped account at import).
         # Uncleared, because nothing has confirmed it at the bank. No

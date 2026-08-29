@@ -11,7 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, SimpleFINConnection, Transaction
 from igab.domain.bank_posting import FeedRecord, Review
 from igab.domain.exceptions import IGABError
-from igab.domain.matching import best_payee_similarity, date_proximity, payee_similarity
+from igab.domain.matching import (
+    DATE_WINDOW_DAYS,
+    best_payee_similarity,
+    date_proximity,
+    payee_similarity,
+)
+from igab.domain.transfers import PairableLeg, pair_legs
 from igab.integrations.simplefin.client import SimpleFINClient, SimpleFINFeed
 from igab.integrations.simplefin.encryption import (
     SimpleFINKeyMismatch,
@@ -577,6 +583,15 @@ class SimpleFINService:
                 if await self._anchor_opening_balance(budget_id, account, reported) is not None:
                     anchored += 1
 
+        # Two legs of one movement arrive on two accounts with ordinary bank
+        # payees and nothing linking them. Pair them now, while it is still
+        # cheap — see domain/transfers.pair_legs for what each unpaired kind
+        # costs. Runs last so every row this sync produced (anchors included)
+        # is visible to it.
+        paired, pairs_for_review = await self._pair_transfer_legs(
+            budget_id, [txn for txn, _feed in created_this_run]
+        )
+
         # Update per-account sync state
         now = datetime.now(UTC)
         for account in targets:
@@ -603,8 +618,66 @@ class SimpleFINService:
             "cleared": cleared,
             "removed_pending": removed_pending,
             "anchored": anchored,
+            "paired": paired,
+            "pairs_for_review": pairs_for_review,
             **rate_status,
         }
+
+    async def _pair_transfer_legs(
+        self, budget_id: uuid.UUID, created: list[Transaction]
+    ) -> tuple[int, int]:
+        """Link the two sides of every movement this sync can be sure about.
+
+        Returns `(linked, left_for_review)`. The decision is
+        `domain/transfers.pair_legs`, which is pure and tested without a
+        database; this method is the wiring — fetch the window, say which
+        categories were this run's own guesses, write the links.
+
+        The window is the created rows' own date span widened by
+        `DATE_WINDOW_DAYS` on both sides, because banks post the two sides of
+        one movement days apart and the far leg is often already in the ledger
+        from an earlier run.
+
+        A category on a row this sync created came from auto-categorization
+        moments ago — a guess, clearable to make a correct link. Any other
+        category is a person's, and the pair goes to review instead; the
+        Accounts page's hygiene findings are where those surface.
+        """
+        if not created:
+            return 0, 0
+        span_start = min(t.date for t in created) - timedelta(days=DATE_WINDOW_DAYS)
+        span_end = max(t.date for t in created) + timedelta(days=DATE_WINDOW_DAYS)
+        rows = await self.txn_repo.list_pairable_legs(budget_id, since=span_start, until=span_end)
+        if not rows:
+            return 0, 0
+
+        all_accounts = await self.account_repo.get_all(budget_id, include_closed=True)
+        accounts = {a.id: a for a in all_accounts}
+        guesses = {t.id for t in created}
+        legs = [
+            PairableLeg(
+                id=row.id,
+                account_id=row.account_id,
+                on_budget=accounts[row.account_id].on_budget,
+                date=row.date,
+                amount=row.amount,
+                categorized=row.category_id is not None,
+                category_is_a_guess=row.id in guesses,
+            )
+            for row in rows
+            if row.account_id in accounts
+        ]
+        confident, review = pair_legs(legs, window_days=DATE_WINDOW_DAYS)
+
+        by_id = {row.id: row for row in rows}
+        for pair in confident:
+            await self.txn_service.link_legs(
+                budget_id,
+                by_id[pair.outflow_id],
+                by_id[pair.inflow_id],
+                clear_categories=pair.clears_categories,
+            )
+        return len(confident), len(review)
 
     async def _anchor_opening_balance(
         self, budget_id: uuid.UUID, account: Account, reported: Decimal

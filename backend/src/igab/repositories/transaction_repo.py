@@ -49,6 +49,7 @@ from igab.repositories.txn_filters import (
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
     ON_CARD_ACCOUNT,
+    PAIRABLE_LEG,
     PARENT_ROW,
     PLAIN_DEPOSIT_ROW,
     POSTED,
@@ -867,10 +868,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         q = self.with_computed(select(Transaction)).where(
             Transaction.account_id == account_id,
-            NOT_DELETED,
-            Transaction.parent_transaction_id.is_(None),
-            Transaction.is_split == False,  # noqa: E712
-            Transaction.transfer_id.is_(None),
+            PAIRABLE_LEG,
             Transaction.amount == amount,
         )
         if counterpart_account_id is not None:
@@ -888,6 +886,34 @@ class TransactionRepository(BaseRepository[Transaction]):
             else:
                 q = q.where(Transaction.date == on_date)
         q = q.order_by(Transaction.date, Transaction.created_at)
+        return list((await self.session.execute(q)).scalars().all())
+
+    async def list_pairable_legs(
+        self, budget_id: uuid.UUID, *, since: date, until: date
+    ) -> list[Transaction]:
+        """Every unlinked, whole, live row in the budget between two dates.
+
+        The raw material for `domain/transfers.pair_legs`, which decides which
+        of them are two sides of one movement. Deliberately budget-wide and
+        account-agnostic: `find_transfer_candidates` answers "given this row
+        and this target account", which is the picker's question and needs a
+        human to have named the account first. Nothing asked this one, which is
+        why two synced legs of one payment never met.
+
+        Bounded by date rather than by sync run: the far leg is routinely older
+        than the rows that just arrived (a bank posts the two sides days
+        apart), so a run-scoped query would miss exactly the pairs worth
+        finding.
+        """
+        q = (
+            select(Transaction)
+            .where(
+                Transaction.budget_id == budget_id,
+                PAIRABLE_LEG,
+                Transaction.date.between(since, until),
+            )
+            .order_by(Transaction.date, Transaction.created_at)
+        )
         return list((await self.session.execute(q)).scalars().all())
 
     async def bulk_link_transfers(self, links: list[tuple[uuid.UUID, uuid.UUID]]) -> None:

@@ -301,6 +301,21 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               just tells your reports where the money went. The Guide's roadmap walks the
               whole paydown loop under "Clear high-interest debt."
             </p>
+            <p>
+              <strong>Paying the card</strong> is a transfer, not a category. When both
+              accounts are connected, the two sides of a payment are paired for you as soon
+              as they are unmistakable — same amount, a few days apart, nothing else it
+              could be. Anything less certain waits on the Accounts page rather than being
+              guessed at, because linking the wrong two rows is worse than linking neither.
+              Until a payment is paired it has not spent the card's reserve.
+            </p>
+            <p>
+              <strong>Money coming back</strong> to a card only returns to an envelope that
+              put it there. A refund of something bought before you started budgeting
+              reduces what you owe without releasing any reserved cash, so it pays down
+              Uncovered instead — and the envelope shows the amount under its Available, so
+              the figure is never lower than you can account for.
+            </p>
           </div>
         </Dialog>
       )}

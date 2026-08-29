@@ -368,7 +368,20 @@ class SampleBudgetGenerator:
                     acct.opening_balance,
                     anchor,
                     payee="Starting Balance",
-                    category=spec.opening_income_category if acct.on_budget else None,
+                    # The rule `_anchor_opening_balance` follows on a real
+                    # first sync: on a cash account the opening gap is income
+                    # into Ready to Assign, on a card it is pre-history debt
+                    # and stays uncategorized so it shows as Uncovered. A
+                    # negative opening balance filed to an income category
+                    # reaches no envelope at all — harmless for the arithmetic,
+                    # but it made the generated budget the one place in the app
+                    # where that shape existed, and the integrity check that
+                    # names it (`outflows_filed_as_income`) was right to.
+                    category=(
+                        spec.opening_income_category
+                        if acct.on_budget and acct.opening_balance > 0
+                        else None
+                    ),
                     memo="Starting balance",
                 )
             )
@@ -629,7 +642,9 @@ class SampleBudgetGenerator:
                     if net:
                         credit_outflows.setdefault(category.id, {})[card_id] = net
 
-        funded_by_card, floored_by_category = card_funding(ends_by_cat, credit_outflows)
+        # Third return (truncated releases) is unused: the generated register has
+        # no card inflow beyond what its category reserved. See domain/cards.py.
+        funded_by_card, floored_by_category, _ = card_funding(ends_by_cat, credit_outflows)
         # Payments come from the captured link pairs — generate() strips
         # `transfer_id` off these very dicts before bulk insert, so the rows
         # themselves no longer say they are transfers.

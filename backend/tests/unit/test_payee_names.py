@@ -9,6 +9,7 @@ from rapidfuzz import fuzz
 
 from igab.domain.payee_names import (
     dedupe_samples,
+    distinctive_key,
     pattern_matches,
     rank_match_patterns,
     samples_from_legacy,
@@ -126,3 +127,101 @@ class TestPatternMatches:
     def test_a_bad_pattern_raises_rather_than_answering(self) -> None:
         with pytest.raises(re.error):
             pattern_matches("([bad", "anything")
+
+
+class TestDistinctiveKey:
+    """Is there a merchant in this string at all?
+
+    The question `similarity_key` cannot answer, and the one that decides
+    whether fuzzy matching may run. `token_set_ratio` scores a subset 100, so
+    a raw name made only of banking vocabulary ties at 100 against every payee
+    containing one of its words and the "best" match is whichever the loop
+    reached first.
+    """
+
+    #: What SimpleFIN actually sent on the Sapphire register, verbatim. The first
+    #: two filed $4,180 of card payments into the Internet envelope and three
+    #: interest charges into Ready to Assign.
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "Payment",
+            "Interest Charge",
+            "ONLINE PAYMENT, THANK YOU",
+            "PENDING PURCHASE",
+            "ACH CREDIT",
+            "Refund",
+        ],
+    )
+    def test_a_name_that_is_all_banking_vocabulary_has_no_merchant(self, raw: str) -> None:
+        assert distinctive_key(raw) == ""
+
+    @pytest.mark.parametrize(
+        ("raw", "key"),
+        [
+            # The generic word goes, the merchant stays.
+            ("Att Payment Jane Doe", "att jane doe"),
+            ("Interest Payment", ""),
+            ("SAPPHIRE CARD ONLINE PAYMENT 260816", "sapphire"),
+            # Untouched: no banking vocabulary in them at all.
+            ("Northwind Payserv", "northwind payserv"),
+            ("Honda Financial", "honda financial"),
+            ("Nordstrom Rack", "nordstrom rack"),
+            ("Apple Pay", "apple pay"),
+        ],
+    )
+    def test_only_the_banking_words_are_dropped(self, raw: str, key: str) -> None:
+        assert distinctive_key(raw) == key
+
+    def test_it_does_not_change_similarity_key(self) -> None:
+        """The comparison key is Payee Cleanup's too, and dropping these words
+        from it would make "Interest Payment" and "Att Payment Jane Doe"
+        *more* alike, not less. Two questions, two functions."""
+        assert similarity_key("Payment") == "payment"
+        assert similarity_key("Interest Charge") == "interest charge"
+
+
+class TestSubsetMatchingStaysCorrect:
+    """The subset rule is not the bug — only a subset with no merchant in it.
+
+    Every pair here is real: taken from a budget whose 49 distinct
+    (bank name, resolved payee) pairs were replayed through the guard. The
+    good ones score 100 by subset and must keep doing so; the bad ones score
+    100 the same way and must never be reached.
+    """
+
+    GOOD = [
+        ("Northwind Payserv", "NORTHWIND"),
+        ("Honda Financial", "Honda"),
+        ("Nordstrom Rack", "Nordstrom"),
+        ("Quilt Corner Fabrics", "Quilt Corner"),
+        ("Apple", "Apple Pay"),
+        ("Hue Loco Hue L", "Hue Loco"),
+    ]
+    #: (raw bank name, the candidate string that scored 100 for it). The
+    #: candidate is a payee's name or one of its `mapping_samples` — the
+    #: interest charges matched the sample "Interest", not the payee name
+    #: "Interest Payment", which scores only 71. Both routes are the same
+    #: defect and the guard closes both, because it runs before either.
+    BAD = [
+        ("Payment", "Att Payment Jane Doe"),
+        ("Payment", "Interest Payment"),
+        ("Payment", "Payment Authorized Chewy.com FL"),
+        ("Interest Charge", "Interest"),
+    ]
+
+    @pytest.mark.parametrize(("raw", "payee"), GOOD)
+    def test_a_real_merchant_subset_still_scores_and_is_still_asked(
+        self, raw: str, payee: str
+    ) -> None:
+        assert fuzz.token_set_ratio(similarity_key(raw), similarity_key(payee)) >= 80
+        assert distinctive_key(raw) != ""
+
+    @pytest.mark.parametrize(("raw", "candidate"), BAD)
+    def test_a_banking_word_scores_just_as_high_and_is_never_asked(
+        self, raw: str, candidate: str
+    ) -> None:
+        # A perfect score, on nothing. This is why raising the threshold could
+        # not have fixed it and why the guard has to run before the scoring.
+        assert fuzz.token_set_ratio(similarity_key(raw), similarity_key(candidate)) == 100
+        assert distinctive_key(raw) == ""

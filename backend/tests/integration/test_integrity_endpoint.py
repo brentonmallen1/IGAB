@@ -52,6 +52,7 @@ async def test_clean_budget_reports_all_green(api_client, db_session):
         "orphaned_categories",
         "stale_pendings",
         "card_envelope_rows",
+        "card_payment_envelope_pairing",
     }
 
 

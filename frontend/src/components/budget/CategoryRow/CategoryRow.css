@@ -584,3 +584,15 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Card money this envelope did not keep — an inflow that paid down debt rather
+   than returning here (domain/cards.py `cap_releases`). Always beside the
+   available figure it was excluded from, never instead of it: the point is
+   that the deduction is legible, not that it is prominent. */
+.category-row__refused {
+  display: block;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

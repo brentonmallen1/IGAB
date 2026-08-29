@@ -20,6 +20,7 @@ from igab.db.models import (
     Account,
     BudgetAssignment,
     Category,
+    CategoryGroup,
     Payee,
     ScheduledTransaction,
     Transaction,
@@ -28,6 +29,7 @@ from igab.db.models import (
 from igab.domain.splits import split_balances, split_sum
 from igab.domain.transfers import leg_may_carry_category
 from igab.repositories.category_filters import LINKED_TO_CARD, UNDER_DELETED_GROUP
+from igab.services.card_payment import CARD_PAYMENTS_GROUP
 from igab.utils.clock import today_utc
 
 STALE_PENDING_DAYS = 21
@@ -62,6 +64,7 @@ class IntegrityService:
             await self._check_orphaned_categories(budget_id),
             await self._check_stale_pendings(budget_id),
             await self._check_card_envelope_rows(budget_id),
+            await self._check_card_payment_envelope_pairing(budget_id),
         ]
         return IntegrityReport(all_passed=all(c.passed for c in checks), checks=checks)
 
@@ -388,6 +391,67 @@ class IntegrityService:
         return self._result(
             "card_envelope_rows",
             "No transactions are filed to a credit card's payment envelope",
+            problems,
+        )
+
+    async def _check_card_payment_envelope_pairing(self, budget_id: uuid.UUID) -> IntegrityCheck:
+        """Every on-budget card has exactly one set-aside envelope, and every
+        set-aside envelope has its card.
+
+        Both halves are silent when broken, in opposite ways.
+
+        A card with no envelope: `get_budget_summary` computes its set-aside
+        for the card row but only folds it into the envelope term when a linked
+        category exists, so Ready to Assign loses the reserve with nothing on
+        screen to say so. Every path that makes a card calls
+        `ensure_payment_category` — this is the check that says so out loud.
+
+        An envelope with no card: left behind when a card account is deleted.
+        It sits in a hidden group holding whatever was assigned to it, invisible
+        to the grid, still counted in the envelope term.
+        """
+        cards = (
+            await self.session.execute(
+                select(Account.id, Account.name).where(
+                    Account.budget_id == budget_id,
+                    Account.is_deleted == False,  # noqa: E712
+                    Account.on_budget == True,  # noqa: E712
+                    Account.classification == "liability",
+                )
+            )
+        ).all()
+        envelopes = (
+            await self.session.execute(
+                select(Category.id, Category.name, Category.linked_account_id)
+                .join(CategoryGroup, CategoryGroup.id == Category.category_group_id)
+                .where(
+                    Category.budget_id == budget_id,
+                    Category.is_deleted == False,  # noqa: E712
+                    or_(
+                        Category.linked_account_id.isnot(None),
+                        CategoryGroup.name == CARD_PAYMENTS_GROUP,
+                    ),
+                )
+            )
+        ).all()
+
+        linked = {e.linked_account_id for e in envelopes if e.linked_account_id is not None}
+        problems = [
+            f"credit card '{name}' ({cid}) has no set-aside envelope — its reserve "
+            "is missing from Ready to Assign; re-save the account to rebuild it"
+            for cid, name in cards
+            if cid not in linked
+        ]
+        live_cards = {cid for cid, _ in cards}
+        problems += [
+            f"card payment envelope '{e.name}' ({e.id}) points at no live card — "
+            "money assigned to it is counted but unreachable; delete it or relink it"
+            for e in envelopes
+            if e.linked_account_id is None or e.linked_account_id not in live_cards
+        ]
+        return self._result(
+            "card_payment_envelope_pairing",
+            "Every credit card has its set-aside envelope, and vice versa",
             problems,
         )
 
