@@ -65,6 +65,7 @@ export const GLOSSARY_IDS = [
   'credit-overspending',
   'carried-balance',
   'card-payment',
+  'refused-card-inflow',
 ] as const
 
 export type GlossaryId = (typeof GLOSSARY_IDS)[number]
@@ -361,7 +362,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: 'Uncovered debt is card balance with no reserve behind it: overspending that rode onto the card, an old carried balance, or a purchase someone still owes you for. It is information, not an alarm — nothing leaves your budget until you choose to assign money to the card, and assigning lowers Uncovered dollar for dollar.',
     inIgab:
       'The last column of the Credit cards section; the collapsed header still shows the total. The number is a door — it opens the card\'s transactions.',
-    related: ['ready-to-pay', 'carried-balance', 'credit-overspending'],
+    related: ['ready-to-pay', 'carried-balance', 'credit-overspending', 'refused-card-inflow'],
   },
   {
     id: 'credit-overspending',
@@ -388,8 +389,18 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: "A transfer from a cash account to a card — the only move that spends the card's reserve.",
     body: 'Record a payment as a transfer from checking or savings to the card. That drains Ready to pay and lowers the balance together, and To Be Assigned never moves. A plain deposit typed onto the card lowers the balance without touching the reserve — right when someone else paid the card company, wrong for your own payment.',
     inIgab:
-      'Enter it as a transfer between the two accounts. A synced payment counts once its two legs are linked as a transfer.',
-    related: ['ready-to-pay', 'uncovered', 'cleared'],
+      'Enter it as a transfer between the two accounts. A synced payment is paired for you when both accounts are connected and the two sides are unmistakable — same amount, a few days apart, nothing else it could be. When they are not, the Accounts page lists the pair so you can confirm it; until then the payment is not counted against the card\'s reserve.',
+    related: ['ready-to-pay', 'uncovered', 'cleared', 'refused-card-inflow'],
+  },
+  {
+    id: 'refused-card-inflow',
+    term: 'Refused card inflow',
+    aliases: ['card inflow that paid down debt'],
+    short: 'Money that arrived on a card and paid down debt instead of returning to an envelope.',
+    body: 'An envelope only gets a card refund back if it put that money on the card in the first place. A refund of something bought before you started budgeting — or of spending that overspent and rode onto the card — reduces what you owe without releasing any reserved cash, so it pays down Uncovered rather than landing in an envelope you could spend from. Without this the same dollars would count twice: once as debt paid down, once as spendable money, with To Be Assigned quietly making up the difference.',
+    inIgab:
+      'Almost always zero. When it is not, the envelope shows the amount under its Available, so the figure is never lower than you can account for. A large one usually means a card payment was filed to a category instead of being recorded as a transfer.',
+    related: ['uncovered', 'ready-to-pay', 'card-payment'],
   },
 ]
 

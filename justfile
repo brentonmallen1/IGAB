@@ -263,6 +263,17 @@ release VERSION:
 ynab-oracle FILE *ARGS:
     cd backend && PYTHONPATH=src uv run python scripts/ynab_rta_oracle.py "$@"
 
+# Repair budgets damaged before synced transfer legs were paired: unlinked
+# transfer pairs, card charges filed as income, stranded card envelopes.
+# Dry run by default — read the list, then re-run with --apply.
+#   just repair-transfers                       # what it would change
+#   just repair-transfers --clear-categories     # include pairs whose
+#                                                # categories must go first
+#   just repair-transfers --clear-categories --apply
+[positional-arguments]
+repair-transfers *ARGS:
+    cd backend && PYTHONPATH=src uv run python scripts/repair_card_payment_transfers.py "$@"
+
 # ─── Utility ──────────────────────────────────────────────────────────────────
 
 # Show running containers
