@@ -60,6 +60,11 @@ export const GLOSSARY_IDS = [
   'reconciled',
   'essential-expenses',
   'cooling-off',
+  'ready-to-pay',
+  'uncovered',
+  'credit-overspending',
+  'carried-balance',
+  'card-payment',
 ] as const
 
 export type GlossaryId = (typeof GLOSSARY_IDS)[number]
@@ -337,6 +342,54 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: 'Reconciling an account is agreeing that its cleared balance equals what the bank says on a date. Every cleared transaction up to that date is then locked, so the agreement stays true.',
     inIgab: 'The lock in the register. A reconciled row keeps its amount, date and account fixed, but you can still edit its category, payee, memo and split lines through Edit… in the row menu; Unlock returns it to cleared.',
     related: ['cleared', 'uncleared', 'pending'],
+  },
+  {
+    id: 'ready-to-pay',
+    term: 'Ready to pay',
+    aliases: ['set aside', 'set-aside', 'card payment reserve'],
+    short: "Cash reserved to pay a credit card — the card's own envelope.",
+    body: 'When you spend on a card from a funded category, the budgeted cash does not vanish — it moves into a reserve for that card, so the payment is already covered before the bill exists. Assigning money to the card adds to the reserve; payments drain it. Spending a category could not cover adds nothing here — it becomes the card\'s uncovered debt instead.',
+    inIgab:
+      'The "Ready to pay" column of the Credit cards section on the budget page. The Assigned cell beside it edits the card\'s own envelope, undo included.',
+    related: ['uncovered', 'credit-overspending', 'card-payment', 'to-be-assigned'],
+  },
+  {
+    id: 'uncovered',
+    term: 'Uncovered',
+    aliases: ['uncovered debt'],
+    short: 'What a card is owed beyond the cash reserved to pay it.',
+    body: 'Uncovered debt is card balance with no reserve behind it: overspending that rode onto the card, an old carried balance, or a purchase someone still owes you for. It is information, not an alarm — nothing leaves your budget until you choose to assign money to the card, and assigning lowers Uncovered dollar for dollar.',
+    inIgab:
+      'The last column of the Credit cards section; the collapsed header still shows the total. The number is a door — it opens the card\'s transactions.',
+    related: ['ready-to-pay', 'carried-balance', 'credit-overspending'],
+  },
+  {
+    id: 'credit-overspending',
+    term: 'Credit overspending',
+    short: 'Overspending a category on a credit card — it becomes card debt, not a budget charge.',
+    body: 'When a category ends a month negative and the spending was on a card, the shortfall rides onto the card as uncovered debt instead of coming out of To Be Assigned. The category resets to zero at the month boundary; the debt stays visible on the card until money is assigned to it. Cash overspending is different — real money left, so it settles from To Be Assigned.',
+    inIgab:
+      'A red category funded by card swipes turns into the card\'s Uncovered at month end. Cover Overspent handles only the cash kind, on purpose.',
+    related: ['uncovered', 'ready-to-pay', 'to-be-assigned'],
+  },
+  {
+    id: 'carried-balance',
+    term: 'Carried balance',
+    aliases: ['revolving balance', 'carrying a balance'],
+    short: 'Card debt rolled from month to month instead of paid in full.',
+    body: "A balance you carry accrues interest at the card's APR, which is what makes card debt expensive. In envelope terms it is spending that was never backed by budgeted cash, so it shows beside the card as uncovered debt rather than inside any category. Paying it down is a budget line like any other: assign what you can afford to the card each month.",
+    inIgab:
+      "Shows as the card's Uncovered — including the balance a newly linked card arrives with. Set the card's APR and minimum payment on its liability page and the payoff planner includes it.",
+    related: ['uncovered', 'high-interest-debt', 'minimum-payment', 'apr'],
+  },
+  {
+    id: 'card-payment',
+    term: 'Card payment',
+    short: "A transfer from a cash account to a card — the only move that spends the card's reserve.",
+    body: 'Record a payment as a transfer from checking or savings to the card. That drains Ready to pay and lowers the balance together, and To Be Assigned never moves. A plain deposit typed onto the card lowers the balance without touching the reserve — right when someone else paid the card company, wrong for your own payment.',
+    inIgab:
+      'Enter it as a transfer between the two accounts. A synced payment counts once its two legs are linked as a transfer.',
+    related: ['ready-to-pay', 'uncovered', 'cleared'],
   },
 ]
 

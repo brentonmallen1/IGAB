@@ -291,6 +291,10 @@ describe('roadmap integrity', () => {
       // Step 3 — high interest debt
       'high-interest-question',
       'choose-payoff-method',
+      // IGAB-native additions (marked "not a chart box" in the source map):
+      // the app's card-paydown mechanics for this step.
+      'pay-down-card-in-igab',
+      'card-carries-again-note',
       // Step 1 again — full emergency fund
       'full-ef',
       // Step 3 again — moderate interest debt

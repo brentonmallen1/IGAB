@@ -79,7 +79,10 @@ describe('flow layout', () => {
 
   it('rejoins every branch outcome back onto the spine', () => {
     expect(edge('contribute-to-match', 'high-interest-question')?.kind).toBe('rejoin')
-    expect(edge('choose-payoff-method', 'full-ef')?.kind).toBe('rejoin')
+    // The payoff-method branch rejoins the spine at the IGAB-native
+    // card-mechanics nodes, which then run in sequence to the emergency fund.
+    expect(edge('choose-payoff-method', 'pay-down-card-in-igab')?.kind).toBe('rejoin')
+    expect(edge('card-carries-again-note', 'full-ef')?.kind).toBe('sequence')
     expect(edge('pay-moderate-debt', 'roth-vs-traditional')?.kind).toBe('rejoin')
     expect(edge('save-for-purchase', 'fifteen-percent-question')?.kind).toBe('rejoin')
     expect(edge('increase-contributions', 'hsa-question')?.kind).toBe('rejoin')

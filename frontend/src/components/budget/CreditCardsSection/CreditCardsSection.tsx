@@ -286,6 +286,21 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 whenever suits.
               </dd>
             </dl>
+            <p>
+              <strong>Carrying a balance?</strong> Old debt — including the balance a newly
+              linked card arrives with — shows as Uncovered. It charges nothing and nags
+              nobody. Paying it down is the Assigned cell: each month, assign what you can
+              afford to the card, then pay by transfer from a cash account. Categorize the
+              card's new transactions freely — a category only ever gives up money it
+              actually has; any shortfall becomes Uncovered, never a charge to Ready to
+              Assign.
+            </p>
+            <p>
+              <strong>Uncategorized card rows</strong> move only the card's balance, so they
+              sit in Uncovered until filed. Filing them takes nothing you don't have — it
+              just tells your reports where the money went. The Guide's roadmap walks the
+              whole paydown loop under "Clear high-interest debt."
+            </p>
           </div>
         </Dialog>
       )}
