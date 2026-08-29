@@ -10,8 +10,14 @@
    hover). One background with bare hairlines was tried first and read as a
    single slab; a raised card was tried second and read as a lost widget. */
 
-/* Full-bleed band: surface--chrome supplies the bottom edge, and the
-   parent .budget-table's min-width keeps the bands scrolling as one. */
+/* Full-bleed band; the parent .budget-table's min-width keeps the bands
+   scrolling as one. The band ends decisively — a strong edge and a breath
+   of canvas before the category table — because two same-colored bands
+   sharing a hairline read as one surface, not a section break. */
+.credit-cards {
+  border-bottom: 1px solid var(--edge-strong);
+  margin-bottom: var(--spacing-sm);
+}
 
 /* Header row: the same density as the filter bar above it. */
 .credit-cards__header-row {
@@ -48,9 +54,14 @@
   white-space: nowrap;
 }
 
-/* Expanded body: the well sits inset in the band. */
+/* Expanded body: the well sits inset in the band, and the band's interior
+   carries a whisper of accent — the ladder only has two greys, and the
+   cards zone is semantically not envelope space, so it gets its own tone.
+   5% keeps it a tint, not a state color (calm by default); the same
+   color-mix-over-surface move the payee merge wells use. */
 .credit-cards__body {
-  padding: 0 var(--spacing-md) var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--surface-chrome));
 }
 
 /* The well: a hole cut into the band, the way the import review's blocks
