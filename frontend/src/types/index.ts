@@ -900,9 +900,11 @@ export interface SimpleFINConnection {
   id: string
   user_id: string
   last_sync_at: string | null
-  sync_interval_hours: number
   sync_enabled: boolean
-  daily_sync_time: string | null
+  /** UTC hours (0-23) this connection syncs itself at; [] is never. The
+   *  server owns the schedule — see db/models.SimpleFINConnection.sync_hours
+   *  — and validates the count against its own daily rate limit. */
+  sync_hours: number[]
   global_requests_today: number
   account_requests_today: number
   last_sync_error: string | null

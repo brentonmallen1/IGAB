@@ -5,6 +5,41 @@
   --color-negative-bg: color-mix(in srgb, var(--color-negative) 10%, transparent);
   --color-danger: var(--color-negative);
 
+  /* Neon bloom. Inert in every theme but Synthwave, whose source material is
+     lit signage; Synthwave gives these real values and nothing else does.
+
+     Glow follows saturation: a SOLID accent/positive/negative/warning fill
+     blooms, a color-mix tint does not. There are ~75 tinted surfaces in this
+     app (warning banners, verdict panels, callouts, filter chips) and lighting
+     those turns every callout into a smear. Consumers are listed once, in the
+     four rules further down this file — do not add a box-shadow to a component
+     stylesheet for this.
+
+     The box-shadow defaults are `0 0 transparent`, NOT `none`, and the
+     asymmetry with the text-shadow pair is deliberate: `none` is not a valid
+     box-shadow list item, so `box-shadow: none, var(--shadow-sm)` is invalid
+     CSS and drops the whole declaration. A transparent zero-radius shadow
+     composes and costs nothing. text-shadow is never composed here, so `none`
+     is correct for those two.
+
+     --glow-fall is the falloff radius, broken out as its own knob. A bloom
+     wider than its box is tall bleeds into neighbouring rows, and the budget
+     register's target pill is only 10px tall. Rather than ship a second
+     bar-sized token per hue, a short consumer narrows this one value locally
+     and every hue token re-resolves — see the bar rule further down.
+
+     There is deliberately no brighter hover variant. Reading one would mean
+     repeating the 55-selector accent list a second time for :hover, and a
+     duplicated selector list is the thing this file exists to avoid. When a
+     shared accent-button class lands, the hover step becomes one rule. */
+  --glow-fall: 0px;
+  --glow-accent: 0 0 transparent;
+  --glow-positive: 0 0 transparent;
+  --glow-negative: 0 0 transparent;
+  --glow-warning: 0 0 transparent;
+  --glow-text-positive: none; /* amounts only — never status or error text */
+  --glow-text-negative: none;
+
   /* Text on fixed dark scrims (lightbox, thumbnail overlays) — those
      backgrounds are black in every theme, so this stays light and must NOT
      follow --text-inverse (which is dark in dark themes) */
@@ -436,6 +471,180 @@ a {
   border: 0;
 }
 
+/* ─── Neon bloom consumers ──────────────────────────────────────────────────
+   Every solid accent-filled control in the app. There is no shared Button
+   component here (~55 implementations across three naming conventions), so
+   this is ONE rule against the whole set rather than 55 scattered box-shadows
+   — the same approach as `button[class*='__close']` below. --glow-accent is
+   `0 0 transparent` in all 38 non-Synthwave variants, so this rule is inert
+   there and costs those themes nothing.
+
+   If you add an accent-filled control, add it here. Tinted (color-mix)
+   backgrounds do NOT belong — glow follows saturation, see the token block.
+
+   Selectors are class-only on purpose. A class list is specificity (0,1,0),
+   which loses to `button:focus-visible` (0,1,1) above, so the focus ring
+   always wins regardless of source order. `button[class*='btn--primary']`
+   would be (0,1,1), tie, and silently eat focus rings.
+
+   Excluded deliberately: .fsb, .reconcile-bar and .bottom-nav__add already
+   carry var(--shadow-*) and bloom via the ramp instead — the two families must
+   never fight over one box-shadow property; .more-sheet__theme-swatch--* sits
+   inside the nested data-theme palette preview and would light every swatch;
+   .txn-checkbox and .msc__check are tick marks; toggle knobs are too small to
+   read as anything but smeared; .nl-form__mic--listening has its own pulse. */
+[class*='btn--primary'],
+.integrity-panel__run-btn,
+.pmerge-btn--confirm,
+.quick-add__save,
+.quick-add__scan-retry,
+.receipt-scan__submit,
+.transaction-table__add-btn,
+.split-editor__save,
+.merge-modal__btn--confirm,
+.confirm-sheet__confirm,
+.sf-setup__btn,
+.match-modal__btn--accept,
+.acct-modal__btn--save,
+.nl-form__parse,
+.update-toast__button,
+.sharing-modal__add-btn,
+.move-money-popover__submit,
+.assign-dropdown__submit,
+.binding__save,
+.guide-checkup__run,
+.account-page__reconcile-btn,
+.account-page__match-btn--review,
+.login-card__submit,
+.import-btn,
+.budget-page__create-btn,
+.liabilities-page__add,
+.accounts-overview__add-btn,
+.budget-card__save-btn,
+.selector-btn,
+.tba-hero__assign-main,
+.toast-undo-button,
+/* selected / active states that fill with accent */
+.quick-add__direction-btn--active,
+.report-toggle-btn--active,
+.drp__preset--active,
+.rfb__groupby-btn--active,
+.rfb__view-select--active,
+.mm-sheet__count-btn--active,
+.guide-nav__tab--active,
+.report-btn--active,
+/* solid accent dots and badges */
+.sidebar__update-badge,
+.more-sheet__update-badge,
+.accounts-overview__sync-badge,
+.merge-card__badge {
+  box-shadow: var(--glow-accent);
+}
+
+.category-row__target-led--funded,
+.timeline__dot--income,
+.account-page__match-btn--accept {
+  box-shadow: var(--glow-positive);
+}
+
+.confirm-sheet__confirm--destructive,
+.delete-category-modal__confirm,
+.timeline__dot--expense,
+.guide-report__led--danger {
+  box-shadow: var(--glow-negative);
+}
+
+.category-row__target-led--underfunded,
+.sidebar__uncategorized-badge,
+.sidebar__account-mini-dot,
+.settings-nav__warn,
+.accounts-overview__uncat-badge,
+.guide-led,
+.guide-report__led,
+.txn-duplicate-group__btn--merge {
+  box-shadow: var(--glow-warning);
+}
+
+/* Bars are 8–10px tall; the default falloff blooms taller than the track and
+   bleeds into the rows above and below — worst in the budget register, where
+   target pills stack every row. 6px keeps the whole glow inside the shortest
+   bar. Narrowing the shared radius beats four bar-sized tokens: every hue
+   token re-resolves here, and custom properties inherit, so the target pill's
+   ::before fill picks it up from its track without being named.
+   .essentials-report__bar is absent on purpose — it fills with --chart-1,
+   which is blue in Synthwave, and a pink bloom under a blue bar reads wrong. */
+.target-pill-track,
+.liability-page__progress-track,
+.sf-usage__bar,
+.wish__bar,
+.checkup-block__bar,
+.match-modal__confidence-bar {
+  --glow-fall: 6px;
+}
+
+/* Four of the six tracks above are overflow:hidden, which clips a fill's
+   box-shadow entirely, so the glow rides the track. .target-pill-track is
+   overflow:visible and glows on its fill instead — see CategoryRow.css. */
+.liability-page__progress-track,
+.sf-usage__bar,
+.wish__bar,
+.checkup-block__bar,
+.match-modal__confidence-bar {
+  box-shadow: var(--glow-accent);
+}
+
+/* Amount text. 168 rules in this app colour text positive/negative, and only
+   ~50 are amounts. The rest are error messages, danger button labels, status
+   icons and verdicts — a glowing "Password incorrect" is exactly the wrong
+   outcome, so the EXCLUSION is the design here, not an oversight.
+
+   Two buckets. Most amounts are `<block>.positive` / `<block>.negative`
+   compounds over the bare global classes declared in CategoryRow.css and
+   ScheduledTransactionsPage.css, so matching the bare class covers all of
+   them at once — sidebar totals, group available, TBA, category activity,
+   month summary, available breakdown, the multi-month grid, the selection
+   action bar and the scheduled register. Every use of the bare class in this
+   app is an amount; nothing else borrows it.
+
+   The second bucket is the amounts that named their own sign modifier instead
+   (--pos/--neg, --income/--expense, or a sign-fixed class). Those have to be
+   listed. If you add an amount display, use .positive/.negative and it is
+   covered; otherwise add it below.
+
+   Not amounts, despite looking like them: .txn-editor__split-remaining and
+   .split-editor__remaining are validation readouts — --done turns them green
+   as a state signal, and blooming a validation cue is the same mistake as
+   blooming an error. */
+.positive,
+.quick-add__amount--in input:not(:placeholder-shown),
+.quick-add__amount--in .quick-add__amount-sign,
+.txn-inflow,
+.metric-card__delta--pos,
+.ddp__amount--pos,
+.timeline__amount--income,
+.projection-event__amount--positive,
+.assign-preview-modal__delta--positive,
+.target-pill-stat--funded {
+  text-shadow: var(--glow-text-positive);
+}
+
+.negative,
+.quick-add__amount--out input:not(:placeholder-shown),
+.quick-add__amount--out .quick-add__amount-sign,
+.txn-outflow,
+.metric-card__delta--neg,
+.ddp__amount--neg,
+.timeline__amount--expense,
+.projection-event__amount,
+.assign-preview-modal__delta--negative,
+.cover-modal__overspent,
+.liability-card__balance,
+.amort-table__interest,
+.anomaly-card__actual--high,
+.liability-page__whatif-result {
+  text-shadow: var(--glow-text-negative);
+}
+
 /* Skip to main content link */
 .skip-link {
   position: absolute;
@@ -631,6 +840,21 @@ html[data-keyboard='open'] {
     height: max(100%, var(--tap-min));
     transform: translate(-50%, -50%);
   }
+}
+
+/* One rotation for every spinner. Keyframes are global whatever file they
+   sit in, so three components each declaring `spin` were already one rule
+   with three definitions — agreeing today by luck. The reduced-motion block
+   below switches it off along with everything else. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* …and the class that uses it, which was also written four times. */
+.spin {
+  animation: spin 1s linear infinite;
 }
 
 /* Respect reduced motion preference */

@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime
 from datetime import date as _PyDate  # un-shadowable alias for class-body annotations
 from decimal import Decimal
 
@@ -18,7 +18,6 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    Time,
     UniqueConstraint,
     func,
     text,
@@ -1203,9 +1202,17 @@ class SimpleFINConnection(Base):
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     requests_today: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_request_date: Mapped[date | None] = mapped_column(Date)
-    sync_interval_hours: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
     sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    daily_sync_time: Mapped[time | None] = mapped_column(Time)
+    # The hours of the day (UTC, 0-23) this connection syncs itself. One
+    # stored rule, not two: "every 4 hours" and "at 07:00 and 19:00" are both
+    # just lists, so the scheduler has a single question to ask and there is
+    # no second field that can come to disagree with this one. Empty = never.
+    # Hour granularity is the honest limit — the job that reads this runs
+    # hourly. Replaced daily_sync_time (one time a day) and
+    # sync_interval_hours, which nothing ever read.
+    sync_hours: Mapped[list[int]] = mapped_column(
+        JSONB, default=list, server_default="[]", nullable=False
+    )
     global_requests_today: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     account_requests_today: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_sync_error: Mapped[str | None] = mapped_column(Text)

@@ -23,6 +23,10 @@
   background: none;
 }
 
+/* currentColor here resolved to the ROW's text colour, because the LED set
+   background-color but never color — so this hover glow was grey in every
+   theme. The --funded/--underfunded rules below now set both, which also lets
+   the neon bloom in base.css land on the right hue. */
 .category-row__target-led:hover {
   transform: scale(1.25);
   box-shadow: 0 0 4px currentColor;
@@ -30,10 +34,12 @@
 
 .category-row__target-led--funded {
   background-color: var(--color-positive);
+  color: var(--color-positive);
 }
 
 .category-row__target-led--underfunded {
   background-color: var(--color-warning);
+  color: var(--color-warning);
 }
 
 .category-row__target-expired {
@@ -137,14 +143,17 @@
 
 .target-pill-fill--funded::before {
   background: linear-gradient(90deg, color-mix(in srgb, var(--color-positive) 70%, transparent), var(--color-positive));
+  box-shadow: var(--glow-positive);
 }
 
 .target-pill-fill--underfunded::before {
   background: linear-gradient(90deg, color-mix(in srgb, var(--color-warning) 70%, transparent), var(--color-warning));
+  box-shadow: var(--glow-warning);
 }
 
 .target-pill-fill--overfunded::before {
   background: linear-gradient(90deg, color-mix(in srgb, var(--color-positive) 70%, transparent), var(--color-positive));
+  box-shadow: var(--glow-positive);
 }
 
 .target-pill-pct {

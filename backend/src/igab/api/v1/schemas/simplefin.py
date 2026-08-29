@@ -1,8 +1,10 @@
 import uuid
-from datetime import datetime, time
+from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from igab.integrations.simplefin.limits import GLOBAL_DAILY_LIMIT
 
 
 class SimpleFINSetupRequest(BaseModel):
@@ -28,18 +30,40 @@ class SimpleFINConfigResponse(BaseModel):
 
 
 class SimpleFINUpdateRequest(BaseModel):
-    sync_interval_hours: int | None = None
     sync_enabled: bool | None = None
-    daily_sync_time: time | None = None
+    #: UTC hours (0-23) to sync at; an empty list is "never". Omitted means
+    #: "leave the schedule alone" — the route drops None fields.
+    sync_hours: list[int] | None = None
+
+    @field_validator("sync_hours")
+    @classmethod
+    def _canonical_hours(cls, hours: list[int] | None) -> list[int] | None:
+        """Sorted, deduplicated, in range, and within the daily budget.
+
+        The cap is the connection's own rate limit rather than a number picked
+        here: scheduling a 13th sync would only queue a request the provider
+        refuses, and the error should say so at the moment it is set rather
+        than silently at 3am.
+        """
+        if hours is None:
+            return None
+        if any(h < 0 or h > 23 for h in hours):
+            raise ValueError("sync hours must be between 0 and 23")
+        unique = sorted(set(hours))
+        if len(unique) > GLOBAL_DAILY_LIMIT:
+            raise ValueError(
+                f"at most {GLOBAL_DAILY_LIMIT} syncs a day — that is this "
+                "connection's daily limit with SimpleFIN"
+            )
+        return unique
 
 
 class SimpleFINConnectionResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     last_sync_at: datetime | None
-    sync_interval_hours: int
     sync_enabled: bool
-    daily_sync_time: time | None
+    sync_hours: list[int]
     global_requests_today: int
     account_requests_today: int
     last_sync_error: str | None
@@ -67,6 +91,32 @@ class SyncResult(BaseModel):
     global_remaining: int | None = None
     account_used: int | None = None
     account_remaining: int | None = None
+
+
+class ConnectionSyncOutcome(BaseModel):
+    """What one connection did during a sync-all."""
+
+    connection_id: uuid.UUID
+    imported: int = 0
+    skipped: int = 0
+    error: str | None = None
+
+
+class SyncAllResult(BaseModel):
+    """Every connection's sync, totalled.
+
+    One failing connection does not stop the others, so the totals and the
+    per-connection list are both needed: "imported 4" is not the whole story
+    when a second bank was rate-limited.
+    """
+
+    imported: int
+    skipped: int
+    matched: int = 0
+    review_queued: int = 0
+    cleared: int = 0
+    removed_pending: int = 0
+    connections: list[ConnectionSyncOutcome] = []
 
 
 class RateLimitStatus(BaseModel):

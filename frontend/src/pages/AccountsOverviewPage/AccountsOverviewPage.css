@@ -326,10 +326,6 @@
   font-size: var(--font-size-sm);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 @media (max-width: 768px) {
   .accounts-overview {
     padding: var(--spacing-md);

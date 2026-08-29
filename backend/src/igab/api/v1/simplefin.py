@@ -12,6 +12,7 @@ from igab.api.v1.schemas.simplefin import (
     SimpleFINConnectionResponse,
     SimpleFINSetupRequest,
     SimpleFINUpdateRequest,
+    SyncAllResult,
     SyncResult,
     TransactionMatchResponse,
 )
@@ -184,6 +185,22 @@ async def sync_connection(
         account_simplefin_id=account_simplefin_id,
     )
     return SyncResult(**result)
+
+
+@router.post("/{budget_id}/simplefin/sync-all", response_model=SyncAllResult)
+async def sync_all_connections(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    svc: Annotated[SimpleFINService, Depends(get_simplefin_service)],
+) -> SyncAllResult:
+    """Sync every connection this user has, in one go.
+
+    The Accounts page's "Sync All" only ever reached `connections[0]`, so a
+    second bank was never synced by it. This is the one implementation the
+    page, the sidebar and the command palette all call.
+    """
+    result = await svc.sync_all(current_user.id, budget_id)
+    return SyncAllResult(**result)
 
 
 @router.post("/accounts/{account_id}/link-simplefin", status_code=204)
