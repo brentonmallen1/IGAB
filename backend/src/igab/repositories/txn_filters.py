@@ -178,13 +178,32 @@ COUNTERPART_OFF_BUDGET = not_(_COUNTERPART_ON_BUDGET)
 # budget, so counting either double-counts. That asymmetry is the point: only
 # the on-budget leg of an out-of-budget transfer passes, never the tracked side.
 CASH_FLOW_ROW = or_(~TRANSFER_LEG, Transaction.category_id.isnot(None), COUNTERPART_OFF_BUDGET)
+#: An account the arithmetic may still see. Soft-deleting an account cascades
+#: its transactions today, so this looks redundant — but the balance term
+#: (`sum_on_budget_balance`) filters deleted accounts while the activity-side
+#: predicates below used not to, and Ready to Assign is an identity between
+#: the two: any path that ever flags an account without cascading would move
+#: the figure with no transaction to explain it. The two sides must be built
+#: from one predicate, not two that happen to agree.
+LIVE_ACCOUNT = Account.is_deleted == False  # noqa: E712
+
 # Budget cash flow happens on on-budget accounts: plain activity inside
 # tracking accounts (dividends, market adjustments, loan interest) moves net
 # worth, not budget income/expense. Categorized spending-transfer legs already
 # live on the on-budget side (service-enforced), so they pass. Reports that
 # take an explicit account filter let the user's selection override this.
+# Correlated to the row's own budget: the callers all reach this through a
+# budget-scoped category or budget_id filter today, but that is a property of
+# the call sites, not of the predicate — a caller filtering by account or
+# date alone must not match another budget's accounts.
 ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
-    select(Account.id).where(Account.on_budget == True)  # noqa: E712
+    select(Account.id)
+    .where(
+        LIVE_ACCOUNT,
+        Account.on_budget == True,  # noqa: E712
+        Account.budget_id == Transaction.budget_id,
+    )
+    .correlate(Transaction)
 )
 
 #: A card, for the credit model: an on-budget liability-classified account.
@@ -194,13 +213,19 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
 #: cash and never charge Ready to Assign; money reaches them only through
 #: their set-aside envelope (domain/cards.py).
 CARD_ACCOUNT = and_(
+    LIVE_ACCOUNT,
     Account.on_budget == True,  # noqa: E712
     Account.classification == "liability",
 )
-ON_CARD_ACCOUNT = Transaction.account_id.in_(select(Account.id).where(CARD_ACCOUNT))
+ON_CARD_ACCOUNT = Transaction.account_id.in_(
+    select(Account.id)
+    .where(CARD_ACCOUNT, Account.budget_id == Transaction.budget_id)
+    .correlate(Transaction)
+)
 #: The budget's cash: on-budget and not a card. This is the balance term of
 #: Ready to Assign; a card's debt lives beside its set-aside, not in cash.
 CASH_ACCOUNT = and_(
+    LIVE_ACCOUNT,
     Account.on_budget == True,  # noqa: E712
     Account.classification != "liability",
 )

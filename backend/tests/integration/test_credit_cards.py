@@ -207,6 +207,70 @@ class TestTheIdentity:
         # − 100 assigned, the credit overspending riding on the card.
         assert july.to_be_assigned == august.to_be_assigned == D("900.00")
 
+    async def test_a_settled_closed_card_sends_no_row(self, db_session):
+        """One list used to serve two purposes: include closed cards in the
+        sums (right — closing moves no money) and draw a row per card
+        (wrong for a card with nothing left to say). Settled + closed →
+        no row; anything left → the row stays, tagged."""
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
+        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        from igab.services.transaction_service import TransactionCreate
+
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 25),
+                amount=D("-150.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await services.account_repo.update(visa.id, is_closed=True)
+        await db_session.flush()
+
+        s = await _summary(services, budget, JUL)
+        assert s.cards == []
+        # And the figure is exactly what it was before the close.
+        assert s.to_be_assigned == D("850.00")
+
+    async def test_a_closed_card_with_debt_keeps_its_row_tagged(self, db_session):
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await services.account_repo.update(visa.id, is_closed=True)
+        await db_session.flush()
+
+        before_close_tba = D("900.00")  # 1000 income − 100 assigned
+        august = await _summary(services, budget, AUG)
+        assert august.to_be_assigned == before_close_tba
+        card = august.cards[0]
+        assert card.is_closed
+        assert (card.set_aside, card.uncovered) == (D("100.00"), D("50.00"))
+
+    async def test_a_flagged_deleted_account_leaves_both_sides_of_the_figure(self, db_session):
+        """The latent filter gap: `soft_delete` cascades transactions today,
+        so the two sides agreed by accident. Flag the account row directly —
+        the path a future caller might take — and the balance term and the
+        activity term must drop together, leaving only the assignment."""
+        services, budget, checking, _, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, checking, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+        assert (await _summary(services, budget, JUL)).to_be_assigned == D("900.00")
+
+        checking.is_deleted = True
+        await db_session.flush()
+        s = await _summary(services, budget, JUL)
+        # Cash term 0 (account gone) and its activity gone with it: the
+        # envelope holds the untouched 100 assignment, so 0 − 100.
+        assert s.to_be_assigned == D("-100.00")
+        groceries_bal = next(b for b in s.category_balances if b.category_id == groceries.id)
+        assert groceries_bal.activity == D("0")
+        assert groceries_bal.available == D("100.00")
+
     async def test_card_envelopes_stay_out_of_cover_overspent(self, db_session):
         services, budget, checking, visa, linked, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")

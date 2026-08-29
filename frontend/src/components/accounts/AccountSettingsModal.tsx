@@ -10,6 +10,7 @@ import {
 } from '../../api/simplefin'
 import { formatSyncAge } from '../simplefin/SyncStatusIcon'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { useFormatters } from '../../hooks/useFormatters'
 import { useAppStore } from '../../stores/appStore'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
@@ -26,6 +27,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
   const account = accounts?.find((a) => a.id === accountId)
+  const { formatMoney } = useFormatters()
 
   const updateAccount = useUpdateAccount(budgetId ?? '')
   const { data: sfConnections } = useSimpleFINConnections()
@@ -91,9 +93,20 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
     if (!account) return
     setCloseError(null)
     const action = account.is_closed ? 'reopen' : 'close'
+    // Closing moves no money. For a card that matters enough to say out
+    // loud: its balance and anything reserved on its payment envelope stay
+    // in the budget (the Credit cards section keeps its row, tagged Closed,
+    // until both reach zero) — quietly hiding the account would read as the
+    // debt or the reserve vanishing.
+    const isCard = account.classification === 'liability' && account.on_budget
+    const cardMessage =
+      account.balance !== 0
+        ? `This card's balance is ${formatMoney(account.balance)}. Closing moves no money — the balance and anything reserved to pay it stay in the budget's Credit cards section until both reach zero.`
+        : `Closing moves no money — anything still reserved to pay this card keeps reducing Ready to Assign until you move it out or record a payment.`
     const ok = await confirmAsync({
       title: `${action === 'close' ? 'Close' : 'Reopen'} this account?`,
       confirmLabel: action === 'close' ? 'Close account' : 'Reopen account',
+      ...(action === 'close' && isCard ? { message: cardMessage } : {}),
     })
     if (!ok) return
     try {

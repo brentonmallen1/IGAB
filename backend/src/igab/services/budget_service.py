@@ -85,10 +85,19 @@ class CardStatus:
 
     `balance` is the ledger balance through the viewed month (negative =
     owed). `set_aside` is the card's envelope available: funded credit
-    spending + assignments − payments, floored month over month like any
-    envelope. `uncovered` is what is owed beyond the set-aside — calm,
-    informational, paid down by assigning to the card; a due date that
-    crosses the month boundary is a normal state, not overspending."""
+    spending + assignments − payments, carried as a running total
+    (domain/cards.py `set_aside_through`). `uncovered` is what is owed
+    beyond the set-aside — calm, informational, paid down by assigning to
+    the card; a due date that crosses the month boundary is a normal state,
+    not overspending.
+
+    A closed card keeps its row while it has something to say — a residual
+    balance, a reserve someone can still move money out of — and carries
+    `is_closed` so the section can tag it. A closed card with all three at
+    zero is settled and gets no row at all (`get_budget_summary` skips it
+    after the arithmetic): the sums it feeds are unchanged — closing moves
+    no money — but a permanently undismissable zero row is display, and
+    display is a different question from arithmetic."""
 
     account_id: uuid.UUID
     name: str
@@ -98,6 +107,7 @@ class CardStatus:
     balance: Decimal
     set_aside: Decimal
     uncovered: Decimal
+    is_closed: bool
 
 
 @dataclass
@@ -423,6 +433,15 @@ class BudgetService:
                         is_card_payment=True,
                     )
                 balance = owed_by_card.get(account.id, zero)
+                uncovered = max(zero, -balance - max(zero, set_aside))
+                if account.is_closed and balance == zero and set_aside == zero:
+                    # Settled and closed: nothing owed, nothing reserved,
+                    # nothing to act on. The arithmetic above still ran — the
+                    # linked category's balance_map entry keeps the envelope
+                    # term honest — only the row is skipped. A closed card
+                    # with anything left keeps its row (tagged via
+                    # `is_closed`) until someone moves the money out.
+                    continue
                 cards.append(
                     CardStatus(
                         account_id=account.id,
@@ -434,7 +453,8 @@ class BudgetService:
                         # (negative set-aside — a credit balance on the card)
                         # reserves nothing, so it is floored before
                         # subtracting.
-                        uncovered=max(zero, -balance - max(zero, set_aside)),
+                        uncovered=uncovered,
+                        is_closed=account.is_closed,
                     )
                 )
             uncovered_current = sum(
