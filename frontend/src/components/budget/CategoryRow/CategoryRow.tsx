@@ -19,7 +19,7 @@ import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { TransactionEditor } from '../../transactions/TransactionEditor/TransactionEditor'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import { toCents } from '../../../utils/money'
-import { parseAssignmentInput } from '../../../utils/amountExpression'
+import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -95,8 +95,9 @@ export const CategoryRow = memo(function CategoryRow({
   }, [assigned])
 
   const handleCommit = useCallback(() => {
-    // Expression-aware: "+50" / "*2" adjust the current assignment
-    const amount = editValue.trim() === '' ? 0 : parseAssignmentInput(editValue, assigned)
+    // Expression-aware: "+50" / "*2" adjust the current assignment; empty
+    // commits zero (see parseAssignmentCommit)
+    const amount = parseAssignmentCommit(editValue, assigned)
     if (isNaN(amount)) {
       // Unparseable input must never silently write $0 into the budget
       setIsEditing(false)

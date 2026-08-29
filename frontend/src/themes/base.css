@@ -633,16 +633,6 @@ html[data-keyboard='open'] {
   }
 }
 
-/* iOS Safari zooms into any focused control under 16px — keep every form
-   control at 16px on phones so focus never zooms the layout */
-@media (max-width: 768px) {
-  input,
-  select,
-  textarea {
-    font-size: 16px;
-  }
-}
-
 /* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *,
