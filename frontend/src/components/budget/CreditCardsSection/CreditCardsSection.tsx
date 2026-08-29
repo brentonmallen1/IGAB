@@ -124,6 +124,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                   <span className="credit-cards__col--name" role="cell">
                     <CreditCard size={13} aria-hidden />
                     {card.name}
+                    {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
                   </span>
                   <span className="credit-cards__col--num tabular" role="cell">
                     {formatMoney(card.balance)}

@@ -256,6 +256,11 @@ class CardStatusOut(BaseModel):
     balance: Decimal
     set_aside: Decimal
     uncovered: Decimal
+    #: A settled closed card sends no row at all; a closed card with a
+    #: residual balance or reserve keeps one, and this is how the section
+    #: knows to tag it. Required, not optional — a path that forgets must
+    #: raise, not render a closed card as open.
+    is_closed: bool
 
 
 class BudgetMonthResponse(BaseModel):

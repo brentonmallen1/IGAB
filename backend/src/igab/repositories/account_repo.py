@@ -137,8 +137,7 @@ class AccountRepository(BaseRepository[Account]):
             .join(Account, Account.id == Transaction.account_id)
             .where(
                 Account.budget_id == budget_id,
-                CASH_ACCOUNT,
-                Account.is_deleted == False,  # noqa: E712
+                CASH_ACCOUNT,  # carries LIVE_ACCOUNT — deleted accounts out
                 BALANCE_ROW,
                 not_future(as_of),
             )
@@ -157,8 +156,7 @@ class AccountRepository(BaseRepository[Account]):
             .join(Account, Account.id == Transaction.account_id)
             .where(
                 Account.budget_id == budget_id,
-                CARD_ACCOUNT,
-                Account.is_deleted == False,  # noqa: E712
+                CARD_ACCOUNT,  # carries LIVE_ACCOUNT — deleted accounts out
                 BALANCE_ROW,
                 not_future(as_of),
             )
