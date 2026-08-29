@@ -178,6 +178,10 @@ async def test_real_export(db_session):
         "register. Nothing below can be read as an IGAB result."
     )
     assert report.categories_differing == 0, report.top_differences
+    # Every card's simulated set-aside against the CCP reserve YNAB shipped
+    # — the reconciliation "The Unreleased Reservation" showed nothing was
+    # asserting. A real multi-year ledger is where cross-month refunds live.
+    assert report.cards_differing == 0, report.card_differences
     assert report.igab_ready_to_assign == report.expected_ready_to_assign, (
         f"IGAB {report.igab_ready_to_assign} vs expected {report.expected_ready_to_assign} "
         f"(YNAB {report.ynab_ready_to_assign}, uncovered card debt {report.uncovered_card_debt}, "
