@@ -129,6 +129,11 @@ class CardStatus:
     set_aside: Decimal
     uncovered: Decimal
     is_closed: bool
+    #: How much of *this month's* overspending was swiped on this card and is
+    #: riding here rather than charging Ready to Assign. Part of `uncovered`
+    #: already — this names which card carries it, which only becomes a real
+    #: question with more than one, because they are paid separately.
+    overspent_this_month: Decimal = Decimal("0")
 
 
 @dataclass
@@ -415,6 +420,7 @@ class BudgetService:
         uncovered_current = zero
         truncated_by_category: dict[uuid.UUID, dict[date, Decimal]] = {}
         floored_by_category: dict[uuid.UUID, dict[date, Decimal]] = {}
+        floored_by_card: dict[uuid.UUID, dict[date, Decimal]] = {}
         card_accounts = [
             a
             for a in await self.account_repo.get_all(budget_id, include_closed=True)
@@ -446,8 +452,8 @@ class BudgetService:
             credit_outflows = await self.transaction_repo.sum_credit_outflows_by_category(
                 spending_ids, month_end_date
             )
-            funded_by_card, floored_by_category, truncated_by_category = card_funding(
-                end_balances, credit_outflows
+            funded_by_card, floored_by_category, truncated_by_category, floored_by_card = (
+                card_funding(end_balances, credit_outflows)
             )
             payments = await self.transaction_repo.sum_card_payments_by_month(
                 budget_id, month_end_date
@@ -498,6 +504,9 @@ class BudgetService:
                         # subtracting.
                         uncovered=uncovered,
                         is_closed=account.is_closed,
+                        overspent_this_month=floored_by_card.get(account.id, {}).get(
+                            month_start, zero
+                        ),
                     )
                 )
             uncovered_current = sum(

@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { useCoverOverspentPreview, useCoverOverspentApply } from '../../../api/budgets'
+import {
+  useCoverOverspentPreview,
+  useCoverOverspentApply,
+  useBudgetMonth,
+} from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import './CoverOverspentModal.css'
@@ -19,6 +23,14 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
   const showUndo = useToastUndo(budgetId)
   const [error, setError] = useState<string | null>(null)
   const trapRef = useFocusTrap<HTMLDivElement>(onClose)
+
+  // Which card carries the ridden red. Served on the card row (domain/cards.py
+  // attributes it exactly), never re-derived here — the split is a running walk
+  // per (category, card) the client has no way to reproduce.
+  const { data: budgetMonth } = useBudgetMonth(budgetId, month)
+  const riddenByCard = (budgetMonth?.cards ?? []).filter(
+    (c) => Number(c.overspent_this_month) > 0
+  )
 
   const canApply = preview != null && preview.items.length > 0 && Number(preview.total_addition) > 0
 
@@ -86,11 +98,26 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                   here is cheaper than letting someone find the gap and stop
                   trusting both numbers. */}
               {Number(preview.total_overspent_credit) > 0 && (
-                <p className="cover-modal__on-cards">
-                  A further {formatMoney(preview.total_overspent_credit)} was spent on a card. That
-                  rides on the card as debt, never charges Ready to Assign, and is not listed here —
-                  assigning cash to it would not retire it. Pay it down by assigning to the card.
-                </p>
+                <>
+                  <p className="cover-modal__on-cards">
+                    A further {formatMoney(preview.total_overspent_credit)} was spent on a card. That
+                    rides on the card as debt, never charges Ready to Assign, and is not listed here
+                    — assigning cash to it would not retire it. Pay it down by assigning to the card.
+                  </p>
+                  {/* Only worth naming with more than one card: with a single
+                      card this list restates the sentence above it. Cards are
+                      paid separately, so which one carries the red is a real
+                      question once there are two. */}
+                  {riddenByCard.length > 1 && (
+                    <ul className="cover-modal__on-cards-list">
+                      {riddenByCard.map((c) => (
+                        <li key={c.account_id}>
+                          {c.name}: {formatMoney(c.overspent_this_month)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
               <table className="cover-modal__table">
                 <caption className="sr-only">Overspent categories and proposed coverage</caption>

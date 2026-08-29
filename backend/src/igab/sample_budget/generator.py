@@ -644,7 +644,7 @@ class SampleBudgetGenerator:
 
         # Third return (truncated releases) is unused: the generated register has
         # no card inflow beyond what its category reserved. See domain/cards.py.
-        funded_by_card, floored_by_category, _ = card_funding(ends_by_cat, credit_outflows)
+        funded_by_card, floored_by_category, _, _ = card_funding(ends_by_cat, credit_outflows)
         # Payments come from the captured link pairs — generate() strips
         # `transfer_id` off these very dicts before bulk insert, so the rows
         # themselves no longer say they are transfers.

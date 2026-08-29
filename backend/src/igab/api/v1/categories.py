@@ -554,6 +554,7 @@ async def get_budget_month(
                 set_aside=c.set_aside,
                 uncovered=c.uncovered,
                 is_closed=c.is_closed,
+                overspent_this_month=c.overspent_this_month,
             )
             for c in summary.cards
         ],

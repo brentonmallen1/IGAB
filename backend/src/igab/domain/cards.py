@@ -155,6 +155,7 @@ def card_funding[C, K](
     dict[K, dict[date, Decimal]],
     dict[C, dict[date, Decimal]],
     dict[C, dict[date, Decimal]],
+    dict[K, dict[date, Decimal]],
 ]:
     """The whole budget's card funding, composed from the primitives.
 
@@ -176,10 +177,23 @@ def card_funding[C, K](
       not keep the money too: the caller subtracts this from the category's
       activity. Without it, every card inflow into a category that never
       reserved on that card drains Ready to Assign dollar-for-dollar.
+    - floored per CARD per month — the same ridden amounts as the second
+      dict, attributed to the card each was actually swiped on. Already
+      computed here (`allocate_across_cards` decides it, to work out the
+      reservation deltas) and previously thrown away.
+
+      The attribution is exact rather than apportioned, which is what makes
+      it safe to put on screen: `month_floored` is capped at the month's net
+      outflow, the allocation pool is the cards with *positive* net that
+      month, and that pool sums to at least the net. So the greedy walk
+      always exhausts the amount and the per-card figures sum to the
+      per-category ones. With two cards, "which one is this red riding on"
+      is a real question — they are paid separately.
     """
     funded_by_card: dict[K, dict[date, Decimal]] = {}
     floored_by_category: dict[C, dict[date, Decimal]] = {}
     truncated_by_category: dict[C, dict[date, Decimal]] = {}
+    floored_by_card: dict[K, dict[date, Decimal]] = {}
     for category, by_card in credit_outflows.items():
         end_balances = end_balances_by_category.get(category, {})
         totals: dict[date, Decimal] = {}
@@ -199,6 +213,9 @@ def card_funding[C, K](
                 month_floored,
                 {c: o[month] for c, o in by_card.items() if o.get(month, ZERO) > ZERO},
             )
+            for card, share in floored_share.items():
+                per_card = floored_by_card.setdefault(card, {})
+                per_card[month] = per_card.get(month, ZERO) + share
             for card, outflows in by_card.items():
                 net = outflows.get(month, ZERO)
                 delta = net - floored_share.get(card, ZERO) if net > ZERO else net
@@ -212,7 +229,7 @@ def card_funding[C, K](
             for month, refused in truncated.items():
                 per_cat = truncated_by_category.setdefault(category, {})
                 per_cat[month] = per_cat.get(month, ZERO) + refused
-    return funded_by_card, floored_by_category, truncated_by_category
+    return funded_by_card, floored_by_category, truncated_by_category, floored_by_card
 
 
 def synthetic_activity(

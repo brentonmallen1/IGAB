@@ -203,3 +203,12 @@
   line-height: 1.5;
   color: var(--text-secondary);
 }
+
+.cover-modal__on-cards-list {
+  margin: var(--spacing-xs) 0 0 var(--spacing-md);
+  padding: 0;
+  list-style: disc;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+

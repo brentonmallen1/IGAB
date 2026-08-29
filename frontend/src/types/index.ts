@@ -235,6 +235,11 @@ export interface CardStatus {
   /** A settled closed card sends no row at all; a closed one with a residual
    *  balance or reserve keeps its row, tagged. Served, never derived here. */
   is_closed: boolean
+  /** The part of this month's overspending riding on this card — already
+   *  inside `uncovered`. It names which card carries the red, which only
+   *  matters with more than one, since cards are paid separately. Attributed
+   *  exactly, not apportioned: see `card_funding` in domain/cards.py. */
+  overspent_this_month: number
 }
 
 export interface BudgetMonth {

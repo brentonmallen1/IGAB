@@ -283,6 +283,10 @@ class CardStatusOut(BaseModel):
     #: knows to tag it. Required, not optional — a path that forgets must
     #: raise, not render a closed card as open.
     is_closed: bool
+    #: The part of this month's overspending riding on this card. Included in
+    #: `uncovered` already; served so a budget with more than one card can say
+    #: which card carries it, since they are paid separately.
+    overspent_this_month: Decimal
 
 
 class BudgetMonthResponse(BaseModel):
