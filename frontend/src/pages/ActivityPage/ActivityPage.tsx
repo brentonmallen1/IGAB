@@ -1,12 +1,33 @@
 import { parseApiDecimal } from '../../utils/money'
-import { useState } from 'react'
-import { Undo2, Package, RefreshCw, Trash2, Edit3, Plus, CheckCircle, FileUp, GitMerge } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import {
+  Undo2,
+  Package,
+  RefreshCw,
+  Trash2,
+  Edit3,
+  Plus,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  FileUp,
+  GitMerge,
+  History,
+} from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
-import { useChanges, useUndoChange, invalidateAfterUndo, type Change } from '../../api/changes'
+import {
+  useChanges,
+  useUndoBatch,
+  useUndoChange,
+  useUndoNewer,
+  invalidateAfterUndo,
+  type Change,
+} from '../../api/changes'
 import { useQueryClient } from '@tanstack/react-query'
 import { useFormatters } from '../../hooks/useFormatters'
+import { confirmAsync } from '../../stores/confirmStore'
 import toast from 'react-hot-toast'
-import { groupChanges } from './groupChanges'
+import { groupChanges, summarizeBatch } from './groupChanges'
 import { actionTypeLabel, entityTypeLabel } from './changeLabels'
 import './ActivityPage.css'
 
@@ -20,6 +41,13 @@ export function ActivityPage() {
 
   const { data, isLoading, error } = useChanges(budgetId, PAGE_SIZE, offset)
   const undoChange = useUndoChange(budgetId ?? '')
+  const undoBatch = useUndoBatch(budgetId ?? '')
+  const undoNewer = useUndoNewer(budgetId ?? '')
+  // Batches collapse to one line; a user who wants the detail asks for it.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Index of the group the hovered line sits directly below. Everything
+  // above it is what "revert to here" would take.
+  const [hoveredLine, setHoveredLine] = useState<number | null>(null)
 
   if (!budgetId) {
     return (
@@ -45,6 +73,70 @@ export function ActivityPage() {
     }
   }
 
+  async function handleUndoBatch(batchId: string, label: string) {
+    try {
+      const result = await undoBatch.mutateAsync({ batchId })
+      invalidateAfterUndo(qc, budgetId!)
+      // The server undoes the whole batch even when this page is showing
+      // only part of it, so the count comes back from the server.
+      toast.success(`Undid ${label.toLowerCase()} — ${result.undone_change_ids.length} changes`)
+    } catch {
+      // Error toast handled by the hook
+    }
+  }
+
+  /**
+   * Revert to the line drawn under `groupIndex`: everything above it goes.
+   *
+   * The count is asked for first, with dry_run, so the number in the prompt
+   * is produced by the same query that does the work — and so it can include
+   * changes newer than the page currently being looked at.
+   */
+  async function handleRevertTo(groupIndex: number) {
+    const below = grouped[groupIndex + 1]
+    if (!below) return
+    const anchorId = below.changes[0].id
+    let count: number
+    try {
+      const preview = await undoNewer.mutateAsync({ changeId: anchorId, dryRun: true })
+      count = preview.undone_change_ids.length
+    } catch {
+      toast.error('Could not work out what reverting here would undo')
+      return
+    }
+    if (count === 0) {
+      toast('Nothing to revert above this point')
+      return
+    }
+    const ok = await confirmAsync({
+      title: `Undo the ${count} change${count === 1 ? '' : 's'} above this line?`,
+      message: 'Everything below the line stays exactly as it is.',
+      confirmLabel: `Undo ${count} change${count === 1 ? '' : 's'}`,
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      const result = await undoNewer.mutateAsync({ changeId: anchorId })
+      invalidateAfterUndo(qc, budgetId!)
+      setHoveredLine(null)
+      toast.success(`Reverted ${result.undone_change_ids.length} changes`)
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: { message?: string } | string } } })
+        ?.response?.data?.detail
+      const message = typeof detail === 'string' ? detail : detail?.message
+      toast.error(message ?? 'Could not revert to this point')
+    }
+  }
+
+  function toggleExpanded(batchId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(batchId)) next.delete(batchId)
+      else next.add(batchId)
+      return next
+    })
+  }
+
   return (
     <div className="activity-page page-fill">
       <div className="activity-page__header">
@@ -60,25 +152,65 @@ export function ActivityPage() {
       )}
 
       <div className="activity-list surface scroll-fill">
-        {grouped.map((group, i) => (
-          <div key={group.batchId ?? `single-${i}`} className="activity-group">
-            {group.changes.length > 1 && (
-              <div className="activity-group__header">
-                <Package size={14} />
-                <span>Batch of {group.changes.length}</span>
+        {grouped.map((group, i) => {
+          const isBatch = group.changes.length > 1 && group.batchId !== null
+          const isOpen = group.batchId !== null && expanded.has(group.batchId)
+          return (
+            <Fragment key={group.batchId ?? `single-${i}`}>
+              <div
+                className={`activity-group ${
+                  hoveredLine !== null && i <= hoveredLine ? 'activity-group--reverting' : ''
+                }`}
+              >
+                {isBatch && (
+                  <BatchHeader
+                    group={group}
+                    isOpen={isOpen}
+                    formatDateTime={formatDateTime}
+                    onToggle={() => toggleExpanded(group.batchId!)}
+                    onUndo={() =>
+                      handleUndoBatch(group.batchId!, summarizeBatch(group.changes))
+                    }
+                    isUndoing={undoBatch.isPending}
+                  />
+                )}
+                {(!isBatch || isOpen) &&
+                  group.changes.map((change) => (
+                    <ChangeCard
+                      key={change.id}
+                      change={change}
+                      formatDateTime={formatDateTime}
+                      onUndo={() => handleUndo(change.id)}
+                      isUndoing={undoChange.isPending}
+                    />
+                  ))}
               </div>
-            )}
-            {group.changes.map((change) => (
-              <ChangeCard
-                key={change.id}
-                change={change}
-                formatDateTime={formatDateTime}
-                onUndo={() => handleUndo(change.id)}
-                isUndoing={undoChange.isPending}
-              />
-            ))}
-          </div>
-        ))}
+              {/* The revert point rests BETWEEN two entries, so there is
+                  never a question of whether the one you clicked is included:
+                  everything above the line goes, everything below stays. */}
+              {i < grouped.length - 1 && (
+                <button
+                  type="button"
+                  className="activity-revert-line"
+                  onMouseEnter={() => setHoveredLine(i)}
+                  onMouseLeave={() => setHoveredLine(null)}
+                  onFocus={() => setHoveredLine(i)}
+                  onBlur={() => setHoveredLine(null)}
+                  onClick={() => handleRevertTo(i)}
+                  disabled={undoNewer.isPending}
+                  title="Undo everything above this line"
+                >
+                  <span className="activity-revert-line__rule" />
+                  <span className="activity-revert-line__label">
+                    <History size={12} />
+                    Revert to here
+                  </span>
+                  <span className="activity-revert-line__rule" />
+                </button>
+              )}
+            </Fragment>
+          )
+        })}
       </div>
 
       {(offset > 0 || hasMore) && (
@@ -101,6 +233,68 @@ export function ActivityPage() {
             Older →
           </button>
         </div>
+      )}
+    </div>
+  )
+}
+
+interface BatchHeaderProps {
+  group: { batchId: string | null; changes: Change[] }
+  isOpen: boolean
+  formatDateTime: (date: string) => string
+  onToggle: () => void
+  onUndo: () => void
+  isUndoing: boolean
+}
+
+/**
+ * One line for a batch — a bulk assign of forty categories used to be forty
+ * cards, which buried everything else that happened that day.
+ *
+ * The count is "on this page": a batch can straddle the page boundary. Undo
+ * takes the whole batch regardless, which is why the toast reports the
+ * server's number rather than this one.
+ */
+function BatchHeader({
+  group,
+  isOpen,
+  formatDateTime,
+  onToggle,
+  onUndo,
+  isUndoing,
+}: BatchHeaderProps) {
+  const allUndone = group.changes.every((c) => c.undone_at)
+  const newest = group.changes[0]
+
+  return (
+    <div className={`batch-header ${allUndone ? 'batch-header--undone' : ''}`}>
+      <button
+        type="button"
+        className="batch-header__toggle"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+      >
+        {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        <Package size={14} />
+        <span className="batch-header__summary">{summarizeBatch(group.changes)}</span>
+      </button>
+      <span className="batch-header__actor">
+        {newest.user_display_name ??
+          (newest.source === 'ai' ? 'AI' : newest.source === 'manual' ? '' : newest.source)}
+      </span>
+      <span className="batch-header__time">{formatDateTime(newest.created_at)}</span>
+      {allUndone ? (
+        <span className="batch-header__badge">Undone</span>
+      ) : (
+        <button
+          type="button"
+          className="change-card__undo"
+          onClick={onUndo}
+          disabled={isUndoing}
+          title="Undo this whole batch"
+        >
+          <Undo2 size={14} />
+        </button>
       )}
     </div>
   )

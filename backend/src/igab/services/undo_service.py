@@ -93,6 +93,51 @@ class UndoService:
             await self.session.flush()
         return undone
 
+    async def undo_newer(
+        self,
+        budget_id: uuid.UUID,
+        change_id: uuid.UUID,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> list[uuid.UUID]:
+        """Undo everything recorded after `change_id`, which itself survives.
+
+        This is the Activity page's line between two entries: the id passed is
+        the newest entry BELOW the line, and everything above it goes. Putting
+        the control between two rows rather than on one is what makes the
+        question "does it include the one I clicked?" unaskable.
+
+        `dry_run` returns the same ids without touching anything, so the
+        confirmation's count comes from this selection rather than from a
+        second one that could disagree with it.
+
+        A batch is undone as a unit everywhere else, so the boundary snaps to
+        the END of the target's batch: an id from the middle of one can never
+        leave half a transfer or half a split reverted.
+        """
+        target = await self.repo.get_or_raise(change_id)
+        if target.budget_id != budget_id:
+            raise NotFoundError("change_log", str(change_id))
+        boundary = target.seq
+        if target.batch_id is not None:
+            siblings = await self.repo.get_batch(budget_id, target.batch_id)
+            if siblings:
+                boundary = siblings[0].seq  # get_batch is seq-descending
+        pending = await self.repo.list_live_after(budget_id, boundary)
+        if not pending:
+            raise UndoConflict("Nothing has been recorded since that point")
+        if dry_run:
+            return [c.id for c in pending]
+        undone: list[uuid.UUID] = []
+        for change in pending:
+            await self._apply(change, force)
+            change.undone_at = func.now()
+            undone.append(change.id)
+            # One flush per step, for the same reason undo_batch does it: the
+            # database must see the reversals in the order they are applied.
+            await self.session.flush()
+        return undone
+
     async def undo_move(self, budget_id: uuid.UUID, move_id: uuid.UUID) -> list[uuid.UUID]:
         """Undo one budget move, whatever batch it sits in.
 

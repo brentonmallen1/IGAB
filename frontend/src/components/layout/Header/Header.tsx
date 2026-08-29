@@ -5,6 +5,7 @@ import { useAppStore, PALETTES, getPaletteForTheme, hasBothModes, isLightTheme }
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { AIActivityBadge } from '../../ai/AIActivityBadge'
+import { UndoRedoButtons } from './UndoRedoButtons'
 import { IS_MAC } from '../../../keyboard/shortcuts'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
 import './Header.css'
@@ -90,8 +91,10 @@ export function Header() {
         </button>
       </div>
 
+      <UndoRedoButtons />
+
       <button
-        className={`header__privacy-btn ${privacyMode ? 'header__privacy-btn--active' : ''}`}
+        className={`header__icon-btn ${privacyMode ? 'header__icon-btn--active' : ''}`}
         onClick={togglePrivacyMode}
         aria-pressed={privacyMode}
         aria-label={privacyMode ? 'Show amounts' : 'Hide amounts (privacy mode)'}
@@ -101,7 +104,7 @@ export function Header() {
       </button>
 
       <button
-        className="header__mode-btn"
+        className="header__icon-btn"
         onClick={toggleThemeMode}
         disabled={!canToggleMode}
         aria-label={modeLabel}
@@ -112,7 +115,7 @@ export function Header() {
 
       <div className="header__theme-picker" ref={themeRef}>
         <button
-          className="header__theme-btn"
+          className="header__icon-btn"
           onClick={() => setThemeOpen((o) => !o)}
           aria-label="Change theme"
           title="Change theme"

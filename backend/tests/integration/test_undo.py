@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import select
 
 from igab.db.models import BudgetAssignment, ChangeLog, Transaction
-from igab.domain.exceptions import UndoConflict
+from igab.domain.exceptions import NotFoundError, UndoConflict
 from igab.services.transaction_service import TransactionCreate, TransactionUpdate
 from igab.services.undo_service import UndoService
 from tests.integration.factories import (
@@ -655,6 +655,149 @@ async def test_undo_batch_already_undone_conflicts(db_session):
     await undo.undo_batch(budget.id, batch_id)
     with pytest.raises(UndoConflict, match="already been undone"):
         await undo.undo_batch(budget.id, batch_id)
+
+
+# ─── Revert to here ───────────────────────────────────────────────────────────
+#
+# The Activity page's line sits BETWEEN two entries: the id sent is the newest
+# entry below the line, and everything above it goes. That framing is why
+# these tests all assert the target itself survives.
+
+
+async def test_undo_newer_reverts_everything_above_the_line(db_session):
+    budget, account, _, _ = await setup_budget(db_session)
+    services = make_services(db_session)
+    first = await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-1.00"))
+    )
+    second = await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-2.00"))
+    )
+    third = await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-3.00"))
+    )
+    changes = await changes_for(db_session, budget.id, "transaction")
+
+    undo = UndoService(db_session)
+    undone = await undo.undo_newer(budget.id, changes[0].id)
+
+    # The two above the line are gone, in newest-first order
+    assert undone == [changes[2].id, changes[1].id]
+    await db_session.refresh(first)
+    await db_session.refresh(second)
+    await db_session.refresh(third)
+    assert first.is_deleted is False, "the entry below the line survives"
+    assert second.is_deleted is True
+    assert third.is_deleted is True
+
+
+async def test_undo_newer_dry_run_writes_nothing(db_session):
+    budget, account, _, _ = await setup_budget(db_session)
+    services = make_services(db_session)
+    await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-1.00"))
+    )
+    doomed = await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-2.00"))
+    )
+    changes = await changes_for(db_session, budget.id, "transaction")
+
+    undo = UndoService(db_session)
+    preview = await undo.undo_newer(budget.id, changes[0].id, dry_run=True)
+
+    assert preview == [changes[1].id], "the same selection the real call uses"
+    await db_session.refresh(doomed)
+    await db_session.refresh(changes[1])
+    assert doomed.is_deleted is False
+    assert changes[1].undone_at is None
+
+    # …and running it for real then undoes exactly what the preview promised
+    assert await undo.undo_newer(budget.id, changes[0].id) == preview
+
+
+async def test_undo_newer_skips_rows_already_undone(db_session):
+    budget, account, _, _ = await setup_budget(db_session)
+    services = make_services(db_session)
+    await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-1.00"))
+    )
+    await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-2.00"))
+    )
+    await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-3.00"))
+    )
+    changes = await changes_for(db_session, budget.id, "transaction")
+
+    undo = UndoService(db_session)
+    await undo.undo_change(budget.id, changes[2].id)  # ⌘Z the newest first
+    undone = await undo.undo_newer(budget.id, changes[0].id)
+
+    assert undone == [changes[1].id], "an already-undone row is not undone twice"
+
+
+async def test_undo_newer_never_splits_a_batch(db_session):
+    """An id from the middle of a batch snaps the line to the batch's end.
+
+    A transfer's two halves are meaningless alone; every other undo path
+    treats a batch as a unit, and this one must not be the exception that
+    leaves half of one reverted.
+    """
+    budget, account, _, _ = await setup_budget(db_session)
+    savings = await create_account(db_session, budget, "Savings")
+    services = make_services(db_session)
+    await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=account.id,
+            date=JAN,
+            amount=Decimal("-50.00"),
+            transfer_account_id=savings.id,
+        ),
+    )
+    after = await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-7.00"))
+    )
+    changes = await changes_for(db_session, budget.id, "transaction")
+    pair = [c for c in changes if c.batch_id is not None]
+    assert len(pair) == 2
+
+    undo = UndoService(db_session)
+    undone = await undo.undo_newer(budget.id, pair[0].id)  # the FIRST half
+
+    assert undone == [changes[-1].id], "only the row after the batch"
+    for c in pair:
+        row = await db_session.get(Transaction, c.entity_id)
+        assert row.is_deleted is False, "both halves of the transfer survive"
+    await db_session.refresh(after)
+    assert after.is_deleted is True
+
+
+async def test_undo_newer_at_the_top_has_nothing_to_do(db_session):
+    budget, account, _, _ = await setup_budget(db_session)
+    services = make_services(db_session)
+    await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-1.00"))
+    )
+    changes = await changes_for(db_session, budget.id, "transaction")
+
+    undo = UndoService(db_session)
+    with pytest.raises(UndoConflict, match="Nothing has been recorded"):
+        await undo.undo_newer(budget.id, changes[-1].id)
+
+
+async def test_undo_newer_wrong_budget_is_not_found(db_session):
+    budget, account, _, _ = await setup_budget(db_session)
+    other_budget, _, _, _ = await setup_budget(db_session)
+    services = make_services(db_session)
+    await services.transactions.create(
+        budget.id, TransactionCreate(account_id=account.id, date=JAN, amount=Decimal("-1.00"))
+    )
+    [change] = await changes_for(db_session, budget.id, "transaction")
+
+    undo = UndoService(db_session)
+    with pytest.raises(NotFoundError):
+        await undo.undo_newer(other_budget.id, change.id)
 
 
 async def test_undo_change_wrong_budget_is_not_found(db_session):

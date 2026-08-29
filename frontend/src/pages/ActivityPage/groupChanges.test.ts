@@ -4,10 +4,10 @@
  * so two independent receipt failures rendered as "Batch of 2".
  */
 import { describe, expect, it } from 'vitest'
-import { groupChanges } from './groupChanges'
+import { groupChanges, summarizeBatch } from './groupChanges'
 import type { Change } from '../../api/changes'
 
-function change(id: string, batchId: string | null): Change {
+function change(id: string, batchId: string | null, over: Partial<Change> = {}): Change {
   return {
     id,
     entity_type: 'transaction',
@@ -21,6 +21,7 @@ function change(id: string, batchId: string | null): Change {
     created_at: '2026-08-17T13:53:41+00:00',
     user_id: null,
     user_display_name: null,
+    ...over,
   }
 }
 
@@ -66,5 +67,46 @@ describe('groupChanges', () => {
 
   it('handles the empty list', () => {
     expect(groupChanges([])).toEqual([])
+  })
+})
+
+describe('summarizeBatch', () => {
+  it('names the action and the count when a batch does one thing', () => {
+    expect(
+      summarizeBatch([
+        change('a', 'b1', { action: 'update', entity_type: 'assignment' }),
+        change('b', 'b1', { action: 'update', entity_type: 'assignment' }),
+        change('c', 'b1', { action: 'update', entity_type: 'assignment' }),
+      ])
+    ).toBe('Updated 3 assignments')
+  })
+
+  it('keeps a singular label singular', () => {
+    expect(summarizeBatch([change('a', 'b1', { action: 'delete' })])).toBe('Deleted 1 transaction')
+  })
+
+  it('does not pluralize a label that already is', () => {
+    // entityTypeLabel('budget') is "category groups" — the only entity whose
+    // label arrives plural, and "category groupss" is how that gets noticed.
+    expect(
+      summarizeBatch([
+        change('a', 'b1', { action: 'reorder', entity_type: 'budget' }),
+        change('b', 'b1', { action: 'reorder', entity_type: 'budget' }),
+      ])
+    ).toBe('Reordered 2 category groups')
+  })
+
+  it('falls back to a count when a batch does more than one kind of thing', () => {
+    // A merge writes a delete and an update; naming either one would lie.
+    expect(
+      summarizeBatch([
+        change('a', 'b1', { action: 'delete', entity_type: 'payee' }),
+        change('b', 'b1', { action: 'update', entity_type: 'payee' }),
+      ])
+    ).toBe('2 changes in one action')
+  })
+
+  it('says nothing about an empty batch', () => {
+    expect(summarizeBatch([])).toBe('')
   })
 })
