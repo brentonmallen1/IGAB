@@ -144,6 +144,25 @@
   text-align: right;
 }
 
+/* The paydown-target door: quiet until hovered, like the grid's row
+   affordances — a target is a choice, not a nag. */
+.credit-cards__target-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.credit-cards__row:hover .credit-cards__target-btn,
+.credit-cards__target-btn:focus-visible {
+  opacity: 1;
+}
+
 /* A closed card only keeps a row while something is left on it — the tag
    says why it is still here. Same vocabulary as the accounts overview. */
 .credit-cards__closed-tag {

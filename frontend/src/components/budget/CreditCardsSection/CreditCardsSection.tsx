@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, CreditCard, Info } from 'lucide-react'
+import { ChevronDown, ChevronRight, CreditCard, Crosshair, Info } from 'lucide-react'
 import { useBudgetMonth, useSetAssignment } from '../../../api/budgets'
+import { useTarget } from '../../../api/targets'
+import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
@@ -37,12 +39,19 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const [draft, setDraft] = useState('')
   const [infoOpen, setInfoOpen] = useState(false)
   const [peek, setPeek] = useState<{ accountId: string; accountName: string } | null>(null)
+  const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
 
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
 
   const assignedByCategory = new Map(
     budgetMonth?.category_balances.map((b) => [b.category_id, Number(b.assigned ?? 0)]) ?? []
+  )
+  // The server computes a card envelope's target verdict like any other
+  // category's — the grid never draws the envelope, so this strip is where
+  // the number surfaces.
+  const neededByCategory = new Map(
+    budgetMonth?.category_balances.map((b) => [b.category_id, b.needed_this_month]) ?? []
   )
   const totalUncovered = cards.reduce((sum, c) => sum + Number(c.uncovered), 0)
 
@@ -119,12 +128,31 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               const assigned = card.category_id
                 ? (assignedByCategory.get(card.category_id) ?? 0)
                 : 0
+              const needed = card.category_id
+                ? (neededByCategory.get(card.category_id) ?? null)
+                : null
               return (
                 <div className="credit-cards__row" role="row" key={card.account_id}>
                   <span className="credit-cards__col--name" role="cell">
                     <CreditCard size={13} aria-hidden />
                     {card.name}
                     {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
+                    {card.category_id && (
+                      <button
+                        type="button"
+                        className="credit-cards__target-btn"
+                        title={`Paydown target for ${card.name}`}
+                        aria-label={`Paydown target for ${card.name}`}
+                        onClick={() =>
+                          setTargetFor({
+                            categoryId: card.category_id as string,
+                            name: card.name,
+                          })
+                        }
+                      >
+                        <Crosshair size={12} aria-hidden />
+                      </button>
+                    )}
                   </span>
                   <span className="credit-cards__col--num tabular" role="cell">
                     {formatMoney(card.balance)}
@@ -162,6 +190,14 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         {formatMoney(assigned)}
                       </button>
                     )}
+                    {needed !== null && Number(needed) > 0 && (
+                      <span
+                        className="credit-cards__hint"
+                        title="What the paydown target still wants assigned this month"
+                      >
+                        {formatMoney(Number(needed))} to go
+                      </span>
+                    )}
                   </span>
                   <span className="credit-cards__col--num" role="cell">
                     {/* The drill-in, like the grid's Activity cell: the
@@ -191,6 +227,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             })}
           </div>
         </div>
+      )}
+      {targetFor && (
+        <CardTargetEditor
+          categoryId={targetFor.categoryId}
+          name={targetFor.name}
+          onClose={() => setTargetFor(null)}
+        />
       )}
       {peek && (
         <TransactionsPeekModal
@@ -232,8 +275,8 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               <dd>
                 Cash waiting to pay this card, from both sources: what funded envelopes gave
                 up when you swiped, plus what you assigned. Payments drain it. Negative means
-                this month's payments outran it — the difference settles from Ready to Assign
-                at month's end, like any cash overspending.
+                payments have outrun it — a credit balance on the card, carried forward until
+                new spending or a refund uses it up.
               </dd>
               <dt>Uncovered</dt>
               <dd>
@@ -247,5 +290,32 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
         </Dialog>
       )}
     </Surface>
+  )
+}
+
+/**
+ * The grid's target editor, pointed at a card's set-aside envelope. A tiny
+ * wrapper because `useTarget` is a hook and the strip renders cards in a
+ * loop — the fetch has to live in a component that exists only while the
+ * editor is open.
+ */
+function CardTargetEditor({
+  categoryId,
+  name,
+  onClose,
+}: {
+  categoryId: string
+  name: string
+  onClose: () => void
+}) {
+  const { data: target, isLoading } = useTarget(categoryId)
+  if (isLoading) return null
+  return (
+    <TargetEditor
+      categoryId={categoryId}
+      categoryName={name}
+      existing={target ?? null}
+      onClose={onClose}
+    />
   )
 }
