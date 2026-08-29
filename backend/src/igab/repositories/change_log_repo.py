@@ -70,6 +70,25 @@ class ChangeLogRepository(BaseRepository[ChangeLog]):
         )
         return int(result.scalar_one())
 
+    async def list_live_after(self, budget_id: uuid.UUID, seq: int) -> list[ChangeLog]:
+        """Live rows recorded after `seq`, newest first — the order undo must
+        apply them so later changes revert before the ones they built on.
+
+        This is the whole selection behind "revert to here": the Activity
+        page's line sits between two entries, and everything above it is
+        exactly this list.
+        """
+        result = await self.session.execute(
+            select(ChangeLog)
+            .where(
+                ChangeLog.budget_id == budget_id,
+                ChangeLog.undone_at.is_(None),
+                ChangeLog.seq > seq,
+            )
+            .order_by(ChangeLog.seq.desc())
+        )
+        return list(result.scalars().all())
+
     async def get_batch(self, budget_id: uuid.UUID, batch_id: uuid.UUID) -> list[ChangeLog]:
         """A batch's changes in reverse insertion order — the order undo must
         apply them so later changes revert before the ones they built on."""
