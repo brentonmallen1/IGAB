@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { renderableCategories, renderableCategoryIds, renderableGroups } from './budgetGroups'
+import {
+  renderableCategories,
+  renderableCategoryIds,
+  renderableGroups,
+  withoutCardOnlyGroups,
+} from './budgetGroups'
 
 function group(id: string, is_system = false) {
   return { id, budget_id: 'b1', name: id, sort_order: 0, is_hidden: false, is_system, system_key: null }
@@ -33,6 +38,83 @@ describe('renderableGroups', () => {
     expect(renderableCategories(cats).map((c) => c.id)).toEqual(['rent'])
     expect([...renderableCategoryIds(groups, cats)]).toEqual(['rent'])
   })
+})
+
+describe('withoutCardOnlyGroups', () => {
+  const groups = [group('cards'), group('bills')]
+  const cats = [
+    { category_group_id: 'cards', linked_account_id: 'acct-1' },
+    { category_group_id: 'bills', linked_account_id: null },
+  ]
+
+  it('drops a group whose every category is a card envelope', () => {
+    expect(withoutCardOnlyGroups(groups, cats)?.map((g) => g.id)).toEqual(['bills'])
+  })
+
+  it('keeps a group that still has an ordinary category', () => {
+    const mixed = [...cats, { category_group_id: 'cards', linked_account_id: null }]
+    expect(withoutCardOnlyGroups(groups, mixed)?.map((g) => g.id)).toEqual(['cards', 'bills'])
+  })
+
+  it('keeps an empty group — a new group needs its header to drop into', () => {
+    expect(withoutCardOnlyGroups([group('fresh')], [])?.map((g) => g.id)).toEqual(['fresh'])
+  })
+
+  it('returns the very same array when nothing is dropped', () => {
+    // BudgetTable's reorder gate is `visibleGroups === groups`; a new array
+    // with identical contents turns dragging off with nothing to explain it.
+    const untouched = [group('bills')]
+    expect(withoutCardOnlyGroups(untouched, cats)).toBe(untouched)
+  })
+
+  it('passes undefined through', () => {
+    expect(withoutCardOnlyGroups(undefined, cats)).toBeUndefined()
+  })
+
+  it('treats a category with no link field at all as an ordinary one', () => {
+    // A strict `!== null` reads a missing key as *linked* and hides the
+    // whole group; the matching `=== null` in renderableCategories drops
+    // every category. One predicate, so the two cannot disagree.
+    const noField: { category_group_id: string; linked_account_id?: string | null }[] = [
+      { category_group_id: 'bills' },
+    ]
+    expect(withoutCardOnlyGroups(groups, noField)?.map((g) => g.id)).toEqual(['cards', 'bills'])
+    expect(renderableCategories(noField)).toHaveLength(1)
+  })
+})
+
+describe('no surface offers a card set-aside envelope', () => {
+  // `categoryPickers.ts` records a six-way consolidation onto the served
+  // `is_assignable` / `is_categorizable` verdicts. These call sites were
+  // missed by it or written after it, and each one offered every card's
+  // envelope: the register's own dropdown among them, where filing a row
+  // hid the money from the budget completely. Read as source, so a seventh
+  // spelling cannot quietly appear.
+  const readsServedVerdict: [string, RegExp][] = [
+    ['../transactions/TransactionRow/TransactionRow.tsx', /c\.is_categorizable/],
+    ['../transactions/SplitTransactionEditor/SplitTransactionEditor.tsx', /c\.is_categorizable/],
+    ['../guide/wishlist/ProjectForm.tsx', /c\.is_assignable/],
+    ['../guide/wishlist/WishForm.tsx', /c\.is_assignable/],
+  ]
+  for (const [file, verdict] of readsServedVerdict) {
+    it(`${file} filters on the server's verdict`, () => {
+      expect(readFileSync(resolve(__dirname, file), 'utf8')).toMatch(verdict)
+    })
+  }
+
+  const readsTheHelper = [
+    'BudgetFilterModal/BudgetFilterModal.tsx',
+    'BudgetViewModal/BudgetViewModal.tsx',
+    '../reports/ReportFilters/categoryOptions.ts',
+    '../imports/ImportReviewDialog/ImportReviewDialog.tsx',
+  ]
+  for (const file of readsTheHelper) {
+    it(`${file} filters through renderableCategories`, () => {
+      const source = readFileSync(resolve(__dirname, file), 'utf8')
+      expect(source).toMatch(/renderableCategories\(/)
+      expect(source).not.toMatch(/linked_account_id\s*[=!]==?\s*null/)
+    })
+  }
 })
 
 describe('every budget surface draws groups through the one helper', () => {

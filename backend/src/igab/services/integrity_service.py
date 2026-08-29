@@ -27,7 +27,7 @@ from igab.db.models import (
 )
 from igab.domain.splits import split_balances, split_sum
 from igab.domain.transfers import leg_may_carry_category
-from igab.repositories.category_filters import UNDER_DELETED_GROUP
+from igab.repositories.category_filters import LINKED_TO_CARD, UNDER_DELETED_GROUP
 from igab.utils.clock import today_utc
 
 STALE_PENDING_DAYS = 21
@@ -61,6 +61,7 @@ class IntegrityService:
             await self._check_orphaned_matches(budget_id),
             await self._check_orphaned_categories(budget_id),
             await self._check_stale_pendings(budget_id),
+            await self._check_card_envelope_rows(budget_id),
         ]
         return IntegrityReport(all_passed=all(c.passed for c in checks), checks=checks)
 
@@ -357,6 +358,36 @@ class IntegrityService:
         return self._result(
             "stale_pendings",
             f"No pending transactions older than {STALE_PENDING_DAYS} days",
+            problems,
+        )
+
+    async def _check_card_envelope_rows(self, budget_id: uuid.UUID) -> IntegrityCheck:
+        """Rows filed to a card's set-aside envelope — money that vanished.
+
+        The budget summary computes that envelope's balance from card
+        arithmetic and overwrites its transaction sums, so such a row shows
+        nowhere: not in the envelope, not in Ready to Assign, not as
+        overspending. `require_not_card_envelope` makes new ones impossible;
+        this finds any the register's old category dropdown let through,
+        because nothing else in the app would ever mention them.
+        """
+        result = await self.session.execute(
+            select(Transaction.id, Category.name)
+            .join(Category, Category.id == Transaction.category_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.is_deleted == False,  # noqa: E712
+                LINKED_TO_CARD,
+            )
+        )
+        problems = [
+            f"transaction {tid} is filed to card payment envelope '{name}' — "
+            "recategorize it; the budget cannot show it"
+            for tid, name in result
+        ]
+        return self._result(
+            "card_envelope_rows",
+            "No transactions are filed to a credit card's payment envelope",
             problems,
         )
 

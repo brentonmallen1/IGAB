@@ -348,7 +348,12 @@ export const TransactionRow = memo(function TransactionRow({
   )
 
   const categoryOptions = useMemo<ComboboxOption[]>(
-    () => categories.map((c) => {
+    // `is_categorizable`, like every other category picker — the server
+    // decides what a leg may be filed to. Offering the raw list put each
+    // card's set-aside envelope in the register's most-used control, under
+    // a blank group heading (its group is hidden, so no name resolved), and
+    // filing a row there hid the money from the budget entirely.
+    () => categories.filter((c) => c.is_categorizable).map((c) => {
       const group = categoryGroups.find((g) => g.id === c.category_group_id)
       return { id: c.id, label: c.name, group: group?.name ?? '' }
     }),

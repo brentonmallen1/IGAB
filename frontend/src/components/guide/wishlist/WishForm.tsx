@@ -47,8 +47,9 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
 
   const { data: categories } = useCategories(budgetId)
   const { data: groups } = useCategoryGroups(budgetId)
+  // `is_assignable` — see ProjectForm: a wish names a category to save into.
   const sections = useMemo(
-    () => groupedCategorySections(categories ?? [], groups ?? []),
+    () => groupedCategorySections((categories ?? []).filter((c) => c.is_assignable), groups ?? []),
     [categories, groups]
   )
   const create = useCreateWish(budgetId)
