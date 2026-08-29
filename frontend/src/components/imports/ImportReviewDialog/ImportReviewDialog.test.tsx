@@ -99,6 +99,7 @@ function summary(over: Partial<YnabImportResult> = {}): YnabImportResult {
     ],
     credit_card_payment_assignments_skipped: 0,
     credit_card_payment_reserves_skipped: '0',
+    tracking_account_categories_stripped: 0,
     parity: null,
     errors: [],
     ...over,

@@ -119,6 +119,12 @@ class ImportResult:
     #: differs from YNAB's by exactly that.
     credit_card_payment_assignments_skipped: int = 0
     credit_card_payment_reserves_skipped: Decimal = Decimal("0")
+    #: Register rows on tracking accounts whose export line named a category,
+    #: imported without one. Off-budget activity is net-worth movement — a
+    #: category here would move envelopes (and Ready to Assign) with no
+    #: on-budget event behind it. The rule is domain/transfers.py's; bulk
+    #: insert bypasses the service, so it is applied at the row-build site.
+    tracking_account_categories_stripped: int = 0
     #: How the imported budget compares with the export's own figures — set
     #: by the import route after the import, None if the check could not run.
     parity: Any = None
@@ -496,10 +502,13 @@ class YNABImporter:
                             and leg.category
                             and not is_credit_card_payments_group(leg.category_group)
                         ):
-                            cat = await self._get_or_create_category(
-                                leg.category_group, leg.category, result
-                            )
-                            leg_category_id = cat.id
+                            if account.on_budget:
+                                cat = await self._get_or_create_category(
+                                    leg.category_group, leg.category, result
+                                )
+                                leg_category_id = cat.id
+                            else:
+                                result.tracking_account_categories_stripped += 1
                         children.append(
                             {
                                 "id": uuid.uuid4(),
@@ -545,10 +554,13 @@ class YNABImporter:
                     and txn.category
                     and not is_credit_card_payments_group(txn.category_group)
                 ):
-                    cat = await self._get_or_create_category(
-                        txn.category_group, txn.category, result
-                    )
-                    category_id = cat.id
+                    if account.on_budget:
+                        cat = await self._get_or_create_category(
+                            txn.category_group, txn.category, result
+                        )
+                        category_id = cat.id
+                    else:
+                        result.tracking_account_categories_stripped += 1
 
                 row = {
                     "id": uuid.uuid4(),

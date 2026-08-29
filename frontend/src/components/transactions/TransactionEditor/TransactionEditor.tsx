@@ -1,4 +1,5 @@
 import { groupedCategorySections } from '../../../utils/categoryPickers'
+import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw, Lock } from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
@@ -286,6 +287,10 @@ export function TransactionEditor({
   // Off-budget transfers are real spending (YNAB semantics) and may carry a
   // category on the on-budget side
   const transferIsOffBudget = isTransfer && !!transferTarget && !transferTarget.on_budget
+  // One rule (utils/rowCategoryRule): a category may not sit on an
+  // off-budget row, so the field is not offered where the save would refuse.
+  const rowAccount = accounts.find((a) => a.id === accountId)
+  const canCategorize = rowMayCarryCategory(rowAccount?.on_budget ?? true)
 
   function handlePayeeSelect(p: Payee) {
     setPayeeQuery(p.name)
@@ -401,7 +406,9 @@ export function TransactionEditor({
       const splitList = splits.map((s) => ({
         id: s.serverId,
         amount: (expressionToCents(s.amount) / 100) * sign,
-        category_id: s.categoryId ?? undefined,
+        // Same guard as the plain payload: lines picked before switching to
+        // a tracking account must not reach a save the server refuses.
+        category_id: canCategorize ? (s.categoryId ?? undefined) : undefined,
         memo: s.memo || undefined,
       }))
       const proceed = await confirmFutureOverspend(
@@ -477,7 +484,10 @@ export function TransactionEditor({
         : {
             payee_id: selectedPayeeId || undefined,
             payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
-            category_id: categoryId || undefined,
+            // Guarded even though the field is hidden: a category picked
+            // before switching to a tracking account must not reach a save
+            // the server will refuse.
+            category_id: canCategorize ? categoryId || undefined : undefined,
           }),
     }
 
@@ -987,16 +997,18 @@ export function TransactionEditor({
               <div className="txn-editor__splits">
                 {splits.map((s) => (
                   <div key={s.tempId} className="txn-editor__split-row">
-                    <CategoryCombobox
-                      className="txn-editor__split-category"
-                      value={s.categoryId}
-                      onChange={(id) => updateSplit(s.tempId, { categoryId: id })}
-                      groups={groupedCategories}
-                      allowNone
-                      noneLabel="Category…"
-                      sheetTitle="Split category"
-                      aria-label="Split category"
-                    />
+                    {canCategorize && (
+                      <CategoryCombobox
+                        className="txn-editor__split-category"
+                        value={s.categoryId}
+                        onChange={(id) => updateSplit(s.tempId, { categoryId: id })}
+                        groups={groupedCategories}
+                        allowNone
+                        noneLabel="Category…"
+                        sheetTitle="Split category"
+                        aria-label="Split category"
+                      />
+                    )}
                     <AmountInput
                       className="txn-editor__input txn-editor__split-amount"
                       value={s.amount}
@@ -1027,7 +1039,7 @@ export function TransactionEditor({
                 </div>
               </div>
             </div>
-          ) : (
+          ) : canCategorize ? (
             <div className="txn-editor__field">
               <label className="txn-editor__label">
                 Category
@@ -1069,7 +1081,7 @@ export function TransactionEditor({
                 aria-label="Category"
               />
             </div>
-          )}
+          ) : null}
 
           <div className="txn-editor__field">
             <label className="txn-editor__label">Memo</label>

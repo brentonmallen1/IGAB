@@ -502,6 +502,14 @@ class TransactionRepository(BaseRepository[Transaction]):
 
         Category activity sums LEAF rows (plain transactions + split children;
         split parents carry no category) and only POSTED amounts.
+
+        ON_BUDGET_ACCOUNT keeps the category term over the same accounts as
+        the balance term it is subtracted from: a categorized row on a
+        tracking account moved envelopes (and, via the floor, Ready to
+        Assign) while its account contributed nothing to any balance. Every
+        legitimately categorized row is on-budget already — the transfer rule
+        guarantees it — so this is a no-op on correct data and a repair on a
+        stray row.
         """
         yr = cast(func.extract("year", Transaction.date), Integer)
         mo = cast(func.extract("month", Transaction.date), Integer)
@@ -516,6 +524,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 NOT_DELETED,
                 LEAF,
                 POSTED,
+                ON_BUDGET_ACCOUNT,
                 Transaction.date <= end_date,
             )
             .group_by(yr, mo)
@@ -642,6 +651,10 @@ class TransactionRepository(BaseRepository[Transaction]):
 
         end_date=None returns all months, including future-dated activity —
         the snapshot rebuild needs the full timeline.
+
+        ON_BUDGET_ACCOUNT for the same reason as `sum_by_category_by_month`:
+        the two must stay predicate-identical, and both must span the same
+        accounts as the balance term.
         """
         if not category_ids:
             return {}
@@ -659,6 +672,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 NOT_DELETED,
                 LEAF,
                 POSTED,
+                ON_BUDGET_ACCOUNT,
             )
             .group_by(Transaction.category_id, yr, mo)
         )
@@ -705,6 +719,25 @@ class TransactionRepository(BaseRepository[Transaction]):
                 UNPAIRED_TRANSFER_LEG,
             )
             .order_by(Transaction.date, Transaction.created_at)
+        )
+        return list((await self.session.execute(q)).scalars().all())
+
+    async def list_categorized_tracking_rows(self, budget_id: uuid.UUID) -> list[Transaction]:
+        """Leaf rows on off-budget accounts that carry a category — every one
+        a rule violation (domain/transfers.py: a category may sit only on an
+        on-budget row). The activity sums exclude them, so they move no money;
+        they are listed for the hygiene repair that strips them. Same
+        predicate as the hygiene count, one rule for both."""
+        q = (
+            self.with_computed(select(Transaction))
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                LEAF,
+                Transaction.category_id.isnot(None),
+                ~ON_BUDGET_ACCOUNT,
+            )
+            .order_by(Transaction.date, Transaction.created_at, Transaction.id)
         )
         return list((await self.session.execute(q)).scalars().all())
 

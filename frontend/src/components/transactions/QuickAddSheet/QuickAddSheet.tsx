@@ -1,4 +1,5 @@
 import { flatCategoryOptions } from '../../../utils/categoryPickers'
+import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { AlertTriangle, Camera, ChevronRight, FileText, Images, MessageSquareText, Plus, Sparkles, Split, StickyNote, Trash2, X } from 'lucide-react'
@@ -190,6 +191,11 @@ export function QuickAddSheet() {
     ? (categories.find((c) => c.id === categoryId)?.name ?? '')
     : ''
   const accountName = accountId ? (accounts.find((a) => a.id === accountId)?.name ?? '') : ''
+  // One rule (utils/rowCategoryRule): tracking rows carry no category, so
+  // neither the field nor payee-memory prefill is offered for them.
+  const canCategorize = rowMayCarryCategory(
+    accountId ? (accounts.find((a) => a.id === accountId)?.on_budget ?? true) : true
+  )
 
   function handlePayeePicked(id: string | null) {
     setPayeeId(id)
@@ -199,7 +205,7 @@ export function QuickAddSheet() {
       const defaultCategory =
         payees.find((p) => p.id === id)?.default_category_id ??
         nearbyPayees.find((p) => p.id === id)?.default_category_id
-      if (defaultCategory && !categoryId) {
+      if (defaultCategory && !categoryId && canCategorize) {
         setCategoryId(defaultCategory)
       }
     }
@@ -353,7 +359,7 @@ export function QuickAddSheet() {
     const splitList = isSplit
       ? splits.map((sp) => ({
           amount: (expressionToCents(sp.amount) / 100) * sign,
-          category_id: sp.categoryId ?? undefined,
+          category_id: canCategorize ? (sp.categoryId ?? undefined) : undefined,
           memo: sp.memo || undefined,
         }))
       : null
@@ -376,7 +382,7 @@ export function QuickAddSheet() {
         amount: signed,
         payee_id: payeeId ?? undefined,
         // A split parent carries no category of its own; the legs do.
-        category_id: splitList ? undefined : (categoryId ?? undefined),
+        category_id: splitList || !canCategorize ? undefined : (categoryId ?? undefined),
         ...(splitList ? { splits: splitList } : {}),
         memo: memo || undefined,
         cleared: 'uncleared',
@@ -585,18 +591,20 @@ export function QuickAddSheet() {
                     : ''
                   return (
                     <div key={sp.tempId} className="quick-add__split-leg">
-                      <button
-                        className="quick-add__split-category"
-                        onClick={() => setCategorySheetFor(sp.tempId)}
-                        aria-label={`Split ${i + 1} category`}
-                      >
-                        <span
-                          className={`quick-add__row-value ${legName ? '' : 'quick-add__row-value--empty'}`}
+                      {canCategorize && (
+                        <button
+                          className="quick-add__split-category"
+                          onClick={() => setCategorySheetFor(sp.tempId)}
+                          aria-label={`Split ${i + 1} category`}
                         >
-                          {legName || 'Choose category'}
-                        </span>
-                        <ChevronRight size={15} className="quick-add__row-chevron" />
-                      </button>
+                          <span
+                            className={`quick-add__row-value ${legName ? '' : 'quick-add__row-value--empty'}`}
+                          >
+                            {legName || 'Choose category'}
+                          </span>
+                          <ChevronRight size={15} className="quick-add__row-chevron" />
+                        </button>
+                      )}
                       <AmountInput
                         className="quick-add__split-amount"
                         value={sp.amount}
@@ -635,7 +643,7 @@ export function QuickAddSheet() {
                   </span>
                 </div>
               </div>
-            ) : (
+            ) : canCategorize ? (
               <div className="quick-add__row quick-add__row--category">
                 <span className="quick-add__row-label">Category</span>
                 <button
@@ -659,7 +667,7 @@ export function QuickAddSheet() {
                   <span className="sr-only">Split across categories</span>
                 </button>
               </div>
-            )}
+            ) : null}
 
             <button className="quick-add__row" onClick={() => setAccountSheetOpen(true)}>
               <span className="quick-add__row-label">Account</span>
@@ -883,7 +891,8 @@ export function QuickAddSheet() {
           const payee = await createPayee.mutateAsync(name)
           // Mirror handlePayeePicked's memory prefill for brand-new payees
           setPayeeId(payee.id)
-          if (payee.default_category_id && !categoryId) setCategoryId(payee.default_category_id)
+          if (payee.default_category_id && !categoryId && canCategorize)
+            setCategoryId(payee.default_category_id)
           return { id: payee.id, label: payee.name }
         }}
         placeholder="Search or create payee…"

@@ -344,3 +344,161 @@ class TestTheServedFlagIsTheOnlyRule:
         assert filtered == 3, "the filter shows the pending row alongside the two posted ones"
         assert review["uncategorized"] == 2, "the badge counts only what can be acted on"
         assert posted_only == review["uncategorized"], "and they agree once pending is excluded"
+
+
+class TestACategoryMayNotLandOnATrackingAccount:
+    """The write half of the rule (domain/transfers.py, general clause).
+
+    The read half — the activity sums exclude off-budget rows — is pinned in
+    test_tba_terms.py. Here: every service path that could put a category on
+    a tracking row refuses or declines, and the hygiene repair cleans up the
+    rows that predate the rule.
+    """
+
+    async def _setup(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking")
+        brokerage = await create_account(
+            db_session, budget, "Brokerage", account_type="investment", on_budget=False
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        return services, budget, checking, brokerage, groceries
+
+    async def test_create_with_a_category_is_refused(self, db_session):
+        import pytest
+
+        from igab.domain.exceptions import InvariantViolation
+
+        services, budget, _, brokerage, groceries = await self._setup(db_session)
+        with pytest.raises(InvariantViolation, match="tracking account"):
+            await services.transactions.create(
+                budget.id,
+                SvcTxnCreate(
+                    account_id=brokerage.id,
+                    date=TODAY,
+                    amount=Decimal("-50.00"),
+                    category_id=groceries.id,
+                ),
+            )
+
+    async def test_update_cannot_add_one_either(self, db_session):
+        import pytest
+
+        from igab.domain.exceptions import InvariantViolation
+
+        services, budget, _, brokerage, groceries = await self._setup(db_session)
+        row = await create_transaction(db_session, budget, brokerage, "-50.00", OLD)
+        with pytest.raises(InvariantViolation, match="tracking account"):
+            await services.transactions.update(
+                budget.id, row.id, TransactionUpdate(category_id=groceries.id)
+            )
+
+    async def test_split_lines_are_covered_too(self, db_session):
+        import pytest
+
+        from igab.domain.exceptions import InvariantViolation
+
+        services, budget, _, brokerage, groceries = await self._setup(db_session)
+        parent = await create_transaction(
+            db_session, budget, brokerage, "-100.00", OLD, is_split=True
+        )
+        with pytest.raises(InvariantViolation, match="tracking account"):
+            await services.transactions.replace_splits(
+                budget.id,
+                parent.id,
+                [
+                    SplitSpec(amount=Decimal("-60.00"), category_id=groceries.id),
+                    SplitSpec(amount=Decimal("-40.00"), category_id=None),
+                ],
+            )
+
+    async def test_auto_categorize_declines_rather_than_errors(self, db_session):
+        """A synced tracking row must not inherit the payee's checking-side
+        category — the recurring creator of these rows in the wild — and a
+        skip is the right shape for a background sync, not a 422."""
+        services, budget, checking, brokerage, groceries = await self._setup(db_session)
+        payee = await create_payee(db_session, budget, "Vanguard")
+        await create_transaction(
+            db_session, budget, checking, "-200.00", OLD, category=groceries, payee=payee
+        )
+        await db_session.flush()
+
+        row = await services.transactions.create(
+            budget.id,
+            SvcTxnCreate(
+                account_id=brokerage.id,
+                date=TODAY,
+                amount=Decimal("-200.00"),
+                payee_id=payee.id,
+            ),
+        )
+        assert row.category_id is None, "payee memory must not reach a tracking row"
+
+        # Same payee on checking still auto-categorizes — the rule is about
+        # the account, not the payee.
+        on_budget_row = await services.transactions.create(
+            budget.id,
+            SvcTxnCreate(
+                account_id=checking.id,
+                date=TODAY,
+                amount=Decimal("-200.00"),
+                payee_id=payee.id,
+            ),
+        )
+        assert on_budget_row.category_id == groceries.id
+
+    async def test_hygiene_finds_and_repair_strips_and_undo_restores(self, db_session):
+        from sqlalchemy import select
+
+        from igab.db.models import ChangeLog
+        from igab.services.account_hygiene import AccountHygieneService
+        from igab.services.undo_service import UndoService
+
+        services, budget, _, brokerage, groceries = await self._setup(db_session)
+        # Pre-rule rows, written the way an import writes them.
+        bad1 = await create_transaction(
+            db_session, budget, brokerage, "-450.00", OLD, category=groceries
+        )
+        bad2 = await create_transaction(
+            db_session, budget, brokerage, "-50.00", OLD, category=groceries
+        )
+        await db_session.flush()
+
+        report = await AccountHygieneService(db_session).run(budget.id)
+        finding = next(f for f in report.findings if f.kind == "categorized_tracking_rows")
+        assert finding.transaction_count == 2
+
+        result = await services.transactions.repair_tracking_categories(budget.id)
+        assert result == {"stripped": 2}
+        await db_session.flush()
+        db_session.expunge_all()
+        assert (await services.transaction_repo.get_or_raise(bad1.id)).category_id is None
+        assert (await services.transaction_repo.get_or_raise(bad2.id)).category_id is None
+
+        # Clean now: the finding is gone and a second run strips nothing.
+        report = await AccountHygieneService(db_session).run(budget.id)
+        assert all(f.kind != "categorized_tracking_rows" for f in report.findings)
+        assert await services.transactions.repair_tracking_categories(budget.id) == {
+            "stripped": 0
+        }
+
+        # One batch, one undo — both categories come back.
+        changes = list(
+            (
+                await db_session.execute(
+                    select(ChangeLog)
+                    .where(ChangeLog.budget_id == budget.id, ChangeLog.entity_type == "transaction")
+                    .order_by(ChangeLog.seq)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len({c.batch_id for c in changes}) == 1
+        await UndoService(db_session).undo_batch(budget.id, changes[0].batch_id)
+        db_session.expunge_all()
+        assert (await services.transaction_repo.get_or_raise(bad1.id)).category_id == groceries.id
+        assert (await services.transaction_repo.get_or_raise(bad2.id)).category_id == groceries.id

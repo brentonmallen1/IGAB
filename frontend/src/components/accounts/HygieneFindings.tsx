@@ -1,7 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ChevronRight, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useRepairTransfers, type HygieneFinding } from '../../api/accounts'
+import {
+  useRepairTrackingCategories,
+  useRepairTransfers,
+  type HygieneFinding,
+} from '../../api/accounts'
 import { apiErrorMessage } from '../../api/client'
 import './HygieneFindings.css'
 
@@ -32,6 +36,21 @@ export function HygieneFindings({
 }) {
   const navigate = useNavigate()
   const repair = useRepairTransfers(budgetId)
+  const stripCategories = useRepairTrackingCategories(budgetId)
+
+  async function repairTrackingCategories() {
+    try {
+      const r = await stripCategories.mutateAsync()
+      toast.success(
+        r.stripped
+          ? `Removed the category from ${r.stripped} transaction${r.stripped === 1 ? '' : 's'} — undo restores them.`
+          : 'Nothing to remove — the budget is already clean.',
+        { duration: 8000 }
+      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not remove the categories'))
+    }
+  }
 
   async function repairTransfers() {
     try {
@@ -73,6 +92,17 @@ export function HygieneFindings({
             <p className="hygiene__detail">{f.detail}</p>
             <p className="hygiene__action">
               {f.action}
+              {f.kind === 'categorized_tracking_rows' && (
+                <button
+                  type="button"
+                  className="hygiene__link"
+                  onClick={repairTrackingCategories}
+                  disabled={stripCategories.isPending}
+                >
+                  {stripCategories.isPending ? 'Removing…' : 'Remove the categories'}
+                  <ChevronRight size={12} />
+                </button>
+              )}
               {f.kind === 'unpaired_transfer_legs' && (
                 <button
                   type="button"

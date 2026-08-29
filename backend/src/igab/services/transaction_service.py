@@ -215,14 +215,27 @@ class TransactionService:
         if data.transfer_account_id:
             return await self._create_transfer(budget_id, data, record=record)
 
+        # A plain row is a leg with no partner — the one category rule in
+        # domain/transfers.py decides it. Off-budget rows are net-worth
+        # movement: a category here moved envelopes (and, via the floor,
+        # Ready to Assign) with no on-budget event behind it.
+        if data.category_id is not None and not leg_may_carry_category(account.on_budget):
+            raise InvariantViolation(
+                "Transactions on a tracking account cannot carry a category — "
+                "off-budget activity is net-worth movement, not budget spending"
+            )
+
         # Resolve or create payee
         payee = await self._resolve_payee(budget_id, data.payee_id, data.payee_name)
         payee_id = payee.id if payee else None
 
         # Auto-categorization: use the most recent category for this payee.
-        # Falls back to default_category_id for new payees with no transaction history.
+        # Falls back to default_category_id for new payees with no transaction
+        # history. Never offered to an off-budget row: a synced brokerage or
+        # mortgage row would otherwise inherit whatever category its payee
+        # last used on the checking side, recurring every sync.
         category_id = data.category_id
-        if payee and not category_id and data.auto_categorize:
+        if payee and not category_id and data.auto_categorize and account.on_budget:
             category_id = await self.transaction_repo.get_most_recent_category_for_payee(
                 budget_id, payee.id
             )
@@ -368,6 +381,16 @@ class TransactionService:
         the one. Records every step; callers own the batch.
         """
         require_split_balances(parent.amount, [s.amount for s in specs])
+        # Children share the parent's account, and line updates write through
+        # the repo below (not service.update) — so the category rule is
+        # checked once here for the whole split.
+        if any(spec.category_id is not None for spec in specs):
+            parent_account = await self.account_repo.get_or_raise(parent.account_id)
+            if not leg_may_carry_category(parent_account.on_budget):
+                raise InvariantViolation(
+                    "Transactions on a tracking account cannot carry a category — "
+                    "off-budget activity is net-worth movement, not budget spending"
+                )
         existing_by_id = {child.id: child for child in existing}
         for spec in specs:
             if spec.id is not None and spec.id not in existing_by_id:
@@ -494,6 +517,16 @@ class TransactionService:
             if changes.get("category_id") is not None:
                 raise InvariantViolation("A split transaction's categories live on its lines")
 
+        # Plain rows: same rule as create — a category may not land on an
+        # off-budget account (bulk-categorize funnels through here too).
+        if changes.get("category_id") is not None and not txn.transfer_id:
+            own_account = await self.account_repo.get_or_raise(txn.account_id)
+            if not leg_may_carry_category(own_account.on_budget):
+                raise InvariantViolation(
+                    "Transactions on a tracking account cannot carry a category — "
+                    "off-budget activity is net-worth movement, not budget spending"
+                )
+
         # Transfers: guard the pair as a unit.
         partner: Transaction | None = None
         if txn.transfer_id:
@@ -510,8 +543,10 @@ class TransactionService:
                 partner_account = (
                     await self.account_repo.get(partner.account_id) if partner is not None else None
                 )
-                partner_off_budget = partner_account is not None and not partner_account.on_budget
-                if not (own_account.on_budget and partner_off_budget):
+                # A missing partner reads as on-budget: refuse rather than
+                # categorize half a link whose other side cannot be checked.
+                partner_on_budget = partner_account.on_budget if partner_account else True
+                if not leg_may_carry_category(own_account.on_budget, partner_on_budget):
                     raise InvariantViolation(
                         "Transfers can only be categorized on the on-budget side "
                         "of an off-budget transfer"
@@ -774,6 +809,28 @@ class TransactionService:
                 await self._record_txn(source, "create", refresh=False)
                 await self._record_txn(dest, "create")
         return source
+
+    async def repair_tracking_categories(self, budget_id: uuid.UUID) -> dict[str, int]:
+        """Strip the category from rows on off-budget accounts.
+
+        Such rows predate the write-side rule (an import, a sync
+        auto-categorize, an account flipped off budget after the fact). The
+        activity sums already exclude them, so this moves no money — it makes
+        the register stop claiming spending the budget never counted. Each
+        strip is change-logged in one batch, so undo restores all of them.
+        Idempotent: a second run finds nothing.
+
+        Returns {stripped}.
+        """
+        rows = await self.transaction_repo.list_categorized_tracking_rows(budget_id)
+        stripped = 0
+        with self.changes.batch():
+            for row in rows:
+                before = snapshot("transaction", row)
+                updated = await self.transaction_repo.update(row.id, category_id=None)
+                await self._record_txn(updated, "update", before=before)
+                stripped += 1
+        return {"stripped": stripped}
 
     async def repair_transfers(
         self, budget_id: uuid.UUID, *, date_tolerance_days: int = 0

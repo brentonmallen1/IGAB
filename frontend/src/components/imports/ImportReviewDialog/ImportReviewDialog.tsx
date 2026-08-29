@@ -281,6 +281,8 @@ function SummaryStep({ summary }: { summary: YnabImportResult }) {
       `${n(summary.accounts_closed)} account${summary.accounts_closed === 1 ? '' : 's'} imported in full and then closed — every transaction arrived, only the account is hidden from pickers.`,
     summary.credit_card_payment_assignments_skipped > 0 &&
       `${n(summary.credit_card_payment_assignments_skipped)} credit-card payment assignment${summary.credit_card_payment_assignments_skipped === 1 ? '' : 's'} (${formatMoney(reserves)}) left out on purpose: IGAB reserves card debt from the card's own balance, so importing these would reserve it twice.`,
+    summary.tracking_account_categories_stripped > 0 &&
+      `${n(summary.tracking_account_categories_stripped)} row${summary.tracking_account_categories_stripped === 1 ? '' : 's'} on tracking accounts arrived with a category and imported without one — off-budget activity is net-worth movement, not budget spending.`,
     summary.skipped > 0 &&
       `${n(summary.skipped)} rows skipped as duplicates of something already here.`,
     repairable > 0 &&

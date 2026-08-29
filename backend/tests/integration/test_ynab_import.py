@@ -1039,3 +1039,47 @@ async def test_hidden_categories_stay_hidden_and_card_payment_reserves_are_skipp
     # With the 500 of card reserves imported it would have read 1175.
     month = await services.budgets.get_budget_summary(budget.id, jan)
     assert month.to_be_assigned == Decimal("1675.00")
+
+
+async def test_a_tracking_rows_category_is_stripped_and_counted(db_session):
+    """A category on a tracking-account row imports as no category.
+
+    Off-budget activity is net-worth movement (domain/transfers.py); the bulk
+    insert bypasses the service guard, so the rule is applied at the
+    row-build site and the count surfaces in the summary rather than rows
+    silently changing shape.
+    """
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    data = YNABBudget(
+        transactions=[
+            _txn("Brokerage", "Vanguard", "-500.00", group="Savings", category="Index Funds"),
+            _txn("Checking", "Corner Market", "-60.00", group="Everyday", category="Groceries"),
+            _split_txn(
+                "Brokerage",
+                "Vanguard",
+                [
+                    ("-300.00", "Savings", "Index Funds", None),
+                    ("-200.00", None, None, None),
+                ],
+            ),
+        ]
+    )
+    result = await _importer(
+        services,
+        db_session,
+        budget,
+        account_types={"Brokerage": ("investment", False)},
+    ).import_budget(data)
+
+    assert result.tracking_account_categories_stripped == 2
+    rows = await services.transaction_repo.get_for_budget(budget.id)
+    accounts = {a.id: a for a in await services.account_repo.get_all(budget.id)}
+    for row in rows:
+        if not accounts[row.account_id].on_budget:
+            assert row.category_id is None, "tracking rows must import uncategorized"
+    # The on-budget row keeps its category — the rule is about the account.
+    checking_rows = [r for r in rows if accounts[r.account_id].on_budget and not r.is_split]
+    assert any(r.category_id is not None for r in checking_rows)

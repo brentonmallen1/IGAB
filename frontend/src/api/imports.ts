@@ -101,6 +101,9 @@ export interface YnabImportResult {
    *  reserve the same debt twice. The money is what Ready to Assign keeps. */
   credit_card_payment_assignments_skipped: number
   credit_card_payment_reserves_skipped: string
+  /** Register rows on tracking accounts whose export line named a category,
+   *  imported without one — off-budget activity is net-worth movement. */
+  tracking_account_categories_stripped: number
   /** Null when the check could not run. */
   parity: YnabParity | null
   errors: string[]
