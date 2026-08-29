@@ -8,7 +8,7 @@ import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { addMonths } from '../../../utils/dates'
 import { toCents } from '../../../utils/money'
-import { parseAssignmentInput } from '../../../utils/amountExpression'
+import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import type { BudgetMonth, Category, CategoryBalance } from '../../../types'
 import { renderableGroups } from '../budgetGroups'
@@ -47,7 +47,7 @@ const AssignCell = memo(function AssignCell({
 
   function commit() {
     // Expression-aware: "+50" / "*2" adjust the current assignment
-    const amount = value.trim() === '' ? 0 : parseAssignmentInput(value, assigned)
+    const amount = parseAssignmentCommit(value, assigned)
     if (isNaN(amount)) {
       // Unparseable input must never silently write $0 into the budget
       setEditing(false)
