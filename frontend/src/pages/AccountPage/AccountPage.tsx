@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
   CalendarClock,
@@ -57,7 +57,6 @@ export function AccountPage() {
       }, { replace: true })
     }
   }, [highlightId, setSearchParams])
-  const setSelectedAccount = useAppStore((s) => s.setSelectedAccountId)
   const { data: accounts } = useAccounts(budgetId)
 
   const account = accounts?.find((a) => a.id === accountId)
@@ -84,11 +83,6 @@ export function AccountPage() {
   const isReconcilingHere = isReconciling && reconcileAccountId === accountId
   const showReconcileModal = isReconcilingHere && reconcileStatementBalance === null
   const showReconcileBar = isReconcilingHere && reconcileStatementBalance !== null
-
-  useEffect(() => {
-    if (accountId) setSelectedAccount(accountId)
-    return () => setSelectedAccount(null)
-  }, [accountId, setSelectedAccount])
 
   async function handleSync() {
     if (!firstConnection || !account?.simplefin_account_id) return

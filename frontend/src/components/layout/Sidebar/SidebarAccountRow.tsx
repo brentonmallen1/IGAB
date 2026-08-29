@@ -10,6 +10,9 @@ interface Props {
    *  which have no Account to read a classification off, say it too. */
   kind: 'asset' | 'debt'
   onClick: () => void
+  /** This row's page is the one open. Decided by `isRowActive` against the
+   *  URL, never by the row itself — see sidebarGroups. */
+  isActive?: boolean
   /** Liability mode marker (managed / manual); nothing elsewhere. */
   leadingIcon?: ReactNode
   /** Uncategorized count; 0 or absent draws no badge. */
@@ -43,6 +46,7 @@ export function SidebarAccountRow({
   balance,
   kind,
   onClick,
+  isActive = false,
   leadingIcon,
   badgeCount = 0,
   trailing,
@@ -52,9 +56,12 @@ export function SidebarAccountRow({
 
   return (
     <div
-      className="sidebar__account"
+      className={`sidebar__account ${isActive ? 'sidebar__account--active' : ''}`}
       role="button"
       tabIndex={0}
+      // `page` rather than `true`: this row IS the page being shown, which is
+      // what the nav items above already claim via NavLink.
+      aria-current={isActive ? 'page' : undefined}
       title={name}
       onClick={onClick}
       onKeyDown={(e) => {
