@@ -48,21 +48,28 @@
     0 0 12px color-mix(in srgb, var(--color-accent) 40%, transparent);
 
   /* Neon bloom — see the --glow-* block in base.css for the contract.
-     Two layers: a tight core for crispness, a wide falloff for the bloom. The
-     core is what makes it read as lit rather than merely blurred. The falloff
-     radius is var(--glow-fall) rather than a literal so a short consumer (a
-     10px bar track) can narrow every hue at once. */
-  --glow-fall: 16px;
-  --glow-accent: 0 0 3px color-mix(in srgb, var(--color-accent) 50%, transparent),
-    0 0 var(--glow-fall) color-mix(in srgb, var(--color-accent) 50%, transparent);
-  --glow-positive: 0 0 3px color-mix(in srgb, var(--color-positive) 50%, transparent),
-    0 0 var(--glow-fall) color-mix(in srgb, var(--color-positive) 50%, transparent);
-  --glow-negative: 0 0 3px color-mix(in srgb, var(--color-negative) 50%, transparent),
-    0 0 var(--glow-fall) color-mix(in srgb, var(--color-negative) 50%, transparent);
-  --glow-warning: 0 0 3px color-mix(in srgb, var(--color-warning) 50%, transparent),
-    0 0 var(--glow-fall) color-mix(in srgb, var(--color-warning) 50%, transparent);
-  --glow-text-positive: 0 0 7px color-mix(in srgb, var(--color-positive) 45%, transparent);
-  --glow-text-negative: 0 0 7px color-mix(in srgb, var(--color-negative) 45%, transparent);
+     THREE stops with alpha falling off steeply: a near-opaque 1px lit edge, a
+     mid halo, and a wide faint bloom. Two layers at the SAME alpha read as a
+     uniform cloud — that is blur, not glow. Real emission is bright at the
+     source and drops away fast; the 12% outer layer says "the air is lit"
+     without smearing the control. Only the outer radius is a knob and the mid
+     layer is a fraction of it, so a short consumer (a 10px bar track) narrows
+     the whole curve coherently instead of keeping a wide mid layer. */
+  --glow-fall: 14px;
+  --glow-accent: 0 0 1px color-mix(in srgb, var(--color-accent) 70%, transparent),
+    0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-accent) 38%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-accent) 12%, transparent);
+  --glow-positive: 0 0 1px color-mix(in srgb, var(--color-positive) 70%, transparent),
+    0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-positive) 38%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-positive) 12%, transparent);
+  --glow-negative: 0 0 1px color-mix(in srgb, var(--color-negative) 70%, transparent),
+    0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-negative) 38%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-negative) 12%, transparent);
+  --glow-warning: 0 0 1px color-mix(in srgb, var(--color-warning) 70%, transparent),
+    0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-warning) 38%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-warning) 12%, transparent);
+  --glow-text-positive: 0 0 6px color-mix(in srgb, var(--color-positive) 30%, transparent);
+  --glow-text-negative: 0 0 6px color-mix(in srgb, var(--color-negative) 30%, transparent);
 
   /* Chrome */
   --sidebar-bg: #16141c;
@@ -147,17 +154,21 @@
      on #f1ece4 reads as a smudge; a tight one reads as a halo of coloured
      light. The sidebar stays dark in this variant, so its update dot and the
      add button still bloom against a dark ground. */
-  --glow-fall: 9px;
-  --glow-accent: 0 0 2px color-mix(in srgb, var(--color-accent) 28%, transparent),
-    0 0 var(--glow-fall) color-mix(in srgb, var(--color-accent) 28%, transparent);
-  --glow-positive: 0 0 2px color-mix(in srgb, var(--color-positive) 28%, transparent),
-    0 0 var(--glow-fall) color-mix(in srgb, var(--color-positive) 28%, transparent);
-  --glow-negative: 0 0 2px color-mix(in srgb, var(--color-negative) 28%, transparent),
-    0 0 var(--glow-fall) color-mix(in srgb, var(--color-negative) 28%, transparent);
-  --glow-warning: 0 0 2px color-mix(in srgb, var(--color-warning) 28%, transparent),
-    0 0 var(--glow-fall) color-mix(in srgb, var(--color-warning) 28%, transparent);
-  --glow-text-positive: 0 0 4px color-mix(in srgb, var(--color-positive) 28%, transparent);
-  --glow-text-negative: 0 0 4px color-mix(in srgb, var(--color-negative) 28%, transparent);
+  --glow-fall: 8px;
+  --glow-accent: 0 0 1px color-mix(in srgb, var(--color-accent) 42%, transparent),
+    0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-accent) 22%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-accent) 8%, transparent);
+  --glow-positive: 0 0 1px color-mix(in srgb, var(--color-positive) 42%, transparent),
+    0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-positive) 22%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-positive) 8%, transparent);
+  --glow-negative: 0 0 1px color-mix(in srgb, var(--color-negative) 42%, transparent),
+    0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-negative) 22%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-negative) 8%, transparent);
+  --glow-warning: 0 0 1px color-mix(in srgb, var(--color-warning) 42%, transparent),
+    0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-warning) 22%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-warning) 8%, transparent);
+  --glow-text-positive: 0 0 4px color-mix(in srgb, var(--color-positive) 18%, transparent);
+  --glow-text-negative: 0 0 4px color-mix(in srgb, var(--color-negative) 18%, transparent);
 
   /* Chrome — sidebar stays dark */
   --sidebar-bg: #1a1820;
