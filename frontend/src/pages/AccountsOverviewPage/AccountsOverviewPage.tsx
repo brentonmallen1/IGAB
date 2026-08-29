@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { AccountHygienePanel } from '../../components/accounts/AccountHygienePanel'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, CloudOff, Plus, Pencil, Trash2, Eye, EyeOff } from 'lucide-react'
+import { RefreshCw, CloudOff, Plus, Pencil, Trash2, Eye, EyeOff, ArchiveRestore } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAccounts, useDeleteAccount } from '../../api/accounts'
+import { useAccounts, useDeleteAccount, useUpdateAccount } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
 import { confirmAccountDeletion } from '../../utils/confirmAccountDeletion'
+import { confirmAsync } from '../../stores/confirmStore'
 import { useAccountTypes } from '../../api/accountTypes'
 import { accountTypeLabel } from '../../constants/accountTypes'
 import {
@@ -49,9 +50,17 @@ interface AccountRowProps {
   onSyncClick: (e: React.MouseEvent) => void
   onEdit: (e: React.MouseEvent) => void
   onDelete: (e: React.MouseEvent) => void
+  onReopen: (e: React.MouseEvent) => void
 }
 
-function AccountRow({ account, isSyncing, onSyncClick, onEdit, onDelete }: AccountRowProps) {
+function AccountRow({
+  account,
+  isSyncing,
+  onSyncClick,
+  onEdit,
+  onDelete,
+  onReopen,
+}: AccountRowProps) {
   const { formatMoney, formatDate } = useFormatters()
   const navigate = useNavigate()
   const state = getSyncState(account, isSyncing)
@@ -100,6 +109,18 @@ function AccountRow({ account, isSyncing, onSyncClick, onEdit, onDelete }: Accou
 
       <div className="accounts-overview__row-right">
         <div className="accounts-overview__row-actions">
+          {/* Closed accounts are only visible behind "Show closed"; the way
+              back should not require opening the settings modal to find it. */}
+          {account.is_closed && (
+            <button
+              className="accounts-overview__action-btn"
+              onClick={onReopen}
+              title="Reopen account"
+              aria-label="Reopen account"
+            >
+              <ArchiveRestore size={13} />
+            </button>
+          )}
           <button
             className="accounts-overview__action-btn"
             onClick={onEdit}
@@ -142,9 +163,15 @@ export function AccountsOverviewPage() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
 
-  const { data: accounts } = useAccounts(budgetId, { includeClosed: showClosed })
+  // Always fetch closed accounts and filter here. Fetching with
+  // `includeClosed: showClosed` made the toggle unreachable: with it off the
+  // list could not contain a closed account, so `hasClosedAccounts` was
+  // always false and the only control that could turn it on never rendered.
+  const { data: allAccounts } = useAccounts(budgetId, { includeClosed: true })
+  const accounts = showClosed ? allAccounts : allAccounts?.filter((a) => !a.is_closed)
   const { data: typeRows } = useAccountTypes(budgetId)
   const deleteAccount = useDeleteAccount(budgetId ?? '')
+  const updateAccount = useUpdateAccount(budgetId ?? '')
   const { data: liabilities = [] } = useLiabilities(budgetId)
 
   const { data: connections = [] } = useSimpleFINConnections()
@@ -216,6 +243,22 @@ export function AccountsOverviewPage() {
     setEditingAccountId(account.id)
   }
 
+  async function handleReopen(account: Account, e: React.MouseEvent) {
+    e.stopPropagation()
+    const ok = await confirmAsync({
+      title: `Reopen ${account.name}?`,
+      message: 'It returns to the sidebar and to every account picker.',
+      confirmLabel: 'Reopen account',
+    })
+    if (!ok) return
+    try {
+      await updateAccount.mutateAsync({ id: account.id, is_closed: false })
+      toast.success(`Reopened ${account.name}`)
+    } catch {
+      toast.error(`Failed to reopen ${account.name}`)
+    }
+  }
+
   async function handleDelete(account: Account, e: React.MouseEvent) {
     e.stopPropagation()
     const choice = await confirmAccountDeletion(account, liabilities)
@@ -248,7 +291,7 @@ export function AccountsOverviewPage() {
     { key: '__assets', label: 'Tracking — Assets', accounts: offBudgetAssets },
     { key: '__liabilities', label: 'Tracking — Liabilities', accounts: offBudgetLiabilityAccounts },
   ]
-  const hasClosedAccounts = accounts?.some((a) => a.is_closed) ?? false
+  const hasClosedAccounts = allAccounts?.some((a) => a.is_closed) ?? false
 
   const hasSyncConnection = !!primaryConnection
   const canSyncAll = hasSyncConnection && !syncMutation.isPending && (rateLimitStatus?.can_sync_global ?? true)
@@ -314,6 +357,7 @@ export function AccountsOverviewPage() {
                     onSyncClick={(e) => handleAccountSync(acc, e)}
                     onEdit={(e) => handleEdit(acc, e)}
                     onDelete={(e) => handleDelete(acc, e)}
+                    onReopen={(e) => handleReopen(acc, e)}
                   />
                 ))}
               </div>

@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, CreditCard, Info } from 'lucide-react'
 import { useBudgetMonth, useSetAssignment } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
-import { parseAmountExpressionInput } from '../../../utils/amountExpression'
+import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
@@ -46,8 +46,11 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   )
   const totalUncovered = cards.reduce((sum, c) => sum + Number(c.uncovered), 0)
 
-  function commit(categoryId: string) {
-    const amount = parseAmountExpressionInput(draft)
+  function commit(categoryId: string, assigned: number) {
+    // The same rule the grid's cell uses: empty commits zero, a leading
+    // operator adjusts what is already there, negatives are allowed (money
+    // can come back off a card), and only unparseable text writes nothing.
+    const amount = parseAssignmentCommit(draft, assigned)
     setEditing(null)
     // NaN = unparseable input: never silently book a number for it.
     if (Number.isNaN(amount)) return
@@ -134,9 +137,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         value={draft}
                         aria-label={`Assigned to ${card.name} this month`}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => commit(card.category_id as string)}
+                        onBlur={() => commit(card.category_id as string, assigned)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') commit(card.category_id as string)
+                          if (e.key === 'Enter') commit(card.category_id as string, assigned)
                           if (e.key === 'Escape') setEditing(null)
                         }}
                       />

@@ -225,3 +225,22 @@ export function parseAssignmentInput(value: string, baseAmount: number): number 
   }
   return parseMoney(value)
 }
+
+/**
+ * What an assignment cell commits when the user presses Enter or tabs away.
+ *
+ * Emptying the box is how you unassign, so blank means zero — NOT "leave it
+ * alone". Three cells write assignments (the grid row, the multi-month sheet,
+ * the cards strip) and the rule was written inline twice and omitted in the
+ * third, where clearing the box silently kept the old amount and a leading
+ * "+" and any negative were rejected besides: it reached for
+ * `parseAmountExpressionInput`, which is built for outflow/inflow fields
+ * where the sign is structural.
+ *
+ * NaN is reserved for text that cannot be parsed at all — callers must guard
+ * on it rather than book a number nobody typed.
+ */
+export function parseAssignmentCommit(value: string, currentAssigned: number): number {
+  if (value.trim() === '') return 0
+  return parseAssignmentInput(value, currentAssigned)
+}

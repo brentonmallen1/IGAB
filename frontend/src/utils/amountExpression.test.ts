@@ -11,6 +11,7 @@ import {
   expressionToCents,
   isAmountExpression,
   parseAmountExpressionInput,
+  parseAssignmentCommit,
   parseAssignmentInput,
 } from './amountExpression'
 
@@ -175,5 +176,36 @@ describe('centsToInputString', () => {
     expect(centsToInputString(1649)).toBe('16.49')
     expect(centsToInputString(-1234)).toBe('-12.34')
     expect(centsToInputString(0)).toBe('0')
+  })
+})
+
+/**
+ * The commit rule the three assignment cells share. Before it was extracted
+ * the grid row and the multi-month sheet spelled it inline and the cards
+ * strip omitted it — clearing that box silently kept the old amount, and it
+ * rejected the two other things an assignment is allowed to be.
+ */
+describe('parseAssignmentCommit', () => {
+  it('treats an emptied box as zero — that is how you unassign', () => {
+    expect(parseAssignmentCommit('', 120)).toBe(0)
+    expect(parseAssignmentCommit('   ', 120)).toBe(0)
+  })
+
+  it('still adjusts relative to what is already assigned', () => {
+    expect(parseAssignmentCommit('+50', 100)).toBe(150)
+    expect(parseAssignmentCommit('*2', 100)).toBe(200)
+  })
+
+  it('allows a negative assignment — money can come back off a card', () => {
+    expect(parseAssignmentCommit('0-25', 100)).toBe(-25)
+  })
+
+  it('sets an absolute amount when a plain number is typed', () => {
+    expect(parseAssignmentCommit('75.25', 100)).toBe(75.25)
+  })
+
+  it('is NaN for unparseable text so the caller writes nothing', () => {
+    expect(parseAssignmentCommit('abc', 100)).toBeNaN()
+    expect(parseAssignmentCommit('+', 100)).toBeNaN()
   })
 })
