@@ -12,7 +12,12 @@ import {
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { groupByView, visibleCategoryIds } from './viewGrouping'
-import { renderableCategories, renderableCategoryIds, renderableGroups } from '../budgetGroups'
+import {
+  renderableCategories,
+  renderableCategoryIds,
+  renderableGroups,
+  withoutCardOnlyGroups,
+} from '../budgetGroups'
 import { CreditCardsSection } from '../CreditCardsSection/CreditCardsSection'
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
@@ -138,20 +143,9 @@ export function BudgetTable() {
   // The card envelopes' hidden group holds nothing renderable — every one of
   // its categories is linked and excluded above — so it is not drawn even
   // with hidden groups shown: "Credit Card Payments" never renders as a bare
-  // header. Identity is preserved when nothing is dropped, because the
-  // reorder gate below compares by reference.
-  const cardOnlyGroupIds = new Set(
-    (sourceGroups ?? [])
-      .filter((g) => {
-        const inGroup = (categories ?? []).filter((c) => c.category_group_id === g.id)
-        return inGroup.length > 0 && inGroup.every((c) => c.linked_account_id !== null)
-      })
-      .map((g) => g.id)
-  )
-  const withoutCardGroups =
-    cardOnlyGroupIds.size > 0
-      ? sourceGroups?.filter((g) => !cardOnlyGroupIds.has(g.id))
-      : sourceGroups
+  // header. The helper preserves identity when nothing is dropped, which the
+  // reorder gate below depends on.
+  const withoutCardGroups = withoutCardOnlyGroups(sourceGroups, categories ?? [])
   const visibleGroups =
     isFiltered || activeView
       ? withoutCardGroups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)

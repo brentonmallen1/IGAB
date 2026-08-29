@@ -284,6 +284,9 @@ class TestHistoricalCategoryInference:
         ownership_result = MagicMock()
         ownership_result.scalar_one_or_none = MagicMock(return_value=MagicMock())
         session.execute = AsyncMock(return_value=ownership_result)
+        # require_not_card_envelope runs session.scalar(...) for the category's
+        # linked_account_id; None means "an ordinary envelope, file away".
+        session.scalar = AsyncMock(return_value=None)
         txn_repo = MagicMock()
         txn_repo.refresh = AsyncMock()
         account_repo = MagicMock()
@@ -366,9 +369,13 @@ class TestHistoricalCategoryInference:
             return_value=None  # No history
         )
         # The fallback is liveness-checked now: a default pointing at a deleted
-        # category must not be handed to a new row. Here it is live.
+        # category must not be handed to a new row. Here it is live. It is also
+        # checked for `linked_account_id` — a default pointing at a card's
+        # set-aside envelope would file a row past the create-path guard — so
+        # the mock has to say it is an ordinary envelope.
         live_default = MagicMock()
         live_default.id = default_cat_id
+        live_default.linked_account_id = None
         mock_service.category_repo.get = AsyncMock(return_value=live_default)
 
         data = TransactionCreate(

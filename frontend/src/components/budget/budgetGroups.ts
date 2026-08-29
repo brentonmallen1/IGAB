@@ -25,16 +25,61 @@ export function renderableGroups<T extends { is_system: boolean }>(groups: reado
  * fact; drawing the row anyway would show the reserve as an ordinary
  * envelope and its negative as overspending, which it is not.
  */
-export function renderableCategories<T extends { linked_account_id: string | null }>(
-  categories: readonly T[]
-): T[] {
-  return categories.filter((c) => c.linked_account_id === null)
+export function renderableCategories<T extends CategoryLink>(categories: readonly T[]): T[] {
+  return categories.filter((c) => !isCardEnvelope(c))
+}
+
+interface CategoryLink {
+  linked_account_id?: string | null
+}
+
+/**
+ * Is this category a card's set-aside envelope?
+ *
+ * One predicate rather than an inline comparison at each use, because the
+ * two uses need opposite senses and a strict `=== null` gets *both* wrong
+ * when the field is absent: the filter drops every category, and the
+ * group test reads them all as linked and hides a real group. The server
+ * always sends the field, but partial fixtures do not, and a rule that
+ * flips meaning on a missing key is a rule waiting to be miswritten.
+ */
+export function isCardEnvelope(category: CategoryLink): boolean {
+  return category.linked_account_id != null
+}
+
+/**
+ * Groups with a renderable category left in them once the card envelopes are
+ * taken out — so "Credit Card Payments" never draws as a bare header, even
+ * on the surfaces that deliberately show hidden groups.
+ *
+ * Returns the input array itself when nothing is dropped. That is
+ * load-bearing: BudgetTable's reorder gate asks `visibleGroups === groups`,
+ * so a freshly-allocated array with identical contents would silently turn
+ * dragging off.
+ *
+ * A group with no categories at all is kept — an empty group the user just
+ * made still needs its header to drop things into.
+ */
+export function withoutCardOnlyGroups<G extends { id: string }>(
+  groups: G[] | undefined,
+  categories: readonly ({ category_group_id: string } & CategoryLink)[]
+): G[] | undefined {
+  if (!groups) return groups
+  const cardOnly = new Set(
+    groups
+      .filter((g) => {
+        const inGroup = categories.filter((c) => c.category_group_id === g.id)
+        return inGroup.length > 0 && inGroup.every(isCardEnvelope)
+      })
+      .map((g) => g.id)
+  )
+  return cardOnly.size > 0 ? groups.filter((g) => !cardOnly.has(g.id)) : groups
 }
 
 /** The ids of the categories that sit in a renderable group. */
 export function renderableCategoryIds(
   groups: readonly CategoryGroup[],
-  categories: readonly { id: string; category_group_id: string; linked_account_id: string | null }[]
+  categories: readonly ({ id: string; category_group_id: string } & CategoryLink)[]
 ): Set<string> {
   const groupIds = new Set(renderableGroups(groups).map((g) => g.id))
   return new Set(

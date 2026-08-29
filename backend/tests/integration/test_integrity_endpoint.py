@@ -51,6 +51,7 @@ async def test_clean_budget_reports_all_green(api_client, db_session):
         "orphaned_matches",
         "orphaned_categories",
         "stale_pendings",
+        "card_envelope_rows",
     }
 
 
@@ -124,3 +125,36 @@ async def test_seeded_inconsistencies_are_each_detected(db_session):
     )
     assert by_name["stale_pendings"].passed is False
     assert by_name["orphaned_matches"].passed is False
+
+
+async def test_a_row_filed_to_a_card_envelope_is_detected(db_session):
+    """Money filed into a card's set-aside envelope shows nowhere: the
+    summary overwrites that envelope's balance from card arithmetic. The
+    service refuses new ones, so this is seeded behind its back — which is
+    exactly how the register's old dropdown produced them."""
+    from igab.services.card_payment import ensure_payment_category
+
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    checking = await create_account(db_session, budget, "Checking")
+    visa = await create_account(db_session, budget, "Visa", account_type="credit_card")
+    linked = await ensure_payment_category(db_session, visa)
+    assert linked is not None
+    group = await create_category_group(db_session, budget, "Everyday")
+    cat = await create_category(db_session, budget, group, "Groceries")
+
+    txn = await create_transaction(
+        db_session, budget, checking, "-40.00", TODAY, category=cat
+    )
+    await db_session.execute(
+        update(Transaction).where(Transaction.id == txn.id).values(category_id=linked.id)
+    )
+    await db_session.flush()
+
+    report = await IntegrityService(db_session).run(budget.id)
+    check = next(c for c in report.checks if c.name == "card_envelope_rows")
+    assert check.passed is False
+    assert check.problem_count == 1
+    assert "Visa" in check.details[0]
+    assert report.all_passed is False

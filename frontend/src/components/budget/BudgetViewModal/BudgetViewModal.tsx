@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
+import { renderableCategories } from '../budgetGroups'
 import {
   useBudgetViews,
   useCreateBudgetView,
@@ -52,7 +53,11 @@ function ViewEditor({
   onClose,
 }: Props & { views: ReturnType<typeof useBudgetViews>['data'] }) {
   const { data: groups = [] } = useCategoryGroups(budgetId, true)
-  const { data: categories = [] } = useCategories(budgetId, true)
+  const { data: allCategories = [] } = useCategories(budgetId, true)
+  // A view rearranges the grid's rows, and a card's set-aside envelope is
+  // not one — placing it in a group would promise a row the grid will never
+  // draw. Hidden categories stay: a view may legitimately place one.
+  const categories = useMemo(() => renderableCategories(allCategories), [allCategories])
   const createView = useCreateBudgetView(budgetId)
   const updateView = useUpdateBudgetView(budgetId)
   const deleteView = useDeleteBudgetView(budgetId)

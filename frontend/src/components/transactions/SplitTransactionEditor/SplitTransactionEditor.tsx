@@ -45,10 +45,14 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
   const { remainingCents, isValid } = check
   const remaining = fromCents(remainingCents)
 
-  const categoryOptions: ComboboxOption[] = categories.map((c) => {
-    const group = categoryGroups.find((g) => g.id === c.category_group_id)
-    return { id: c.id, label: c.name, group: group?.name ?? '' }
-  })
+  // `is_categorizable` — the same rule the row editor and every other picker
+  // reads. A split line is a leg like any other.
+  const categoryOptions: ComboboxOption[] = categories
+    .filter((c) => c.is_categorizable)
+    .map((c) => {
+      const group = categoryGroups.find((g) => g.id === c.category_group_id)
+      return { id: c.id, label: c.name, group: group?.name ?? '' }
+    })
 
   async function handleSave() {
     if (!isValid || !loaded) return
