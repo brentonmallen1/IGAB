@@ -8,12 +8,16 @@ import { useLiabilities } from '../../api/liabilities'
 import { confirmAccountDeletion } from '../../utils/confirmAccountDeletion'
 import { useBudgets, useUpdateBudget } from '../../api/budgets'
 import {
+  useSimpleFINConfig,
   useSimpleFINConnections,
   useSimpleFINRateLimitStatus,
   useUpdateSimpleFINConnection,
   useDeleteSimpleFINConnection,
 } from '../../api/simplefin'
-import { SimpleFINSetup } from '../../components/simplefin/SimpleFINSetup'
+import {
+  SimpleFINConfigNotice,
+  SimpleFINSetup,
+} from '../../components/simplefin/SimpleFINSetup'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
 import { HelpCircle } from 'lucide-react'
@@ -22,6 +26,7 @@ import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPane
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
 import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
+import { ImportReviewButton } from '../../components/imports/ImportReviewDialog/ImportReviewButton'
 import { AISettingsPanel } from '../../components/settings/AISettingsPanel'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
@@ -104,6 +109,9 @@ export function SettingsPage() {
 
 
   const { data: sfConnections } = useSimpleFINConnections()
+  // Shared query key with the panels below — this only reads the answer to
+  // flag the nav item, so the problem is visible without scrolling to it.
+  const { data: sfConfig } = useSimpleFINConfig()
   const updateConnection = useUpdateSimpleFINConnection()
   const deleteConnection = useDeleteSimpleFINConnection()
 
@@ -146,7 +154,7 @@ export function SettingsPage() {
   // Both default on; the server is the source of truth once it answers.
   const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true, wishlist: true }
 
-  const sections = [
+  const sections: { id: string; label: string; warn?: string }[] = [
     { id: 'appearance', label: 'Appearance' },
     { id: 'budget', label: 'Budget' },
     ...(budgetId ? [{ id: 'tags', label: 'Tags' }] : []),
@@ -156,7 +164,11 @@ export function SettingsPage() {
     ...(budgetId ? [{ id: 'integrity', label: 'Data Integrity' }] : []),
     { id: 'data', label: 'Backups' },
     { id: 'updates', label: 'Updates' },
-    { id: 'simplefin', label: 'SimpleFIN' },
+    {
+      id: 'simplefin',
+      label: 'SimpleFIN',
+      warn: sfConfig && !sfConfig.configured ? 'Bank sync is not configured' : undefined,
+    },
     { id: 'ai', label: 'AI' },
     { id: 'account', label: 'Account' },
     ...(me?.is_admin ? [{ id: 'users', label: 'Users' }] : []),
@@ -217,13 +229,20 @@ export function SettingsPage() {
     <div className="settings-page">
       {/* Navigation sidebar */}
       <nav className="settings-nav" aria-label="Settings sections">
-        {sections.map(({ id, label }) => (
+        {sections.map(({ id, label, warn }) => (
           <button
             key={id}
             className={`settings-nav__link ${activeSection === id ? 'settings-nav__link--active' : ''}`}
             onClick={() => scrollToSection(id)}
+            title={warn}
           >
             {label}
+            {warn && (
+              <>
+                <span className="settings-nav__warn" aria-hidden />
+                <span className="sr-only">{` — ${warn}`}</span>
+              </>
+            )}
           </button>
         ))}
       </nav>
@@ -462,6 +481,7 @@ export function SettingsPage() {
               <SystemTagsHelp />
             </span>
           }
+          actions={<ImportReviewButton budgetId={budgetId} />}
         >
           <div className="settings-section__body">
             <TagsPanel budgetId={budgetId} />
@@ -596,6 +616,11 @@ export function SettingsPage() {
       {/* SimpleFIN */}
       <Surface as="section" className="settings-section" id="simplefin" title="SimpleFIN Bank Connection">
         <div className="settings-section__body">
+          {/* Only when connections already exist: a key lost or rotated
+              after setup breaks every sync, and the list below would just
+              fail without saying why. With no connections the setup form
+              below shows the same panel itself. */}
+          {sfConnections && sfConnections.length > 0 && <SimpleFINConfigNotice />}
           {sfConnections && sfConnections.length > 0 ? (
             sfConnections.map((conn) => (
               <div key={conn.id} className="sf-connection">

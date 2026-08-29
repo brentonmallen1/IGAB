@@ -23,6 +23,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
+    Budget,
     BudgetAssignment,
     Category,
     CategoryGroup,
@@ -39,6 +40,9 @@ ENTITY_MODELS: dict[str, type] = {
     "category": Category,
     "category_group": CategoryGroup,
     "assignment": BudgetAssignment,
+    # Only ever the subject of a `reorder` (of its groups); it has no
+    # snapshot fields because nothing on the budget row itself is restored.
+    "budget": Budget,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the

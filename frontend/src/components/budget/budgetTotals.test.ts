@@ -38,6 +38,16 @@ describe('sumBalances', () => {
     expect(totals).toEqual({ assigned: 150, activity: -40, available: 160, carriedOver: 50 })
   })
 
+  it('leaves an income row out entirely — its activity is income, not spending', () => {
+    const income = { ...bal(0, 3100, 0), assigned: null, available: null }
+    expect(sumBalances([bal(100, -30, 120), income])).toEqual({
+      assigned: 100,
+      activity: -30,
+      available: 120,
+      carriedOver: 50,
+    })
+  })
+
   it('handles decimal strings from the API', () => {
     const asStrings = [
       { ...bal(0, 0, 0), assigned: '10.50', activity: '-2.25', available: '8.25' },

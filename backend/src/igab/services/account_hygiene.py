@@ -27,7 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.db.models import Account, Liability, Transaction
-from igab.repositories.txn_filters import NOT_DELETED, POSTED, UNPAIRED_TRANSFER_LEG
+from igab.repositories.txn_filters import (
+    LEAF,
+    NOT_DELETED,
+    ON_BUDGET_ACCOUNT,
+    POSTED,
+    UNPAIRED_TRANSFER_LEG,
+)
 
 #: Months without a posted transaction before an open account reads as dormant.
 #: Matches the import step's threshold so the two never disagree about the same
@@ -77,6 +83,7 @@ class AccountHygieneService:
             await self._tracked_name_on_budget(accounts),
             await self._liability_with_positive_balance(accounts),
             await self._unpaired_transfer_legs(budget_id),
+            await self._categorized_tracking_rows(budget_id),
             await self._dormant_open_accounts(accounts, budget_id),
             await self._stale_companion_liabilities(budget_id, accounts),
         ]
@@ -172,6 +179,50 @@ class AccountHygieneService:
                 "Match them up links every leg whose other side is unmistakable, "
                 "without touching a single amount. Whatever is left is ambiguous or "
                 "genuinely one-sided — open one to pick its partner or add the missing row."
+            ),
+            transaction_count=int(count),
+        )
+
+    async def _categorized_tracking_rows(self, budget_id: uuid.UUID) -> HygieneFinding | None:
+        """Rows on off-budget accounts that carry a category.
+
+        The rule they break lives in domain/transfers.py: a category may sit
+        only on an on-budget row. These predate the rule being enforced — an
+        import, a sync's payee-memory categorization, an account flipped off
+        budget after the fact. The budget's activity sums exclude them, so
+        they move no money; they are still spending the register claims and
+        the budget never counted, which is a lie waiting for a reader.
+        """
+        count = (
+            await self.session.execute(
+                select(func.count())
+                .select_from(Transaction)
+                .where(
+                    Transaction.budget_id == budget_id,
+                    NOT_DELETED,
+                    LEAF,
+                    Transaction.category_id.isnot(None),
+                    ~ON_BUDGET_ACCOUNT,
+                )
+            )
+        ).scalar_one()
+        if not count:
+            return None
+        return HygieneFinding(
+            kind="categorized_tracking_rows",
+            title=(
+                f"{count:,} transaction{'s' if count != 1 else ''} on tracking accounts "
+                "carry a category"
+            ),
+            detail=(
+                "Off-budget activity is net-worth movement, not budget spending, so these "
+                "categories count nowhere — the budget and every report leave them out. "
+                "They usually arrive with an import, a sync that learned the category from "
+                "the payee, or an account moved off budget after the fact."
+            ),
+            action=(
+                "Remove the categories strips every one in a single undoable step. "
+                "Amounts, dates and accounts are untouched."
             ),
             transaction_count=int(count),
         )

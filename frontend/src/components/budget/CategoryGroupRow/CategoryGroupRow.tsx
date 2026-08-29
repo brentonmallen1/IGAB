@@ -1,17 +1,19 @@
-import { useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, EyeOff, GripVertical, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { ChevronDown, ChevronRight, EyeOff, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useUIStore } from '../../../stores/uiStore'
 import {
   useCreateCategory,
+  useReorderCategories,
   useUpdateCategoryGroup,
 } from '../../../api/categories'
 import { CategoryRow } from '../CategoryRow/CategoryRow'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useDragReorder, type DragReorder } from '../../../hooks/useDragReorder'
+import { DragHandle } from '../../common/DragHandle/DragHandle'
+import { moveItem } from '../../../utils/listOrder'
 import type { Category, CategoryBalance, CategoryGroup } from '../../../types'
 import './CategoryGroupRow.css'
-
-
 
 interface Props {
   group: CategoryGroup
@@ -23,20 +25,16 @@ interface Props {
    *  add-category all act on the default arrangement, which a view must never
    *  edit — so they are suppressed rather than silently doing the wrong thing. */
   readOnlyGroup?: boolean
-  /** Present only where reordering is meaningful: the budget's own
+  /** This group's position in the list being reordered. */
+  index: number
+  /** Present only where reordering groups is meaningful: the budget's own
    *  arrangement, unfiltered, showing every group. Absent under a filter, a
    *  search or a view, where a drop would reorder against a list the user
    *  cannot see. */
-  reorder?: {
-    isDragging: boolean
-    isDragOver: boolean
-    onDragStart: () => void
-    onDragOver: () => void
-    onDrop: () => void
-    onDragEnd: () => void
-    onMoveUp?: () => void
-    onMoveDown?: () => void
-  }
+  reorder?: DragReorder
+  /** Whether the categories inside may be reordered — the same rule as the
+   *  groups, minus "showing every group". */
+  canReorderCategories?: boolean
 }
 
 export function CategoryGroupRow({
@@ -46,7 +44,9 @@ export function CategoryGroupRow({
   budgetId,
   month,
   readOnlyGroup = false,
+  index,
   reorder,
+  canReorderCategories = false,
 }: Props) {
   const { formatMoney } = useFormatters()
   const collapsedGroups = useUIStore((s) => s.collapsedGroups)
@@ -55,7 +55,7 @@ export function CategoryGroupRow({
   const selectGroupCategories = useUIStore((s) => s.selectGroupCategories)
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const anySelected = selectedCategoryIds.size > 0
-  const categoryIds = categories.map((c) => c.id)
+  const categoryIds = useMemo(() => categories.map((c) => c.id), [categories])
   const allGroupSelected = categoryIds.length > 0 && categoryIds.every((id) => selectedCategoryIds.has(id))
   const someGroupSelected = categoryIds.some((id) => selectedCategoryIds.has(id))
   const isExpanded = !collapsedGroups.has(group.id)
@@ -75,6 +75,14 @@ export function CategoryGroupRow({
   const updateGroup = useUpdateCategoryGroup(budgetId)
   const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(budgetId)
   const createCategory = useCreateCategory(budgetId)
+  const { mutate: reorderCategories } = useReorderCategories(budgetId)
+  const moveCategory = useCallback(
+    (from: number, to: number) =>
+      reorderCategories({ groupId: group.id, categoryIds: [...moveItem(categoryIds, from, to)] }),
+    [reorderCategories, group.id, categoryIds]
+  )
+  const categoryDrag = useDragReorder(categories.length, moveCategory)
+  const categoriesReorderable = canReorderCategories && categories.length > 1
 
   const groupAssigned = categories.reduce((sum, cat) => sum + Number(balanceMap.get(cat.id)?.assigned ?? 0), 0)
   const groupActivity = categories.reduce((sum, cat) => sum + Number(balanceMap.get(cat.id)?.activity ?? 0), 0)
@@ -117,7 +125,7 @@ export function CategoryGroupRow({
 
   function commitAddCategory() {
     const name = newCatName.trim()
-    if (name) createCategory.mutate({ category_group_id: group.id, name, sort_order: categories.length })
+    if (name) createCategory.mutate({ category_group_id: group.id, name })
     setIsAddingCategory(false)
     setNewCatName('')
   }
@@ -131,17 +139,19 @@ export function CategoryGroupRow({
     <div className={`category-group-row ${budgetRowMode === 'compressed' ? 'category-group-row--compressed' : ''}`}>
       <div
         className={
-          'category-group-row__header' +
-          (reorder?.isDragging ? ' category-group-row__header--dragging' : '') +
-          (reorder?.isDragOver ? ' category-group-row__header--drag-over' : '')
+          'category-group-row__header drag-handle-host' +
+          (reorder?.dragIndex === index ? ' drag-handle-host--dragging' : '') +
+          (reorder && reorder.overIndex === index && reorder.dragIndex !== index
+            ? ' drag-handle-host--drag-over'
+            : '')
         }
-        // Only the handle starts a drag: making the whole header draggable
-        // turns every attempt to select the name into a drag.
+        // Only the handle starts a drag (see DragHandle); the header is where
+        // a dragged group lands.
         onDragOver={
           reorder
             ? (e) => {
                 e.preventDefault()
-                reorder.onDragOver()
+                reorder.over(index)
               }
             : undefined
         }
@@ -149,36 +159,19 @@ export function CategoryGroupRow({
           reorder
             ? (e) => {
                 e.preventDefault()
-                reorder.onDrop()
+                reorder.drop(index)
               }
             : undefined
         }
       >
         {reorder && (
-          <span
-            className="category-group-row__drag"
-            draggable
-            onDragStart={reorder.onDragStart}
-            onDragEnd={reorder.onDragEnd}
-            // Keyboard path to the same outcome — the order of a budget is
-            // not a pointer-only decision.
-            tabIndex={0}
-            role="button"
-            aria-label={`Reorder ${group.name}. Use the arrow keys to move it.`}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowUp' && reorder.onMoveUp) {
-                e.preventDefault()
-                reorder.onMoveUp()
-              }
-              if (e.key === 'ArrowDown' && reorder.onMoveDown) {
-                e.preventDefault()
-                reorder.onMoveDown()
-              }
-            }}
-            title="Drag to reorder, or use the arrow keys"
-          >
-            <GripVertical size={12} />
-          </span>
+          <DragHandle
+            label={group.name}
+            onDragStart={() => reorder.start(index)}
+            onDragEnd={reorder.end}
+            onMoveUp={index > 0 ? () => reorder.moveBy(index, -1) : undefined}
+            onMoveDown={() => reorder.moveBy(index, 1)}
+          />
         )}
         <button
           className="category-group-row__toggle"
@@ -267,7 +260,7 @@ export function CategoryGroupRow({
 
       {isExpanded && (
         <div className="category-group-row__categories">
-          {categories.map((cat) => (
+          {categories.map((cat, position) => (
             <CategoryRow
               key={cat.id}
               category={cat}
@@ -275,6 +268,8 @@ export function CategoryGroupRow({
               budgetId={budgetId}
               month={month}
               orderedIds={categoryIds}
+              index={position}
+              reorder={categoriesReorderable ? categoryDrag : undefined}
             />
           ))}
           {isAddingCategory && (

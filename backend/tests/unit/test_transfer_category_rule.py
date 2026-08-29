@@ -27,6 +27,24 @@ class TestLegMayCarryCategory:
         assert leg_may_carry_category(False, False) is False
 
 
+class TestPlainRowIsALegWithNoPartner:
+    """The general clause: a category may sit only on an on-budget row.
+
+    Partner absent is the plain-transaction case — the same function decides
+    it so the register, the editors and the importer cannot drift from the
+    transfer paths.
+    """
+
+    def test_on_budget_plain_row_may(self):
+        assert leg_may_carry_category(True) is True
+        assert leg_may_carry_category(True, None) is True
+
+    def test_off_budget_plain_row_never_may(self):
+        # Off-budget activity is net-worth movement, not budget spending.
+        assert leg_may_carry_category(False) is False
+        assert leg_may_carry_category(False, None) is False
+
+
 class TestPairMayCarryCategory:
     def test_exactly_one_side_on_budget(self):
         assert pair_may_carry_category(True, False) is True

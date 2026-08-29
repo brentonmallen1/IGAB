@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Eye, EyeOff, Pencil, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Pencil, Trash2, X } from 'lucide-react'
 import { useUpdateCategory } from '../../../api/categories'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import type { Category } from '../../../types'
@@ -10,13 +10,25 @@ interface Props {
   category: Category
   /** Called after a destructive action so the sheet can close */
   onDone: () => void
+  /** Reorder within the group. Native drag never fires on touch, so the sheet
+   *  is where a phone moves a category; absent when the row is first/last or
+   *  the grid is showing a view, a filter or a search. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }
 
 /**
- * Rename / hide / delete for the mobile inspector sheet — these live behind
- * hover on desktop rows, which has no equivalent on touch.
+ * Rename / hide / delete / move for the mobile inspector sheet — these live
+ * behind hover (or a drag handle) on desktop rows, which has no equivalent
+ * on touch.
  */
-export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
+export function CategoryMobileActions({
+  budgetId,
+  category,
+  onDone,
+  onMoveUp,
+  onMoveDown,
+}: Props) {
   const updateCategory = useUpdateCategory(budgetId)
   const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(budgetId, onDone)
   const [isRenaming, setIsRenaming] = useState(false)
@@ -79,6 +91,26 @@ export function CategoryMobileActions({ budgetId, category, onDone }: Props) {
 
   return (
     <div className="cat-mobile-actions">
+      {(onMoveUp || onMoveDown) && (
+        <>
+          <button
+            className="cat-mobile-actions__btn cat-mobile-actions__btn--icon"
+            onClick={onMoveUp}
+            disabled={!onMoveUp}
+            aria-label={`Move ${category.name} up`}
+          >
+            <ArrowUp size={14} />
+          </button>
+          <button
+            className="cat-mobile-actions__btn cat-mobile-actions__btn--icon"
+            onClick={onMoveDown}
+            disabled={!onMoveDown}
+            aria-label={`Move ${category.name} down`}
+          >
+            <ArrowDown size={14} />
+          </button>
+        </>
+      )}
       <button
         className="cat-mobile-actions__btn"
         onClick={() => {

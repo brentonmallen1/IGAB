@@ -68,10 +68,14 @@ def make_service(txn: MockTransaction) -> TransactionService:
 
     txn_repo.get = AsyncMock(side_effect=_get)
 
+    # The category rule loads the row's account; an on-budget one keeps these
+    # tests about reconciliation, not about the rule.
+    account_repo = MagicMock()
+    account_repo.get_or_raise = AsyncMock(return_value=MagicMock(on_budget=True))
     return TransactionService(
         session=AsyncMock(),
         transaction_repo=txn_repo,
-        account_repo=MagicMock(),
+        account_repo=account_repo,
         category_repo=MagicMock(),
         payee_repo=MagicMock(),
     )

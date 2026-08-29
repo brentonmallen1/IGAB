@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
+import { reorderMembers } from '../utils/listOrder'
 import type { Category, CategoryGroup, CategoryClassification } from '../types'
 
 export function useCategoryGroups(budgetId: string | null, includeHidden = false) {
@@ -70,10 +71,11 @@ export function useCategoryClassification(categoryId: string | null) {
   })
 }
 
+/** A new group goes last; the server assigns its position. */
 export function useCreateCategoryGroup(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; sort_order?: number }) =>
+    mutationFn: (data: { name: string }) =>
       apiClient.post<CategoryGroup>(`/${budgetId}/category-groups`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
@@ -81,16 +83,12 @@ export function useCreateCategoryGroup(budgetId: string) {
   })
 }
 
+/** A new category goes last in its group; the server assigns its position. */
 export function useCreateCategory(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: {
-      category_group_id: string
-      name: string
-      subtitle?: string
-      sort_order?: number
-      note?: string
-    }) => apiClient.post<Category>(`/${budgetId}/categories`, data).then((r) => r.data),
+    mutationFn: (data: { category_group_id: string; name: string; subtitle?: string; note?: string }) =>
+      apiClient.post<Category>(`/${budgetId}/categories`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['categories', budgetId] })
     },
@@ -102,9 +100,10 @@ export function useUpdateCategory(budgetId: string) {
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<Category> & { id: string }) =>
       apiClient.patch<Category>(`/categories/${id}`, data).then((r) => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] })
-    },
+    // Moving a category to another group changes group subtotals, view
+    // placements and every report that groups by category — the same list a
+    // delete stales, so the same list is invalidated.
+    onSuccess: () => invalidateAfterCategoryChange(qc, budgetId),
   })
 }
 
@@ -119,44 +118,67 @@ export function useUpdateCategoryGroup(budgetId: string) {
   })
 }
 
-/** Set the order of every category group in one request.
+type CachedLists<T> = [readonly unknown[], T[] | undefined][]
+
+/** Set the order of the budget's category groups in one request.
  *
  *  One request rather than a PATCH per group: a drag that half-applies leaves
  *  an order the user did not choose. The server refuses a list that does not
- *  name every live group exactly once, so a stale client fails loudly instead
- *  of shuffling rows it never showed. */
+ *  name every visible group exactly once, so a stale client fails loudly
+ *  instead of shuffling rows it never showed.
+ *
+ *  Optimistic over every cached variant of the list (`includeHidden` on and
+ *  off): a drag that snaps back for a round trip reads as a failed drag. This
+ *  used to write to `['categoryGroups', budgetId]` alone, a key nothing reads,
+ *  so the grid never showed the new order until the refetch — and a refused
+ *  reorder restored nothing. */
 export function useReorderCategoryGroups(budgetId: string) {
   const qc = useQueryClient()
+  const key = ['categoryGroups', budgetId]
   return useMutation({
     mutationFn: (groupIds: string[]) =>
       apiClient.post(`/${budgetId}/category-groups/reorder`, { group_ids: groupIds }),
     onMutate: async (groupIds) => {
-      // Optimistic: a drag that snaps back for a round trip reads as a failed
-      // drag. Kept as the previous list so an error can restore it.
-      await qc.cancelQueries({ queryKey: ['categoryGroups', budgetId] })
-      const previous = qc.getQueryData<CategoryGroup[]>(['categoryGroups', budgetId])
-      if (previous) {
-        const byId = new Map(previous.map((g) => [g.id, g]))
-        const reordered = groupIds
-          .map((id, i) => {
-            const g = byId.get(id)
-            return g ? { ...g, sort_order: i } : null
-          })
-          .filter((g): g is CategoryGroup => g !== null)
-        qc.setQueryData(['categoryGroups', budgetId], reordered)
-      }
+      await qc.cancelQueries({ queryKey: key })
+      const previous: CachedLists<CategoryGroup> = qc.getQueriesData<CategoryGroup[]>({ queryKey: key })
+      qc.setQueriesData<CategoryGroup[]>({ queryKey: key }, (cached) =>
+        cached ? reorderMembers(cached, () => true, groupIds) : cached
+      )
       return { previous }
     },
     onError: (err, _ids, ctx) => {
-      if (ctx?.previous) qc.setQueryData(['categoryGroups', budgetId], ctx.previous)
+      ctx?.previous.forEach(([k, data]) => qc.setQueryData(k, data))
       toast.error(apiErrorMessage(err, 'Could not save the new order'))
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
-      // Group order is part of how the month reads, so anything caching the
-      // grid's shape has to follow.
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+    // Order moves no money, so the month's balances are left alone.
+    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+  })
+}
+
+/** Set the order of one group's categories in one request — the same contract
+ *  as the group reorder, scoped to a group. Optimistic over every cached
+ *  variant of the category list; the other groups' rows are not touched. */
+export function useReorderCategories(budgetId: string) {
+  const qc = useQueryClient()
+  const key = ['categories', budgetId]
+  return useMutation({
+    mutationFn: ({ groupId, categoryIds }: { groupId: string; categoryIds: string[] }) =>
+      apiClient.post(`/${budgetId}/category-groups/${groupId}/categories/reorder`, {
+        category_ids: categoryIds,
+      }),
+    onMutate: async ({ groupId, categoryIds }) => {
+      await qc.cancelQueries({ queryKey: key })
+      const previous: CachedLists<Category> = qc.getQueriesData<Category[]>({ queryKey: key })
+      qc.setQueriesData<Category[]>({ queryKey: key }, (cached) =>
+        cached ? reorderMembers(cached, (c) => c.category_group_id === groupId, categoryIds) : cached
+      )
+      return { previous }
     },
+    onError: (err, _vars, ctx) => {
+      ctx?.previous.forEach(([k, data]) => qc.setQueryData(k, data))
+      toast.error(apiErrorMessage(err, 'Could not save the new order'))
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: key }),
   })
 }
 

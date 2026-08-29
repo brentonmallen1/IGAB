@@ -26,6 +26,7 @@ from .factories import (
     create_budget,
     create_liability,
     create_transaction,
+    create_transfer,
     create_user,
     make_services,
 )
@@ -43,7 +44,9 @@ def make_liability_service(db_session, services) -> LiabilityService:
     )
 
 
-async def _managed_loan(db_session, *, interest_rate=None, minimum_payment=None, balance="-9000.00"):
+async def _managed_loan(
+    db_session, *, interest_rate=None, minimum_payment=None, balance="-9000.00"
+):
     """A loan account with a real ledger and a liability with the given terms."""
     services = make_services(db_session)
     user = await create_user(db_session)
@@ -91,8 +94,11 @@ class TestStatusWithoutTerms:
         """Payment velocity alone cannot date a payoff: without a rate we do
         not know how much of each payment the interest eats."""
         svc, budget, account, liability = await _managed_loan(db_session)
+        checking = await create_account(db_session, budget, "Checking")
         for month in (3, 4, 5, 6):
-            await create_transaction(db_session, budget, account, "400.00", date(2026, month, 10))
+            await create_transfer(
+                db_session, budget, checking, account, "400.00", date(2026, month, 10)
+            )
 
         status = await svc.get_status(liability, as_of=AS_OF)
 
@@ -101,8 +107,11 @@ class TestStatusWithoutTerms:
     async def test_observed_facts_survive(self, db_session):
         """Balance and payment history are measured, not derived from terms."""
         svc, budget, account, liability = await _managed_loan(db_session)
+        checking = await create_account(db_session, budget, "Checking")
         for month in (3, 4, 5, 6):
-            await create_transaction(db_session, budget, account, "400.00", date(2026, month, 10))
+            await create_transfer(
+                db_session, budget, checking, account, "400.00", date(2026, month, 10)
+            )
 
         status = await svc.get_status(liability, as_of=AS_OF)
 
@@ -114,8 +123,11 @@ class TestStatusWithoutTerms:
         """The pace is history, so it stands beside an empty terms form — the
         most useful thing there is to show while the fields are blank."""
         svc, budget, account, liability = await _managed_loan(db_session)
+        checking = await create_account(db_session, budget, "Checking")
         for month in (4, 5, 6):
-            await create_transaction(db_session, budget, account, "300.00", date(2026, month, 10))
+            await create_transfer(
+                db_session, budget, checking, account, "300.00", date(2026, month, 10)
+            )
 
         status = await svc.get_status(liability, as_of=AS_OF)
 
@@ -322,9 +334,7 @@ class TestApiSurface:
             minimum_payment=None,
         )
 
-        resp = await api_client.get(
-            f"/api/v1/{budget.id}/liabilities/{liability.id}/amortization"
-        )
+        resp = await api_client.get(f"/api/v1/{budget.id}/liabilities/{liability.id}/amortization")
 
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -335,7 +345,7 @@ class TestApiSurface:
         assert Decimal(str(body["current_balance"])) == Decimal("9000.00")
 
     async def test_extra_payment_without_terms_is_inert(self, api_client, db_session):
-        """"What if I paid $200 more?" has no answer without a rate to save
+        """ "What if I paid $200 more?" has no answer without a rate to save
         interest against — the arm sits out rather than treating null as zero."""
         budget = await create_budget(db_session, api_client.test_user)
         loan = await create_account(

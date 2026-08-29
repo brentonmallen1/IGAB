@@ -11,13 +11,22 @@ from igab.domain.money import Money
 
 class CategoryGroupCreate(BaseModel):
     name: str
-    sort_order: int = 0
+    #: Omit it and the group goes last — the server assigns positions, so a
+    #: client can no longer send a count of the rows it happened to be showing.
+    sort_order: int | None = None
 
 
 class CategoryGroupReorder(BaseModel):
-    #: Every live group in this budget, in the order they should appear.
-    #: Must name each exactly once — see CategoryGroupRepository.reorder.
+    #: The budget's visible groups, in the order they should appear. Each
+    #: exactly once; hidden and system groups may be omitted and keep their
+    #: slot — see CategoryGroupRepository.reorder.
     group_ids: list[uuid.UUID]
+
+
+class CategoryReorder(BaseModel):
+    #: One group's visible categories, in the order they should appear. Each
+    #: exactly once; hidden ones may be omitted — see CategoryRepository.reorder.
+    category_ids: list[uuid.UUID]
 
 
 class CategoryDeletePreviewResponse(BaseModel):
@@ -134,7 +143,8 @@ class CategoryCreate(BaseModel):
     category_group_id: uuid.UUID
     name: str
     subtitle: str | None = None
-    sort_order: int = 0
+    #: Omit it and the category goes last in its group — see CategoryGroupCreate.
+    sort_order: int | None = None
     note: str | None = None
 
 
@@ -168,9 +178,15 @@ class CategoryTargetResponse(BaseModel):
 class CategoryBalance(BaseModel):
     category_id: uuid.UUID
     month: datetime.date
-    assigned: Decimal
+    #: Null on a category in a system (Income) group: income is filed there,
+    #: not budgeted there, so it has no envelope money. Its `activity` is the
+    #: income received that month; what is free to assign is `to_be_assigned`.
+    #: Served as null rather than the lifetime total the carryover arithmetic
+    #: would otherwise produce — 1.6M on one imported budget, directly under a
+    #: hero named Ready to Assign.
+    assigned: Decimal | None
     activity: Decimal
-    available: Decimal
+    available: Decimal | None
     #: The target verdict, computed by TargetService — the same function Fill
     #: Underfunded asks. The budget row's pill renders this; it does not
     #: recompute it. A second implementation in the client drifted from this
@@ -220,6 +236,8 @@ class CategoryResponse(BaseModel):
 class BudgetMonthResponse(BaseModel):
     month: datetime.date
     to_be_assigned: Decimal
+    #: Envelope categories only — income appears in `to_be_assigned` and in
+    #: its own rows' `activity`, never here.
     total_assigned: Decimal
     total_activity: Decimal
     total_overspent: Decimal

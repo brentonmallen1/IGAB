@@ -95,18 +95,18 @@ export function RoadmapPanel() {
 
       {dialog === 'source' && (
         <GuideDialog title="Where this comes from" onClose={() => setDialog(null)} historyKey="guide-source">
-          <p className="guide-dialog__body">
+          <p className="dialog__body">
             The order of these steps is adapted from the r/personalfinance{' '}
             <em>Personal Income Spending Flowchart</em> — a community-maintained chart that has
             guided a great many people through the same questions.
           </p>
-          <p className="guide-dialog__body">
+          <p className="dialog__body">
             The decisions are theirs. The wording here is ours: rewritten to be shorter, to say
             what each step means inside IGAB, and to work on a phone. Figures that change from
             year to year are deliberately left out, so nothing here quietly goes stale.
           </p>
           <a
-            className="guide-dialog__link"
+            className="dialog__link"
             href={ROADMAP_ATTRIBUTION.href}
             target="_blank"
             rel="noreferrer noopener"

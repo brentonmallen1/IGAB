@@ -35,6 +35,9 @@ def D(s: str) -> Decimal:
 class MockAccount:
     id: uuid.UUID = ACCOUNT_ID
     budget_id: uuid.UUID = BUDGET_ID
+    # Auto-categorize is offered only to on-budget rows; these tests are
+    # about the payee-memory rule, so the account is in scope for it.
+    on_budget: bool = True
 
 
 @dataclass

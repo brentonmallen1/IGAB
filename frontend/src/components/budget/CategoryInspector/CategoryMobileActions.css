@@ -23,6 +23,16 @@
   background: var(--bg-hover);
 }
 
+/* The move arrows are square: a full-width "Move up" pair would crowd the
+   three named actions off the row. */
+.cat-mobile-actions__btn--icon {
+  flex: 0 0 44px;
+}
+
+.cat-mobile-actions__btn:disabled {
+  opacity: 0.35;
+}
+
 .cat-mobile-actions__btn--danger {
   color: var(--color-negative);
   border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);

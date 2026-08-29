@@ -33,7 +33,7 @@ export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Prop
 
   return (
     <GuideDialog title="Delete the envelope too?" onClose={onClose} historyKey="wishlist-delete-envelope">
-      <div className="guide-dialog__body wish-review">
+      <div className="dialog__body wish-review">
         <p className="wish-review__done">
           <strong>{wishName}</strong> is off the list. Its envelope <strong>{envelope.name}</strong>{' '}
           is still in your budget

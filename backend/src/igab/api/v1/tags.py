@@ -2,7 +2,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from igab.api.v1.schemas.tag import SetTagsRequest, TagCreate, TagOut, TagOutSimple, TagUpdate
+from igab.api.v1.schemas.tag import (
+    BulkSetCategoryTagsRequest,
+    SetTagsRequest,
+    TagCreate,
+    TagOut,
+    TagOutSimple,
+    TagSuggestionOut,
+    TagUpdate,
+)
 from igab.dependencies import (
     BudgetAccess,
     CategoryAccess,
@@ -13,6 +21,7 @@ from igab.dependencies import (
     get_payee_repo,
     get_tag_repo,
 )
+from igab.domain.tag_hints import DERIVED_KEYS, TAG_HINTS, suggest_review_tags
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import (
@@ -152,6 +161,93 @@ async def delete_tag(
             detail="System tags cannot be deleted",
         )
     await tag_repo.delete_with_associations(tag_id)
+
+
+@router.get("/{budget_id}/tags/suggestions", response_model=list[TagSuggestionOut])
+async def list_tag_suggestions(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+) -> list[TagSuggestionOut]:
+    """System tags each category's names point at but does not carry.
+
+    Proposals only. Nothing here is written until the caller sends them back
+    through the bulk update, which is the whole difference between this and
+    what the importer does: the importer applies two keys it is confident
+    about, and everything else is offered to a person.
+
+    Seeds first, because a budget can be missing a system tag entirely — the
+    backfill migration predates three of the six keys, and `list_tags` is the
+    only other place that repairs it. Suggesting a key whose tag row does not
+    exist would offer a choice that cannot be accepted.
+    """
+    await seed_system_tags(tag_repo.session, budget_id)
+
+    rows = await category_repo.get_taggable_with_group_names(budget_id)
+    existing = await tag_repo.get_tags_for_categories([c.id for c, _ in rows])
+    applied = {h.system_key for h in TAG_HINTS if h.applied_on_import}
+
+    out: list[TagSuggestionOut] = []
+    for category, group_name in rows:
+        held = {t.system_key for t in existing.get(category.id, []) if t.system_key}
+        for suggestion in suggest_review_tags(category.name, group_name):
+            if suggestion.system_key in held:
+                continue
+            out.append(
+                TagSuggestionOut(
+                    category_id=category.id,
+                    system_key=suggestion.system_key,
+                    matched_on=suggestion.matched_on,
+                    applied_on_import=suggestion.system_key in applied,
+                )
+            )
+    return out
+
+
+@router.put("/{budget_id}/categories/tags", status_code=status.HTTP_204_NO_CONTENT)
+async def bulk_set_category_tags(
+    budget_id: BudgetAccess,
+    body: BulkSetCategoryTagsRequest,
+    current_user: CurrentUser,
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+) -> None:
+    """Set tags on many categories at once, in one transaction.
+
+    The import review changes a dozen categories in a single decision; sending
+    a dozen requests would leave the budget half-reviewed if one failed, and
+    each one is a classification override.
+
+    Every id is checked against this budget before anything is written, so a
+    stray id fails the whole call rather than applying a partial review.
+    """
+    for update in body.updates:
+        category = await category_repo.get(update.category_id)
+        if category is None or category.budget_id != budget_id or category.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Category {update.category_id} not found",
+            )
+        for tag_id in update.tag_ids:
+            tag = await tag_repo.get(tag_id)
+            if tag is None or tag.budget_id != budget_id or tag.is_deleted:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Tag {tag_id} not found",
+                )
+            if tag.system_key in DERIVED_KEYS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"The {tag.name} tag is set by the wishlist itself, from which "
+                        "envelopes fund an open wish. Setting it by hand would be undone "
+                        "on the next wishlist change."
+                    ),
+                )
+
+    for update in body.updates:
+        await tag_repo.set_category_tags(update.category_id, update.tag_ids)
 
 
 @router.put("/{budget_id}/categories/{category_id}/tags", response_model=list[TagOutSimple])

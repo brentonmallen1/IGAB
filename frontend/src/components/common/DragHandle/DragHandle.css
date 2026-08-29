@@ -1,0 +1,48 @@
+/* The handle sits in its host's left padding rather than taking a grid
+   column: a row's columns are shared with every money column around it, so
+   adding one would shift the whole table sideways whenever reordering
+   happens to be available. Quiet but always present — hover-only would be
+   unreachable by keyboard focus. */
+.drag-handle-host {
+  position: relative;
+}
+
+.drag-handle {
+  position: absolute;
+  left: 1px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  opacity: 0.35;
+  cursor: grab;
+  transition: opacity var(--transition-fast);
+}
+
+.drag-handle-host:hover > .drag-handle,
+.drag-handle:focus-visible {
+  opacity: 1;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-handle-host--dragging {
+  opacity: 0.5;
+}
+
+/* Where the row will land. A line rather than a filled block: the row already
+   has a background, and two competing fills read as a selection. */
+.drag-handle-host--drag-over {
+  box-shadow: inset 0 2px 0 0 var(--color-accent);
+}
+
+/* Native drag never fires on touch; the phone reorders from its action sheet
+   instead, so the grip would only be a dead affordance there. */
+@media (hover: none) and (pointer: coarse) {
+  .drag-handle {
+    display: none;
+  }
+}

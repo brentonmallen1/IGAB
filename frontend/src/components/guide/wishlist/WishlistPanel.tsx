@@ -15,6 +15,7 @@ import {
   type WishlistProject,
 } from '../../../api/wishlist'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { moveItem } from '../../../utils/listOrder'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { Surface } from '../../common/Surface'
 import { WishCard } from './WishCard'
@@ -112,10 +113,8 @@ export function WishlistPanel() {
   function move(wish: Wish, dir: -1 | 1) {
     const ordered = [...data!.items].sort((a, b) => a.priority - b.priority).map((w) => w.id)
     const i = ordered.indexOf(wish.id)
-    const j = i + dir
-    if (i < 0 || j < 0 || j >= ordered.length) return
-    ;[ordered[i], ordered[j]] = [ordered[j], ordered[i]]
-    reorder.mutate(ordered)
+    const moved = moveItem(ordered, i, i + dir)
+    if (moved !== ordered) reorder.mutate([...moved])
   }
 
   async function deleteWish(wish: Wish) {
@@ -384,7 +383,7 @@ export function WishlistPanel() {
       {noteOpen && (
         <GuideDialog title={FUN_NOTE.title} onClose={() => setNoteOpen(false)} historyKey="wishlist-fun">
           {FUN_NOTE.paragraphs.map((text, i) => (
-            <p key={i} className={`guide-dialog__body ${i === FUN_NOTE.paragraphs.length - 1 ? 'guide-dialog__body--muted' : ''}`}>
+            <p key={i} className={`dialog__body ${i === FUN_NOTE.paragraphs.length - 1 ? 'dialog__body--muted' : ''}`}>
               {text}
             </p>
           ))}

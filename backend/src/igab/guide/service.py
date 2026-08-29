@@ -349,7 +349,8 @@ class GuideService:
         funded = sum(
             1
             for b in summary.category_balances
-            if (t := targets.get(b.category_id))
+            if not b.in_system_group
+            and (t := targets.get(b.category_id))
             and self.targets.calculate_status(t, b.assigned, b.available, today) != "underfunded"
         )
 

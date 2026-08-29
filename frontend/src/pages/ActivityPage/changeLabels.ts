@@ -12,6 +12,9 @@ export function entityTypeLabel(entityType: string): string {
       return 'category group'
     case 'assignment':
       return 'assignment'
+    case 'budget':
+      // Only ever the subject of a reorder of its groups.
+      return 'category groups'
     default:
       return entityType
   }
@@ -31,6 +34,8 @@ export function actionTypeLabel(action: string): string {
       return 'Imported'
     case 'merge':
       return 'Merged'
+    case 'reorder':
+      return 'Reordered'
     default:
       return action
   }

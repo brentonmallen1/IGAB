@@ -14,7 +14,9 @@
  * categories, credit-card payment categories. All of it landed in "left over".
  *
  * One function, one source: the inversion is only meaningful over a single set
- * of balances, so it takes one.
+ * of balances, so it takes one. An income row (null assigned/available — no
+ * envelope money) contributes nothing: its activity is income received, and
+ * counting it here put every dollar earned into "left over from last month".
  */
 import type { CategoryBalance } from '../../types'
 
@@ -31,6 +33,7 @@ export function sumBalances(balances: CategoryBalance[]): BalanceTotals {
   let activity = 0
   let available = 0
   for (const b of balances) {
+    if (b.assigned === null || b.available === null) continue
     assigned += Number(b.assigned)
     activity += Number(b.activity)
     available += Number(b.available)

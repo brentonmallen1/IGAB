@@ -29,7 +29,11 @@
   <Config Name="Ollama Vision Model" Target="OLLAMA_VISION_MODEL" Default="" Mode="" Description="Optional - separate Ollama model for receipt scanning. Uses the default model if not set." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
 
   <!-- SimpleFIN -->
-  <Config Name="SimpleFIN Encryption Key" Target="SIMPLEFIN_ENCRYPTION_KEY" Default="" Mode="" Description="Optional - only needed for SimpleFIN bank sync. Fernet key; generate with: python3 -c &quot;from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())&quot;" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <!-- Single-quoted on purpose: double quotes in a Description survive the
+       XML fine but come back out through Unraid's own markup, where they
+       can cut the text short mid-command. Single quotes are equivalent to
+       the shell and carry no escaping. -->
+  <Config Name="SimpleFIN Encryption Key" Target="SIMPLEFIN_ENCRYPTION_KEY" Default="" Mode="" Description="Required to connect a bank with SimpleFIN. Leave blank if you do not use bank sync. This is not a SimpleFIN token: you generate it here, it never leaves this server, and it encrypts the bank credentials IGAB stores. Generate with: python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' (a hex string from openssl rand -hex 32 will not work). Keep a copy: connections saved with this key cannot be read with any other." Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
   <!-- Backups -->
   <Config Name="Backup Interval (hours)" Target="BACKUP_INTERVAL_HOURS" Default="24" Mode="" Description="Hours between automatic backups. Default: 24 (daily)." Type="Variable" Display="advanced" Required="false" Mask="false">24</Config>

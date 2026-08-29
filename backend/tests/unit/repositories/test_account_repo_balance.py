@@ -41,10 +41,12 @@ class MockAccount:
 
 
 def make_service_with_balance(account: MockAccount, balance: Decimal) -> BudgetService:
-    """Service where account_repo.get_balance returns a pre-computed value."""
+    """Service where the budget's balance term returns a pre-computed value
+    (the specification below is about what that term must sum)."""
     account_repo = MagicMock()
-    account_repo.get_on_budget = AsyncMock(return_value=[account])
-    account_repo.get_balance = AsyncMock(return_value=balance)
+    account_repo.sum_on_budget_balance = AsyncMock(
+        return_value=balance if account.on_budget else Decimal("0")
+    )
 
     return BudgetService(
         account_repo=account_repo,

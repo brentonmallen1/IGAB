@@ -37,12 +37,15 @@ from igab.repositories.txn_filters import (
     BANK_UNLINKED,
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
+    DEBT_INTEREST_ROW,
     ESSENTIAL_TAGGED,
     LEAF,
+    LOAN_PAYMENT_ROW,
     NEEDS_CATEGORY,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
     PARENT_ROW,
+    PLAIN_DEPOSIT_ROW,
     POSTED,
     PROVISIONALLY_LINKED,
     UNPAIRED_TRANSFER_LEG,
@@ -499,6 +502,14 @@ class TransactionRepository(BaseRepository[Transaction]):
 
         Category activity sums LEAF rows (plain transactions + split children;
         split parents carry no category) and only POSTED amounts.
+
+        ON_BUDGET_ACCOUNT keeps the category term over the same accounts as
+        the balance term it is subtracted from: a categorized row on a
+        tracking account moved envelopes (and, via the floor, Ready to
+        Assign) while its account contributed nothing to any balance. Every
+        legitimately categorized row is on-budget already — the transfer rule
+        guarantees it — so this is a no-op on correct data and a repair on a
+        stray row.
         """
         yr = cast(func.extract("year", Transaction.date), Integer)
         mo = cast(func.extract("month", Transaction.date), Integer)
@@ -513,6 +524,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 NOT_DELETED,
                 LEAF,
                 POSTED,
+                ON_BUDGET_ACCOUNT,
                 Transaction.date <= end_date,
             )
             .group_by(yr, mo)
@@ -559,6 +571,45 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
 
+    async def _sum_account_rows_by_month(
+        self, account_id: uuid.UUID, end_date: date, *predicates
+    ) -> dict[date, Decimal]:
+        yr = cast(func.extract("year", Transaction.date), Integer)
+        mo = cast(func.extract("month", Transaction.date), Integer)
+        result = await self.session.execute(
+            select(
+                yr.label("yr"),
+                mo.label("mo"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("total"),
+            )
+            .where(Transaction.account_id == account_id, Transaction.date <= end_date, *predicates)
+            .group_by(yr, mo)
+        )
+        return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+
+    async def sum_loan_payments_by_month(
+        self, account_id: uuid.UUID, end_date: date
+    ) -> dict[date, Decimal]:
+        """{month_start: money that arrived from another account} on a debt's
+        ledger — its payments. See LOAN_PAYMENT_ROW for why net movement is
+        the wrong reading."""
+        return await self._sum_account_rows_by_month(account_id, end_date, LOAN_PAYMENT_ROW)
+
+    async def sum_debt_interest_by_month(
+        self, account_id: uuid.UUID, end_date: date
+    ) -> dict[date, Decimal]:
+        """{month_start: interest and fees charged (negative)} on a debt's
+        ledger — the plain outflows YNAB and a hand-kept register put there."""
+        return await self._sum_account_rows_by_month(account_id, end_date, DEBT_INTEREST_ROW)
+
+    async def sum_plain_deposits_by_month(
+        self, account_id: uuid.UUID, end_date: date
+    ) -> dict[date, Decimal]:
+        """{month_start: positive rows with no partner account} on a debt's
+        ledger — balance adjustments, or payments typed without a transfer,
+        which the payment reading leaves out and the page should mention."""
+        return await self._sum_account_rows_by_month(account_id, end_date, PLAIN_DEPOSIT_ROW)
+
     async def sum_category_outflows_by_month(
         self,
         category_id: uuid.UUID,
@@ -600,6 +651,10 @@ class TransactionRepository(BaseRepository[Transaction]):
 
         end_date=None returns all months, including future-dated activity —
         the snapshot rebuild needs the full timeline.
+
+        ON_BUDGET_ACCOUNT for the same reason as `sum_by_category_by_month`:
+        the two must stay predicate-identical, and both must span the same
+        accounts as the balance term.
         """
         if not category_ids:
             return {}
@@ -617,6 +672,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 NOT_DELETED,
                 LEAF,
                 POSTED,
+                ON_BUDGET_ACCOUNT,
             )
             .group_by(Transaction.category_id, yr, mo)
         )
@@ -663,6 +719,25 @@ class TransactionRepository(BaseRepository[Transaction]):
                 UNPAIRED_TRANSFER_LEG,
             )
             .order_by(Transaction.date, Transaction.created_at)
+        )
+        return list((await self.session.execute(q)).scalars().all())
+
+    async def list_categorized_tracking_rows(self, budget_id: uuid.UUID) -> list[Transaction]:
+        """Leaf rows on off-budget accounts that carry a category — every one
+        a rule violation (domain/transfers.py: a category may sit only on an
+        on-budget row). The activity sums exclude them, so they move no money;
+        they are listed for the hygiene repair that strips them. Same
+        predicate as the hygiene count, one rule for both."""
+        q = (
+            self.with_computed(select(Transaction))
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                LEAF,
+                Transaction.category_id.isnot(None),
+                ~ON_BUDGET_ACCOUNT,
+            )
+            .order_by(Transaction.date, Transaction.created_at, Transaction.id)
         )
         return list((await self.session.execute(q)).scalars().all())
 

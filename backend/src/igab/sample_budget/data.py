@@ -247,6 +247,7 @@ SAMPLE_BUDGET = SampleBudgetSpec(
     payees=(
         PayeeSpec("Acme Corp Payroll", default_category="Salary"),
         PayeeSpec("Starting Balance"),
+        PayeeSpec("Maple St Mortgage Interest", tiers=FULL),
         PayeeSpec("Oakwood Property Mgmt", default_category="Rent"),
         PayeeSpec("City Power & Light", default_category="Electric"),
         PayeeSpec("Wave Broadband", default_category="Internet"),
@@ -296,6 +297,19 @@ SAMPLE_BUDGET = SampleBudgetSpec(
         PayeeSpec("Round Rock Fuel", default_category="Gas", tiers=FULL),
     ),
     monthly=(
+        # A real loan ledger carries its interest: the servicer's monthly
+        # charge, a plain row the payoff reading must not subtract from the
+        # payment (LOAN_PAYMENT_ROW). The balance moves by payment minus
+        # this, as it does at the bank.
+        MonthlyTxn(
+            MORTGAGE,
+            "Maple St Mortgage Interest",
+            None,
+            2,
+            (_d("-1450.00"),),
+            memo="Interest charge",
+            tiers=FULL,
+        ),
         # Paychecks: 1st and 15th, ~$4,900/mo total
         MonthlyTxn(CHECKING, "Acme Corp Payroll", "Salary", 1, (_d("2450.00"),)),
         MonthlyTxn(CHECKING, "Acme Corp Payroll", "Salary", 15, (_d("2450.00"),)),

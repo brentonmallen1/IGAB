@@ -23,9 +23,11 @@ let report: HygieneReport = { findings: [], clean: true }
 const repairMutate = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ linked: 0, ambiguous: 0, remaining: 0 }))
 )
+const stripMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ stripped: 0 })))
 vi.mock('../../api/accounts', () => ({
   useAccountHygiene: () => ({ data: report }),
   useRepairTransfers: () => ({ mutateAsync: repairMutate, isPending: false }),
+  useRepairTrackingCategories: () => ({ mutateAsync: stripMutate, isPending: false }),
 }))
 
 const toastSuccess = vi.hoisted(() => vi.fn())

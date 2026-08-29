@@ -84,6 +84,55 @@ export function useSetCategoryTags(budgetId: string | null) {
   });
 }
 
+/** A system tag a category's names point at but it does not carry.
+ *
+ * Served, not computed here: the YNAB importer writes tags from the same hint
+ * table, so a second spelling in TypeScript would be free to disagree with the
+ * one that runs at import time. */
+export interface TagSuggestion {
+  category_id: string;
+  system_key: string;
+  /** The category's own name or its group's — whichever triggered the hint. */
+  matched_on: string;
+  /** True when the importer would have written this one; false means it is
+   *  offered in the review and nowhere else. */
+  applied_on_import: boolean;
+}
+
+export function useTagSuggestions(budgetId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['tagSuggestions', budgetId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TagSuggestion[]>(`/${budgetId}/tags/suggestions`);
+      return data;
+    },
+    enabled: !!budgetId && enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** Set tags on many categories in one request.
+ *
+ * The import review changes a dozen categories in a single decision, and each
+ * one is a classification override; a dozen requests would leave the budget
+ * half-reviewed if one failed. Each entry carries the category's FULL intended
+ * tag set — the server replaces rather than merges. */
+export function useBulkSetCategoryTags(budgetId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (updates: { category_id: string; tag_ids: string[] }[]) =>
+      apiClient.put(`/${budgetId}/categories/tags`, { updates }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['categories', budgetId] });
+      // Tags are a classification override, so the "Counts as" badge
+      // changes with them. Its key is not under ['categories'].
+      qc.invalidateQueries({ queryKey: ['categoryClassification'] });
+      qc.invalidateQueries({ queryKey: ['tags', budgetId] });
+      qc.invalidateQueries({ queryKey: ['tagSuggestions', budgetId] });
+    },
+  });
+}
+
 export function useSetPayeeTags(budgetId: string | null) {
   const qc = useQueryClient();
   return useMutation({

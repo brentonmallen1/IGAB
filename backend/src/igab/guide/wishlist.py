@@ -218,11 +218,6 @@ def still_wanted(wishes: Iterable[WishInput], today: date) -> tuple[int, int]:
     return sum(1 for w in old if w.status == "open"), len(old)
 
 
-def renumber(ids: Iterable[UUID]) -> dict[UUID, int]:
-    """Contiguous priorities in the given order — what a reorder writes."""
-    return {wish_id: position for position, wish_id in enumerate(ids)}
-
-
 def drain_impact(amount: Decimal, pace: Decimal | None) -> Decimal | None:
     """How much further away a wish is, in months, after `amount` left its
     envelope at `pace` a month. None when there is no pace to measure by."""

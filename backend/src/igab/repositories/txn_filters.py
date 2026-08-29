@@ -102,6 +102,11 @@ def not_future(as_of: date):
       statement cannot reflect what has not happened. `get_status` therefore
       adds this cutoff, and `finish()` sizes its adjustment against the
       result — so the adjustment is correct even while the header differs.
+    - Ready to Assign is a statement about a month:
+      `AccountRepository.sum_on_budget_balance` bounds the budget's cash to
+      the viewed month's end, as category activity already is, so a row
+      dated next month cannot lower this month's figure before it reaches
+      any envelope.
 
     The divergence is bounded to exactly the future-dated cleared rows, and
     is pinned by a test. Do not "fix" it into agreement.
@@ -249,6 +254,23 @@ NEEDS_CATEGORY = and_(
     ON_BUDGET_ACCOUNT,
     CASH_FLOW_ROW,
 )
+
+
+#: The rows a liability's own ledger is made of, by kind. The line is the one
+#: `domain/activity_class.py` already draws for reports: a transfer leg on a
+#: tracked debt is principal moving (`TRANSFER_INTERNAL` / `DEBT_PRINCIPAL`),
+#: a plain row on it is "Interest & fees" (`DEBT_INTEREST`). So a payment is
+#: money that ARRIVED FROM ANOTHER ACCOUNT, and only that — not the month's
+#: net movement, which subtracted YNAB's interest rows from the payment and
+#: then accrued the same interest again from the rate, so a $3,000 mortgage
+#: payment read as $1,382 and "never pays off". A plain deposit typed onto
+#: the loan (no partner account) is deliberately NOT a payment: the register
+#: and the reports call it interest & fees too, and counting it here would
+#: make YNAB's balance adjustments into payments. `PLAIN_DEPOSIT_ROW` exists
+#: so the liability page can say that such rows are being left out.
+LOAN_PAYMENT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, TRANSFER_LEG)
+DEBT_INTEREST_ROW = and_(BALANCE_ROW, Transaction.amount < 0, NON_TRANSFER)
+PLAIN_DEPOSIT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, NON_TRANSFER)
 
 
 # ─── Tags on the row's category or payee ─────────────────────────────────────

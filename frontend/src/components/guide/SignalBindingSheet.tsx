@@ -84,9 +84,9 @@ export function SignalBindingSheet({
 
   return (
     <GuideDialog title={concept.label} onClose={onClose} historyKey="guide-binding">
-      <p className="guide-dialog__body">{concept.prompt}</p>
+      <p className="dialog__body">{concept.prompt}</p>
       {concept.caveat && (
-        <p className="guide-dialog__body guide-dialog__body--muted">{concept.caveat}</p>
+        <p className="dialog__body dialog__body--muted">{concept.caveat}</p>
       )}
 
       {answered ? (

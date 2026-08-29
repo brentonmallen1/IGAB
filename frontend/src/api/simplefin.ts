@@ -2,11 +2,28 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import type {
+  SimpleFINConfig,
   SimpleFINConnection,
   SimpleFINRateLimitStatus,
   SyncResult,
   TransactionMatch,
 } from '../types'
+
+/**
+ * Whether the server can run bank sync. Asked before the setup form is shown:
+ * a SimpleFIN setup token is single-use, so a misconfigured server has to say
+ * so before the user spends one on it.
+ */
+export function useSimpleFINConfig() {
+  return useQuery({
+    queryKey: ['simplefin-config'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SimpleFINConfig>('/simplefin/config')
+      return data
+    },
+    staleTime: 60_000,
+  })
+}
 
 export function useSimpleFINConnections() {
   return useQuery({

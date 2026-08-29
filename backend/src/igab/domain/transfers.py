@@ -1,14 +1,21 @@
-"""Where a category may sit on a transfer.
+"""Where a category may sit on a transaction.
 
-A category on a transfer means a YNAB "spending transfer": real spending or
-income crossing the budget boundary. That gives one rule, stated once:
+The rule, stated once:
 
-    A category may sit only on an ON-BUDGET leg whose partner is OFF-budget.
+    A category may sit only on an ON-BUDGET row — and on a transfer leg,
+    only when the partner is OFF-budget.
 
-Everything else follows. An on↔on transfer is internal movement and can never
-be categorized (it would count moving money as spending); an off-budget leg
-can never be categorized (off-budget activity is not in the budget); both
-legs categorized is always wrong.
+The first clause is the general rule: a category files budget spending, and a
+tracking account's rows are net-worth movement, not budget spending. A
+categorized row on an off-budget account moved envelopes (and, via the
+carryover floor, Ready to Assign) while its account contributed to no balance
+term — money moving with no on-budget event.
+
+The second clause is the transfer case: a category on a transfer means a YNAB
+"spending transfer", real spending or income crossing the budget boundary. An
+on↔on transfer is internal movement and can never be categorized (it would
+count moving money as spending); an off-budget leg can never be categorized;
+both legs categorized is always wrong.
 
 This rule was found hand-written three times — transfer create, the
 transfer-edit planner, and the YNAB importer's pairing check — each phrased
@@ -21,8 +28,11 @@ where they can speak in that path's terms; the *decision* is only here.
 """
 
 
-def leg_may_carry_category(own_on_budget: bool, partner_on_budget: bool) -> bool:
-    """May THIS leg hold a category, given both sides' budget membership?"""
+def leg_may_carry_category(own_on_budget: bool, partner_on_budget: bool | None = None) -> bool:
+    """May THIS row hold a category? A plain transaction is a leg with no
+    partner — the general clause alone decides it."""
+    if partner_on_budget is None:
+        return own_on_budget
     return own_on_budget and not partner_on_budget
 
 

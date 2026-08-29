@@ -12,9 +12,10 @@ import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 
 export interface Change {
   id: string
-  entity_type: 'transaction' | 'payee' | 'category' | 'category_group' | 'assignment'
+  /** `budget` appears only as the subject of a `reorder` of its groups. */
+  entity_type: 'transaction' | 'payee' | 'category' | 'category_group' | 'assignment' | 'budget'
   entity_id: string
-  action: 'create' | 'update' | 'delete' | 'approve' | 'import' | 'merge'
+  action: 'create' | 'update' | 'delete' | 'approve' | 'import' | 'merge' | 'reorder'
   before: Record<string, unknown> | null
   after: Record<string, unknown> | null
   batch_id: string | null

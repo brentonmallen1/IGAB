@@ -68,14 +68,13 @@ def make_service(
     activity_by_category = activity_by_category or {}
 
     account_repo = MagicMock()
-    account_repo.get_on_budget = AsyncMock(
-        return_value=[a for a in accounts if a.on_budget and not a.is_closed]
-    )
 
-    async def _get_balance(account_id):
-        return balances.get(account_id, D("0"))
+    async def _sum_on_budget_balance(budget_id, as_of):
+        # Every on-budget account funds TBA, closed ones included — see
+        # AccountRepository.sum_on_budget_balance.
+        return sum((balances.get(a.id, D("0")) for a in accounts if a.on_budget), D("0"))
 
-    account_repo.get_balance = AsyncMock(side_effect=_get_balance)
+    account_repo.sum_on_budget_balance = AsyncMock(side_effect=_sum_on_budget_balance)
 
     category_repo = MagicMock()
     category_repo.get_all = AsyncMock(return_value=categories)
