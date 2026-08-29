@@ -61,7 +61,7 @@ from datetime import date
 from decimal import Decimal
 
 from igab.domain.dates import month_end, month_start
-from igab.integrations.ynab.models import YNABBudget
+from igab.integrations.ynab.models import YNABBudget, YNABPlanRow
 
 ZERO = Decimal("0")
 _INFLOW = ("Inflow", "Ready to Assign")
@@ -210,3 +210,115 @@ def subset_sums(amounts: list[Decimal], limit: int = 16) -> set[Decimal]:
     for amount in amounts:
         sums |= {s + amount for s in sums} | {amount}
     return sums
+
+
+#: A file whose own numbers disagree with each other more than this is not a
+#: faithful export — anonymised, hand-edited, or assembled from two different
+#: points in time. The gate asks "is this file coherent at all", not "is it
+#: precise": a real export sits at zero, and the files this catches sit above
+#: a third. Anything in between should be looked at by a person either way.
+INCOHERENT_FRACTION = Decimal("0.05")
+
+
+@dataclass
+class ExportConsistency:
+    """Does the export agree with itself?
+
+    Parity compares IGAB's recomputed Available against the Available column
+    YNAB shipped. That comparison only means anything if the file's own
+    numbers hang together, and two invariants say whether they do:
+
+    carryover   Available == prior Available + Assigned + Activity, down each
+                category's months. YNAB's cash-overspending write-off (a
+                negative month-end that starts the next month at zero) counts
+                as holding, as does credit overspending riding forward.
+    activity    each Plan Activity cell equals the register rows filed to that
+                category in that month. This is the one that decides parity:
+                IGAB's balance is built from the register, so where the two
+                disagree the comparison is measuring the file, not IGAB.
+
+    Both are properties of the file alone — no import choices, no database.
+    """
+
+    carryover_rows_checked: int
+    carryover_rows_violating: int
+    activity_cells_checked: int
+    activity_cells_disagreeing: int
+
+    @property
+    def carryover_violation_rate(self) -> Decimal:
+        return _rate(self.carryover_rows_violating, self.carryover_rows_checked)
+
+    @property
+    def activity_disagreement_rate(self) -> Decimal:
+        return _rate(self.activity_cells_disagreeing, self.activity_cells_checked)
+
+    @property
+    def self_consistent(self) -> bool:
+        """False only on evidence. A register-only export checks nothing and
+        is not thereby suspect — both rates are zero and it passes."""
+        return (
+            self.carryover_violation_rate <= INCOHERENT_FRACTION
+            and self.activity_disagreement_rate <= INCOHERENT_FRACTION
+        )
+
+
+def _rate(part: int, whole: int) -> Decimal:
+    return ZERO if whole == 0 else Decimal(part) / Decimal(whole)
+
+
+def export_consistency(budget: YNABBudget) -> ExportConsistency:
+    """See `ExportConsistency`. Every account is in scope: the plan reflects
+    the whole budget, so skipping an account at import does not make the file
+    disagree with itself."""
+    plan_rows = [r for r in budget.plan_rows if r.category_group != _CREDIT_CARD_PAYMENTS]
+
+    # --- carryover: Available == prior Available + Assigned + Activity ---
+    by_category: dict[tuple[str, str], list[YNABPlanRow]] = defaultdict(list)
+    for row in plan_rows:
+        by_category[(row.category_group, row.category)].append(row)
+
+    carryover_checked = 0
+    carryover_violating = 0
+    for rows in by_category.values():
+        previous: Decimal | None = None
+        for row in sorted(rows, key=lambda r: r.month):
+            if row.available is None or row.activity is None:
+                previous = row.available
+                continue
+            # The earliest month has nothing to carry from, so it seeds the
+            # walk rather than being checked against an assumed zero.
+            if previous is not None:
+                carryover_checked += 1
+                expected = previous + row.assigned + row.activity
+                # Overspending either rides forward on the card (available ==
+                # expected) or comes out of Ready to Assign at the boundary
+                # (available == 0). Both are YNAB behaving.
+                if row.available != expected and not (expected < ZERO and row.available == ZERO):
+                    carryover_violating += 1
+            previous = row.available
+
+    # --- activity: the Plan's Activity vs the register shipped beside it ---
+    register_net: dict[tuple[str, str, date], Decimal] = defaultdict(lambda: ZERO)
+    for txn in budget.transactions:
+        for leg in txn.splits or [txn]:
+            if not (leg.category_group and leg.category):
+                continue
+            register_net[(leg.category_group, leg.category, month_start(txn.date))] += leg.amount
+
+    activity_checked = 0
+    activity_disagreeing = 0
+    for row in plan_rows:
+        if row.activity is None:
+            continue
+        activity_checked += 1
+        key = (row.category_group, row.category, row.month)
+        if row.activity != register_net.get(key, ZERO):
+            activity_disagreeing += 1
+
+    return ExportConsistency(
+        carryover_rows_checked=carryover_checked,
+        carryover_rows_violating=carryover_violating,
+        activity_cells_checked=activity_checked,
+        activity_cells_disagreeing=activity_disagreeing,
+    )

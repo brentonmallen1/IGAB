@@ -83,6 +83,10 @@
 
 .import-review__verdict--ok { color: var(--color-success); }
 
+/* The export contradicts itself, so nothing below it is a verdict on the
+   import. Warning rather than danger: the budget imported fine. */
+.import-review__verdict--warn { color: var(--color-warning); }
+
 .import-review__notes,
 .import-review__diffs,
 .import-review__errors {

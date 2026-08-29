@@ -92,6 +92,25 @@ class YNABParityDifference(BaseModel):
     pending: Decimal = Decimal("0")
 
 
+class YNABExportConsistencyOut(BaseModel):
+    """Whether the export's own numbers agree with each other.
+
+    Parity holds IGAB's recomputed Available against the Available column
+    YNAB shipped, and that only means something if the file hangs together.
+    `carryover` checks each category's months against YNAB's own running
+    balance; `activity` checks each Plan Activity cell against the register
+    rows shipped beside it. When `self_consistent` is false the envelope
+    differences describe the file, not the import, and should be read that
+    way.
+    """
+
+    self_consistent: bool
+    carryover_rows_checked: int
+    carryover_rows_violating: int
+    activity_cells_checked: int
+    activity_cells_disagreeing: int
+
+
 class YNABParityOut(BaseModel):
     """How the imported budget compares with the export's own figures.
 
@@ -116,7 +135,11 @@ class YNABParityOut(BaseModel):
     #: Envelopes that differ from YNAB's Available by exactly their uncleared
     #: rows this month — YNAB counts imported rows only once approved.
     categories_pending: int
+    #: Envelopes YNAB priced that no IGAB category answered to. Not compared;
+    #: reported so `categories_compared` is explainable.
+    categories_unmatched: int
     top_differences: list[YNABParityDifference]
+    consistency: YNABExportConsistencyOut
 
 
 class YNABTaggedCategory(BaseModel):
@@ -596,10 +619,18 @@ async def ynab_parity_or_none(
         categories_compared=report.categories_compared,
         categories_differing=report.categories_differing,
         categories_pending=report.categories_pending,
+        categories_unmatched=report.categories_unmatched,
         top_differences=[
             YNABParityDifference(name=d.name, igab=d.igab, ynab=d.ynab, pending=d.pending)
             for d in report.top_differences
         ],
+        consistency=YNABExportConsistencyOut(
+            self_consistent=report.consistency.self_consistent,
+            carryover_rows_checked=report.consistency.carryover_rows_checked,
+            carryover_rows_violating=report.consistency.carryover_rows_violating,
+            activity_cells_checked=report.consistency.activity_cells_checked,
+            activity_cells_disagreeing=report.consistency.activity_cells_disagreeing,
+        ),
     )
 
 

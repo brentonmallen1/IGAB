@@ -167,6 +167,14 @@ async def test_real_export(db_session):
     expected_rta = os.environ.get("IGAB_YNAB_RTA")
     if expected_rta:
         assert report.ynab_ready_to_assign == cents(expected_rta)
+    assert report.consistency.self_consistent, (
+        f"the export disagrees with itself: "
+        f"{report.consistency.carryover_rows_violating}/"
+        f"{report.consistency.carryover_rows_checked} plan rows break YNAB's own running "
+        f"balance, {report.consistency.activity_cells_disagreeing}/"
+        f"{report.consistency.activity_cells_checked} Activity cells disagree with the "
+        "register. Nothing below can be read as an IGAB result."
+    )
     assert report.categories_differing == 0, report.top_differences
     assert report.igab_ready_to_assign == report.expected_ready_to_assign, (
         f"IGAB {report.igab_ready_to_assign} vs expected {report.expected_ready_to_assign} "

@@ -18,7 +18,7 @@ from datetime import date
 from pathlib import Path
 
 from igab.domain.dates import month_start
-from igab.integrations.ynab.oracle import ynab_rta
+from igab.integrations.ynab.oracle import export_consistency, ynab_rta
 from igab.integrations.ynab.parser import YNABParser
 
 
@@ -72,7 +72,27 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Uncategorized rows, on budget {_money(report.uncategorized_net)}")
     print(f"Expected IGAB Ready to Assign {_money(report.expected_igab)}")
     print()
+    consistency = export_consistency(budget)
+    if consistency.self_consistent:
+        print("Export agrees with itself.")
+    else:
+        # Said first among the closing lines, because everything above is
+        # read out of a file that contradicts itself.
+        print("EXPORT DOES NOT AGREE WITH ITSELF — figures above describe the file:")
+    print(
+        f"  plan rows breaking YNAB's own running balance  "
+        f"{consistency.carryover_rows_violating:,} of {consistency.carryover_rows_checked:,} "
+        f"({consistency.carryover_violation_rate:.1%})"
+    )
+    print(
+        f"  Activity cells disagreeing with the register   "
+        f"{consistency.activity_cells_disagreeing:,} of {consistency.activity_cells_checked:,} "
+        f"({consistency.activity_disagreement_rate:.1%})"
+    )
+    print()
     print(f"Accounts in scope: {len(kept)}; parse errors: {len(budget.errors)}")
+    for message in budget.errors[:5]:
+        print(f"  {message}")
     if args.categories:
         print()
         for (group, category), available in sorted(report.available.items()):
