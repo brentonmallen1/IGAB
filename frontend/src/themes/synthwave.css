@@ -33,10 +33,36 @@
   --row-hover-bg: rgba(255, 114, 200, 0.08);
   --row-selected-bg: rgba(255, 114, 200, 0.15);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  /* Shadows — real depth, plus a magenta bloom. Unlike Phosphor, which
+     replaces the drop shadow outright, Synthwave layers: this canvas is dark
+     enough that overlays still need genuine occlusion. */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4),
+    0 0 6px color-mix(in srgb, var(--color-accent) 10%, transparent);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5),
+    0 0 14px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6),
+    0 0 24px color-mix(in srgb, var(--color-accent) 14%, transparent);
+
+  /* Focus blooms too — base's ring, plus falloff */
+  --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--color-accent),
+    0 0 12px color-mix(in srgb, var(--color-accent) 40%, transparent);
+
+  /* Neon bloom — see the --glow-* block in base.css for the contract.
+     Two layers: a tight core for crispness, a wide falloff for the bloom. The
+     core is what makes it read as lit rather than merely blurred. The falloff
+     radius is var(--glow-fall) rather than a literal so a short consumer (a
+     10px bar track) can narrow every hue at once. */
+  --glow-fall: 16px;
+  --glow-accent: 0 0 3px color-mix(in srgb, var(--color-accent) 50%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-accent) 50%, transparent);
+  --glow-positive: 0 0 3px color-mix(in srgb, var(--color-positive) 50%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-positive) 50%, transparent);
+  --glow-negative: 0 0 3px color-mix(in srgb, var(--color-negative) 50%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-negative) 50%, transparent);
+  --glow-warning: 0 0 3px color-mix(in srgb, var(--color-warning) 50%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-warning) 50%, transparent);
+  --glow-text-positive: 0 0 7px color-mix(in srgb, var(--color-positive) 45%, transparent);
+  --glow-text-negative: 0 0 7px color-mix(in srgb, var(--color-negative) 45%, transparent);
 
   /* Chrome */
   --sidebar-bg: #16141c;
@@ -106,10 +132,32 @@
   --row-hover-bg: rgba(176, 0, 130, 0.06);
   --row-selected-bg: rgba(176, 0, 130, 0.12);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(42, 37, 48, 0.1);
-  --shadow-md: 0 4px 12px rgba(42, 37, 48, 0.15);
-  --shadow-lg: 0 8px 24px rgba(42, 37, 48, 0.2);
+  /* Shadows — same layered recipe as the dark variant, damped. */
+  --shadow-sm: 0 1px 3px rgba(42, 37, 48, 0.1),
+    0 0 5px color-mix(in srgb, var(--color-accent) 7%, transparent);
+  --shadow-md: 0 4px 12px rgba(42, 37, 48, 0.15),
+    0 0 10px color-mix(in srgb, var(--color-accent) 8%, transparent);
+  --shadow-lg: 0 8px 24px rgba(42, 37, 48, 0.2),
+    0 0 18px color-mix(in srgb, var(--color-accent) 9%, transparent);
+
+  --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--color-accent),
+    0 0 8px color-mix(in srgb, var(--color-accent) 25%, transparent);
+
+  /* Neon bloom — the dark recipe at x0.55 radius and x0.55 alpha. A wide bloom
+     on #f1ece4 reads as a smudge; a tight one reads as a halo of coloured
+     light. The sidebar stays dark in this variant, so its update dot and the
+     add button still bloom against a dark ground. */
+  --glow-fall: 9px;
+  --glow-accent: 0 0 2px color-mix(in srgb, var(--color-accent) 28%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-accent) 28%, transparent);
+  --glow-positive: 0 0 2px color-mix(in srgb, var(--color-positive) 28%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-positive) 28%, transparent);
+  --glow-negative: 0 0 2px color-mix(in srgb, var(--color-negative) 28%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-negative) 28%, transparent);
+  --glow-warning: 0 0 2px color-mix(in srgb, var(--color-warning) 28%, transparent),
+    0 0 var(--glow-fall) color-mix(in srgb, var(--color-warning) 28%, transparent);
+  --glow-text-positive: 0 0 4px color-mix(in srgb, var(--color-positive) 28%, transparent);
+  --glow-text-negative: 0 0 4px color-mix(in srgb, var(--color-negative) 28%, transparent);
 
   /* Chrome — sidebar stays dark */
   --sidebar-bg: #1a1820;

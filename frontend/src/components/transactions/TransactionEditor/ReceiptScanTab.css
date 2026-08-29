@@ -88,6 +88,7 @@
 
 .receipt-scan__preview-remove:hover {
   background: var(--color-negative);
+  box-shadow: var(--glow-negative);
 }
 
 .receipt-scan__submit {
@@ -180,12 +181,3 @@
   text-decoration: underline;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}

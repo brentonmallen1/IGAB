@@ -16,6 +16,7 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
 import { useShortcut } from '../../../hooks/useShortcut'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useSyncAllAccounts } from '../../../hooks/useSyncAllAccounts'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
 import { THEMES } from '../../../stores/appStore'
 import { STATIC_COMMANDS, type CommandCtx } from '../commands'
@@ -50,6 +51,7 @@ export function CommandPalette() {
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
+  const { syncAll } = useSyncAllAccounts()
 
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -125,6 +127,7 @@ export function CommandPalette() {
     goMonth: (delta) =>
       setSelectedMonth(delta === 0 ? currentMonthStart() : addMonths(selectedMonth, delta)),
     togglePrivacy: togglePrivacyMode,
+    syncAll,
   }
 
   function run(action: () => void) {

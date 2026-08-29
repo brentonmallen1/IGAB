@@ -23,6 +23,7 @@ import { AddAccountModal } from '../../components/accounts/AddAccountModal'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { AccountTypesPanel } from '../../components/accounts/AccountTypesPanel'
 import { useAppStore } from '../../stores/appStore'
+import { useSyncAllAccounts } from '../../hooks/useSyncAllAccounts'
 import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
@@ -178,39 +179,15 @@ export function AccountsOverviewPage() {
   const primaryConnection = connections[0] ?? null
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(primaryConnection?.id ?? null)
   const syncMutation = useSyncSimpleFIN(budgetId)
-  const [syncMsg, setSyncMsg] = useState<string | null>(null)
 
   const syncingAccountId =
     syncMutation.isPending
       ? (syncMutation.variables as { accountSimplefinId?: string })?.accountSimplefinId
       : undefined
 
-  async function handleSyncAll() {
-    if (!primaryConnection || !budgetId || syncMutation.isPending) return
-    if (rateLimitStatus && !rateLimitStatus.can_sync_global) {
-      toast.error(`Daily sync limit reached. Resets at midnight UTC.`)
-      return
-    }
-    setSyncMsg(null)
-    try {
-      const result = await syncMutation.mutateAsync({ connectionId: primaryConnection.id })
-      if (result.error) {
-        toast.error(result.error)
-        setSyncMsg(null)
-      } else {
-        const parts = [`Imported ${result.imported}`, `skipped ${result.skipped}`]
-        if (result.matched) parts.push(`matched ${result.matched}`)
-        if (result.cleared) parts.push(`cleared ${result.cleared}`)
-        if (result.review_queued) parts.push(`${result.review_queued} need review`)
-        const msg = parts.join(', ')
-        setSyncMsg(msg)
-        toast.success(msg)
-      }
-    } catch {
-      toast.error('Sync failed — check your connection')
-      setSyncMsg(null)
-    }
-  }
+  // Every connection, not connections[0] — and the same call the sidebar and
+  // the command palette make, so the three cannot behave differently.
+  const syncAllAccounts = useSyncAllAccounts()
 
   function handleAccountSync(account: Account, e: React.MouseEvent) {
     e.stopPropagation()
@@ -293,15 +270,17 @@ export function AccountsOverviewPage() {
   ]
   const hasClosedAccounts = allAccounts?.some((a) => a.is_closed) ?? false
 
-  const hasSyncConnection = !!primaryConnection
-  const canSyncAll = hasSyncConnection && !syncMutation.isPending && (rateLimitStatus?.can_sync_global ?? true)
+  const hasSyncConnection = syncAllAccounts.available
+  const canSyncAll = hasSyncConnection && !syncAllAccounts.isPending
 
   return (
     <div className="accounts-overview">
       <div className="accounts-overview__header">
         <h1 className="accounts-overview__title">Accounts</h1>
         <div className="accounts-overview__header-actions">
-          {syncMsg && <span className="accounts-overview__sync-msg">{syncMsg}</span>}
+          {syncAllAccounts.lastSummary && (
+            <span className="accounts-overview__sync-msg">{syncAllAccounts.lastSummary}</span>
+          )}
           {(hasClosedAccounts || showClosed) && (
             <button
               className="accounts-overview__toggle-closed-btn"
@@ -314,8 +293,8 @@ export function AccountsOverviewPage() {
           )}
           {hasSyncConnection && (
             <button
-              className={`accounts-overview__sync-all-btn ${syncMutation.isPending && !syncingAccountId ? 'accounts-overview__sync-all-btn--spinning' : ''}`}
-              onClick={handleSyncAll}
+              className={`accounts-overview__sync-all-btn ${syncAllAccounts.isPending ? 'accounts-overview__sync-all-btn--spinning' : ''}`}
+              onClick={syncAllAccounts.syncAll}
               disabled={!canSyncAll}
               title={
                 rateLimitStatus

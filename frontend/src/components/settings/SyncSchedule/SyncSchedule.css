@@ -1,0 +1,62 @@
+.sync-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.sync-schedule__interval {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.sync-schedule__times {
+  padding: var(--spacing-sm) 0;
+}
+
+.sync-schedule__times-label {
+  margin-bottom: var(--spacing-sm);
+}
+
+/* Auto-fill rather than a fixed 6×4: at the larger text sizes 24 cells of
+   fixed width overflow the settings column. */
+.sync-schedule__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: var(--spacing-xs);
+}
+
+.sync-schedule__hour {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.sync-schedule__hour:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+/* Selected hours carry the accent as a wash rather than a fill: there can be
+   twelve of them, and twelve solid accent blocks is a pattern, not a state. */
+.sync-schedule__hour--on {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--bg-secondary));
+  border-color: var(--color-accent);
+  color: var(--text-primary);
+}
+
+.sync-schedule__summary {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  padding-top: var(--spacing-xs);
+}
+
+.sync-schedule__caveat {
+  color: var(--text-muted);
+}

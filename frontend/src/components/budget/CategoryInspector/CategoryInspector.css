@@ -281,6 +281,7 @@
 
 .inspector-btn--danger:hover {
   background-color: var(--color-negative);
+  box-shadow: var(--glow-negative);
   color: var(--text-inverse);
 }
 

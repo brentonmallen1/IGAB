@@ -30,6 +30,7 @@ import { ImportReviewButton } from '../../components/imports/ImportReviewDialog/
 import { AISettingsPanel } from '../../components/settings/AISettingsPanel'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
+import { SyncSchedule } from '../../components/settings/SyncSchedule/SyncSchedule'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useUIStore } from '../../stores/uiStore'
 import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
@@ -82,7 +83,7 @@ const CURRENCIES: { value: string; label: string; symbol: string }[] = [
 
 
 export function SettingsPage() {
-  const { formatMoney, formatDateTime, formatTime } = useFormatters()
+  const { formatMoney, formatDateTime } = useFormatters()
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const fontScale = useAppStore((s) => s.fontScale)
@@ -638,46 +639,7 @@ export function SettingsPage() {
                   />
                 </div>
 
-                <div className="settings-row">
-                  <div>
-                    <div className="settings-row__label">Daily auto-sync time</div>
-                    <div className="settings-row__desc">Hour of day (UTC) to automatically sync</div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <select
-                      className="settings-select"
-                      value={conn.daily_sync_time ? String(parseInt(conn.daily_sync_time.split(':')[0], 10)) : ''}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        updateConnection.mutate({
-                          id: conn.id,
-                          daily_sync_time: val === '' ? null : `${val.padStart(2, '0')}:00:00`,
-                        })
-                      }}
-                      style={{ minWidth: 130 }}
-                    >
-                      <option value="">Disabled</option>
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <option key={i} value={String(i)}>
-                          {String(i).padStart(2, '0')}:00 UTC
-                        </option>
-                      ))}
-                    </select>
-                    {conn.daily_sync_time && (
-                      <span className="settings-row__local-time">
-                        = {(() => {
-                          const utcHour = parseInt(conn.daily_sync_time.split(':')[0], 10)
-                          const d = new Date()
-                          d.setUTCHours(utcHour, 0, 0, 0)
-                          // formatTime, not toLocaleTimeString: the latter
-                          // reads the browser locale and printed 12-hour
-                          // clocks to budgets set to 24-hour.
-                          return formatTime(d.getHours(), d.getMinutes())
-                        })()} your time
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <SyncSchedule connection={conn} />
 
                 {rateLimitStatus && (
                   <div className="sf-usage">

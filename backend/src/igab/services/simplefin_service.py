@@ -20,6 +20,7 @@ from igab.integrations.simplefin.encryption import (
     encrypt,
     require_configured,
 )
+from igab.integrations.simplefin.limits import ACCOUNT_DAILY_LIMIT, GLOBAL_DAILY_LIMIT
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -30,8 +31,6 @@ from igab.services.transaction_matching_service import (
 from igab.services.transaction_service import TransactionCreate, TransactionService
 from igab.utils.clock import today_utc
 
-GLOBAL_DAILY_LIMIT = 12
-ACCOUNT_DAILY_LIMIT = 12
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BASE_DELAY = 2.0  # seconds, doubles each attempt
 
@@ -218,6 +217,41 @@ class SimpleFINService:
 
     async def list_connections(self, user_id: uuid.UUID) -> list[SimpleFINConnection]:
         return await self.repo.get_all_for_user(user_id)
+
+    async def sync_all(self, user_id: uuid.UUID, budget_id: uuid.UUID) -> dict:
+        """Sync every connection this user has, into one budget.
+
+        One connection failing — rate-limited, credentials rotated, bank down
+        — must not stop the rest, so each outcome is collected rather than
+        raised. `sync` already reports its own failures as an `error` key and
+        records them on the connection, so there is nothing to catch here
+        beyond the unexpected.
+
+        The totals and the per-connection list are both returned: "imported 4"
+        is not the whole story when a second bank was refused.
+        """
+        totals = {
+            "imported": 0,
+            "skipped": 0,
+            "matched": 0,
+            "review_queued": 0,
+            "cleared": 0,
+            "removed_pending": 0,
+        }
+        outcomes: list[dict] = []
+        for conn in await self.repo.get_all_for_user(user_id):
+            result = await self.sync(conn.id, budget_id, sync_type="global")
+            for key in totals:
+                totals[key] += int(result.get(key) or 0)
+            outcomes.append(
+                {
+                    "connection_id": conn.id,
+                    "imported": int(result.get("imported") or 0),
+                    "skipped": int(result.get("skipped") or 0),
+                    "error": result.get("error"),
+                }
+            )
+        return {**totals, "connections": outcomes}
 
     async def update_connection(
         self, connection_id: uuid.UUID, **kwargs: object

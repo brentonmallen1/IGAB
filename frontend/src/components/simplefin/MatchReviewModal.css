@@ -286,14 +286,6 @@
   cursor: not-allowed;
 }
 
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* The one thing accept changes about the user's entry, said before they
    press it. Warning tone, not danger: the bank is usually right (a tip). */
 .match-modal__callout {
