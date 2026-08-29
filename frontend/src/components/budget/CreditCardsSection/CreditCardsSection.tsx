@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, CreditCard } from 'lucide-react'
+import { ChevronDown, ChevronRight, CreditCard, Info } from 'lucide-react'
 import { useBudgetMonth, useSetAssignment } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAmountExpressionInput } from '../../../utils/amountExpression'
+import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
 import './CreditCardsSection.css'
 
@@ -33,6 +34,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const toggleCollapsed = useUIStore((s) => s.toggleCreditCardsCollapsed)
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [infoOpen, setInfoOpen] = useState(false)
 
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
@@ -56,22 +58,36 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
       className={`credit-cards ${collapsed ? 'credit-cards--collapsed' : ''}`}
       headerClassName="credit-cards__header-row"
       header={
-        <button
-          type="button"
-          className="credit-cards__header"
-          onClick={toggleCollapsed}
-          aria-expanded={!collapsed}
-          aria-controls="credit-cards-body"
-        >
-          {collapsed ? <ChevronRight size={13} aria-hidden /> : <ChevronDown size={13} aria-hidden />}
-          <span className="section-label surface__title">Credit cards</span>
+        <>
+          <button
+            type="button"
+            className="credit-cards__header"
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-controls="credit-cards-body"
+          >
+            {collapsed ? (
+              <ChevronRight size={13} aria-hidden />
+            ) : (
+              <ChevronDown size={13} aria-hidden />
+            )}
+            <span className="section-label surface__title">Credit cards</span>
+          </button>
+          {/* A sibling, not a child: a button cannot nest in the fold control. */}
+          <button
+            type="button"
+            className="credit-cards__info-btn"
+            aria-label="How credit cards work here"
+            title="How credit cards work here"
+            onClick={() => setInfoOpen(true)}
+          >
+            <Info size={13} aria-hidden />
+          </button>
           <span className="credit-cards__summary">
             {cards.length === 1 ? '1 card' : `${cards.length} cards`}
-            {totalUncovered !== 0 && (
-              <> · {formatMoney(totalUncovered)} uncovered</>
-            )}
+            {totalUncovered !== 0 && <> · {formatMoney(totalUncovered)} uncovered</>}
           </span>
-        </button>
+        </>
       }
     >
       {!collapsed && (
@@ -154,12 +170,45 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               )
             })}
           </div>
-          <p className="credit-cards__note">
-            Set aside is cash reserved for each card: funded spending flows in, payments draw it
-            down, and assigning adds to it. Uncovered is what is owed beyond the reserve — cover
-            it by assigning to the card whenever suits.
-          </p>
         </div>
+      )}
+      {infoOpen && (
+        <Dialog
+          title="How credit cards work here"
+          onClose={() => setInfoOpen(false)}
+          historyKey="credit-cards-info"
+        >
+          <div className="credit-cards__info">
+            <p>
+              A card never touches Ready to Assign on its own. Spending on it does not take
+              money out of the budget — it builds a balance to pay later — and the only way a
+              card moves the figure is money you deliberately assign to it.
+            </p>
+            <dl>
+              <dt>Balance</dt>
+              <dd>What the card's ledger says through the viewed month — negative is owed.</dd>
+              <dt>Assigned</dt>
+              <dd>
+                Money you put toward the card this month. It is an ordinary assignment: it
+                comes out of Ready to Assign and undo works.
+              </dd>
+              <dt>Set aside</dt>
+              <dd>
+                Cash reserved to pay the card, kept automatically: spending your envelopes
+                could cover flows in, payments draw it down, and assigning adds to it. It can
+                run negative when payments outran the reserve — that just means the extra came
+                from Ready to Assign.
+              </dd>
+              <dt>Uncovered</dt>
+              <dd>
+                What is owed beyond the reserve — overspending that rode onto the card, old
+                debt, or a partner's share not yet paid back. It is information, not an alarm:
+                a bill that is simply not due yet is a normal state. Cover it by assigning to
+                the card whenever suits.
+              </dd>
+            </dl>
+          </div>
+        </Dialog>
       )}
     </Surface>
   )
