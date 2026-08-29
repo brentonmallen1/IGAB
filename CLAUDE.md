@@ -219,9 +219,16 @@ make the facts fictional.**
 - A fixture under `tests/fixtures/` that looks like a bank feed must be listed
   in `REVIEWED_FIXTURES` in `scripts/check-pii.py`. Adding the line *is* the
   review. Do not add one for a file you have not opened.
-- Found a real identifier? Remove it **and add it to `FORBIDDEN`** in
-  `scripts/check-pii.py`. That list is a ratchet — it is the only part of the
-  check that knows what your real data looks like.
+- Found a real identifier? Remove it **and add it to the deny-list**:
+  `python3 scripts/check-pii.py --add "Some Name"` prints the digest to paste
+  in. That list is a ratchet — the only part of the check that knows what your
+  real data looks like.
+- **The deny-list is hashed on purpose.** A plaintext list of strings you must
+  never publish is itself a list of strings you must never publish; the first
+  version of that file leaked six of them into the commit that added the check.
+  Hashes also survive a history rewrite, where a `--replace-text` pass would
+  otherwise leave the list denying the fictional names and passing the real
+  ones.
 
 ### If something real does get committed
 
