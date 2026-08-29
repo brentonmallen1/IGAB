@@ -50,6 +50,11 @@ export interface ActiveModal {
 
 interface UIState {
   collapsedGroups: Set<string>
+  /** The budget page's credit-cards strip, folded shut. Its own flag, not a
+   *  member of `collapsedGroups`: those are category-group ids, and the
+   *  cards strip is not a category group. */
+  creditCardsCollapsed: boolean
+  toggleCreditCardsCollapsed: () => void
   /** One slot, so opening a dialog closes whatever was open.
    *
    *  This was eight independent booleans, each with its own editing-id and its
@@ -175,6 +180,7 @@ export const useUIStore = create<UIState>()(
   persist(
     (set, get) => ({
   collapsedGroups: new Set(),
+  creditCardsCollapsed: false,
   activeModal: null,
   sidebarCollapsed: false,
   sidebarWidth: SIDEBAR_MIN_WIDTH,
@@ -206,6 +212,8 @@ export const useUIStore = create<UIState>()(
 
   collapseAll: (groupIds) => set({ collapsedGroups: new Set(groupIds) }),
   expandAll: () => set({ collapsedGroups: new Set() }),
+  toggleCreditCardsCollapsed: () =>
+    set((s) => ({ creditCardsCollapsed: !s.creditCardsCollapsed })),
 
   openModal: (kind, editingId) => set({ activeModal: { kind, editingId: editingId ?? null } }),
   closeModal: () => set({ activeModal: null }),
@@ -420,6 +428,8 @@ export const useUIStore = create<UIState>()(
         // merge() below. Persisting the Set directly rehydrates a plain
         // object whose `.has` is undefined, which throws on first render.
         collapsedSidebarGroups: [...s.collapsedSidebarGroups],
+        // Folding the cards strip is the same kind of standing choice.
+        creditCardsCollapsed: s.creditCardsCollapsed,
       }),
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<

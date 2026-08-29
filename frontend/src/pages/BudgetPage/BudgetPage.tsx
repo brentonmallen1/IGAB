@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { EyeOff, FolderInput, Trash2 } from 'lucide-react'
 import { BudgetTable } from '../../components/budget/BudgetTable/BudgetTable'
-import { CreditCardsSection } from '../../components/budget/CreditCardsSection/CreditCardsSection'
 import { CategoryInspector } from '../../components/budget/CategoryInspector/CategoryInspector'
 import { CategoryMobileActions } from '../../components/budget/CategoryInspector/CategoryMobileActions'
 import { BottomSheet } from '../../components/common/BottomSheet/BottomSheet'
@@ -156,7 +155,6 @@ export function BudgetPage() {
           className={`budget-page__table-container ${selectedCount > 0 ? 'budget-page__table-container--with-bar' : ''}`}
         >
           <BudgetTable />
-          <CreditCardsSection budgetId={budgetId} month={month} />
         </div>
         {selectedCategoryIds.size > 0 && !isMobile && (
           <CategoryInspector budgetId={budgetId} />
