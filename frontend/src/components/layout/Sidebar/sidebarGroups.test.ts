@@ -6,7 +6,7 @@ import {
   balanceTone,
   buildLiabilityRows,
   groupLabel,
-  groupedAccountsTotal,
+  onBudgetTotals,
   liabilityHeaderTotal,
   orderedOnBudgetKeys,
   partitionAccounts,
@@ -180,28 +180,66 @@ describe('accountsTotal', () => {
   })
 })
 
-describe('groupedAccountsTotal', () => {
+describe('onBudgetTotals', () => {
+  const budget = () =>
+    partitionAccounts([
+      acct({ account_type: 'checking', balance: 1200 }),
+      acct({ account_type: 'checking', balance: 340.25 }),
+      acct({ account_type: 'savings', balance: 8000 }),
+      acct({ account_type: 'credit_card', classification: 'liability', balance: -450.5 }),
+      acct({ on_budget: false, classification: 'asset', balance: 99_999 }),
+    ]).onBudgetByType
+
   // The Budget Accounts header must equal the sum of the type subtotals drawn
   // beneath it, collapsed or not — the header used to be computed from a
   // separate filter over `accounts`, so any divergence between that filter and
   // the partition would have shown as a header that did not add up.
-  it('equals the sum of the per-type subtotals it renders', () => {
-    const { onBudgetByType } = partitionAccounts([
-      acct({ account_type: 'checking', balance: 1200 }),
-      acct({ account_type: 'checking', balance: 340.25 }),
-      acct({ account_type: 'savings', balance: 8000 }),
-      acct({ account_type: 'credit_card', balance: -450.5 }),
-      acct({ on_budget: false, classification: 'asset', balance: 99_999 }),
-    ])
+  it('nets to the sum of the per-type subtotals it renders', () => {
+    const onBudgetByType = budget()
     const perType = [...onBudgetByType.values()].map(accountsTotal)
-    expect(groupedAccountsTotal(onBudgetByType)).toBeCloseTo(
-      perType.reduce((a, b) => a + b, 0)
-    )
-    expect(groupedAccountsTotal(onBudgetByType)).toBeCloseTo(9089.75)
+
+    expect(onBudgetTotals(onBudgetByType).net).toBeCloseTo(perType.reduce((a, b) => a + b, 0))
+    expect(onBudgetTotals(onBudgetByType).net).toBeCloseTo(9089.75)
+  })
+
+  // The number the sidebar had no way to say: a card is on budget, but its
+  // balance is not money you have, and the budget's own cash term stopped
+  // counting it when cards left Ready to Assign.
+  it('counts cash without the cards', () => {
+    expect(onBudgetTotals(budget()).cash).toBeCloseTo(9540.25)
+  })
+
+  it('counts what the cards owe, on their own', () => {
+    expect(onBudgetTotals(budget()).cards).toBeCloseTo(-450.5)
+  })
+
+  it('keeps cash and cards adding back up to the header', () => {
+    const { cash, cards, net } = onBudgetTotals(budget())
+    expect(cash + cards).toBeCloseTo(net)
+  })
+
+  it('reads an on-budget liability as a card whatever its type is called', () => {
+    // The partition is classification, not account_type — a HELOC or a
+    // store-card type nobody has heard of behaves the same way.
+    const { onBudgetByType } = partitionAccounts([
+      acct({ account_type: 'heloc', classification: 'liability', balance: -900 }),
+      acct({ account_type: 'checking', balance: 100 }),
+    ])
+
+    expect(onBudgetTotals(onBudgetByType)).toMatchObject({ cash: 100, cards: -900, net: -800 })
+  })
+
+  it('says cash is the whole story when no card is on budget', () => {
+    const { onBudgetByType } = partitionAccounts([acct({ balance: 500 })])
+    const totals = onBudgetTotals(onBudgetByType)
+
+    // The row that prints `cash` is drawn only when cards are non-zero,
+    // precisely so the sidebar never shows the same number twice.
+    expect(totals).toMatchObject({ cash: 500, cards: 0, net: 500 })
   })
 
   it('is zero with no on-budget accounts', () => {
-    expect(groupedAccountsTotal(new Map())).toBe(0)
+    expect(onBudgetTotals(new Map())).toMatchObject({ cash: 0, cards: 0, net: 0 })
   })
 })
 
