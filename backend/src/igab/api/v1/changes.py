@@ -76,6 +76,31 @@ async def redo_latest(
     return UndoResult(undone_change_ids=redone)
 
 
+@router.post("/{budget_id}/changes/{change_id}/undo-newer", response_model=UndoResult)
+async def undo_newer(
+    budget_id: BudgetAccess,
+    change_id: uuid.UUID,
+    current_user: CurrentUser,
+    undo_service: Annotated[UndoService, Depends(get_undo_service)],
+    force: bool = Query(False),
+    dry_run: bool = Query(False),
+) -> UndoResult:
+    """Undo everything recorded after this change; this change survives.
+
+    The Activity page's "revert to here" line, which sits between two
+    entries — so the id sent is the newest entry below the line. `dry_run`
+    reports what would go without writing, so the confirmation prompt counts
+    with the same query that does the work.
+    """
+    try:
+        undone = await undo_service.undo_newer(budget_id, change_id, force=force, dry_run=dry_run)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except UndoConflict as e:
+        raise _conflict(e) from e
+    return UndoResult(undone_change_ids=undone)
+
+
 @router.post("/{budget_id}/budget/moves/{move_id}/undo", response_model=UndoResult)
 async def undo_move(
     budget_id: BudgetAccess,

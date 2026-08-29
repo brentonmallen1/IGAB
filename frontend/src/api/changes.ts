@@ -121,6 +121,42 @@ export function useUndoBatch(budgetId: string) {
 }
 
 /**
+ * Undo everything recorded after this change — the Activity page's line
+ * between two entries, where the id passed is the newest entry BELOW it.
+ *
+ * `dryRun` asks what would go without touching anything, so the confirmation
+ * counts with the same query that does the work rather than a second one that
+ * could disagree with it.
+ */
+export function useUndoNewer(budgetId: string) {
+  const qc = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      changeId,
+      dryRun = false,
+      force = false,
+    }: {
+      changeId: string
+      dryRun?: boolean
+      force?: boolean
+    }) => {
+      const { data } = await apiClient.post<UndoResponse>(
+        `/${budgetId}/changes/${changeId}/undo-newer`,
+        null,
+        { params: { dry_run: dryRun, force } }
+      )
+      return data
+    },
+    onSuccess: (_data, variables) => {
+      if (!variables.dryRun) {
+        qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
+      }
+    },
+  })
+}
+
+/**
  * Invalidate all data that might be affected by an undo operation.
  *
  * Call this from component-level onSuccess handlers after using useUndoChange
