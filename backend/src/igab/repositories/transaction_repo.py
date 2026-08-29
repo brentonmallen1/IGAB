@@ -22,6 +22,7 @@ from sqlalchemy.orm import with_expression
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
+    Account,
     Category,
     CategoryGroup,
     Payee,
@@ -35,6 +36,7 @@ from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     BANK_UNLINKED,
+    CASH_ACCOUNT,
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
     DEBT_INTEREST_ROW,
@@ -44,10 +46,12 @@ from igab.repositories.txn_filters import (
     NEEDS_CATEGORY,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
+    ON_CARD_ACCOUNT,
     PARENT_ROW,
     PLAIN_DEPOSIT_ROW,
     POSTED,
     PROVISIONALLY_LINKED,
+    TRANSFER_LEG,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
     sync_created_pending,
@@ -683,6 +687,102 @@ class TransactionRepository(BaseRepository[Transaction]):
         for row in result.mappings():
             month = date(row["yr"], row["mo"], 1)
             out.setdefault(row["category_id"], {})[month] = row["total"]
+        return out
+
+    async def sum_credit_outflows_by_category(
+        self,
+        category_ids: list[uuid.UUID],
+        end_date: date,
+    ) -> dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]]:
+        """Net categorized card spending: {category: {card: {month: amount ≥ 0}}}.
+
+        The funding-source input of domain/cards.py: how much of each
+        category's month was spent on each card. NET per month — refunds
+        subtract, and a month that nets to a refund is clamped to zero, so a
+        refunded purchase releases its set-aside reservation rather than
+        inflating it. Same row predicates as `sum_all_categories_by_month`,
+        narrowed to card accounts (`ON_CARD_ACCOUNT`), so the split can never
+        claim more credit spending than the activity sum counted.
+        """
+        if not category_ids:
+            return {}
+        yr = cast(func.extract("year", Transaction.date), Integer)
+        mo = cast(func.extract("month", Transaction.date), Integer)
+        result = await self.session.execute(
+            select(
+                Transaction.category_id,
+                Transaction.account_id,
+                yr.label("yr"),
+                mo.label("mo"),
+                func.sum(-Transaction.amount).label("outflow"),
+            )
+            .where(
+                Transaction.category_id.in_(category_ids),
+                NOT_DELETED,
+                LEAF,
+                POSTED,
+                ON_CARD_ACCOUNT,
+                Transaction.date <= end_date,
+            )
+            .group_by(Transaction.category_id, Transaction.account_id, yr, mo)
+        )
+        out: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
+        for row in result.mappings():
+            net = Decimal(str(row["outflow"]))
+            if net <= 0:
+                continue
+            month = date(row["yr"], row["mo"], 1)
+            out.setdefault(row["category_id"], {}).setdefault(row["account_id"], {})[month] = net
+        return out
+
+    async def sum_card_payments_by_month(
+        self,
+        budget_id: uuid.UUID,
+        end_date: date,
+    ) -> dict[uuid.UUID, dict[date, Decimal]]:
+        """Money that arrived on each card from the budget's cash:
+        {card: {month: amount ≥ 0}} — the outflow side of the card's
+        set-aside envelope.
+
+        A payment is an inflow transfer leg on the card whose counterpart is
+        a cash account. A direct deposit typed onto the card (a partner
+        paying the card company themselves, a balance adjustment) reduces
+        what is owed but drew on nobody's set-aside, so it is not counted —
+        and a card→card balance transfer moves debt, not reserved cash, so
+        the cash-counterpart test excludes it too.
+        """
+        counterpart_is_cash = (
+            select(Account.id)
+            .where(Account.id == COUNTERPART_ACCOUNT_ID, CASH_ACCOUNT)
+            .correlate(Transaction)
+            .exists()
+        )
+        yr = cast(func.extract("year", Transaction.date), Integer)
+        mo = cast(func.extract("month", Transaction.date), Integer)
+        result = await self.session.execute(
+            select(
+                Transaction.account_id,
+                yr.label("yr"),
+                mo.label("mo"),
+                func.sum(Transaction.amount).label("paid"),
+            )
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                PARENT_ROW,
+                POSTED,
+                ON_CARD_ACCOUNT,
+                Transaction.amount > 0,
+                TRANSFER_LEG,
+                counterpart_is_cash,
+                Transaction.date <= end_date,
+            )
+            .group_by(Transaction.account_id, yr, mo)
+        )
+        out: dict[uuid.UUID, dict[date, Decimal]] = {}
+        for row in result.mappings():
+            month = date(row["yr"], row["mo"], 1)
+            out.setdefault(row["account_id"], {})[month] = Decimal(str(row["paid"]))
         return out
 
     _BULK_CHUNK = 1000  # ~15k params/chunk, well under asyncpg's 32767 limit

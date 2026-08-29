@@ -20,6 +20,32 @@ from datetime import date
 from decimal import Decimal
 
 
+def monthly_end_balances(
+    assignments_by_month: dict[date, Decimal],
+    activity_by_month: dict[date, Decimal],
+) -> dict[date, Decimal]:
+    """Each data month's raw end-of-month available, in one pass.
+
+    The one loop of the simulation — `available_through` reads its answer out
+    of this, and the card set-aside arithmetic (domain/cards.py) reads the
+    negatives out of it to split a month's overspending by funding source.
+    Values may be negative; the floor is applied *between* entries, so each
+    value is what that month ended at before the next month floored it.
+    """
+    out: dict[date, Decimal] = {}
+    carryover = Decimal("0")
+    for m in sorted(set(assignments_by_month) | set(activity_by_month)):
+        end_of_month = (
+            carryover
+            + assignments_by_month.get(m, Decimal("0"))
+            + activity_by_month.get(m, Decimal("0"))
+        )
+        out[m] = end_of_month
+        # Floor into the next month; the month itself keeps its raw value.
+        carryover = max(Decimal("0"), end_of_month)
+    return out
+
+
 def available_through(
     assignments_by_month: dict[date, Decimal],
     activity_by_month: dict[date, Decimal],
@@ -31,22 +57,14 @@ def available_through(
     contribute nothing and are skipped — a gap in the calendar is not a month
     that zeroed the carryover.
     """
-    carryover = Decimal("0")
-    end_of_month = Decimal("0")
-    last_simulated: date | None = None
-
-    for m in sorted(set(assignments_by_month) | set(activity_by_month)):
-        if m > month_start:
-            break
-        end_of_month = (
-            carryover
-            + assignments_by_month.get(m, Decimal("0"))
-            + activity_by_month.get(m, Decimal("0"))
-        )
-        # Floor into the next month; the current month may still show negative.
-        carryover = max(Decimal("0"), end_of_month)
-        last_simulated = m
-
+    balances = monthly_end_balances(
+        {m: v for m, v in assignments_by_month.items() if m <= month_start},
+        {m: v for m, v in activity_by_month.items() if m <= month_start},
+    )
     # Only the month with its own data may show negative. A later month starts
     # from the floored carryover, because the overspend was absorbed by TBA.
-    return end_of_month if last_simulated == month_start else carryover
+    if month_start in balances:
+        return balances[month_start]
+    if not balances:
+        return Decimal("0")
+    return max(Decimal("0"), balances[max(balances)])

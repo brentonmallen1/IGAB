@@ -17,6 +17,7 @@ from igab.api.v1.schemas.category import (
     AutoAssignRequest,
     BudgetMonthResponse,
     BudgetMoveResponse,
+    CardStatusOut,
     CategoryBalance,
     CategoryClassification,
     CategoryClassSlice,
@@ -541,6 +542,17 @@ async def get_budget_month(
         total_overspent=summary.total_overspent,
         overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,
+        cards=[
+            CardStatusOut(
+                account_id=c.account_id,
+                name=c.name,
+                category_id=c.category_id,
+                balance=c.balance,
+                set_aside=c.set_aside,
+                uncovered=c.uncovered,
+            )
+            for c in summary.cards
+        ],
         category_balances=[
             CategoryBalance(
                 category_id=b.category_id,
@@ -559,6 +571,7 @@ async def get_budget_month(
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
+                is_card_payment=b.is_card_payment,
             )
             for b in summary.category_balances
         ],

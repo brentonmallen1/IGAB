@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { renderableCategoryIds, renderableGroups } from './budgetGroups'
+import { renderableCategories, renderableCategoryIds, renderableGroups } from './budgetGroups'
 
 function group(id: string, is_system = false) {
   return { id, budget_id: 'b1', name: id, sort_order: 0, is_hidden: false, is_system, system_key: null }
@@ -16,9 +16,21 @@ describe('renderableGroups', () => {
   it('renderableCategoryIds follows the groups', () => {
     const groups = [group('income', true), group('bills')]
     const cats = [
-      { id: 'inflow', category_group_id: 'income' },
-      { id: 'rent', category_group_id: 'bills' },
+      { id: 'inflow', category_group_id: 'income', linked_account_id: null },
+      { id: 'rent', category_group_id: 'bills', linked_account_id: null },
     ]
+    expect([...renderableCategoryIds(groups, cats)]).toEqual(['rent'])
+  })
+
+  it('a card set-aside envelope is not a grid row', () => {
+    // The cards section owns it: Balance / Set aside / Uncovered, not
+    // assigned/activity/available — and its negative is not overspending.
+    const groups = [group('cards'), group('bills')]
+    const cats = [
+      { id: 'visa', category_group_id: 'cards', linked_account_id: 'acct-1' },
+      { id: 'rent', category_group_id: 'bills', linked_account_id: null },
+    ]
+    expect(renderableCategories(cats).map((c) => c.id)).toEqual(['rent'])
     expect([...renderableCategoryIds(groups, cats)]).toEqual(['rent'])
   })
 })

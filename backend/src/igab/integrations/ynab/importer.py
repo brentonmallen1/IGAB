@@ -21,6 +21,7 @@ from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import apply_type, resolve_type
+from igab.services.card_payment import ensure_payment_category
 from igab.services.liability_service import ensure_for_account
 from igab.services.transaction_service import TransactionService
 
@@ -113,10 +114,11 @@ class ImportResult:
     #: and it cannot be recovered later either, because nothing on the join
     #: table records whether a tag was guessed or chosen.
     tagged_categories: list["TaggedCategory"] = field(default_factory=list)
-    #: Plan rows in YNAB's Credit Card Payments group, left out on purpose —
-    #: see `is_credit_card_payments_group`. Reported with the money they would
-    #: have taken out of Ready to Assign, so the user can see why the figure
-    #: differs from YNAB's by exactly that.
+    #: Plan rows in YNAB's Credit Card Payments group whose card was never
+    #: imported (skipped, or not on budget) — the matched ones land on the
+    #: card's set-aside envelope and count as ordinary assignments. Reported
+    #: with the money involved, so a mysteriously unreserved card can be
+    #: traced to the import.
     credit_card_payment_assignments_skipped: int = 0
     credit_card_payment_reserves_skipped: Decimal = Decimal("0")
     #: Register rows on tracking accounts whose export line named a category,
@@ -251,6 +253,7 @@ class YNABImporter:
             # features were built for, and it was the one that never reached
             # them: the importer creates accounts and never a liability.
             await ensure_for_account(self.session, account)
+            await ensure_payment_category(self.session, account)
             result.accounts_imported += 1
             if account.is_closed:
                 result.accounts_closed += 1
@@ -689,10 +692,36 @@ class YNABImporter:
         result.transactions_imported += inserted
 
     async def _import_assignments(self, budget: YNABBudget, result: ImportResult) -> None:
+        # YNAB's Credit Card Payments assignments are money set aside for
+        # each card — they land on the card's set-aside envelope (the linked
+        # category `ensure_payment_category` created with the account), named
+        # after the card the way YNAB names them. Only an entry whose card
+        # was skipped, never imported, or is not on budget has nowhere to go;
+        # those are counted, not silently dropped.
+        linked_by_name = {}
+        for name, account in self._account_cache.items():
+            if account.on_budget and account.classification == "liability":
+                linked = await self.category_repo.get_by_linked_account(account.id)
+                if linked is not None:
+                    # Lowercased like the account lookup itself: YNAB names
+                    # the reserve category exactly after the card.
+                    linked_by_name[name.lower()] = linked
+
         for entry in budget.budget_entries:
             if is_credit_card_payments_group(entry.category_group):
-                result.credit_card_payment_assignments_skipped += 1
-                result.credit_card_payment_reserves_skipped += entry.assigned
+                linked = linked_by_name.get(entry.category.lower())
+                if linked is None:
+                    result.credit_card_payment_assignments_skipped += 1
+                    result.credit_card_payment_reserves_skipped += entry.assigned
+                    continue
+                try:
+                    assignment = await self.assignment_repo.get_or_create(
+                        self.budget_id, linked.id, entry.month
+                    )
+                    await self.assignment_repo.update(assignment.id, assigned=entry.assigned)
+                    result.assignments_imported += 1
+                except Exception as e:
+                    result.errors.append(f"Assignment {entry.month} {entry.category}: {e}")
                 continue
             try:
                 cat = await self._get_or_create_category(

@@ -1,11 +1,12 @@
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 from igab.db.models import BudgetMove, Category
-from igab.domain.carryover import available_through
+from igab.domain.cards import card_funding
+from igab.domain.carryover import available_through, monthly_end_balances
 
 # Aliased: `month_start` is also a local variable throughout this module
 # (`month_start = first_of_month(month)`), and one name meaning two things
@@ -68,6 +69,35 @@ class CategoryBalance:
     #: month endpoint blanks both figures rather than letting a lifetime total
     #: sit under a hero showing what is actually free to assign.
     in_system_group: bool = False
+    #: A card's set-aside envelope (Category.linked_account_id set). Its
+    #: available is cash reserved for the card — in the envelope total, but
+    #: not spending: excluded from total_activity (its synthetic inflows
+    #: mirror spending already counted in the spending categories) and from
+    #: the overspent totals (a shortfall on a card is Uncovered in the card
+    #: section, not something Cover Overspent offers to fix). Decided once,
+    #: here, like `in_system_group`.
+    is_card_payment: bool = False
+
+
+@dataclass
+class CardStatus:
+    """One card's row in the budget's card section (domain/cards.py).
+
+    `balance` is the ledger balance through the viewed month (negative =
+    owed). `set_aside` is the card's envelope available: funded credit
+    spending + assignments − payments, floored month over month like any
+    envelope. `uncovered` is what is owed beyond the set-aside — calm,
+    informational, paid down by assigning to the card; a due date that
+    crosses the month boundary is a normal state, not overspending."""
+
+    account_id: uuid.UUID
+    name: str
+    #: None when the migration/ensure has not created it yet — the section
+    #: still renders, assignment just has nowhere to land until it exists.
+    category_id: uuid.UUID | None
+    balance: Decimal
+    set_aside: Decimal
+    uncovered: Decimal
 
 
 @dataclass
@@ -96,6 +126,10 @@ class BudgetSummary:
     # from to_be_assigned so the same dollars can't be assigned twice.
     assigned_in_future: Decimal
     category_balances: list[CategoryBalance]
+    #: The budget's cards, each with balance / set aside / uncovered —
+    #: computed here because their set-aside envelopes are part of the same
+    #: identity Ready to Assign is. Empty when the budget has no cards.
+    cards: list[CardStatus] = field(default_factory=list)
 
 
 @dataclass
@@ -268,9 +302,17 @@ class BudgetService:
         """
         Compute TBA and all category balances for a given month.
 
-        TBA = sum(on-budget account balances through the month's end)
-              - sum(envelope category balances through the month)
+        TBA = sum(cash account balances through the month's end)
+              - sum(envelope category balances through the month,
+                    cards' set-aside envelopes included)
               - sum(assignments in months after the viewed month)
+              - the credit-funded part of the viewed month's overspending
+                (already riding on cards, not yet written off — see
+                domain/cards.py)
+
+        Cards are outside the cash term: a card's debt lives beside its
+        set-aside in the cards section, and the only way a card moves this
+        figure is money assigned to it.
 
         The future-assignment deduction is YNAB's rule: assigning $500 in
         September must reduce August's TBA too, or the same dollars could be
@@ -312,6 +354,90 @@ class BudgetService:
                 for cat in categories
             }
 
+        # ── Cards (domain/cards.py). Each card's set-aside is an envelope
+        # simulated over synthetic activity: funded credit spending flows in,
+        # payments flow out, assignments on the linked category add to it.
+        # The credit-funded part of the viewed month's overspending has not
+        # been written off yet — the category still shows red — so it comes
+        # out of Ready to Assign directly (`uncovered_current`; the YNAB
+        # oracle states the same rule over an export).
+        zero = Decimal("0")
+        cards: list[CardStatus] = []
+        uncovered_current = zero
+        card_accounts = [
+            a
+            for a in await self.account_repo.get_all(budget_id, include_closed=True)
+            if a.on_budget and a.classification == "liability"
+        ]
+        if card_accounts:
+            month_end_date = last_of_month(month_start)
+            linked_by_account = {
+                cat.linked_account_id: cat for cat in categories if cat.linked_account_id
+            }
+            spending_ids = [
+                c.id
+                for c in categories
+                if c.linked_account_id is None and c.category_group_id not in system_group_ids
+            ]
+            spending_activity = await self.transaction_repo.sum_all_categories_by_month(
+                spending_ids, end_date=month_end_date
+            )
+            assignments_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
+            for a in await self.assignment_repo.get_all_for_budget(budget_id):
+                if a.month <= month_start:
+                    assignments_by_cat.setdefault(a.category_id, {})[a.month] = a.assigned
+            end_balances = {
+                cid: monthly_end_balances(
+                    assignments_by_cat.get(cid, {}), spending_activity.get(cid, {})
+                )
+                for cid in spending_ids
+            }
+            credit_outflows = await self.transaction_repo.sum_credit_outflows_by_category(
+                spending_ids, month_end_date
+            )
+            funded_by_card, floored_by_category = card_funding(end_balances, credit_outflows)
+            payments = await self.transaction_repo.sum_card_payments_by_month(
+                budget_id, month_end_date
+            )
+            owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
+            for account in card_accounts:
+                linked = linked_by_account.get(account.id)
+                synthetic = dict(funded_by_card.get(account.id, {}))
+                for m, paid in payments.get(account.id, {}).items():
+                    synthetic[m] = synthetic.get(m, zero) - paid
+                card_assignments = assignments_by_cat.get(linked.id, {}) if linked else {}
+                set_aside = available_through(card_assignments, synthetic, month_start)
+                if linked is not None:
+                    # The linked category's balance is this computation, not
+                    # the transaction sums — nothing can be filed there, and
+                    # its snapshot rows (assignments only) are ignored.
+                    balance_map[linked.id] = CategoryBalance(
+                        category_id=linked.id,
+                        month=month_start,
+                        assigned=card_assignments.get(month_start, zero),
+                        activity=synthetic.get(month_start, zero),
+                        available=set_aside,
+                        is_card_payment=True,
+                    )
+                balance = owed_by_card.get(account.id, zero)
+                cards.append(
+                    CardStatus(
+                        account_id=account.id,
+                        name=account.name,
+                        category_id=linked.id if linked else None,
+                        balance=balance,
+                        set_aside=set_aside,
+                        # Owed beyond the reserve. An overpaid-in-month
+                        # envelope (negative set-aside) reserves nothing, so
+                        # it is floored before subtracting.
+                        uncovered=max(zero, -balance - max(zero, set_aside)),
+                    )
+                )
+            uncovered_current = sum(
+                (by_month.get(month_start, zero) for by_month in floored_by_category.values()),
+                zero,
+            )
+
         balances: list[CategoryBalance] = []
         total_category_balance = Decimal("0")
         total_assigned = Decimal("0")
@@ -325,6 +451,7 @@ class BudgetService:
             # the month endpoint, Cover Overspent, the Guide's checkup — reads
             # the flag rather than re-deriving which groups are system.
             bal.in_system_group = cat.category_group_id in system_group_ids
+            bal.is_card_payment = cat.linked_account_id is not None
             balances.append(bal)
             # Exclude system (Income) categories: income adds to TBA, not
             # reduces it — and it is not envelope money, so the month's
@@ -334,14 +461,21 @@ class BudgetService:
             if bal.in_system_group:
                 continue
             total_category_balance += bal.available
+            total_assigned += bal.assigned
+            if bal.is_card_payment:
+                # In the envelope total (reserved cash is not assignable) and
+                # in assigned (a real allocation), but not spending and not
+                # overspending — see the flag's comment.
+                continue
             if bal.available < 0:
                 total_overspent += -bal.available
                 overspent_count += 1
-            total_assigned += bal.assigned
             total_activity += bal.activity
 
         assigned_in_future = await self.assignment_repo.sum_after_month(budget_id, month_start)
-        to_be_assigned = total_account_balance - total_category_balance - assigned_in_future
+        to_be_assigned = (
+            total_account_balance - total_category_balance - assigned_in_future - uncovered_current
+        )
 
         return BudgetSummary(
             to_be_assigned=to_be_assigned,
@@ -351,6 +485,7 @@ class BudgetService:
             overspent_count=overspent_count,
             assigned_in_future=assigned_in_future,
             category_balances=balances,
+            cards=cards,
         )
 
     async def _snapshot_balances(
@@ -412,9 +547,9 @@ class BudgetService:
         for cat in categories:
             asg = assigned_by_cat.get(cat.id, {})
             act = activity.get(cat.id, {})
-            carryover = zero
-            for m in sorted(set(asg) | set(act)):
-                end_of_month = carryover + asg.get(m, zero) + act.get(m, zero)
+            # One loop, the domain's: these rows must be exactly what
+            # `available_through` would say, month by month.
+            for m, end_of_month in monthly_end_balances(asg, act).items():
                 rows.append(
                     {
                         "budget_id": budget_id,
@@ -425,7 +560,6 @@ class BudgetService:
                         "available": end_of_month,
                     }
                 )
-                carryover = max(zero, end_of_month)
 
         await self.snapshot_repo.replace_for_budget(budget_id, rows)
 
@@ -639,7 +773,7 @@ class BudgetService:
         shortfalls = {
             b.category_id: -b.available
             for b in summary.category_balances
-            if b.available < 0 and not b.in_system_group
+            if b.available < 0 and not b.in_system_group and not b.is_card_payment
         }
         return summary, shortfalls
 

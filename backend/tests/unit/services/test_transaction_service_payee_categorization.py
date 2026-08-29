@@ -49,6 +49,8 @@ class MockPayee:
 @dataclass
 class MockCategory:
     id: uuid.UUID = DEFAULT_CAT_ID
+    # Card set-aside envelopes are linked; None keeps these ordinary.
+    linked_account_id: uuid.UUID | None = None
 
 
 @dataclass

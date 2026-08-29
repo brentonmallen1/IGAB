@@ -2,7 +2,7 @@
 
 Runs once, right after an import, and puts the answer in the summary the
 user reads: YNAB's own Ready to Assign (from the file), the figure IGAB's
-arithmetic should reach given the one difference it makes on purpose, the
+arithmetic should reach (adjusted only for unfiled cash rows), the
 figure it did reach, and how many envelope balances differ from the
 Available column YNAB shipped. A number that has to be trusted should be
 checked where the evidence is, not explained later.

@@ -1,0 +1,99 @@
+/* The cards section: liability-truthful columns, deliberately calm.
+   Uncovered is information, not an alarm — no state colors here. */
+
+.credit-cards {
+  margin-top: var(--spacing-md);
+}
+
+.credit-cards__table {
+  display: flex;
+  flex-direction: column;
+  overflow-x: auto;
+}
+
+.credit-cards__head,
+.credit-cards__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) repeat(4, minmax(84px, 110px));
+  gap: var(--spacing-sm);
+  align-items: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.credit-cards__head {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--edge);
+}
+
+.credit-cards__row {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--edge);
+}
+
+.credit-cards__row:last-child {
+  border-bottom: none;
+}
+
+.credit-cards__col--name {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credit-cards__col--name svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.credit-cards__col--num {
+  text-align: right;
+}
+
+.credit-cards__uncovered {
+  color: var(--text-secondary);
+}
+
+.credit-cards__assign-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  padding: 2px var(--spacing-xs);
+  width: 100%;
+  text-align: right;
+  cursor: pointer;
+}
+
+.credit-cards__assign-btn:hover:not(:disabled) {
+  border-color: var(--edge-strong);
+}
+
+.credit-cards__assign-btn:disabled {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+.credit-cards__assign {
+  width: 100%;
+  text-align: right;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--spacing-xs);
+}
+
+.credit-cards__note {
+  margin: var(--spacing-sm) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}

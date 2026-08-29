@@ -217,8 +217,17 @@ async def test_budget_summary_hits_target_with_one_overspend(db_session):
 
     categories = await CategoryRepository(db_session).get_all(budget.id, include_hidden=True)
     names = {c.id: c.name for c in categories}
-    overspent = [names[b.category_id] for b in summary.category_balances if b.available < 0]
+    overspent = [
+        names[b.category_id]
+        for b in summary.category_balances
+        if b.available < 0 and not b.is_card_payment
+    ]
     assert overspent == ["Dining Out"]
+    # The demo's Visa is deliberately overpaid ($600/month against smaller
+    # spending), so its set-aside envelope runs negative — a card-section
+    # state, not overspending: the totals above already leave it out.
+    card_envelopes = [b for b in summary.category_balances if b.is_card_payment]
+    assert card_envelopes and all(b.available < 0 for b in card_envelopes)
 
 
 async def test_integrity_all_green(db_session):
