@@ -104,7 +104,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 Assigned
               </span>
               <span role="columnheader" className="credit-cards__col--num">
-                Set aside
+                Ready to pay
               </span>
               <span role="columnheader" className="credit-cards__col--num">
                 Uncovered
@@ -159,6 +159,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                   </span>
                   <span className="credit-cards__col--num tabular" role="cell">
                     {formatMoney(card.set_aside)}
+                    {Number(card.set_aside) < 0 && (
+                      <span className="credit-cards__hint"> overpaid</span>
+                    )}
                   </span>
                   <span
                     className="credit-cards__col--num tabular credit-cards__uncovered"
@@ -180,31 +183,40 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
         >
           <div className="credit-cards__info">
             <p>
-              A card never touches Ready to Assign on its own. Spending on it does not take
-              money out of the budget — it builds a balance to pay later — and the only way a
-              card moves the figure is money you deliberately assign to it.
+              A card purchase and a cash purchase both spend from an envelope. The difference
+              is what happens to your cash: pay cash and the money leaves your account with
+              the purchase; pay by card and the envelope is still charged, but the cash it
+              gave up is still sitting in your account — the card fronted the purchase. That
+              cash cannot go back to Ready to Assign (the bill is coming), so it moves to the
+              card's <strong>Ready to pay</strong> and waits.
             </p>
+            <div className="credit-cards__example">
+              Swipe $60 of groceries on the card → Groceries −$60 · Ready to pay +$60 · your
+              cash and Ready to Assign unchanged. Pay the bill → cash −$60 · Ready to pay
+              −$60.
+            </div>
             <dl>
               <dt>Balance</dt>
               <dd>What the card's ledger says through the viewed month — negative is owed.</dd>
               <dt>Assigned</dt>
               <dd>
-                Money you put toward the card this month. It is an ordinary assignment: it
-                comes out of Ready to Assign and undo works.
+                The hand-fed side of Ready to pay: money you moved to the card this month, for
+                what no envelope gave up — covering an overspend, or paying down old debt. An
+                ordinary assignment: it comes out of Ready to Assign, and undo works.
               </dd>
-              <dt>Set aside</dt>
+              <dt>Ready to pay</dt>
               <dd>
-                Cash reserved to pay the card, kept automatically: spending your envelopes
-                could cover flows in, payments draw it down, and assigning adds to it. It can
-                run negative when payments outran the reserve — that just means the extra came
-                from Ready to Assign.
+                Cash waiting to pay this card, from both sources: what funded envelopes gave
+                up when you swiped, plus what you assigned. Payments drain it. Negative means
+                this month's payments outran it — the difference settles from Ready to Assign
+                at month's end, like any cash overspending.
               </dd>
               <dt>Uncovered</dt>
               <dd>
-                What is owed beyond the reserve — overspending that rode onto the card, old
-                debt, or a partner's share not yet paid back. It is information, not an alarm:
-                a bill that is simply not due yet is a normal state. Cover it by assigning to
-                the card whenever suits.
+                Owed beyond Ready to pay — overspending that rode onto the card, old debt, or
+                a partner's share not yet paid back. Information, not an alarm: a bill that is
+                simply not due yet is a normal state. Cover it by assigning to the card
+                whenever suits.
               </dd>
             </dl>
           </div>
