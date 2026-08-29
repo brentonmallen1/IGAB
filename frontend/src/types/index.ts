@@ -191,6 +191,9 @@ export interface CardStatus {
   /** Owed beyond the reserve. Calm and informational — a due date crossing
    *  the month boundary is a normal state, not overspending. */
   uncovered: number
+  /** A settled closed card sends no row at all; a closed one with a residual
+   *  balance or reserve keeps its row, tagged. Served, never derived here. */
+  is_closed: boolean
 }
 
 export interface BudgetMonth {

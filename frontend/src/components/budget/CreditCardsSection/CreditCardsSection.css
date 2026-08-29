@@ -144,6 +144,23 @@
   text-align: right;
 }
 
+/* A closed card only keeps a row while something is left on it — the tag
+   says why it is still here. Same vocabulary as the accounts overview. */
+.credit-cards__closed-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
 .credit-cards__uncovered {
   color: var(--text-secondary);
 }
