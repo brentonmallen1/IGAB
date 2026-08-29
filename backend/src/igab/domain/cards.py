@@ -1,28 +1,47 @@
 """Credit cards leave Ready to Assign — the arithmetic, pure.
 
-The model (decided 2026-08-28, replacing the net-cash rule):
+The model (decided 2026-08-28, replacing the net-cash rule; releases made
+cumulative 2026-08-29 after "The Unreleased Reservation"):
 
 - A card's balance is not in the budget's cash. The only way a card moves
   Ready to Assign is money deliberately set aside for it.
-- The set-aside is itself an envelope, simulated by `domain/carryover.py`
-  like any other, over *synthetic* activity: spending on the card that the
-  spending category could cover flows in ("funded credit"); payments to the
-  card flow out; real assignments on the card's linked category add to it.
+- The set-aside is a running total, not a floored envelope: funded credit
+  spending flows in, card inflows release what was reserved, payments flow
+  out, and real assignments on the card's linked category add to it. A month
+  where payments exceed the reserve is an overpayment — a credit balance on
+  the card, carried forward — not an overspend for Ready to Assign to
+  absorb, so no zero floor is applied between months (`set_aside_through`).
 - The part a category could NOT cover — `min(shortfall, credit outflow)` at
   month end — never reaches the set-aside and never charges Ready to Assign.
   It rides on the card as *uncovered debt*: visible beside the card's
   balance, calm, and paid down by assigning to the card. Cash overspending
   keeps today's behavior (absorbed from Ready to Assign at the boundary).
 - In the viewed month the shortfall has not been written off yet — the
-  category still shows red — so its credit-funded part is subtracted from
-  Ready to Assign directly (`uncovered_current` in the YNAB oracle, which
-  states the same rules over an export; the two must not drift).
+  category still shows red, and that negative would otherwise *raise* the
+  figure through the envelope term — so its credit-funded part is subtracted
+  from Ready to Assign directly (`uncovered_current` in the YNAB oracle,
+  which states the same rules over an export; the two must not drift).
+
+The one invariant that keeps the accumulated series honest against the
+directly-computed truth (pinned by tests/unit/test_cards.py and the
+integration identity walk): for a card with no assignments and no inflows
+that predate their reservations,
+
+    set_aside + uncovered == -balance    at every month.
+
+Reservations release *cumulatively*: a refund lands whenever it lands, and
+it releases the reservation its purchase made even when that was months ago
+and in a different calendar month (`card_funding`'s running walk). Only an
+inflow exceeding everything its category ever reserved on that card is
+discarded — it reduced the card's debt without touching reserved cash, so
+it pays down Uncovered instead. Flooring per month, as the first release
+rule did, silently discarded every cross-month release and ratcheted the
+set-aside upward forever.
 
 Everything here takes plain dicts and returns plain dicts: no database, no
 account rows, so every branch is a one-line test. The repository layer
-supplies net credit outflows per (category, month, card) — *net*, refunds
-subtracted, floored at zero per month, so a refunded purchase releases its
-reservation the way YNAB's payment envelope does.
+supplies SIGNED net credit outflows per (category, month, card) — a month
+that nets to an inflow arrives negative, never clamped.
 """
 
 from datetime import date
@@ -40,31 +59,19 @@ def credit_floored_by_month(
     A month that ended at −50 with 70 spent on cards has 50 riding as card
     debt and 0 written off from Ready to Assign; the same month with 20 on
     cards has 20 riding and 30 written off. Months that ended non-negative
-    contribute nothing. Only months with an entry in `end_balances` exist —
-    a category's data months — and the result carries only non-zero values.
+    contribute nothing. `credit_outflows` is signed net card spending: a
+    month that nets to an inflow carries no shortfall onto a card, so it is
+    treated as zero here. Only months with an entry in `end_balances` exist
+    — a category's data months — and the result carries only non-zero
+    values.
     """
     out: dict[date, Decimal] = {}
     for month, end in end_balances.items():
         if end >= ZERO:
             continue
-        floored = min(-end, credit_outflows.get(month, ZERO))
+        floored = min(-end, max(ZERO, credit_outflows.get(month, ZERO)))
         if floored > ZERO:
             out[month] = floored
-    return out
-
-
-def funded_credit_by_month(
-    end_balances: dict[date, Decimal],
-    credit_outflows: dict[date, Decimal],
-) -> dict[date, Decimal]:
-    """What each month's card spending was *covered* by the envelope — the
-    part that flows into the card's set-aside. outflow − floored, per month."""
-    floored = credit_floored_by_month(end_balances, credit_outflows)
-    out: dict[date, Decimal] = {}
-    for month, outflow in credit_outflows.items():
-        funded = outflow - floored.get(month, ZERO)
-        if funded > ZERO:
-            out[month] = funded
     return out
 
 
@@ -89,6 +96,30 @@ def allocate_across_cards[K](
     return out
 
 
+def cap_releases(deltas: dict[date, Decimal]) -> dict[date, Decimal]:
+    """One (category, card) series of reservation deltas, releases capped.
+
+    Walks the months in order carrying the running reservation: positive
+    deltas (funded credit spending) accumulate, negative deltas (card
+    inflows) release against what has accumulated and are truncated to it —
+    the running total is floored at zero, never each month independently.
+    The truncated remainder is an inflow with no reservation behind it
+    (a refund of pre-history or overspent-and-ridden spending); it already
+    reduced the card's balance, so it pays down Uncovered rather than
+    withdrawing reserved cash that was never reserved.
+    """
+    out: dict[date, Decimal] = {}
+    reserved = ZERO
+    for month in sorted(deltas):
+        delta = deltas[month]
+        if delta < ZERO:
+            delta = -min(-delta, reserved)
+        reserved += delta
+        if delta != ZERO:
+            out[month] = delta
+    return out
+
+
 def card_funding[C, K](
     end_balances_by_category: dict[C, dict[date, Decimal]],
     credit_outflows: dict[C, dict[K, dict[date, Decimal]]],
@@ -96,10 +127,15 @@ def card_funding[C, K](
     """The whole budget's card funding, composed from the primitives.
 
     Takes each category's raw month-end series (`monthly_end_balances`) and
-    `credit_outflows[category][card][month]` (net, ≥ 0). Returns:
+    `credit_outflows[category][card][month]` (SIGNED net: a month whose card
+    activity nets to an inflow is negative). Returns:
 
-    - funded inflows per card per month — the synthetic positive activity of
-      each card's set-aside envelope, and
+    - net reservation flows per card per month — the synthetic activity of
+      each card's set-aside: positive where funded spending reserved money,
+      negative where an inflow released a reservation made in any earlier
+      (or the same) month. Releases are capped per (category, card) by
+      `cap_releases`, so no category can withdraw more from a card's reserve
+      than it ever put in.
     - floored per category per month — what rode onto cards instead of being
       written off; the viewed month's entries are what Ready to Assign
       subtracts directly (`uncovered_current`).
@@ -115,16 +151,54 @@ def card_funding[C, K](
         floored = credit_floored_by_month(end_balances, totals)
         if floored:
             floored_by_category[category] = floored
+        deltas_by_card: dict[K, dict[date, Decimal]] = {}
         for month in totals:
             month_floored = floored.get(month, ZERO)
             # Floored first, funded is the remainder — allocated per card so
-            # each card's envelope receives only what was spent on it.
+            # each card's envelope receives only what was spent on it. Only
+            # cards that netted to spending that month can carry the ride.
             floored_share = allocate_across_cards(
-                month_floored, {c: o.get(month, ZERO) for c, o in by_card.items()}
+                month_floored,
+                {c: o[month] for c, o in by_card.items() if o.get(month, ZERO) > ZERO},
             )
             for card, outflows in by_card.items():
-                funded = outflows.get(month, ZERO) - floored_share.get(card, ZERO)
-                if funded > ZERO:
-                    per_card_funded = funded_by_card.setdefault(card, {})
-                    per_card_funded[month] = per_card_funded.get(month, ZERO) + funded
+                net = outflows.get(month, ZERO)
+                delta = net - floored_share.get(card, ZERO) if net > ZERO else net
+                if delta != ZERO:
+                    deltas_by_card.setdefault(card, {})[month] = delta
+        for card, deltas in deltas_by_card.items():
+            for month, delta in cap_releases(deltas).items():
+                per_card = funded_by_card.setdefault(card, {})
+                per_card[month] = per_card.get(month, ZERO) + delta
     return funded_by_card, floored_by_category
+
+
+def synthetic_activity(
+    funded: dict[date, Decimal],
+    payments: dict[date, Decimal],
+) -> dict[date, Decimal]:
+    """One card's set-aside activity: reservation flows in, payments out."""
+    out = dict(funded)
+    for month, paid in payments.items():
+        out[month] = out.get(month, ZERO) - paid
+    return out
+
+
+def set_aside_through(
+    assignments_by_month: dict[date, Decimal],
+    synthetic_by_month: dict[date, Decimal],
+    month_start: date,
+) -> Decimal:
+    """A card's reserve at `month_start`: a plain running total.
+
+    Deliberately NOT `carryover.available_through`: the zero floor between
+    months is the write-off rule for spending envelopes, where a negative
+    month is overspending absorbed from Ready to Assign. A set-aside's
+    negative month is an overpayment — a real credit balance on the card —
+    and flooring it discarded the surplus and ratcheted the reserve upward
+    by every overpaid month. The negative carries; if a surface prefers not
+    to show one, it floors at the presentation layer only.
+    """
+    return sum((v for m, v in assignments_by_month.items() if m <= month_start), ZERO) + sum(
+        (v for m, v in synthetic_by_month.items() if m <= month_start), ZERO
+    )
