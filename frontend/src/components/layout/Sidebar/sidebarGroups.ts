@@ -106,12 +106,18 @@ export function orderedOnBudgetKeys(onBudgetByType: Map<string, Account[]>): str
   })
 }
 
+/** Where a sidebar row sends you. Shared by account rows and liability rows so
+ *  the active-row rule below has one shape to reason about rather than two. */
+export type SidebarRowTarget =
+  | { kind: 'account'; accountId: string }
+  | { kind: 'liability'; liabilityId: string }
+
 export interface LiabilityRow {
   key: string
   name: string
   /** Signed display amount: negative = owed */
   balance: number
-  target: { kind: 'account'; accountId: string } | { kind: 'liability'; liabilityId: string }
+  target: SidebarRowTarget
   /** Managed rows keep a shortcut to the underlying account register */
   registerAccountId: string | null
   icon: 'managed' | 'manual' | null
@@ -217,4 +223,59 @@ export function onBudgetTotals(onBudgetByType: Map<string, Account[]>): OnBudget
     }
   }
   return { cash, cards, net: cash + cards }
+}
+
+/**
+ * Which account or liability the URL says you are looking at.
+ *
+ * Read from the path rather than from `appStore`, which used to hold a
+ * `selectedAccountId` written on every sidebar click and read by nothing. That
+ * field could only ever be right when the sidebar itself did the navigating,
+ * so a deep link, a browser Back, or a jump from ⌘K all left it stale. The
+ * path is the one thing that is true however you arrived.
+ *
+ * Pure, so every branch is a one-line test: the component side does no more
+ * than hand it `location.pathname`.
+ */
+export type SidebarLocation =
+  | { kind: 'account'; id: string }
+  | { kind: 'liability'; id: string }
+  | null
+
+export function parseSidebarLocation(pathname: string): SidebarLocation {
+  const segments = pathname.split('/').filter(Boolean)
+  // Exactly two: `/accounts` is the overview, and it highlights no row.
+  if (segments.length !== 2) return null
+  const [section, raw] = segments
+  const id = decodeURIComponent(raw)
+  if (section === 'accounts') return { kind: 'account', id }
+  if (section === 'liabilities') return { kind: 'liability', id }
+  return null
+}
+
+/**
+ * Whether a row is the one currently open.
+ *
+ * One rule for every row the sidebar draws — on-budget accounts, assets,
+ * liabilities and the collapsed mini rail — because a managed liability is
+ * reachable two ways and both must light the same row: its own liability page,
+ * and the account register its shortcut button opens. Written per section, the
+ * liability row would have been the copy that forgot the register.
+ */
+export function isRowActive(
+  target: SidebarRowTarget,
+  registerAccountId: string | null,
+  location: SidebarLocation
+): boolean {
+  if (location === null) return false
+  if (location.kind === 'liability') {
+    return target.kind === 'liability' && target.liabilityId === location.id
+  }
+  if (target.kind === 'account' && target.accountId === location.id) return true
+  return registerAccountId !== null && registerAccountId === location.id
+}
+
+/** The row target for an ordinary account row. */
+export function accountTarget(accountId: string): SidebarRowTarget {
+  return { kind: 'account', accountId }
 }

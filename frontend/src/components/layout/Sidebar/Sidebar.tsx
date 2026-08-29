@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { UserCircle2, LayoutDashboard, List, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, RefreshCw, Sparkles, History, Compass } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
@@ -8,12 +8,15 @@ import { useAccountTypes } from '../../../api/accountTypes'
 import {
   SIDEBAR_SECTION_IDS,
   accountKind,
+  accountTarget,
   accountsTotal,
   buildLiabilityRows,
   groupLabel,
+  isRowActive,
   onBudgetTotals,
   liabilityHeaderTotal,
   orderedOnBudgetKeys,
+  parseSidebarLocation,
   partitionAccounts,
   sidebarTypeGroupId,
 } from './sidebarGroups'
@@ -40,8 +43,8 @@ import { SidebarGroupHeader } from './SidebarGroupHeader'
 export function Sidebar() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
-  const setSelectedAccount = useAppStore((s) => s.setSelectedAccountId)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const { formatMoney } = useFormatters()
   const { data: accounts } = useAccounts(budgetId)
   const { data: typeRows } = useAccountTypes(budgetId)
@@ -124,8 +127,12 @@ export function Sidebar() {
   )
   const liabilitiesTotal = liabilityHeaderTotal(liabilityRows)
 
+  // Which row is open, decided once from the URL and handed to every section.
+  // Deriving it per section is how the liability rows would have ended up
+  // with a rule that forgot the register shortcut.
+  const sidebarLocation = parseSidebarLocation(pathname)
+
   function handleAccountClick(account: Account) {
-    setSelectedAccount(account.id)
     navigate(`/accounts/${account.id}`)
   }
 
@@ -323,6 +330,7 @@ export function Sidebar() {
                         kind={accountKind(acc)}
                         badgeCount={acc.uncategorized_count}
                         onClick={() => handleAccountClick(acc)}
+                        isActive={isRowActive(accountTarget(acc.id), null, sidebarLocation)}
                         trailing={
                           acc.simplefin_account_id ? (
                             <SyncStatusIcon
@@ -372,6 +380,7 @@ export function Sidebar() {
                 balance={Number(acc.balance)}
                 kind={accountKind(acc)}
                 onClick={() => handleAccountClick(acc)}
+                isActive={isRowActive(accountTarget(acc.id), null, sidebarLocation)}
               />
             ))}
         </div>
@@ -409,6 +418,7 @@ export function Sidebar() {
                 name={row.name}
                 balance={row.balance}
                 kind="debt"
+                isActive={isRowActive(row.target, row.registerAccountId, sidebarLocation)}
                 onClick={() => {
                   const target = row.target
                   if (target.kind === 'liability') {
@@ -436,7 +446,6 @@ export function Sidebar() {
                       className="sidebar__register-btn"
                       onClick={(e) => {
                         e.stopPropagation()
-                        setSelectedAccount(row.registerAccountId!)
                         navigate(`/accounts/${row.registerAccountId}`)
                       }}
                       aria-label={`Open ${row.name} register`}
@@ -458,21 +467,25 @@ export function Sidebar() {
             ...onBudgetTypes.flatMap((type) => onBudgetByType.get(type) ?? []),
             ...offBudgetAssets,
             ...offBudgetLiabilityAccounts,
-          ].map((acc: Account) => (
-            <button
-              key={acc.id}
-              className="sidebar__account-mini"
-              onClick={() => handleAccountClick(acc)}
-              title={`${acc.name}\n${formatMoney(Number(acc.balance))}`}
-            >
-              <span className="sidebar__account-mini-letter">
-                {acc.name.charAt(0).toUpperCase()}
-              </span>
-              {acc.uncategorized_count > 0 && (
-                <span className="sidebar__account-mini-dot" />
-              )}
-            </button>
-          ))}
+          ].map((acc: Account) => {
+            const active = isRowActive(accountTarget(acc.id), null, sidebarLocation)
+            return (
+              <button
+                key={acc.id}
+                className={`sidebar__account-mini ${active ? 'sidebar__account-mini--active' : ''}`}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => handleAccountClick(acc)}
+                title={`${acc.name}\n${formatMoney(Number(acc.balance))}`}
+              >
+                <span className="sidebar__account-mini-letter">
+                  {acc.name.charAt(0).toUpperCase()}
+                </span>
+                {acc.uncategorized_count > 0 && (
+                  <span className="sidebar__account-mini-dot" />
+                )}
+              </button>
+            )
+          })}
         </div>
       )}
 

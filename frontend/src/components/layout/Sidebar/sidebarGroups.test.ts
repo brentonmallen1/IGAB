@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest'
 import type { Account } from '../../../types'
 import {
   accountKind,
+  accountTarget,
   accountsTotal,
   balanceTone,
   buildLiabilityRows,
   groupLabel,
+  isRowActive,
   onBudgetTotals,
   liabilityHeaderTotal,
   orderedOnBudgetKeys,
+  parseSidebarLocation,
   partitionAccounts,
   type LiabilitySummary,
 } from './sidebarGroups'
@@ -418,5 +421,98 @@ describe('accountKind', () => {
 
   it('reads everything else as an asset', () => {
     expect(accountKind(acct({ classification: 'asset' }))).toBe('asset')
+  })
+})
+
+describe('parseSidebarLocation', () => {
+  it('reads an account register', () => {
+    expect(parseSidebarLocation('/accounts/abc-123')).toEqual({ kind: 'account', id: 'abc-123' })
+  })
+
+  it('reads a liability page', () => {
+    expect(parseSidebarLocation('/liabilities/l-9')).toEqual({ kind: 'liability', id: 'l-9' })
+  })
+
+  it('highlights nothing on the accounts overview', () => {
+    // `/accounts` is the list of them all. Matching a prefix here would light
+    // every row at once.
+    expect(parseSidebarLocation('/accounts')).toBeNull()
+    expect(parseSidebarLocation('/liabilities')).toBeNull()
+  })
+
+  it('highlights nothing on unrelated pages', () => {
+    expect(parseSidebarLocation('/budget')).toBeNull()
+    expect(parseSidebarLocation('/reports')).toBeNull()
+    expect(parseSidebarLocation('/')).toBeNull()
+  })
+
+  it('tolerates a trailing slash', () => {
+    expect(parseSidebarLocation('/accounts/abc-123/')).toEqual({ kind: 'account', id: 'abc-123' })
+  })
+
+  it('decodes an escaped id', () => {
+    expect(parseSidebarLocation('/accounts/a%20b')).toEqual({ kind: 'account', id: 'a b' })
+  })
+})
+
+describe('isRowActive', () => {
+  const onAccount = (id: string) => parseSidebarLocation(`/accounts/${id}`)
+  const onLiability = (id: string) => parseSidebarLocation(`/liabilities/${id}`)
+
+  it('lights the account row whose register is open', () => {
+    expect(isRowActive(accountTarget('a1'), null, onAccount('a1'))).toBe(true)
+    expect(isRowActive(accountTarget('a2'), null, onAccount('a1'))).toBe(false)
+  })
+
+  it('lights the liability row whose page is open', () => {
+    const target = { kind: 'liability', liabilityId: 'l1' } as const
+    expect(isRowActive(target, null, onLiability('l1'))).toBe(true)
+    expect(isRowActive(target, null, onLiability('l2'))).toBe(false)
+  })
+
+  // The divergence a per-section rule would have got wrong: a managed
+  // liability is reachable two ways, and the register shortcut on its own row
+  // is one of them.
+  it('lights a managed liability row from the register its shortcut opens', () => {
+    const target = { kind: 'liability', liabilityId: 'l1' } as const
+    expect(isRowActive(target, 'a1', onAccount('a1'))).toBe(true)
+  })
+
+  it('does not light a liability row from someone else’s register', () => {
+    const target = { kind: 'liability', liabilityId: 'l1' } as const
+    expect(isRowActive(target, 'a1', onAccount('a2'))).toBe(false)
+  })
+
+  it('never confuses an account id with a liability id', () => {
+    // Both tables are UUIDs, but nothing stops them colliding in a fixture —
+    // and a row must answer to its own kind of page only.
+    expect(isRowActive(accountTarget('same'), null, onLiability('same'))).toBe(false)
+    expect(
+      isRowActive({ kind: 'liability', liabilityId: 'same' }, null, onAccount('same'))
+    ).toBe(false)
+  })
+
+  it('lights nothing when the URL names no account or liability', () => {
+    expect(isRowActive(accountTarget('a1'), null, parseSidebarLocation('/budget'))).toBe(false)
+    expect(
+      isRowActive({ kind: 'liability', liabilityId: 'l1' }, 'a1', parseSidebarLocation('/accounts'))
+    ).toBe(false)
+  })
+
+  it('lights an unmanaged liability row rendered from its own account', () => {
+    // An off-budget liability account with no tracker targets the account.
+    expect(isRowActive({ kind: 'account', accountId: 'a7' }, null, onAccount('a7'))).toBe(true)
+  })
+
+  it('agrees with the rows buildLiabilityRows actually produces', () => {
+    // Ties the rule to the real row shape rather than to hand-built targets:
+    // a managed off-budget loan lights up from both of its pages.
+    const account = acct({ id: 'acct-loan', on_budget: false, classification: 'liability' })
+    const tracker = liab({ id: 'liab-loan', linked_account_id: 'acct-loan', current_balance: 900 })
+    const [row] = buildLiabilityRows([account], [tracker])
+
+    expect(isRowActive(row.target, row.registerAccountId, onLiability('liab-loan'))).toBe(true)
+    expect(isRowActive(row.target, row.registerAccountId, onAccount('acct-loan'))).toBe(true)
+    expect(isRowActive(row.target, row.registerAccountId, onAccount('acct-other'))).toBe(false)
   })
 })

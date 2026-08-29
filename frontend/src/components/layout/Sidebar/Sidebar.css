@@ -325,6 +325,29 @@ button.sidebar__group-label:hover {
   color: var(--sidebar-text-primary);
 }
 
+/* The register you are reading.
+   Deliberately NOT the rounded accent chip `.sidebar__nav-item.active` wears:
+   these rows are full-bleed with `border-radius: 0` and hairline separators,
+   so a filled chip would read as a band with its corners cut off. A left edge
+   plus the resting hover wash says "this one" without inventing a second
+   vocabulary, and keeps the two meanings apart — the chip is the page you are
+   on, this is the account that page is about.
+   Accent is used only as a 2px edge, never behind text, so no theme's
+   `--color-accent` has to clear AA against `--sidebar-bg`. */
+.sidebar__account--active {
+  background-color: var(--sidebar-hover);
+  color: var(--sidebar-text-primary);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+/* The register shortcut is normally revealed on hover. On the active row it
+   stays put, so the control does not appear and vanish under the pointer on
+   the one row the user is most likely to reach for. */
+.sidebar__account--active .sidebar__register-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .sidebar__account-name {
   flex: 1;
   min-width: 0;
@@ -421,7 +444,8 @@ button.sidebar__group-label:hover {
    chip the label wants all the contrast it can keep. --sidebar-text-secondary
    was the resting colour before the chip existed and fails AA on the wash in
    five themes — the tone the chip adds has to be paid for somewhere. */
-.sidebar__account:hover .sidebar__account-balance {
+.sidebar__account:hover .sidebar__account-balance,
+.sidebar__account--active .sidebar__account-balance {
   background-color: color-mix(in srgb, var(--sidebar-text-primary) 14%, var(--sidebar-bg));
 }
 
@@ -430,7 +454,8 @@ button.sidebar__group-label:hover {
    red chips on an ordinary Tuesday is how a person learns to stop looking.
    See balanceTone in sidebarGroups.ts, which decides this. */
 .sidebar__account-balance--negative,
-.sidebar__account:hover .sidebar__account-balance--negative {
+.sidebar__account:hover .sidebar__account-balance--negative,
+.sidebar__account--active .sidebar__account-balance--negative {
   background-color: color-mix(in srgb, var(--color-negative) 24%, var(--sidebar-bg));
 }
 
@@ -518,6 +543,15 @@ button.sidebar__group-label:hover {
   background-color: var(--sidebar-hover);
   color: var(--sidebar-text-primary);
   border-color: var(--sidebar-hover-strong);
+}
+
+/* Collapsed rail: the tile is already a rounded chip, so here the accent goes
+   on the border rather than as an inset edge. Same rule deciding it
+   (`isRowActive`), different shape to sit in. */
+.sidebar__account-mini--active {
+  background-color: var(--sidebar-hover);
+  color: var(--sidebar-text-primary);
+  border-color: var(--color-accent);
 }
 
 .sidebar__account-mini-letter {

@@ -121,7 +121,6 @@ interface AppState {
   theme: Theme
   fontScale: FontScale
   currentBudgetId: string | null
-  selectedAccountId: string | null
   selectedMonth: string // ISO date string: "2024-01-01"
   autoOpenLastBudget: boolean
   lastQuickAddAccountId: string | null
@@ -135,7 +134,6 @@ interface AppState {
   setFontScale: (scale: FontScale) => void
   setCurrentBudgetId: (id: string) => void
   clearCurrentBudget: () => void
-  setSelectedAccountId: (id: string | null) => void
   setSelectedMonth: (month: string) => void
   setAutoOpenLastBudget: (val: boolean) => void
   setLastQuickAddAccountId: (id: string) => void
@@ -154,7 +152,6 @@ export const useAppStore = create<AppState>()(
       theme: 'dark',
       fontScale: 'small',
       currentBudgetId: null,
-      selectedAccountId: null,
       selectedMonth: currentMonthString(),
       autoOpenLastBudget: true,
       lastQuickAddAccountId: null,
@@ -176,9 +173,8 @@ export const useAppStore = create<AppState>()(
         document.documentElement.setAttribute('data-font-size', scale)
         set({ fontScale: scale })
       },
-      setCurrentBudgetId: (id) => set({ currentBudgetId: id, selectedAccountId: null }),
-      clearCurrentBudget: () => set({ currentBudgetId: null, selectedAccountId: null }),
-      setSelectedAccountId: (id) => set({ selectedAccountId: id }),
+      setCurrentBudgetId: (id) => set({ currentBudgetId: id }),
+      clearCurrentBudget: () => set({ currentBudgetId: null }),
       setSelectedMonth: (month) => set({ selectedMonth: month }),
       setAutoOpenLastBudget: (val) => set({ autoOpenLastBudget: val }),
       setLastQuickAddAccountId: (id) => set({ lastQuickAddAccountId: id }),
