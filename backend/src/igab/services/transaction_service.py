@@ -896,6 +896,39 @@ class TransactionService:
                     continue
 
                 partner = candidates[0]
+                # Ambiguity is a property of the CLUSTER, but it is only
+                # visible from the crowded side, and which side is visited
+                # first is not decided here: `list_unpaired_transfer_legs`
+                # orders by (date, created_at), and every row an import wrote
+                # in one transaction shares both — `func.now()` is the
+                # transaction's start time — so Postgres may return them in
+                # any order.
+                #
+                # With one leg in checking and two identical candidates in
+                # savings, reaching the checking leg first contests all three;
+                # reaching a savings leg first sees exactly one candidate and
+                # links an arbitrary half of the pair. That is the guess this
+                # whole pass exists to refuse, and it turned up as a CI flake
+                # rather than as a wrong number, which is the lucky version.
+                #
+                # So the rule is mutual: a pair is linked only when each side
+                # is the other's only candidate. Order cannot change that.
+                partner_options = [
+                    c
+                    for c in await self.transaction_repo.find_transfer_candidates(
+                        account_id=leg.account_id,
+                        amount=-partner.amount,
+                        counterpart_account_id=partner.account_id,
+                        on_date=partner.date,
+                        date_tolerance_days=date_tolerance_days,
+                    )
+                    if c.id != partner.id and c.id not in claimed and c.id not in contested
+                ]
+                if len(partner_options) > 1:
+                    contested.add(leg.id)
+                    contested.add(partner.id)
+                    contested.update(c.id for c in partner_options)
+                    continue
                 # The auto-pass must not create what the manual paths refuse:
                 # a category anywhere but the on-budget side of an on↔off pair
                 # (domain/transfers.py). Such a pair stays in `remaining`; the
