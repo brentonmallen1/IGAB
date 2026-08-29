@@ -199,6 +199,12 @@ class CategoryBalance(BaseModel):
     #: What still has to be assigned this month for the target to be met, and
     #: exactly what Fill Underfunded would move. None when there is no target.
     needed_this_month: Decimal | None = None
+    #: A card's set-aside envelope (linked to the card account). Not drawn in
+    #: the category grid — the cards section owns it — and never counted as
+    #: overspending; its state reads as the card's Set aside / Uncovered.
+    #: Required, not optional: a path that forgets it must raise, not draw
+    #: every card envelope as an ordinary row.
+    is_card_payment: bool
 
 
 class CategoryResponse(BaseModel):
@@ -233,6 +239,25 @@ class CategoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CardStatusOut(BaseModel):
+    """One card in the budget's cards section.
+
+    `balance` is the ledger through the viewed month (negative = owed);
+    `set_aside` is cash reserved for it (its envelope's available, may be
+    negative when payments outran the reserve); `uncovered` is owed beyond
+    the reserve — calm and informational: a due date crossing the month
+    boundary is a normal state, not overspending."""
+
+    account_id: uuid.UUID
+    name: str
+    #: Null only before the envelope exists (fresh migration edge) — the row
+    #: still renders, assignment has nowhere to land until it appears.
+    category_id: uuid.UUID | None
+    balance: Decimal
+    set_aside: Decimal
+    uncovered: Decimal
+
+
 class BudgetMonthResponse(BaseModel):
     month: datetime.date
     to_be_assigned: Decimal
@@ -251,6 +276,10 @@ class BudgetMonthResponse(BaseModel):
     # Committed to months after this one; already deducted from to_be_assigned
     assigned_in_future: Decimal = Decimal("0")
     category_balances: list[CategoryBalance]
+    #: The budget's cards — balance / set aside / uncovered (domain/cards.py).
+    #: Empty when the budget has none; the budget page draws its cards
+    #: section from exactly this, computing nothing.
+    cards: list[CardStatusOut] = []
 
 
 class AssignmentUpdate(BaseModel):

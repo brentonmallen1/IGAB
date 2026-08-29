@@ -187,6 +187,24 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
     select(Account.id).where(Account.on_budget == True)  # noqa: E712
 )
 
+#: A card, for the credit model: an on-budget liability-classified account.
+#: Classification, not `account_type == "credit_card"` — a custom on-budget
+#: liability type (a HELOC, a line of credit) behaves identically, and the
+#: type string would silently exempt it. Cards are excluded from the budget's
+#: cash and never charge Ready to Assign; money reaches them only through
+#: their set-aside envelope (domain/cards.py).
+CARD_ACCOUNT = and_(
+    Account.on_budget == True,  # noqa: E712
+    Account.classification == "liability",
+)
+ON_CARD_ACCOUNT = Transaction.account_id.in_(select(Account.id).where(CARD_ACCOUNT))
+#: The budget's cash: on-budget and not a card. This is the balance term of
+#: Ready to Assign; a card's debt lives beside its set-aside, not in cash.
+CASH_ACCOUNT = and_(
+    Account.on_budget == True,  # noqa: E712
+    Account.classification != "liability",
+)
+
 
 #: A transfer leg whose partner never arrived: the payee names another account,
 #: but no row links back. Balances stay right — both sides were written — but

@@ -19,27 +19,26 @@ The rules, validated to the cent against a real cash-only export:
                   card as unfunded debt
     rta         = inflow − assigned − written off
 
-IGAB has no card-payment reserves: a card is an on-budget account whose
-balance nets against cash, and the importer skips YNAB's "Credit Card
-Payments" group. So once a month in which a category was overspent on a card
-has been reset, IGAB's Ready to Assign sits below YNAB's by the debt YNAB
-parked unfunded on the card:
+IGAB follows the same credit rules (domain/cards.py): a card's balance is
+outside the budget's cash, credit overspending rides on the card as
+uncovered debt, and only cash overspending is written off from Ready to
+Assign. The uncovered terms are still computed — they are what the card
+section displays, and what this oracle checks that display against:
 
     uncovered (total)   = −card balances − card-payment reserves available
     uncovered (current) = Σ over categories negative THIS month of
                           min(overspent, card outflows in it this month)
                           — still visible as negatives, so not yet a gap
-    expected_igab       = rta − (uncovered total − uncovered current)
 
-And an uncategorized row on a budget account is money YNAB leaves out of the
-plan entirely until it is filed, while IGAB takes it out of Ready to Assign
-at once (a reconciliation adjustment is exactly such a row, on purpose):
+The one construction difference left is unfiled rows: an uncategorized row
+on a CASH budget account is money YNAB leaves out of the plan entirely until
+it is filed, while IGAB takes it out of Ready to Assign at once (a
+reconciliation adjustment is exactly such a row, on purpose). An unfiled row
+on a card touches neither side — the card is outside both cash and plan:
 
-    expected_igab       = rta − (uncovered total − uncovered current)
-                          + uncategorized net on budget accounts
+    expected_igab       = rta + uncategorized net on cash budget accounts
 
-Within a month with no card overspending on the books and every row filed,
-the two agree exactly.
+With every row filed, the two agree exactly.
 
 One more thing the export cannot say outright: YNAB counts an imported
 transaction in the plan only once it is approved, but ships it in the
@@ -80,11 +79,13 @@ class RTAOracle:
     card_balances: Decimal
     ccp_available: Decimal
     uncovered_current: Decimal
-    #: Card debt YNAB has reset out of the envelopes but not charged to
-    #: Ready to Assign — the one difference from IGAB's figure by construction.
+    #: Card debt reset out of the envelopes and charged to no one — what the
+    #: card section shows as Uncovered. IGAB follows the same rule, so this
+    #: is no longer a difference between the two figures.
     uncovered_card_debt: Decimal
-    #: Net of uncategorized, non-transfer rows on budget accounts through the
-    #: month — out of Ready to Assign in IGAB, out of the plan in YNAB.
+    #: Net of uncategorized, non-transfer rows on CASH budget accounts
+    #: through the month — out of Ready to Assign in IGAB, out of the plan in
+    #: YNAB. Card rows are excluded: outside cash here, outside the plan there.
     uncategorized_net: Decimal
     expected_igab: Decimal
     #: YNAB's Available per envelope category at `month`, keyed by IGAB's
@@ -143,7 +144,10 @@ def ynab_rta(
             if key == _INFLOW:
                 inflow += leg.amount
             if not (leg.category_group and leg.category):
-                if on_budget and not is_transfer:
+                # Cash accounts only: an unfiled card row is outside the
+                # budget's cash on IGAB's side and outside the plan on
+                # YNAB's, so it explains no difference between them.
+                if on_budget and not on_card and not is_transfer:
                     uncategorized_net += leg.amount
                 continue
             if on_card and leg.amount < 0:
@@ -194,7 +198,7 @@ def ynab_rta(
         uncovered_current=uncovered_current,
         uncovered_card_debt=uncovered_card_debt,
         uncategorized_net=uncategorized_net,
-        expected_igab=rta - uncovered_card_debt + uncategorized_net,
+        expected_igab=rta + uncategorized_net,
         available=available,
         uncleared={k: v for k, v in uncleared.items() if k in available},
     )

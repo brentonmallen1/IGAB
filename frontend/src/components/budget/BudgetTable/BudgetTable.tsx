@@ -12,7 +12,7 @@ import {
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { groupByView, visibleCategoryIds } from './viewGrouping'
-import { renderableCategoryIds, renderableGroups } from '../budgetGroups'
+import { renderableCategories, renderableCategoryIds, renderableGroups } from '../budgetGroups'
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
@@ -100,7 +100,7 @@ export function BudgetTable() {
   // of them show. The two are independent axes and both can be active.
   const activeView = views?.find((v) => v.id === activeViewId) ?? null
 
-  const matching = (categories ?? []).filter(
+  const matching = renderableCategories(categories ?? []).filter(
     (cat) => categoryMatchesFilter(cat.id) && categoryMatchesSearch(cat)
   )
 
@@ -134,10 +134,27 @@ export function BudgetTable() {
 
   const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
   const sourceGroups = arranged?.groups ?? groups
+  // The card envelopes' hidden group holds nothing renderable — every one of
+  // its categories is linked and excluded above — so it is not drawn even
+  // with hidden groups shown: "Credit Card Payments" never renders as a bare
+  // header. Identity is preserved when nothing is dropped, because the
+  // reorder gate below compares by reference.
+  const cardOnlyGroupIds = new Set(
+    (sourceGroups ?? [])
+      .filter((g) => {
+        const inGroup = (categories ?? []).filter((c) => c.category_group_id === g.id)
+        return inGroup.length > 0 && inGroup.every((c) => c.linked_account_id !== null)
+      })
+      .map((g) => g.id)
+  )
+  const withoutCardGroups =
+    cardOnlyGroupIds.size > 0
+      ? sourceGroups?.filter((g) => !cardOnlyGroupIds.has(g.id))
+      : sourceGroups
   const visibleGroups =
     isFiltered || activeView
-      ? sourceGroups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
-      : sourceGroups
+      ? withoutCardGroups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
+      : withoutCardGroups
 
   const allGroupIds = visibleGroups?.map((g) => g.id) ?? []
 

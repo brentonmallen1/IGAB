@@ -1083,3 +1083,50 @@ async def test_a_tracking_rows_category_is_stripped_and_counted(db_session):
     # The on-budget row keeps its category — the rule is about the account.
     checking_rows = [r for r in rows if accounts[r.account_id].on_budget and not r.is_split]
     assert any(r.category_id is not None for r in checking_rows)
+
+
+async def test_card_payment_reserves_import_onto_the_cards_envelope(db_session):
+    """YNAB's Credit Card Payments assignments are the money set aside for
+    each card — they land on the card's set-aside envelope (the linked
+    category created with the account), and only an entry whose card was
+    never imported is counted as skipped."""
+    from igab.integrations.ynab.models import YNABBudgetEntry
+
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    data = YNABBudget(
+        transactions=[_txn("Visa", "Corner Market", "-60.00", group="Everyday", category="Groceries")],
+        budget_entries=[
+            YNABBudgetEntry(
+                month=JAN5.replace(day=1),
+                category_group="Credit Card Payments",
+                category="Visa",
+                assigned=Decimal("250.00"),
+            ),
+            YNABBudgetEntry(
+                month=JAN5.replace(day=1),
+                category_group="Credit Card Payments",
+                category="Skipped Amex",
+                assigned=Decimal("75.00"),
+            ),
+        ],
+    )
+    result = await _importer(
+        services, db_session, budget, account_types={"Visa": ("credit_card", True)}
+    ).import_budget(data)
+
+    assert result.credit_card_payment_assignments_skipped == 1
+    assert result.credit_card_payment_reserves_skipped == Decimal("75.00")
+
+    accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
+    linked = await services.category_repo.get_by_linked_account(accounts["Visa"].id)
+    assert linked is not None
+    assignments = await services.assignment_repo.get_all_for_budget(budget.id)
+    by_cat = {(a.category_id, a.month): a.assigned for a in assignments}
+    assert by_cat[(linked.id, JAN5.replace(day=1))] == Decimal("250.00")
+    # No visible "Credit Card Payments" spending group was created for it.
+    groups = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    ccp = [g for g in groups if g.name == "Credit Card Payments"]
+    assert len(ccp) == 1 and ccp[0].is_hidden

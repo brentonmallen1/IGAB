@@ -171,6 +171,26 @@ export interface CategoryBalance {
    * exactly what Fill Underfunded would move. `null` when there is no target.
    */
   needed_this_month: number | null
+  /** A card's set-aside envelope — the cards section owns it; the grid never
+   *  draws it and its negative is not overspending. Served, not derived:
+   *  see `CategoryBalance` in api/v1/schemas/category.py. */
+  is_card_payment: boolean
+}
+
+/** One card in the budget's cards section — see `CardStatusOut` on the
+ *  server (api/v1/schemas/category.py) and domain/cards.py for the model. */
+export interface CardStatus {
+  account_id: string
+  name: string
+  /** Null only before the set-aside envelope exists (fresh migration edge). */
+  category_id: string | null
+  /** Ledger through the viewed month; negative = owed. */
+  balance: number
+  /** Cash reserved for this card; negative when payments outran the reserve. */
+  set_aside: number
+  /** Owed beyond the reserve. Calm and informational — a due date crossing
+   *  the month boundary is a normal state, not overspending. */
+  uncovered: number
 }
 
 export interface BudgetMonth {
@@ -186,6 +206,9 @@ export interface BudgetMonth {
   /** Committed to months after this one; already deducted from to_be_assigned */
   assigned_in_future: number
   category_balances: CategoryBalance[]
+  /** The budget's cards — empty when it has none. The cards section draws
+   *  exactly this and computes nothing. */
+  cards: CardStatus[]
 }
 
 export interface BudgetTransactionsResponse {
