@@ -573,6 +573,7 @@ async def get_budget_month(
                     else None
                 ),
                 is_card_payment=b.is_card_payment,
+                refused_card_inflows=b.refused_card_inflows,
             )
             for b in summary.category_balances
         ],

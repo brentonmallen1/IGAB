@@ -33,10 +33,22 @@ Reservations release *cumulatively*: a refund lands whenever it lands, and
 it releases the reservation its purchase made even when that was months ago
 and in a different calendar month (`card_funding`'s running walk). Only an
 inflow exceeding everything its category ever reserved on that card is
-discarded — it reduced the card's debt without touching reserved cash, so
-it pays down Uncovered instead. Flooring per month, as the first release
-rule did, silently discarded every cross-month release and ratcheted the
+capped — it reduced the card's debt without touching reserved cash, so it
+pays down Uncovered instead. Flooring per month, as the first release rule
+did, silently discarded every cross-month release and ratcheted the
 set-aside upward forever.
+
+**What is capped on the card side must be taken off the envelope side**
+(`truncated_by_category`, added 2026-08-29 after "The Internet Envelope").
+An inflow raises its category's available through the ordinary activity sum
+before any of this arithmetic runs. Capping the release without also
+reducing that available leaves the same dollars counted twice — once as
+card debt paid down, once as spendable envelope money — and because
+`TBA = cash − envelopes − …` the whole difference comes out of Ready to
+Assign, silently and with no red anywhere. On a real budget that was
+$10,852 on a card owing $6,925.97: three synced card payments that arrived
+as ordinary rows instead of transfer legs, auto-filed to an Internet
+envelope that had never reserved a cent on that card.
 
 Everything here takes plain dicts and returns plain dicts: no database, no
 account rows, so every branch is a one-line test. The repository layer
@@ -96,7 +108,9 @@ def allocate_across_cards[K](
     return out
 
 
-def cap_releases(deltas: dict[date, Decimal]) -> dict[date, Decimal]:
+def cap_releases(
+    deltas: dict[date, Decimal],
+) -> tuple[dict[date, Decimal], dict[date, Decimal]]:
     """One (category, card) series of reservation deltas, releases capped.
 
     Walks the months in order carrying the running reservation: positive
@@ -107,23 +121,41 @@ def cap_releases(deltas: dict[date, Decimal]) -> dict[date, Decimal]:
     (a refund of pre-history or overspent-and-ridden spending); it already
     reduced the card's balance, so it pays down Uncovered rather than
     withdrawing reserved cash that was never reserved.
+
+    Returns `(capped, truncated)`. The second dict is the part of each
+    release this function refused, as a positive amount, and it exists
+    because discarding it silently cost a real budget $10,852 of Ready to
+    Assign: the inflow had *already* raised its category's available through
+    the ordinary activity sum, so refusing the release here left the same
+    dollars counted twice — once as card debt paid down, once as spendable
+    envelope money — with Ready to Assign absorbing the difference. Whoever
+    caps the card side has to hand back what it capped so the envelope side
+    can be balanced (`card_funding` → `truncated_by_category`).
     """
     out: dict[date, Decimal] = {}
+    truncated: dict[date, Decimal] = {}
     reserved = ZERO
     for month in sorted(deltas):
         delta = deltas[month]
         if delta < ZERO:
-            delta = -min(-delta, reserved)
+            capped = -min(-delta, reserved)
+            if capped != delta:
+                truncated[month] = capped - delta
+            delta = capped
         reserved += delta
         if delta != ZERO:
             out[month] = delta
-    return out
+    return out, truncated
 
 
 def card_funding[C, K](
     end_balances_by_category: dict[C, dict[date, Decimal]],
     credit_outflows: dict[C, dict[K, dict[date, Decimal]]],
-) -> tuple[dict[K, dict[date, Decimal]], dict[C, dict[date, Decimal]]]:
+) -> tuple[
+    dict[K, dict[date, Decimal]],
+    dict[C, dict[date, Decimal]],
+    dict[C, dict[date, Decimal]],
+]:
     """The whole budget's card funding, composed from the primitives.
 
     Takes each category's raw month-end series (`monthly_end_balances`) and
@@ -139,9 +171,15 @@ def card_funding[C, K](
     - floored per category per month — what rode onto cards instead of being
       written off; the viewed month's entries are what Ready to Assign
       subtracts directly (`uncovered_current`).
+    - truncated per category per month — the releases `cap_releases` refused,
+      as positive amounts. The card kept its reserve, so the category must
+      not keep the money too: the caller subtracts this from the category's
+      activity. Without it, every card inflow into a category that never
+      reserved on that card drains Ready to Assign dollar-for-dollar.
     """
     funded_by_card: dict[K, dict[date, Decimal]] = {}
     floored_by_category: dict[C, dict[date, Decimal]] = {}
+    truncated_by_category: dict[C, dict[date, Decimal]] = {}
     for category, by_card in credit_outflows.items():
         end_balances = end_balances_by_category.get(category, {})
         totals: dict[date, Decimal] = {}
@@ -167,10 +205,14 @@ def card_funding[C, K](
                 if delta != ZERO:
                     deltas_by_card.setdefault(card, {})[month] = delta
         for card, deltas in deltas_by_card.items():
-            for month, delta in cap_releases(deltas).items():
+            capped, truncated = cap_releases(deltas)
+            for month, delta in capped.items():
                 per_card = funded_by_card.setdefault(card, {})
                 per_card[month] = per_card.get(month, ZERO) + delta
-    return funded_by_card, floored_by_category
+            for month, refused in truncated.items():
+                per_cat = truncated_by_category.setdefault(category, {})
+                per_cat[month] = per_cat.get(month, ZERO) + refused
+    return funded_by_card, floored_by_category, truncated_by_category
 
 
 def synthetic_activity(

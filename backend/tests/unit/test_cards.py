@@ -73,27 +73,27 @@ class TestAllocateAcrossCards:
 
 class TestCapReleases:
     def test_positive_deltas_pass_through(self):
-        assert cap_releases({JAN: D("100"), FEB: D("40")}) == {JAN: D("100"), FEB: D("40")}
+        assert cap_releases({JAN: D("100"), FEB: D("40")})[0] == {JAN: D("100"), FEB: D("40")}
 
     def test_a_release_in_a_later_month_passes_whole(self):
         # The defect's minimal reproduction: January reserves 100, February's
         # refund releases it — the per-month clamp used to discard this and
         # the reservation stayed forever.
-        assert cap_releases({JAN: D("100"), FEB: D("-100")}) == {JAN: D("100"), FEB: D("-100")}
+        assert cap_releases({JAN: D("100"), FEB: D("-100")})[0] == {JAN: D("100"), FEB: D("-100")}
 
     def test_a_release_is_capped_at_what_was_reserved(self):
         # Reserved 60 (the other 40 rode as uncovered debt); a 100 refund
         # releases the 60 and the rest pays down Uncovered via the balance.
-        assert cap_releases({JAN: D("60"), FEB: D("-100")}) == {JAN: D("60"), FEB: D("-60")}
+        assert cap_releases({JAN: D("60"), FEB: D("-100")})[0] == {JAN: D("60"), FEB: D("-60")}
 
     def test_an_inflow_before_any_reservation_is_discarded(self):
         # A refund of pre-history spending: no reservation exists to release.
-        assert cap_releases({JAN: D("-100"), FEB: D("40")}) == {FEB: D("40")}
+        assert cap_releases({JAN: D("-100"), FEB: D("40")})[0] == {FEB: D("40")}
 
     def test_releases_accumulate_across_months(self):
         # 100 reserved, released 60 then 60 more: the second release finds
         # only 40 left.
-        assert cap_releases({JAN: D("100"), FEB: D("-60"), MAR: D("-60")}) == {
+        assert cap_releases({JAN: D("100"), FEB: D("-60"), MAR: D("-60")})[0] == {
             JAN: D("100"),
             FEB: D("-60"),
             MAR: D("-40"),
@@ -105,21 +105,21 @@ class TestCardFunding:
         # Assigned 150, spent 150 on the card: everything funds the card's
         # set-aside, nothing rides — the swipe is Ready-to-Assign-neutral.
         ends = {"groceries": monthly_end_balances({JAN: D("150")}, {JAN: D("-150")})}
-        funded, floored = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
+        funded, floored, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
         assert funded == {VISA: {JAN: D("150")}}
         assert floored == {}
 
     def test_the_overspent_swipe_scenario(self):
         # Assigned 100, spent 150 on the card: 100 funds, 50 rides.
         ends = {"groceries": monthly_end_balances({JAN: D("100")}, {JAN: D("-150")})}
-        funded, floored = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
+        funded, floored, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
         assert funded == {VISA: {JAN: D("100")}}
         assert floored == {"groceries": {JAN: D("50")}}
 
     def test_the_wholly_unfunded_swipe_funds_nothing(self):
         # Nothing assigned: the whole 150 rides as uncovered debt.
         ends = {"groceries": monthly_end_balances({}, {JAN: D("-150")})}
-        funded, floored = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
+        funded, floored, _ = card_funding(ends, {"groceries": {VISA: {JAN: D("150")}}})
         assert funded == {}
         assert floored == {"groceries": {JAN: D("150")}}
 
@@ -128,7 +128,7 @@ class TestCardFunding:
             "groceries": monthly_end_balances({JAN: D("100")}, {JAN: D("-100")}),
             "fuel": monthly_end_balances({JAN: D("40")}, {JAN: D("-40")}),
         }
-        funded, floored = card_funding(
+        funded, floored, _ = card_funding(
             ends,
             {"groceries": {VISA: {JAN: D("100")}}, "fuel": {VISA: {JAN: D("40")}}},
         )
@@ -140,7 +140,7 @@ class TestCardFunding:
         # greedily (amex holds 40, visa the remaining 20) and each card's
         # envelope receives only what was actually covered on it.
         ends = {"groceries": monthly_end_balances({JAN: D("80")}, {JAN: D("-140")})}
-        funded, floored = card_funding(
+        funded, floored, _ = card_funding(
             ends, {"groceries": {VISA: {JAN: D("100")}, AMEX: {JAN: D("40")}}}
         )
         assert floored == {"groceries": {JAN: D("60")}}
@@ -148,7 +148,7 @@ class TestCardFunding:
 
     def test_a_category_with_no_card_spending_contributes_nothing(self):
         ends = {"rent": monthly_end_balances({JAN: D("1200")}, {JAN: D("-1200")})}
-        funded, floored = card_funding(ends, {})
+        funded, floored, _ = card_funding(ends, {})
         assert funded == {} and floored == {}
 
     def test_a_cross_month_refund_releases_its_reservation(self):
@@ -158,7 +158,7 @@ class TestCardFunding:
         ends = {
             "groceries": monthly_end_balances({JAN: D("100")}, {JAN: D("-100"), FEB: D("100")})
         }
-        funded, floored = card_funding(
+        funded, floored, _ = card_funding(
             ends, {"groceries": {VISA: {JAN: D("100"), FEB: D("-100")}}}
         )
         assert funded == {VISA: {JAN: D("100"), FEB: D("-100")}}
@@ -171,7 +171,7 @@ class TestCardFunding:
         ends = {
             "groceries": monthly_end_balances({JAN: D("60")}, {JAN: D("-100"), FEB: D("100")})
         }
-        funded, floored = card_funding(
+        funded, floored, _ = card_funding(
             ends, {"groceries": {VISA: {JAN: D("100"), FEB: D("-100")}}}
         )
         assert funded == {VISA: {JAN: D("60"), FEB: D("-60")}}
@@ -185,7 +185,7 @@ class TestCardFunding:
                 {JAN: D("140")}, {JAN: D("-140"), FEB: D("100")}
             )
         }
-        funded, floored = card_funding(
+        funded, floored, _ = card_funding(
             ends,
             {"groceries": {VISA: {JAN: D("100"), FEB: D("-100")}, AMEX: {JAN: D("40")}}},
         )
@@ -199,7 +199,7 @@ class TestCardFunding:
         ends = {
             "groceries": monthly_end_balances({FEB: D("40")}, {JAN: D("100"), FEB: D("-40")})
         }
-        funded, floored = card_funding(
+        funded, floored, _ = card_funding(
             ends, {"groceries": {VISA: {JAN: D("-100"), FEB: D("40")}}}
         )
         assert funded == {VISA: {FEB: D("40")}}
@@ -282,7 +282,7 @@ class TestReservationInvariant:
                 }
                 for c, by_card in outflows.items()
             }
-            funded, _floored = card_funding(ends, outflows)
+            funded, _floored, _ = card_funding(ends, outflows)
             synthetic = synthetic_activity(funded.get(VISA, {}), payments)
             set_aside = set_aside_through({}, synthetic, upto)
             uncovered = max(D("0"), -balance - max(D("0"), set_aside))

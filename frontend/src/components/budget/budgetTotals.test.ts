@@ -12,6 +12,7 @@ function bal(assigned: number, activity: number, available: number): CategoryBal
     target_status: null,
     needed_this_month: null,
   is_card_payment: false,
+  refused_card_inflows: 0,
   }
 }
 
