@@ -18,6 +18,7 @@ from igab.domain.exceptions import DuplicateError, NotFoundError
 from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
 from igab.services.account_hygiene import AccountHygieneService
 from igab.services.account_type_service import apply_type, resolve_type
+from igab.services.card_payment import ensure_payment_category
 from igab.services.liability_service import (
     LIABILITY_CLASSIFICATION,
     ensure_for_account,
@@ -166,6 +167,8 @@ async def create_account(
     # A liability-classified account gets its companion here, not on first
     # visit to the page: every consumer downstream may assume the row exists.
     await ensure_for_account(account_repo.session, acc)
+    # And a card gets its set-aside envelope the same way (domain/cards.py).
+    await ensure_payment_category(account_repo.session, acc)
 
     resp = AccountResponse.model_validate(acc)
     resp.balance = await account_repo.get_balance(acc.id)
@@ -231,6 +234,12 @@ async def update_account(
             await ensure_for_account(account_repo.session, acc)
         else:
             await release_for_account(account_repo.session, acc)
+    # Retyping or flipping on-budget can make an account a card; its envelope
+    # must exist before the budget page next asks for it. The reverse — a
+    # card that stopped being one — keeps its envelope: it may hold real
+    # assignments, and money is never dropped as a side effect of a retype.
+    if changes.get("account_type") is not None or changes.get("on_budget") is not None:
+        await ensure_payment_category(account_repo.session, acc)
 
     resp = AccountResponse.model_validate(acc)
     resp.balance = await account_repo.get_balance(acc.id)

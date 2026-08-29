@@ -29,6 +29,9 @@ class MockAccount:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     on_budget: bool = True
     is_closed: bool = False
+    # The summary's card block reads classification; "asset" keeps these
+    # tests about their own subject — no card accounts, block short-circuits.
+    classification: str = "asset"
 
 
 @dataclass
@@ -42,6 +45,8 @@ class MockCategoryGroup:
 class MockCategory:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     category_group_id: uuid.UUID = field(default_factory=uuid.uuid4)
+    # Card set-aside envelopes are linked; None keeps these ordinary.
+    linked_account_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -75,6 +80,7 @@ def make_service(
         return sum((balances.get(a.id, D("0")) for a in accounts if a.on_budget), D("0"))
 
     account_repo.sum_on_budget_balance = AsyncMock(side_effect=_sum_on_budget_balance)
+    account_repo.get_all = AsyncMock(return_value=accounts)
 
     category_repo = MagicMock()
     category_repo.get_all = AsyncMock(return_value=categories)

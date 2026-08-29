@@ -148,6 +148,9 @@ export function useSetAssignment(budgetId: string) {
                 // null hides the pill for one refetch rather than inventing a
                 // status here, which is the rule this field exists to enforce.
                 target_status: null,
+                // A row invented optimistically is never a card envelope —
+                // those always exist server-side before they can be assigned.
+                is_card_payment: false,
                 needed_this_month: null,
               },
             ]

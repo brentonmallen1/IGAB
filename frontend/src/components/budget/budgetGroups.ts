@@ -18,11 +18,28 @@ export function renderableGroups<T extends { is_system: boolean }>(groups: reado
   return groups.filter((g) => !g.is_system)
 }
 
+/**
+ * A card's set-aside envelope is not a grid row either: the cards section
+ * owns it, with liability-truthful columns (Balance / Set aside / Uncovered)
+ * instead of assigned/activity/available. `linked_account_id` is the served
+ * fact; drawing the row anyway would show the reserve as an ordinary
+ * envelope and its negative as overspending, which it is not.
+ */
+export function renderableCategories<T extends { linked_account_id: string | null }>(
+  categories: readonly T[]
+): T[] {
+  return categories.filter((c) => c.linked_account_id === null)
+}
+
 /** The ids of the categories that sit in a renderable group. */
 export function renderableCategoryIds(
   groups: readonly CategoryGroup[],
-  categories: readonly { id: string; category_group_id: string }[]
+  categories: readonly { id: string; category_group_id: string; linked_account_id: string | null }[]
 ): Set<string> {
   const groupIds = new Set(renderableGroups(groups).map((g) => g.id))
-  return new Set(categories.filter((c) => groupIds.has(c.category_group_id)).map((c) => c.id))
+  return new Set(
+    renderableCategories(categories)
+      .filter((c) => groupIds.has(c.category_group_id))
+      .map((c) => c.id)
+  )
 }

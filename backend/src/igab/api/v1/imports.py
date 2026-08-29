@@ -115,10 +115,12 @@ class YNABParityOut(BaseModel):
     """How the imported budget compares with the export's own figures.
 
     `ynab_ready_to_assign` is what YNAB's numbers say; `expected` is that
-    figure adjusted by the one difference IGAB makes on purpose (card debt
-    YNAB parks unfunded — `uncovered_card_debt`); `igab` is what the budget
-    actually shows. `matches` means expected == igab AND every envelope's
-    balance equals the Available column YNAB shipped.
+    figure adjusted by unfiled cash rows (out of Ready to Assign here, out
+    of the plan there); `igab` is what the budget actually shows — the two
+    follow the same credit rules now, and `uncovered_card_debt` is the
+    cards' expected Uncovered rather than a gap. `matches` means
+    expected == igab AND every envelope's balance equals the Available
+    column YNAB shipped.
     """
 
     month: date
@@ -179,10 +181,9 @@ class YNABImportResult(BaseModel):
     #: Which ones, and why. The count cannot answer "show me what you did",
     #: and nothing on the join table records that a tag was guessed.
     tagged_categories: list[YNABTaggedCategory] = Field(default_factory=list)
-    #: YNAB's Credit Card Payments reserves, left out on purpose: IGAB nets a
-    #: card's balance against cash in Ready to Assign, so importing them
-    #: would reserve the same debt twice. The money is what Ready to Assign
-    #: keeps as a result.
+    #: YNAB's Credit Card Payments reserves whose card was never imported —
+    #: the matched ones become the card's set-aside assignments. The money is
+    #: what those cards are missing from their reserves as a result.
     credit_card_payment_assignments_skipped: int = 0
     credit_card_payment_reserves_skipped: Decimal = Decimal("0")
     #: Register rows on tracking accounts whose export line named a category,

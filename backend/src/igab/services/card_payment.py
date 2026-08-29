@@ -1,0 +1,85 @@
+"""The card's set-aside envelope — guaranteed by construction, like a
+liability companion.
+
+The credit model (domain/cards.py) needs somewhere for a card's assignments
+to live: one Category per card, linked via `linked_account_id`. This module
+is the one writer of that link. The category is invisible as an envelope —
+its group is hidden, so the grid does not draw it and no picker offers it
+(`IS_CATEGORIZABLE` already excludes linked categories; the hidden group
+keeps it out of `IS_ASSIGNABLE`'s bulk strategies too) — and the budget
+page's card section is its only face. Its *assignments* are real
+BudgetAssignment rows, so moving money to a card is the same operation as
+moving money anywhere, undo included.
+
+Mirrors `liability_service.ensure_for_account`: idempotent, adopts a
+soft-deleted row rather than inserting beside it, returns None when there
+was nothing to do so callers can fire and forget.
+"""
+
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from igab.db.models import Account, Category, CategoryGroup
+
+#: One group holds every card's envelope. Hidden, not system: a system group
+#: means income (activity_class reads it that way), while hidden means "not
+#: in the grid" — which is exactly the ask. The name is user-visible only in
+#: places that surface hidden groups deliberately.
+CARD_PAYMENTS_GROUP = "Credit Card Payments"
+
+
+def is_card_account(account: Account) -> bool:
+    """The Python twin of txn_filters.CARD_ACCOUNT — one definition per side,
+    both spelling `classification == 'liability' AND on_budget`."""
+    return account.on_budget and account.classification == "liability"
+
+
+async def ensure_payment_category(session: AsyncSession, account: Account) -> Category | None:
+    """Guarantee the linked category for a card account.
+
+    Returns the category it created or revived, None when there was nothing
+    to do — the account is not a card, or its envelope already stands.
+    """
+    if account.is_deleted or not is_card_account(account):
+        return None
+
+    existing = (
+        await session.execute(select(Category).where(Category.linked_account_id == account.id))
+    ).scalar_one_or_none()
+    if existing is not None:
+        if not existing.is_deleted:
+            return None
+        existing.is_deleted = False
+        await session.flush()
+        return existing
+
+    group = await _ensure_group(session, account.budget_id)
+    category = Category(
+        budget_id=account.budget_id,
+        category_group_id=group.id,
+        name=account.name,
+        linked_account_id=account.id,
+    )
+    session.add(category)
+    await session.flush()
+    return category
+
+
+async def _ensure_group(session: AsyncSession, budget_id: uuid.UUID) -> CategoryGroup:
+    existing = (
+        await session.execute(
+            select(CategoryGroup).where(
+                CategoryGroup.budget_id == budget_id,
+                CategoryGroup.name == CARD_PAYMENTS_GROUP,
+                CategoryGroup.is_deleted == False,  # noqa: E712
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    group = CategoryGroup(budget_id=budget_id, name=CARD_PAYMENTS_GROUP, is_hidden=True)
+    session.add(group)
+    await session.flush()
+    return group
