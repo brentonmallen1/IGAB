@@ -11,7 +11,7 @@ import {
   accountsTotal,
   buildLiabilityRows,
   groupLabel,
-  groupedAccountsTotal,
+  onBudgetTotals,
   liabilityHeaderTotal,
   orderedOnBudgetKeys,
   partitionAccounts,
@@ -106,7 +106,7 @@ export function Sidebar() {
   const onBudgetTypes = orderedOnBudgetKeys(onBudgetByType)
   // Summed from the same map the groups render from, so the section header is
   // by construction the sum of the subtotals listed under it.
-  const onBudgetTotal = groupedAccountsTotal(onBudgetByType)
+  const onBudget = onBudgetTotals(onBudgetByType)
 
   const assetsTotal = accountsTotal(offBudgetAssets)
   // Every debt exactly once: liability-classified accounts (tracker balance
@@ -236,7 +236,7 @@ export function Sidebar() {
           <SidebarGroupHeader
             level="section"
             label="Budget Accounts"
-            total={onBudgetTotal}
+            total={onBudget.net}
             collapsible={onBudgetTypes.length > 0}
             collapsed={isFolded(SIDEBAR_SECTION_IDS.budgetAccounts)}
             onToggle={() => toggleGroup(SIDEBAR_SECTION_IDS.budgetAccounts)}
@@ -277,6 +277,21 @@ export function Sidebar() {
               </>
             }
           />
+          {/* Cash, said plainly. The section total nets the cards against it,
+              which answers neither "what have I got" nor "what do I owe", and
+              a card's balance is not money you have — the budget itself stopped
+              counting it as cash when cards left Ready to Assign. Drawn only
+              when the two figures actually differ, and labelled, because two
+              unexplained totals in one section is the failure mode here. */}
+          {!isFolded(SIDEBAR_SECTION_IDS.budgetAccounts) && onBudget.cards !== 0 && (
+            <div
+              className="sidebar__cash"
+              title={`Your on-budget cash accounts, before card debt. The section total above is this minus the ${formatMoney(Math.abs(onBudget.cards))} owed on cards.`}
+            >
+              <span className="sidebar__cash-label">Cash on hand</span>
+              <span className="sidebar__cash-value tabular">{formatMoney(onBudget.cash)}</span>
+            </div>
+          )}
           {!isFolded(SIDEBAR_SECTION_IDS.budgetAccounts) &&
             onBudgetTypes.map((type) => {
               const typeAccounts: Account[] = onBudgetByType.get(type) ?? []
