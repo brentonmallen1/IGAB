@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.services.simplefin_service import (
     ACCOUNT_DAILY_LIMIT,
     DEDUP_AUTO_MATCH_THRESHOLD,
@@ -360,7 +361,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -402,7 +403,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -451,7 +452,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -492,7 +493,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -518,7 +519,7 @@ class TestSyncFlow:
 
         error = Exception("Connection refused")
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(side_effect=error)),
+            patch.object(svc.client, "get_feed", AsyncMock(side_effect=error)),
             patch("igab.services.simplefin_service.asyncio.sleep", AsyncMock()),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -567,7 +568,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -609,7 +610,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -650,7 +651,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -695,7 +696,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -750,8 +751,8 @@ class TestSyncFlow:
         with (
             patch.object(
                 svc.client,
-                "get_transactions",
-                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+                "get_feed",
+                AsyncMock(return_value=SimpleFINFeed([self._posted_raw_txn(account)])),
             ),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -781,8 +782,8 @@ class TestSyncFlow:
         with (
             patch.object(
                 svc.client,
-                "get_transactions",
-                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+                "get_feed",
+                AsyncMock(return_value=SimpleFINFeed([self._posted_raw_txn(account)])),
             ),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -813,8 +814,8 @@ class TestSyncFlow:
         with (
             patch.object(
                 svc.client,
-                "get_transactions",
-                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+                "get_feed",
+                AsyncMock(return_value=SimpleFINFeed([self._posted_raw_txn(account)])),
             ),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -850,8 +851,8 @@ class TestSyncFlow:
         with (
             patch.object(
                 svc.client,
-                "get_transactions",
-                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+                "get_feed",
+                AsyncMock(return_value=SimpleFINFeed([self._posted_raw_txn(account)])),
             ),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -884,8 +885,8 @@ class TestSyncFlow:
         with (
             patch.object(
                 svc.client,
-                "get_transactions",
-                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+                "get_feed",
+                AsyncMock(return_value=SimpleFINFeed([self._posted_raw_txn(account)])),
             ),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -923,7 +924,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -952,8 +953,8 @@ class TestSyncFlow:
         with (
             patch.object(
                 svc.client,
-                "get_transactions",
-                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+                "get_feed",
+                AsyncMock(return_value=SimpleFINFeed([self._posted_raw_txn(account)])),
             ),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -981,8 +982,8 @@ class TestSyncFlow:
         with (
             patch.object(
                 svc.client,
-                "get_transactions",
-                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+                "get_feed",
+                AsyncMock(return_value=SimpleFINFeed([self._posted_raw_txn(account)])),
             ),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -1022,7 +1023,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -1059,7 +1060,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -1106,7 +1107,7 @@ class TestSyncFlow:
         ]
         decrypt_target = "igab.services.simplefin_service.decrypt"
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(decrypt_target, return_value="https://user:pass@example.com"),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
@@ -1139,7 +1140,7 @@ class TestSyncFlow:
         ]
         decrypt_target = "igab.services.simplefin_service.decrypt"
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(decrypt_target, return_value="https://user:pass@example.com"),
         ):
             result = await svc.sync(conn.id, uuid.uuid4())
@@ -1176,7 +1177,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -1206,8 +1207,8 @@ class TestSyncFlow:
         with (
             patch.object(
                 svc.client,
-                "get_transactions",
-                AsyncMock(return_value=[self._posted_raw_txn(account)]),
+                "get_feed",
+                AsyncMock(return_value=SimpleFINFeed([self._posted_raw_txn(account)])),
             ),
             patch(
                 "igab.services.simplefin_service.decrypt",
@@ -1240,7 +1241,7 @@ class TestSyncFlow:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -1293,7 +1294,7 @@ class TestSyncFlow:
             },
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -1335,7 +1336,7 @@ class TestBankRecordCapture:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -1368,7 +1369,7 @@ class TestBankRecordCapture:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -1404,7 +1405,7 @@ class TestBankRecordCapture:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -1437,7 +1438,7 @@ class TestBankRecordCapture:
             }
         ]
         with (
-            patch.object(svc.client, "get_transactions", AsyncMock(return_value=raw_txns)),
+            patch.object(svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",

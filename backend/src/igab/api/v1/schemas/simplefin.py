@@ -86,6 +86,10 @@ class SyncResult(BaseModel):
     review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0
+    #: Accounts whose first sync wrote a Starting Balance row to anchor the
+    #: ledger to the bank's reported balance — the 90-day window cannot
+    #: carry an older carried balance any other way.
+    anchored: int = 0
     error: str | None = None
     global_used: int | None = None
     global_remaining: int | None = None
@@ -116,6 +120,7 @@ class SyncAllResult(BaseModel):
     review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0
+    anchored: int = 0
     connections: list[ConnectionSyncOutcome] = []
 
 
