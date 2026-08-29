@@ -187,8 +187,34 @@ export function accountsTotal(accounts: Account[]): number {
 /** The Budget Accounts header total: the sum of exactly the group subtotals
  * listed beneath it, so collapsing a group never makes the arithmetic stop
  * adding up on screen. */
-export function groupedAccountsTotal(onBudgetByType: Map<string, Account[]>): number {
-  let sum = 0
-  for (const list of onBudgetByType.values()) sum += accountsTotal(list)
-  return sum
+/**
+ * The on-budget section's money, told apart.
+ *
+ * A credit card is on budget — its spending comes out of envelopes — but its
+ * balance is not money you have. Summing the section flat produced cash minus
+ * card debt, which answers neither "what have I got" nor "what do I owe", and
+ * it is not the partition the budget itself uses: since cards left Ready to
+ * Assign, `AccountRepository.sum_on_budget_balance` counts cash accounts only.
+ * This is that same line, drawn once, on the side that renders headers.
+ *
+ * `net` is what the section header has always shown and still shows; `cash`
+ * is the figure the sidebar had no way to say.
+ */
+export interface OnBudgetTotals {
+  cash: number
+  cards: number
+  net: number
+}
+
+export function onBudgetTotals(onBudgetByType: Map<string, Account[]>): OnBudgetTotals {
+  let cash = 0
+  let cards = 0
+  for (const list of onBudgetByType.values()) {
+    for (const account of list) {
+      const amount = Number(account.balance)
+      if (accountKind(account) === 'debt') cards += amount
+      else cash += amount
+    }
+  }
+  return { cash, cards, net: cash + cards }
 }

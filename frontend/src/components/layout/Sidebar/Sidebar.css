@@ -374,6 +374,34 @@ button.sidebar__group-label:hover {
   margin-left: var(--spacing-sm);
 }
 
+/* "Cash on hand": a summary line, not an account — no hover, no cursor, and
+   the label carries a word rather than a name. It sits at the account rows'
+   indent so the numbers line up in one column with them. */
+.sidebar__cash {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  padding: 3px var(--sidebar-gutter) 5px var(--sidebar-indent);
+  font-size: var(--font-size-xs);
+}
+
+.sidebar__cash-label {
+  color: var(--sidebar-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Not chipped: the chips mark account rows, and a summary is not one of them.
+   It carries the sidebar's plain text colour so it reads as a stated fact
+   rather than a fourth kind of balance. */
+.sidebar__cash-value {
+  color: var(--sidebar-text-primary);
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
 /* Balances sit in a chip, so the number is a column of its own rather than
    text running on from a truncated name.
    The wash is derived from the sidebar's own text colour, so it lifts off
