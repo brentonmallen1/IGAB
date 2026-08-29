@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from igab.db.models import Payee, Transaction
 from igab.domain.exceptions import InvariantViolation
-from igab.domain.payee_names import pattern_matches, similarity_key
+from igab.domain.payee_names import distinctive_key, pattern_matches, similarity_key
 from igab.repositories.base import BaseRepository
 
 PAYEE_FUZZY_THRESHOLD = 80
@@ -157,7 +157,18 @@ class PayeeRepository(BaseRepository[Payee]):
         mapping_samples, on the names' `similarity_key` so a store number or
         reference code the bank changed cannot sink the score. Returns the
         best match above PAYEE_FUZZY_THRESHOLD.
+
+        A name with no merchant in it (`distinctive_key` empty) matches
+        nothing and gets its own payee. SimpleFIN sends the literal string
+        "Payment" as the payee on a card payment; `token_set_ratio` scores a
+        subset 100, so that one word tied at 100 against every payee
+        containing it and the winner was whichever came first — here
+        "Att Payment Jane Doe", whose history then filed a $4,600 debt
+        payment into the Internet envelope. Scoring cannot rank candidates
+        that all score identically; the only fix is to decline.
         """
+        if not distinctive_key(raw_name):
+            return None
         payees = await self.get_all(budget_id)
         raw_key = similarity_key(raw_name)
         best_match: Payee | None = None
