@@ -175,6 +175,18 @@ export interface CategoryBalance {
    *  draws it and its negative is not overspending. Served, not derived:
    *  see `CategoryBalance` in api/v1/schemas/category.py. */
   is_card_payment: boolean
+  /**
+   * Card inflows filed here that could not release a reservation this envelope
+   * never made, already deducted from `available`. Almost always 0.
+   *
+   * Served, not derived — the client would need every month's reservation walk
+   * per (category, card) to compute it. Home is `domain/cards.py`
+   * (`cap_releases` / `card_funding`); the deduction happens in
+   * `BudgetService.get_budget_summary`. Rendered so the deduction is never
+   * silent: the defect it fixes was money moving with nothing on screen to
+   * explain it.
+   */
+  refused_card_inflows: number
 }
 
 /** One card in the budget's cards section — see `CardStatusOut` on the

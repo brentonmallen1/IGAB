@@ -86,6 +86,11 @@ export const CategoryRow = memo(function CategoryRow({
   const assigned = Number(balance?.assigned ?? 0)
   const activity = Number(balance?.activity ?? 0)
   const available = Number(balance?.available ?? 0)
+  // Card money this envelope did not get to keep: an inflow on a card that
+  // could not release a reservation this envelope never made. Already out of
+  // `available` (domain/cards.py), so the only job here is to say so — an
+  // unexplained deduction is the defect this whole mechanism exists to fix.
+  const refusedCardInflows = Number(balance?.refused_card_inflows ?? 0)
 
   const handleStartEdit = useCallback(() => {
     committedRef.current = false
@@ -438,12 +443,24 @@ export const CategoryRow = memo(function CategoryRow({
             setMovePopoverPos({ x: Math.max(8, rect.right - 280), y: rect.bottom + 4 })
           }}
           title={
-            available < 0
-              ? 'Overspent — click to cover from another envelope'
-              : 'Click to move money to another envelope'
+            refusedCardInflows > 0
+              ? `${formatMoney(refusedCardInflows)} of card inflows filed here paid down ` +
+                'card debt instead of returning to this envelope, because this envelope ' +
+                'had not reserved that money on the card. Not included above.'
+              : available < 0
+                ? 'Overspent — click to cover from another envelope'
+                : 'Click to move money to another envelope'
           }
         >
           {formatMoney(available)}
+          {refusedCardInflows > 0 && (
+            <span
+              className="category-row__refused"
+              aria-label={`${formatMoney(refusedCardInflows)} of card inflows paid down debt instead of this envelope`}
+            >
+              ↩{formatMoney(refusedCardInflows)}
+            </span>
+          )}
         </div>
 
         {movePopoverPos && !isMobile && (

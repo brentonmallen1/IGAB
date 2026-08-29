@@ -152,6 +152,9 @@ export function useSetAssignment(budgetId: string) {
                 // those always exist server-side before they can be assigned.
                 is_card_payment: false,
                 needed_this_month: null,
+                // Nothing was refused: this row is an assignment the user just
+                // made, not a card inflow the reservation walk had to cap.
+                refused_card_inflows: 0,
               },
             ]
         qc.setQueryData<BudgetMonth>(['budgetMonth', budgetId, month], {

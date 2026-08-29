@@ -205,6 +205,16 @@ class CategoryBalance(BaseModel):
     #: Required, not optional: a path that forgets it must raise, not draw
     #: every card envelope as an ordinary row.
     is_card_payment: bool
+    #: Card inflows filed here that could not release a reservation this
+    #: envelope never made, summed through the viewed month, and already
+    #: deducted from `available` (domain/cards.py). Almost always 0.
+    #:
+    #: Served rather than derived because the client cannot compute it: it
+    #: needs every month's reservation walk per (category, card). It exists so
+    #: the deduction is never silent — the whole defect it fixes was money
+    #: moving with nothing on screen to explain it, and an unexplained
+    #: counterweight would be the same bug wearing a different hat.
+    refused_card_inflows: Decimal
 
 
 class CategoryResponse(BaseModel):
