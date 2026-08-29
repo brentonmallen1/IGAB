@@ -19,10 +19,13 @@
   margin-bottom: var(--spacing-sm);
 }
 
-/* Header row: the same density as the filter bar above it. */
+/* Header row: the same density as the filter bar above it. flex-start, not
+   the header slot's space-between — the info button hugs the title and the
+   summary's own margin pushes it right. */
 .credit-cards__header-row {
   padding: var(--spacing-xs) var(--spacing-md);
   border-bottom: none; /* the surface's own bottom edge is the divider */
+  justify-content: flex-start;
 }
 
 /* The whole header is the fold control: one obvious click target, and the
@@ -31,7 +34,6 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  flex: 1;
   min-width: 0;
   background: none;
   border: none;
@@ -40,6 +42,22 @@
   font: inherit;
   cursor: pointer;
   text-align: left;
+}
+
+.credit-cards__info-btn {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.credit-cards__info-btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .credit-cards__header svg {
@@ -162,9 +180,29 @@
   padding: 2px var(--spacing-xs);
 }
 
-.credit-cards__note {
-  margin: var(--spacing-xs) 0 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  line-height: 1.5;
+/* The info dialog's body: prose plus a term list, the dialog's own tokens. */
+.credit-cards__info {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.credit-cards__info p {
+  margin: 0 0 var(--spacing-sm);
+}
+
+.credit-cards__info dl {
+  margin: 0;
+  display: grid;
+  gap: var(--spacing-xs) var(--spacing-md);
+}
+
+.credit-cards__info dt {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: var(--spacing-xs);
+}
+
+.credit-cards__info dd {
+  margin: 0;
 }
