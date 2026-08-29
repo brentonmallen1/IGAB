@@ -1,14 +1,95 @@
-/* The cards section: liability-truthful columns, deliberately calm.
-   Uncovered is information, not an alarm — no state colors here. */
+/* The cards strip: liability-truthful columns, deliberately calm.
+   Uncovered is information, not an alarm — no state colors here.
 
+   The strip is CHROME in the table's stack — filter bar, cards bar, column
+   headers are all full-bleed bands, and a rounded card wedged between two
+   bars read as neither a card nor a bar. Collapsed it is simply another
+   thin bar; expanded, the table sits as a sunken well inset in the band
+   (the grid's own two-tone system: body rows on --surface-sunken, the
+   column header on chrome, --border-subtle hairlines, --row-hover-bg on
+   hover). One background with bare hairlines was tried first and read as a
+   single slab; a raised card was tried second and read as a lost widget. */
+
+/* Full-bleed band; the parent .budget-table's min-width keeps the bands
+   scrolling as one. The band ends decisively — a strong edge and a breath
+   of canvas before the category table — because two same-colored bands
+   sharing a hairline read as one surface, not a section break. */
 .credit-cards {
-  margin-top: var(--spacing-md);
+  border-bottom: 1px solid var(--edge-strong);
+  margin-bottom: var(--spacing-sm);
 }
 
-.credit-cards__table {
+/* Header row: the same density as the filter bar above it. flex-start, not
+   the header slot's space-between — the info button hugs the title and the
+   summary's own margin pushes it right. */
+.credit-cards__header-row {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-bottom: none; /* the surface's own bottom edge is the divider */
+  justify-content: flex-start;
+}
+
+/* The whole header is the fold control: one obvious click target, and the
+   collapsed strip still answers "is anything uncovered?" */
+.credit-cards__header {
   display: flex;
-  flex-direction: column;
-  overflow-x: auto;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.credit-cards__info-btn {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.credit-cards__info-btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.credit-cards__header svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.credit-cards__summary {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Expanded body: the well sits inset in the band, and the band's interior
+   carries a whisper of accent — the ladder only has two greys, and the
+   cards zone is semantically not envelope space, so it gets its own tone.
+   5% keeps it a tint, not a state color (calm by default); the same
+   color-mix-over-surface move the payee merge wells use. */
+.credit-cards__body {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--surface-chrome));
+}
+
+/* The well: a hole cut into the band, the way the import review's blocks
+   and the grid body sit against their containers. overflow keeps the chrome
+   header and row hovers inside the radius. */
+.credit-cards__table {
+  background-color: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden auto;
 }
 
 .credit-cards__head,
@@ -17,19 +98,27 @@
   grid-template-columns: minmax(120px, 1fr) repeat(4, minmax(84px, 110px));
   gap: var(--spacing-sm);
   align-items: center;
-  padding: var(--spacing-xs) var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
 }
 
+/* Chrome, like the grid's group headers — the two-tone step is what makes
+   the body rows read as rows. */
 .credit-cards__head {
+  background-color: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  border-bottom: 1px solid var(--edge);
 }
 
 .credit-cards__row {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background-color var(--transition-fast);
+}
+
+.credit-cards__row:hover {
+  background-color: var(--row-hover-bg);
 }
 
 .credit-cards__row:last-child {
@@ -59,10 +148,30 @@
   color: var(--text-secondary);
 }
 
+/* "overpaid" beside a negative Ready to pay — the bare minus sign read as
+   "negative money set aside", which parses as nothing. */
+.credit-cards__hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* The worked example: a sunken well, per the Dialog's own rule that inset
+   regions inside the overlay panel step down a surface. */
+.credit-cards__example {
+  background-color: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 .credit-cards__assign-btn {
   background: none;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   color: inherit;
   font: inherit;
   padding: 2px var(--spacing-xs);
@@ -85,15 +194,35 @@
   text-align: right;
   font: inherit;
   color: var(--text-primary);
-  background: var(--bg-primary);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-focus-ring);
+  border-radius: var(--border-radius-sm);
   padding: 2px var(--spacing-xs);
 }
 
-.credit-cards__note {
-  margin: var(--spacing-sm) 0 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  line-height: 1.5;
+/* The info dialog's body: prose plus a term list, the dialog's own tokens. */
+.credit-cards__info {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.credit-cards__info p {
+  margin: 0 0 var(--spacing-sm);
+}
+
+.credit-cards__info dl {
+  margin: 0;
+  display: grid;
+  gap: var(--spacing-xs) var(--spacing-md);
+}
+
+.credit-cards__info dt {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: var(--spacing-xs);
+}
+
+.credit-cards__info dd {
+  margin: 0;
 }
