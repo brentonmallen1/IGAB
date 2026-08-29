@@ -52,8 +52,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
 
   return (
     <Surface
-      variant="raised"
+      variant="chrome"
       className={`credit-cards ${collapsed ? 'credit-cards--collapsed' : ''}`}
+      headerClassName="credit-cards__header-row"
       header={
         <button
           type="button"
@@ -74,7 +75,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
       }
     >
       {!collapsed && (
-        <div id="credit-cards-body">
+        <div id="credit-cards-body" className="credit-cards__body">
           <div className="credit-cards__table" role="table" aria-label="Credit cards">
             <div className="credit-cards__head" role="row">
               <span role="columnheader" className="credit-cards__col--name">
