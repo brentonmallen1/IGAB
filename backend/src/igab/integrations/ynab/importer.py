@@ -55,10 +55,13 @@ def is_credit_card_payments_group(group: str) -> bool:
     """YNAB's own group of card-payment reserves.
 
     Its categories exist only in the plan (never in the register) and hold
-    the cash YNAB sets aside to pay each card. IGAB has no such reserve: a
-    card is an on-budget account whose balance already nets against cash in
-    Ready to Assign, so importing these assignments reserved the same debt
-    twice and lowered Ready to Assign by every dollar ever assigned there.
+    the cash YNAB sets aside to pay each card. IGAB keeps the same reserve —
+    each card's set-aside envelope, the linked category
+    `ensure_payment_category` creates (the model is domain/cards.py) — so
+    `_import_assignments` routes these entries onto the matching card's
+    envelope by name rather than creating ordinary categories for them.
+    Only an entry whose card was never imported has nowhere to land, and
+    those are counted, not dropped.
     """
     return group == _YNAB_CREDIT_CARD_PAYMENTS_GROUP
 
