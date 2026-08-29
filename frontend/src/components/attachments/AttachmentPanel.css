@@ -159,6 +159,7 @@
 
 .attachment-thumb__delete:hover {
   background: var(--color-negative);
+  box-shadow: var(--glow-negative);
 }
 
 .attachment-thumb__name {
@@ -184,14 +185,6 @@
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   border-top: 1px solid var(--border-color);
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.spin {
-  animation: spin 1s linear infinite;
 }
 
 .attachment-panel__camera-btn {

@@ -33,7 +33,12 @@ async def process_due_scheduled_transactions() -> None:
 
 
 async def process_auto_simplefin_sync() -> None:
-    """Hourly job: sync any SimpleFIN connections whose daily_sync_time matches the current hour."""
+    """Hourly job: sync every connection scheduled for the current hour.
+
+    `sync_hours` is the whole schedule — a list of UTC hours. Whether the user
+    authored it as "every 4 hours" or picked two times by hand, the question
+    here is the same one, which is why there is only one field to ask it of.
+    """
     from sqlalchemy import select
 
     from igab.db.models import Budget, BudgetMember, SimpleFINConnection
@@ -52,15 +57,12 @@ async def process_auto_simplefin_sync() -> None:
             result = await session.execute(
                 select(SimpleFINConnection).where(
                     SimpleFINConnection.sync_enabled == True,  # noqa: E712
-                    SimpleFINConnection.daily_sync_time.isnot(None),
                 )
             )
             connections = list(result.scalars().all())
 
             for conn in connections:
-                if conn.daily_sync_time is None:
-                    continue
-                if conn.daily_sync_time.hour != current_hour:
+                if current_hour not in (conn.sync_hours or []):
                     continue
 
                 # Budgets the connection's OWNER is a member of — the query

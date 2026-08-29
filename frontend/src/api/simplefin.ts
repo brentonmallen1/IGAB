@@ -73,9 +73,9 @@ export function useUpdateSimpleFINConnection() {
       ...updates
     }: {
       id: string
-      sync_interval_hours?: number
       sync_enabled?: boolean
-      daily_sync_time?: string | null
+      /** Omit to leave the schedule alone; [] turns it off. */
+      sync_hours?: number[]
     }) =>
       apiClient
         .put<SimpleFINConnection>(`/simplefin/connections/${id}`, updates)
@@ -128,6 +128,68 @@ export function useSyncSimpleFIN(budgetId: string | null) {
       qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
     },
   })
+}
+
+export interface ConnectionSyncOutcome {
+  connection_id: string
+  imported: number
+  skipped: number
+  error: string | null
+}
+
+export interface SyncAllResult {
+  imported: number
+  skipped: number
+  matched: number
+  review_queued: number
+  cleared: number
+  removed_pending: number
+  connections: ConnectionSyncOutcome[]
+}
+
+/**
+ * Sync every connection, not just the first one.
+ *
+ * The Accounts page's "Sync All" posted to `connections[0]`, so a household
+ * with two banks only ever synced one of them from it. The loop lives on the
+ * server, where the rate limit and the connection list already are, and this
+ * is what the Accounts page, the sidebar and the command palette all call.
+ */
+export function useSyncAllSimpleFIN(budgetId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post<SyncAllResult>(`/${budgetId}/simplefin/sync-all`)
+      return data
+    },
+    onSuccess: () => {
+      // A sync is an import — same sweep the single-connection sync uses.
+      invalidateAfterImport(qc, budgetId)
+      qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
+      qc.invalidateQueries({ queryKey: ['simplefin-rate-limit'] })
+      qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
+    },
+  })
+}
+
+/**
+ * One sentence for what a sync did, so the three places that can start one
+ * cannot describe the same run differently.
+ *
+ * Errors are counted rather than listed: with several connections the message
+ * has to stay a line long, and the connection carries its own error for the
+ * settings page to show in full.
+ */
+export function formatSyncSummary(result: SyncAllResult): string {
+  const failed = result.connections.filter((c) => c.error).length
+  const parts = [`Imported ${result.imported}`, `skipped ${result.skipped}`]
+  if (result.matched) parts.push(`matched ${result.matched}`)
+  if (result.cleared) parts.push(`cleared ${result.cleared}`)
+  if (result.review_queued) parts.push(`${result.review_queued} need review`)
+  const summary = parts.join(', ')
+  if (failed === 0) return summary
+  const banks = failed === 1 ? '1 connection' : `${failed} connections`
+  return `${summary} — ${banks} could not sync`
 }
 
 export function useLinkSimpleFINAccount(accountId: string) {

@@ -13,6 +13,7 @@ import {
   Landmark,
   LifeBuoy,
   Plus,
+  RefreshCw,
   Settings,
   ShieldCheck,
   Upload,
@@ -31,6 +32,8 @@ export interface CommandCtx {
   /** 1 = next month, -1 = previous, 0 = jump to current */
   goMonth: (delta: 1 | -1 | 0) => void
   togglePrivacy: () => void
+  /** Sync every linked bank connection. No-op with none linked. */
+  syncAll: () => void
 }
 
 export interface AppCommand {
@@ -52,6 +55,14 @@ export const STATIC_COMMANDS: AppCommand[] = [
     keywords: 'new create quick entry',
     icon: Plus,
     run: (c) => c.openQuickAdd(),
+  },
+  {
+    id: 'sync-all',
+    label: 'Sync all accounts',
+    section: 'Actions',
+    keywords: 'bank simplefin refresh fetch download transactions',
+    icon: RefreshCw,
+    run: (c) => c.syncAll(),
   },
   {
     id: 'auto-assign',

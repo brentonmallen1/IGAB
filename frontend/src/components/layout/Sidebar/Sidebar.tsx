@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { UserCircle2, LayoutDashboard, List, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, Sparkles, History, Compass } from 'lucide-react'
+import { UserCircle2, LayoutDashboard, List, Wallet, Settings, Upload, BarChart2, CalendarClock, Users, ChevronLeft, PanelLeftClose, PanelLeftOpen, LogOut, Plus, Link2, PenLine, RefreshCw, Sparkles, History, Compass } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
 import { useAccountTypes } from '../../../api/accountTypes'
@@ -26,6 +26,7 @@ import { useCurrentUser, useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useSyncAllAccounts } from '../../../hooks/useSyncAllAccounts'
 import type { Account } from '../../../types'
 import './Sidebar.css'
 import { useSidebarResize } from './useSidebarResize'
@@ -66,6 +67,7 @@ export function Sidebar() {
   const primaryConnection = connections[0] ?? null
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(primaryConnection?.id ?? null)
   const syncMutation = useSyncSimpleFIN(budgetId)
+  const syncAll = useSyncAllAccounts()
   const syncingAccountId = syncMutation.isPending ? (syncMutation.variables as { accountSimplefinId?: string })?.accountSimplefinId : undefined
 
   function handleAccountSync(account: Account, e: React.MouseEvent) {
@@ -241,6 +243,20 @@ export function Sidebar() {
             labelTitle="All transactions across accounts"
             actions={
               <>
+                {/* Reachable from every page, beside the balances it
+                    refreshes — and it covers every connection, which the
+                    Accounts page's button did not. */}
+                {syncAll.available && (
+                  <button
+                    className="sidebar__group-action"
+                    onClick={syncAll.syncAll}
+                    disabled={syncAll.isPending}
+                    aria-label="Sync all accounts"
+                    title="Sync all accounts"
+                  >
+                    <RefreshCw size={12} className={syncAll.isPending ? 'spin' : undefined} />
+                  </button>
+                )}
                 <button
                   className="sidebar__group-action"
                   onClick={() => navigate('/accounts')}

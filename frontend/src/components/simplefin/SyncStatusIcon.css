@@ -43,10 +43,6 @@
   cursor: default;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .sync-status-icon__spin {
   animation: spin 1s linear infinite;
 }
