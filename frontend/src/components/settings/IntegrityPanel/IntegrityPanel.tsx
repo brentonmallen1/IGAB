@@ -67,8 +67,8 @@ export function IntegrityPanel({ budgetId }: Props) {
       // for choosing between them.
       toast(
         `${result.categories_under_deleted_groups} categories sit under a deleted group — ` +
-          'they still hold money but the budget page cannot draw them. Delete them from the ' +
-          'grid with "Show hidden", or restore the group from Activity.',
+          'they still hold money but the budget page cannot draw them. Restore the group from ' +
+          'Activity to get at them.',
         { duration: 9000 }
       )
     }

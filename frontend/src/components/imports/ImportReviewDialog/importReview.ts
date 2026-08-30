@@ -26,7 +26,9 @@ export interface ReviewCategory {
   id: string
   name: string
   groupName: string
-  hidden: boolean
+  /** Off the budget page but still in every report — the review says so, so a
+   *  category the user cannot find in the grid is not a surprise. */
+  archived: boolean
   /** Every tag the category carries — system and the user's own alike. */
   tagIds: string[]
 }
