@@ -38,16 +38,22 @@ async def list_accounts(
     include_closed: bool = False,
 ) -> list[AccountResponse]:
     accounts = await account_repo.get_all(budget_id, include_closed=include_closed)
+    # Three grouped aggregates for the whole list, not three queries per
+    # account: the loop cost 3N+1 round-trips, so the page got slower with
+    # every account added. Same predicates, four statements.
+    ids = [acc.id for acc in accounts]
+    balances = await account_repo.balances_for(ids)
+    cleared_balances = await account_repo.cleared_balances_for(ids)
+    uncategorized = await account_repo.uncategorized_counts_for(ids)
     result = []
     for acc in accounts:
-        balance = await account_repo.get_balance(acc.id)
-        cleared = await account_repo.get_cleared_balance(acc.id)
-        uncategorized = await account_repo.get_uncategorized_count(acc.id)
+        balance = balances[acc.id]
+        cleared = cleared_balances[acc.id]
         resp = AccountResponse.model_validate(acc)
         resp.balance = balance
         resp.cleared_balance = cleared
         resp.uncleared_balance = balance - cleared
-        resp.uncategorized_count = uncategorized
+        resp.uncategorized_count = uncategorized[acc.id]
         result.append(resp)
     return result
 
