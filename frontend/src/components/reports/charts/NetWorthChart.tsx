@@ -12,6 +12,7 @@ import { MetricCard } from '../MetricCard'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportRangeButtons } from './rangeButtons'
 
 interface Props { budgetId: string }
 
@@ -45,16 +46,10 @@ export function NetWorthReport({ budgetId }: Props) {
           <ReportScopeNote scope="all-accounts" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
-          {([6, 12, 24] as const).map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeButtons
+            months={months}
+            onChange={setMonths}
+          />
           <ReportExportButton
             reportId="net-worth"
             getRows={() =>

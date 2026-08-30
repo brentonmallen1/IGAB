@@ -14,6 +14,7 @@ import { today } from '../../../utils/dates'
 import { DrillDownTable } from '../DrillDownTable'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportRangeButtons } from './rangeButtons'
 
 interface Props { budgetId: string }
 
@@ -62,16 +63,10 @@ export function VolatilityReport({ budgetId }: Props) {
           Mean monthly spending with min/max range. High variation = unstable spending.
         </p>
         <div className="flex-row ms-auto">
-          {([6, 12, 24] as const).map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeButtons
+            months={months}
+            onChange={setMonths}
+          />
           <ReportExportButton
             reportId="volatility"
             getRows={() =>
