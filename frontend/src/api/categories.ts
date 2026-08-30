@@ -110,7 +110,10 @@ export function useUpdateCategory(budgetId: string) {
 export function useUpdateCategoryGroup(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; is_archived?: boolean; sort_order?: number }) =>
+    // No `is_archived`: archiving a group takes every envelope under it off
+    // the budget, so it goes through `useArchiveCategoryGroup`, which runs the
+    // refusal. The server stopped accepting the flag here for the same reason.
+    mutationFn: ({ id, ...data }: { id: string; name?: string; sort_order?: number }) =>
       apiClient.patch<CategoryGroup>(`/category-groups/${id}`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })

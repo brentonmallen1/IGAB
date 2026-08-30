@@ -61,7 +61,7 @@ class TestTheGroup:
         group = await _wishlist_group(api_client, budget)
         assert group["id"] == str(mine.id)
 
-    async def test_rename_refused_delete_refused_hide_allowed(self, db_session, api_client):
+    async def test_rename_refused_delete_refused_archive_allowed(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         await api_client.get(_url(budget))
         group = await _wishlist_group(api_client, budget)
@@ -69,8 +69,15 @@ class TestTheGroup:
         assert r.status_code == 400
         r = await api_client.delete(f"/api/v1/category-groups/{group['id']}")
         assert r.status_code in (400, 409), r.text
-        r = await api_client.patch(f"/api/v1/category-groups/{group['id']}", json={"is_archived": True})
-        assert r.status_code == 200 and r.json()["is_archived"] is True
+        # Through the archive route, not a PATCH of the flag: the generic
+        # update no longer accepts it, because setting it there skipped the
+        # refusal that keeps money from being stranded.
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/category-groups/{group['id']}/archive", json={}
+        )
+        assert r.status_code == 200, r.text
+        groups = (await api_client.get(f"/api/v1/{budget.id}/category-groups?include_archived=true")).json()
+        assert next(g for g in groups if g["id"] == group["id"])["is_archived"] is True
 
     async def test_its_envelopes_count_against_to_be_assigned(self, db_session, api_client):
         budget = await _budget(db_session, api_client)

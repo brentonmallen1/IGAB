@@ -200,9 +200,14 @@ class RepairOrphansResponse(BaseModel):
 
 
 class CategoryGroupUpdate(BaseModel):
+    """No `is_archived`. Archiving is not a field edit: it takes every envelope
+    under the group off the budget, so it goes through
+    `POST /category-groups/{id}/archive`, which refuses while any of them still
+    holds money. Accepting the flag here was a second way to set the same state
+    that skipped the rule — the exact door this release closed on the client."""
+
     name: str | None = None
     sort_order: int | None = None
-    is_archived: bool | None = None
 
 
 class CategoryGroupResponse(BaseModel):
@@ -243,11 +248,13 @@ class CategoryCreate(BaseModel):
 
 
 class CategoryUpdate(BaseModel):
+    """No `is_archived` — see `CategoryGroupUpdate`. Use
+    `POST /categories/archive` and `/unarchive`, which run the refusal."""
+
     name: str | None = None
     subtitle: str | None = None
     sort_order: int | None = None
     note: str | None = None
-    is_archived: bool | None = None
     category_group_id: uuid.UUID | None = None
 
 
