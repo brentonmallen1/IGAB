@@ -96,18 +96,22 @@ def snapshot_filename(budget_name: str, when: datetime | None = None) -> str:
 
 
 def snapshot_path(budget_id: UUID, name: str) -> Path:
-    """The file a client named, proven to be inside this budget's folder.
+    """A kept snapshot of this budget, found in the listing rather than built
+    from what the client typed.
 
-    The whole-app backups and these go through the same function, because the
-    join is as much of the rule as the guard is — and delete_snapshot unlinks
-    whatever comes back from here.
+    delete_snapshot unlinks whatever comes back from here, so "you can only
+    name a file we already listed" wants to be a property of the control flow
+    rather than a claim about a validator.
     """
-    from igab.services.backup_service import resolved_backup_path
+    from igab.services.backup_service import listed_backup_path, safe_backup_filename
 
-    path = resolved_backup_path(snapshots_dir(budget_id), name)
-    if not path.name.endswith(SNAPSHOT_SUFFIX):
+    wanted = safe_backup_filename(name)
+    if not wanted.endswith(SNAPSHOT_SUFFIX):
         raise InvariantViolation(f"Not a budget snapshot file name: {name}")
-    return path
+    listed = next((f for f in list_snapshots(budget_id) if f["name"] == wanted), None)
+    if listed is None:
+        raise NotFoundError("snapshot", name)
+    return listed_backup_path(snapshots_dir(budget_id), listed["name"])
 
 
 def list_snapshots(budget_id: UUID) -> list[dict[str, Any]]:

@@ -145,12 +145,15 @@ async def download_backup(name: str, current_user: AdminUser) -> FileResponse:
     not needed to read one. `.age` files download fine; they are already
     encrypted, which is the point of them.
     """
-    path = backup_service.resolved_backup_path(settings.BACKUPS_DIR, name)
-    # The listing is the allowlist: only a file the backup agent wrote, whose
-    # name matches one of its two strict patterns, is servable. A name that
-    # merely survives the guard is not enough.
-    if path.name not in {f["name"] for f in backup_service.list_backup_files()}:
+    # The name is used to CHOOSE among files already listed, never to build a
+    # path: the listing is the allowlist, and only a file the backup agent
+    # wrote — whose name matches one of its two strict patterns — is in it.
+    wanted = backup_service.safe_backup_filename(name)
+    listed = next((f for f in backup_service.list_backup_files() if f["name"] == wanted), None)
+    if listed is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup file not found")
+
+    path = backup_service.listed_backup_path(settings.BACKUPS_DIR, listed["name"])
     return FileResponse(
         path=path,
         media_type="application/octet-stream",

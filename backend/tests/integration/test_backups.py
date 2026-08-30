@@ -139,15 +139,16 @@ class TestDownloadBackup:
 class TestTheJoinIsAsMuchOfTheRuleAsTheGuard:
     """CodeQL flagged the whole-app download and not its per-budget twin.
 
-    Both built a path from a client-supplied name; only one had a membership
-    check after it. The join goes through one function now, and these are the
-    cases that function has to hold.
+    Both built a path from a client-supplied name. Neither does now: the name
+    chooses among files the server already listed, and the path comes from the
+    directory scan. What is left for this helper to hold is the one thing a
+    listing cannot — a symlink inside the volume pointing elsewhere.
     """
 
-    def test_a_plain_name_lands_in_the_directory(self, tmp_path):
-        from igab.services.backup_service import resolved_backup_path
+    def test_a_listed_name_lands_in_the_directory(self, tmp_path):
+        from igab.services.backup_service import listed_backup_path
 
-        path = resolved_backup_path(tmp_path, "igab-20260829-120000.dump")
+        path = listed_backup_path(tmp_path, "igab-20260829-120000.dump")
         assert path.parent == tmp_path.resolve()
         assert path.name == "igab-20260829-120000.dump"
 
@@ -155,19 +156,21 @@ class TestTheJoinIsAsMuchOfTheRuleAsTheGuard:
         "name",
         ["../etc/passwd", "..", "a/b.dump", "a\\b.dump", ".hidden.dump", " igab.dump", ""],
     )
-    def test_a_name_that_is_a_path_is_refused(self, tmp_path, name):
+    def test_a_name_that_is_a_path_never_reaches_a_listing(self, tmp_path, name):
+        """The guard runs before the lookup, so a name like this is refused
+        rather than compared against the directory."""
         from igab.domain.exceptions import InvariantViolation
-        from igab.services.backup_service import resolved_backup_path
+        from igab.services.backup_service import safe_backup_filename
 
         with pytest.raises(InvariantViolation):
-            resolved_backup_path(tmp_path, name)
+            safe_backup_filename(name)
 
     def test_a_symlink_out_of_the_directory_is_refused(self, tmp_path):
         """What the name check cannot see. Planting one needs write access to
         the volume, so it is no great escalation — but the check turns "no
         traversal is reachable" from an argument into a property."""
         from igab.domain.exceptions import InvariantViolation
-        from igab.services.backup_service import resolved_backup_path
+        from igab.services.backup_service import listed_backup_path
 
         outside = tmp_path.parent / "outside.dump"
         outside.write_text("not yours")
@@ -175,14 +178,14 @@ class TestTheJoinIsAsMuchOfTheRuleAsTheGuard:
         inside.symlink_to(outside)
 
         with pytest.raises(InvariantViolation):
-            resolved_backup_path(tmp_path, "igab-20260829-120000.dump")
+            listed_backup_path(tmp_path, "igab-20260829-120000.dump")
 
     def test_a_symlink_within_the_directory_is_fine(self, tmp_path):
-        from igab.services.backup_service import resolved_backup_path
+        from igab.services.backup_service import listed_backup_path
 
         real = tmp_path / "real.dump"
         real.write_text("x")
         link = tmp_path / "igab-20260829-120000.dump"
         link.symlink_to(real)
 
-        assert resolved_backup_path(tmp_path, "igab-20260829-120000.dump") == real.resolve()
+        assert listed_backup_path(tmp_path, "igab-20260829-120000.dump") == real.resolve()

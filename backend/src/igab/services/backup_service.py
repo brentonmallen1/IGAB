@@ -74,25 +74,24 @@ def safe_backup_filename(name: str) -> str:
     return name
 
 
-def resolved_backup_path(directory: str | Path, name: str) -> Path:
-    """The file a client named, inside ``directory`` and provably nowhere else.
+def listed_backup_path(directory: str | Path, listed_name: str) -> Path:
+    """The path of a file the server has already listed.
 
-    The guard above proves a name is not a path. This proves the *join* lands
-    where it should, which is a separate claim and was being made twice — here
-    and in budget_snapshot.snapshot_path — with only the first half checked.
-    One of those two was flagged by CodeQL and the other was not, which is a
-    fair description of why a rule with two implementations is a bug waiting.
+    ``listed_name`` must come from a directory scan, never from a request. The
+    distinction is the whole point: a client's string is used to *choose*
+    among files we listed, and never to *construct* a path. That makes "you
+    can only reach a file we already decided to show you" a property of the
+    control flow rather than a claim about a validator — which is also what
+    CodeQL's py/path-injection is asking for, and it was right to ask.
 
-    Resolving both sides also closes what the name check cannot see: a symlink
-    inside the backups volume pointing somewhere else entirely. That needs
-    write access to the volume to plant, so it is not much of an escalation —
-    but the check costs one comparison and turns "no traversal is reachable"
-    from an argument into a property.
+    The containment check stays for what a listing cannot rule out: a symlink
+    planted inside the volume pointing elsewhere. `scandir` reports it, the
+    name patterns accept it, and only resolving both sides catches it.
     """
     base = Path(directory).resolve()
-    candidate = (base / safe_backup_filename(name)).resolve()
+    candidate = (base / listed_name).resolve()
     if not candidate.is_relative_to(base):
-        raise InvariantViolation("Invalid file name")
+        raise InvariantViolation(f"{listed_name} resolves outside {base}")
     return candidate
 
 
