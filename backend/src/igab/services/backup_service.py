@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from igab.config import settings
+from igab.domain.exceptions import InvariantViolation
 
 AGENT_DIR = ".agent"
 HEARTBEAT_STALE_S = 30
@@ -52,6 +53,24 @@ def _backups_dir() -> str:
 
 def _agent_path(name: str) -> str:
     return os.path.join(_backups_dir(), AGENT_DIR, name)
+
+
+def safe_backup_filename(name: str) -> str:
+    """A name that arrived over HTTP, proven to be a filename and not a path.
+
+    One implementation, because this guard is now needed by the restore
+    endpoint, the whole-app download, and every per-budget snapshot route —
+    and a path-traversal check written six times is a path-traversal check
+    that is wrong in one of them. Raises InvariantViolation, which the app
+    already answers with a 400.
+    """
+    if not name or name != name.strip():
+        raise InvariantViolation("Invalid file name")
+    if "/" in name or "\\" in name or "\x00" in name:
+        raise InvariantViolation("Invalid file name")
+    if name.startswith(".") or ".." in name:
+        raise InvariantViolation("Invalid file name")
+    return name
 
 
 def _classify(name: str) -> str | None:

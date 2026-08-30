@@ -17,8 +17,11 @@ server {
 
     root /usr/share/nginx/html;
 
-    # Attachment uploads (backend caps at 20 MB; nginx default of 1m would reject them)
-    client_max_body_size 25m;
+    # Attachment uploads cap at 20 MB, but a budget snapshot is the larger
+    # ceiling now: a 100k-transaction budget is ~15-25 MB zipped, and a limit
+    # nginx enforces produces a bare 413 the SPA cannot explain — the upload
+    # never reaches FastAPI to be refused with a sentence.
+    client_max_body_size 200m;
 
     # API proxy
     location /api/ {

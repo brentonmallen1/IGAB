@@ -1,0 +1,174 @@
+"""Per-budget snapshots: download one, keep one, list them, throw one away.
+
+The whole-application backup lives in ``backups.py`` and is exactly that —
+every budget on the installation in one pg_dump. These are the other thing: a
+file that holds one budget, which is what makes "show me the backups for the
+budget I am in" answerable at all.
+
+Its own module rather than more of the already-long ``budgets.py``, following
+``budget_members.py`` / ``budget_filters.py`` / ``budget_views.py``.
+
+**Owner, not member, to export.** A snapshot is the input to "create a budget
+*I* own containing your data" — the same class of decision as deleting a
+budget, which this codebase already reserves for owners. A member who wants
+the numbers has ``/{budget_id}/reports/export`` under BudgetAccess.
+"""
+
+import tempfile
+from pathlib import Path
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTask
+
+from igab.api.v1.schemas.budget_snapshots import (
+    SnapshotCreated,
+    SnapshotFile,
+    SnapshotInspection,
+)
+from igab.db.session import get_session
+from igab.dependencies import BudgetAccess, BudgetOwnerAccess, CurrentUser
+from igab.domain.snapshot_format import check_compatibility
+from igab.services import budget_snapshot
+from igab.services.update_service import current_version
+
+router = APIRouter()
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+MEDIA_TYPE = "application/zip"
+
+
+async def _write_snapshot(session: AsyncSession, budget_id, destination: Path):
+    """Serialize the budget into ``destination`` and return its manifest."""
+    with destination.open("wb") as handle:
+        return await budget_snapshot.export_budget_snapshot(
+            session,
+            budget_id,
+            handle,
+            app_version=current_version(),
+            alembic_revision=await budget_snapshot.current_revision(session),
+        )
+
+
+@router.get("/budgets/{budget_id}/snapshot")
+async def download_snapshot(budget_id: BudgetOwnerAccess, session: SessionDep) -> FileResponse:
+    """Export this budget and hand it straight to the browser.
+
+    Written to a temporary file rather than held in memory: a 25 MB `bytes`
+    doubles peak memory for nothing, and FileResponse gets Content-Length for
+    free.
+    """
+    with tempfile.NamedTemporaryFile(suffix=budget_snapshot.SNAPSHOT_SUFFIX, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        manifest = await _write_snapshot(session, budget_id, tmp_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    return FileResponse(
+        path=tmp_path,
+        media_type=MEDIA_TYPE,
+        filename=budget_snapshot.snapshot_filename(manifest.budget_name),
+        background=BackgroundTask(tmp_path.unlink, missing_ok=True),
+    )
+
+
+@router.post(
+    "/budgets/{budget_id}/snapshots",
+    response_model=SnapshotCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_snapshot(budget_id: BudgetOwnerAccess, session: SessionDep) -> SnapshotCreated:
+    """Export this budget and keep the file on the server.
+
+    Same serializer as the download, a different destination: the backups
+    volume, under this budget's own folder, so the list below is genuinely
+    per-budget.
+    """
+    directory = budget_snapshot.snapshots_dir(budget_id)
+    directory.mkdir(parents=True, exist_ok=True)
+
+    # Named from the budget, so the file is recognisable a year later; the
+    # temporary name means a failed export never leaves a half-written file
+    # in the list.
+    with tempfile.NamedTemporaryFile(dir=directory, suffix=".partial", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        manifest = await _write_snapshot(session, budget_id, tmp_path)
+        final = directory / budget_snapshot.snapshot_filename(manifest.budget_name)
+        tmp_path.replace(final)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    return SnapshotCreated(
+        name=final.name,
+        size_bytes=final.stat().st_size,
+        budget_name=manifest.budget_name,
+        exported_at=manifest.exported_at,
+        row_counts=dict(manifest.row_counts),
+        attachments_omitted=manifest.attachments.omitted_count,
+    )
+
+
+@router.get("/budgets/{budget_id}/snapshots", response_model=list[SnapshotFile])
+async def list_snapshots(budget_id: BudgetAccess) -> list[SnapshotFile]:
+    return [SnapshotFile(**row) for row in budget_snapshot.list_snapshots(budget_id)]
+
+
+@router.get("/budgets/{budget_id}/snapshots/{name}")
+async def download_kept_snapshot(budget_id: BudgetOwnerAccess, name: str) -> FileResponse:
+    path = budget_snapshot.snapshot_path(budget_id, name)
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot not found")
+    return FileResponse(path=path, media_type=MEDIA_TYPE, filename=path.name)
+
+
+@router.delete("/budgets/{budget_id}/snapshots/{name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_snapshot(budget_id: BudgetOwnerAccess, name: str) -> None:
+    budget_snapshot.delete_snapshot(budget_id, name)
+
+
+@router.post("/budgets/snapshot/inspect", response_model=SnapshotInspection)
+async def inspect_snapshot(
+    current_user: CurrentUser,
+    session: SessionDep,
+    file: UploadFile,
+) -> SnapshotInspection:
+    """What a file says about itself, and whether this installation can read
+    it — without writing a single row.
+
+    Any user may ask: it reads the manifest of a file they already hold, and
+    tells them nothing about this installation's data.
+    """
+    with tempfile.NamedTemporaryFile(suffix=budget_snapshot.SNAPSHOT_SUFFIX, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
+    try:
+        manifest = budget_snapshot.read_manifest(tmp_path)
+        verdict = check_compatibility(
+            manifest,
+            current_revision=await budget_snapshot.current_revision(session),
+            revision_history=budget_snapshot.migration_history(),
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return SnapshotInspection(
+        format=manifest.format,
+        format_version=manifest.format_version,
+        alembic_revision=manifest.alembic_revision,
+        app_version=manifest.app_version,
+        exported_at=manifest.exported_at,
+        budget_name=manifest.budget_name,
+        source_budget_id=manifest.source_budget_id,
+        row_counts=dict(manifest.row_counts),
+        attachments_omitted=manifest.attachments.omitted_count,
+        ok=verdict.ok,
+        refusals=list(verdict.refusals),
+        warnings=list(verdict.warnings),
+    )

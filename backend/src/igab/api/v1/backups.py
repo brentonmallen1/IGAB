@@ -109,9 +109,7 @@ async def restore_backup(body: RestoreRequest, current_user: AdminUser) -> JobSt
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Restore must be explicitly confirmed",
         )
-    name = body.file
-    if "/" in name or "\\" in name or name != name.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file name")
+    name = backup_service.safe_backup_filename(body.file)
     files = {f["name"]: f for f in backup_service.list_backup_files()}
     file = files.get(name)
     if file is None:
