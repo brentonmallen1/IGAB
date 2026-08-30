@@ -595,10 +595,10 @@
 }
 
 /* Card money this envelope did not keep — an inflow that paid down debt rather
-   than returning here (domain/cards.py `cap_releases`). Always beside the
-   available figure it was excluded from, never instead of it: the point is
-   that the deduction is legible, not that it is prominent. */
-.category-row__refused {
+   than returning here (domain/cards.py `release_split`). Always beside the
+   available figure it is already inside, never instead of it: the point is
+   that the adjustment is legible, not that it is prominent. */
+.category-row__repaid {
   display: block;
   font-size: 10px;
   line-height: 1.2;

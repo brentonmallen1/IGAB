@@ -365,6 +365,59 @@ LOAN_PAYMENT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, TRANSFER_LEG)
 DEBT_INTEREST_ROW = and_(BALANCE_ROW, Transaction.amount < 0, NON_TRANSFER)
 PLAIN_DEPOSIT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, NON_TRANSFER)
 
+#: The counterpart of a transfer leg is one of the budget's cash accounts.
+#: Two-valued: EXISTS, never NULL, so it is safe under negation.
+COUNTERPART_IS_CASH = (
+    select(Account.id)
+    .where(Account.id == COUNTERPART_ACCOUNT_ID, CASH_ACCOUNT)
+    .correlate(Transaction)
+    .exists()
+)
+
+#: Money reaching a card from the budget's own cash: the outflow side of the
+#: card's set-aside envelope (`sum_card_payments_by_month`).
+#:
+#: Shape-free on purpose — the caller adds its own row shape — because
+#: `UNBUDGETED_CARD_CREDIT` below is defined as the negation of this. Written
+#: out twice, the two stop being complements: the first spelling required
+#: `NON_TRANSFER` on the credit side while this side required a *cash*
+#: counterpart, so a card paid off from an off-budget account, or a card→card
+#: balance transfer, satisfied neither and fell into no term at all. The
+#: reserve identity then read the whole set-aside as drift, on a history that
+#: is perfectly ordinary.
+CARD_PAYMENT_FROM_CASH = and_(Transaction.amount > 0, TRANSFER_LEG, COUNTERPART_IS_CASH)
+
+#: A card inflow the budget has no claim on. Defined as the complement of the
+#: two sums that DO claim card inflows, so the three cannot drift apart:
+#:
+#: - not a payment from the budget's cash — `CARD_PAYMENT_FROM_CASH` above,
+#:   the same expression `sum_card_payments_by_month` selects on;
+#: - not a category's own money coming back — that is a categorized row
+#:   (`sum_credit_outflows_by_category`).
+#:
+#: What is left is a partner paying the card themselves, a promotional credit,
+#: a bank adjustment, a balance transfer from another card. It reduces what is
+#: owed and touches no envelope, which is correct — and is exactly why the
+#: reserve identity has to name it rather than read it as drift
+#: (`domain/cards.py reserve_discrepancy`, bounds T1 and T3).
+#:
+#: **Shape: LEAF, matching `sum_credit_outflows_by_category`**, because the
+#: question this asks — did a category claim this money? — is answered on the
+#: leg, not on the parent. Under `PARENT_ROW` a split parent is uncategorized
+#: *by construction*, so a split refund on a card was counted here AND as its
+#: legs' release: the same money in two terms, widening T1 and T3 by its own
+#: amount and hiding real drift of that size. Mixing the two shapes is the
+#: trap this module's docstring opens with.
+UNBUDGETED_CARD_CREDIT = and_(
+    NOT_DELETED,
+    LEAF,
+    POSTED,
+    ON_CARD_ACCOUNT,
+    Transaction.amount > 0,
+    Transaction.category_id.is_(None),
+    not_(CARD_PAYMENT_FROM_CASH),
+)
+
 
 # ─── Tags on the row's category or payee ─────────────────────────────────────
 #

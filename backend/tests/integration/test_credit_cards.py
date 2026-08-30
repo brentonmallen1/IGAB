@@ -13,6 +13,7 @@ from decimal import Decimal
 
 import pytest
 
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.card_payment import ensure_payment_category
 
 from .factories import (
@@ -26,8 +27,9 @@ from .factories import (
     create_user,
     make_services,
 )
+from .invariants import assert_card_reserve_identity
 
-JUL, AUG = date(2026, 7, 1), date(2026, 8, 1)
+JUL, AUG, SEP, OCT = (date(2026, m, 1) for m in (7, 8, 9, 10))
 D = Decimal
 
 
@@ -487,3 +489,342 @@ class TestNothingIsFiledToACardEnvelope:
             ),
         )
         assert txn.category_id is None, "inherited a card envelope past the guard"
+
+
+class TestTheRefusedRepayment:
+    """A card inflow now lands somewhere in every case, and never as red.
+
+    The counterweight this replaces refused any release beyond what a category
+    had *funded* on that card, then subtracted the refusal — cumulatively,
+    since inception — from a floored carryover balance. On a real budget that
+    reached a five-figure overspend on one envelope charging a card that owed
+    almost nothing, and it could only grow.
+    """
+
+    async def test_a_refund_of_wholly_ridden_spending_leaves_no_trace(self, db_session):
+        """Nothing assigned, so July's whole charge rides as Uncovered. August's
+        repayment of it discharges the debt: the card is square, the envelope is
+        at zero, and Ready to Assign never moved.
+
+        Before: the release was refused (the category had reserved nothing), so
+        the envelope was charged a second time for the same shortfall."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "100.00", date(2026, 8, 9), category=groceries
+        )
+        await db_session.flush()
+
+        august = await _summary(services, budget, AUG)
+        card = august.cards[0]
+        assert (card.balance, card.set_aside, card.uncovered) == (D("0.00"), D("0.00"), D("0"))
+        row = next(b for b in august.category_balances if b.category_id == groceries.id)
+        assert row.available == D("0.00")
+        assert row.repaid_uncovered_debt == D("100.00")
+        # Nothing overspent, so nothing for Cover Overspent to offer.
+        assert august.total_overspent == D("0") and august.overspent_count == 0
+        assert august.to_be_assigned == D("1000.00")
+
+    async def test_a_card_correction_does_not_outlive_the_month_boundary(self, db_session):
+        """The 31x test. July rides 100, August repays it, September overspends
+        100 in cash. The correction belongs to August; the old rule kept
+        subtracting it from every month after, forever."""
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "100.00", date(2026, 8, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, checking, "-100.00", date(2026, 9, 9), category=groceries
+        )
+        await db_session.flush()
+
+        def row(summary):
+            return next(b for b in summary.category_balances if b.category_id == groceries.id)
+
+        assert row(await _summary(services, budget, AUG)).available == D("0.00")
+        # September's own red is its own cash overspending, not August's again.
+        assert row(await _summary(services, budget, SEP)).available == D("-100.00")
+        # And October, which has nothing of its own, is clean. The old rule
+        # showed -100 here and in every month after it.
+        october = await _summary(services, budget, OCT)
+        assert row(october).available == D("0.00")
+        assert october.total_overspent == D("0") and october.overspent_count == 0
+
+    async def test_a_repayment_larger_than_the_category_ever_charged(self, db_session):
+        """The reimbursement case: Groceries spent its money in cash, and 50
+        arrives on the card filed to it. Nothing was riding there, so the card
+        ends holding 50 of this envelope's money — a negative reserve, which is
+        a real position and not a refusal."""
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, checking, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "50.00", date(2026, 8, 9), category=groceries
+        )
+        await db_session.flush()
+
+        august = await _summary(services, budget, AUG)
+        card = august.cards[0]
+        assert (card.balance, card.set_aside) == (D("50.00"), D("-50.00"))
+        assert card.reserve_discrepancy == D("0")
+        row = next(b for b in august.category_balances if b.category_id == groceries.id)
+        assert row.available == D("50.00")
+        # The two cancel in the envelope term, so the figure does not move.
+        assert august.to_be_assigned == D("900.00")
+
+    async def test_a_refund_before_its_purchase_is_absorbed_by_the_purchase(self, db_session):
+        """July's refund has no reservation behind it yet; August's purchase
+        absorbs the negative reserve it left. The old walk wrote the refund off
+        permanently and left the reserve standing against a settled card."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_budget_assignment(db_session, budget, groceries, AUG, "100.00")
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 8, 9), category=groceries
+        )
+        await db_session.flush()
+
+        august = await _summary(services, budget, AUG)
+        card = august.cards[0]
+        assert (card.balance, card.set_aside, card.uncovered) == (D("0.00"), D("0.00"), D("0"))
+        assert card.reserve_discrepancy == D("0")
+
+    @pytest.mark.parametrize(
+        "name,rows,assignment",
+        [
+            ("wholly ridden, repaid", [("-100.00", 7), ("100.00", 8)], None),
+            ("funded, refunded", [("-100.00", 7), ("100.00", 8)], "100.00"),
+            ("partly ridden, refunded", [("-100.00", 7), ("100.00", 8)], "60.00"),
+            ("refund before purchase", [("100.00", 7), ("-100.00", 8)], None),
+            ("repayment beyond exposure", [("50.00", 8)], None),
+        ],
+    )
+    async def test_ready_to_assign_is_unchanged_by_any_card_inflow(
+        self, db_session, name, rows, assignment
+    ):
+        """The identity, over every shape an inflow can take. A card inflow
+        moves no cash: whatever it does to the envelope, the card's reserve
+        does the opposite, to the cent.
+
+        This is the pin that would have caught the counterweight. It kept Ready
+        to Assign exact too — which is precisely why nothing noticed that it was
+        booking the whole discrepancy as an envelope overspend."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        if assignment:
+            await create_budget_assignment(db_session, budget, groceries, JUL, assignment)
+        await db_session.flush()
+        before = (await _summary(services, budget, AUG)).to_be_assigned
+        for amount, month in rows:
+            await create_transaction(
+                db_session, budget, visa, amount, date(2026, month, 9), category=groceries
+            )
+        await db_session.flush()
+
+        after = await _summary(services, budget, AUG)
+        assert after.to_be_assigned == before, name
+        assert all(c.reserve_discrepancy == D("0") for c in after.cards), name
+
+    async def test_a_correction_never_creates_red_or_a_cover_offer(self, db_session):
+        """A repayment is bounded by the inflow that caused it, so at worst it
+        returns the month to what it would have been with no refund at all. The
+        old counterweight could manufacture a shortfall no assignment could fix
+        — and then offer Cover Overspent as the remedy for it."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "100.00", date(2026, 8, 9), category=groceries
+        )
+        await db_session.flush()
+
+        august = await _summary(services, budget, AUG)
+        assert august.overspent_count == 0
+        assert august.total_overspent_cash == D("0")
+        preview = await services.budgets.cover_overspent_preview(budget.id, AUG)
+        assert preview.items == []
+
+    async def test_spending_after_a_correction_does_not_double_count(self, db_session):
+        """Why the correction reduces `available` rather than adding a term to
+        Ready to Assign.
+
+        July rides 100; August's repayment discharges it, and the envelope ends
+        at 0 because no cash arrived. Spend 100 in cash in August and Ready to
+        Assign must fall by exactly 100.
+
+        The rejected reading — leave `available` at 100 and add a compensating
+        term to the figure — keeps Ready to Assign right until the money is
+        spent, and then charges only what the envelope had, so the same 100
+        pays for two things. This is the case that decided it.
+        """
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "100.00", date(2026, 8, 9), category=groceries
+        )
+        await db_session.flush()
+
+        before = await _summary(services, budget, AUG)
+        row_before = next(
+            b for b in before.category_balances if b.category_id == groceries.id
+        )
+        assert row_before.available == D("0.00")
+
+        await create_transaction(
+            db_session, budget, checking, "-100.00", date(2026, 8, 20), category=groceries
+        )
+        await db_session.flush()
+
+        after = await _summary(services, budget, AUG)
+        row_after = next(b for b in after.category_balances if b.category_id == groceries.id)
+        # The envelope had nothing, so the spend is a real shortfall. In its own
+        # month that red does not charge the figure yet — the envelope's fall
+        # cancels the cash outflow, which is IGAB's ordinary rule.
+        assert row_after.available == D("-100.00")
+        assert after.to_be_assigned == before.to_be_assigned
+
+        # September is where it lands: the shortfall is written off, and Ready
+        # to Assign settles at the cash that is actually left.
+        september = await _summary(services, budget, SEP)
+        assert september.to_be_assigned == D("900.00")
+        assert (
+            next(
+                b for b in september.category_balances if b.category_id == groceries.id
+            ).available
+            == D("0.00")
+        )
+        # Under the rejected reading the envelope would still have held 100 here
+        # — the repayment having been left in it and offset by a term on the
+        # figure — so the spend would have been covered, nothing written off,
+        # and Ready to Assign would read 1000 against 900 of cash.
+
+    async def test_activity_differs_from_the_register_by_exactly_the_repaid_amount(
+        self, db_session
+    ):
+        """A stated divergence, pinned rather than rediscovered: the row's
+        activity is the register's sum minus what the inflow gave back to the
+        card instead of to this envelope."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "30.00", date(2026, 8, 9), category=groceries
+        )
+        await db_session.flush()
+
+        row = next(
+            b
+            for b in (await _summary(services, budget, AUG)).category_balances
+            if b.category_id == groceries.id
+        )
+        register_sum = D("30.00")
+        assert row.repaid_uncovered_debt == D("30.00")
+        assert row.activity == register_sum - row.repaid_uncovered_debt == D("0.00")
+
+
+class TestTheThreeTermsPartitionCardInflows:
+    """Every inflow on a card lands in exactly one of the three terms the
+    reserve identity is built from: a payment from the budget's cash, a
+    category's own money coming back, or a credit the budget has no claim on.
+
+    "Exactly one" is the whole content. Both ways of getting it wrong are
+    silent — a row in no term reads as drift on an ordinary history, a row in
+    two widens the bounds by its own size and hides real drift behind it — and
+    neither moves a figure the user can see.
+    """
+
+    async def test_a_card_paid_from_an_off_budget_account_is_not_drift(self, db_session):
+        """Somebody outside the budget pays the card off.
+
+        The debt goes; the reserve behind it does not, because no envelope
+        gave anything back — over-reserved by exactly the payment, which is
+        true and is the user's cue to move that money somewhere. It counted
+        as a *card payment* only when the counterpart was cash, and as an
+        *unbudgeted credit* only when the row was not a transfer, so this
+        landed in neither and the check called the whole reserve unexplained.
+        """
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        partner = await create_account(db_session, budget, "Outside", on_budget=False)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
+        from igab.services.transaction_service import TransactionCreate
+
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=partner.id,
+                date=date(2026, 8, 25),
+                amount=D("-150.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+
+        card = (await _summary(services, budget, AUG)).cards[0]
+        assert card.balance == D("0.00")
+        assert card.set_aside == D("150.00")
+        assert card.reserve_discrepancy == D("0")
+        await assert_card_reserve_identity(db_session, budget.id)
+
+    async def test_a_split_refund_on_a_card_is_counted_once(self, db_session):
+        """A refund arriving as a split, its legs filed to real envelopes.
+
+        Splitting forces the parent's category to NULL, so measured on the
+        parent the refund looked like money nobody claimed — while its legs
+        were simultaneously releasing their envelopes' reservations. The same
+        120 in two terms, widening the bounds by 120 and hiding real drift of
+        that size from the check that exists to find it.
+        """
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        dining = await create_category(
+            db_session, budget, await create_category_group(db_session, budget, "Fun"), "Dining"
+        )
+        await create_budget_assignment(db_session, budget, groceries, JUL, "200.00")
+        await create_transaction(
+            db_session, budget, visa, "-200.00", date(2026, 7, 9), category=groceries
+        )
+        parent = await create_transaction(
+            db_session, budget, visa, "120.00", date(2026, 8, 9), is_split=True
+        )
+        for amount, category in ((D("100.00"), groceries), (D("20.00"), dining)):
+            await create_transaction(
+                db_session,
+                budget,
+                visa,
+                amount,
+                date(2026, 8, 9),
+                category=category,
+                parent_transaction_id=parent.id,
+            )
+        await db_session.flush()
+
+        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        assert credits.get(visa.id, {}) == {}
+        await assert_card_reserve_identity(db_session, budget.id)
+
+    async def test_an_uncategorized_card_inflow_still_counts(self, db_session):
+        """The positive control for the two above: a promotional credit, filed
+        nowhere and paid by nobody, is exactly what the term is for."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-200.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(db_session, budget, visa, "25.00", date(2026, 8, 9))
+        await db_session.flush()
+
+        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        assert credits[visa.id] == {AUG: D("25.00")}

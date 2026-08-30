@@ -48,32 +48,27 @@ export function isCardEnvelope(category: CategoryLink): boolean {
 }
 
 /**
- * Groups with a renderable category left in them once the card envelopes are
- * taken out — so "Credit Card Payments" never draws as a bare header, even
- * on the surfaces that deliberately show hidden groups.
+ * Groups the grid draws — everything but the ones holding nothing except card
+ * set-aside envelopes, so "Credit Card Payments" never appears as a bare
+ * header, even on the surfaces that deliberately show hidden groups.
  *
- * Returns the input array itself when nothing is dropped. That is
- * load-bearing: BudgetTable's reorder gate asks `visibleGroups === groups`,
- * so a freshly-allocated array with identical contents would silently turn
- * dragging off.
+ * Reads the served `is_card_only`; it does NOT re-derive it. The client cannot:
+ * its category list filters hidden categories, so a group whose only non-card
+ * row is hidden would read as card-only here and not on the server. It derived
+ * it anyway, and the server's reorder rule had a second, narrower idea of the
+ * same thing — so dragging a group was refused on any budget with a card group,
+ * and the identity-preservation trick this function used to need turned the
+ * drag handles off before a request was even attempted. Home is
+ * `GROUP_IS_CARD_ONLY` in repositories/category_filters.py.
  *
  * A group with no categories at all is kept — an empty group the user just
- * made still needs its header to drop things into.
+ * made still needs its header to drop things into. The server agrees: an empty
+ * group is not card-only.
  */
-export function withoutCardOnlyGroups<G extends { id: string }>(
-  groups: G[] | undefined,
-  categories: readonly ({ category_group_id: string } & CategoryLink)[]
+export function drawnGroups<G extends { is_card_only: boolean }>(
+  groups: G[] | undefined
 ): G[] | undefined {
-  if (!groups) return groups
-  const cardOnly = new Set(
-    groups
-      .filter((g) => {
-        const inGroup = categories.filter((c) => c.category_group_id === g.id)
-        return inGroup.length > 0 && inGroup.every(isCardEnvelope)
-      })
-      .map((g) => g.id)
-  )
-  return cardOnly.size > 0 ? groups.filter((g) => !cardOnly.has(g.id)) : groups
+  return groups?.filter((g) => !g.is_card_only)
 }
 
 /** The ids of the categories that sit in a renderable group. */

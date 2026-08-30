@@ -53,6 +53,7 @@ async def test_clean_budget_reports_all_green(api_client, db_session):
         "stale_pendings",
         "card_envelope_rows",
         "card_payment_envelope_pairing",
+        "card_reserve_identity",
     }
 
 
@@ -159,3 +160,88 @@ async def test_a_row_filed_to_a_card_envelope_is_detected(db_session):
     assert check.problem_count == 1
     assert "Visa" in check.details[0]
     assert report.all_passed is False
+
+
+class TestTheCardReserveIdentity:
+    """`set_aside + uncovered == -balance`, with its three bounds and no
+    exclusion clause.
+
+    The old form excused "a card with no assignments and no inflows that
+    predate their reservations" — precisely the histories that broke it, so
+    nothing ever asked. These are the cases the clause used to cover.
+    """
+
+    async def _card_budget(self, db_session):
+        from igab.services.card_payment import ensure_payment_category
+
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking")
+        visa = await create_account(
+            db_session, budget, "Sapphire Visa", account_type="credit_card"
+        )
+        linked = await ensure_payment_category(db_session, visa)
+        group = await create_category_group(db_session, budget, "Everyday")
+        cat = await create_category(db_session, budget, group, "Groceries")
+        return budget, checking, visa, linked, cat
+
+    async def _check(self, db_session, budget):
+        report = await IntegrityService(db_session).run(budget.id)
+        return next(c for c in report.checks if c.name == "card_reserve_identity")
+
+    async def test_a_healthy_budget_passes(self, db_session):
+        budget, _checking, visa, _linked, cat = await self._card_budget(db_session)
+        services = make_services(db_session)
+        await services.budgets.set_assignment(
+            budget.id, cat.id, TODAY.replace(day=1), Decimal("100.00")
+        )
+        await create_transaction(db_session, budget, visa, "-60.00", TODAY, category=cat)
+        assert (await self._check(db_session, budget)).passed is True
+
+    async def test_a_repayment_of_ridden_debt_passes(self, db_session):
+        """The Refused Repayment, end to end. Nothing assigned, so the charge
+        rides; the repayment next month discharges it. Under the old rule the
+        release was refused, the reserve outlived the debt, and the envelope
+        carried a red the identity would have named."""
+        budget, _checking, visa, _linked, cat = await self._card_budget(db_session)
+        first = TODAY.replace(day=1)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", first - timedelta(days=1), category=cat
+        )
+        await create_transaction(db_session, budget, visa, "100.00", first, category=cat)
+        assert (await self._check(db_session, budget)).passed is True
+
+    async def test_a_reserve_raised_by_assignment_passes(self, db_session):
+        """T1. Money deliberately assigned to the card puts its reserve ahead
+        of its debt — allowed, and the clause this replaces used to exclude
+        every such card from the check entirely."""
+        budget, _checking, visa, linked, cat = await self._card_budget(db_session)
+        first = TODAY.replace(day=1)
+        await create_transaction(db_session, budget, visa, "-40.00", TODAY, category=cat)
+        await make_services(db_session).budgets.set_assignment(
+            budget.id, linked.id, first, Decimal("250.00")
+        )
+        assert (await self._check(db_session, budget)).passed is True
+
+    async def test_a_credit_balance_a_third_party_paid_passes(self, db_session):
+        """T3. An uncategorized, non-transfer inflow on the card: someone else
+        paid it. It touches no envelope, and the credit balance it leaves is
+        theirs — not a drifted reserve."""
+        budget, _checking, visa, _linked, cat = await self._card_budget(db_session)
+        await create_transaction(db_session, budget, visa, "-40.00", TODAY, category=cat)
+        await create_transaction(db_session, budget, visa, "400.00", TODAY)
+        assert (await self._check(db_session, budget)).passed is True
+
+    async def test_a_reserve_that_outlived_its_debt_is_named(self, db_session):
+        """The failure direction, seeded directly: a set-aside with nothing
+        behind it. Without a case that fails, the check above proves nothing.
+        """
+        from igab.domain.cards import reserve_discrepancy
+
+        zero = Decimal("0")
+        # 100 reserved against a card owing nothing, no assignment, no payment,
+        # no residual, no outside credit — the shape the old code produced on
+        # every refund that posted before its purchase.
+        assert reserve_discrepancy(
+            Decimal("100"), zero, zero, zero, zero, zero
+        ) == Decimal("100")

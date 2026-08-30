@@ -12,6 +12,13 @@ Rules encoded here are the specification the fixes implement:
   account-balance query shape) must equal the sum over posted leaf rows (the
   category-activity query shape) partitioned into categorized, uncategorized
   non-transfer, and uncategorized transfer buckets.
+- Card reserve identity: every card's set-aside agrees with what it owes, with
+  the three bounds that say what may legitimately separate them. This one is
+  the exception to "must not share code": it reads the served
+  `CardStatus.reserve_discrepancy`, because a second implementation of the
+  reserve walk here would be the duplication the whole model keeps being bitten
+  by. What it adds is that the check runs over every generated history the
+  suite builds, which is what the unit-level walk could not reach.
 """
 
 import uuid
@@ -208,8 +215,31 @@ async def assert_activity_class_partition(session: AsyncSession, budget_id: uuid
     )
 
 
+async def assert_card_reserve_identity(session: AsyncSession, budget_id: uuid.UUID) -> None:
+    """Every card's reserve adds up, at the current month.
+
+    The three defects this model has shipped were all visible here, and none of
+    them was caught: the invariant existed in a docstring, qualified with "for
+    a card with no assignments and no inflows that predate their reservations"
+    — which is to say, excused for exactly the histories that break it. The
+    bounds inside `reserve_discrepancy` are what replaced the clause, and this
+    is what runs them over real generated data.
+    """
+    from igab.guide.detection import budget_service_from
+    from igab.utils.clock import today_utc
+
+    summary = await budget_service_from(session).get_budget_summary(budget_id, today_utc())
+    broken = [c for c in summary.cards if c.reserve_discrepancy != Decimal("0")]
+    assert not broken, "card reserve identity broken: " + "; ".join(
+        f"{c.name}: set_aside={c.set_aside} balance={c.balance} "
+        f"unexplained={c.reserve_discrepancy}"
+        for c in broken
+    )
+
+
 async def assert_financial_invariants(session: AsyncSession, budget_id: uuid.UUID) -> None:
     await assert_split_integrity(session)
     await assert_transfer_integrity(session)
     await assert_money_conservation(session, budget_id)
     await assert_activity_class_partition(session, budget_id)
+    await assert_card_reserve_identity(session, budget_id)

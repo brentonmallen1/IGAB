@@ -28,6 +28,7 @@ from igab.db.models import (
 )
 from igab.domain.splits import split_balances, split_sum
 from igab.domain.transfers import leg_may_carry_category
+from igab.guide.detection import budget_service_from
 from igab.repositories.category_filters import LINKED_TO_CARD, UNDER_DELETED_GROUP
 from igab.services.card_payment import CARD_PAYMENTS_GROUP
 from igab.utils.clock import today_utc
@@ -52,8 +53,14 @@ class IntegrityReport:
 
 
 class IntegrityService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, budget_service=None) -> None:
         self.session = session
+        # The card reserve check reads `CardStatus.reserve_discrepancy` off the
+        # budget summary rather than re-deriving it, so the check and the page
+        # cannot tell different stories about the same card. Built here the way
+        # the DI layer builds it; injectable so a caller that already has one
+        # does not pay for a second.
+        self._budget_service = budget_service or budget_service_from(session)
 
     async def run(self, budget_id: uuid.UUID) -> IntegrityReport:
         checks = [
@@ -65,6 +72,7 @@ class IntegrityService:
             await self._check_stale_pendings(budget_id),
             await self._check_card_envelope_rows(budget_id),
             await self._check_card_payment_envelope_pairing(budget_id),
+            await self._check_card_reserve_identity(budget_id),
         ]
         return IntegrityReport(all_passed=all(c.passed for c in checks), checks=checks)
 
@@ -452,6 +460,41 @@ class IntegrityService:
         return self._result(
             "card_payment_envelope_pairing",
             "Every credit card has its set-aside envelope, and vice versa",
+            problems,
+        )
+
+    async def _check_card_reserve_identity(self, budget_id: uuid.UUID) -> IntegrityCheck:
+        """Every card's reserve makes sense against what it owes.
+
+            set_aside + uncovered == -balance + over_reserved
+                                     - short_reserved + card_credit
+
+        An identity given the definitions, so the content is its three bounds
+        (domain/cards.py `reserve_discrepancy`): a reserve exceeds the debt only
+        by an assignment or an outside credit; it goes negative only by an
+        overpayment or an inflow beyond what the category ever had riding there;
+        and a credit balance on the card is either budget money or somebody
+        else's.
+
+        This check exists because the invariant was stated years before it was
+        enforced, and stated with an exclusion clause — "for a card with no
+        assignments and no inflows that predate their reservations" — that
+        excused precisely the histories that broke it. Every defect the credit
+        model has shipped was visible in this one equation, and nothing asked.
+        The bounds are what removed the clause.
+        """
+        summary = await self._budget_service.get_budget_summary(budget_id, today_utc())
+        problems = [
+            f"card '{card.name}' reserve does not add up: set aside {card.set_aside}, "
+            f"balance {card.balance}, unexplained by {card.reserve_discrepancy} — "
+            "an inflow, assignment or payment is landing somewhere the reserve "
+            "arithmetic cannot see"
+            for card in summary.cards
+            if card.reserve_discrepancy != Decimal("0")
+        ]
+        return self._result(
+            "card_reserve_identity",
+            "Every credit card's set-aside agrees with what it owes",
             problems,
         )
 
