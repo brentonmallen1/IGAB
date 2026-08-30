@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Landmark, Palette as PaletteIcon, Receipt, Search, User, Bookmark, X } from 'lucide-react'
+import { BookOpen, Landmark, Palette as PaletteIcon, Receipt, Search, User, Bookmark, X } from 'lucide-react'
 import { apiClient } from '../../../api/client'
 import { useAccounts } from '../../../api/accounts'
 import { usePayees } from '../../../api/payees'
@@ -19,7 +19,11 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useSyncAllAccounts } from '../../../hooks/useSyncAllAccounts'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
 import { THEMES } from '../../../stores/appStore'
-import { STATIC_COMMANDS, type CommandCtx } from '../commands'
+import { STATIC_COMMANDS, derivedCommands, type CommandCtx } from '../commands'
+import { searchGlossary } from '../../../content/glossary'
+import { useGuideOverview } from '../../../api/guide'
+import { useCurrentUser } from '../../../api/auth'
+import { useGuideStore } from '../../../stores/guideStore'
 import { SearchHelp } from '../../transactions/TransactionSearch/SearchHelp'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { BudgetTransactionsResponse } from '../../../types'
@@ -78,6 +82,20 @@ export function CommandPalette() {
   const { data: payees = [] } = usePayees(open ? budgetId : null)
   const { data: categories = [] } = useCategories(open ? budgetId : null)
   const { data: filters = [] } = useBudgetFilters(open ? budgetId : null)
+  const { data: me } = useCurrentUser()
+  // The palette must apply the same gates the pages do — a row for a guide tab
+  // that preferences have switched off navigates to a tab GuidePage bounces
+  // away from.
+  const { data: guideOverview } = useGuideOverview(open ? budgetId : null)
+  const hiddenGuideTabs = useMemo(() => {
+    const prefs = guideOverview?.preferences
+    if (!prefs) return [] as string[]
+    const hidden: string[] = []
+    if (!(prefs.personalization && prefs.checkup)) hidden.push('checkup')
+    if (!prefs.wishlist) hidden.push('wishlist')
+    return hidden
+  }, [guideOverview])
+  const setOpenGlossaryTerm = useGuideStore((s) => s.setOpenGlossaryTerm)
 
   const searchTerm = debounced.trim()
   const searchOn = open && !!budgetId && searchTerm.length >= 2
@@ -144,7 +162,25 @@ export function CommandPalette() {
   const hit = (...words: (string | undefined)[]) =>
     !q || words.some((w) => w?.toLowerCase().includes(q))
 
-  const visibleCommands = STATIC_COMMANDS.filter((c) => hit(c.id, c.label, c.keywords))
+  // Derived rows only once something is typed: opening onto 40-odd generated
+  // destinations would bury the twenty commands the palette exists to offer.
+  // Same reasoning as the glossary group below.
+  const derived = q
+    ? derivedCommands({
+        budgetId,
+        isAdmin: !!me?.is_admin,
+        hiddenGuideTabs,
+      })
+    : []
+  const visibleCommands = [...STATIC_COMMANDS, ...derived].filter((c) =>
+    hit(c.id, c.label, c.keywords),
+  )
+
+  // The definition itself is the answer, so it is rendered on the row rather
+  // than waiting behind Enter. Nothing on an empty query — the palette should
+  // not open onto 35 definitions. searchGlossary filters itself, which
+  // shouldFilter={false} requires of every group here.
+  const glossaryMatches = q ? searchGlossary(query).slice(0, 6) : []
   const visibleAccounts = accounts.filter((a) => hit(a.name, 'account'))
   const visibleFilters = filters.filter((f) => hit(f.name, 'view', 'filter'))
   const visibleThemes = THEMES.filter((t) => hit(t.label, 'theme'))
@@ -248,6 +284,28 @@ export function CommandPalette() {
                 ))}
             </Command.Group>
           ))}
+
+          {glossaryMatches.length > 0 && (
+            <Command.Group heading="Glossary">
+              {glossaryMatches.map((entry) => (
+                <Command.Item
+                  key={entry.id}
+                  value={`glossary-${entry.id}`}
+                  keywords={[entry.term, ...(entry.aliases ?? [])]}
+                  onSelect={() =>
+                    run(() => {
+                      setOpenGlossaryTerm(entry.id)
+                      navigate(`/guide?tab=glossary&term=${entry.id}`)
+                    })
+                  }
+                >
+                  <BookOpen size={14} className="palette__item-icon" />
+                  <span className="palette__txn-payee">{entry.term}</span>
+                  <span className="palette__txn-memo">{entry.short}</span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
 
           <Command.Group heading="Theme">
             {visibleThemes.map((t) => (

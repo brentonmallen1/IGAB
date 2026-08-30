@@ -11,6 +11,9 @@ import {
 import { GLOSSARY, GLOSSARY_IDS, glossaryEntry, searchGlossary } from './glossary'
 import { REPORT_TABS } from '../stores/reportStore'
 import { TOOLS } from '../components/guide/tools/toolRegistry'
+import { derivedCommands } from '../components/palette/commands'
+import { GUIDE_TABS } from '../stores/guideStore'
+import { SETTINGS_SECTIONS } from '../pages/SettingsPage/settingsSections'
 
 /** The roadmap and glossary are hand-authored prose, and the usual failure is
  *  not a crash — it is a dead link, an unreachable node, or a decision whose
@@ -395,5 +398,56 @@ describe('roadmap integrity', () => {
       .filter((n) => !n.region && usTerms.test(`${n.title} ${n.body}`))
       .map((n) => n.id)
     expect(unflagged).toEqual([])
+  })
+})
+
+
+/**
+ * Nothing addressable is unreachable by omission.
+ *
+ * The palette used to be a hand-written list of 20 rows, so every report tab,
+ * guide tab and settings section added since was addressable by URL and
+ * unreachable by typing. The rows are generated now — this is what keeps them
+ * generated, and what fails if someone adds a registry entry the builder does
+ * not walk.
+ */
+describe('every destination has a palette row', () => {
+  const ALL = derivedCommands({ budgetId: 'b1', isAdmin: true, hiddenGuideTabs: [] })
+  const ids = new Set(ALL.map((c) => c.id))
+
+  it('covers every report tab', () => {
+    for (const tab of REPORT_TABS) {
+      expect(ids, `no palette row for report '${tab.id}'`).toContain(`report-${tab.id}`)
+    }
+  })
+
+  it('covers every guide tab', () => {
+    for (const tab of GUIDE_TABS) {
+      expect(ids, `no palette row for guide tab '${tab.id}'`).toContain(`guide-${tab.id}`)
+    }
+  })
+
+  it('covers every settings section', () => {
+    for (const section of SETTINGS_SECTIONS) {
+      expect(ids, `no palette row for settings section '${section.id}'`).toContain(
+        `settings-${section.id}`,
+      )
+    }
+  })
+
+  it('covers every calculator', () => {
+    for (const tool of TOOL_IDS) {
+      expect(ids, `no palette row for calculator '${tool}'`).toContain(`calc-${tool}`)
+    }
+  })
+
+  it('labels each row with its group, so 23 reports stay legible', () => {
+    for (const command of ALL) {
+      expect(command.label).toMatch(/^(Report|Guide|Settings|Calculator): /)
+    }
+  })
+
+  it('gives every row a distinct id', () => {
+    expect(ids.size).toBe(ALL.length)
   })
 })

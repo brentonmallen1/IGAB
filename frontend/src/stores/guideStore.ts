@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import type { StageId, ToolId } from '../content/roadmap'
+import type { GlossaryId } from '../content/glossary'
 
 export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'glossary' | 'wishlist'
 
@@ -44,6 +45,11 @@ interface GuideState {
   answers: Record<string, string>
   /** Which calculator the Tools tab shows. Null means the tab's default. */
   activeTool: ToolId | null
+  /** A single glossary term opened from somewhere else — the palette, or a
+   *  GlossaryChip. Lifted out of GlossaryPanel's local state so one
+   *  definition can have a URL: `/guide?tab=glossary&term=<id>`. Deliberately
+   *  NOT persisted; it describes an arrival, not a preference. */
+  openGlossaryTerm: GlossaryId | null
   /** The stage the "where you are" cursor last opened for the reader. Journey
    *  opens the current stage once when the cursor moves; after that the
    *  reader's own folding stands until it moves again. */
@@ -54,6 +60,7 @@ interface GuideState {
   setPositionSeen: (id: StageId | null) => void
   setRoadmapView: (view: RoadmapView) => void
   setActiveTool: (tool: ToolId) => void
+  setOpenGlossaryTerm: (term: GlossaryId | null) => void
   setWishlistView: (view: WishlistView) => void
   setWishlistSort: (sort: WishlistSort) => void
   toggleStage: (id: StageId) => void
@@ -74,6 +81,7 @@ export const useGuideStore = create<GuideState>()(
       expandedDetails: [],
       answers: {},
       activeTool: null,
+      openGlossaryTerm: null,
       positionSeen: null,
       wishlistView: 'flat',
       wishlistSort: 'reach',
@@ -82,6 +90,7 @@ export const useGuideStore = create<GuideState>()(
       setPositionSeen: (id) => set({ positionSeen: id }),
       setRoadmapView: (view) => set({ roadmapView: view }),
       setActiveTool: (tool) => set({ activeTool: tool }),
+      setOpenGlossaryTerm: (term) => set({ openGlossaryTerm: term }),
       setWishlistView: (view) => set({ wishlistView: view }),
       setWishlistSort: (sort) => set({ wishlistSort: sort }),
 

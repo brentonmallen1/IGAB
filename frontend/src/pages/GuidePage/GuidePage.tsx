@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useGuideStore, GUIDE_TABS, type GuideTab } from '../../stores/guideStore'
 import { TOOL_IDS, type ToolId } from '../../content/roadmap'
+import { GLOSSARY_IDS, type GlossaryId } from '../../content/glossary'
 import { useAppStore } from '../../stores/appStore'
 import { useGuideOverview } from '../../api/guide'
 import { RoadmapPanel } from '../../components/guide/RoadmapPanel'
@@ -23,6 +24,7 @@ export function GuidePage() {
   const activeTab = useGuideStore((s) => s.activeTab)
   const setActiveTab = useGuideStore((s) => s.setActiveTab)
   const setActiveTool = useGuideStore((s) => s.setActiveTool)
+  const setOpenGlossaryTerm = useGuideStore((s) => s.setOpenGlossaryTerm)
   const roadmapView = useGuideStore((s) => s.roadmapView)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: overview } = useGuideOverview(budgetId)
@@ -55,11 +57,17 @@ export function GuidePage() {
   useEffect(() => {
     const tab = searchParams.get('tab')
     const tool = searchParams.get('tool')
-    if (!tab && !tool) return
+    const term = searchParams.get('term')
+    if (!tab && !tool && !term) return
     if (tab && GUIDE_TABS.some((t) => t.id === tab)) setActiveTab(tab as GuideTab)
     if (tool && (TOOL_IDS as readonly string[]).includes(tool)) setActiveTool(tool as ToolId)
+    // Validated against the id list exactly as ?tool= is: a term that no
+    // longer exists must open the glossary, not a blank panel.
+    if (term && (GLOSSARY_IDS as readonly string[]).includes(term)) {
+      setOpenGlossaryTerm(term as GlossaryId)
+    }
     setSearchParams({}, { replace: true })
-  }, [searchParams, setActiveTab, setActiveTool, setSearchParams])
+  }, [searchParams, setActiveTab, setActiveTool, setOpenGlossaryTerm, setSearchParams])
 
   function renderTab() {
     switch (activeTab) {
