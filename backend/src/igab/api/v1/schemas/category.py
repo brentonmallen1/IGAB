@@ -100,6 +100,32 @@ class CategoryDeletePreviewRequest(BaseModel):
     month: datetime.date | None = None
 
 
+class CategoryArchiveRequest(BaseModel):
+    """Archive or restore a selection, as one operation and one undo row."""
+
+    category_ids: list[uuid.UUID]
+    month: datetime.date | None = None
+
+
+class CategoryArchivePreviewResponse(BaseModel):
+    """What archiving would do, and what stands in the way.
+
+    `may_archive` is served rather than derived from the two lists: the dialog
+    disables its button on one field, and a client recomputing the condition is
+    how the button and the endpoint come to disagree about whether an archive
+    is allowed.
+    """
+
+    category_ids: list[uuid.UUID]
+    category_names: list[str]
+    transaction_count: int
+    available: Decimal
+    future_assigned: Decimal
+    blocked_by_balance: list[str]
+    blocked_by_link: list[str]
+    may_archive: bool
+
+
 class RepairOrphansResponse(BaseModel):
     """What the hygiene repair found and fixed."""
 

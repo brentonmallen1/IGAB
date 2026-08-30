@@ -18,6 +18,8 @@ from igab.api.v1.schemas.category import (
     BudgetMonthResponse,
     BudgetMoveResponse,
     CardStatusOut,
+    CategoryArchivePreviewResponse,
+    CategoryArchiveRequest,
     CategoryBalance,
     CategoryClassification,
     CategoryClassSlice,
@@ -82,6 +84,7 @@ from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
 from igab.services.assign_service import AssignPreview, AssignService
 from igab.services.budget_service import BudgetService
 from igab.services.category_service import (
+    CategoryArchivePreview,
     CategoryDeletePreview,
     CategoryDeleteResult,
     CategoryService,
@@ -363,6 +366,19 @@ async def update_category(
     return CategoryResponse.model_validate(await category_repo.get_with_tags(category_id))
 
 
+def _archive_preview_out(preview: CategoryArchivePreview) -> CategoryArchivePreviewResponse:
+    return CategoryArchivePreviewResponse(
+        category_ids=preview.category_ids,
+        category_names=preview.category_names,
+        transaction_count=preview.transaction_count,
+        available=preview.available,
+        future_assigned=preview.future_assigned,
+        blocked_by_balance=preview.blocked_by_balance,
+        blocked_by_link=preview.blocked_by_link,
+        may_archive=preview.may_archive,
+    )
+
+
 def _preview_out(preview: CategoryDeletePreview) -> CategoryDeletePreviewResponse:
     return CategoryDeletePreviewResponse(
         category_ids=preview.category_ids,
@@ -408,6 +424,52 @@ async def preview_delete_categories(
         budget_id, body.category_ids, body.month or date.today()
     )
     return _preview_out(preview)
+
+
+@router.post(
+    "/{budget_id}/categories/archive-preview", response_model=CategoryArchivePreviewResponse
+)
+async def preview_archive_categories(
+    budget_id: BudgetAccess,
+    body: CategoryArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """What archiving this selection would do, before the user commits.
+
+    POST for the same reason the delete preview is: the id list is the input.
+    """
+    preview = await category_service.preview_archive(
+        budget_id, body.category_ids, body.month or date.today()
+    )
+    return _archive_preview_out(preview)
+
+
+@router.post("/{budget_id}/categories/archive", response_model=CategoryArchivePreviewResponse)
+async def archive_categories(
+    budget_id: BudgetAccess,
+    body: CategoryArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """Archive a selection. Refused while any of them still holds money."""
+    preview = await category_service.archive_categories(
+        budget_id, body.category_ids, month=body.month
+    )
+    return _archive_preview_out(preview)
+
+
+@router.post("/{budget_id}/categories/unarchive", response_model=CategoryArchivePreviewResponse)
+async def unarchive_categories(
+    budget_id: BudgetAccess,
+    body: CategoryArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """Bring a selection back to the budget. Never refused — no money moves."""
+    ids = await category_service.unarchive_categories(budget_id, body.category_ids)
+    preview = await category_service.preview_archive(budget_id, ids, body.month or date.today())
+    return _archive_preview_out(preview)
 
 
 @router.post("/{budget_id}/categories/delete", response_model=CategoryDeleteResultResponse)

@@ -26,7 +26,7 @@ transaction. See :meth:`_record_delete`.
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -116,6 +116,48 @@ def _touched(bookkeeping: dict[str, Any]) -> bool:
             "_filter_selections",
         )
     )
+
+
+def _iso(value: datetime | None) -> str | None:
+    """Change-log payloads are JSON, so a timestamp travels as a string."""
+    return value.isoformat() if value is not None else None
+
+
+@dataclass
+class CategoryArchivePreview:
+    """What archiving is about to do, and whether it may proceed at all.
+
+    Archiving is not deleting: every row keeps its category and every report
+    still counts the spending (`category_filters.SPENT_ENVELOPE`). The one
+    thing that must not survive it is money.
+
+    An archived envelope is off the budget grid entirely — there is no "show
+    archived" toggle to find it behind — so a balance left in one is
+    unreachable, not merely tidy. `blocked_by_balance` is what the dialog reads
+    to insist the money moves first, and the amount comes from here rather than
+    being re-derived on the client, the same rule the delete preview follows.
+    """
+
+    category_ids: list[uuid.UUID] = field(default_factory=list)
+    category_names: list[str] = field(default_factory=list)
+    transaction_count: int = 0
+    #: Available in the viewed month, summed across the categories. Must reach
+    #: zero before the archive is allowed.
+    available: Decimal = Decimal("0")
+    #: Assigned in months after the viewed one. Also money, also stranded, and
+    #: invisible in the viewed month's `available` — the delete preview learned
+    #: this the same way.
+    future_assigned: Decimal = Decimal("0")
+    #: Names carrying a non-zero balance, so the dialog can point at them
+    #: rather than at a total.
+    blocked_by_balance: list[str] = field(default_factory=list)
+    #: A card's payment envelope or a debt category: the machinery owns it, and
+    #: archiving it would leave the card with no envelope to reserve into.
+    blocked_by_link: list[str] = field(default_factory=list)
+
+    @property
+    def may_archive(self) -> bool:
+        return not self.blocked_by_balance and not self.blocked_by_link
 
 
 @dataclass
@@ -256,6 +298,116 @@ class CategoryService:
     ) -> CategoryDeletePreview:
         cats = await self.category_repo.get_by_group(group_id)
         return await self.preview_delete(budget_id, [c.id for c in cats], month)
+
+    # ─── Archive ──────────────────────────────────────────────────────────────
+
+    async def preview_archive(
+        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], month: date
+    ) -> CategoryArchivePreview:
+        """What archiving these would do, and what stands in the way."""
+        cats = await self._live_categories(budget_id, category_ids)
+        preview = CategoryArchivePreview(
+            category_ids=[c.id for c in cats],
+            category_names=[c.name for c in cats],
+        )
+        if not cats:
+            return preview
+
+        ids = [c.id for c in cats]
+        month_start = first_of_month(month)
+        preview.transaction_count = await self._count(
+            select(Transaction.id).where(
+                Transaction.category_id.in_(ids),
+                Transaction.is_deleted == False,  # noqa: E712
+            )
+        )
+        preview.future_assigned = await self._sum_assigned(ids, after=month_start)
+        for cat in cats:
+            balance = await self.budget_service.get_category_balance(cat.id, month_start)
+            preview.available += balance.available
+            if balance.available != Decimal("0"):
+                preview.blocked_by_balance.append(cat.name)
+            if cat.linked_account_id is not None or cat.linked_liability_id is not None:
+                preview.blocked_by_link.append(cat.name)
+        # Money committed to a later month is stranded just as thoroughly, and
+        # the viewed month's `available` cannot see it.
+        if preview.future_assigned != Decimal("0") and not preview.blocked_by_balance:
+            preview.blocked_by_balance = list(preview.category_names)
+        return preview
+
+    async def preview_archive_group(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, month: date
+    ) -> CategoryArchivePreview:
+        """Archiving a group archives everything in it, so it previews as the
+        bulk action it is — the shape `preview_delete_group` already uses."""
+        cats = await self.category_repo.get_by_group(group_id)
+        return await self.preview_archive(budget_id, [c.id for c in cats], month)
+
+    async def archive_categories(
+        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], *, month: date | None = None
+    ) -> CategoryArchivePreview:
+        """Archive, refusing while money would be left behind.
+
+        Refuses rather than sweeping. Moving someone's money without asking is
+        the wrong default for the one screen whose whole job is telling them
+        where their money is; the dialog offers the move and this enforces that
+        it happened.
+        """
+        as_of = first_of_month(month or date.today())
+        preview = await self.preview_archive(budget_id, category_ids, as_of)
+        if preview.blocked_by_link:
+            raise InvariantViolation(
+                f"{preview.blocked_by_link[0]} belongs to a card or a tracked debt. "
+                "Its envelope is maintained by that account, not by you"
+            )
+        if preview.blocked_by_balance:
+            raise InvariantViolation(
+                f"{preview.blocked_by_balance[0]} still holds money. Move it out first — "
+                "an archived envelope is off the budget entirely, so anything left in it "
+                "would be unreachable"
+            )
+        await self._set_archived(budget_id, preview.category_ids, archived=True)
+        return preview
+
+    async def unarchive_categories(
+        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID]
+    ) -> list[uuid.UUID]:
+        """Bring them back. No money is involved, so nothing can block it."""
+        cats = await self._live_categories(budget_id, category_ids)
+        ids = [c.id for c in cats]
+        await self._set_archived(budget_id, ids, archived=False)
+        return ids
+
+    async def _set_archived(
+        self, budget_id: uuid.UUID, ids: list[uuid.UUID], *, archived: bool
+    ) -> None:
+        """Flip the flag and stamp the date, recorded so undo can put it back.
+
+        `archived_at` is cleared on the way out rather than kept: it answers
+        "when was this archived", and a stale date on a live envelope is a
+        worse answer than none.
+        """
+        if not ids:
+            return
+        before = {
+            str(c.id): {"is_archived": c.is_archived, "archived_at": _iso(c.archived_at)}
+            for c in await self._live_categories(budget_id, ids)
+        }
+        stamp = datetime.now(UTC) if archived else None
+        await self.session.execute(
+            update(Category)
+            .where(Category.id.in_(ids))
+            .values(is_archived=archived, archived_at=stamp)
+        )
+        await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="category",
+            entity_id=ids[0],
+            action="archive" if archived else "unarchive",
+            before=before,
+            after={str(i): {"is_archived": archived, "archived_at": _iso(stamp)} for i in ids},
+        )
 
     # ─── Delete ───────────────────────────────────────────────────────────────
 
