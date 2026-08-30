@@ -1,0 +1,2358 @@
+{
+  "anchor": "2026-08-01",
+  "months": {
+    "2025-08-01": {
+      "to_be_assigned": "-107720.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "2242.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "27872.4300"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-490.6100",
+          "2256.9600"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "182000.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "-79.2500",
+          "425.4500"
+        ],
+        "Everyday: Dining Out": [
+          "218.1500",
+          "-218.1500",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-101.0000",
+          "1046.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "14980.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "3705.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "2850.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-93.7500",
+          "324.0000"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "2850.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.1900"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "2850.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "950.0000"
+        ],
+        "Everyday: Gas": [
+          "237.0500",
+          "-237.0500",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-62.4700",
+          "1359.1500"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "47.8800"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-17.0000",
+          "664.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-81.7000",
+          "1438.2000"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "93.8000",
+          "-93.8000",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "95.5000",
+          "-95.5000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "48.9000",
+          "-48.9000",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2025-09-01": {
+      "to_be_assigned": "-98220.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "2360.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "29339.4000"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-424.6600",
+          "2392.3000"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "191500.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "32.7800",
+          "458.2300"
+        ],
+        "Everyday: Dining Out": [
+          "193.6500",
+          "-193.6500",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-84.0000",
+          "1112.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "14980.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "3900.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3000.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-92.7500",
+          "341.2500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3000.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2000"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "3000.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1000.0000"
+        ],
+        "Everyday: Gas": [
+          "231.3000",
+          "-231.3000",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-119.0600",
+          "1400.0900"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "50.4000"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-34.0000",
+          "690.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-88.3500",
+          "1509.8500"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "80.9500",
+          "-80.9500",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "105.3500",
+          "-105.3500",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "80.0900",
+          "-80.0900",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2025-10-01": {
+      "to_be_assigned": "-88720.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "2478.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "30806.3700"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-415.0500",
+          "2537.2500"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "201000.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "-7.9300",
+          "450.3000"
+        ],
+        "Everyday: Dining Out": [
+          "195.4000",
+          "-195.4000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-58.0000",
+          "1204.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "14980.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4095.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3150.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-100.0000",
+          "351.2500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3150.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2100"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "3150.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1050.0000"
+        ],
+        "Everyday: Gas": [
+          "276.7000",
+          "-276.7000",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-88.2000",
+          "1471.8900"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "52.9200"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-17.0000",
+          "733.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-83.3000",
+          "1586.5500"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "86.2000",
+          "-86.2000",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "109.7000",
+          "-109.7000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "77.3900",
+          "-77.3900",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2025-11-01": {
+      "to_be_assigned": "-79220.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "2596.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "32273.3400"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-468.9200",
+          "2628.3300"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "210500.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "-67.2500",
+          "383.0500"
+        ],
+        "Everyday: Dining Out": [
+          "216.4000",
+          "-216.4000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-89.0000",
+          "1265.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "14980.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4290.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3300.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-85.2500",
+          "376.0000"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3300.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2200"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "3300.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1100.0000"
+        ],
+        "Everyday: Gas": [
+          "224.6500",
+          "-224.6500",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-62.4700",
+          "1569.4200"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "55.4400"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-34.0000",
+          "759.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-81.7000",
+          "1664.8500"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "93.8000",
+          "-93.8000",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "95.5000",
+          "-95.5000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "48.9000",
+          "-48.9000",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2025-12-01": {
+      "to_be_assigned": "-69720.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "2714.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "33740.3100"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-424.6600",
+          "2763.6700"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "220000.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "22.2300",
+          "405.2800"
+        ],
+        "Everyday: Dining Out": [
+          "195.4000",
+          "-195.4000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-125.0000",
+          "1290.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "14980.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4485.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3450.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-101.2500",
+          "384.7500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "-480.0000",
+          "2970.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2300"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "3450.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1150.0000"
+        ],
+        "Everyday: Gas": [
+          "238.1500",
+          "-238.1500",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-119.0600",
+          "1610.3600"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "57.9600"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-17.0000",
+          "802.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-88.3500",
+          "1736.5000"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "80.9500",
+          "-80.9500",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "106.8000",
+          "-106.8000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "80.0900",
+          "-80.0900",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2026-01-01": {
+      "to_be_assigned": "-60220.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "2832.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "35207.2800"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-502.4700",
+          "2821.2000"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "229500.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "1.7700",
+          "407.0500"
+        ],
+        "Everyday: Dining Out": [
+          "200.5000",
+          "-200.5000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-142.0000",
+          "1298.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "14980.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4680.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3600.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-91.0000",
+          "403.7500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3120.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2400"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "-1650.0000",
+          "1950.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1200.0000"
+        ],
+        "Everyday: Gas": [
+          "269.8500",
+          "-269.8500",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-88.2000",
+          "1682.1600"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "60.4800"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-34.0000",
+          "828.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-83.3000",
+          "1813.2000"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "86.2000",
+          "-86.2000",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "107.9000",
+          "-107.9000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "77.3900",
+          "-77.3900",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2026-02-01": {
+      "to_be_assigned": "-50720.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "2950.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "36674.2500"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-397.8600",
+          "2983.3400"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "239000.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "-69.5100",
+          "337.5400"
+        ],
+        "Everyday: Dining Out": [
+          "192.9000",
+          "-192.9000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-128.0000",
+          "1320.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "14980.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4875.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3750.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-88.0000",
+          "425.7500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3270.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2500"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "2100.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1250.0000"
+        ],
+        "Everyday: Gas": [
+          "231.5000",
+          "-231.5000",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-62.4700",
+          "1779.6900"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-42.9700",
+          "47.5100"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-17.0000",
+          "871.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-793.7000",
+          "1179.5000"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "93.8000",
+          "-93.8000",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "95.5000",
+          "-95.5000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "48.9000",
+          "-48.9000",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2026-03-01": {
+      "to_be_assigned": "-40300.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "3068.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "38141.2200"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-424.6600",
+          "3118.6800"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "248500.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "51.5200",
+          "389.0600"
+        ],
+        "Everyday: Dining Out": [
+          "218.9000",
+          "-218.9000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-104.0000",
+          "1366.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "920.0000",
+          "15900.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "-1170.0000",
+          "3900.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3900.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-91.5000",
+          "444.2500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3420.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2600"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "2250.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1300.0000"
+        ],
+        "Everyday: Gas": [
+          "239.1500",
+          "-239.1500",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-139.0500",
+          "1800.6400"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "50.0300"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-34.0000",
+          "897.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-88.3500",
+          "1251.1500"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "80.9500",
+          "-80.9500",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "105.3500",
+          "-105.3500",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "80.0900",
+          "-80.0900",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2026-04-01": {
+      "to_be_assigned": "-30800.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "3186.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "39608.1900"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-469.3500",
+          "3209.3300"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "258000.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "14.3200",
+          "403.3800"
+        ],
+        "Everyday: Dining Out": [
+          "192.9000",
+          "-192.9000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-82.0000",
+          "1434.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "15900.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4095.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "4050.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-93.7500",
+          "460.5000"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3570.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2700"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "2400.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1350.0000"
+        ],
+        "Everyday: Gas": [
+          "268.8500",
+          "-268.8500",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-116.7000",
+          "1843.9400"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "52.5500"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-17.0000",
+          "940.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-723.3000",
+          "687.8500"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "86.2000",
+          "-86.2000",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "109.7000",
+          "-109.7000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "77.3900",
+          "-77.3900",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2026-05-01": {
+      "to_be_assigned": "-21300.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "3304.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "41075.1600"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-553.4600",
+          "3215.8700"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "267500.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "-16.7600",
+          "386.6200"
+        ],
+        "Everyday: Dining Out": [
+          "218.9000",
+          "-218.9000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-64.0000",
+          "1520.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "15900.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4290.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "4200.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-92.7500",
+          "477.7500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3720.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2800"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "2550.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1400.0000"
+        ],
+        "Everyday: Gas": [
+          "232.5000",
+          "-232.5000",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-105.4600",
+          "1898.4800"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "55.0700"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-34.0000",
+          "966.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-81.7000",
+          "766.1500"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "93.8000",
+          "-93.8000",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "95.5000",
+          "-95.5000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "48.9000",
+          "-48.9000",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2026-06-01": {
+      "to_be_assigned": "-11800.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "3422.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "42542.1300"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-424.6600",
+          "3351.2100"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "277000.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "490.1300",
+          "876.7500"
+        ],
+        "Everyday: Dining Out": [
+          "192.9000",
+          "-192.9000",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-78.0000",
+          "1592.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "15900.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4485.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "-900.0000",
+          "3450.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-93.7500",
+          "494.0000"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "3870.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.2900"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "2700.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1450.0000"
+        ],
+        "Everyday: Gas": [
+          "235.8500",
+          "-235.8500",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-119.0600",
+          "1939.4200"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "57.5900"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-17.0000",
+          "1009.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-88.3500",
+          "837.8000"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "80.9500",
+          "-80.9500",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "106.8000",
+          "-106.8000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "80.0900",
+          "-80.0900",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2026-07-01": {
+      "to_be_assigned": "-2300.0000",
+      "total_overspent": "0",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "3540.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "-275.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1466.9700",
+          "0",
+          "44009.1000"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-415.0500",
+          "3496.1600"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "9500.0000",
+          "286500.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "8.0200",
+          "884.7700"
+        ],
+        "Everyday: Dining Out": [
+          "196.1500",
+          "-196.1500",
+          "0.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "-96.0000",
+          "1646.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "15900.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4680.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3600.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "-97.2500",
+          "506.7500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "4020.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "-79.9900",
+          "0.3000"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "2850.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1500.0000"
+        ],
+        "Everyday: Gas": [
+          "272.1500",
+          "-272.1500",
+          "0.0000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "-1000.0000",
+          "0.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "-65.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "-250.0000",
+          "0.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "-88.2000",
+          "2011.2200"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "-27.4800",
+          "60.1100"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "-34.0000",
+          "1035.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "-83.3000",
+          "914.5000"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "86.2000",
+          "-86.2000",
+          "0.0000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "107.9000",
+          "-107.9000",
+          "0.0000"
+        ],
+        "Everyday: Pet Care": [
+          "77.3900",
+          "-77.3900",
+          "0.0000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "2026-08-01": {
+      "to_be_assigned": "150.0000",
+      "total_overspent": "45.0000",
+      "categories": {
+        "Long Term \u2013 $513/mo: Car Insurance \u2013 $1,416/12": [
+          "118.0000",
+          "0",
+          "3658.0000"
+        ],
+        "Debt: Car Payment": [
+          "275.0000",
+          "0",
+          "275.0000"
+        ],
+        "Savings Goals: Emergency Fund": [
+          "1467.0000",
+          "0",
+          "45476.1000"
+        ],
+        "Everyday: Groceries": [
+          "560.0000",
+          "-92.7500",
+          "3963.4100"
+        ],
+        "Bills: Rent": [
+          "1400.0000",
+          "-1400.0000",
+          "0.0000"
+        ],
+        "Income: Salary": [
+          "0",
+          "2450.0000",
+          "288950.0000"
+        ],
+        "Credit Card Payments: Sapphire Visa": [
+          "0",
+          "40.0000",
+          "924.7700"
+        ],
+        "Everyday: Dining Out": [
+          "40.0000",
+          "-85.0000",
+          "-45.0000"
+        ],
+        "Bills: Electric": [
+          "150.0000",
+          "0",
+          "1796.0000"
+        ],
+        "Income: Other Income": [
+          "0",
+          "0",
+          "15900.0000"
+        ],
+        "Long Term \u2013 $513/mo: Property Tax \u2013 ~$2,340/12": [
+          "195.0000",
+          "0",
+          "4875.0000"
+        ],
+        "Savings Goals: Vacation": [
+          "150.0000",
+          "0",
+          "3750.0000"
+        ],
+        "Debt: Visa Payment": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Coffee": [
+          "110.0000",
+          "0",
+          "616.7500"
+        ],
+        "Long Term \u2013 $513/mo: Home Maintenance \u2013 1%/12": [
+          "150.0000",
+          "0",
+          "4170.0000"
+        ],
+        "Bills: Internet": [
+          "80.0000",
+          "0",
+          "80.3000"
+        ],
+        "Savings Goals: New Laptop": [
+          "150.0000",
+          "0",
+          "3000.0000"
+        ],
+        "Long Term \u2013 $513/mo: Christmas \u2013 $600/12": [
+          "50.0000",
+          "0",
+          "1550.0000"
+        ],
+        "Everyday: Gas": [
+          "229.2000",
+          "0",
+          "229.2000"
+        ],
+        "Savings Goals: Investing": [
+          "1000.0000",
+          "0",
+          "1000.0000"
+        ],
+        "Bills: Phone": [
+          "65.0000",
+          "0",
+          "65.0000"
+        ],
+        "Savings Goals: Health Savings": [
+          "250.0000",
+          "0",
+          "250.0000"
+        ],
+        "Everyday: Shopping": [
+          "160.0000",
+          "0",
+          "2171.2200"
+        ],
+        "Bills: Streaming": [
+          "30.0000",
+          "0",
+          "90.1100"
+        ],
+        "Everyday: Entertainment": [
+          "60.0000",
+          "0",
+          "1095.0000"
+        ],
+        "Bills: Mortgage \u2013 $2,444/mo": [
+          "2444.0000",
+          "-2444.0000",
+          "0.0000"
+        ],
+        "Savings Goals: Wedding Fund": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Household": [
+          "160.0000",
+          "0",
+          "1074.5000"
+        ],
+        "Savings Goals: Moving 2024": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Bills: Water & Trash": [
+          "93.8000",
+          "0",
+          "93.8000"
+        ],
+        "Bills: Baby Prep": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: Work Lunches": [
+          "95.5000",
+          "0",
+          "95.5000"
+        ],
+        "Everyday: Pet Care": [
+          "48.9000",
+          "0",
+          "48.9000"
+        ],
+        "Everyday: Old Gym Membership": [
+          "0",
+          "0",
+          "0"
+        ],
+        "Everyday: RC Car Hobby": [
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    }
+  }
+}

@@ -40,6 +40,7 @@ import hashlib
 import re
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -99,6 +100,34 @@ def offences(line: str) -> list[str]:
     return found
 
 
+def read_text(path: Path) -> str | None:
+    """The searchable text of a file, including inside a zip.
+
+    A fixture that is an archive would otherwise slip the whole check: a zip
+    does not decode as UTF-8, so it was skipped, and "never commit a captured
+    response you have not read" had nothing enforcing it for exactly the shape
+    most likely to carry one. Members that are not text are skipped
+    individually rather than disqualifying the archive.
+    """
+    if path.suffix.lower() == ".zip":
+        parts: list[str] = []
+        try:
+            with zipfile.ZipFile(path) as archive:
+                for name in archive.namelist():
+                    parts.append(name)
+                    try:
+                        parts.append(archive.read(name).decode("utf-8"))
+                    except (UnicodeDecodeError, KeyError):
+                        continue
+        except zipfile.BadZipFile:
+            return None
+        return "\n".join(parts)
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
 def tracked_files() -> list[Path]:
     out = subprocess.run(
         ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
@@ -115,11 +144,13 @@ def main(argv: list[str]) -> int:
     for path in tracked_files():
         if path.suffix.lower() in SKIP_SUFFIX or not path.is_file():
             continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue
         rel = path.relative_to(ROOT).as_posix()
+        try:
+            text = read_text(path)
+        except OSError:
+            continue
+        if text is None:
+            continue
 
         if "/fixtures/" in rel and rel not in REVIEWED_FIXTURES:
             if sum(bool(rx.search(text)) for rx in FEED_SHAPE) >= 2:
