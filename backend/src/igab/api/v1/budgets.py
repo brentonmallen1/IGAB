@@ -45,6 +45,7 @@ from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import ensure_account_types_seeded
+from igab.services.budget_provisioning import grant_owner, unique_budget_name
 from igab.services.budget_service import BudgetService
 from igab.services.transaction_service import TransactionService
 
@@ -80,13 +81,6 @@ class BudgetResponse(BaseModel):
     role: str | None = None
 
     model_config = {"from_attributes": True}
-
-
-def _grant_owner(session: "AsyncSession", budget_id: uuid.UUID, user_id: uuid.UUID) -> None:
-    """Every budget-creation path must call this: membership is the
-    authorization source of truth, and a budget without an owner row would be
-    invisible even to its creator."""
-    session.add(BudgetMember(budget_id=budget_id, user_id=user_id, role="owner"))
 
 
 class YNABImportBudgetResponse(BaseModel):
@@ -153,7 +147,7 @@ async def import_ynab_as_budget(
     budget = Budget(user_id=current_user.id, name=budget_name, currency_code="USD")
     session.add(budget)
     await session.flush()
-    _grant_owner(session, budget.id, current_user.id)
+    grant_owner(session, budget.id, current_user.id)
     await session.refresh(budget)
     await ensure_account_types_seeded(session, budget.id)
 
@@ -282,18 +276,12 @@ async def create_sample_budget(
 
     tier = body.tier if body else "starter"
     base_name = (body.name.strip() if body and body.name else "") or "Sample Budget"
-    existing = await session.execute(select(Budget.name).where(Budget.user_id == current_user.id))
-    taken = {name.lower() for (name,) in existing}
-    name = base_name
-    suffix = 2
-    while name.lower() in taken:
-        name = f"{base_name} {suffix}"
-        suffix += 1
+    name = await unique_budget_name(session, current_user.id, base_name)
 
     budget = Budget(user_id=current_user.id, name=name, currency_code="USD")
     session.add(budget)
     await session.flush()
-    _grant_owner(session, budget.id, current_user.id)
+    grant_owner(session, budget.id, current_user.id)
     await session.refresh(budget)
     await seed_system_tags(session, budget.id)
     await ensure_account_types_seeded(session, budget.id)
@@ -352,7 +340,7 @@ async def create_budget(
     )
     session.add(budget)
     await session.flush()
-    _grant_owner(session, budget.id, current_user.id)
+    grant_owner(session, budget.id, current_user.id)
     await session.refresh(budget)
 
     # Create default system category groups

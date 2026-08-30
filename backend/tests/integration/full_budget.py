@@ -46,6 +46,7 @@ from igab.db.models import (
     category_tags,
     payee_tags,
 )
+from igab.repositories.tag_repo import seed_system_tags
 
 from .factories import (
     add_budget_member,
@@ -110,6 +111,10 @@ async def mark_snapshot_cache_valid(session: AsyncSession, budget_id: UUID) -> N
 async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
     """Populate every table a budget owns, directly or through a parent."""
     budget = await create_budget(session, owner)
+    # create_budget seeds the account-type registry but not the system tags;
+    # every real creation path seeds both, and a fixture that skips them
+    # cannot tell "the importer seeded these" from "the copy grew rows".
+    await seed_system_tags(session, budget.id)
 
     # A second member: authorization rows are budget-owned, and a restore that
     # loses them locks someone out of their own budget.

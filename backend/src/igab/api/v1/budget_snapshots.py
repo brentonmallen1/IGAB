@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
@@ -26,6 +26,7 @@ from starlette.background import BackgroundTask
 from igab.api.v1.schemas.budget_snapshots import (
     SnapshotCreated,
     SnapshotFile,
+    SnapshotImportResult,
     SnapshotInspection,
 )
 from igab.db.session import get_session
@@ -171,4 +172,42 @@ async def inspect_snapshot(
         ok=verdict.ok,
         refusals=list(verdict.refusals),
         warnings=list(verdict.warnings),
+    )
+
+
+@router.post(
+    "/budgets/import-snapshot",
+    response_model=SnapshotImportResult,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_snapshot(
+    current_user: CurrentUser,
+    session: SessionDep,
+    file: UploadFile,
+    name: Annotated[str | None, Form()] = None,
+) -> SnapshotImportResult:
+    """Load a snapshot into a **new** budget owned by the caller.
+
+    Any user may import: the result is their own budget, built from a file
+    they already hold. Nothing is written until the manifest has been read and
+    accepted, and everything after that is inside this request's transaction —
+    a failure half way through leaves the database exactly as it was.
+    """
+    with tempfile.NamedTemporaryFile(suffix=budget_snapshot.SNAPSHOT_SUFFIX, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
+    try:
+        report = await budget_snapshot.import_snapshot_as_new_budget(
+            session, tmp_path, user_id=current_user.id, name=name
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return SnapshotImportResult(
+        budget_id=str(report.budget_id),
+        budget_name=report.budget_name,
+        row_counts=report.row_counts,
+        attachments_omitted=report.attachments_omitted,
+        warnings=report.warnings,
     )

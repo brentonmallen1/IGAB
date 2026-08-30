@@ -41,3 +41,18 @@ class SnapshotInspection(BaseModel):
     ok: bool
     refusals: list[str]
     warnings: list[str]
+
+
+class SnapshotImportResult(BaseModel):
+    """What an import actually did.
+
+    Returned rather than written to ``budgets.import_summary``: that column is
+    validated as a YNABImportResult by the imports endpoint, and a
+    snapshot-shaped dict there would 500 it.
+    """
+
+    budget_id: str
+    budget_name: str
+    row_counts: dict[str, int]
+    attachments_omitted: int
+    warnings: list[str]
