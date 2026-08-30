@@ -78,3 +78,59 @@ class TestRunBackup:
         body = (await api_client.get("/api/v1/backups")).json()
         assert body["queued"] is False
         assert body["job"]["state"] == "running"
+
+
+class TestDownloadBackup:
+    """Reading a backup needs the volume, not the agent.
+
+    The agent makes backups; the API container mounts the same directory, so a
+    download works while the agent is offline — which is exactly when someone
+    wants their file off the server.
+    """
+
+    async def test_a_backup_downloads_byte_for_byte(self, api_client, backups_dir):
+        name = "igab-20260829-120000.dump"
+        (backups_dir / name).write_bytes(b"PGDMP-fictional-bytes")
+
+        resp = await api_client.get(f"/api/v1/backups/{name}/download")
+        assert resp.status_code == 200, resp.text
+        assert resp.content == b"PGDMP-fictional-bytes"
+        assert name in resp.headers["content-disposition"]
+
+    async def test_an_encrypted_backup_downloads_too(self, api_client, backups_dir):
+        """It is already encrypted; that is what it is for."""
+        name = "igab-20260829-120000.dump.age"
+        (backups_dir / name).write_bytes(b"age-encrypted")
+
+        resp = await api_client.get(f"/api/v1/backups/{name}/download")
+        assert resp.status_code == 200
+        assert resp.content == b"age-encrypted"
+
+    async def test_a_file_that_is_not_a_backup_is_not_served(self, api_client, backups_dir):
+        """The listing decides what exists; a file that happens to sit in the
+        directory is not a backup."""
+        (backups_dir / "notes.txt").write_text("not a backup")
+
+        resp = await api_client.get("/api/v1/backups/notes.txt/download")
+        assert resp.status_code == 404
+
+    @pytest.mark.parametrize("name", ["..%2F..%2Fetc%2Fpasswd", ".hidden.dump", "%20igab.dump"])
+    async def test_a_name_that_is_a_path_is_refused(self, api_client, backups_dir, name):
+        resp = await api_client.get(f"/api/v1/backups/{name}/download")
+        assert resp.status_code in (400, 404)
+
+    async def test_a_non_admin_is_refused(self, api_client, db_session, backups_dir):
+        """Every /backups endpoint but the status probe is admin-gated, and
+        the Settings section is hidden to match."""
+        from .factories import create_user
+
+        name = "igab-20260829-120000.dump"
+        (backups_dir / name).write_bytes(b"x")
+        ordinary = await create_user(db_session)
+
+        from igab.dependencies import get_current_user
+        from igab.main import app
+
+        app.dependency_overrides[get_current_user] = lambda: ordinary
+        resp = await api_client.get(f"/api/v1/backups/{name}/download")
+        assert resp.status_code == 403

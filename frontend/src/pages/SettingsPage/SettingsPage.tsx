@@ -23,6 +23,7 @@ import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoM
 import { HelpCircle } from 'lucide-react'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
+import { BudgetSnapshotsPanel } from '../../components/settings/BudgetSnapshotsPanel/BudgetSnapshotsPanel'
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
 import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
@@ -163,7 +164,10 @@ export function SettingsPage() {
     { id: 'mobile', label: 'Mobile' },
     ...(budgetId ? [{ id: 'accounts', label: 'Accounts' }] : []),
     ...(budgetId ? [{ id: 'integrity', label: 'Data Integrity' }] : []),
-    { id: 'data', label: 'Backups' },
+    ...(budgetId ? [{ id: 'budget-backups', label: 'Budget Backups' }] : []),
+    // Every /backups endpoint except the status probe is admin-gated, so a
+    // non-admin who could see this section would only collect 403s.
+    ...(me?.is_admin ? [{ id: 'data', label: 'Backups' }] : []),
     { id: 'updates', label: 'Updates' },
     {
       id: 'simplefin',
@@ -600,12 +604,30 @@ export function SettingsPage() {
         </Surface>
       )}
 
-      {/* Backups */}
-      <Surface as="section" className="settings-section" id="data" title="Backups">
-        <div className="settings-section__body">
-          <BackupsPanel />
-        </div>
-      </Surface>
+      {/* This budget's own backups — a file holding one budget, which is what
+          makes a per-budget list possible at all. The panel below backs up the
+          whole installation and cannot be filtered down to one budget. */}
+      {currentBudget && (
+        <Surface
+          as="section"
+          className="settings-section"
+          id="budget-backups"
+          title="Budget Backups"
+        >
+          <div className="settings-section__body">
+            <BudgetSnapshotsPanel budgetId={currentBudget.id} budgetName={currentBudget.name} />
+          </div>
+        </Surface>
+      )}
+
+      {/* Whole-application backups. Admin-only, matching the endpoints. */}
+      {me?.is_admin && (
+        <Surface as="section" className="settings-section" id="data" title="Backups">
+          <div className="settings-section__body">
+            <BackupsPanel />
+          </div>
+        </Surface>
+      )}
 
       {/* Updates */}
       <Surface as="section" className="settings-section" id="updates" title="Updates">

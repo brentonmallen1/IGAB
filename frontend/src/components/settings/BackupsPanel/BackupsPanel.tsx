@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
 import {
   AlertTriangle,
   Archive,
   Database,
+  Download,
   HardDriveDownload,
   History,
   Lock,
 } from 'lucide-react'
 import {
+  downloadBackupFile,
   fetchBackupStatus,
   useBackups,
   useRestoreBackup,
@@ -438,6 +441,18 @@ export function BackupsPanel() {
                     <td>{formatBytes(f.size_bytes)}</td>
                     <td>{formatDateTime(f.modified_at)}</td>
                     <td className="bkp-table__action">
+                      <button
+                        className="settings-btn settings-btn--secondary bkp-download-btn"
+                        onClick={() =>
+                          downloadBackupFile(f.name).catch(() =>
+                            toast.error('Download failed.'),
+                          )
+                        }
+                        aria-label={`Download ${f.name}`}
+                        title="Download"
+                      >
+                        <Download size={13} aria-hidden="true" />
+                      </button>
                       {restorable ? (
                         <button
                           className="settings-btn settings-btn--secondary bkp-restore-btn"

@@ -4,6 +4,7 @@
 
 import Papa from 'papaparse'
 import { toPng } from 'html-to-image'
+import { apiClient } from '../api/client'
 
 export function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
@@ -12,6 +13,22 @@ export function downloadBlob(filename: string, blob: Blob): void {
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+/**
+ * Download a file the API generates, with the bearer token attached.
+ *
+ * A plain `<a href download>` cannot: the token lives only in the axios
+ * request interceptor (api/client.ts), there is no cookie auth and no
+ * `?token=`, so every such link 401s. The Overview report's "Export
+ * transactions" link did exactly that. One implementation of "download a
+ * file from the API" — the same responseType:'blob' shape
+ * fetchAttachmentBlob already uses — so the next download button cannot
+ * rediscover the bug.
+ */
+export async function downloadAuthed(path: string, filename: string): Promise<void> {
+  const response = await apiClient.get(path, { responseType: 'blob' })
+  downloadBlob(filename, response.data as Blob)
 }
 
 export function exportCsv(filename: string, rows: Record<string, unknown>[]): void {

@@ -15,6 +15,11 @@ import type { QueryClient } from '@tanstack/react-query'
  * targeted lists — they know which account changed. An import doesn't, so it
  * pays for the broad sweep.
  *
+ * A snapshot restore widened this again: it is the first operation that can
+ * replace a budget's guide state, wishlist, views, filters, tags and
+ * schedules, so those roots live here rather than in a second, shorter list
+ * at the new call site.
+ *
  * `refetchType: 'all'` on the keys a navigation lands on next: invalidation
  * alone only refetches ACTIVE queries, and right after an import the user is
  * usually navigating — the budget selector after a budget import was the
@@ -35,6 +40,14 @@ export function invalidateAfterImport(qc: QueryClient, budgetId: string | null):
     ['account-hygiene'],
     ['liabilities'],
     ['reconcile-status'],
+    // A snapshot restore is the first operation that can change any of
+    // these: it replaces the whole budget, not just its ledger.
+    ['categories'],
+    ['tags'],
+    ['budgetFilters'],
+    ['budgetViews'],
+    ['scheduled-transactions'],
+    ...(budgetId ? [['guide', budgetId], ['wishlist', budgetId]] : [['guide'], ['wishlist']]),
     ...(budgetId ? [['budgetMonth', budgetId]] : [['budgetMonth']]),
   ]
   return Promise.all([

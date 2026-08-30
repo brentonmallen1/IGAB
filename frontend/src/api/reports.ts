@@ -57,17 +57,19 @@ export function useIncomeExpenseReport(budgetId: string | null, months = 12) {
   })
 }
 
-export function buildExportUrl(
+/** The API path for a transaction export — fed to `downloadAuthed`, never to
+ *  an `<a href>`: the endpoint requires a bearer token that only the axios
+ *  interceptor attaches, so a plain link 401s. */
+export function exportTransactionsPath(
   budgetId: string,
   format: 'csv' | 'json',
   startDate?: string,
   endDate?: string,
 ): string {
-  const base = apiClient.defaults.baseURL ?? ''
   const p = new URLSearchParams({ format })
   if (startDate) p.set('start_date', startDate)
   if (endDate) p.set('end_date', endDate)
-  return `${base}/${budgetId}/reports/export?${p}`
+  return `/${budgetId}/reports/export?${p}`
 }
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────

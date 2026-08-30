@@ -25,6 +25,14 @@ const EXPECTED_ROOTS = [
   'reconcile-status',
   'budgetMonth',
   'budgets',
+  // A snapshot restore replaces the whole budget, not just its ledger.
+  'categories',
+  'tags',
+  'budgetFilters',
+  'budgetViews',
+  'scheduled-transactions',
+  'guide',
+  'wishlist',
 ]
 
 describe('invalidateAfterImport', () => {

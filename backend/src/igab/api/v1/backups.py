@@ -1,6 +1,8 @@
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from igab.api.v1.schemas.backups import (
@@ -11,6 +13,7 @@ from igab.api.v1.schemas.backups import (
     JobStarted,
     RestoreRequest,
 )
+from igab.config import settings
 from igab.dependencies import AdminUser, bearer_scheme
 from igab.domain.exceptions import AuthenticationError
 from igab.services import backup_service
@@ -132,3 +135,22 @@ async def restore_backup(body: RestoreRequest, current_user: AdminUser) -> JobSt
     job_id = backup_service.write_command("restore", file=name, pre_backup=body.pre_backup)
     await backup_service.enter_maintenance_and_watch()
     return JobStarted(job_id=job_id)
+
+
+@router.get("/backups/{name}/download")
+async def download_backup(name: str, current_user: AdminUser) -> FileResponse:
+    """Hand a whole-application backup to the browser.
+
+    Served straight from BACKUPS_DIR, which the API container already mounts,
+    so this works while the agent is offline — the agent makes backups, it is
+    not needed to read one. `.age` files download fine; they are already
+    encrypted, which is the point of them.
+    """
+    checked = backup_service.safe_backup_filename(name)
+    if checked not in {f["name"] for f in backup_service.list_backup_files()}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup file not found")
+    return FileResponse(
+        path=Path(settings.BACKUPS_DIR) / checked,
+        media_type="application/octet-stream",
+        filename=checked,
+    )
