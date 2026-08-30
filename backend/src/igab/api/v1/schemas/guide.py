@@ -97,6 +97,27 @@ class PreferencesUpdate(BaseModel):
     personalization: bool | None = None
     checkup: bool | None = None
     wishlist: bool | None = None
+    #: Consent to the money move turning the Wishlist off implies. Without it
+    #: the server refuses while a wish envelope still holds a balance and says
+    #: how much, so the dialog can state the figure and no request that merely
+    #: says "wishlist: false" moves money on its own.
+    release_wishlist_money: bool = False
+
+
+class WishlistRetirePreview(BaseModel):
+    """What turning the Wishlist off would return to Ready to Assign.
+
+    Served rather than summed on the client from the month's balances: the
+    switch and the endpoint must agree on the figure, and the client cannot see
+    an archived group's envelopes to add them up in the first place.
+    """
+
+    #: Envelopes carrying a balance, named so the dialog can list them.
+    envelopes: list[str]
+    #: Their total, in the current month.
+    available: Decimal
+    #: Nothing to move — the switch may flip with no dialog at all.
+    is_empty: bool
 
 
 class PreferencesResponse(BaseModel):

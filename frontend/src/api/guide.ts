@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiClient } from './client'
+import toast from 'react-hot-toast'
+import { apiClient, apiErrorMessage } from './client'
 import type { SignalKey } from '../content/roadmap'
 
 /** How a concept came to be answered. */
@@ -132,10 +133,32 @@ export function useSetBinding(budgetId: string) {
   })
 }
 
+/** What turning the Wishlist off would return to Ready to Assign.
+ *
+ *  Served, not summed here from the month's balances: the switch and the
+ *  endpoint have to agree on the figure, and once the group is archived the
+ *  client cannot see its envelopes to add them up at all. */
+export interface WishlistRetirePreview {
+  envelopes: string[]
+  available: string
+  is_empty: boolean
+}
+
+/** Asked at the moment the switch is clicked, not held in a cache: the answer
+ *  is a money figure the dialog is about to state, and a stale one would name
+ *  an amount that is no longer there. */
+export function fetchWishlistRetirePreview(budgetId: string) {
+  return apiClient
+    .get<WishlistRetirePreview>(`/${budgetId}/guide/wishlist/retire-preview`)
+    .then((r) => r.data)
+}
+
 export function useSetGuidePreferences(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (changes: Partial<GuidePreferences>) =>
+    mutationFn: (
+      changes: Partial<GuidePreferences> & { release_wishlist_money?: boolean }
+    ) =>
       apiClient
         .put<GuidePreferences>(`/${budgetId}/guide/preferences`, changes)
         .then((r) => r.data),
@@ -148,6 +171,10 @@ export function useSetGuidePreferences(budgetId: string) {
       qc.invalidateQueries({ queryKey: ['guide', budgetId] })
       qc.invalidateQueries({ queryKey: ['guide-signals', budgetId] })
     },
+    // The server refuses a wishlist-off that would move money without an
+    // explicit confirmation, and its sentence carries the figure. A silent
+    // failure here would look like a switch that simply does not work.
+    onError: (e) => toast.error(apiErrorMessage(e, 'Could not save that setting')),
   })
 }
 

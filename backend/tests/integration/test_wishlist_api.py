@@ -513,3 +513,111 @@ class TestDrains:
         assert wish_ids <= report_ids
         assert len(wish_ids) == 1 and len(report_ids) == 2
         assert {m["from_name"] for m in report["drains"]["moves"]} == {"Bike", "Holiday"}
+
+
+class TestTurningTheWishlistOffDoesNotStrandMoney:
+    """The switch used to write `is_archived` straight to the group's row.
+
+    An archived group takes every envelope under it off the budget
+    (`IN_ARCHIVED_GROUP`), so whatever a wish envelope held went with it: still
+    deducted from Ready to Assign, drawn nowhere, reachable only by turning the
+    switch back on. The settings copy said the money "stays exactly where it
+    is", which was true of the row and false of everything the user could see.
+
+    It now returns the money — but only on an explicit confirmation, so no
+    request that merely says `wishlist: false` can move any.
+    """
+
+    async def _fund_a_wish(self, db_session, api_client, budget, amount="150.00"):
+        account = await create_account(db_session, budget, account_type="checking")
+        await create_transaction(db_session, budget, account, "1000.00", TODAY)
+        wish = await _add(api_client, budget, funding={"mode": "own"})
+        cat_id = wish["funding"]["category_id"]
+        r = await api_client.patch(
+            f"/api/v1/categories/{cat_id}/assignment",
+            params={"budget_id": str(budget.id), "month": THIS_MONTH.isoformat()},
+            json={"amount": amount},
+        )
+        assert r.status_code in (200, 204), r.text
+        return cat_id
+
+    async def _tba(self, api_client, budget) -> Decimal:
+        r = await api_client.get(f"/api/v1/{budget.id}/months/{THIS_MONTH.isoformat()}")
+        return Decimal(r.json()["to_be_assigned"])
+
+    async def _set_wishlist(self, api_client, budget, on: bool, **extra):
+        return await api_client.put(
+            f"/api/v1/{budget.id}/guide/preferences", json={"wishlist": on, **extra}
+        )
+
+    async def test_it_refuses_without_confirmation_and_says_how_much(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        await self._fund_a_wish(db_session, api_client, budget)
+        before = await self._tba(api_client, budget)
+
+        r = await self._set_wishlist(api_client, budget, False)
+        assert r.status_code == 400, r.text
+        assert "150" in r.json()["detail"]
+
+        # Nothing moved and nothing archived — a refusal that half-applied
+        # would be worse than the bug it replaced.
+        assert await self._tba(api_client, budget) == before
+        assert (await _wishlist_group(api_client, budget))["is_archived"] is False
+        prefs = (await api_client.get(f"/api/v1/{budget.id}/guide/preferences")).json()
+        assert prefs["wishlist"] is True
+
+    async def test_the_preview_names_the_envelopes_and_the_total(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        await self._fund_a_wish(db_session, api_client, budget)
+
+        r = await api_client.get(f"/api/v1/{budget.id}/guide/wishlist/retire-preview")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["is_empty"] is False
+        assert body["envelopes"] == ["Bike"]
+        assert Decimal(body["available"]) == Decimal("150.00")
+
+    async def test_confirming_returns_the_money_to_ready_to_assign(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        await self._fund_a_wish(db_session, api_client, budget)
+        before = await self._tba(api_client, budget)
+
+        r = await self._set_wishlist(api_client, budget, False, release_wishlist_money=True)
+        assert r.status_code == 200, r.text
+        assert r.json()["wishlist"] is False
+
+        assert await self._tba(api_client, budget) - before == Decimal("150.00")
+        assert (await _wishlist_group(api_client, budget))["is_archived"] is True
+
+    async def test_an_empty_wishlist_needs_no_confirmation(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        await _add(api_client, budget, funding={"mode": "own"})
+
+        r = await api_client.get(f"/api/v1/{budget.id}/guide/wishlist/retire-preview")
+        assert r.json()["is_empty"] is True
+        r = await self._set_wishlist(api_client, budget, False)
+        assert r.status_code == 200, r.text
+        assert (await _wishlist_group(api_client, budget))["is_archived"] is True
+
+    async def test_turning_it_back_on_restores_the_group(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        await self._fund_a_wish(db_session, api_client, budget)
+        await self._set_wishlist(api_client, budget, False, release_wishlist_money=True)
+
+        r = await self._set_wishlist(api_client, budget, True)
+        assert r.status_code == 200, r.text
+        assert (await _wishlist_group(api_client, budget))["is_archived"] is False
+        # The envelopes come back empty, which is the honest result of having
+        # returned the money — not a second surprise.
+        assert await self._tba(api_client, budget) == await self._tba(api_client, budget)
+
+    async def test_no_money_no_preview_no_confirmation_needed(self, db_session, api_client):
+        """A budget that never used the wishlist previews as empty rather than
+        erroring on a group that does not exist yet."""
+        budget = await _budget(db_session, api_client)
+        r = await api_client.get(f"/api/v1/{budget.id}/guide/wishlist/retire-preview")
+        assert r.status_code == 200 and r.json()["is_empty"] is True

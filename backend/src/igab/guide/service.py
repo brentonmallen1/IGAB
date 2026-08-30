@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Liability
 from igab.domain.dates import month_start
+from igab.domain.exceptions import InvariantViolation
 from igab.guide.bindings import Resolution, resolve_all
 from igab.guide.concepts import (
     CONCEPTS,
@@ -31,6 +32,7 @@ from igab.guide.detection import (
     Finding,
     GuideDetection,
     budget_service_from,
+    category_service_from,
     liability_service_from,
 )
 from igab.guide.findings import CheckupInputs, evaluate, metrics
@@ -50,6 +52,7 @@ from igab.repositories.category_repo import CategoryGroupRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.services.amortization import CascadeDebt
 from igab.services.budget_service import BudgetService
+from igab.services.category_service import CategoryArchivePreview
 from igab.services.liability_service import LiabilityService
 from igab.services.report_service import ReportService
 from igab.services.target_service import TargetService
@@ -84,6 +87,7 @@ class GuideService:
         self.liabilities = liability_service or liability_service_from(session)
         self.targets = target_service or TargetService(TargetRepository(session))
         self.reports = report_service or ReportService(session)
+        self.categories = category_service_from(session, self.budget)
         self.detection = GuideDetection(session, self.budget, self.liabilities)
 
     # ── preferences ──────────────────────────────────────────────────────────
@@ -92,8 +96,25 @@ class GuideService:
         stored = (await self.repo.state(budget_id)).get(PREFS_KEY, {})
         return {**DEFAULT_PREFS, **{k: bool(v) for k, v in stored.items()}}
 
+    async def preview_wishlist_retire(self, budget_id: uuid.UUID) -> CategoryArchivePreview:
+        """What turning the Wishlist off would move, so the switch can say it.
+
+        The same preview archiving a group anywhere else uses, so the figure in
+        the dialog and the money the switch actually returns come from one
+        place. An empty wishlist previews as empty and the switch just flips.
+        """
+        groups = CategoryGroupRepository(self.session)
+        group = await groups.get_by_system_key(budget_id, "wishlist")
+        if group is None:
+            return CategoryArchivePreview()
+        return await self.categories.preview_archive_group(budget_id, group.id, date.today())
+
     async def set_preferences(
-        self, budget_id: uuid.UUID, changes: dict[str, bool]
+        self,
+        budget_id: uuid.UUID,
+        changes: dict[str, bool],
+        *,
+        release_wishlist_money: bool = False,
     ) -> dict[str, bool]:
         current = await self.preferences(budget_id)
         merged = {**current, **changes}
@@ -102,30 +123,55 @@ class GuideService:
         # UI, so nothing downstream has to remember the rule.
         if not merged.get("personalization", True):
             merged["checkup"] = False
-        await self.repo.set_state(budget_id, PREFS_KEY, merged)
+        # The group work goes FIRST, because it can refuse. Storing the
+        # preference before it meant a refused wishlist-off still flipped the
+        # switch: the settings page read "off" while the group sat in the
+        # budget, and the two disagreed until something else refetched.
         if "wishlist" in changes:
             # The Wishlist group follows the switch: off archives it, on brings
             # it back — seeding it the first time.
             #
-            # KNOWN GAP: this writes the flag directly, so it is the one route
-            # left that can archive a group without the refusal
-            # `CategoryService.archive_group` runs. Money in a wish envelope
-            # when the switch goes off is stranded — the group leaves the grid
-            # entirely now, where it only used to grey out. It is caught after
-            # the fact by `account_hygiene._money_in_an_archived_envelope`, not
-            # prevented. Making a preference toggle able to *refuse* is a
-            # product decision, not a mechanical fix, which is why it is
-            # written down here rather than quietly changed.
+            # Through the archive routes, never a column write. An archived
+            # group takes every envelope under it off the budget
+            # (`IN_ARCHIVED_GROUP`), so flipping the flag here used to strand
+            # whatever the wish envelopes held: still deducted from Ready to
+            # Assign, drawn nowhere, reachable only by turning the switch back
+            # on. The hygiene check found it afterwards; nothing prevented it.
             groups = CategoryGroupRepository(self.session)
             if changes["wishlist"]:
                 group = await groups.ensure_system_group(budget_id, "wishlist")
                 if group.is_archived:
-                    await groups.update(group.id, is_archived=False)
+                    await self.categories.unarchive_group(budget_id, group.id)
             else:
                 group = await groups.get_by_system_key(budget_id, "wishlist")
                 if group is not None and not group.is_archived:
-                    await groups.update(group.id, is_archived=True)
+                    await self._retire_wishlist(budget_id, group.id, release_wishlist_money)
+        await self.repo.set_state(budget_id, PREFS_KEY, merged)
         return merged
+
+    async def _retire_wishlist(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, release: bool
+    ) -> None:
+        """Turn the Wishlist off, returning any money in it first.
+
+        The money moves only on an explicit `release`. Refusing by default is
+        what makes the confirmation real: a client that has not asked gets the
+        figure back as an error and can put it in front of the user, and no
+        request that merely says "wishlist: false" can move money on its own.
+        The decision is re-measured here rather than trusted from whatever the
+        dialog was showing.
+        """
+        preview = await self.categories.preview_archive_group(budget_id, group_id, date.today())
+        if preview.blocked_by_balance and not release:
+            names = ", ".join(preview.blocked_by_balance)
+            raise InvariantViolation(
+                f"Your wishlist still holds {preview.available} in {names}. Turning it off "
+                "returns that to Ready to Assign — confirm to continue"
+            )
+        if preview.blocked_by_balance:
+            await self.categories.retire_group(budget_id, group_id)
+        else:
+            await self.categories.archive_group(budget_id, group_id)
 
     # ── step progress ────────────────────────────────────────────────────────
 

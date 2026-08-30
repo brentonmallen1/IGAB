@@ -20,7 +20,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
@@ -320,12 +320,72 @@ class UndoService:
         from `ENTITY_MODELS` rather than being assumed.
         """
         model = ENTITY_MODELS[change.entity_type]
-        for raw_id, fields in (getattr(change, target) or {}).items():
+        payload = getattr(change, target) or {}
+        for raw_id, fields in payload.items():
+            if raw_id.startswith("_"):
+                continue
             entity = await self.session.get(model, uuid.UUID(str(raw_id)))
             if entity is None:
                 continue
             for name, value in fields.items():
                 setattr(entity, name, coerce_value(model, name, value))
+        # Retiring the wishlist returns its envelopes' money to Ready to
+        # Assign on the way out, so undoing it has to put the money back as
+        # well as the flag — half an inverse would leave the envelopes on the
+        # budget showing nothing in them. Only the `before` side carries these;
+        # redoing re-clears them below.
+        if target == "before":
+            await self._restore_assignments(payload)
+        else:
+            # Redo: clear them again. The list of what was cleared lives once,
+            # on the `before` side, rather than being written into both.
+            cleared = (change.before or {}).get("_assignments") or []
+            if cleared:
+                await self.session.execute(
+                    delete(BudgetAssignment).where(
+                        BudgetAssignment.category_id.in_(
+                            [uuid.UUID(r["category_id"]) for r in cleared]
+                        )
+                    )
+                )
+
+    async def _restore_assignments(self, before: dict[str, Any]) -> None:
+        """Add back the assignment rows an operation removed.
+
+        Matched by (category, month) — the unique key — not by row id: an
+        out-of-order undo can already have written an inverse-delta row for the
+        same month, and an id-keyed insert then collides with it. Additive, so
+        the two undos compose to the arithmetic truth instead of the last one
+        winning.
+
+        Shared by the category delete and by retiring the wishlist, which both
+        return an envelope's money to Ready to Assign by removing these rows.
+        The delete learned the (category, month) rule the hard way; a second
+        copy for the wishlist would have started out not knowing it.
+        """
+        for row in before.get("_assignments") or []:
+            month = datetime.date.fromisoformat(row["month"])
+            category_id = uuid.UUID(row["category_id"])
+            existing = (
+                await self.session.execute(
+                    select(BudgetAssignment).where(
+                        BudgetAssignment.category_id == category_id,
+                        BudgetAssignment.month == month,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                existing.assigned = existing.assigned + Decimal(row["assigned"])
+            else:
+                self.session.add(
+                    BudgetAssignment(
+                        id=uuid.UUID(row["id"]),
+                        budget_id=uuid.UUID(row["budget_id"]),
+                        category_id=category_id,
+                        month=month,
+                        assigned=Decimal(row["assigned"]),
+                    )
+                )
 
     async def _apply_order(self, change: ChangeLog, force: bool, *, target: str) -> None:
         """Put a reordered list back the way the record says.
@@ -614,35 +674,8 @@ class UndoService:
                     )
                 )
 
-        # 3. Assignments: add back what the delete removed. Matched by
-        #    (category, month) — the unique key — not by row id: an
-        #    out-of-order undo can already have written an inverse-delta row
-        #    for the same month (2b above), and an id-keyed insert then
-        #    collides with it. Additive, so the two undos compose to the
-        #    arithmetic truth instead of the last one winning.
-        for row in before.get("_assignments") or []:
-            month = datetime.date.fromisoformat(row["month"])
-            category_id = uuid.UUID(row["category_id"])
-            existing = (
-                await self.session.execute(
-                    select(BudgetAssignment).where(
-                        BudgetAssignment.category_id == category_id,
-                        BudgetAssignment.month == month,
-                    )
-                )
-            ).scalar_one_or_none()
-            if existing is not None:
-                existing.assigned = existing.assigned + Decimal(row["assigned"])
-            else:
-                self.session.add(
-                    BudgetAssignment(
-                        id=uuid.UUID(row["id"]),
-                        budget_id=uuid.UUID(row["budget_id"]),
-                        category_id=category_id,
-                        month=month,
-                        assigned=Decimal(row["assigned"]),
-                    )
-                )
+        # 3. Assignments: add back what the delete removed.
+        await self._restore_assignments(before)
         await self.session.flush()
 
         # 4. Payee defaults and scheduled transactions — each restored to the

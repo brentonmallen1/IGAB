@@ -675,20 +675,79 @@ class CategoryService:
         """Bring a group back. No money is involved, so nothing can block it."""
         await self._set_group_archived(budget_id, group_id, archived=False)
 
+    async def retire_group(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, *, month: date | None = None
+    ) -> Decimal:
+        """Archive a group, returning what its envelopes hold to Ready to Assign.
+
+        `archive_group` refuses over a balance because archiving one envelope
+        is a tidying act and moving someone's money to achieve it is not the
+        caller's decision to make. Switching a whole *feature* off is a
+        different act: there is no envelope left to move the money into, so
+        refusing would be a switch that cannot be switched. The money goes back
+        where it came from and the caller states the figure first.
+
+        Returns what actually reached Ready to Assign — measured against the
+        summary rather than summed from the rows removed, for the reason
+        `delete_categories` gives: an assignment already spent against never
+        comes back, and two formulas would drift.
+
+        A link or a live schedule still refuses. Neither is fixed by returning
+        money, and sweeping past them would strand a different thing.
+        """
+        as_of = first_of_month(month or date.today())
+        preview = await self.preview_archive_group(budget_id, group_id, as_of)
+        if preview.blocked_by_link:
+            raise InvariantViolation(
+                f"{preview.blocked_by_link[0]} belongs to a card or a tracked debt. "
+                "Its envelope is maintained by that account, not by you"
+            )
+        if preview.blocked_by_schedule:
+            raise InvariantViolation(
+                f"{preview.blocked_by_schedule[0]} still has a scheduled transaction filing "
+                "into it. Re-file or delete that schedule first"
+            )
+        tba_before = (await self.budget_service.get_budget_summary(budget_id, as_of)).to_be_assigned
+        bookkeeping: dict[str, Any] = {}
+        if preview.category_ids:
+            await self._clear_assignments(preview.category_ids, bookkeeping)
+        await self.session.flush()
+        released = (
+            await self.budget_service.get_budget_summary(budget_id, as_of)
+        ).to_be_assigned - tba_before
+        await self._set_group_archived(
+            budget_id, group_id, archived=True, released=bookkeeping.get("_assignments")
+        )
+        return released
+
     async def _set_group_archived(
-        self, budget_id: uuid.UUID, group_id: uuid.UUID, *, archived: bool
+        self,
+        budget_id: uuid.UUID,
+        group_id: uuid.UUID,
+        *,
+        archived: bool,
+        released: list[dict[str, Any]] | None = None,
     ) -> None:
         """The group half of `_set_archived`, recorded in the same shape so one
-        undo handler covers both."""
+        undo handler covers both.
+
+        `released` carries assignment rows the caller removed on the way in, so
+        the whole operation is one change row and one undo. Retiring the
+        wishlist is the only caller that has any: the flag and the money moved
+        together, and reversing half of it would put the envelopes back on the
+        budget showing nothing in them.
+        """
         group = await self.group_repo.get(group_id)
         if group is None:
             raise NotFoundError("category_group", str(group_id))
-        before = {
+        before: dict[str, Any] = {
             str(group.id): {
                 "is_archived": group.is_archived,
                 "archived_at": _iso(group.archived_at),
             }
         }
+        if released:
+            before["_assignments"] = released
         stamp = datetime.now(UTC) if archived else None
         group.is_archived = archived
         group.archived_at = stamp

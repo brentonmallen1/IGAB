@@ -412,3 +412,82 @@ class TestTheListingSaysWhyARowIsThere:
 
         await svc.unarchive_categories(budget.id, [cat.id])
         assert not any(r.id == cat.id for r in await svc.list_archived(budget.id, AUG))
+
+
+class TestRetiringAGroupReturnsItsMoney:
+    """`archive_group` refuses over a balance because archiving one envelope is
+    a tidying act, and moving someone's money to achieve it is not the caller's
+    decision. Switching a whole feature off is a different act — there is no
+    envelope left to move the money into — so `retire_group` returns it.
+
+    One change row for both halves, because undoing half of it would put the
+    envelopes back on the budget showing nothing in them.
+    """
+
+    async def test_the_money_reaches_ready_to_assign(self, db_session):
+        services, budget, _checking, group, cat = await _world(db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
+        before = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
+
+        released = await _svc(services, db_session).retire_group(budget.id, group.id, month=AUG)
+
+        after = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
+        assert released == D("40.00")
+        assert after - before == D("40.00")
+        await db_session.refresh(group)
+        assert group.is_archived is True
+
+    async def test_a_link_still_refuses(self, db_session):
+        """Returning money does not fix a card envelope, so this is not swept
+        past — it would strand the card instead of the money."""
+        services, budget, _checking, _group, _cat = await _world(db_session)
+        visa = await create_account(
+            db_session, budget, "Sapphire Visa", account_type="credit_card"
+        )
+        linked = await ensure_payment_category(db_session, visa)
+        assert linked is not None
+        with pytest.raises(InvariantViolation):
+            await _svc(services, db_session).retire_group(
+                budget.id, linked.category_group_id, month=AUG
+            )
+
+    async def test_a_schedule_still_refuses(self, db_session):
+        services, budget, checking, group, cat = await _world(db_session)
+        await create_scheduled_transaction(
+            db_session, budget, checking, "-15.00", "monthly", SEP, category=cat
+        )
+        with pytest.raises(InvariantViolation):
+            await _svc(services, db_session).retire_group(budget.id, group.id, month=AUG)
+
+    async def test_undo_puts_the_money_and_the_group_back(self, db_session):
+        from igab.db.models import ChangeLog
+        from igab.services.undo_service import UndoService
+        from sqlalchemy import select
+
+        services, budget, _checking, group, cat = await _world(db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
+        before = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
+
+        await _svc(services, db_session).retire_group(budget.id, group.id, month=AUG)
+        await db_session.flush()
+
+        change = (
+            await db_session.execute(
+                select(ChangeLog)
+                .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "archive")
+                .order_by(ChangeLog.created_at.desc())
+            )
+        ).scalars().first()
+        assert change is not None
+
+        await UndoService(db_session).undo_change(budget.id, change.id)
+        await db_session.flush()
+
+        await db_session.refresh(group)
+        assert group.is_archived is False
+        # Both halves, not one: the envelope holds its money again and Ready to
+        # Assign is back where it started.
+        after = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
+        assert after == before
+        balance = await services.budgets.get_category_balance(cat.id, AUG)
+        assert balance.available == D("40.00")
