@@ -137,9 +137,15 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
           `GROUP_IS_CARD_ONLY`, the same expression the grid filters on.
 
         The third was the gap. The grid dropped card-only groups while this
-        rule allowed omitting only the first two, so group reorder was refused
-        outright on every budget with one — permanently on any YNAB import,
-        where "Credit Card Payments" arrives visible and non-system.
+        rule allowed omitting only the first two.
+
+        What made it hard to see is that it depended on the grid's **show
+        hidden** toggle. "Credit Card Payments" is created hidden, so with the
+        toggle off it is not in the client's list at all, nothing is dropped,
+        and reorder works. Turn the toggle on and the group appears, the grid
+        drops it as card-only, and dragging goes dead with nothing on screen
+        connecting the two. One person could reorder and another could not, on
+        the same build and the same budget.
 
         An omitted group keeps its old position among the others (stable
         interleave), so it re-appears where the user left it when shown. The

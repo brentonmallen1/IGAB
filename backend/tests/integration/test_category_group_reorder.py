@@ -169,10 +169,18 @@ class TestCardOnlyGroups:
     the client cannot list it — and until now the server still demanded it.
 
     The grid dropped card-only groups while `reorder` allowed omitting only
-    hidden or system ones, so dragging a group came back 400 on any budget with
-    one. Permanently on a YNAB import: the native path creates "Credit Card
-    Payments" hidden, but the importer creates it visible and non-system, and
-    neither flag was the one the grid was actually filtering on.
+    hidden or system ones, so neither flag was the one the grid was actually
+    filtering on.
+
+    It presented as flakiness because it hinges on the grid's **show hidden**
+    toggle. "Credit Card Payments" is created hidden (`card_payment.py`), so
+    with the toggle off it never reaches the client and reorder works; turn it
+    on and the group appears, gets dropped as card-only, and dragging dies. Two
+    people on the same build and the same budget saw different behaviour.
+
+    A card-only group that is *visible* — the toggle irrelevant, reorder dead
+    either way — is reachable by unhiding the group, which nothing prevents.
+    Both shapes are covered below.
     """
 
     async def _with_card_group(self, db_session, user=None, hidden=False):

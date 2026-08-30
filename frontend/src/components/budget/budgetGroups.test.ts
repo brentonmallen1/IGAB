@@ -71,12 +71,29 @@ describe('drawnGroups', () => {
     expect(drawnGroups(undefined)).toBeUndefined()
   })
 
+  it('reorders the same way with hidden groups shown and hidden', () => {
+    // The bug's actual trigger, and why it read as a version or browser
+    // difference: the card group is created hidden, so "show hidden" decides
+    // whether it reaches the client at all. Under the old identity gate the
+    // toggle silently turned dragging off. The answer must not depend on it.
+    const withoutHidden = [group('bills'), group('wants')]
+    const withHidden = [...withoutHidden, group('cards', false, true)]
+    const gate = (all: ReturnType<typeof group>[]) => {
+      const drawn = drawnGroups(all)
+      return (drawn?.length ?? 0) > 1 && drawn?.length === drawnGroups(all)?.length
+    }
+    expect(gate(withoutHidden)).toBe(true)
+    expect(gate(withHidden)).toBe(true)
+    expect(drawnGroups(withHidden)?.map((g) => g.id)).toEqual(['bills', 'wants'])
+  })
+
   it('still allows reordering once a card-only group is dropped', () => {
     // The regression this replaced: the gate compared array identity, and this
-    // helper only preserved it when nothing was dropped. So a budget that
-    // actually had a card group lost its drag handles with nothing to explain
-    // it — and on a YNAB import, where "Credit Card Payments" arrives visible
-    // and non-system, permanently.
+    // helper only preserved it when nothing was dropped. So the moment a card
+    // group reached the client the drag handles vanished with nothing to
+    // explain it — which is why it read as flaky. The card group is hidden, so
+    // it only reaches the client with "show hidden" on: the same build and the
+    // same budget reordered fine for one person and not for another.
     const groups = [group('cards', false, true), group('bills'), group('wants')]
     const drawn = drawnGroups(groups)
     const visible = drawn
