@@ -43,6 +43,7 @@ from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
 )
+from igab.repositories.category_filters import BUDGETED_ENVELOPE, SPENT_ENVELOPE
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
@@ -415,9 +416,7 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Category.budget_id == budget_id,
-                Category.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_system == False,  # noqa: E712
+                BUDGETED_ENVELOPE,
             )
         )
         cats = {str(r.id): r for r in (await self.session.execute(cat_q)).all()}
@@ -892,9 +891,7 @@ class ReportService:
             .where(
                 BudgetAssignment.budget_id == budget_id,
                 BudgetAssignment.month.in_(months),
-                Category.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_system == False,  # noqa: E712
+                BUDGETED_ENVELOPE,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -1298,9 +1295,7 @@ class ReportService:
             .where(
                 BudgetAssignment.budget_id == budget_id,
                 BudgetAssignment.month.in_(months_in_range),
-                Category.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_system == False,  # noqa: E712
+                BUDGETED_ENVELOPE,
             )
         )
 
@@ -1388,7 +1383,7 @@ class ReportService:
             .where(
                 BudgetAssignment.budget_id == budget_id,
                 BudgetAssignment.month.in_(months_list),
-                CategoryGroup.is_system == False,  # noqa: E712
+                BUDGETED_ENVELOPE,
                 Category.is_deleted == False,  # noqa: E712
             )
         )
@@ -1474,9 +1469,7 @@ class ReportService:
             .where(
                 BudgetAssignment.budget_id == budget_id,
                 BudgetAssignment.month.in_(months_list),
-                Category.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_system == False,  # noqa: E712
+                BUDGETED_ENVELOPE,
             )
         )
         spend_q = (
@@ -1498,9 +1491,7 @@ class ReportService:
                 Transaction.date <= _last_day(months_list[-1]),
                 LEAF,
                 CASH_FLOW_ROW,
-                Category.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_deleted == False,  # noqa: E712
-                CategoryGroup.is_system == False,  # noqa: E712
+                SPENT_ENVELOPE,
             )
         )
         assignments = (await self.session.execute(assign_q)).all()
@@ -1623,7 +1614,7 @@ class ReportService:
                 Transaction.date >= start,
                 LEAF,
                 CASH_FLOW_ROW,
-                CategoryGroup.is_system == False,  # noqa: E712
+                SPENT_ENVELOPE,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -1731,7 +1722,7 @@ class ReportService:
                 Transaction.date <= end_date,
                 LEAF,
                 CASH_FLOW_ROW,
-                CategoryGroup.is_system == False,  # noqa: E712
+                SPENT_ENVELOPE,
             )
         )
         if category_ids:
@@ -1911,7 +1902,7 @@ class ReportService:
                 Transaction.date >= start,
                 LEAF,
                 CASH_FLOW_ROW,
-                CategoryGroup.is_system == False,  # noqa: E712
+                SPENT_ENVELOPE,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -2966,7 +2957,7 @@ class ReportService:
                 LEAF,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                CategoryGroup.is_system == False,  # noqa: E712
+                SPENT_ENVELOPE,
             )
             .group_by(
                 Category.id,

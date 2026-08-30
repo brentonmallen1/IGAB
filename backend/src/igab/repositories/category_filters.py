@@ -129,6 +129,44 @@ IS_CATEGORIZABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(LINKED))
 #: row ("The Watchman's Arithmetic").
 SPENDABLE = and_(LIVE_CATEGORY, not_(LINKED_TO_CARD), not_(IN_SYSTEM_GROUP))
 
+#: The two envelope rules the reports ask with. They differ by one term, on
+#: purpose, and the difference is stated here because it was previously
+#: unstated and had drifted ten ways across ten queries.
+#:
+#: `report_service` wrote these out by hand at ten call sites and no two
+#: clusters agreed. Five queries over assignments: four excluded categories
+#: under a soft-deleted group, one did not. Five over spending rows: one
+#: excluded them, four did not. So `budget_vs_actual` and `cumulative_variance`
+#: gave different answers about the same assignments, and `plan_vs_reality`
+#: and `spending_grouped` about the same spending. That is a budgeting app
+#: contradicting itself, which is the failure this module exists to prevent.
+#:
+#: **Neither excludes a soft-deleted GROUP.** A live category under a deleted
+#: group is a real, reachable state — `UNDER_DELETED_GROUP` below is the check
+#: that reports it — and `get_budget_summary` counts it, because
+#: `CategoryRepository.get_all` filters the category's `is_deleted` and not the
+#: group's. A report that drops it disagrees with the budget page it reports
+#: on, silently and in the shrinking direction. The anomaly gets named by the
+#: integrity check and repaired; it does not get hidden by the reports.
+#:
+#: The one term that differs is the category's own liveness:
+#:
+#: - **`BUDGETED_ENVELOPE`** — where the budget PLANS money. Excludes a deleted
+#:   category, because `get_budget_summary` does, and a plan-vs-actual report
+#:   whose plan disagrees with the budget grid is worse than no report.
+#: - **`SPENT_ENVELOPE`** — where money WAS spent. Keeps a deleted category:
+#:   the money moved, and deleting the envelope afterwards does not unspend it.
+#:   Under-reporting spending is the dangerous direction for this app.
+#:
+#: On the happy path the two agree, which is why the divergence went unnoticed:
+#: `CategoryService.delete_categories` calls `_clear_assignments` and
+#: `_retarget_transactions`, so a deleted category is left holding neither. The
+#: gap opens only on rows an older delete path or an import left behind — and
+#: those are exactly the rows a person would notice missing from a total.
+#: Pinned by `test_report_envelope_rules.py`, which fails if the gap widens.
+BUDGETED_ENVELOPE = and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP))
+SPENT_ENVELOPE = not_(IN_SYSTEM_GROUP)
+
 #: A group holding nothing but card set-aside envelopes. The budget grid never
 #: draws it — every one of its rows belongs to the cards section — so
 #: "Credit Card Payments" appears as no header at all, even where hidden groups
