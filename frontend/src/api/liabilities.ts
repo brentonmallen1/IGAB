@@ -10,6 +10,8 @@ export type LiabilityType =
   | 'medical'
   | 'other'
 
+export type MinimumPaymentKind = 'fixed' | 'percent_of_balance'
+
 export interface Liability {
   id: string
   budget_id: string
@@ -25,6 +27,18 @@ export interface Liability {
   /** Null until the terms are filled in — see terms_complete */
   interest_rate: number | null
   minimum_payment: number | null
+  /** A card's minimum is usually a rule — "2% of the balance, or $35" —
+   *  rather than a number, and a stored number makes every projection
+   *  optimistic. `minimum_payment` stays authoritative for 'fixed'.
+   *  Home: backend/src/igab/domain/minimum_payment.py. */
+  minimum_payment_kind: MinimumPaymentKind
+  minimum_payment_percent: number | null
+  minimum_payment_floor: number | null
+  minimum_payment_plus_interest: boolean
+  /** What the issuer asks for at TODAY'S balance. Computed on the server,
+   *  which owns the balance and the interest; the client owns neither and
+   *  must not recompute it. Null when there is no usable rule. */
+  minimum_payment_due_now: number | null
   /** False = no APR/minimum on file yet, so every projection below is absent
    * rather than zero. The one flag to branch on. */
   terms_complete: boolean
@@ -80,7 +94,12 @@ export interface LiabilityCreate {
    *  linked account, and the server drops anything sent here. */
   liability_type?: LiabilityType
   interest_rate: number
-  minimum_payment: number
+  /** The whole payment for 'fixed'; omitted for a percentage rule. */
+  minimum_payment?: number | null
+  minimum_payment_kind?: MinimumPaymentKind
+  minimum_payment_percent?: number | null
+  minimum_payment_floor?: number | null
+  minimum_payment_plus_interest?: boolean
   linked_account_id?: string | null
   manual_balance?: number | null
   origination_date?: string | null

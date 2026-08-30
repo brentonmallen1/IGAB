@@ -23,6 +23,8 @@ import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoM
 import { HelpCircle } from 'lucide-react'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
+import { BudgetSnapshotsPanel } from '../../components/settings/BudgetSnapshotsPanel/BudgetSnapshotsPanel'
+import { visibleSettingsSections } from './settingsSections'
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { TagsPanel } from '../../components/settings/TagsPanel'
 import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
@@ -155,25 +157,13 @@ export function SettingsPage() {
   // Both default on; the server is the source of truth once it answers.
   const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true, wishlist: true }
 
-  const sections: { id: string; label: string; warn?: string }[] = [
-    { id: 'appearance', label: 'Appearance' },
-    { id: 'budget', label: 'Budget' },
-    ...(budgetId ? [{ id: 'tags', label: 'Tags' }] : []),
-    ...(budgetId ? [{ id: 'guide', label: 'Guide' }] : []),
-    { id: 'mobile', label: 'Mobile' },
-    ...(budgetId ? [{ id: 'accounts', label: 'Accounts' }] : []),
-    ...(budgetId ? [{ id: 'integrity', label: 'Data Integrity' }] : []),
-    { id: 'data', label: 'Backups' },
-    { id: 'updates', label: 'Updates' },
-    {
-      id: 'simplefin',
-      label: 'SimpleFIN',
-      warn: sfConfig && !sfConfig.configured ? 'Bank sync is not configured' : undefined,
-    },
-    { id: 'ai', label: 'AI' },
-    { id: 'account', label: 'Account' },
-    ...(me?.is_admin ? [{ id: 'users', label: 'Users' }] : []),
-  ]
+  // The list itself lives in settingsSections.ts, because the command palette
+  // builds a row per section from the same array and the same gates.
+  const sections = visibleSettingsSections({
+    budgetId,
+    isAdmin: !!me?.is_admin,
+    sfWarn: sfConfig && !sfConfig.configured ? 'Bank sync is not configured' : undefined,
+  })
 
   // Deep links (e.g. /settings#integrity from the command palette) scroll to
   // their section once the page renders
@@ -600,12 +590,30 @@ export function SettingsPage() {
         </Surface>
       )}
 
-      {/* Backups */}
-      <Surface as="section" className="settings-section" id="data" title="Backups">
-        <div className="settings-section__body">
-          <BackupsPanel />
-        </div>
-      </Surface>
+      {/* This budget's own backups — a file holding one budget, which is what
+          makes a per-budget list possible at all. The panel below backs up the
+          whole installation and cannot be filtered down to one budget. */}
+      {currentBudget && (
+        <Surface
+          as="section"
+          className="settings-section"
+          id="budget-backups"
+          title="Budget Backups"
+        >
+          <div className="settings-section__body">
+            <BudgetSnapshotsPanel budgetId={currentBudget.id} budgetName={currentBudget.name} />
+          </div>
+        </Surface>
+      )}
+
+      {/* Whole-application backups. Admin-only, matching the endpoints. */}
+      {me?.is_admin && (
+        <Surface as="section" className="settings-section" id="data" title="Backups">
+          <div className="settings-section__body">
+            <BackupsPanel />
+          </div>
+        </Surface>
+      )}
 
       {/* Updates */}
       <Surface as="section" className="settings-section" id="updates" title="Updates">

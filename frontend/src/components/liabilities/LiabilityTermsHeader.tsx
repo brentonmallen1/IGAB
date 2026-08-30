@@ -4,6 +4,7 @@ import { useLiabilities } from '../../api/liabilities'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useUIStore } from '../../stores/uiStore'
 import './LiabilityTermsHeader.css'
+import { describeMinimumRule } from './minimumPaymentCopy'
 
 interface Props {
   budgetId: string
@@ -42,6 +43,8 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
     ? liability.live_never_pays_off
     : liability.baseline_never_pays_off
 
+  const minimumRule = describeMinimumRule(liability, formatMoney)
+
   return (
     <div className={`liability-terms ${termsSet ? '' : 'liability-terms--empty'}`}>
       <div className="liability-terms__items">
@@ -53,11 +56,16 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
         </div>
         <div className="liability-terms__item">
           <span className="liability-terms__value">
-            {liability.minimum_payment === null
+            {/* The computed figure, not the stored one: for a percentage rule
+                they are different numbers, and the one on screen has to be
+                the one the projections used. Served, because the server owns
+                the balance and the interest. */}
+            {liability.minimum_payment_due_now === null
               ? NOT_SET
-              : formatMoney(Number(liability.minimum_payment))}
+              : formatMoney(Number(liability.minimum_payment_due_now))}
           </span>
           <span className="liability-terms__label">Minimum payment</span>
+          {minimumRule && <span className="liability-terms__sub">{minimumRule}</span>}
         </div>
         <div className="liability-terms__item">
           <span className="liability-terms__value">

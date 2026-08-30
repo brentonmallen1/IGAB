@@ -31,6 +31,13 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     balance_source: 'ledger',
     interest_rate: null,
     minimum_payment: null,
+    minimum_payment_kind: 'fixed',
+    minimum_payment_percent: null,
+    minimum_payment_floor: null,
+    minimum_payment_plus_interest: false,
+    // Follows minimum_payment: the server computes it from a usable rule, so
+    // "no terms entered" means no figure either.
+    minimum_payment_due_now: null,
     terms_complete: false,
     origination_date: null,
     original_principal: null,

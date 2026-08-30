@@ -1,0 +1,89 @@
+/* Only what is genuinely new here. The table, modal and overlay come from
+   BackupsPanel.css — it is the same job, and a second copy of that visual
+   language would drift from it. */
+
+.snap-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.snap-row-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  justify-content: flex-end;
+}
+
+.snap-file-btn {
+  cursor: pointer;
+}
+
+.snap-upload {
+  align-items: flex-start;
+}
+
+.snap-inspection {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+}
+
+.snap-inspection__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.snap-inspection__meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.snap-inspection__refusals,
+.snap-inspection__warnings {
+  margin: 0 0 var(--spacing-sm);
+  padding-left: var(--spacing-lg);
+  font-size: 12px;
+}
+
+/* Refusals are the reason nothing will happen; warnings are things to know
+   about a file that will still load. Different weight, deliberately. */
+.snap-inspection__refusals {
+  color: var(--color-danger);
+}
+
+.snap-inspection__warnings {
+  color: var(--text-secondary);
+}
+
+.snap-note {
+  margin: 0 0 var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.snap-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-md);
+  font-size: 13px;
+}
+
+.snap-confirm input {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.snap-confirm input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}

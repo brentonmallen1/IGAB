@@ -548,7 +548,14 @@ def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
     accounts = []
     for name in sorted(counts):
         implied = balances.get(name, Decimal("0"))
-        suggested_type, suggested_on_budget, needs_review = suggest_account_type(name, implied)
+        # An IGAB export carries the real types in Accounts.csv, so a
+        # re-import is two clicks rather than a re-mapping chore. YNAB's own
+        # export does not, and then the name is all there is to go on.
+        known = ynab_budget.account_types.get(name)
+        if known is not None:
+            suggested_type, suggested_on_budget, needs_review = known[0], known[1], False
+        else:
+            suggested_type, suggested_on_budget, needs_review = suggest_account_type(name, implied)
         accounts.append(
             YNABAccountPreview(
                 name=name,

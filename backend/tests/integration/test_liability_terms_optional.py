@@ -394,3 +394,98 @@ class TestApiSurface:
         (row,) = body["items"]
         assert row["never_pays_off"] is False
         assert row["total_interest_remaining"] is None
+
+
+class TestAPartialRuleIsStillMissingTerms:
+    """The same contract, in the new shape.
+
+    A minimum payment can now be a rule, and a rule can be half-entered in
+    ways a single number could not. Every one of them has to read as absent —
+    the seventeen cases above exist because "not known" arriving as zero puts
+    `never_pays_off=True` beside a total-interest figure in a report.
+    """
+
+    async def test_a_percent_with_no_floor_is_incomplete(self, db_session):
+        """Not merely imprecise. Under a pure percentage the balance
+        asymptotes, so a projection would draw a curve to infinity — the
+        floor is what makes the debt end."""
+        service, _, _, liability = await _managed_loan(db_session, interest_rate=Decimal("18"))
+        liability.minimum_payment = None
+        liability.minimum_payment_kind = "percent_of_balance"
+        liability.minimum_payment_percent = Decimal("2")
+        await db_session.flush()
+
+        assert service.terms_complete(liability) is False
+        status = await service.get_status(liability)
+        assert status.baseline is None
+        assert status.terms_complete is False
+
+    async def test_a_kind_with_nothing_filled_in_is_incomplete(self, db_session):
+        service, _, _, liability = await _managed_loan(db_session, interest_rate=Decimal("18"))
+        liability.minimum_payment = None
+        liability.minimum_payment_kind = "percent_of_balance"
+        await db_session.flush()
+
+        assert service.terms_complete(liability) is False
+        assert (await service.get_status(liability)).baseline is None
+
+    async def test_a_floor_with_no_percent_is_incomplete(self, db_session):
+        service, _, _, liability = await _managed_loan(db_session, interest_rate=Decimal("18"))
+        liability.minimum_payment = None
+        liability.minimum_payment_kind = "percent_of_balance"
+        liability.minimum_payment_floor = Decimal("35")
+        await db_session.flush()
+
+        assert service.terms_complete(liability) is False
+
+    async def test_a_complete_percent_rule_projects(self, db_session):
+        service, _, _, liability = await _managed_loan(db_session, interest_rate=Decimal("18"))
+        liability.minimum_payment = None
+        liability.minimum_payment_kind = "percent_of_balance"
+        liability.minimum_payment_percent = Decimal("3")
+        liability.minimum_payment_floor = Decimal("50")
+        await db_session.flush()
+
+        assert service.terms_complete(liability) is True
+        status = await service.get_status(liability)
+        assert status.baseline is not None
+        assert not status.baseline.never_pays_off
+
+    async def test_a_fixed_amount_still_means_what_it_meant(self, db_session):
+        """Every row that existed before this feature is kind='fixed' with its
+        stored amount, and nothing about it changes."""
+        service, _, _, liability = await _managed_loan(
+            db_session, interest_rate=Decimal("18"), minimum_payment=Decimal("250.00")
+        )
+        assert liability.minimum_payment_kind == "fixed"
+        assert service.terms_complete(liability) is True
+        assert (await service.get_status(liability)).baseline is not None
+
+
+class TestTheRuleCostsMoreThanItsSnapshot:
+    async def test_a_percent_card_pays_off_later_and_costs_more(self, db_session):
+        """The asymmetry that makes the rule worth storing. Projecting the
+        same card from the figure on one statement is optimistic in both
+        directions, and this is how much."""
+        service, _, _, liability = await _managed_loan(
+            db_session, interest_rate=Decimal("22"), balance="-4000.00"
+        )
+        liability.minimum_payment = None
+        liability.minimum_payment_kind = "percent_of_balance"
+        liability.minimum_payment_percent = Decimal("3")
+        liability.minimum_payment_floor = Decimal("50")
+        await db_session.flush()
+        ruled = await service.get_status(liability)
+
+        # The same card, entered the old way: month one's figure as a flat
+        # amount. 3% of 4000 = 120.
+        liability.minimum_payment_kind = "fixed"
+        liability.minimum_payment = Decimal("120.00")
+        liability.minimum_payment_percent = None
+        liability.minimum_payment_floor = None
+        await db_session.flush()
+        flat = await service.get_status(liability)
+
+        assert ruled.baseline is not None and flat.baseline is not None
+        assert len(ruled.baseline.schedule) > len(flat.baseline.schedule)
+        assert ruled.baseline.total_interest > flat.baseline.total_interest

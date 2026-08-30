@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type { Liability } from '../../api/liabilities'
 import { useFormatters } from '../../hooks/useFormatters'
 import './PayoffPill.css'
+import { minimumDeclines } from './minimumPaymentCopy'
 
 interface Props {
   liability: Liability
@@ -69,7 +70,13 @@ export function PayoffPill({ liability }: Props) {
   const liveNever = liability.has_live_projection && liability.live_never_pays_off
   const baselineNever = liability.baseline_never_pays_off
   const interestNow = formatMoney(Number(liability.monthly_interest_now))
-  const minimum = formatMoney(Number(liability.minimum_payment))
+  // The computed figure, not the stored one — for a percentage rule they are
+  // different numbers, and the copy below quotes it against this month's
+  // interest.
+  const minimum = formatMoney(Number(liability.minimum_payment_due_now))
+  // ...and it will not be that number next month. Saying so is the difference
+  // between a fact and a projection someone later finds was wrong.
+  const declines = minimumDeclines(liability)
 
   // The warning must say WHICH payments fall short — "won't pay this off"
   // alone reads as "won't pay it off early".
@@ -104,7 +111,8 @@ export function PayoffPill({ liability }: Props) {
         <div>
           <div className="payoff-pill__main">Won't pay off at the minimum payment</div>
           <div className="payoff-pill__sub">
-            The {minimum} minimum doesn't cover this month's ~{interestNow} interest — your
+            The {minimum} minimum{declines ? ' this month' : ''} doesn't cover this month's ~
+            {interestNow} interest{declines ? ', and it falls as the balance does' : ''} — your
             actual payments decide the real date
           </div>
         </div>

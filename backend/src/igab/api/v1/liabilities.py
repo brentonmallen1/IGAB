@@ -73,6 +73,25 @@ async def _validate_linked_account(
         )
 
 
+def _minimum_due_now(liability, balance: Decimal) -> Decimal | None:
+    """What the issuer asks for at today's balance.
+
+    `billed`, not `due`: nobody is asked for $35 against a $12 balance, and
+    the number on screen should be one a person could actually be charged.
+    The scheduling answer — what the rule consumes in a payoff cascade — is
+    `due`, and it stays inside the projections.
+    """
+    rule = LiabilityService.minimum_payment_rule(liability)
+    if not rule.usable:
+        return None
+    monthly_interest = (
+        quantize_cents(balance * liability.interest_rate / Decimal("1200"))
+        if liability.interest_rate is not None
+        else Decimal("0")
+    )
+    return rule.billed(balance, monthly_interest)
+
+
 async def _liability_out(
     liability: Liability,
     liability_service: LiabilityService,
@@ -115,6 +134,11 @@ async def _liability_out(
         balance_source=status_.balance_source,
         interest_rate=liability.interest_rate,
         minimum_payment=liability.minimum_payment,
+        minimum_payment_kind=liability.minimum_payment_kind,
+        minimum_payment_percent=liability.minimum_payment_percent,
+        minimum_payment_floor=liability.minimum_payment_floor,
+        minimum_payment_plus_interest=liability.minimum_payment_plus_interest,
+        minimum_payment_due_now=_minimum_due_now(liability, status_.current_balance),
         terms_complete=status_.terms_complete,
         origination_date=liability.origination_date,
         original_principal=liability.original_principal,

@@ -12,6 +12,9 @@ Rules encoded here are the specification the fixes implement:
   account-balance query shape) must equal the sum over posted leaf rows (the
   category-activity query shape) partitioned into categorized, uncategorized
   non-transfer, and uncategorized transfer buckets.
+- No cross-budget references: every id a budget's rows hold resolves inside
+  that same budget. Derived from the schema, so it covers columns nobody
+  remembered to check.
 - Card reserve identity: every card's set-aside agrees with what it owes, with
   the three bounds that say what may legitimately separate them. This one is
   the exception to "must not share code": it reads the served
@@ -22,11 +25,21 @@ Rules encoded here are the specification the fixes implement:
 """
 
 import uuid
+from collections.abc import Iterator
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import Table, and_, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.db.budget_scope import (
+    POLYMORPHIC_REFERENCES,
+    SOFT_REFERENCES,
+    Scope,
+    budget_predicate,
+    budget_tables,
+    classify,
+)
 from igab.db.models import Account, Transaction
 
 
@@ -242,4 +255,74 @@ async def assert_financial_invariants(session: AsyncSession, budget_id: uuid.UUI
     await assert_transfer_integrity(session)
     await assert_money_conservation(session, budget_id)
     await assert_activity_class_partition(session, budget_id)
+    await assert_no_cross_budget_references(session, budget_id)
     await assert_card_reserve_identity(session, budget_id)
+
+
+def _reference_targets(table: Table, column: Any) -> Iterator[tuple[str, tuple[Any, ...]]]:
+    """(target table, extra WHERE clauses) for every way this column can
+    address a row — foreign key, declared soft reference, or polymorphic."""
+    for fk in column.foreign_keys:
+        if fk.column.table.name != table.name:
+            yield fk.column.table.name, ()
+        return
+
+    key = (table.name, column.name)
+    if key in SOFT_REFERENCES:
+        yield SOFT_REFERENCES[key], ()
+        return
+    if key in POLYMORPHIC_REFERENCES:
+        type_column, targets = POLYMORPHIC_REFERENCES[key]
+        for value, target_name in targets.items():
+            yield target_name, (table.c[type_column] == value,)
+
+
+async def assert_no_cross_budget_references(session: AsyncSession, budget_id: uuid.UUID) -> None:
+    """No row in this budget points at a row in another one.
+
+    Derived from ``igab.db.budget_scope`` rather than listed, so a column
+    added next month is covered the day it lands — including the ids that
+    carry no foreign key to declare them (``transactions.import_batch_id``,
+    ``transactions.scheduled_transaction_id``) and the polymorphic
+    ``guide_bindings.entity_id``, which no metadata walk can see.
+
+    Written for the snapshot importer, where an unremapped id would come from,
+    but it holds for every writer: the YNAB importer should pass this too.
+    """
+    in_graph = {Scope.ROOT, Scope.OWNED, Scope.CHILD}
+    scopes = classify()
+    escapes: list[str] = []
+
+    for table in budget_tables():
+        for column in table.columns:
+            for target_name, extra in _reference_targets(table, column):
+                if scopes.get(target_name) not in in_graph:
+                    # A shared table (users) is not a budget to escape from.
+                    continue
+                target = table.metadata.tables[target_name]
+                inside = (
+                    select(literal_column("1"))
+                    .select_from(target)
+                    .where(target.c.id == column, budget_predicate(target, budget_id))
+                    .exists()
+                )
+                stray = (
+                    select(func.count())
+                    .select_from(table)
+                    .where(
+                        budget_predicate(table, budget_id),
+                        column.is_not(None),
+                        *extra,
+                        ~inside,
+                    )
+                )
+                count = (await session.execute(stray)).scalar_one()
+                if count:
+                    escapes.append(f"{table.name}.{column.name} -> {target_name} ({count} rows)")
+
+    assert not escapes, (
+        f"rows in this budget point outside it: {escapes}. A copy that keeps "
+        f"one of these is reading another budget's data, and nothing in the "
+        f"schema would have said so."
+    )
+

@@ -264,3 +264,12 @@
     animation-duration: 2.5s;
   }
 }
+
+/* The download button sits beside Restore in the same cell; the cell was
+   built for one control. */
+.bkp-table__action {
+  display: flex;
+  gap: var(--spacing-xs);
+  justify-content: flex-end;
+  align-items: center;
+}

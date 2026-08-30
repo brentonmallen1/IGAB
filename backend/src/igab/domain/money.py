@@ -105,3 +105,18 @@ def quantize_cents(amount: Decimal) -> Decimal:
     before repairing it to sum exactly.
     """
     return amount.quantize(CENT, rounding=ROUND_HALF_EVEN)
+
+
+def format_csv_amount(amount: Decimal) -> str:
+    """Money as a CSV cell, and the exact inverse of :func:`parse_csv_amount`.
+
+    Beside its reader on purpose. An f-string at a call site is how the two
+    directions drift — one of them gains thousands separators, or a currency
+    symbol, or four decimal places, and the file stops reading back. The
+    round-trip is pinned by a test rather than by matching format strings by
+    eye.
+
+    Plain, two decimals, a leading minus for negatives, no separators: the
+    subset every spreadsheet and every reader here agrees on.
+    """
+    return f"{quantize_cents(amount):.2f}"

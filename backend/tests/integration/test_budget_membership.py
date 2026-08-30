@@ -71,6 +71,28 @@ class TestMemberAccess:
             kick = await api_client.delete(f"/api/v1/{budget.id}/members/{owner.id}")
             assert kick.status_code == 403
 
+    async def test_member_cannot_export_or_restore(self, db_session, api_client):
+        """A snapshot is the input to "create a budget I own containing your
+        data" — the same class of decision as deleting a budget. A member who
+        wants the numbers has /{budget_id}/reports/export."""
+        budget, _, _, member = await _shared_budget(db_session, api_client)
+
+        with as_user(member):
+            export = await api_client.get(f"/api/v1/budgets/{budget.id}/snapshot")
+            assert export.status_code == 403
+            keep = await api_client.post(f"/api/v1/budgets/{budget.id}/snapshots")
+            assert keep.status_code == 403
+            restore = await api_client.post(
+                f"/api/v1/budgets/{budget.id}/snapshot/restore",
+                files={"file": ("s.igab.zip", b"x", "application/zip")},
+                data={"confirm_name": "whatever"},
+            )
+            assert restore.status_code == 403
+            # Listing stays open: seeing that backups exist is not the same
+            # as being able to take one away.
+            listed = await api_client.get(f"/api/v1/budgets/{budget.id}/snapshots")
+            assert listed.status_code == 200
+
     async def test_member_can_leave(self, db_session, api_client):
         budget, _, _, member = await _shared_budget(db_session, api_client)
 

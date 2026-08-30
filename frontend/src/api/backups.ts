@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
+import { downloadAuthed } from '../utils/exportFile'
 
 export interface BackupFile {
   name: string
@@ -35,6 +36,15 @@ export interface BackupStatus {
   maintenance: boolean
   queued: boolean
   job: BackupJob | null
+}
+
+/** Pull a whole-application backup down to the browser.
+ *
+ *  Served from the mounted volume, so it works while the agent is offline —
+ *  the agent makes backups, it is not needed to read one. `.age` files come
+ *  down encrypted, which is what they are for. */
+export function downloadBackupFile(name: string): Promise<void> {
+  return downloadAuthed(`/backups/${encodeURIComponent(name)}/download`, name)
 }
 
 export function useBackups(options?: { poll?: boolean }) {

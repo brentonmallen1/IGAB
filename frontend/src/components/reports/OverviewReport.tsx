@@ -1,7 +1,9 @@
 import { useRef } from 'react'
+import toast from 'react-hot-toast'
+import { downloadAuthed, exportFilename } from '../../utils/exportFile'
 import { useAppStore } from '../../stores/appStore'
 import { useReportStore } from '../../stores/reportStore'
-import { buildExportUrl, useDashboardMetrics } from '../../api/reports'
+import { exportTransactionsPath, useDashboardMetrics } from '../../api/reports'
 import { useBudgetMonth } from '../../api/budgets'
 import { MetricCard } from './MetricCard'
 import { ReportInfoButton, ReportScopeNote } from './ReportInfoButton'
@@ -53,13 +55,20 @@ export function OverviewReport({ budgetId }: Props) {
             <ReportScopeNote scope="overview" />
           </ReportInfoButton>
           <div className="flex-row ms-auto">
-            <a
+            <button
               className="report-btn"
-              href={buildExportUrl(budgetId, 'csv', filters.startDate, filters.endDate)}
-              download
+              onClick={() =>
+                downloadAuthed(
+                  exportTransactionsPath(budgetId, 'csv', filters.startDate, filters.endDate),
+                  exportFilename('transactions', 'csv', {
+                    start: filters.startDate,
+                    end: filters.endDate,
+                  }),
+                ).catch(() => toast.error('Export failed.'))
+              }
             >
               Export transactions
-            </a>
+            </button>
             <ReportExportButton
               reportId="overview"
               getRows={() => [

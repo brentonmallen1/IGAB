@@ -16,6 +16,7 @@ from decimal import ROUND_CEILING, Decimal
 from typing import Literal
 
 from igab.domain.dates import add_months
+from igab.domain.minimum_payment import FIXED, MinimumPaymentRule, as_rule
 from igab.domain.money import quantize_cents
 
 ZERO = Decimal("0")
@@ -64,11 +65,11 @@ def _month_step(
 def amortization_schedule(
     balance: Decimal,
     annual_rate: Decimal,
-    payment: Decimal,
+    payment: Decimal | MinimumPaymentRule,
     start_date: date,
     cap_months: int = DEFAULT_CAP_MONTHS,
 ) -> AmortizationResult:
-    """Project a fixed-payment monthly amortization schedule.
+    """Project a monthly amortization schedule.
 
     `balance` is the amount owed (positive). Payments land monthly starting
     one month after `start_date`. `annual_rate` is a percentage (6.25 means
@@ -76,10 +77,18 @@ def amortization_schedule(
     month's interest can never retire the debt — reported honestly as
     `never_pays_off` rather than looping forever (same if `cap_months` is
     exceeded).
+
+    `payment` may be a scalar or a :class:`MinimumPaymentRule`. A scalar is
+    wrapped into a fixed rule, so this is one loop rather than two: a second,
+    variable-payment schedule beside this one would be two implementations of
+    amortization, and only one of them would be the tested one. The rule is
+    asked for its due amount each month *after* interest is computed, because
+    a "percent plus this month's interest" rule needs that figure.
     """
     if annual_rate < ZERO:
         raise ValueError("annual_rate must be non-negative")
-    if payment < ZERO:
+    rule = as_rule(payment)
+    if rule.kind == FIXED and (rule.amount or ZERO) < ZERO:
         raise ValueError("payment must be non-negative")
 
     balance = quantize_cents(balance)
@@ -94,7 +103,12 @@ def amortization_schedule(
     total_interest = ZERO
 
     for month in range(1, cap_months + 1):
-        interest, principal, balance = _month_step(balance, monthly_rate, payment)
+        # This month's interest first: a rule may be a slice of the balance
+        # *plus* what the month charged.
+        monthly_interest = quantize_cents(balance * monthly_rate)
+        interest, principal, balance = _month_step(
+            balance, monthly_rate, rule.due(balance, monthly_interest)
+        )
         if principal <= ZERO:
             return AmortizationResult(
                 schedule=schedule,
@@ -319,7 +333,9 @@ class CascadeDebt:
     name: str
     balance: Decimal
     annual_rate: Decimal
-    minimum_payment: Decimal
+    #: A scalar or a rule. A scalar is the rule it always was — see
+    #: domain.minimum_payment.as_rule.
+    minimum_payment: Decimal | MinimumPaymentRule
 
 
 @dataclass(frozen=True)
@@ -399,13 +415,19 @@ def payoff_cascade(
     for d in debts:
         if d.annual_rate < ZERO:
             raise ValueError(f"{d.name}: annual_rate must be non-negative")
-        if d.minimum_payment < ZERO:
+        rule = as_rule(d.minimum_payment)
+        if rule.kind == FIXED and (rule.amount or ZERO) < ZERO:
             raise ValueError(f"{d.name}: minimum_payment must be non-negative")
 
     attack = cascade_order(debts, order)
     extra = quantize_cents(extra)
     balances = {d.key: quantize_cents(d.balance) for d in attack}
-    minimums = {d.key: quantize_cents(d.minimum_payment) for d in attack}
+    rules = {d.key: as_rule(d.minimum_payment) for d in attack}
+    # The payment each debt was consuming when it closed. A declining rule has
+    # no single "its minimum", and re-evaluating one against a zero balance
+    # would roll nothing forward — so the last amount actually asked for is
+    # captured as it is charged.
+    last_due = dict.fromkeys(balances, ZERO)
     rates = {d.key: d.annual_rate / Decimal("100") / Decimal("12") for d in attack}
     interest_total = dict.fromkeys(balances, ZERO)
     principal_total = dict.fromkeys(balances, ZERO)
@@ -436,9 +458,12 @@ def payoff_cascade(
             k = d.key
             if k not in open_keys:
                 continue
-            interest, principal, balances[k] = _month_step(balances[k], rates[k], minimums[k])
+            monthly_interest = quantize_cents(balances[k] * rates[k])
+            due = rules[k].due(balances[k], monthly_interest)
+            last_due[k] = due
+            interest, principal, balances[k] = _month_step(balances[k], rates[k], due)
             paid = interest + principal
-            pool += minimums[k] - paid
+            pool += due - paid
             interest_total[k] += interest
             principal_total[k] += principal
             month_interest += interest
@@ -469,7 +494,7 @@ def payoff_cascade(
                 months_to[k] = m
                 open_keys.remove(k)
                 if roll_freed:
-                    freed += minimums[k]
+                    freed += last_due[k]
 
         months.append(
             CascadeMonth(
@@ -538,23 +563,33 @@ def level_payment(principal: Decimal, annual_rate: Decimal, term_months: int) ->
     return exact.quantize(CENT, rounding=ROUND_CEILING)
 
 
-def interest_over(balance: Decimal, annual_rate: Decimal, payment: Decimal, months: int) -> Decimal:
-    """Interest charged across `months` of a fixed payment, paid off or not.
+def interest_over(
+    balance: Decimal, annual_rate: Decimal, payment: Decimal | MinimumPaymentRule, months: int
+) -> Decimal:
+    """Interest charged across `months` of payments, paid off or not.
 
     `amortization_schedule` stops the moment a payment fails to cover the
     interest, which is right for a schedule and wrong for a comparison: a
     stalled debt keeps charging. This keeps counting, and stops early only
     once the balance is gone.
+
+    Takes a rule for the same reason the schedule does — without it,
+    pay-vs-save would compare a declining minimum against a fixed one and
+    report a saving that is partly an artefact of the comparison.
     """
     if months < 0:
         raise ValueError("months must be non-negative")
+    rule = as_rule(payment)
     monthly_rate = annual_rate / Decimal("100") / Decimal("12")
     balance = quantize_cents(balance)
     total = ZERO
     for _ in range(months):
         if balance <= ZERO:
             break
-        interest, _principal, balance = _month_step(balance, monthly_rate, payment)
+        monthly_interest = quantize_cents(balance * monthly_rate)
+        interest, _principal, balance = _month_step(
+            balance, monthly_rate, rule.due(balance, monthly_interest)
+        )
         total += interest
     return total
 

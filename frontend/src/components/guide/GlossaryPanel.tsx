@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { GLOSSARY, glossaryEntry, searchGlossary } from '../../content/glossary'
+import { useGuideStore } from '../../stores/guideStore'
 
 /**
  * Every definition in one place, searchable.
@@ -12,6 +13,27 @@ import { GLOSSARY, glossaryEntry, searchGlossary } from '../../content/glossary'
 export function GlossaryPanel() {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<string | null>(null)
+
+  // Arriving at one definition — from the command palette, or a chip
+  // elsewhere in the app.
+  //
+  // Adjusted during render rather than in an effect: this is React's own
+  // shape for "state that follows an incoming value", and an effect here
+  // costs a cascading render (and trips react-hooks/set-state-in-effect).
+  // `consumed` tracks the arrival we have already opened, so navigating to
+  // the same term twice works even after the reader closed it.
+  const arrivedAt = useGuideStore((s) => s.openGlossaryTerm)
+  const setOpenGlossaryTerm = useGuideStore((s) => s.setOpenGlossaryTerm)
+  const [consumed, setConsumed] = useState<string | null>(null)
+  if (arrivedAt !== consumed) {
+    setConsumed(arrivedAt)
+    if (arrivedAt) setOpen(arrivedAt)
+  }
+  // Cleared once it has been read, so the reader's own folding takes over —
+  // the same read-once-then-erase shape GuidePage uses for ?tab=.
+  useEffect(() => {
+    if (arrivedAt) setOpenGlossaryTerm(null)
+  }, [arrivedAt, setOpenGlossaryTerm])
 
   const results = useMemo(() => searchGlossary(query), [query])
 

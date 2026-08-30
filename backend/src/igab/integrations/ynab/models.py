@@ -61,3 +61,8 @@ class YNABBudget:
     #: dropped row is visible in the counts; a row imported with a silently
     #: invented zero is not.
     errors: list[str] = field(default_factory=list)
+    #: Account name -> (type key, on_budget), from an Accounts.csv member.
+    #: Only IGAB's own export carries one; YNAB's does not, and then the
+    #: preview falls back to guessing a type from the account's name. Empty
+    #: rather than absent so every reader takes the same path.
+    account_types: dict[str, tuple[str, bool]] = field(default_factory=dict)
