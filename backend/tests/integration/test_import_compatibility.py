@@ -89,7 +89,7 @@ class TestFrozenExportsStillImport:
         from igab.repositories.category_repo import CategoryRepository
 
         named = await CategoryRepository(db_session).get_all_with_group_names(
-            budget_id, include_hidden=True
+            budget_id, include_archived=True
         )
         names = {c.id: f"{g}: {c.name}" for c, g in named}
 

@@ -2757,10 +2757,10 @@ class ReportService:
         moves = await BudgetMoveRepository(self.session).outflows_from(
             budget_id, list(savings_cat_ids), start_date, end_date
         )
-        all_names = {
-            c.id: c.name
-            for c in await CategoryRepository(self.session).get_all(budget_id, include_hidden=True)
-        }
+        every_category = await CategoryRepository(self.session).get_all(
+            budget_id, include_archived=True
+        )
+        all_names = {c.id: c.name for c in every_category}
         shaped = shape_drains(moves, all_names)
         drains = {
             "total": drains_total(shaped),

@@ -106,7 +106,7 @@ export function BudgetPage() {
     })
     if (!ok) return
     const ids = Array.from(selectedCategoryIds)
-    await Promise.all(ids.map((id) => updateCategory.mutateAsync({ id, is_hidden: true })))
+    await Promise.all(ids.map((id) => updateCategory.mutateAsync({ id, is_archived: true })))
     clearCategorySelection()
   }
 

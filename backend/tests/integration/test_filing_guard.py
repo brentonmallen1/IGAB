@@ -50,7 +50,7 @@ async def _world(db_session):
 
 
 async def _archive(db_session, obj):
-    obj.is_hidden = True
+    obj.is_archived = True
     await db_session.flush()
 
 
@@ -69,7 +69,7 @@ class TestTheWriteSideRefuses:
 
     async def test_a_category_in_an_archived_group_cannot_either(self, db_session):
         """The group's flag, not the category's. `CategoryRepository.get_all`
-        filters the category's `is_hidden` and not the group's, so these rows
+        filters the category's `is_archived` and not the group's, so these rows
         reach the client looking ordinary — the server is the only place that
         can tell."""
         services, budget, checking, group, cat = await _world(db_session)

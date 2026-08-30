@@ -124,7 +124,7 @@ class TestWhatACellCannotHonestlySay:
         card_ids = {b.category_id for b in summary.category_balances if b.is_card_payment}
         assert card_ids, "the sample budget has a card; its envelope is missing"
         named = await CategoryRepository(db_session).get_all_with_group_names(
-            sample.id, include_hidden=True
+            sample.id, include_archived=True
         )
         card_names = {c.name for c, _ in named if c.id in card_ids}
 

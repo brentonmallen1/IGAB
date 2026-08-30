@@ -113,11 +113,11 @@ describe('groupByView', () => {
     expect(groupByView(v, [], BUDGET).groups.map((g) => g.name)).toEqual(['Beta', 'Alpha'])
   })
 
-  it('marks view groups as neither system nor hidden so they render read-only', () => {
+  it('marks view groups as neither system nor archived so they render read-only', () => {
     const v = view([['need', 'Need']], [])
     const [g] = groupByView(v, [], BUDGET).groups
     expect(g.is_system).toBe(false)
-    expect(g.is_hidden).toBe(false)
+    expect(g.is_archived).toBe(false)
     expect(g.budget_id).toBe(BUDGET)
   })
 

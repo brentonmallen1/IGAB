@@ -309,7 +309,7 @@ class UndoService:
         wanted = [uuid.UUID(x) for x in (getattr(change, target) or {}).get("_order", [])]
         if change.entity_type == "budget":
             groups = CategoryGroupRepository(self.session)
-            live = [g.id for g in await groups.get_all(change.entity_id, include_hidden=True)]
+            live = [g.id for g in await groups.get_all(change.entity_id, include_archived=True)]
         elif change.entity_type == "category_group":
             categories = CategoryRepository(self.session)
             live = [c.id for c in await categories.get_by_group(change.entity_id)]
@@ -593,7 +593,7 @@ class UndoService:
                     view_id=uuid.UUID(row["view_id"]),
                     category_id=uuid.UUID(row["category_id"]),
                     group_id=uuid.UUID(row["group_id"]) if row.get("group_id") else None,
-                    is_hidden=bool(row.get("is_hidden")),
+                    is_archived=bool(row.get("is_archived")),
                 )
             )
         for row in before.get("_filter_selections") or []:

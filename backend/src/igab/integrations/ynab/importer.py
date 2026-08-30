@@ -313,7 +313,7 @@ class YNABImporter:
                     is_system=(group_name == _SYSTEM_INCOME_GROUP),
                     # Hidden in YNAB stays hidden here: the history still
                     # imports, the rows just do not clutter the grid.
-                    is_hidden=(group_name == _YNAB_HIDDEN_GROUP),
+                    is_archived=(group_name == _YNAB_HIDDEN_GROUP),
                 )
                 result.category_groups_imported += 1
             self._group_cache[group_name] = group

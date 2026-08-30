@@ -112,7 +112,7 @@ export function ImportReviewDialog({
         id: c.id,
         name: c.name,
         groupName: names.get(c.category_group_id) as string,
-        hidden: c.is_hidden,
+        hidden: c.is_archived,
         tagIds: (c.tags ?? []).map((t) => t.id),
       }))
   }, [categories, groups])

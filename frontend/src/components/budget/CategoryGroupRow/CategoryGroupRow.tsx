@@ -106,7 +106,7 @@ export function CategoryGroupRow({
   }
 
   function handleHide() {
-    updateGroup.mutate({ id: group.id, is_hidden: true })
+    updateGroup.mutate({ id: group.id, is_archived: true })
   }
 
   function handleDelete() {

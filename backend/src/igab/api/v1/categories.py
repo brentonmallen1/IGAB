@@ -101,9 +101,9 @@ async def list_category_groups(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
-    include_hidden: bool = False,
+    include_archived: bool = False,
 ) -> list[CategoryGroupResponse]:
-    groups = await group_repo.get_all(budget_id, include_hidden=include_hidden)
+    groups = await group_repo.get_all(budget_id, include_archived=include_archived)
     return [CategoryGroupResponse.model_validate(g) for g in groups]
 
 
@@ -280,9 +280,9 @@ async def list_categories(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
-    include_hidden: bool = False,
+    include_archived: bool = False,
 ) -> list[CategoryResponse]:
-    cats = await category_repo.get_all(budget_id, include_hidden=include_hidden)
+    cats = await category_repo.get_all(budget_id, include_archived=include_archived)
     return [CategoryResponse.model_validate(c) for c in cats]
 
 

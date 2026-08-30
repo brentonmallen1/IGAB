@@ -342,7 +342,11 @@ class CategoryGroup(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: When it was archived. NULL for rows archived before the column
+    #: existed, and rendered as "date unknown" rather than invented —
+    #: `updated_at` cannot serve, since any edit bumps it.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: A group the app seeds and protects by key, the way system tags are —
     #: `wishlist` is the only one. NOT `is_system`: that flag means the Income
@@ -410,7 +414,11 @@ class Category(Base):
     subtitle: Mapped[str | None] = mapped_column(String(100))
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
-    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: When it was archived. NULL for rows archived before the column
+    #: existed, and rendered as "date unknown" rather than invented —
+    #: `updated_at` cannot serve, since any edit bumps it.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # For CC payment categories — links to the credit card account
     linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), index=True
@@ -430,7 +438,7 @@ class Category(Base):
     )
 
     #: May money be budgeted or moved into this envelope? Not a column, and
-    #: none could be: it reads the *group's* is_system and is_hidden, which
+    #: none could be: it reads the *group's* is_system and is_archived, which
     #: change without this row being touched. Populated only by
     #: `CategoryRepository.with_eligibility`; left alone it reads None.
     is_assignable: Mapped[bool] = query_expression()

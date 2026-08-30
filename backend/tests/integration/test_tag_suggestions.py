@@ -67,7 +67,7 @@ async def test_hidden_categories_are_still_offered(db_session, api_client):
     tagged it Savings; the savings report has counted it ever since.
     """
     budget, _, made = await _budget_with(db_session, api_client, ["Harborstone Savings"])
-    made["Harborstone Savings"].is_hidden = True
+    made["Harborstone Savings"].is_archived = True
     await db_session.flush()
 
     keys = {s["system_key"] for s in await _suggestions(api_client, budget.id)}

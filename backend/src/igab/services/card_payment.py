@@ -31,10 +31,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
 
-#: One group holds every card's envelope. Hidden, not system: a system group
-#: means income (activity_class reads it that way), while hidden means "not
-#: in the grid" — which is exactly the ask. The name is user-visible only in
-#: places that surface hidden groups deliberately.
+#: One group holds every card's envelope. Not system — a system group means
+#: income, which is how `activity_class` reads it — and **not archived**: the
+#: group is live and in daily use, and the archived listing is the user's own
+#: envelopes, not the app's plumbing.
+#:
+#: It was created archived (as `is_hidden`) until the rename, because that flag
+#: was the only thing keeping card envelopes out of the move-money picker.
+#: `IS_ASSIGNABLE` now names `LINKED_TO_CARD` outright, so the concealment does
+#: not need a flag that also means something to the user. The migration
+#: repairs existing budgets, matching on shape rather than on this name.
 CARD_PAYMENTS_GROUP = "Credit Card Payments"
 
 
@@ -87,7 +93,7 @@ async def _ensure_group(session: AsyncSession, budget_id: uuid.UUID) -> Category
     ).scalar_one_or_none()
     if existing is not None:
         return existing
-    group = CategoryGroup(budget_id=budget_id, name=CARD_PAYMENTS_GROUP, is_hidden=True)
+    group = CategoryGroup(budget_id=budget_id, name=CARD_PAYMENTS_GROUP)
     session.add(group)
     await session.flush()
     return group

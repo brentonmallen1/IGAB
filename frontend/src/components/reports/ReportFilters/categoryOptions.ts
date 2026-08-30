@@ -20,10 +20,10 @@ export function categoryOptions(
 ): MultiSelectOption[] {
   // Hidden categories are left out; card set-aside envelopes too, and for a
   // stronger reason — nothing can ever be filed to one, so offering it here
-  // is a filter that can only ever return an empty chart. `is_hidden` is
+  // is a filter that can only ever return an empty chart. `is_archived` is
   // kept rather than swapped for `is_categorizable`: a category in a hidden
   // *group* still holds real spending worth charting.
-  const visible = renderableCategories(categories).filter((c) => !c.is_hidden)
+  const visible = renderableCategories(categories).filter((c) => !c.is_archived)
   if (!view) {
     return visible.map((c) => ({
       id: c.id,

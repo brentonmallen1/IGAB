@@ -72,7 +72,7 @@ export interface CategoryGroup {
   budget_id: string
   name: string
   sort_order: number
-  is_hidden: boolean
+  is_archived: boolean
   is_system: boolean
   /** Every live category here is a card's set-aside envelope, so the grid draws
    *  no header for this group. Served, not derived — home is
@@ -103,7 +103,7 @@ export interface Category {
   subtitle: string | null
   sort_order: number
   note: string | null
-  is_hidden: boolean
+  is_archived: boolean
   linked_account_id: string | null
   /** The liability that owns this category, if any. */
   linked_liability_id: string | null

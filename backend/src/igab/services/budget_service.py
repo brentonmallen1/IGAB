@@ -446,8 +446,8 @@ class BudgetService:
         )
 
         # All category balances
-        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
-        groups = await self.category_group_repo.get_all(budget_id, include_hidden=True)
+        categories = await self.category_repo.get_all(budget_id, include_archived=True)
+        groups = await self.category_group_repo.get_all(budget_id, include_archived=True)
         system_group_ids = {g.id for g in groups if g.is_system}
 
         if self.snapshot_repo is not None:
@@ -783,7 +783,7 @@ class BudgetService:
         if not deltas:
             return []
 
-        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
+        categories = await self.category_repo.get_all(budget_id, include_archived=True)
         name_by_id = {c.id: c.name for c in categories}
 
         warnings: list[FutureOverspendWarning] = []
@@ -998,7 +998,7 @@ class BudgetService:
         summary, shortfalls = await self._overspent_shortfalls(budget_id, month)
         proposed = distribute_cover(shortfalls, summary.to_be_assigned)
 
-        categories = await self.category_repo.get_all(budget_id, include_hidden=True)
+        categories = await self.category_repo.get_all(budget_id, include_archived=True)
         name_map = {c.id: c.name for c in categories}
 
         items = [

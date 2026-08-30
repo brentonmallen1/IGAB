@@ -73,7 +73,7 @@ describe('categoryOptions', () => {
   })
 
   it('hidden categories stay hidden regardless of the view', () => {
-    const hidden = { ...cat('c1', 'Old'), is_hidden: true }
+    const hidden = { ...cat('c1', 'Old'), is_archived: true }
     const v = view([['need', 'Need']], [{ category_id: 'c1', group_id: 'need' }])
     expect(categoryOptions([hidden], GROUPS, v)).toEqual([])
   })

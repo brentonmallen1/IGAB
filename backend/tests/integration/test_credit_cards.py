@@ -469,7 +469,7 @@ class TestNothingIsFiledToACardEnvelope:
         groceries.linked_liability_id = liability.id
         await db_session.flush()
 
-        rows = await services.category_repo.get_all(budget.id, include_hidden=True)
+        rows = await services.category_repo.get_all(budget.id, include_archived=True)
         by_id = {c.id: c for c in rows}
         assert by_id[groceries.id].is_assignable is True
         assert by_id[groceries.id].is_categorizable is False

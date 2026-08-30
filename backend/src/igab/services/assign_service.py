@@ -185,10 +185,10 @@ class AssignService:
         # conflation claimed excluding card envelopes "would" break exactly
         # that; measuring showed it already had.
         #
-        # `include_hidden=False` still: it filters the category's own flag,
+        # `include_archived=False` still: it filters the category's own flag,
         # and a card envelope's own flag is false — only its group is hidden.
         # An archived envelope is not a target this should fill.
-        categories = await self.category_repo.get_all(budget_id, include_hidden=False)
+        categories = await self.category_repo.get_all(budget_id, include_archived=False)
         eligible = [c for c in categories if c.is_fundable]
 
         histories = {

@@ -189,7 +189,7 @@ class CategoryService:
         )
 
     async def _group_order(self, budget_id: uuid.UUID) -> list[uuid.UUID]:
-        return [g.id for g in await self.group_repo.get_all(budget_id, include_hidden=True)]
+        return [g.id for g in await self.group_repo.get_all(budget_id, include_archived=True)]
 
     async def _category_order(self, group_id: uuid.UUID) -> list[uuid.UUID]:
         return [c.id for c in await self.category_repo.get_by_group(group_id)]
@@ -633,7 +633,7 @@ class CategoryService:
                 "view_id": str(p.view_id),
                 "category_id": str(p.category_id),
                 "group_id": str(p.group_id) if p.group_id else None,
-                "is_hidden": bool(getattr(p, "is_hidden", False)),
+                "is_archived": bool(getattr(p, "is_archived", False)),
             }
             for p in placements
         ]

@@ -41,9 +41,9 @@ vi.mock('../../../api/payees', () => ({
 vi.mock('../../../api/categories', () => ({
   useCategories: () => ({
     data: [
-      { id: 'c1', category_group_id: 'g1', name: 'Groceries', is_hidden: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
-      { id: 'c2', category_group_id: 'g1', name: 'Household', is_hidden: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
-      { id: 'c3', category_group_id: 'g1', name: 'Treats', is_hidden: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
+      { id: 'c1', category_group_id: 'g1', name: 'Groceries', is_archived: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
+      { id: 'c2', category_group_id: 'g1', name: 'Household', is_archived: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
+      { id: 'c3', category_group_id: 'g1', name: 'Treats', is_archived: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
     ],
   }),
   useCategoryGroups: () => ({ data: [{ id: 'g1', name: 'Everyday' }] }),

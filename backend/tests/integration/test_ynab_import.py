@@ -971,7 +971,7 @@ async def test_the_imported_layout_follows_the_plans_final_month(db_session):
     )
     await _importer(services, db_session, budget).import_budget(budget_data)
 
-    groups = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    groups = await CategoryGroupRepository(db_session).get_all(budget.id, include_archived=True)
     assert [g.name for g in groups] == ["Wants", "Bills", "Income"]
     by_name = {g.name: g for g in groups}
     bills = await services.category_repo.get_by_group(by_name["Bills"].id)
@@ -1023,11 +1023,11 @@ async def test_hidden_categories_stay_hidden_and_card_payment_reserves_are_skipp
     )
     result = await _importer(services, db_session, budget).import_budget(data)
 
-    everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_archived=True)
     by_name = {g.name: g for g in everyone}
     assert "Credit Card Payments" not in by_name
-    assert by_name["Hidden Categories"].is_hidden
-    assert not by_name["Everyday"].is_hidden
+    assert by_name["Hidden Categories"].is_archived
+    assert not by_name["Everyday"].is_archived
     assert result.credit_card_payment_assignments_skipped == 2
     assert result.credit_card_payment_reserves_skipped == Decimal("500.00")
     assert result.assignments_imported == 2
@@ -1127,6 +1127,14 @@ async def test_card_payment_reserves_import_onto_the_cards_envelope(db_session):
     by_cat = {(a.category_id, a.month): a.assigned for a in assignments}
     assert by_cat[(linked.id, JAN5.replace(day=1))] == Decimal("250.00")
     # No visible "Credit Card Payments" spending group was created for it.
-    groups = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    # The group is live, not archived — it is the app's plumbing, and the
+    # archived listing is the user's own envelopes. What keeps it off the grid
+    # is `is_card_only`; what keeps its envelopes out of the pickers is
+    # `IS_ASSIGNABLE` naming `LINKED_TO_CARD`. It leaned on the archived flag
+    # for both until those were made to say so themselves.
+    groups = await CategoryGroupRepository(db_session).get_all(budget.id, include_archived=True)
     ccp = [g for g in groups if g.name == "Credit Card Payments"]
-    assert len(ccp) == 1 and ccp[0].is_hidden
+    assert len(ccp) == 1
+    assert ccp[0].is_archived is False
+    assert ccp[0].is_card_only is True
+    assert (await services.category_repo.get(linked.id)).is_assignable is False

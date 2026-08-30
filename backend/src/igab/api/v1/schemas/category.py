@@ -121,7 +121,7 @@ class RepairOrphansResponse(BaseModel):
 class CategoryGroupUpdate(BaseModel):
     name: str | None = None
     sort_order: int | None = None
-    is_hidden: bool | None = None
+    is_archived: bool | None = None
 
 
 class CategoryGroupResponse(BaseModel):
@@ -129,7 +129,7 @@ class CategoryGroupResponse(BaseModel):
     budget_id: uuid.UUID
     name: str
     sort_order: int
-    is_hidden: bool
+    is_archived: bool
     is_system: bool
     #: Every live category in this group is a card's set-aside envelope, so the
     #: budget grid draws no header for it (`GROUP_IS_CARD_ONLY`).
@@ -166,7 +166,7 @@ class CategoryUpdate(BaseModel):
     subtitle: str | None = None
     sort_order: int | None = None
     note: str | None = None
-    is_hidden: bool | None = None
+    is_archived: bool | None = None
     category_group_id: uuid.UUID | None = None
 
 
@@ -259,7 +259,7 @@ class CategoryResponse(BaseModel):
     subtitle: str | None
     sort_order: int
     note: str | None
-    is_hidden: bool
+    is_archived: bool
     linked_account_id: uuid.UUID | None
     #: The liability that owns this category, if any. Exposed because the
     #: liability-binding screen's rule needs it: without it the client could

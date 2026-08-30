@@ -114,7 +114,7 @@ async def check_parity(
     )
     summary = await budget_service.get_budget_summary(budget_id, month)
     balances = {b.category_id: b for b in summary.category_balances if not b.in_system_group}
-    rows = await category_repo.get_all_with_group_names(budget_id, include_hidden=True)
+    rows = await category_repo.get_all_with_group_names(budget_id, include_archived=True)
     by_name = {(group_name, category.name): category.id for category, group_name in rows}
 
     differences: list[ParityDifference] = []

@@ -5,12 +5,12 @@ import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { reorderMembers } from '../utils/listOrder'
 import type { Category, CategoryGroup, CategoryClassification } from '../types'
 
-export function useCategoryGroups(budgetId: string | null, includeHidden = false) {
+export function useCategoryGroups(budgetId: string | null, includeArchived = false) {
   return useQuery({
-    queryKey: ['categoryGroups', budgetId, includeHidden],
+    queryKey: ['categoryGroups', budgetId, includeArchived],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryGroup[]>(`/${budgetId}/category-groups`, {
-        params: { include_hidden: includeHidden },
+        params: { include_archived: includeArchived },
       })
       return data
     },
@@ -19,12 +19,12 @@ export function useCategoryGroups(budgetId: string | null, includeHidden = false
   })
 }
 
-export function useCategories(budgetId: string | null, includeHidden = false) {
+export function useCategories(budgetId: string | null, includeArchived = false) {
   return useQuery({
-    queryKey: ['categories', budgetId, includeHidden],
+    queryKey: ['categories', budgetId, includeArchived],
     queryFn: async () => {
       const { data } = await apiClient.get<Category[]>(`/${budgetId}/categories`, {
-        params: { include_hidden: includeHidden },
+        params: { include_archived: includeArchived },
       })
       return data
     },
@@ -110,7 +110,7 @@ export function useUpdateCategory(budgetId: string) {
 export function useUpdateCategoryGroup(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; is_hidden?: boolean; sort_order?: number }) =>
+    mutationFn: ({ id, ...data }: { id: string; name?: string; is_archived?: boolean; sort_order?: number }) =>
       apiClient.patch<CategoryGroup>(`/category-groups/${id}`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
@@ -127,7 +127,7 @@ type CachedLists<T> = [readonly unknown[], T[] | undefined][]
  *  name every visible group exactly once, so a stale client fails loudly
  *  instead of shuffling rows it never showed.
  *
- *  Optimistic over every cached variant of the list (`includeHidden` on and
+ *  Optimistic over every cached variant of the list (`includeArchived` on and
  *  off): a drag that snaps back for a round trip reads as a failed drag. This
  *  used to write to `['categoryGroups', budgetId]` alone, a key nothing reads,
  *  so the grid never showed the new order until the refetch — and a refused

@@ -110,12 +110,12 @@ class GuideService:
             groups = CategoryGroupRepository(self.session)
             if changes["wishlist"]:
                 group = await groups.ensure_system_group(budget_id, "wishlist")
-                if group.is_hidden:
-                    await groups.update(group.id, is_hidden=False)
+                if group.is_archived:
+                    await groups.update(group.id, is_archived=False)
             else:
                 group = await groups.get_by_system_key(budget_id, "wishlist")
-                if group is not None and not group.is_hidden:
-                    await groups.update(group.id, is_hidden=True)
+                if group is not None and not group.is_archived:
+                    await groups.update(group.id, is_archived=True)
         return merged
 
     # ── step progress ────────────────────────────────────────────────────────
@@ -443,7 +443,7 @@ class GuideService:
                     .where(
                         Category.budget_id == budget_id,
                         Category.is_deleted == False,  # noqa: E712
-                        Category.is_hidden == False,  # noqa: E712
+                        Category.is_archived == False,  # noqa: E712
                     )
                     .order_by(Category.name)
                 )

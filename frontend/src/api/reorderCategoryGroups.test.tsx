@@ -7,7 +7,7 @@
  * snaps back for a round trip reads as a drag that failed.
  *
  * The cache is seeded under the keys the page really reads —
- * `['categoryGroups', budgetId, includeHidden]`, both values — because this
+ * `['categoryGroups', budgetId, includeArchived]`, both values — because this
  * test used to seed a two-element key nothing reads, and passed while the
  * real grid never showed an optimistic order at all.
  */
@@ -27,13 +27,13 @@ vi.mock('react-hot-toast', () => ({ default: { error: toastError, success: vi.fn
 import { useReorderCategoryGroups } from './categories'
 import type { CategoryGroup } from '../types'
 
-function group(id: string, name: string, sort_order: number, is_hidden = false): CategoryGroup {
+function group(id: string, name: string, sort_order: number, is_archived = false): CategoryGroup {
   return {
     id,
     budget_id: 'b1',
     name,
     sort_order,
-    is_hidden,
+    is_archived,
     is_system: false,
     is_card_only: false,
     system_key: null,

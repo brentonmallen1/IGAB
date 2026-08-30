@@ -172,7 +172,7 @@ SAMPLE_BUDGET = SampleBudgetSpec(
                 # Funded to exactly what the mortgage transfer spends
                 CategorySpec(CAT_MORTGAGE, tiers=FULL),
                 CategorySpec("Water & Trash", tiers=FULL),
-                CategorySpec("Baby Prep", is_hidden=True, tiers=FULL),
+                CategorySpec("Baby Prep", is_archived=True, tiers=FULL),
             ),
         ),
         GroupSpec(
@@ -190,8 +190,8 @@ SAMPLE_BUDGET = SampleBudgetSpec(
                 CategorySpec("Work Lunches", tiers=FULL),
                 CategorySpec("Pet Care", tiers=FULL),
                 # Hidden but with real history — YNAB budgets accumulate these
-                CategorySpec("Old Gym Membership", is_hidden=True, tiers=FULL),
-                CategorySpec("RC Car Hobby", is_hidden=True, tiers=FULL),
+                CategorySpec("Old Gym Membership", is_archived=True, tiers=FULL),
+                CategorySpec("RC Car Hobby", is_archived=True, tiers=FULL),
             ),
         ),
         GroupSpec(
@@ -217,8 +217,8 @@ SAMPLE_BUDGET = SampleBudgetSpec(
                 ),
                 CategorySpec("Investing", tags=("Savings",)),
                 CategorySpec("Health Savings", tags=("Savings",), tiers=FULL),
-                CategorySpec("Wedding Fund", is_hidden=True, tiers=FULL),
-                CategorySpec("Moving 2024", is_hidden=True, tiers=FULL),
+                CategorySpec("Wedding Fund", is_archived=True, tiers=FULL),
+                CategorySpec("Moving 2024", is_archived=True, tiers=FULL),
             ),
         ),
         GroupSpec(

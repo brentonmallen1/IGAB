@@ -168,7 +168,7 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
             ).scalars()
         )
         final = merge_reorder(
-            [(g.id, g.is_hidden or g.is_system or g.is_card_only) for g in live],
+            [(g.id, g.is_archived or g.is_system or g.is_card_only) for g in live],
             group_ids,
             noun="group",
         )
@@ -181,14 +181,14 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
         await self.session.flush()
 
     async def get_all(
-        self, budget_id: uuid.UUID, include_hidden: bool = False
+        self, budget_id: uuid.UUID, include_archived: bool = False
     ) -> list[CategoryGroup]:
         q = self.with_card_only(select(CategoryGroup)).where(
             CategoryGroup.budget_id == budget_id,
             CategoryGroup.is_deleted == False,  # noqa: E712
         )
-        if not include_hidden:
-            q = q.where(CategoryGroup.is_hidden == False)  # noqa: E712
+        if not include_archived:
+            q = q.where(CategoryGroup.is_archived == False)  # noqa: E712
         q = q.order_by(CategoryGroup.sort_order, CategoryGroup.name)
         result = await self.session.execute(q)
         return list(result.scalars().all())
@@ -277,7 +277,7 @@ class CategoryRepository(BaseRepository[Category]):
             # to match what is drawn, not what is hidden — card envelopes are
             # usually hidden too, which is the only reason this had not yet
             # produced the failure its group-level twin did.
-            [(c.id, c.is_hidden or c.linked_account_id is not None) for c in live],
+            [(c.id, c.is_archived or c.linked_account_id is not None) for c in live],
             category_ids,
             noun="category",
             plural="categories",
@@ -289,7 +289,7 @@ class CategoryRepository(BaseRepository[Category]):
             )
         await self.session.flush()
 
-    async def get_all(self, budget_id: uuid.UUID, include_hidden: bool = False) -> list[Category]:
+    async def get_all(self, budget_id: uuid.UUID, include_archived: bool = False) -> list[Category]:
         q = (
             self.with_eligibility(select(Category))
             .options(selectinload(Category.tags))
@@ -298,8 +298,8 @@ class CategoryRepository(BaseRepository[Category]):
                 Category.is_deleted == False,  # noqa: E712
             )
         )
-        if not include_hidden:
-            q = q.where(Category.is_hidden == False)  # noqa: E712
+        if not include_archived:
+            q = q.where(Category.is_archived == False)  # noqa: E712
         # Name breaks ties, as the group listing does: rows sharing a position
         # (every category a YNAB import ever created, before positions were
         # assigned) came back in a different order on every read.
@@ -328,7 +328,7 @@ class CategoryRepository(BaseRepository[Category]):
         return list(result.scalars().all())
 
     async def get_all_with_group_names(
-        self, budget_id: uuid.UUID, include_hidden: bool = False
+        self, budget_id: uuid.UUID, include_archived: bool = False
     ) -> list[tuple[Category, str]]:
         """Categories paired with their group's name — for AI name matching,
         where the same category name in several groups must be
@@ -346,8 +346,8 @@ class CategoryRepository(BaseRepository[Category]):
                 Category.is_deleted == False,  # noqa: E712
             )
         )
-        if not include_hidden:
-            q = q.where(Category.is_hidden == False)  # noqa: E712
+        if not include_archived:
+            q = q.where(Category.is_archived == False)  # noqa: E712
         q = q.order_by(Category.sort_order, Category.name)
         result = await self.session.execute(q.execution_options(populate_existing=True))
         return [(row[0], row[1]) for row in result.all()]

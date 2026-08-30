@@ -205,7 +205,7 @@ class TestOverspentCountMatchesItsAmount:
         await create_transaction(
             db_session, budget, account, "-25.00", MONTH, category=category, cleared="cleared"
         )
-        await CategoryRepository(db_session).update(category.id, is_hidden=True)
+        await CategoryRepository(db_session).update(category.id, is_archived=True)
 
         resp = await api_client.get(f"/api/v1/{budget.id}/months/{MONTH.isoformat()}")
         data = resp.json()

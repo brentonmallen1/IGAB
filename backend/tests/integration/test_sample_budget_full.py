@@ -118,8 +118,8 @@ async def test_full_tier_shape_and_texture(db_session):
     assert reconciled / len(txns) >= 0.75
 
     # Hidden categories exist and some carry real history
-    categories = await CategoryRepository(db_session).get_all(budget.id, include_hidden=True)
-    hidden = [c for c in categories if c.is_hidden]
+    categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
+    hidden = [c for c in categories if c.is_archived]
     assert len(hidden) >= 5
     hidden_ids = {c.id for c in hidden}
     assert any(t.category_id in hidden_ids for t in txns)
@@ -177,7 +177,7 @@ async def test_full_tier_keeps_starter_invariants(db_session):
     assert summary.to_be_assigned == Decimal("150.00")
     assert summary.total_overspent == Decimal("45.00")
 
-    categories = await CategoryRepository(db_session).get_all(budget.id, include_hidden=True)
+    categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
     overspent = [names[b.category_id] for b in summary.category_balances if b.available < 0]
     assert overspent == ["Dining Out"]

@@ -20,7 +20,7 @@ function cat(id: string, group: string, over: Partial<Category> = {}): Category 
 }
 
 function group(id: string, name: string): CategoryGroup {
-  return { id, budget_id: 'b1', name, sort_order: 0, is_hidden: false, is_system: false } as CategoryGroup
+  return { id, budget_id: 'b1', name, sort_order: 0, is_archived: false, is_system: false } as CategoryGroup
 }
 
 describe('grouping into sections', () => {
@@ -41,7 +41,7 @@ describe('grouping into sections', () => {
   })
 
   it('keeps a category whose group is missing, under a fallback heading', () => {
-    // The bug: the group list is filtered by is_hidden and the category list
+    // The bug: the group list is filtered by is_archived and the category list
     // is not, so a hidden group's categories silently disappeared from the
     // picker while staying live in the data.
     const sections = groupedCategorySections([cat('a', 'g1'), cat('orphan', 'hidden-g')], [group('g1', 'Bills')])

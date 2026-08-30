@@ -20,42 +20,42 @@ and the difference is load-bearing:
   groups here — which three of the six client spellings effectively did —
   would remove the only place a paycheque can go.
 
-Both exclude hidden categories. `IS_CATEGORIZABLE` also excludes categories
+Both exclude archived categories. `IS_CATEGORIZABLE` also excludes categories
 linked to an account or a liability: those are credit-card payment and debt
 categories, whose activity is maintained by the transfer and the loan, not by
 filing a row into them. `IS_FUNDABLE` keeps both — money really is budgeted
 into a card's set-aside and into a debt envelope — while `IS_ASSIGNABLE` names
-the card envelope outright instead of leaning on its group being hidden, which
+the card envelope outright instead of leaning on its group being archived, which
 was a coincidence rather than a rule.
 
-**Why these are served rather than computed on the client.** `is_hidden` is on
+**Why these are served rather than computed on the client.** `is_archived` is on
 the category row, so it looks like the client has everything it needs. It does
 not, twice over:
 
 - `CategoryResponse` did not expose `linked_liability_id`, so the
   liability-binding screen could not express its own rule and offered
   categories another liability already owned.
-- `CategoryRepository.get_all(include_hidden=False)` filters the *category's*
-  `is_hidden`, not the *group's*, while `CategoryGroupRepository.get_all`
-  filters the group's. So a hidden group's categories arrive at the client
+- `CategoryRepository.get_all(include_archived=False)` filters the *category's*
+  `is_archived`, not the *group's*, while `CategoryGroupRepository.get_all`
+  filters the group's. So an archived group's categories arrive at the client
   while the group does not: they leaked into the pickers that build a
   system-group set from the group list, and silently vanished from the pickers
-  that group by `!g.is_hidden`.
+  that group by `!g.is_archived`.
 
 Both flags read the group, which changes without the category row being
 touched — the same reason `needs_category` cannot be a column.
 
 `SPENDABLE` further down answers a different question — whose money can come
 back on a credit card — and is deliberately not an offering rule; see its own
-comment for why hidden categories stay in it.
+comment for why archived categories stay in it.
 """
 
 from sqlalchemy import and_, not_, or_, select
 
 from igab.db.models import Category, CategoryGroup
 
-NOT_HIDDEN = Category.is_hidden == False  # noqa: E712
-#: A category the arithmetic may still see. Soft-delete only: a *hidden*
+NOT_ARCHIVED = Category.is_archived == False  # noqa: E712
+#: A category the arithmetic may still see. Soft-delete only: an *archived*
 #: category is live — it still holds money and can still overspend.
 LIVE_CATEGORY = Category.is_deleted == False  # noqa: E712
 
@@ -73,13 +73,13 @@ IN_SYSTEM_GROUP = (
     .exists()
 )
 
-#: The group itself is hidden. A category in a hidden group is not offered
+#: The group itself is archived. A category in an archived group is not offered
 #: anywhere, whatever its own flag says.
-IN_HIDDEN_GROUP = (
+IN_ARCHIVED_GROUP = (
     select(CategoryGroup.id)
     .where(
         CategoryGroup.id == Category.category_group_id,
-        CategoryGroup.is_hidden == True,  # noqa: E712
+        CategoryGroup.is_archived == True,  # noqa: E712
     )
     .correlate(Category)
     .exists()
@@ -103,14 +103,16 @@ LINKED = or_(LINKED_TO_CARD, Category.linked_liability_id.isnot(None))
 #: stop the auto-assign strategies from ever funding a card's paydown target,
 #: which is the one thing that target is for". Measured against a card envelope
 #: built the way `ensure_payment_category` builds one, that was already false:
-#: the envelope lives in a hidden group, so `IN_HIDDEN_GROUP` excluded it
+#: the envelope lived in an archived group, so `IN_ARCHIVED_GROUP` excluded it
 #: anyway, `is_assignable` came back False, and `assign_service` — which
 #: filters on exactly this flag — had never once funded a card target. The
 #: rule was protecting an outcome it had already lost.
 #:
 #: So a card envelope is excluded here outright. The cards section is its only
 #: face, which is what `card_payment.py` says it is.
-IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP), not_(LINKED_TO_CARD))
+IS_ASSIGNABLE = and_(
+    NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP), not_(IN_SYSTEM_GROUP), not_(LINKED_TO_CARD)
+)
 
 #: **Where money may ENTER.** A strictly different question from what a picker
 #: offers, and keeping them apart is what lets a card envelope be funded
@@ -118,7 +120,7 @@ IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP), n
 #:
 #: Income is out, always: money assigned to a system-group category would
 #: neither reduce Ready to Assign nor ever come back out. Everything else the
-#: user can still see is in, and so is a card envelope, however hidden — a card
+#: user can still see is in, and so is a card envelope, archived or not — a card
 #: is paid down by assigning to it, and `assign_service` reads this so a
 #: paydown target finally fills.
 #:
@@ -130,19 +132,19 @@ IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP), n
 #: `IS_ASSIGNABLE`.
 IS_FUNDABLE = and_(
     not_(IN_SYSTEM_GROUP),
-    or_(and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP)), LINKED_TO_CARD),
+    or_(and_(NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP)), LINKED_TO_CARD),
 )
 
 #: A transaction leg may be filed here. System groups stay in — that is where
 #: income goes.
-IS_CATEGORIZABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(LINKED))
+IS_CATEGORIZABLE = and_(NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP), not_(LINKED))
 
 #: A category whose own money can come back on a card: the envelopes
 #: `sum_credit_outflows_by_category` releases against, and so exactly the set
 #: whose complement is an inflow the budget has no claim on
 #: (`txn_filters.UNBUDGETED_CARD_CREDIT`). **Both sides read this constant.**
 #:
-#: Not an offering rule, so hidden is not in it: a hidden envelope still holds
+#: Not an offering rule, so archived is not in it: an archived envelope still holds
 #: money and its spending still reserves against a card. `LINKED_TO_CARD` is
 #: out because a card's own set-aside is maintained by the arithmetic rather
 #: than by a row filed to it — but `linked_liability_id` stays IN, because a
@@ -200,16 +202,16 @@ SPENT_ENVELOPE = not_(IN_SYSTEM_GROUP)
 
 #: A group holding nothing but card set-aside envelopes. The budget grid never
 #: draws it — every one of its rows belongs to the cards section — so
-#: "Credit Card Payments" appears as no header at all, even where hidden groups
+#: "Credit Card Payments" appears as no header at all, even where archived groups
 #: are deliberately shown.
 #:
 #: Served (`CategoryGroupResponse.is_card_only`) rather than derived on the
 #: client, and read by `CategoryGroupRepository.reorder` as well, because the
 #: two had drifted: the grid dropped card-only groups while the reorder rule
-#: allowed omitting only hidden or system ones, so dragging a group was refused
+#: allowed omitting only archived or system ones, so dragging a group was refused
 #: on any budget that had one. The client also *could not* compute it — its
-#: category list filters hidden categories, so a group whose only non-card row
-#: is hidden reads as card-only there and not here. This side is right.
+#: category list filters archived categories, so a group whose only non-card row
+#: is archived reads as card-only there and not here. This side is right.
 #:
 #: An empty group is NOT card-only: a group the user just made still needs its
 #: header to drop things into.

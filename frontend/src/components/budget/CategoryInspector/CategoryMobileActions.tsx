@@ -124,10 +124,10 @@ export function CategoryMobileActions({
       </button>
       <button
         className="cat-mobile-actions__btn"
-        onClick={() => updateCategory.mutate({ id: category.id, is_hidden: !category.is_hidden })}
+        onClick={() => updateCategory.mutate({ id: category.id, is_archived: !category.is_archived })}
       >
-        {category.is_hidden ? <Eye size={14} /> : <EyeOff size={14} />}
-        {category.is_hidden ? 'Unhide' : 'Hide'}
+        {category.is_archived ? <Eye size={14} /> : <EyeOff size={14} />}
+        {category.is_archived ? 'Unhide' : 'Hide'}
       </button>
       <button
         className="cat-mobile-actions__btn cat-mobile-actions__btn--danger"

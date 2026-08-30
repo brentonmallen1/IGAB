@@ -59,7 +59,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const isSingle = count === 1
   const singleCategory = isSingle ? selectedCategories[0] : null
 
-  const allHidden = count > 0 && selectedCategories.length === count && selectedCategories.every((c) => c.is_hidden)
+  const allHidden = count > 0 && selectedCategories.length === count && selectedCategories.every((c) => c.is_archived)
 
   async function handleHideSelected() {
     if (!allHidden && count > 1) {
@@ -70,7 +70,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
       })
       if (!ok) return
     }
-    await Promise.all(selectedIds.map((id) => updateCategory.mutateAsync({ id, is_hidden: !allHidden })))
+    await Promise.all(selectedIds.map((id) => updateCategory.mutateAsync({ id, is_archived: !allHidden })))
     clearCategorySelection()
   }
 

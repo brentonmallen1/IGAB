@@ -108,7 +108,7 @@ class TestACardPaydownTargetFinallyFills:
 class TestMoneyEntersOnlyALiveEnvelope:
     async def test_assigning_into_an_archived_envelope_is_refused(self, db_session):
         services, budget, _checking, _group, cat = await _world(db_session)
-        cat.is_hidden = True
+        cat.is_archived = True
         await db_session.flush()
 
         with pytest.raises(InvariantViolation, match="archived"):
@@ -120,7 +120,7 @@ class TestMoneyEntersOnlyALiveEnvelope:
             db_session, budget, await create_category_group(db_session, budget, "Fun"), "Dining"
         )
         await services.budgets.set_assignment(budget.id, other.id, AUG, D("100.00"))
-        cat.is_hidden = True
+        cat.is_archived = True
         await db_session.flush()
 
         with pytest.raises(InvariantViolation, match="archived"):
@@ -135,7 +135,7 @@ class TestMoneyEntersOnlyALiveEnvelope:
             db_session, budget, await create_category_group(db_session, budget, "Fun"), "Dining"
         )
         await services.budgets.set_assignment(budget.id, cat.id, AUG, D("100.00"))
-        cat.is_hidden = True
+        cat.is_archived = True
         await db_session.flush()
 
         await services.budgets.move_money(budget.id, cat.id, other.id, D("100.00"), AUG)
@@ -151,7 +151,7 @@ class TestMoneyEntersOnlyALiveEnvelope:
         increase has to clear the rule."""
         services, budget, _checking, _group, cat = await _world(db_session)
         await services.budgets.set_assignment(budget.id, cat.id, AUG, D("100.00"))
-        cat.is_hidden = True
+        cat.is_archived = True
         await db_session.flush()
 
         await services.budgets.set_assignment(budget.id, cat.id, AUG, D("0.00"))
@@ -163,7 +163,7 @@ class TestMoneyEntersOnlyALiveEnvelope:
     async def test_income_still_refuses_both_directions(self, db_session):
         """The rule that was already there, and must survive the split."""
         services, budget, _checking, _group, _cat = await _world(db_session)
-        income = await CategoryRepository(db_session).get_all(budget.id, include_hidden=True)
+        income = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
         inflow = next(c for c in income if c.name == "Inflow")
 
         with pytest.raises(InvariantViolation, match="Income categories"):

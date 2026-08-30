@@ -65,7 +65,7 @@ class TestWhatEachRuleExcludes:
         budget = await _budget(db_session)
         group = await create_category_group(db_session, budget, "Everyday")
         category = await create_category(db_session, budget, group, "Old")
-        await CategoryRepository(db_session).update(category.id, is_hidden=True)
+        await CategoryRepository(db_session).update(category.id, is_archived=True)
 
         loaded = await CategoryRepository(db_session).get(category.id)
 
@@ -73,12 +73,12 @@ class TestWhatEachRuleExcludes:
         assert loaded.is_categorizable is False
 
     async def test_a_category_in_a_hidden_group_is_neither(self, db_session):
-        # The leak: CategoryRepository.get_all filters the category's is_hidden
+        # The leak: CategoryRepository.get_all filters the category's is_archived
         # but not the group's, while CategoryGroupRepository.get_all filters the
         # group's. So these arrived at the client without their group.
         budget = await _budget(db_session)
         group = await create_category_group(db_session, budget, "Archive")
-        await CategoryGroupRepository(db_session).update(group.id, is_hidden=True)
+        await CategoryGroupRepository(db_session).update(group.id, is_archived=True)
         category = await create_category(db_session, budget, group, "Stale")
 
         loaded = await CategoryRepository(db_session).get(category.id)
@@ -181,7 +181,7 @@ class TestTheServedFlagIsTheOnlyRule:
         everyday = await create_category_group(db_session, budget, "Everyday")
         income = await _system_group(db_session, budget)
         hidden_group = await create_category_group(db_session, budget, "Archive")
-        await CategoryGroupRepository(db_session).update(hidden_group.id, is_hidden=True)
+        await CategoryGroupRepository(db_session).update(hidden_group.id, is_archived=True)
 
         offered = await create_category(db_session, budget, everyday, "Groceries")
         await create_category(db_session, budget, income, "Paycheque")
