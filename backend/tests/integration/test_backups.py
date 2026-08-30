@@ -134,3 +134,55 @@ class TestDownloadBackup:
         app.dependency_overrides[get_current_user] = lambda: ordinary
         resp = await api_client.get(f"/api/v1/backups/{name}/download")
         assert resp.status_code == 403
+
+
+class TestTheJoinIsAsMuchOfTheRuleAsTheGuard:
+    """CodeQL flagged the whole-app download and not its per-budget twin.
+
+    Both built a path from a client-supplied name; only one had a membership
+    check after it. The join goes through one function now, and these are the
+    cases that function has to hold.
+    """
+
+    def test_a_plain_name_lands_in_the_directory(self, tmp_path):
+        from igab.services.backup_service import resolved_backup_path
+
+        path = resolved_backup_path(tmp_path, "igab-20260829-120000.dump")
+        assert path.parent == tmp_path.resolve()
+        assert path.name == "igab-20260829-120000.dump"
+
+    @pytest.mark.parametrize(
+        "name",
+        ["../etc/passwd", "..", "a/b.dump", "a\\b.dump", ".hidden.dump", " igab.dump", ""],
+    )
+    def test_a_name_that_is_a_path_is_refused(self, tmp_path, name):
+        from igab.domain.exceptions import InvariantViolation
+        from igab.services.backup_service import resolved_backup_path
+
+        with pytest.raises(InvariantViolation):
+            resolved_backup_path(tmp_path, name)
+
+    def test_a_symlink_out_of_the_directory_is_refused(self, tmp_path):
+        """What the name check cannot see. Planting one needs write access to
+        the volume, so it is no great escalation — but the check turns "no
+        traversal is reachable" from an argument into a property."""
+        from igab.domain.exceptions import InvariantViolation
+        from igab.services.backup_service import resolved_backup_path
+
+        outside = tmp_path.parent / "outside.dump"
+        outside.write_text("not yours")
+        inside = tmp_path / "igab-20260829-120000.dump"
+        inside.symlink_to(outside)
+
+        with pytest.raises(InvariantViolation):
+            resolved_backup_path(tmp_path, "igab-20260829-120000.dump")
+
+    def test_a_symlink_within_the_directory_is_fine(self, tmp_path):
+        from igab.services.backup_service import resolved_backup_path
+
+        real = tmp_path / "real.dump"
+        real.write_text("x")
+        link = tmp_path / "igab-20260829-120000.dump"
+        link.symlink_to(real)
+
+        assert resolved_backup_path(tmp_path, "igab-20260829-120000.dump") == real.resolve()

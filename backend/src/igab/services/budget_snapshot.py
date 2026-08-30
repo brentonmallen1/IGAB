@@ -96,17 +96,18 @@ def snapshot_filename(budget_name: str, when: datetime | None = None) -> str:
 
 
 def snapshot_path(budget_id: UUID, name: str) -> Path:
-    """The file a client named, once it is proven to be a filename.
+    """The file a client named, proven to be inside this budget's folder.
 
-    Uses the same guard as the whole-app backups — a name that arrives over
-    HTTP is a string, not a path, and there is one implementation of that.
+    The whole-app backups and these go through the same function, because the
+    join is as much of the rule as the guard is — and delete_snapshot unlinks
+    whatever comes back from here.
     """
-    from igab.services.backup_service import safe_backup_filename
+    from igab.services.backup_service import resolved_backup_path
 
-    checked = safe_backup_filename(name)
-    if not checked.endswith(SNAPSHOT_SUFFIX):
+    path = resolved_backup_path(snapshots_dir(budget_id), name)
+    if not path.name.endswith(SNAPSHOT_SUFFIX):
         raise InvariantViolation(f"Not a budget snapshot file name: {name}")
-    return snapshots_dir(budget_id) / checked
+    return path
 
 
 def list_snapshots(budget_id: UUID) -> list[dict[str, Any]]:

@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -146,11 +145,14 @@ async def download_backup(name: str, current_user: AdminUser) -> FileResponse:
     not needed to read one. `.age` files download fine; they are already
     encrypted, which is the point of them.
     """
-    checked = backup_service.safe_backup_filename(name)
-    if checked not in {f["name"] for f in backup_service.list_backup_files()}:
+    path = backup_service.resolved_backup_path(settings.BACKUPS_DIR, name)
+    # The listing is the allowlist: only a file the backup agent wrote, whose
+    # name matches one of its two strict patterns, is servable. A name that
+    # merely survives the guard is not enough.
+    if path.name not in {f["name"] for f in backup_service.list_backup_files()}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup file not found")
     return FileResponse(
-        path=Path(settings.BACKUPS_DIR) / checked,
+        path=path,
         media_type="application/octet-stream",
-        filename=checked,
+        filename=path.name,
     )

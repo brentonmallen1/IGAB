@@ -26,6 +26,7 @@ import re
 import signal
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from igab.config import settings
@@ -71,6 +72,28 @@ def safe_backup_filename(name: str) -> str:
     if name.startswith(".") or ".." in name:
         raise InvariantViolation("Invalid file name")
     return name
+
+
+def resolved_backup_path(directory: str | Path, name: str) -> Path:
+    """The file a client named, inside ``directory`` and provably nowhere else.
+
+    The guard above proves a name is not a path. This proves the *join* lands
+    where it should, which is a separate claim and was being made twice — here
+    and in budget_snapshot.snapshot_path — with only the first half checked.
+    One of those two was flagged by CodeQL and the other was not, which is a
+    fair description of why a rule with two implementations is a bug waiting.
+
+    Resolving both sides also closes what the name check cannot see: a symlink
+    inside the backups volume pointing somewhere else entirely. That needs
+    write access to the volume to plant, so it is not much of an escalation —
+    but the check costs one comparison and turns "no traversal is reachable"
+    from an argument into a property.
+    """
+    base = Path(directory).resolve()
+    candidate = (base / safe_backup_filename(name)).resolve()
+    if not candidate.is_relative_to(base):
+        raise InvariantViolation("Invalid file name")
+    return candidate
 
 
 def _classify(name: str) -> str | None:
