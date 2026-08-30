@@ -18,12 +18,28 @@ Precedence, highest first:
 ``auto``       no rows at all — detection speaks for itself.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Protocol
 from uuid import UUID
+
+#: What a binding's ``entity_type`` names, and the table its ``entity_id``
+#: points at. ``GuideBinding.entity_id`` is deliberately not a foreign key —
+#: it addresses three different tables — so this mapping is the only thing
+#: that can resolve one, and anything walking the budget graph (delete,
+#: snapshot export/import, the cross-budget-reference invariant) reads it
+#: from here. Writing the vocabulary a second time beside a snapshot
+#: serializer is how the two would drift.
+GUIDE_ENTITY_TABLES: Mapping[str, str] = MappingProxyType(
+    {
+        "category": "categories",
+        "account": "accounts",
+        "liability": "liabilities",
+    }
+)
 
 
 class BindingRow(Protocol):
