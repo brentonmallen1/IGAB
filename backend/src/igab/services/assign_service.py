@@ -176,14 +176,20 @@ class AssignService:
         summary = await self.budget_service.get_budget_summary(budget_id, month_start)
         balances = {b.category_id: b for b in summary.category_balances}
 
-        # `is_assignable` is served by IS_ASSIGNABLE (category_filters.py) — the
-        # same rule the move-money and assign pickers read, so what the client
-        # offers and what this endpoint acts on cannot drift. It also closes a
-        # gap the group-set rebuild had: get_all filters the category's
-        # is_hidden but not the group's, so a hidden group's categories were
-        # still eligible here.
+        # `is_fundable` (IS_FUNDABLE, category_filters.py) — where money may
+        # ENTER, which is this endpoint's question. It used to read
+        # `is_assignable`, which answers what a *picker* may offer, and the two
+        # are not the same envelope set: a card's payment envelope lives in a
+        # hidden group, so it failed `is_assignable` and a paydown target set
+        # on a card silently never filled. The comment defending the old
+        # conflation claimed excluding card envelopes "would" break exactly
+        # that; measuring showed it already had.
+        #
+        # `include_hidden=False` still: it filters the category's own flag,
+        # and a card envelope's own flag is false — only its group is hidden.
+        # An archived envelope is not a target this should fill.
         categories = await self.category_repo.get_all(budget_id, include_hidden=False)
-        eligible = [c for c in categories if c.is_assignable]
+        eligible = [c for c in categories if c.is_fundable]
 
         histories = {
             c.id: await self.budget_service.get_category_history(budget_id, c.id, month_start)

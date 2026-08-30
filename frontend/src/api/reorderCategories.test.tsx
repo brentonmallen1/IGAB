@@ -18,25 +18,10 @@ vi.mock('react-hot-toast', () => ({ default: { error: toastError, success: vi.fn
 
 import { useReorderCategories } from './categories'
 import type { Category } from '../types'
+import { makeCategory } from '../test-utils/factories'
 
 function cat(id: string, name: string, group: string, sort_order: number): Category {
-  return {
-    id,
-    category_group_id: group,
-    budget_id: 'b1',
-    name,
-    subtitle: null,
-    sort_order,
-    note: null,
-    is_hidden: false,
-    linked_account_id: null,
-    linked_liability_id: null,
-    is_assignable: true,
-    is_categorizable: true,
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-01T00:00:00Z',
-    tags: [],
-  }
+  return makeCategory({ id, name, category_group_id: group, sort_order })
 }
 
 // The server lists categories by position within the flat list; two groups

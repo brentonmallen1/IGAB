@@ -119,6 +119,11 @@ export interface Category {
    * system groups — income is filed into one, so excluding them here would
    * remove the only place a paycheque can go.
    */
+  /** May money ENTER this envelope? Served, not derived — home is
+   *  `repositories/category_filters.py IS_FUNDABLE`. Differs from
+   *  `is_assignable` on exactly the card payment envelope, which is funded
+   *  by the cards section and offered by no picker. */
+  is_fundable: boolean
   is_categorizable: boolean
   tags?: TagSimple[]
   created_at: string

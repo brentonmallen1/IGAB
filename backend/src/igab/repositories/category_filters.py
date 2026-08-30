@@ -6,10 +6,14 @@ Two of these answer "which envelopes may a surface offer", and conflating them
 is the mistake the six client-side spellings made. They differ on system groups,
 and the difference is load-bearing:
 
-- `IS_ASSIGNABLE` — money may be budgeted or moved into this envelope. System
-  groups are excluded: the seeded system group holds Ready-to-Assign-shaped
-  categories, and offering them in a move-money picker is offering to assign
-  money to the place money comes from.
+- `IS_ASSIGNABLE` — a picker may OFFER this envelope. System groups are
+  excluded: the seeded system group holds Ready-to-Assign-shaped categories,
+  and offering them in a move-money picker is offering to assign money to the
+  place money comes from. Card envelopes are excluded too — the cards section
+  is their only face.
+- `IS_FUNDABLE` — money may ENTER this envelope. A different question, which is
+  the whole reason it is a separate constant: a card envelope is funded but
+  never offered. Read by `assign_service` and by the money-moving endpoints.
 - `IS_CATEGORIZABLE` — a transaction leg may be filed here. System groups stay
   IN, because the seeded system group is named `Income` (see
   `api/v1/budgets.py`) and income rows are filed into it. Excluding system
@@ -19,9 +23,10 @@ and the difference is load-bearing:
 Both exclude hidden categories. `IS_CATEGORIZABLE` also excludes categories
 linked to an account or a liability: those are credit-card payment and debt
 categories, whose activity is maintained by the transfer and the loan, not by
-filing a row into them. `IS_ASSIGNABLE` keeps both — money really is budgeted
-into a card's set-aside and into a debt envelope — and what keeps a card
-envelope out of the pickers is its hidden group, not this flag.
+filing a row into them. `IS_FUNDABLE` keeps both — money really is budgeted
+into a card's set-aside and into a debt envelope — while `IS_ASSIGNABLE` names
+the card envelope outright instead of leaning on its group being hidden, which
+was a coincidence rather than a rule.
 
 **Why these are served rather than computed on the client.** `is_hidden` is on
 the category row, so it looks like the client has everything it needs. It does
@@ -91,16 +96,42 @@ LINKED_TO_CARD = Category.linked_account_id.isnot(None)
 #: payment category, or a debt category owned by a liability.
 LINKED = or_(LINKED_TO_CARD, Category.linked_liability_id.isnot(None))
 
-#: Money may be budgeted or moved into this envelope.
+#: **What a picker may OFFER.** Not where money may go — see `IS_FUNDABLE`.
 #:
-#: Deliberately does NOT exclude `LINKED_TO_CARD`, though no picker offers a
-#: card envelope: money genuinely is assigned to one — that is how a card is
-#: paid down — and `ensure_payment_category` puts it in a hidden group, which
-#: is what keeps it out of the pickers. Excluding it here would also stop the
-#: auto-assign strategies from ever funding a card's paydown target, which is
-#: the one thing that target is for. Pinned by
-#: `test_a_linked_payment_category_may_be_assigned_but_not_filed`.
-IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP))
+#: These were one rule, and the comment that lived here argued the conflation
+#: was deliberate: that `LINKED_TO_CARD` stays in because "excluding it would
+#: stop the auto-assign strategies from ever funding a card's paydown target,
+#: which is the one thing that target is for". Measured against a card envelope
+#: built the way `ensure_payment_category` builds one, that was already false:
+#: the envelope lives in a hidden group, so `IN_HIDDEN_GROUP` excluded it
+#: anyway, `is_assignable` came back False, and `assign_service` — which
+#: filters on exactly this flag — had never once funded a card target. The
+#: rule was protecting an outcome it had already lost.
+#:
+#: So a card envelope is excluded here outright. The cards section is its only
+#: face, which is what `card_payment.py` says it is.
+IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP), not_(LINKED_TO_CARD))
+
+#: **Where money may ENTER.** A strictly different question from what a picker
+#: offers, and keeping them apart is what lets a card envelope be funded
+#: without being listed.
+#:
+#: Income is out, always: money assigned to a system-group category would
+#: neither reduce Ready to Assign nor ever come back out. Everything else the
+#: user can still see is in, and so is a card envelope, however hidden — a card
+#: is paid down by assigning to it, and `assign_service` reads this so a
+#: paydown target finally fills.
+#:
+#: **Direction matters, and only for entry.** Money may always LEAVE an
+#: envelope — that is how a stranded balance in an archived one gets rescued —
+#: so `budget_service` gates the source of a move on income alone and the
+#: destination on this. The two used to be one check spelling one of these
+#: three terms, under a comment claiming it was "the same rule" as
+#: `IS_ASSIGNABLE`.
+IS_FUNDABLE = and_(
+    not_(IN_SYSTEM_GROUP),
+    or_(and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP)), LINKED_TO_CARD),
+)
 
 #: A transaction leg may be filed here. System groups stay in — that is where
 #: income goes.

@@ -434,6 +434,10 @@ class Category(Base):
     #: change without this row being touched. Populated only by
     #: `CategoryRepository.with_eligibility`; left alone it reads None.
     is_assignable: Mapped[bool] = query_expression()
+    #: Where money may ENTER, as opposed to what a picker may offer.
+    #: Differs from is_assignable on exactly the card envelope, which is
+    #: funded by the cards section and listed by nothing.
+    is_fundable: Mapped[bool] = query_expression()
     #: May a transaction leg be filed here? Differs from is_assignable on
     #: system groups — income is filed into one — and on linked categories.
     is_categorizable: Mapped[bool] = query_expression()

@@ -14,6 +14,7 @@ from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
     IS_ASSIGNABLE,
     IS_CATEGORIZABLE,
+    IS_FUNDABLE,
     SPENDABLE,
 )
 
@@ -207,6 +208,7 @@ class CategoryRepository(BaseRepository[Category]):
         """
         return stmt.options(
             with_expression(Category.is_assignable, IS_ASSIGNABLE),
+            with_expression(Category.is_fundable, IS_FUNDABLE),
             with_expression(Category.is_categorizable, IS_CATEGORIZABLE),
         )
 
@@ -335,6 +337,7 @@ class CategoryRepository(BaseRepository[Category]):
             select(Category, CategoryGroup.name)
             .options(
                 with_expression(Category.is_assignable, IS_ASSIGNABLE),
+                with_expression(Category.is_fundable, IS_FUNDABLE),
                 with_expression(Category.is_categorizable, IS_CATEGORIZABLE),
             )
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)

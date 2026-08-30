@@ -13,25 +13,10 @@ import {
   groupedCategorySections,
 } from './categoryPickers'
 import type { Category, CategoryGroup } from '../types'
+import { makeCategory } from '../test-utils/factories'
 
 function cat(id: string, group: string, over: Partial<Category> = {}): Category {
-  return {
-    id,
-    category_group_id: group,
-    budget_id: 'b1',
-    name: id.toUpperCase(),
-    subtitle: null,
-    sort_order: 0,
-    note: null,
-    is_hidden: false,
-    linked_account_id: null,
-    linked_liability_id: null,
-    is_assignable: true,
-    is_categorizable: true,
-    created_at: '2026-08-01T00:00:00Z',
-    updated_at: '2026-08-01T00:00:00Z',
-    ...over,
-  } as Category
+  return makeCategory({ id, name: id.toUpperCase(), category_group_id: group, ...over })
 }
 
 function group(id: string, name: string): CategoryGroup {

@@ -323,20 +323,51 @@ class BudgetService:
             after=after,
         )
 
-    async def _require_envelope(self, budget_id: uuid.UUID, category_id: uuid.UUID) -> None:
-        """Refuse to put money into, or take it out of, an income category.
-
-        A category in a system group is where income is *filed*, not an
-        envelope: money assigned there would neither reduce To Be Assigned nor
-        ever come back out. The pickers already hide such categories
-        (`is_assignable`); this is the same rule where the money actually moves.
-        """
+    async def _load_envelope(self, budget_id: uuid.UUID, category_id: uuid.UUID):
         category = await self.category_repo.get(category_id)
         if category is None or str(category.budget_id) != str(budget_id):
             raise InvariantViolation("Category does not belong to this budget")
+        return category
+
+    async def _require_envelope(self, budget_id: uuid.UUID, category_id: uuid.UUID) -> None:
+        """Money may LEAVE here. Income is the only refusal.
+
+        A category in a system group is where income is *filed*, not an
+        envelope: it never held money, so there is none to take out.
+
+        Everything else may be a source, archived included — that is how a
+        balance stranded in an archived envelope gets rescued, and Phase 3 of
+        the archive flow depends on it.
+        """
+        category = await self._load_envelope(budget_id, category_id)
         group = await self.category_group_repo.get(category.category_group_id)
         if group is not None and group.is_system:
             raise InvariantViolation("Income categories do not hold money")
+
+    async def _require_fundable(self, budget_id: uuid.UUID, category_id: uuid.UUID) -> None:
+        """Money may ENTER here — `category_filters.IS_FUNDABLE`, served.
+
+        A strictly narrower question than leaving, and it used to be the same
+        check: `_require_envelope` tested the system group alone, under a
+        comment claiming it was "the same rule" the pickers read. It was one of
+        `IS_ASSIGNABLE`'s three terms, so money could be assigned into an
+        archived envelope by anything that was not a picker — and land
+        somewhere the budget page does not draw.
+
+        A card's payment envelope is fundable and always was; that is how a
+        card is paid down, and it is why this reads `IS_FUNDABLE` rather than
+        `IS_ASSIGNABLE`, which now excludes it.
+        """
+        category = await self._load_envelope(budget_id, category_id)
+        if category.is_fundable:
+            return
+        group = await self.category_group_repo.get(category.category_group_id)
+        if group is not None and group.is_system:
+            raise InvariantViolation("Income categories do not hold money")
+        raise InvariantViolation(
+            "That envelope is archived. Restore it before budgeting into it — "
+            "money already in it can still be moved out"
+        )
 
     async def get_category_balance(
         self,
@@ -790,6 +821,12 @@ class BudgetService:
             month=month_start,
         )
         before_assigned = assignment.assigned
+        # Only an INCREASE has to clear the funding rule. Setting an archived
+        # envelope's assignment down — to zero, or anywhere below where it
+        # stands — is money coming back out, which is always allowed and is
+        # what the archive sweep does.
+        if amount > before_assigned:
+            await self._require_fundable(budget_id, category_id)
         updated = await self.assignment_repo.update(assignment.id, assigned=amount)
         if updated.assigned != before_assigned:
             await self._record_assignment(updated, before_assigned)
@@ -881,9 +918,13 @@ class BudgetService:
 
         month_start = first_of_month(month)
 
-        for category_id in (from_category_id, to_category_id):
-            if category_id is not None:
-                await self._require_envelope(budget_id, category_id)
+        # Asymmetric on purpose: leaving is always allowed, entering is not.
+        # Both used to run the same check, which is how money could be moved
+        # into an envelope the budget page no longer draws.
+        if from_category_id is not None:
+            await self._require_envelope(budget_id, from_category_id)
+        if to_category_id is not None:
+            await self._require_fundable(budget_id, to_category_id)
 
         # The audit row first, so both assignment change rows can carry its id.
         move = None

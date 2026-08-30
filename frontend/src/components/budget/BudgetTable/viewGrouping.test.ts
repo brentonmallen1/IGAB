@@ -1,26 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { groupByView, UNASSIGNED_GROUP_ID, visibleCategoryIds } from './viewGrouping'
 import type { BudgetView, Category } from '../../../types'
+import { makeCategory } from '../../../test-utils/factories'
 
 const BUDGET = 'b1'
 
 function cat(id: string, name: string, group = 'real-group'): Category {
-  return {
-    id,
-    category_group_id: group,
-    budget_id: BUDGET,
-    name,
-    subtitle: null,
-    sort_order: 0,
-    note: null,
-    is_hidden: false,
-    linked_account_id: null,
-    linked_liability_id: null,
-    is_assignable: true,
-    is_categorizable: true,
-    created_at: '2026-08-01T00:00:00Z',
-    updated_at: '2026-08-01T00:00:00Z',
-  }
+  return makeCategory({ id, name, category_group_id: group })
 }
 
 function view(groups: [string, string][], placements: Partial<BudgetView['placements'][0]>[]): BudgetView {

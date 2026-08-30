@@ -30,6 +30,7 @@ const CATEGORIES = vi.hoisted(() => [
     linked_account_id: null,
     linked_liability_id: null,
     is_assignable: true,
+    is_fundable: true,
     is_categorizable: true,
   },
   {
@@ -40,6 +41,7 @@ const CATEGORIES = vi.hoisted(() => [
     linked_account_id: null,
     linked_liability_id: null,
     is_assignable: true,
+    is_fundable: true,
     is_categorizable: true,
   },
 ])

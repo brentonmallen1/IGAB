@@ -273,6 +273,14 @@ class CategoryResponse(BaseModel):
     #: that forgets to load it should raise rather than report every category
     #: as ineligible, which would empty the move-money picker silently.
     is_assignable: bool
+    #: May money ENTER this envelope? `IS_FUNDABLE`, not the same question as
+    #: what a picker may offer: a card's payment envelope is fundable (that is
+    #: how a card is paid down) and offered by nothing. The two were one field
+    #: read two ways, and each side got the other's answer — a paydown target
+    #: never filled, and money could be assigned into an archived envelope.
+    #:
+    #: Required for the same reason its siblings are.
+    is_fundable: bool
     #: May a transaction leg be filed here? Differs from is_assignable on
     #: system groups — income is filed into one — and on linked categories.
     is_categorizable: bool

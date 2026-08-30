@@ -86,9 +86,16 @@ class TestWhatEachRuleExcludes:
         assert loaded.is_assignable is False
         assert loaded.is_categorizable is False
 
-    async def test_a_linked_payment_category_may_be_assigned_but_not_filed(self, db_session):
-        # A credit-card payment category holds budgeted money; its activity is
-        # maintained by the transfer, not by filing a row into it.
+    async def test_a_linked_payment_category_is_funded_but_never_offered(self, db_session):
+        """A credit-card payment envelope holds budgeted money — that is how a
+        card is paid down — but no picker lists it and nothing may be filed to
+        it. Three questions, three answers.
+
+        This asserted `is_assignable is True` until the two questions were
+        split. Measuring a real envelope showed that claim only held for a
+        configuration `ensure_payment_category` never builds: it puts the
+        envelope in a hidden group, so `is_assignable` came back False anyway
+        and `assign_service` had never funded a card target."""
         budget = await _budget(db_session)
         group = await create_category_group(db_session, budget, "Credit Cards")
         category = await create_category(db_session, budget, group, "Visa")
@@ -97,8 +104,9 @@ class TestWhatEachRuleExcludes:
 
         loaded = await CategoryRepository(db_session).get(category.id)
 
-        assert loaded.is_assignable is True
-        assert loaded.is_categorizable is False
+        assert loaded.is_assignable is False  # no picker offers it
+        assert loaded.is_fundable is True  # money still goes in
+        assert loaded.is_categorizable is False  # nothing is filed to it
 
 
 class TestEveryPathCarriesTheFlags:
