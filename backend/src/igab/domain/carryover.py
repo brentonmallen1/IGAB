@@ -19,6 +19,23 @@ Pure: takes the two series and the month, returns the number.
 from datetime import date
 from decimal import Decimal
 
+ZERO = Decimal("0")
+
+
+def next_carryover(end_of_month: Decimal) -> Decimal:
+    """What a month hands to the next one: its end balance, floored at zero.
+
+    The floor *is* the write-off — a negative month was absorbed by To Be
+    Assigned, so the next month starts fresh rather than inheriting the debt.
+
+    One line, and it has a name because two walks apply it: this module's
+    `monthly_end_balances` and `domain.cards.card_funding`, which runs the same
+    simulation with card corrections folded into each month's activity. Written
+    twice, the two series would drift, and the whole point of the card walk is
+    that its answer and this one are the same rule.
+    """
+    return max(ZERO, end_of_month)
+
 
 def monthly_end_balances(
     assignments_by_month: dict[date, Decimal],
@@ -26,24 +43,50 @@ def monthly_end_balances(
 ) -> dict[date, Decimal]:
     """Each data month's raw end-of-month available, in one pass.
 
-    The one loop of the simulation — `available_through` reads its answer out
-    of this, and the card set-aside arithmetic (domain/cards.py) reads the
+    The one loop of the simulation — `available_at` reads its answer out of
+    this, and the card set-aside arithmetic (domain/cards.py) reads the
     negatives out of it to split a month's overspending by funding source.
     Values may be negative; the floor is applied *between* entries, so each
     value is what that month ended at before the next month floored it.
     """
     out: dict[date, Decimal] = {}
-    carryover = Decimal("0")
+    carryover = ZERO
     for m in sorted(set(assignments_by_month) | set(activity_by_month)):
         end_of_month = (
-            carryover
-            + assignments_by_month.get(m, Decimal("0"))
-            + activity_by_month.get(m, Decimal("0"))
+            carryover + assignments_by_month.get(m, ZERO) + activity_by_month.get(m, ZERO)
         )
         out[m] = end_of_month
         # Floor into the next month; the month itself keeps its raw value.
-        carryover = max(Decimal("0"), end_of_month)
+        carryover = next_carryover(end_of_month)
     return out
+
+
+def sum_through(series: dict[date, Decimal], month_start: date) -> Decimal:
+    """A monthly series totalled through `month_start`, inclusive.
+
+    Not the carryover rule — no floor — just "the months up to here". It has a
+    name because six call sites spell it, and one of them spelling `<` where
+    the others spell `<=` is an off-by-one-month nobody would see on screen.
+    """
+    return sum((v for m, v in series.items() if m <= month_start), ZERO)
+
+
+def available_at(end_balances: dict[date, Decimal], month_start: date) -> Decimal:
+    """Read one month's available out of a month-end series.
+
+    Only the month with its own data may show negative. A later month starts
+    from the floored carryover, because the overspend was absorbed by TBA.
+    Months after `month_start` are ignored, so a caller holding the whole
+    history — `domain.cards.card_funding`, which must compute every month to
+    carry its reservations forward — can ask for any month without slicing
+    first.
+    """
+    if month_start in end_balances:
+        return end_balances[month_start]
+    earlier = [m for m in end_balances if m < month_start]
+    if not earlier:
+        return ZERO
+    return next_carryover(end_balances[max(earlier)])
 
 
 def available_through(
@@ -57,14 +100,10 @@ def available_through(
     contribute nothing and are skipped — a gap in the calendar is not a month
     that zeroed the carryover.
     """
-    balances = monthly_end_balances(
-        {m: v for m, v in assignments_by_month.items() if m <= month_start},
-        {m: v for m, v in activity_by_month.items() if m <= month_start},
+    return available_at(
+        monthly_end_balances(
+            {m: v for m, v in assignments_by_month.items() if m <= month_start},
+            {m: v for m, v in activity_by_month.items() if m <= month_start},
+        ),
+        month_start,
     )
-    # Only the month with its own data may show negative. A later month starts
-    # from the floored carryover, because the overspend was absorbed by TBA.
-    if month_start in balances:
-        return balances[month_start]
-    if not balances:
-        return Decimal("0")
-    return max(Decimal("0"), balances[max(balances)])

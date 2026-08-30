@@ -555,6 +555,7 @@ async def get_budget_month(
                 uncovered=c.uncovered,
                 is_closed=c.is_closed,
                 overspent_this_month=c.overspent_this_month,
+                reserve_discrepancy=c.reserve_discrepancy,
             )
             for c in summary.cards
         ],
@@ -577,7 +578,7 @@ async def get_budget_month(
                     else None
                 ),
                 is_card_payment=b.is_card_payment,
-                refused_card_inflows=b.refused_card_inflows,
+                repaid_uncovered_debt=b.repaid_uncovered_debt,
                 credit_overspent=b.credit_overspent,
             )
             for b in summary.category_balances

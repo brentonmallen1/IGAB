@@ -326,6 +326,21 @@ class CategoryGroup(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
+    #: Does this group hold nothing but card set-aside envelopes? The grid
+    #: never draws such a group, and `CategoryGroupRepository.reorder` lets a
+    #: client omit it for that reason.
+    #:
+    #: Not a column: it is derived from the group's live categories and would
+    #: go stale the moment one is added, moved, hidden or deleted. The rule is
+    #: `GROUP_IS_CARD_ONLY` (repositories/category_filters.py) and nothing else
+    #: may restate it — the client used to, from a category list that filters
+    #: hidden rows, so it could not have computed the same answer.
+    #:
+    #: Populated only by `CategoryGroupRepository.with_card_only`. Left alone it
+    #: reads `None`, which `CategoryGroupResponse` rejects: a path that forgets
+    #: fails loudly instead of quietly drawing the card group as an empty header.
+    is_card_only: Mapped[bool] = query_expression()
+
     budget: Mapped["Budget"] = relationship(back_populates="category_groups")
     categories: Mapped[list["Category"]] = relationship(
         back_populates="group", order_by="[Category.sort_order, Category.name]"

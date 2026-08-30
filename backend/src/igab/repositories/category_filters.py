@@ -46,6 +46,9 @@ from sqlalchemy import and_, not_, or_, select
 from igab.db.models import Category, CategoryGroup
 
 NOT_HIDDEN = Category.is_hidden == False  # noqa: E712
+#: A category the arithmetic may still see. Soft-delete only: a *hidden*
+#: category is live — it still holds money and can still overspend.
+LIVE_CATEGORY = Category.is_deleted == False  # noqa: E712
 
 #: Does this category's group belong to the budget's system arrangement?
 #: EXISTS rather than `category_group_id IN (subquery)`: `NULL IN (non-empty
@@ -98,6 +101,38 @@ IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP))
 #: A transaction leg may be filed here. System groups stay in — that is where
 #: income goes.
 IS_CATEGORIZABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(LINKED))
+
+#: A group holding nothing but card set-aside envelopes. The budget grid never
+#: draws it — every one of its rows belongs to the cards section — so
+#: "Credit Card Payments" appears as no header at all, even where hidden groups
+#: are deliberately shown.
+#:
+#: Served (`CategoryGroupResponse.is_card_only`) rather than derived on the
+#: client, and read by `CategoryGroupRepository.reorder` as well, because the
+#: two had drifted: the grid dropped card-only groups while the reorder rule
+#: allowed omitting only hidden or system ones, so dragging a group was refused
+#: on any budget that had one. The client also *could not* compute it — its
+#: category list filters hidden categories, so a group whose only non-card row
+#: is hidden reads as card-only there and not here. This side is right.
+#:
+#: An empty group is NOT card-only: a group the user just made still needs its
+#: header to drop things into.
+GROUP_IS_CARD_ONLY = and_(
+    select(Category.id)
+    .where(Category.category_group_id == CategoryGroup.id, LIVE_CATEGORY)
+    .correlate(CategoryGroup)
+    .exists(),
+    not_(
+        select(Category.id)
+        .where(
+            Category.category_group_id == CategoryGroup.id,
+            LIVE_CATEGORY,
+            not_(LINKED_TO_CARD),
+        )
+        .correlate(CategoryGroup)
+        .exists()
+    ),
+)
 
 #: The category is live but its group is soft-deleted: gone from the grid
 #: (which renders only the groups it was given) yet still in the budget

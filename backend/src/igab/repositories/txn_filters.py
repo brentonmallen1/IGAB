@@ -365,6 +365,32 @@ LOAN_PAYMENT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, TRANSFER_LEG)
 DEBT_INTEREST_ROW = and_(BALANCE_ROW, Transaction.amount < 0, NON_TRANSFER)
 PLAIN_DEPOSIT_ROW = and_(BALANCE_ROW, Transaction.amount > 0, NON_TRANSFER)
 
+#: A card inflow the budget has no claim on. Defined as the complement of the
+#: two sums that DO claim card inflows, so the three cannot drift apart:
+#:
+#: - not a payment from the budget's cash — that is a transfer leg with a cash
+#:   counterpart (`sum_card_payments_by_month`);
+#: - not a category's own money coming back — that is a categorized row
+#:   (`sum_credit_outflows_by_category`).
+#:
+#: What is left is a partner paying the card themselves, a promotional credit,
+#: a bank adjustment. It reduces what is owed and touches no envelope, which is
+#: correct — and is exactly why the reserve identity has to name it rather than
+#: read it as drift (`domain/cards.py reserve_discrepancy`, bounds T1 and T3).
+#:
+#: **Shape:** PARENT_ROW, via BALANCE_ROW, because this is measured against the
+#: card's *balance*. `sum_credit_outflows_by_category` is LEAF, because that is
+#: measured against categories. Mixing the two shapes is the trap this module's
+#: docstring opens with; a split parent on a card with mixed-sign legs falls in
+#: neither term, and `_check_money_conservation` is what covers that gap.
+UNBUDGETED_CARD_CREDIT = and_(
+    BALANCE_ROW,
+    ON_CARD_ACCOUNT,
+    Transaction.amount > 0,
+    Transaction.category_id.is_(None),
+    NON_TRANSFER,
+)
+
 
 # ─── Tags on the row's category or payee ─────────────────────────────────────
 #

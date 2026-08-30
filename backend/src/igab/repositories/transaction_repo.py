@@ -55,6 +55,7 @@ from igab.repositories.txn_filters import (
     POSTED,
     PROVISIONALLY_LINKED,
     TRANSFER_LEG,
+    UNBUDGETED_CARD_CREDIT,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
     sync_created_pending,
@@ -790,6 +791,49 @@ class TransactionRepository(BaseRepository[Transaction]):
         for row in result.mappings():
             month = date(row["yr"], row["mo"], 1)
             out.setdefault(row["account_id"], {})[month] = Decimal(str(row["paid"]))
+        return out
+
+    async def sum_unbudgeted_card_credits(
+        self,
+        budget_id: uuid.UUID,
+        end_date: date,
+    ) -> dict[uuid.UUID, dict[date, Decimal]]:
+        """Card inflows the budget has no claim on: {card: {month: amount >= 0}}.
+
+        Neither a payment from the budget's cash (`sum_card_payments_by_month`)
+        nor a category's own money coming back
+        (`sum_credit_outflows_by_category`) — a partner paying the card
+        themselves, a promotional credit, a bank adjustment. It reduces what is
+        owed and touches no envelope, which is correct.
+
+        It exists because the card reserve identity has to *name* it. Without
+        this term the only honest form of `set_aside + uncovered == -balance`
+        was one qualified into uselessness — "for a card with no assignments
+        and no inflows that predate their reservations" — and those were
+        precisely the histories that broke it. The predicate is the complement
+        of the other two sums (`txn_filters.UNBUDGETED_CARD_CREDIT`), so the
+        three cannot drift apart.
+        """
+        yr = cast(func.extract("year", Transaction.date), Integer)
+        mo = cast(func.extract("month", Transaction.date), Integer)
+        result = await self.session.execute(
+            select(
+                Transaction.account_id,
+                yr.label("yr"),
+                mo.label("mo"),
+                func.sum(Transaction.amount).label("credited"),
+            )
+            .where(
+                Transaction.budget_id == budget_id,
+                UNBUDGETED_CARD_CREDIT,
+                Transaction.date <= end_date,
+            )
+            .group_by(Transaction.account_id, yr, mo)
+        )
+        out: dict[uuid.UUID, dict[date, Decimal]] = {}
+        for row in result.mappings():
+            month = date(row["yr"], row["mo"], 1)
+            out.setdefault(row["account_id"], {})[month] = Decimal(str(row["credited"]))
         return out
 
     _BULK_CHUNK = 1000  # ~15k params/chunk, well under asyncpg's 32767 limit

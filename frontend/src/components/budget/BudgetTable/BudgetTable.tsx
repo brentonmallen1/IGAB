@@ -16,7 +16,7 @@ import {
   renderableCategories,
   renderableCategoryIds,
   renderableGroups,
-  withoutCardOnlyGroups,
+  drawnGroups,
 } from '../budgetGroups'
 import { CreditCardsSection } from '../CreditCardsSection/CreditCardsSection'
 import { useDragReorder } from '../../../hooks/useDragReorder'
@@ -140,26 +140,34 @@ export function BudgetTable() {
 
   const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
   const sourceGroups = arranged?.groups ?? groups
-  // The card envelopes' hidden group holds nothing renderable — every one of
-  // its categories is linked and excluded above — so it is not drawn even
-  // with hidden groups shown: "Credit Card Payments" never renders as a bare
-  // header. The helper preserves identity when nothing is dropped, which the
-  // reorder gate below depends on.
-  const withoutCardGroups = withoutCardOnlyGroups(sourceGroups, categories ?? [])
+  // A group holding nothing but card envelopes is not drawn even with hidden
+  // groups shown: "Credit Card Payments" never renders as a bare header. The
+  // server decides it (`is_card_only`) and the server's reorder rule reads the
+  // same expression, so the grid and the write cannot disagree about it.
+  const drawn = drawnGroups(sourceGroups)
   const visibleGroups =
     isFiltered || activeView
-      ? withoutCardGroups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
-      : withoutCardGroups
+      ? drawn?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
+      : drawn
 
   const allGroupIds = visibleGroups?.map((g) => g.id) ?? []
 
   // Dragging is offered only on the budget's own arrangement, showing every
-  // group. A filtered or searched grid hides groups, so a drop there would
-  // reorder against a list the user cannot see; a view has its own order,
-  // which is edited in the view editor. Categories follow the same rule
+  // group the grid draws. A filtered or searched grid hides groups, so a drop
+  // there would reorder against a list the user cannot see; a view has its own
+  // order, which is edited in the view editor. Categories follow the same rule
   // within their group.
+  //
+  // Compared by CONTENT, not by array identity. This asked `visibleGroups ===
+  // groups`, which held only while nothing was dropped — so the moment a budget
+  // actually had a card group the handles vanished with no explanation, and
+  // `drawnGroups` had to allocate carefully to keep dragging alive. A budget
+  // whose every group is card-only has nothing to drag either way.
   const canReorderGroups =
-    !isFiltered && !activeView && (groups?.length ?? 0) > 1 && visibleGroups === groups
+    !isFiltered &&
+    !activeView &&
+    (visibleGroups?.length ?? 0) > 1 &&
+    visibleGroups?.length === drawn?.length
   const canReorderCategories = !isFiltered && !activeView
 
   const allCollapsed = allGroupIds.length > 0 && allGroupIds.every((id) => collapsedGroups.has(id))

@@ -152,9 +152,9 @@ export function useSetAssignment(budgetId: string) {
                 // those always exist server-side before they can be assigned.
                 is_card_payment: false,
                 needed_this_month: null,
-                // Nothing was refused: this row is an assignment the user just
-                // made, not a card inflow the reservation walk had to cap.
-                refused_card_inflows: 0,
+                // Nothing repaid: this row is an assignment the user just
+                // made, not a card inflow the exposure walk had to split.
+                repaid_uncovered_debt: 0,
                 // An optimistic row starts at `assigned` with no activity, so
                 // it cannot be overspent at all, let alone on a card. The
                 // refetch brings the real split a moment later.

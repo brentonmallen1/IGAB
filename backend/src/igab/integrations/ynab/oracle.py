@@ -67,6 +67,20 @@ _INFLOW = ("Inflow", "Ready to Assign")
 _CREDIT_CARD_PAYMENTS = "Credit Card Payments"
 
 
+def _net_on_card(
+    card_outflows: dict[tuple[str, str, date], Decimal],
+    row: YNABPlanRow,
+) -> Decimal:
+    """A category-month's net card spending, floored at zero.
+
+    Mirrors `domain.cards.credit_floored`'s `max(ZERO, net_card_outflow)`
+    exactly: a month whose card activity nets to a refund carries no shortfall
+    onto a card. Stated once here because both use sites below need it and one
+    of them spelling it differently is how the oracle and the engine drift.
+    """
+    return max(ZERO, card_outflows.get((row.category_group, row.category, row.month), ZERO))
+
+
 @dataclass
 class RTAOracle:
     month: date
@@ -94,6 +108,18 @@ class RTAOracle:
     #: YNAB. Card rows are excluded: outside cash here, outside the plan there.
     uncategorized_net: Decimal
     expected_igab: Decimal
+    #: SIGNED net card movement per (group, category) per month, keyed by
+    #: IGAB's names — the same shape `sum_credit_outflows_by_category` returns
+    #: from the register.
+    #:
+    #: Shipped as an INPUT, not an answer. YNAB releases a card refund from the
+    #: CCP reserve uncapped and lets it go negative; IGAB routes the part that
+    #: met uncovered debt to the card instead. The two agree on Ready to Assign
+    #: — the errors cancel in YNAB's ledger — and differ per envelope by exactly
+    #: what `card_funding` calls `repaid_by_category`. The parity check runs
+    #: `domain.cards.card_funding` over this to explain the gap, rather than the
+    #: oracle restating the engine's rules and drifting from them.
+    card_net_by_category: dict[tuple[str, str], dict[date, Decimal]] = field(default_factory=dict)
     #: YNAB's Available per envelope category at `month`, keyed by IGAB's
     #: (group, category) names; the card-payment group is left out.
     available: dict[tuple[str, str], Decimal] = field(default_factory=dict)
@@ -133,6 +159,11 @@ def ynab_rta(
     card_balances = ZERO
     uncategorized_net = ZERO
     # (group, category, month) → outflow on credit cards, as a positive figure
+    # SIGNED net card movement per (group, category, month), the same shape
+    # `sum_credit_outflows_by_category` returns from the register. It must be
+    # net, not gross: `credit_floored_by_month` nets a month's charges against
+    # its refunds before splitting the shortfall, so accumulating only the
+    # negative legs here made the two disagree on any month that had both.
     card_outflows: dict[tuple[str, str, date], Decimal] = defaultdict(lambda: ZERO)
     uncleared: dict[tuple[str, str], list[Decimal]] = defaultdict(list)
     for txn in budget.transactions:
@@ -156,7 +187,7 @@ def ynab_rta(
                 if on_budget and not on_card and not is_transfer:
                     uncategorized_net += leg.amount
                 continue
-            if on_card and leg.amount < 0:
+            if on_card:
                 card_outflows[
                     (leg.category_group, leg.category, month_start(txn.date))
                 ] += -leg.amount
@@ -179,7 +210,7 @@ def ynab_rta(
             continue
         if row.month < month and row.available < 0:
             overspent = -row.available
-            on_card = card_outflows.get((row.category_group, row.category, row.month), ZERO)
+            on_card = _net_on_card(card_outflows, row)
             written_off += max(ZERO, overspent - on_card)
         if row.month == month:
             if is_ccp:
@@ -190,8 +221,13 @@ def ynab_rta(
             else:
                 available[map_ynab_names(row.category_group, row.category)] = row.available
                 if row.available < 0:
-                    on_card = card_outflows.get((row.category_group, row.category, row.month), ZERO)
+                    on_card = _net_on_card(card_outflows, row)
                     uncovered_current += min(-row.available, on_card)
+
+    card_net_by_category: dict[tuple[str, str], dict[date, Decimal]] = {}
+    for (group, category, row_month), net in card_outflows.items():
+        if net != ZERO:
+            card_net_by_category.setdefault(map_ynab_names(group, category), {})[row_month] = net
 
     rta = inflow - assigned - written_off
     uncovered_total = -card_balances - ccp_available
@@ -210,6 +246,7 @@ def ynab_rta(
         uncovered_card_debt=uncovered_card_debt,
         uncategorized_net=uncategorized_net,
         expected_igab=rta + uncategorized_net,
+        card_net_by_category=card_net_by_category,
         available=available,
         uncleared={k: v for k, v in uncleared.items() if k in available},
     )
