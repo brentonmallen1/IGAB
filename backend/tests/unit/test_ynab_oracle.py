@@ -402,8 +402,40 @@ class TestNetCardMovement:
         o = ynab_rta(b, JUL, credit_card_accounts={"Visa"})
         assert o.uncovered_current == D("0")
 
-    def test_the_export_supplies_net_card_movement_per_category_and_month(self):
-        # Shipped as an input so the parity check can run `card_funding` over
-        # the export instead of the oracle restating its rules.
-        o = ynab_rta(self._budget(), AUG, credit_card_accounts={"Visa"})
-        assert o.card_net_by_category == {("Everyday", "Groceries"): {JUL: D("20")}}
+
+
+class TestParityExplanations:
+    """A difference the parity check can account for is not a defect. Both
+    kinds are bounded and named at the definition, per the repo's rule that
+    deliberate divergence is fine but silence is not."""
+
+    def test_an_uncleared_row_explains_its_own_gap(self):
+        from igab.integrations.ynab.parity import ParityDifference
+
+        d = ParityDifference("Everyday: Groceries", D("80"), D("100"), pending=D("-20"))
+        assert d.explained
+
+    def test_a_repaid_card_debt_explains_the_gap_it_causes(self):
+        """YNAB releases a card refund from the CCP reserve uncapped and hands
+        the whole thing back to the envelope; IGAB routes the part that met
+        debt nobody reserved cash for to the card, so its Available is lower by
+        exactly that. The two still agree on Ready to Assign."""
+        from igab.integrations.ynab.parity import ParityDifference
+
+        d = ParityDifference(
+            "Everyday: Groceries", D("0"), D("100"), repaid_uncovered_debt=D("100")
+        )
+        assert d.explained
+
+    def test_a_gap_the_repayment_does_not_account_for_is_still_a_difference(self):
+        from igab.integrations.ynab.parity import ParityDifference
+
+        d = ParityDifference(
+            "Everyday: Groceries", D("0"), D("175"), repaid_uncovered_debt=D("100")
+        )
+        assert not d.explained
+
+    def test_a_matching_envelope_is_not_explained_away(self):
+        from igab.integrations.ynab.parity import ParityDifference
+
+        assert not ParityDifference("Everyday: Groceries", D("100"), D("100")).explained

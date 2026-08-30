@@ -651,6 +651,62 @@ class TestTheRefusedRepayment:
         preview = await services.budgets.cover_overspent_preview(budget.id, AUG)
         assert preview.items == []
 
+    async def test_spending_after_a_correction_does_not_double_count(self, db_session):
+        """Why the correction reduces `available` rather than adding a term to
+        Ready to Assign.
+
+        July rides 100; August's repayment discharges it, and the envelope ends
+        at 0 because no cash arrived. Spend 100 in cash in August and Ready to
+        Assign must fall by exactly 100.
+
+        The rejected reading — leave `available` at 100 and add a compensating
+        term to the figure — keeps Ready to Assign right until the money is
+        spent, and then charges only what the envelope had, so the same 100
+        pays for two things. This is the case that decided it.
+        """
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "100.00", date(2026, 8, 9), category=groceries
+        )
+        await db_session.flush()
+
+        before = await _summary(services, budget, AUG)
+        row_before = next(
+            b for b in before.category_balances if b.category_id == groceries.id
+        )
+        assert row_before.available == D("0.00")
+
+        await create_transaction(
+            db_session, budget, checking, "-100.00", date(2026, 8, 20), category=groceries
+        )
+        await db_session.flush()
+
+        after = await _summary(services, budget, AUG)
+        row_after = next(b for b in after.category_balances if b.category_id == groceries.id)
+        # The envelope had nothing, so the spend is a real shortfall. In its own
+        # month that red does not charge the figure yet — the envelope's fall
+        # cancels the cash outflow, which is IGAB's ordinary rule.
+        assert row_after.available == D("-100.00")
+        assert after.to_be_assigned == before.to_be_assigned
+
+        # September is where it lands: the shortfall is written off, and Ready
+        # to Assign settles at the cash that is actually left.
+        september = await _summary(services, budget, SEP)
+        assert september.to_be_assigned == D("900.00")
+        assert (
+            next(
+                b for b in september.category_balances if b.category_id == groceries.id
+            ).available
+            == D("0.00")
+        )
+        # Under the rejected reading the envelope would still have held 100 here
+        # — the repayment having been left in it and offset by a term on the
+        # figure — so the spend would have been covered, nothing written off,
+        # and Ready to Assign would read 1000 against 900 of cash.
+
     async def test_activity_differs_from_the_register_by_exactly_the_repaid_amount(
         self, db_session
     ):

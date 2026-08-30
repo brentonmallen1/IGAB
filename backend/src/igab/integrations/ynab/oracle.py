@@ -108,18 +108,6 @@ class RTAOracle:
     #: YNAB. Card rows are excluded: outside cash here, outside the plan there.
     uncategorized_net: Decimal
     expected_igab: Decimal
-    #: SIGNED net card movement per (group, category) per month, keyed by
-    #: IGAB's names — the same shape `sum_credit_outflows_by_category` returns
-    #: from the register.
-    #:
-    #: Shipped as an INPUT, not an answer. YNAB releases a card refund from the
-    #: CCP reserve uncapped and lets it go negative; IGAB routes the part that
-    #: met uncovered debt to the card instead. The two agree on Ready to Assign
-    #: — the errors cancel in YNAB's ledger — and differ per envelope by exactly
-    #: what `card_funding` calls `repaid_by_category`. The parity check runs
-    #: `domain.cards.card_funding` over this to explain the gap, rather than the
-    #: oracle restating the engine's rules and drifting from them.
-    card_net_by_category: dict[tuple[str, str], dict[date, Decimal]] = field(default_factory=dict)
     #: YNAB's Available per envelope category at `month`, keyed by IGAB's
     #: (group, category) names; the card-payment group is left out.
     available: dict[tuple[str, str], Decimal] = field(default_factory=dict)
@@ -224,11 +212,6 @@ def ynab_rta(
                     on_card = _net_on_card(card_outflows, row)
                     uncovered_current += min(-row.available, on_card)
 
-    card_net_by_category: dict[tuple[str, str], dict[date, Decimal]] = {}
-    for (group, category, row_month), net in card_outflows.items():
-        if net != ZERO:
-            card_net_by_category.setdefault(map_ynab_names(group, category), {})[row_month] = net
-
     rta = inflow - assigned - written_off
     uncovered_total = -card_balances - ccp_available
     uncovered_card_debt = uncovered_total - uncovered_current
@@ -246,7 +229,6 @@ def ynab_rta(
         uncovered_card_debt=uncovered_card_debt,
         uncategorized_net=uncategorized_net,
         expected_igab=rta + uncategorized_net,
-        card_net_by_category=card_net_by_category,
         available=available,
         uncleared={k: v for k, v in uncleared.items() if k in available},
     )
