@@ -11,6 +11,7 @@ from decimal import Decimal
 
 import pytest
 
+from igab.domain.minimum_payment import PERCENT_OF_BALANCE, MinimumPaymentRule
 from igab.services.amortization import (
     CascadeDebt,
     add_months,
@@ -29,7 +30,11 @@ START = date(2026, 8, 26)
 
 def debt(key: str, balance: str, rate: str, minimum: str, name: str | None = None) -> CascadeDebt:
     return CascadeDebt(
-        key=key, name=name or key, balance=D(balance), annual_rate=D(rate), minimum_payment=D(minimum)
+        key=key,
+        name=name or key,
+        balance=D(balance),
+        annual_rate=D(rate),
+        minimum_payment=D(minimum),
     )
 
 
@@ -240,3 +245,65 @@ class TestExactness:
         for m in result.months:
             for amount in (m.payment, m.principal_paid, m.interest_paid, m.balance):
                 assert amount == amount.quantize(D("0.01"))
+
+
+class TestARuleInTheCascade:
+    """A card whose minimum is a percentage sits beside a loan whose payment
+    is a number, and both step through the same month."""
+
+    def rule(self):
+        return MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25"))
+
+    def test_a_percent_card_and_a_fixed_loan_both_close(self):
+        debts = [
+            CascadeDebt("card", "Sapphire Visa", D("4000.00"), D("22"), self.rule()),
+            CascadeDebt("loan", "Auto", D("6000.00"), D("6"), D("250.00")),
+        ]
+        result = payoff_cascade(debts, D("300.00"), "avalanche", START)
+        assert result.debt_free_date is not None
+        assert by_key(result, "card").payoff_date is not None
+        assert by_key(result, "loan").payoff_date is not None
+
+    def test_the_cards_minimum_falls_while_the_loans_does_not(self):
+        debts = [
+            CascadeDebt("card", "Sapphire Visa", D("4000.00"), D("22"), self.rule()),
+            CascadeDebt("loan", "Auto", D("6000.00"), D("6"), D("250.00")),
+        ]
+        # No extra: each debt gets exactly its own minimum, so the monthly
+        # total is the sum of the two and falls only because the card's does.
+        result = payoff_cascade(debts, D("0"), "avalanche", START, roll_freed=False)
+        first, second, third = (m.payment for m in result.months[:3])
+        assert first > second > third
+
+    def test_the_freed_payment_is_the_last_one_actually_asked_for(self):
+        """On closure the cascade rolls "what this debt was consuming"
+        forward. A declining rule has no single figure, and re-evaluating one
+        against a zero balance would roll nothing — so the last amount charged
+        is what moves."""
+        card = MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("10"), floor=D("50"))
+        debts = [
+            CascadeDebt("card", "Sapphire Visa", D("300.00"), D("0"), card),
+            CascadeDebt("loan", "Auto", D("5000.00"), D("0"), D("100.00")),
+        ]
+        rolled = payoff_cascade(debts, D("0"), "snowball", START)
+        flat = payoff_cascade(debts, D("0"), "snowball", START, roll_freed=False)
+
+        # The card closes; rolling its freed payment onto the loan has to make
+        # the loan finish sooner than not rolling it.
+        assert by_key(rolled, "card").payoff_date is not None
+        assert by_key(rolled, "loan").months < by_key(flat, "loan").months
+
+    def test_a_rule_with_no_floor_stalls_rather_than_looping(self):
+        unusable = MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("3"))
+        debts = [CascadeDebt("card", "Sapphire Visa", D("4000.00"), D("22"), unusable)]
+        result = payoff_cascade(debts, D("0"), "avalanche", START)
+        assert by_key(result, "card").never_pays_off
+
+    def test_extra_still_rides_on_top_of_a_declining_minimum(self):
+        """`minimum + extra`, where the minimum is now asked of the rule. A
+        percent-rule card must still receive the whole extra payment, or
+        payoff stops converging."""
+        debts = [CascadeDebt("card", "Sapphire Visa", D("4000.00"), D("22"), self.rule())]
+        with_extra = payoff_cascade(debts, D("400.00"), "avalanche", START)
+        without = payoff_cascade(debts, D("0"), "avalanche", START)
+        assert by_key(with_extra, "card").months < by_key(without, "card").months

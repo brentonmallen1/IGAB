@@ -108,3 +108,10 @@
     max-width: none;
   }
 }
+
+/* The rule under the figure, so the number on screen is always explained by
+   the thing that produced it. */
+.liability-terms__sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+}

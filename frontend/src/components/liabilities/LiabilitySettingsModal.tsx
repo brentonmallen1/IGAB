@@ -1,4 +1,5 @@
 import { parseAmountInput } from '../../utils/money'
+import type { MinimumPaymentKind } from '../../api/liabilities'
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -69,6 +70,21 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [minimumPayment, setMinimumPayment] = useState(
     liability?.minimum_payment != null ? String(liability.minimum_payment) : ''
   )
+  // A card's minimum is usually a rule, not a number. Default stays 'fixed' —
+  // every liability entered before this existed is one, and nothing about it
+  // changes.
+  const [minimumKind, setMinimumKind] = useState<MinimumPaymentKind>(
+    liability?.minimum_payment_kind ?? 'fixed'
+  )
+  const [minimumPercent, setMinimumPercent] = useState(
+    liability?.minimum_payment_percent != null ? String(liability.minimum_payment_percent) : ''
+  )
+  const [minimumFloor, setMinimumFloor] = useState(
+    liability?.minimum_payment_floor != null ? String(liability.minimum_payment_floor) : ''
+  )
+  const [minimumPlusInterest, setMinimumPlusInterest] = useState(
+    liability?.minimum_payment_plus_interest ?? false
+  )
   const [originationDate, setOriginationDate] = useState(liability?.origination_date ?? '')
   const [originalPrincipal, setOriginalPrincipal] = useState(
     liability?.original_principal != null ? String(liability.original_principal) : ''
@@ -110,8 +126,24 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
     // carries the same separator conventions money does — "5,5" is 5.5.
     const rateNum = parseAmountInput(rate)
     if (isNaN(rateNum) || rateNum < 0) return setError('Enter a non-negative interest rate')
+    // Never `|| 0` on a parsed amount: an unreadable figure has to surface,
+    // and a silent zero here means "the debt never retires" in every
+    // projection downstream.
     const paymentNum = parseAmountInput(minimumPayment)
-    if (isNaN(paymentNum) || paymentNum < 0) return setError('Enter the minimum monthly payment')
+    const percentNum = parseAmountInput(minimumPercent)
+    const floorNum = parseAmountInput(minimumFloor)
+    if (minimumKind === 'fixed') {
+      if (isNaN(paymentNum) || paymentNum < 0) return setError('Enter the minimum monthly payment')
+    } else {
+      if (isNaN(percentNum) || percentNum <= 0) {
+        return setError('Enter the percentage of the balance this card asks for')
+      }
+      // Not a nicety: without a floor the balance asymptotes and the debt
+      // never clears, so every projection would be a curve to nowhere.
+      if (isNaN(floorNum) || floorNum <= 0) {
+        return setError('Enter the minimum dollar amount — without it the debt never pays off')
+      }
+    }
     if (mode === 'managed' && !isCompanion && !accountId)
       return setError('Choose the account this liability lives in')
     const balanceNum = parseAmountInput(balance)
@@ -130,7 +162,11 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       // never disagree about what was asked for.
       ...(mode === 'unmanaged' ? { liability_type: liabilityType } : {}),
       interest_rate: rateNum,
-      minimum_payment: paymentNum,
+      minimum_payment_kind: minimumKind,
+      minimum_payment: minimumKind === 'fixed' ? paymentNum : null,
+      minimum_payment_percent: minimumKind === 'fixed' ? null : percentNum,
+      minimum_payment_floor: minimumKind === 'fixed' ? null : floorNum,
+      minimum_payment_plus_interest: minimumKind === 'fixed' ? false : minimumPlusInterest,
       origination_date: originationDate || null,
       original_principal: originalPrincipal ? parseAmountInput(originalPrincipal) : null,
       term_months: termMonths ? parseInt(termMonths, 10) : null,
@@ -254,18 +290,78 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                 placeholder="6.25"
               />
             </label>
-            <label className="liability-modal__field">
+            <div className="liability-modal__field">
               <span>Minimum payment</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={minimumPayment}
-                onChange={(e) => setMinimumPayment(e.target.value)}
-                placeholder="275.00"
-              />
-            </label>
+              <div className="liability-modal__segmented" role="radiogroup" aria-label="Minimum payment">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={minimumKind === 'fixed'}
+                  className={minimumKind === 'fixed' ? 'is-selected' : ''}
+                  onClick={() => setMinimumKind('fixed')}
+                >
+                  A fixed amount
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={minimumKind === 'percent_of_balance'}
+                  className={minimumKind === 'percent_of_balance' ? 'is-selected' : ''}
+                  onClick={() => setMinimumKind('percent_of_balance')}
+                >
+                  A percentage of the balance
+                </button>
+              </div>
+              {minimumKind === 'fixed' ? (
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={minimumPayment}
+                  onChange={(e) => setMinimumPayment(e.target.value)}
+                  placeholder="275.00"
+                  aria-label="Minimum payment amount"
+                />
+              ) : (
+                <div className="liability-modal__rule">
+                  <label>
+                    <span>Percent of balance</span>
+                    {/* Placeholders, not values: a guessed number that looks
+                        entered is worse than a blank one. */}
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      value={minimumPercent}
+                      onChange={(e) => setMinimumPercent(e.target.value)}
+                      placeholder="2"
+                    />
+                  </label>
+                  <label>
+                    <span>But at least</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      value={minimumFloor}
+                      onChange={(e) => setMinimumFloor(e.target.value)}
+                      placeholder="35.00"
+                    />
+                  </label>
+                  <label className="liability-modal__rule-check">
+                    <input
+                      type="checkbox"
+                      checked={minimumPlusInterest}
+                      onChange={(e) => setMinimumPlusInterest(e.target.checked)}
+                    />
+                    <span>plus this month&rsquo;s interest</span>
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
 
           {isCompanion ? (

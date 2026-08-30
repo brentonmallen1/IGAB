@@ -19,7 +19,12 @@ class LiabilityCreate(BaseModel):
     #: to ask.
     liability_type: LiabilityType | None = None
     interest_rate: Decimal  # annual percent, e.g. 6.25
-    minimum_payment: Money
+    #: The whole payment for kind='fixed'; left blank for a percentage rule.
+    minimum_payment: Money | None = None
+    minimum_payment_kind: Literal["fixed", "percent_of_balance"] = "fixed"
+    minimum_payment_percent: Decimal | None = None
+    minimum_payment_floor: Money | None = None
+    minimum_payment_plus_interest: bool = False
     # Managed (linked account) XOR unmanaged (manual balance) — not both.
     # Compounding is not accepted: all amortization math is monthly by design
     # (see services/amortization.py).
@@ -40,6 +45,10 @@ class LiabilityUpdate(BaseModel):
     liability_type: LiabilityType | None = None
     interest_rate: Decimal | None = None
     minimum_payment: Money | None = None
+    minimum_payment_kind: Literal["fixed", "percent_of_balance"] | None = None
+    minimum_payment_percent: Decimal | None = None
+    minimum_payment_floor: Money | None = None
+    minimum_payment_plus_interest: bool | None = None
     linked_account_id: uuid.UUID | None = None
     manual_balance: Money | None = None
     origination_date: datetime.date | None = None
@@ -69,6 +78,20 @@ class LiabilityOut(BaseModel):
     # branch on: false means every projection below is absent, not zero.
     interest_rate: Decimal | None
     minimum_payment: Decimal | None
+    # The rule behind that number. A card's minimum is usually "2% of the
+    # balance, or $35" rather than a figure, and a stored figure makes every
+    # projection optimistic. `minimum_payment` stays authoritative for
+    # kind='fixed'. Home: backend/.../domain/minimum_payment.py.
+    minimum_payment_kind: str
+    minimum_payment_percent: Decimal | None
+    minimum_payment_floor: Decimal | None
+    minimum_payment_plus_interest: bool
+    # What the issuer asks for at TODAY'S balance — computed here because the
+    # server owns the balance and the interest, and the client owns neither.
+    # Required rather than optional: a path that forgets must raise, not
+    # quietly render a rule as a blank. Null only when there is no usable
+    # rule, which `terms_complete` already reports.
+    minimum_payment_due_now: Decimal | None
     terms_complete: bool
     origination_date: datetime.date | None
     original_principal: Decimal | None

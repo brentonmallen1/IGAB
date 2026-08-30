@@ -247,3 +247,53 @@
     flex-direction: column;
   }
 }
+
+/* A minimum payment is a rule, not only a number: two modes, and the second
+   reveals what it needs. */
+.liability-modal__segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+}
+
+.liability-modal__segmented button {
+  flex: 1;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: none;
+  border-radius: calc(var(--border-radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.liability-modal__segmented button.is-selected {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.liability-modal__rule {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.liability-modal__rule label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* The checkbox spans both columns and reads as a sentence, not a field. */
+.liability-modal__rule-check {
+  grid-column: 1 / -1;
+  flex-direction: row !important;
+  align-items: center;
+  gap: var(--spacing-xs);
+}

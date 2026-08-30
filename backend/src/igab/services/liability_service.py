@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Liability
 from igab.domain.dates import add_months
+from igab.domain.minimum_payment import FIXED, MinimumPaymentRule
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
@@ -231,8 +232,28 @@ class LiabilityService:
         neither can a payment without a rate, so one flag answers the only
         question a consumer has. A companion liability created with its account
         starts False and stays there until someone fills the terms in.
+
+        "A payment" now means a usable *rule*: a fixed amount, or a percentage
+        with a floor. A percentage without a floor is not a stricter kind of
+        incomplete — under it the debt never clears, so a projection would draw
+        a curve to infinity. This is the single gate every projection reads,
+        which is why the new shape is learned here and nowhere else.
         """
-        return liability.interest_rate is not None and liability.minimum_payment is not None
+        return (
+            liability.interest_rate is not None
+            and LiabilityService.minimum_payment_rule(liability).usable
+        )
+
+    @staticmethod
+    def minimum_payment_rule(liability: Liability) -> MinimumPaymentRule:
+        """The only place a rule is built from columns."""
+        return MinimumPaymentRule(
+            kind=liability.minimum_payment_kind or FIXED,
+            amount=liability.minimum_payment,
+            percent=liability.minimum_payment_percent,
+            floor=liability.minimum_payment_floor,
+            plus_interest=liability.minimum_payment_plus_interest,
+        )
 
     async def get_balance(self, liability: Liability) -> Decimal:
         """Amount currently owed, positive; zero when fully paid."""
@@ -366,18 +387,25 @@ class LiabilityService:
         interest, uncounted = await self.get_recent_monthly_interest(liability, as_of=as_of)
 
         rate = liability.interest_rate
-        minimum = liability.minimum_payment
+        rule = self.minimum_payment_rule(liability)
+        # The schedule takes the rule; promo and live projections still take a
+        # scalar, so they get this month's figure. Named `minimum` because
+        # that is what those two have always meant by it.
+        minimum = rule.due(balance) if rule.usable else None
         baseline: AmortizationResult | None = None
         live: LiveProjection | None = None
         promo: PromoOutlook | None = None
 
-        if rate is not None and minimum is not None:
+        if rate is not None and rule.usable and minimum is not None:
             if liability.promo_end_date is not None:
                 baseline = amortization_schedule_with_promo(
                     balance, rate, minimum, as_of, liability.promo_end_date
                 )
             else:
-                baseline = amortization_schedule(balance, rate, minimum, as_of)
+                # The rule, not the figure: a percentage falls with the
+                # balance, and a schedule built on month one's number would
+                # report a payoff date that never arrives.
+                baseline = amortization_schedule(balance, rate, rule, as_of)
             # Live projection stays at the contract rate even during a promo —
             # a conservative date beats an optimistic one that assumes the
             # balance clears before interest starts.

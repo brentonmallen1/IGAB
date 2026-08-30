@@ -1507,7 +1507,27 @@ class Liability(Base):
     # move together; LiabilityService.terms_complete is the single gate.
     interest_rate: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
     # Contractual payment — drives the baseline schedule. Null as above.
+    #
+    # For a card this is usually not a number but a RULE: "2% of the balance,
+    # or $35, whichever is greater". Storing the figure a statement happened
+    # to show freezes it at one balance, and every projection built on it is
+    # then optimistic — the payoff date too early, the interest total too
+    # small. The four columns below hold the rule; `minimum_payment` stays
+    # authoritative for kind='fixed', which is what every existing row is and
+    # stays. domain/minimum_payment.py evaluates it; nothing else may.
     minimum_payment: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    minimum_payment_kind: Mapped[str] = mapped_column(
+        String(20), default="fixed", server_default="fixed", nullable=False
+    )
+    # Percent of the balance, e.g. 2.0000 for 2%.
+    minimum_payment_percent: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+    # The "or $35" half. Without it a percentage rule asymptotes and the debt
+    # never clears, so terms_complete treats its absence as incomplete.
+    minimum_payment_floor: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    # Issuers charging a slice of principal PLUS the month's interest.
+    minimum_payment_plus_interest: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     compounding: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
     origination_date: Mapped[_PyDate | None] = mapped_column(Date)
     original_principal: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))

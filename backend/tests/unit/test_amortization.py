@@ -12,10 +12,12 @@ from decimal import Decimal
 
 import pytest
 
+from igab.domain.minimum_payment import PERCENT_OF_BALANCE, MinimumPaymentRule, fixed
 from igab.services.amortization import (
     add_months,
     amortization_schedule,
     average_recent_payment,
+    interest_over,
     project_payoff,
     quantize_cents,
 )
@@ -258,3 +260,99 @@ class TestQuantizeCents:
         assert quantize_cents(D("2.165")) == D("2.16")  # banker's rounding
         assert quantize_cents(D("2.175")) == D("2.18")
         assert quantize_cents(D("2.161")) == D("2.16")
+
+
+class TestAPaymentRuleRatherThanANumber:
+    """A percentage of a falling balance falls with it.
+
+    That is the whole reason the rule exists: a card projected from the figure
+    on one statement pays off sooner and cheaper than the same card actually
+    does, and the difference grows with the balance.
+    """
+
+    def test_a_fixed_rule_is_the_schedule_it_always_was(self):
+        scalar = amortization_schedule(D("5000.00"), D("18"), D("200.00"), START)
+        ruled = amortization_schedule(D("5000.00"), D("18"), fixed(D("200.00")), START)
+        assert [m.balance for m in ruled.schedule] == [m.balance for m in scalar.schedule]
+        assert ruled.total_interest == scalar.total_interest
+        assert ruled.payoff_date == scalar.payoff_date
+
+    def test_a_percentage_payment_declines_month_over_month(self):
+        rule = MinimumPaymentRule(
+            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
+        )
+        result = amortization_schedule(D("5000.00"), D("18"), rule, START)
+        payments = [m.payment for m in result.schedule[:6]]
+        assert payments == sorted(payments, reverse=True)
+        assert payments[0] > payments[-1]
+
+    def test_the_floor_is_what_makes_it_end(self):
+        rule = MinimumPaymentRule(
+            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
+        )
+        result = amortization_schedule(D("5000.00"), D("18"), rule, START)
+        assert not result.never_pays_off
+        assert result.payoff_date is not None
+
+    def test_a_percentage_with_no_floor_never_pays_off(self):
+        """Asymptotic, and reported as such rather than looped over. The rule
+        is unusable, so it asks for nothing and the first month stalls."""
+        rule = MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("3"))
+        result = amortization_schedule(D("5000.00"), D("18"), rule, START)
+        assert result.never_pays_off
+        assert result.payoff_date is None
+
+    def test_principal_still_sums_to_the_starting_balance(self):
+        """The pinned exactness invariant, under a variable payment: no cent
+        appears or disappears across the schedule."""
+        rule = MinimumPaymentRule(
+            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
+        )
+        result = amortization_schedule(D("5000.00"), D("18"), rule, START)
+        assert sum((m.principal_paid for m in result.schedule), D("0")) == D("5000.00")
+        assert result.schedule[-1].balance == D("0")
+
+    def test_a_rule_costs_more_and_takes_longer_than_its_month_one_figure(self):
+        """The asymmetry that makes this worth building. Projecting a card
+        from the number on one statement is optimistic in both directions."""
+        rule = MinimumPaymentRule(
+            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
+        )
+        month_one = rule.due(D("5000.00"))
+
+        variable = amortization_schedule(D("5000.00"), D("18"), rule, START)
+        flat = amortization_schedule(D("5000.00"), D("18"), month_one, START)
+
+        assert len(variable.schedule) > len(flat.schedule)
+        assert variable.total_interest > flat.total_interest
+
+    def test_plus_interest_pays_a_slice_of_principal_every_month(self):
+        """The other common shape: 1% of the balance plus what it charged.
+        Every month retires exactly the percentage, so it always terminates."""
+        rule = MinimumPaymentRule(
+            kind=PERCENT_OF_BALANCE,
+            percent=D("1"),
+            floor=D("25"),
+            plus_interest=True,
+        )
+        result = amortization_schedule(D("5000.00"), D("18"), rule, START)
+        assert not result.never_pays_off
+        first = result.schedule[0]
+        assert first.principal_paid == D("50.00")  # 1% of 5000
+
+
+class TestInterestOverTakesARuleToo:
+    def test_a_fixed_rule_matches_the_scalar(self):
+        assert interest_over(D("5000.00"), D("18"), D("200.00"), 12) == interest_over(
+            D("5000.00"), D("18"), fixed(D("200.00")), 12
+        )
+
+    def test_a_declining_rule_charges_more_than_its_month_one_figure(self):
+        """Without this, pay-vs-save compares a declining minimum against a
+        fixed one and reports a saving that is partly an artefact."""
+        rule = MinimumPaymentRule(
+            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
+        )
+        variable = interest_over(D("5000.00"), D("18"), rule, 24)
+        flat = interest_over(D("5000.00"), D("18"), rule.due(D("5000.00")), 24)
+        assert variable > flat

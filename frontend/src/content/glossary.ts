@@ -178,7 +178,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Minimum payment',
     short: 'The smallest amount a lender will accept in a given month without penalising you.',
     body: 'Paying only the minimum on a high-rate debt can mean the balance barely moves, because most of the payment covers interest. On some cards a minimum payment is close enough to the monthly interest that the debt never clears.',
-    inIgab: 'Stored on a liability and used as the baseline for payoff projections — including flagging when a minimum would never pay the debt off.',
+    inIgab:
+      "Held on a liability as a RULE rather than a snapshot: either a fixed amount, or a percentage of the balance with a dollar floor (\u201c2% or $35, whichever is greater\u201d), optionally plus the month's interest. That matters because a percentage falls as the balance does \u2014 a projection built from the figure on one statement pays the debt off sooner and cheaper than it really goes. The payoff projections use the rule, and flag a minimum that would never clear the debt.",
     related: ['apr', 'principal', 'amortization'],
   },
   {
@@ -380,7 +381,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'Card debt rolled from month to month instead of paid in full.',
     body: "A balance you carry accrues interest at the card's APR, which is what makes card debt expensive. In envelope terms it is spending that was never backed by budgeted cash, so it shows beside the card as uncovered debt rather than inside any category. Paying it down is a budget line like any other: assign what you can afford to the card each month.",
     inIgab:
-      "Shows as the card's Uncovered — including the balance a newly linked card arrives with. Set the card's APR and minimum payment on its liability page and the payoff planner includes it.",
+      "Shows as the card's Uncovered — including the balance a newly linked card arrives with. Set the card's APR and minimum payment on its liability page and the payoff planner includes it. If the card's minimum is a percentage of the balance, enter it that way rather than as this month's figure; see Minimum payment.",
     related: ['uncovered', 'high-interest-debt', 'minimum-payment', 'apr'],
   },
   {
