@@ -21,13 +21,16 @@ still gets through, and repairs budgets imported before any of it existed.
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.db.models import Account, Liability, Transaction
+from igab.guide.detection import budget_service_from
 from igab.repositories.category_filters import IN_SYSTEM_GROUP
+from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.txn_filters import (
     CARD_ACCOUNT,
     LEAF,
@@ -37,6 +40,7 @@ from igab.repositories.txn_filters import (
     UNPAIRED_TRANSFER_LEG,
     row_category,
 )
+from igab.utils.clock import today_utc
 
 #: Months without a posted transaction before an open account reads as dormant.
 #: Matches the import step's threshold so the two never disagree about the same
@@ -90,6 +94,7 @@ class AccountHygieneService:
             await self._card_rows_filed_as_income(budget_id),
             await self._dormant_open_accounts(accounts, budget_id),
             await self._stale_companion_liabilities(budget_id, accounts),
+            await self._money_in_an_archived_envelope(budget_id),
         ]
         return HygieneReport(findings=[f for f in findings if f is not None])
 
@@ -243,6 +248,59 @@ class AccountHygieneService:
                 "also honest; it keeps them in Uncovered without claiming they were income."
             ),
             transaction_count=int(count),
+        )
+
+    async def _money_in_an_archived_envelope(self, budget_id: uuid.UUID) -> HygieneFinding | None:
+        """Money sitting in an envelope the budget no longer draws.
+
+        Archiving refuses to leave a balance behind — `CategoryService.
+        archive_categories` blocks on it and the dialog says which envelope to
+        empty first. This finds the ones that predate that rule: the old
+        behaviour flipped a flag, kept the money, and said nothing, and the
+        route back was a "Show hidden" toggle that no longer exists.
+
+        The amount still counts toward Ready to Assign, so nothing is lost —
+        it is simply somewhere the user cannot see or spend it. That is a
+        visibility defect rather than an arithmetic one, which is why it lives
+        here rather than in the integrity check.
+
+        Read from `get_budget_summary` rather than re-derived: its
+        `category_balances` include archived categories precisely so this can
+        see them, and a second carryover simulation here would be a copy of the
+        one rule this app most needs to have only once.
+        """
+        summary = await budget_service_from(self.session).get_budget_summary(budget_id, today_utc())
+        archived = {
+            c.id: c
+            for c in await CategoryRepository(self.session).get_all(
+                budget_id, include_archived=True
+            )
+            if c.is_archived
+        }
+        stranded = [
+            b for b in summary.category_balances if b.category_id in archived and b.available != 0
+        ]
+        if not stranded:
+            return None
+        total = sum((b.available for b in stranded), Decimal("0"))
+        names = ", ".join(sorted(archived[b.category_id].name for b in stranded)[:3])
+        more = "" if len(stranded) <= 3 else f" and {len(stranded) - 3} more"
+        return HygieneFinding(
+            kind="money_in_an_archived_envelope",
+            title=(
+                f"{len(stranded)} archived envelope{'s' if len(stranded) != 1 else ''} "
+                "still holds money"
+            ),
+            detail=(
+                f"{names}{more} — {total} in total. Archived envelopes are not drawn on the "
+                "budget, so this money is counted but not visible, and nothing on the budget "
+                "page can move it. Archiving refuses to leave a balance behind now; these "
+                "predate that."
+            ),
+            action=(
+                "Open See archived on the budget, restore each one, and move its balance "
+                "somewhere you can see it. You can archive it again straight afterwards."
+            ),
         )
 
     async def _categorized_tracking_rows(self, budget_id: uuid.UUID) -> HygieneFinding | None:

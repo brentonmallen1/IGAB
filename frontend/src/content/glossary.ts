@@ -31,6 +31,7 @@
  * the other direction — an id here with no entry below. */
 export const GLOSSARY_IDS = [
   'zero-based-budgeting',
+  'archived-envelope',
   'to-be-assigned',
   'target',
   'emergency-fund',
@@ -86,6 +87,15 @@ export interface GlossaryEntry {
 }
 
 export const GLOSSARY: GlossaryEntry[] = [
+  {
+    id: 'archived-envelope',
+    term: 'Archived envelope',
+    aliases: ['archive', 'archived category', 'hidden category', 'hide a category'],
+    short: 'A category you have finished with, kept for its history but out of the budget.',
+    body: 'Archiving takes an envelope off the budget without losing anything: its past spending still counts in every report, and every transaction stays filed where it was. What it stops is new use — nothing can be budgeted into it or filed to it. Deleting is the other choice, and it is the one that gives up the grouping of that spending.',
+    inIgab: 'See archived, at the top of the Budget page, lists them with their history and anything still in them. An envelope has to be emptied before it can be archived, because an archived one is not drawn on the budget and money left in it would be out of reach. Hiding a category in a saved view is a different thing entirely — that only changes what that one view shows.',
+    related: ['zero-based-budgeting', 'to-be-assigned'],
+  },
   {
     id: 'zero-based-budgeting',
     term: 'Zero-based budgeting',

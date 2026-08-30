@@ -12,6 +12,7 @@ cries wolf gets dismissed once and never read again.
 
 from datetime import date, timedelta
 from decimal import Decimal
+from decimal import Decimal
 
 from igab.db.models import Liability
 from igab.services.account_hygiene import AccountHygieneService
@@ -329,6 +330,63 @@ class TestCardRowsFiledAsIncome:
         await db_session.flush()
 
         assert "card_rows_filed_as_income" not in await _run(db_session, budget)
+
+
+class TestMoneyInAnArchivedEnvelope:
+    """Archiving refuses to leave a balance behind. This finds the ones that
+    predate that rule — and they are invisible now, because the budget grid no
+    longer draws archived envelopes and the toggle that used to reach them is
+    gone."""
+
+    async def _archived_holding(self, db_session, amount: str | None):
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Redwood Checking")
+        income_group = await create_category_group(db_session, budget, "Income", is_system=True)
+        inflow = await create_category(db_session, budget, income_group, "Inflow")
+        await create_transaction(
+            db_session, budget, checking, "500.00", RECENT, category=inflow
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        cat = await create_category(db_session, budget, group, "Gym")
+        await db_session.flush()
+        if amount is not None:
+            await services.budgets.set_assignment(
+                budget.id, cat.id, TODAY.replace(day=1), Decimal(amount)
+            )
+        # Flipped directly: this is what the app did before the archive flow
+        # existed, and it is the state those budgets are in.
+        cat.is_archived = True
+        await db_session.flush()
+        return budget, cat
+
+    async def test_a_balance_left_behind_is_reported(self, db_session):
+        budget, _cat = await self._archived_holding(db_session, "75.00")
+        finding = (await _run(db_session, budget))["money_in_an_archived_envelope"]
+        assert "Gym" in finding.detail
+        assert "1 archived envelope" in finding.title
+
+    async def test_an_empty_archived_envelope_is_not(self, db_session):
+        budget, _cat = await self._archived_holding(db_session, None)
+        assert "money_in_an_archived_envelope" not in await _run(db_session, budget)
+
+    async def test_a_live_envelope_holding_money_is_not(self, db_session):
+        """The control. Money in an envelope the budget draws is just a
+        budget — the defect is money somewhere nobody can see."""
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Redwood Checking")
+        income_group = await create_category_group(db_session, budget, "Income", is_system=True)
+        inflow = await create_category(db_session, budget, income_group, "Inflow")
+        await create_transaction(
+            db_session, budget, checking, "500.00", RECENT, category=inflow
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        cat = await create_category(db_session, budget, group, "Gym")
+        await db_session.flush()
+        await services.budgets.set_assignment(
+            budget.id, cat.id, TODAY.replace(day=1), Decimal("75.00")
+        )
+
+        assert "money_in_an_archived_envelope" not in await _run(db_session, budget)
 
 
 async def test_a_healthy_budget_reports_nothing(db_session):

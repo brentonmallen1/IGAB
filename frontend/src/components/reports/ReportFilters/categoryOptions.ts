@@ -18,16 +18,22 @@ export function categoryOptions(
   groupName: Map<string, string>,
   view: BudgetView | null
 ): MultiSelectOption[] {
-  // Hidden categories are left out; card set-aside envelopes too, and for a
-  // stronger reason — nothing can ever be filed to one, so offering it here
-  // is a filter that can only ever return an empty chart. `is_archived` is
-  // kept rather than swapped for `is_categorizable`: a category in a hidden
-  // *group* still holds real spending worth charting.
-  const visible = renderableCategories(categories).filter((c) => !c.is_archived)
+  // Archived envelopes are offered, and labelled. Their spending still counts
+  // in every report — `category_filters.SPENT_ENVELOPE` does not mention the
+  // flag, and `test_report_envelope_rules.py` pins that — so leaving them out
+  // of the picker meant the money appeared in a total that no filter could
+  // isolate. The label is what stops a segment for an envelope the budget grid
+  // no longer draws from reading as a bug.
+  //
+  // Card set-aside envelopes stay out, for a stronger reason: nothing can ever
+  // be filed to one, so offering it is a filter that can only return an empty
+  // chart.
+  const visible = renderableCategories(categories)
+  const label = (c: Category) => (c.is_archived ? `${c.name} (archived)` : c.name)
   if (!view) {
     return visible.map((c) => ({
       id: c.id,
-      label: c.name,
+      label: label(c),
       group: groupName.get(c.category_group_id) ?? '',
     }))
   }
@@ -36,6 +42,6 @@ export function categoryOptions(
   // returns; those are read for their names here and otherwise discarded.
   const { groups, byGroup } = groupByView(view, visible, visible[0]?.budget_id ?? '')
   return groups.flatMap((g) =>
-    (byGroup.get(g.id) ?? []).map((c) => ({ id: c.id, label: c.name, group: g.name }))
+    (byGroup.get(g.id) ?? []).map((c) => ({ id: c.id, label: label(c), group: g.name }))
   )
 }
