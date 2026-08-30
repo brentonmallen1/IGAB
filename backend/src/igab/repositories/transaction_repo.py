@@ -94,6 +94,24 @@ def _search_predicate(search: str):
     return or_(*clauses)
 
 
+#: One transaction's date bucketed to its month, and the reassembly of that
+#: bucket back into a `date`. Written out eight times in this file before it
+#: was named — every monthly aggregate the budget reads is built from it, so a
+#: copy that dropped the `cast` (Postgres returns `extract` as numeric) or
+#: reassembled to a day other than the first would put a month's money in the
+#: wrong bucket, silently, in exactly one report.
+#:
+#: Local to this module on purpose: every call site is here, and moving it to
+#: `txn_filters` would widen the rule's footprint for no caller.
+TXN_YEAR = cast(func.extract("year", Transaction.date), Integer)
+TXN_MONTH = cast(func.extract("month", Transaction.date), Integer)
+
+
+def month_of(row) -> date:
+    """The month a grouped row belongs to, from `TXN_YEAR` / `TXN_MONTH`."""
+    return date(row["yr"], row["mo"], 1)
+
+
 class TransactionRepository(BaseRepository[Transaction]):
     model = Transaction
 
@@ -517,12 +535,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         guarantees it — so this is a no-op on correct data and a repair on a
         stray row.
         """
-        yr = cast(func.extract("year", Transaction.date), Integer)
-        mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
             select(
-                yr.label("yr"),
-                mo.label("mo"),
+                TXN_YEAR.label("yr"),
+                TXN_MONTH.label("mo"),
                 func.coalesce(func.sum(Transaction.amount), 0).label("total"),
             )
             .where(
@@ -533,9 +549,9 @@ class TransactionRepository(BaseRepository[Transaction]):
                 ON_BUDGET_ACCOUNT,
                 Transaction.date <= end_date,
             )
-            .group_by(yr, mo)
+            .group_by(TXN_YEAR, TXN_MONTH)
         )
-        return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+        return {month_of(row): row["total"] for row in result.mappings()}
 
     async def count_for_account(self, account_id: uuid.UUID) -> int:
         """Live rows on the account — zero means the register is empty."""
@@ -558,12 +574,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         amount equals its children's sum) and POSTED amounts. A month's total
         is exactly how much the account balance moved during that month.
         """
-        yr = cast(func.extract("year", Transaction.date), Integer)
-        mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
             select(
-                yr.label("yr"),
-                mo.label("mo"),
+                TXN_YEAR.label("yr"),
+                TXN_MONTH.label("mo"),
                 func.coalesce(func.sum(Transaction.amount), 0).label("total"),
             )
             .where(
@@ -573,25 +587,23 @@ class TransactionRepository(BaseRepository[Transaction]):
                 POSTED,
                 Transaction.date <= end_date,
             )
-            .group_by(yr, mo)
+            .group_by(TXN_YEAR, TXN_MONTH)
         )
-        return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+        return {month_of(row): row["total"] for row in result.mappings()}
 
     async def _sum_account_rows_by_month(
         self, account_id: uuid.UUID, end_date: date, *predicates
     ) -> dict[date, Decimal]:
-        yr = cast(func.extract("year", Transaction.date), Integer)
-        mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
             select(
-                yr.label("yr"),
-                mo.label("mo"),
+                TXN_YEAR.label("yr"),
+                TXN_MONTH.label("mo"),
                 func.coalesce(func.sum(Transaction.amount), 0).label("total"),
             )
             .where(Transaction.account_id == account_id, Transaction.date <= end_date, *predicates)
-            .group_by(yr, mo)
+            .group_by(TXN_YEAR, TXN_MONTH)
         )
-        return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+        return {month_of(row): row["total"] for row in result.mappings()}
 
     async def sum_loan_payments_by_month(
         self, account_id: uuid.UUID, end_date: date
@@ -627,12 +639,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         category's outflows as debt payments — an unrelated refund landing
         in the category must not be mistaken for a reversed payment.
         """
-        yr = cast(func.extract("year", Transaction.date), Integer)
-        mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
             select(
-                yr.label("yr"),
-                mo.label("mo"),
+                TXN_YEAR.label("yr"),
+                TXN_MONTH.label("mo"),
                 func.coalesce(func.sum(Transaction.amount), 0).label("total"),
             )
             .where(
@@ -644,9 +654,9 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.amount < 0,
                 Transaction.date <= end_date,
             )
-            .group_by(yr, mo)
+            .group_by(TXN_YEAR, TXN_MONTH)
         )
-        return {date(row["yr"], row["mo"], 1): row["total"] for row in result.mappings()}
+        return {month_of(row): row["total"] for row in result.mappings()}
 
     async def sum_all_categories_by_month(
         self,
@@ -664,13 +674,11 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         if not category_ids:
             return {}
-        yr = cast(func.extract("year", Transaction.date), Integer)
-        mo = cast(func.extract("month", Transaction.date), Integer)
         q = (
             select(
                 Transaction.category_id,
-                yr.label("yr"),
-                mo.label("mo"),
+                TXN_YEAR.label("yr"),
+                TXN_MONTH.label("mo"),
                 func.sum(Transaction.amount).label("total"),
             )
             .where(
@@ -680,14 +688,14 @@ class TransactionRepository(BaseRepository[Transaction]):
                 POSTED,
                 ON_BUDGET_ACCOUNT,
             )
-            .group_by(Transaction.category_id, yr, mo)
+            .group_by(Transaction.category_id, TXN_YEAR, TXN_MONTH)
         )
         if end_date is not None:
             q = q.where(Transaction.date <= end_date)
         result = await self.session.execute(q)
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for row in result.mappings():
-            month = date(row["yr"], row["mo"], 1)
+            month = month_of(row)
             out.setdefault(row["category_id"], {})[month] = row["total"]
         return out
 
@@ -717,14 +725,12 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         if not category_ids:
             return {}
-        yr = cast(func.extract("year", Transaction.date), Integer)
-        mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
             select(
                 Transaction.category_id,
                 Transaction.account_id,
-                yr.label("yr"),
-                mo.label("mo"),
+                TXN_YEAR.label("yr"),
+                TXN_MONTH.label("mo"),
                 func.sum(-Transaction.amount).label("outflow"),
             )
             .where(
@@ -735,14 +741,14 @@ class TransactionRepository(BaseRepository[Transaction]):
                 ON_CARD_ACCOUNT,
                 Transaction.date <= end_date,
             )
-            .group_by(Transaction.category_id, Transaction.account_id, yr, mo)
+            .group_by(Transaction.category_id, Transaction.account_id, TXN_YEAR, TXN_MONTH)
         )
         out: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
         for row in result.mappings():
             net = Decimal(str(row["outflow"]))
             if net == 0:
                 continue
-            month = date(row["yr"], row["mo"], 1)
+            month = month_of(row)
             out.setdefault(row["category_id"], {}).setdefault(row["account_id"], {})[month] = net
         return out
 
@@ -764,13 +770,11 @@ class TransactionRepository(BaseRepository[Transaction]):
         `sum_unbudgeted_card_credits` instead, which selects on the negation
         of the very same expression.
         """
-        yr = cast(func.extract("year", Transaction.date), Integer)
-        mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
             select(
                 Transaction.account_id,
-                yr.label("yr"),
-                mo.label("mo"),
+                TXN_YEAR.label("yr"),
+                TXN_MONTH.label("mo"),
                 func.sum(Transaction.amount).label("paid"),
             )
             .where(
@@ -782,11 +786,11 @@ class TransactionRepository(BaseRepository[Transaction]):
                 CARD_PAYMENT_FROM_CASH,
                 Transaction.date <= end_date,
             )
-            .group_by(Transaction.account_id, yr, mo)
+            .group_by(Transaction.account_id, TXN_YEAR, TXN_MONTH)
         )
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for row in result.mappings():
-            month = date(row["yr"], row["mo"], 1)
+            month = month_of(row)
             out.setdefault(row["account_id"], {})[month] = Decimal(str(row["paid"]))
         return out
 
@@ -818,13 +822,11 @@ class TransactionRepository(BaseRepository[Transaction]):
         to a category that exists but cannot release — income, a card's own
         envelope — so such a row reached no term at all.
         """
-        yr = cast(func.extract("year", Transaction.date), Integer)
-        mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
             select(
                 Transaction.account_id,
-                yr.label("yr"),
-                mo.label("mo"),
+                TXN_YEAR.label("yr"),
+                TXN_MONTH.label("mo"),
                 func.sum(Transaction.amount).label("credited"),
             )
             .where(
@@ -832,11 +834,11 @@ class TransactionRepository(BaseRepository[Transaction]):
                 UNBUDGETED_CARD_CREDIT,
                 Transaction.date <= end_date,
             )
-            .group_by(Transaction.account_id, yr, mo)
+            .group_by(Transaction.account_id, TXN_YEAR, TXN_MONTH)
         )
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for row in result.mappings():
-            month = date(row["yr"], row["mo"], 1)
+            month = month_of(row)
             out.setdefault(row["account_id"], {})[month] = Decimal(str(row["credited"]))
         return out
 
