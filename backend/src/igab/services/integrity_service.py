@@ -435,10 +435,7 @@ class IntegrityService:
                 .where(
                     Category.budget_id == budget_id,
                     Category.is_deleted == False,  # noqa: E712
-                    or_(
-                        Category.linked_account_id.isnot(None),
-                        CategoryGroup.name == CARD_PAYMENTS_GROUP,
-                    ),
+                    or_(LINKED_TO_CARD, CategoryGroup.name == CARD_PAYMENTS_GROUP),
                 )
             )
         ).all()

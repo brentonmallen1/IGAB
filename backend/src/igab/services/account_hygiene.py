@@ -26,7 +26,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
-from igab.db.models import Account, Category, CategoryGroup, Liability, Transaction
+from igab.db.models import Account, Liability, Transaction
+from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.txn_filters import (
     CARD_ACCOUNT,
     LEAF,
@@ -34,6 +35,7 @@ from igab.repositories.txn_filters import (
     ON_BUDGET_ACCOUNT,
     POSTED,
     UNPAIRED_TRANSFER_LEG,
+    row_category,
 )
 
 #: Months without a posted transaction before an open account reads as dormant.
@@ -190,7 +192,10 @@ class AccountHygieneService:
 
         A charge on a card is not income under any reading, and filing it there
         makes it reach nothing: the envelope term skips system groups, and the
-        card's reservation arithmetic only walks spending categories. The
+        card's reservation arithmetic only walks spending categories
+        (`category_filters.SPENDABLE`, which is why the *inflow* side of the
+        same misfiling had to be named rather than dropped —
+        `txn_filters.UNBUDGETED_CARD_CREDIT`). The
         balance moves and the budget never mentions it — the charge ends up in
         Uncovered with no envelope ever naming it.
 
@@ -209,14 +214,12 @@ class AccountHygieneService:
         result = await self.session.execute(
             select(func.count())
             .select_from(Transaction)
-            .join(Category, Category.id == Transaction.category_id)
-            .join(CategoryGroup, CategoryGroup.id == Category.category_group_id)
             .join(Account, Account.id == Transaction.account_id)
             .where(
                 Transaction.budget_id == budget_id,
                 NOT_DELETED,
                 Transaction.amount < 0,
-                CategoryGroup.is_system == True,  # noqa: E712
+                row_category(IN_SYSTEM_GROUP),
                 CARD_ACCOUNT,
             )
         )
