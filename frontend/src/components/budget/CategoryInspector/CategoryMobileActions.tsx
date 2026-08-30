@@ -1,9 +1,14 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Pencil, Trash2, X } from 'lucide-react'
-import { useUpdateCategory } from '../../../api/categories'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Check, Pencil, Trash2, X } from 'lucide-react'
+import {
+  useArchiveCategories,
+  useUnarchiveCategories,
+  useUpdateCategory,
+} from '../../../api/categories'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import type { Category } from '../../../types'
 import './CategoryMobileActions.css'
+import { useAppStore } from '../../../stores/appStore'
 
 interface Props {
   budgetId: string
@@ -30,6 +35,9 @@ export function CategoryMobileActions({
   onMoveDown,
 }: Props) {
   const updateCategory = useUpdateCategory(budgetId)
+  const archiveCategories = useArchiveCategories(budgetId)
+  const unarchiveCategories = useUnarchiveCategories(budgetId)
+  const month = useAppStore((s) => s.selectedMonth)
   const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(budgetId, onDone)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(category.name)
@@ -122,12 +130,19 @@ export function CategoryMobileActions({
         <Pencil size={14} />
         Rename
       </button>
+      {/* Archive, not a flag flip: the endpoint refuses while the envelope
+          still holds money, and says which one and what to do about it. */}
       <button
         className="cat-mobile-actions__btn"
-        onClick={() => updateCategory.mutate({ id: category.id, is_archived: !category.is_archived })}
+        onClick={() =>
+          (category.is_archived ? unarchiveCategories : archiveCategories).mutate({
+            ids: [category.id],
+            month,
+          })
+        }
       >
-        {category.is_archived ? <Eye size={14} /> : <EyeOff size={14} />}
-        {category.is_archived ? 'Unhide' : 'Hide'}
+        {category.is_archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+        {category.is_archived ? 'Restore' : 'Archive'}
       </button>
       <button
         className="cat-mobile-actions__btn cat-mobile-actions__btn--danger"

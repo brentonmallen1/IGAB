@@ -23,6 +23,13 @@ vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: [], isLoading: false }),
   useCreateCategoryGroup: () => ({ mutate: vi.fn() }),
   useReorderCategoryGroups: () => ({ mutate: reorderGroups }),
+  // The header's "See archived" button brings the delete flow with it, so the
+  // mock has to answer for what that hook reaches for.
+  useDeleteCategories: () => ({ mutateAsync: vi.fn() }),
+  deletePreviewOptions: () => ({ queryKey: ['noop'], queryFn: async () => ({}) }),
+}))
+vi.mock('../ArchivedCategoriesModal/ArchivedCategoriesModal', () => ({
+  ArchivedCategoriesModal: () => null,
 }))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: { category_balances: [] }, isLoading: false }),

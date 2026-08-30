@@ -100,6 +100,23 @@ class CategoryDeletePreviewRequest(BaseModel):
     month: datetime.date | None = None
 
 
+class ArchivedCategoryResponse(BaseModel):
+    """One row of the archived listing — the modal's only source of truth.
+
+    `available` should be zero for anything archived through the flow, which
+    refuses otherwise. It is served anyway because rows archived before that
+    existed can carry a balance, and the budget page no longer draws them: this
+    listing is the only place that money is visible at all.
+    """
+
+    id: uuid.UUID
+    name: str
+    group_name: str
+    transaction_count: int
+    archived_at: datetime.datetime | None
+    available: Decimal
+
+
 class CategoryArchiveRequest(BaseModel):
     """Archive or restore a selection, as one operation and one undo row."""
 

@@ -553,6 +553,26 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return {month_of(row): row["total"] for row in result.mappings()}
 
+    async def count_by_category(self, category_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        """Live rows filed in each category: {category: count}.
+
+        One grouped query rather than a count per category. The archived
+        listing shows a count per row, and a loop there would be the same 3N+1
+        the accounts listing was just cured of.
+
+        Categories with no rows are absent from the result — the caller reads
+        it with a zero default, since a missing key would otherwise render as
+        "unknown" where the answer is none.
+        """
+        if not category_ids:
+            return {}
+        result = await self.session.execute(
+            select(Transaction.category_id, func.count().label("n"))
+            .where(Transaction.category_id.in_(category_ids), NOT_DELETED)
+            .group_by(Transaction.category_id)
+        )
+        return {row["category_id"]: int(row["n"]) for row in result.mappings()}
+
     async def count_for_account(self, account_id: uuid.UUID) -> int:
         """Live rows on the account — zero means the register is empty."""
         result = await self.session.execute(

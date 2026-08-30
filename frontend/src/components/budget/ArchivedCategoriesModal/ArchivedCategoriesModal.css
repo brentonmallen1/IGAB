@@ -1,0 +1,141 @@
+/* Archived envelopes, in their own room rather than greyed into the grid.
+   Every colour is a theme token: 20 palettes in 40 variants read this. */
+
+.archived-modal__overlay {
+  align-items: flex-start;
+  padding-top: 8vh;
+}
+
+.archived-modal {
+  background-color: var(--surface-overlay);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--shadow-lg);
+  width: min(560px, calc(100vw - var(--spacing-lg)));
+  max-height: 84vh;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.archived-modal__title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.archived-modal__lede,
+.archived-modal__empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* Money left in something the budget no longer draws. Accent, not the
+   negative colour: it is a thing to attend to, not an error. */
+.archived-modal__warning {
+  margin: 0;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.archived-modal__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.archived-modal__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  border-top: 1px solid var(--edge);
+}
+
+.archived-modal__identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.archived-modal__name {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archived-modal__group {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.archived-modal__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.archived-modal__balance {
+  color: var(--color-accent);
+}
+
+.archived-modal__actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+}
+
+.archived-modal__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px var(--spacing-sm);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius-sm);
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.archived-modal__btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.archived-modal__btn--danger:hover {
+  border-color: var(--color-negative);
+  color: var(--color-negative);
+}
+
+@media (max-width: 640px) {
+  .archived-modal__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .archived-modal__btn {
+    flex: 1;
+    justify-content: center;
+  }
+}

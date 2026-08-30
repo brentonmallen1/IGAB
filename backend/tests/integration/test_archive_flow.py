@@ -180,3 +180,58 @@ class TestArchivingWhenTheMoneyHasMoved:
         loaded = await CategoryRepository(db_session).get(cat.id)
         assert loaded.is_archived is False
         assert loaded.archived_at is None
+
+
+class TestTheArchivedListing:
+    """Archived envelopes are off the grid entirely, so this listing is their
+    only face. It has to be complete, or money goes missing from both places
+    at once."""
+
+    async def test_it_carries_what_the_modal_shows(self, db_session):
+        services, budget, checking, _group, cat = await _world(db_session)
+        await create_transaction(
+            db_session, budget, checking, "-40.00", date(2026, 8, 9), category=cat
+        )
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
+        svc = _svc(services, db_session)
+        await svc.archive_categories(budget.id, [cat.id], month=AUG)
+
+        rows = await svc.list_archived(budget.id, AUG)
+
+        assert len(rows) == 1
+        assert rows[0].name == "Gym"
+        assert rows[0].group_name == "Everyday"
+        assert rows[0].transaction_count == 1
+        assert rows[0].archived_at is not None
+        assert rows[0].available == D("0.00")
+
+    async def test_a_category_whose_group_is_archived_is_listed_too(self, db_session):
+        """Its own flag is false, so `get_all(include_archived=False)` returns
+        it and the grid would draw it while the group it belongs to is gone.
+        That asymmetry is the one `category_filters` opens with."""
+        services, budget, _checking, group, cat = await _world(db_session)
+        group.is_archived = True
+        await db_session.flush()
+
+        rows = await _svc(services, db_session).list_archived(budget.id, AUG)
+
+        assert [r.name for r in rows] == ["Gym"]
+
+    async def test_a_balance_left_by_an_older_archive_is_visible(self, db_session):
+        """The reason `available` is on this row at all. Flipping the flag
+        directly is what the app did before the flow existed, and those rows
+        exist in real budgets — this listing is the only place their money
+        shows up now."""
+        services, budget, _checking, _group, cat = await _world(db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("75.00"))
+        cat.is_archived = True
+        await db_session.flush()
+
+        rows = await _svc(services, db_session).list_archived(budget.id, AUG)
+
+        assert rows[0].available == D("75.00")
+        assert rows[0].archived_at is None  # never stamped, and not invented
+
+    async def test_a_live_envelope_is_not_listed(self, db_session):
+        services, budget, _checking, _group, _cat = await _world(db_session)
+        assert await _svc(services, db_session).list_archived(budget.id, AUG) == []

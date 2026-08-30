@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from igab.api.v1.schemas.category import (
+    ArchivedCategoryResponse,
     AssignApplyRequest,
     AssignApplyResponse,
     AssignmentUpdate,
@@ -424,6 +425,32 @@ async def preview_delete_categories(
         budget_id, body.category_ids, body.month or date.today()
     )
     return _preview_out(preview)
+
+
+@router.get("/{budget_id}/categories/archived", response_model=list[ArchivedCategoryResponse])
+async def list_archived_categories(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+    month: date | None = None,
+) -> list[ArchivedCategoryResponse]:
+    """Every archived envelope, with its history and anything still in it.
+
+    A GET: the budget id is the whole input, and the modal wants it cached the
+    way every other listing is.
+    """
+    rows = await category_service.list_archived(budget_id, month)
+    return [
+        ArchivedCategoryResponse(
+            id=r.id,
+            name=r.name,
+            group_name=r.group_name,
+            transaction_count=r.transaction_count,
+            archived_at=r.archived_at,
+            available=r.available,
+        )
+        for r in rows
+    ]
 
 
 @router.post(

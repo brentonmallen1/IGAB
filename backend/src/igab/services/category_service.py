@@ -124,6 +124,25 @@ def _iso(value: datetime | None) -> str | None:
 
 
 @dataclass
+class ArchivedCategory:
+    """One row of the archived listing.
+
+    Everything the modal shows comes from here, including `available`. That
+    figure should be zero for anything archived through the flow — it refuses
+    otherwise — but rows archived before that existed can carry a balance, and
+    those are the ones the user most needs to see: the budget page no longer
+    draws them at all, so this listing is the only place the money is visible.
+    """
+
+    id: uuid.UUID
+    name: str
+    group_name: str
+    transaction_count: int
+    archived_at: datetime | None
+    available: Decimal
+
+
+@dataclass
 class CategoryArchivePreview:
     """What archiving is about to do, and whether it may proceed at all.
 
@@ -300,6 +319,42 @@ class CategoryService:
         return await self.preview_delete(budget_id, [c.id for c in cats], month)
 
     # ─── Archive ──────────────────────────────────────────────────────────────
+
+    async def list_archived(
+        self, budget_id: uuid.UUID, month: date | None = None
+    ) -> list[ArchivedCategory]:
+        """Every archived envelope, with what a person needs to decide its fate.
+
+        Archived categories are off the budget grid entirely, so this listing
+        is their only face. It includes those whose *group* is archived while
+        their own flag is not: `CategoryRepository.get_all` filters the
+        category's flag and not the group's, so they would otherwise be
+        invisible in both places at once.
+        """
+        as_of = first_of_month(month or date.today())
+        groups = {g.id: g for g in await self.group_repo.get_all(budget_id, include_archived=True)}
+        cats = [
+            c
+            for c in await self.category_repo.get_all(budget_id, include_archived=True)
+            if c.is_archived or (g := groups.get(c.category_group_id)) is not None and g.is_archived
+        ]
+        counts = await self.transaction_repo.count_by_category([c.id for c in cats])
+        out: list[ArchivedCategory] = []
+        for cat in cats:
+            balance = await self.budget_service.get_category_balance(cat.id, as_of)
+            group = groups.get(cat.category_group_id)
+            out.append(
+                ArchivedCategory(
+                    id=cat.id,
+                    name=cat.name,
+                    group_name=group.name if group is not None else "",
+                    transaction_count=counts.get(cat.id, 0),
+                    archived_at=cat.archived_at,
+                    available=balance.available,
+                )
+            )
+        out.sort(key=lambda r: (r.group_name.lower(), r.name.lower()))
+        return out
 
     async def preview_archive(
         self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], month: date

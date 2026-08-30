@@ -223,6 +223,92 @@ export interface CategoryDeleteResult {
   released: string
 }
 
+/** One archived envelope, as the archived listing serves it. `available` is
+ *  normally zero — the archive flow refuses otherwise — but rows archived
+ *  before that flow existed can carry a balance, and this listing is the only
+ *  place the budget still shows it. */
+export interface ArchivedCategory {
+  id: string
+  name: string
+  group_name: string
+  transaction_count: number
+  archived_at: string | null
+  available: string
+}
+
+export function useArchivedCategories(budgetId: string | null, month: string, enabled = true) {
+  return useQuery({
+    queryKey: ['archivedCategories', budgetId, month],
+    queryFn: async () => {
+      const { data } = await apiClient.get<ArchivedCategory[]>(
+        `/${budgetId}/categories/archived`,
+        { params: { month } }
+      )
+      return data
+    },
+    enabled: !!budgetId && enabled,
+    // Quantifies money, like the delete preview: an answer from before the
+    // user's last edit is the wrong thing to show beside a Delete button.
+    staleTime: 0,
+  })
+}
+
+export interface ArchivePreview {
+  category_ids: string[]
+  category_names: string[]
+  transaction_count: number
+  available: string
+  future_assigned: string
+  blocked_by_balance: string[]
+  blocked_by_link: string[]
+  may_archive: boolean
+}
+
+export function useArchivePreview(budgetId: string, categoryIds: string[], month: string) {
+  return useQuery({
+    queryKey: ['categoryArchivePreview', budgetId, categoryIds.join(','), month],
+    queryFn: async () => {
+      const { data } = await apiClient.post<ArchivePreview>(
+        `/${budgetId}/categories/archive-preview`,
+        { category_ids: categoryIds, month }
+      )
+      return data
+    },
+    enabled: categoryIds.length > 0,
+    staleTime: 0,
+    gcTime: 0,
+  })
+}
+
+function useArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', done: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ ids, month }: { ids: string[]; month: string }) => {
+      const { data } = await apiClient.post<ArchivePreview>(
+        `/${budgetId}/categories/${path}`,
+        { category_ids: ids, month }
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await invalidateAfterCategoryChange(qc, budgetId)
+      toast.success(done)
+    },
+    // The server's sentence names which envelope still holds money and what to
+    // do about it. A generic fallback here would throw that away, which is the
+    // mistake AddAccountModal made with the 409.
+    onError: (e) => toast.error(apiErrorMessage(e, 'Could not update the archive')),
+  })
+}
+
+export function useArchiveCategories(budgetId: string) {
+  return useArchiveMutation(budgetId, 'archive', 'Archived')
+}
+
+export function useUnarchiveCategories(budgetId: string) {
+  return useArchiveMutation(budgetId, 'unarchive', 'Restored to the budget')
+}
+
 /** What the delete dialog is about to act on: a selection of categories, or a
  *  whole group (which cascades over the categories inside it). */
 export type DeleteTarget =

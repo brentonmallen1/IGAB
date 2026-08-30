@@ -1,8 +1,12 @@
-import { ChevronRight, Eye, EyeOff, Trash2, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ChevronRight, Trash2, X } from 'lucide-react'
 import { useUIStore } from '../../../stores/uiStore'
 import { useAppStore } from '../../../stores/appStore'
 import { useBudgetMonth } from '../../../api/budgets'
-import { useCategories, useUpdateCategory } from '../../../api/categories'
+import {
+  useArchiveCategories,
+  useCategories,
+  useUnarchiveCategories,
+} from '../../../api/categories'
 import { confirmAsync } from '../../../stores/confirmStore'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import { addMonths } from '../../../utils/dates'
@@ -37,7 +41,8 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const { data: prevBudgetMonth } = useBudgetMonth(budgetId, addMonths(month, -1))
   const { data: categories } = useCategories(budgetId)
-  const updateCategory = useUpdateCategory(budgetId)
+  const archiveCategories = useArchiveCategories(budgetId)
+  const unarchiveCategories = useUnarchiveCategories(budgetId)
   const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(
     budgetId,
     clearCategorySelection
@@ -59,18 +64,26 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const isSingle = count === 1
   const singleCategory = isSingle ? selectedCategories[0] : null
 
-  const allHidden = count > 0 && selectedCategories.length === count && selectedCategories.every((c) => c.is_archived)
+  const allArchived =
+    count > 0 && selectedCategories.length === count && selectedCategories.every((c) => c.is_archived)
 
-  async function handleHideSelected() {
-    if (!allHidden && count > 1) {
+  async function handleArchiveSelected() {
+    // Routed through the archive endpoint rather than flipping the flag: it
+    // refuses while an envelope still holds money, because archived envelopes
+    // are off the budget entirely and anything left in one is unreachable.
+    // The server's refusal names which envelope and what to do, and the
+    // mutation surfaces that sentence rather than a generic failure.
+    if (!allArchived && count > 1) {
       const ok = await confirmAsync({
-        title: `Hide ${count} categories?`,
-        message: 'Hidden categories keep their history and can be unhidden later.',
-        confirmLabel: 'Hide',
+        title: `Archive ${count} categories?`,
+        message:
+          'They leave the budget but keep their history — their spending still counts in reports. Restore them any time from See archived.',
+        confirmLabel: 'Archive',
       })
       if (!ok) return
     }
-    await Promise.all(selectedIds.map((id) => updateCategory.mutateAsync({ id, is_archived: !allHidden })))
+    const run = allArchived ? unarchiveCategories : archiveCategories
+    await run.mutateAsync({ ids: selectedIds, month })
     clearCategorySelection()
   }
 
@@ -167,9 +180,12 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
                 {/* Mobile sheet gets these from CategoryMobileActions instead */}
                 {!forceOpen && (
                   <div className="category-inspector__manage">
-                    <button className="inspector-btn category-inspector__manage-btn" onClick={handleHideSelected}>
-                      {allHidden ? <Eye size={13} /> : <EyeOff size={13} />}
-                      {allHidden ? 'Unhide' : 'Hide'}
+                    <button
+                      className="inspector-btn category-inspector__manage-btn"
+                      onClick={handleArchiveSelected}
+                    >
+                      {allArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                      {allArchived ? 'Restore' : 'Archive'}
                     </button>
                     <button
                       className="inspector-btn inspector-btn--danger category-inspector__manage-btn"
