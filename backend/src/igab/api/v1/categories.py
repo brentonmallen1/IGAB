@@ -35,6 +35,7 @@ from igab.api.v1.schemas.category import (
     CategoryGroupUpdate,
     CategoryHistoryBatchRequest,
     CategoryHistoryResponse,
+    CategoryReferenceResponse,
     CategoryReorder,
     CategoryResponse,
     CategoryTargetCreate,
@@ -382,6 +383,13 @@ def _archive_preview_out(preview: CategoryArchivePreview) -> CategoryArchivePrev
 
 def _preview_out(preview: CategoryDeletePreview) -> CategoryDeletePreviewResponse:
     return CategoryDeletePreviewResponse(
+        references=[
+            CategoryReferenceResponse(
+                kind=r.kind, label=r.label, count=r.count, clearable=r.clearable
+            )
+            for r in preview.references
+        ],
+        may_hard_delete=preview.may_hard_delete,
         category_ids=preview.category_ids,
         category_names=preview.category_names,
         transaction_count=preview.transaction_count,

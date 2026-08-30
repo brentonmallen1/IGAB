@@ -185,6 +185,13 @@ export function useReorderCategories(budgetId: string) {
 /** What deleting will do, so the dialog can say it before the user commits.
  *  The same numbers the delete then reports back — pinned by a differential
  *  test on the server (test_category_delete.py). */
+export interface CategoryReference {
+  kind: string
+  label: string
+  count: number
+  clearable: boolean
+}
+
 export interface CategoryDeletePreview {
   category_ids: string[]
   category_names: string[]
@@ -196,6 +203,13 @@ export interface CategoryDeletePreview {
   future_assigned: string
   payee_count: number
   scheduled_count: number
+  /** Everything else still pointing at these categories. `clearable` ones go
+   *  with the delete and cost nothing; the rest are records of what happened,
+   *  and are why a row is kept rather than removed. */
+  references: CategoryReference[]
+  /** Whether the row is about to be removed outright or soft-deleted. Served,
+   *  so the dialog's wording and the delete's behaviour cannot disagree. */
+  may_hard_delete: boolean
   /** Net posted spending filed here over the categories' whole life
    *  (positive = outflow) — what the destination absorbs, or what leaves
    *  category-keyed reports until re-filed. */

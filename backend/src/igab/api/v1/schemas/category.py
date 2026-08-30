@@ -29,6 +29,21 @@ class CategoryReorder(BaseModel):
     category_ids: list[uuid.UUID]
 
 
+class CategoryReferenceResponse(BaseModel):
+    """One kind of thing still pointing at the categories being deleted.
+
+    `clearable` is the whole point of the split. A saved view placing this
+    category means nothing once it is gone, so removing it costs nothing and
+    the dialog can say so plainly. A recorded money move is a fact about what
+    happened, and severing it would leave a row saying money went nowhere.
+    """
+
+    kind: str
+    label: str
+    count: int
+    clearable: bool
+
+
 class CategoryDeletePreviewResponse(BaseModel):
     """What deleting these categories is about to do.
 
@@ -47,6 +62,15 @@ class CategoryDeletePreviewResponse(BaseModel):
     future_assigned: Decimal
     payee_count: int
     scheduled_count: int
+    #: Everything else still pointing at these categories, named so the dialog
+    #: can list the contact points rather than leaving the user to guess why a
+    #: delete behaves the way it does.
+    references: list[CategoryReferenceResponse]
+    #: May the row be removed outright rather than soft-deleted? False whenever
+    #: anything *records* that the category existed. Served rather than derived
+    #: from `references`, so the dialog's wording and the delete's behaviour
+    #: cannot disagree about which one is about to happen.
+    may_hard_delete: bool
     #: Net posted spending filed here over the categories' whole life
     #: (positive = outflow). Moving hands it to the destination along with the
     #: assignment that covered it, so the destination's balance is unchanged;

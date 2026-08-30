@@ -47,6 +47,8 @@ function preview(over: Partial<CategoryDeletePreview> = {}): CategoryDeletePrevi
     future_assigned: '0',
     payee_count: 0,
     scheduled_count: 0,
+    references: [],
+    may_hard_delete: true,
     moving_activity: '0',
     released_if_moved: '0',
     released_if_uncategorized: '0',

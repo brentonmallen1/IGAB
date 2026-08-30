@@ -30,18 +30,22 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
     BudgetAssignment,
     BudgetFilterCategory,
+    BudgetMove,
     BudgetViewPlacement,
     Category,
     CategoryGroup,
+    CategoryMonthSnapshot,
+    CategoryTarget,
     Payee,
     ScheduledTransaction,
     Transaction,
+    WishlistItem,
 )
 from igab.domain.dates import month_start as first_of_month
 from igab.domain.exceptions import InvariantViolation, NotFoundError
@@ -54,6 +58,43 @@ from igab.repositories.category_repo import (
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.budget_service import BudgetService
 from igab.services.change_log import ChangeRecorder, snapshot
+
+#: What still points at a category, and whether removing it costs anything.
+#:
+#: Fourteen tables carry a foreign key to `categories`, and the delete
+#: preview's `is_empty` checked five of them. The rest would have gone with the
+#: row: `ondelete="CASCADE"` on targets, view placements, filter selections and
+#: snapshots, and `SET NULL` on budget moves and wishes — so a "hard delete" of
+#: a category the user believed empty would have taken a saved view's layout
+#: with it and blanked the from/to on historical money moves, silently.
+#:
+#: The two lists are the honest division:
+#:
+#: - **clearable** — the reference exists only to describe this category, so it
+#:   means nothing once the category is gone. Removing it costs nothing, and
+#:   the dialog offers to do it.
+#: - **blocking** — the reference is a record of something that happened, or a
+#:   pointer someone else set. Those are the user's to resolve, and the dialog
+#:   names them rather than quietly severing them.
+#:
+#: `BudgetMove` is the sharp one. It is the audit trail of money moving between
+#: envelopes; SET NULL would leave a row saying £50 moved from nowhere to
+#: nowhere. A soft delete keeps the name resolvable forever, which is why a
+#: category with move history is never hard-deleted.
+_CLEARABLE_REFERENCES = "clearable"
+_BLOCKING_REFERENCES = "blocking"
+
+
+@dataclass
+class CategoryReference:
+    """One kind of thing still pointing at the categories being deleted."""
+
+    kind: str
+    #: Shown to the user, already pluralised by the caller's count.
+    label: str
+    count: int
+    #: True when removing it costs nothing — see the note above.
+    clearable: bool
 
 
 @dataclass
@@ -92,10 +133,20 @@ class CategoryDeletePreview:
     released_if_uncategorized: Decimal = Decimal("0")
     #: Non-empty only when something blocks the delete outright.
     blocked_by: list[str] = field(default_factory=list)
+    #: Everything else still pointing at these categories. See
+    #: `CategoryReference` for why the two halves are treated differently.
+    references: list[CategoryReference] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
-        """Nothing to decide — the client may skip the dialog entirely."""
+        """Nothing to decide — the client may skip the dialog entirely.
+
+        Deliberately unchanged when `references` is non-empty: a saved view
+        placing this category is not something the user has to *decide* about,
+        it is something the delete clears on the way through. What references
+        gate is whether the row can be removed outright (`may_hard_delete`),
+        which is a different question.
+        """
         return (
             self.transaction_count == 0
             and self.available == 0
@@ -103,6 +154,26 @@ class CategoryDeletePreview:
             and self.payee_count == 0
             and self.scheduled_count == 0
         )
+
+    @property
+    def blocking_references(self) -> list[CategoryReference]:
+        return [r for r in self.references if not r.clearable]
+
+    @property
+    def clearable_references(self) -> list[CategoryReference]:
+        return [r for r in self.references if r.clearable]
+
+    @property
+    def may_hard_delete(self) -> bool:
+        """May the row be removed outright rather than soft-deleted?
+
+        Only when the category is empty AND nothing records that it existed.
+        A soft delete keeps the name resolvable forever, which is what a
+        `BudgetMove` row needs to go on saying where £50 went — so anything
+        with history stays soft-deleted, and the dialog says which record is
+        holding it.
+        """
+        return self.is_empty and not self.blocking_references
 
 
 def _touched(bookkeeping: dict[str, Any]) -> bool:
@@ -257,6 +328,105 @@ class CategoryService:
 
     # ─── Preview ──────────────────────────────────────────────────────────────
 
+    async def _references(self, ids: list[uuid.UUID]) -> list[CategoryReference]:
+        """Everything still pointing at these categories, counted and classified.
+
+        One query per referent kind rather than per category: a group delete
+        passes every category in the group, and a loop here would be the same
+        N+1 the accounts listing was cured of.
+        """
+        if not ids:
+            return []
+
+        async def count(stmt) -> int:
+            return await self._count(stmt)
+
+        found: list[CategoryReference] = []
+
+        def add(kind: str, singular: str, plural: str, n: int, *, clearable: bool) -> None:
+            if n:
+                found.append(
+                    CategoryReference(
+                        kind=kind,
+                        label=f"{n} {singular if n == 1 else plural}",
+                        count=n,
+                        clearable=clearable,
+                    )
+                )
+
+        # Clearable: each of these exists only to describe the category.
+        add(
+            "target",
+            "savings target",
+            "savings targets",
+            await count(select(CategoryTarget.id).where(CategoryTarget.category_id.in_(ids))),
+            clearable=True,
+        )
+        add(
+            "view_placement",
+            "saved view places it",
+            "saved views place it",
+            await count(
+                select(BudgetViewPlacement.id).where(BudgetViewPlacement.category_id.in_(ids))
+            ),
+            clearable=True,
+        )
+        add(
+            "filter_selection",
+            "saved filter includes it",
+            "saved filters include it",
+            await count(
+                select(BudgetFilterCategory.id).where(BudgetFilterCategory.category_id.in_(ids))
+            ),
+            clearable=True,
+        )
+        add(
+            "snapshot",
+            "cached month balance",
+            "cached month balances",
+            await count(
+                select(CategoryMonthSnapshot.id).where(CategoryMonthSnapshot.category_id.in_(ids))
+            ),
+            clearable=True,
+        )
+
+        # Blocking: a record of something that happened, or someone else's
+        # pointer. Severing these loses information the row cannot restate.
+        add(
+            "budget_move",
+            "recorded money move",
+            "recorded money moves",
+            await count(
+                select(BudgetMove.id).where(
+                    or_(
+                        BudgetMove.from_category_id.in_(ids),
+                        BudgetMove.to_category_id.in_(ids),
+                    )
+                )
+            ),
+            clearable=False,
+        )
+        add(
+            "wish",
+            "wishlist item funds it",
+            "wishlist items fund it",
+            await count(select(WishlistItem.id).where(WishlistItem.category_id.in_(ids))),
+            clearable=False,
+        )
+        add(
+            "prior_category",
+            "transaction remembers it",
+            "transactions remember it",
+            await count(
+                select(Transaction.id).where(
+                    Transaction.prior_category_id.in_(ids),
+                    Transaction.is_deleted == False,  # noqa: E712
+                )
+            ),
+            clearable=False,
+        )
+        return found
+
     async def preview_delete(
         self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], month: date
     ) -> CategoryDeletePreview:
@@ -310,6 +480,7 @@ class CategoryService:
                 ScheduledTransaction.is_deleted == False,  # noqa: E712
             )
         )
+        preview.references = await self._references(ids)
         return preview
 
     async def preview_delete_group(
@@ -494,6 +665,14 @@ class CategoryService:
         await self._validate_move_target(budget_id, move_to, ids)
 
         as_of = first_of_month(month or date.today())
+        # Measured before anything is cleared. `_retarget_transactions` and
+        # `_clear_assignments` below empty the category by construction, so
+        # asking afterwards would call every delete a hard one.
+        #
+        # Recomputed here rather than trusted from the client's preview: this
+        # decides whether a row is removed outright, and a destructive decision
+        # taken on request input is one forged request from being wrong.
+        hard = (await self.preview_delete(budget_id, ids, as_of)).may_hard_delete
         tba_before = (await self.budget_service.get_budget_summary(budget_id, as_of)).to_be_assigned
 
         bookkeeping: dict[str, Any] = {}
@@ -506,6 +685,7 @@ class CategoryService:
         await self._clear_referrers(ids, bookkeeping)
 
         group = await self._prepare_group(group_id, ids, bookkeeping)
+
         for cat in cats:
             cat.is_deleted = True
         if group is not None:
@@ -521,7 +701,16 @@ class CategoryService:
             await self.budget_service.get_budget_summary(budget_id, as_of)
         ).to_be_assigned - tba_before
 
-        change_id = await self._record_delete(budget_id, cats, group, bookkeeping)
+        change_id = await self._record_delete(budget_id, cats, group, bookkeeping, hard=hard)
+        if hard:
+            # Last, so the change row above captured the rows while they still
+            # existed. Undo recreates them from that snapshot.
+            await self.session.execute(delete(Category).where(Category.id.in_(ids)))
+            if group is not None:
+                await self.session.execute(
+                    delete(CategoryGroup).where(CategoryGroup.id == group.id)
+                )
+            await self.session.flush()
         return CategoryDeleteResult(
             change_id=change_id,
             category_ids=ids,
@@ -885,6 +1074,8 @@ class CategoryService:
         cats: list[Category],
         group: CategoryGroup | None,
         bookkeeping: dict[str, Any],
+        *,
+        hard: bool = False,
     ) -> uuid.UUID:
         """One change row for the whole operation.
 
@@ -904,6 +1095,15 @@ class CategoryService:
         before = snapshot("category", primary) | bookkeeping
         if len(cats) > 1 or group is not None:
             before["_categories"] = [{"id": str(c.id)} | snapshot("category", c) for c in cats]
+        if hard:
+            # The rows are about to stop existing, so undo cannot flip a flag
+            # back — it has to build them again. `_hard` tells it so, and
+            # `_categories` (forced on even for a single one) carries what to
+            # build from. `_group` does the same for a group cascade.
+            before["_hard"] = True
+            before["_categories"] = [{"id": str(c.id)} | snapshot("category", c) for c in cats]
+            if group is not None:
+                before["_group"] = {"id": str(group.id)} | snapshot("category_group", group)
         row = await self.changes.record(
             budget_id=budget_id,
             entity_type="category",

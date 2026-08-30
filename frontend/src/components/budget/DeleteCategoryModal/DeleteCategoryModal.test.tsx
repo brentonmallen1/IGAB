@@ -57,6 +57,8 @@ function makePreview(over: Partial<CategoryDeletePreview> = {}): CategoryDeleteP
     future_assigned: '50.0000',
     payee_count: 0,
     scheduled_count: 0,
+    references: [],
+    may_hard_delete: true,
     moving_activity: '40.0000',
     released_if_moved: '110.0000',
     released_if_uncategorized: '110.0000',
@@ -185,9 +187,34 @@ describe('DeleteCategoryModal', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
   })
 
-  it('mentions hiding, which keeps the history and the money', () => {
+  it('offers archiving as a real choice, not as prose', () => {
+    // It used to say "you can hide it instead" in a paragraph, which is advice
+    // the user then had to go and act on somewhere else. Archiving is the
+    // non-destructive way out of this dialog, so it is a button in it.
     renderModal()
-    expect(screen.getByText(/hidden categories keep their history/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Archive instead/i })).toBeInTheDocument()
+  })
+
+  it('says whether the row itself is about to go', () => {
+    // `may_hard_delete` is served precisely so the wording and the behaviour
+    // cannot disagree about which of the two deletes is about to happen.
+    renderModal()
+    expect(screen.getByText(/the category itself is removed/i)).toBeInTheDocument()
+  })
+
+  it('names what else points at the category', () => {
+    renderModal({
+      may_hard_delete: false,
+      references: [
+        { kind: 'target', label: '1 savings target', count: 1, clearable: true },
+        { kind: 'budget_move', label: '2 recorded money moves', count: 2, clearable: false },
+      ],
+    })
+    expect(screen.getByText(/1 savings target/)).toBeInTheDocument()
+    // The blocking one says why the row survives, rather than being severed
+    // quietly the way a CASCADE would have done it.
+    expect(screen.getByText(/2 recorded money moves/)).toBeInTheDocument()
+    expect(screen.getByText(/kept as deleted history/i)).toBeInTheDocument()
   })
 
   it('skips the transaction choice when there is nothing filed there', () => {

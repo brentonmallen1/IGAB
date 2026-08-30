@@ -469,8 +469,14 @@ async def test_delete_allowed_once_the_account_is_gone(db_session):
     assert payment.linked_account_id is None, "account delete still unlinks its category"
 
     await _service(db_session, services).delete_categories(budget.id, [payment.id], month=AUG)
-    await db_session.refresh(payment)
-    assert payment.is_deleted is True
+
+    # Re-queried rather than refreshed: nothing referenced this category, so
+    # the delete removed the row outright and the held instance is no longer
+    # persistent. Gone is the stronger outcome — the assertion below accepts
+    # either, because which one happens is `may_hard_delete`'s business.
+    db_session.expunge_all()
+    after = await db_session.get(Category, payment.id)
+    assert after is None or after.is_deleted is True
 
 
 async def test_a_deleted_category_never_holds_a_link(db_session):
@@ -498,10 +504,24 @@ async def test_a_deleted_category_never_holds_a_link(db_session):
     assert payment.linked_account_id is None
 
     await _service(db_session, services).delete_categories(budget.id, [payment.id], month=AUG)
-    await db_session.refresh(payment)
-    assert payment.is_deleted is True
-    assert payment.linked_account_id is None
-    assert payment.linked_liability_id is None
+    db_session.expunge_all()
+    after = await db_session.get(Category, payment.id)
+    # A hard delete satisfies the invariant by absence: no row, no link. The
+    # sweep below is the real check either way, since it reads the table
+    # rather than one instance.
+    if after is not None:
+        assert after.is_deleted is True
+        assert after.linked_account_id is None
+        assert after.linked_liability_id is None
+
+    # A second one that keeps its row, so the sweep below has something to
+    # sweep. Nothing referenced the first, so it went outright — and a sweep
+    # over an empty set would pass no matter how broken the invariant was.
+    account = await create_account(db_session, budget, "Redwood Checking")
+    spent = await create_category(db_session, budget, group, "Groceries")
+    await create_transaction(db_session, budget, account, "-20.00", AUG, category=spent)
+    await db_session.flush()
+    await _service(db_session, services).delete_categories(budget.id, [spent.id], month=AUG)
 
     # Route 2: there is no other route — a live link refuses, as its own test
     # above shows. Sweep every deleted category in the budget to be sure.
@@ -517,7 +537,7 @@ async def test_a_deleted_category_never_holds_a_link(db_session):
         .scalars()
         .all()
     )
-    assert deleted
+    assert deleted, "the sweep must not be vacuous"
     for cat in deleted:
         assert cat.linked_account_id is None
         assert cat.linked_liability_id is None

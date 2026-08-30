@@ -13,7 +13,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from igab.db.models import BudgetAssignment, ChangeLog
+from igab.db.models import BudgetAssignment, Category, ChangeLog
 from igab.domain.exceptions import UndoConflict
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -344,9 +344,14 @@ async def test_undo_restores_a_link_that_is_still_free(db_session):
     await UndoService(db_session).undo_change(budget.id, result.change_id)
     await db_session.flush()
 
-    await db_session.refresh(payment)
-    assert payment.is_deleted is False
-    assert payment.linked_account_id is None
+    # Re-queried, not refreshed: this category was hard-deleted (nothing
+    # referenced it), so undo rebuilt the row from the change record rather
+    # than clearing a flag on the one this test was holding.
+    db_session.expunge_all()
+    restored = await db_session.get(Category, payment.id)
+    assert restored is not None, "undo must bring back a hard-deleted category"
+    assert restored.is_deleted is False
+    assert restored.linked_account_id is None
 
 
 # ─── Review regressions: undo puts everything back where it was ──────────────

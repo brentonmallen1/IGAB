@@ -274,6 +274,14 @@ class UndoService:
             raise UndoConflict(f"Unknown entity type '{change.entity_type}'")
         entity = await self.session.get(model, change.entity_id)
         if entity is None:
+            # A hard delete removed the row outright, so there is no flag to
+            # flip back — the record carries what to rebuild from. Only a
+            # category delete takes that path, and only when nothing recorded
+            # that the category existed, which is why rebuilding the bare rows
+            # is a complete inverse here and would not be anywhere else.
+            if (change.before or {}).get("_hard") and change.entity_type == "category":
+                await self._undo_hard_category_delete(change)
+                return
             raise UndoConflict("The affected item no longer exists")
 
         if change.action in ("create", "import"):
@@ -405,6 +413,55 @@ class UndoService:
                 .where(TransactionAttachment.id.in_([uuid.UUID(a) for a in attachment_ids]))
                 .values(transaction_id=change.entity_id)
             )
+
+    async def _undo_hard_category_delete(self, change: ChangeLog) -> None:
+        """Rebuild categories (and their group) that were removed outright.
+
+        `CategoryService` only hard-deletes when the preview says nothing
+        recorded the category — no transactions, no assignments, no money
+        moves, no wishes, no saved-view placement. So there is nothing to
+        re-point afterwards and the rows themselves are the whole inverse.
+
+        Ids are restored as they were rather than reissued: a change row and a
+        `_categories` payload both name them, and a rebuilt category with a new
+        id would leave those pointing at nothing.
+        """
+        before = change.before or {}
+        rows = before.get("_categories") or []
+        if not rows:
+            raise UndoConflict("This delete did not record what to restore")
+
+        group_payload = before.get("_group")
+        if group_payload:
+            group_id = uuid.UUID(group_payload["id"])
+            if await self.session.get(CategoryGroup, group_id) is None:
+                self.session.add(
+                    CategoryGroup(
+                        id=group_id,
+                        budget_id=change.budget_id,
+                        **{
+                            f: coerce_value(CategoryGroup, f, v)
+                            for f, v in group_payload.items()
+                            if f != "id"
+                        },
+                    )
+                )
+                await self.session.flush()
+
+        for row in rows:
+            cat_id = uuid.UUID(row["id"])
+            if await self.session.get(Category, cat_id) is not None:
+                # Something already put it back. Leave it as it stands rather
+                # than overwriting — the rule every other branch here follows.
+                continue
+            self.session.add(
+                Category(
+                    id=cat_id,
+                    budget_id=change.budget_id,
+                    **{f: coerce_value(Category, f, v) for f, v in row.items() if f != "id"},
+                )
+            )
+        await self.session.flush()
 
     async def _undo_category_delete(self, change: ChangeLog, entity) -> None:
         """Reverse a real category delete: the category, and everything the
