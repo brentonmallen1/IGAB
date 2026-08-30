@@ -5,6 +5,7 @@ import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox
 import {
   useCategories,
   useArchiveCategories,
+  useArchivePreview,
   useCategoryDeletePreview,
   useCategoryGroups,
   useDeleteCategories,
@@ -71,6 +72,24 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
         .filter((g) => g.cats.length > 0),
     [groups, categories, doomed]
   )
+
+  // Whether an *archive* may proceed is a different question from whether a
+  // delete may, and the delete preview cannot answer it: `blocked_by` covers
+  // links only, where archiving is also refused over a balance, a future
+  // assignment or a live schedule. Asking the archive endpoint is what keeps
+  // this button and that endpoint from disagreeing — `may_archive` is served
+  // precisely so it is never recomputed here.
+  const archive = useArchivePreview(budgetId, preview?.category_ids ?? [], month)
+  const mayArchive = archive.data?.may_archive ?? false
+  //: Which envelope stopped it, straight from the served lists — presentation
+  //: of a decision the server already made, not a second copy of the rule.
+  const archiveBlockedBy =
+    archive.data && !archive.data.may_archive
+      ? (archive.data.blocked_by_link[0] ??
+        archive.data.blocked_by_balance[0] ??
+        archive.data.blocked_by_schedule[0] ??
+        null)
+      : null
 
   const blocked = (preview?.blocked_by.length ?? 0) > 0
   const txnCount = preview?.transaction_count ?? 0
@@ -265,16 +284,21 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
           <button type="button" className="delete-category-modal__cancel" onClick={onClose}>
             Cancel
           </button>
-          {/* The third choice, and the one that loses nothing. It routes
-              through the archive endpoint, which refuses while the envelope
-              still holds money and says which one — so this button can be
-              offered unconditionally and the server does the deciding. */}
+          {/* The third choice, and the one that loses nothing. Gated on the
+              archive endpoint's own `may_archive` rather than the delete
+              preview's `blocked_by`: the two refuse on different grounds, and
+              reading the delete's answer here offered the button on an
+              envelope the archive would then refuse over its balance. */}
           <button
             type="button"
             className="delete-category-modal__archive"
             onClick={handleArchive}
-            disabled={!preview || blocked || archiveCategories.isPending}
-            title="Keep its history and stop new use, instead of deleting"
+            disabled={!preview || !mayArchive || archiveCategories.isPending}
+            title={
+              archiveBlockedBy
+                ? `Cannot archive: ${archiveBlockedBy}`
+                : 'Keep its history and stop new use, instead of deleting'
+            }
           >
             {archiveCategories.isPending ? 'Archiving…' : 'Archive instead'}
           </button>

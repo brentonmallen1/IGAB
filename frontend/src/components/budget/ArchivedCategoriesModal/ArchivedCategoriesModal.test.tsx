@@ -1,26 +1,30 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ArchivedCategoriesModal } from './ArchivedCategoriesModal'
 
 const unarchive = vi.fn()
+const unarchiveGroup = vi.fn()
 let rows: unknown[] = []
 
 vi.mock('../../../api/categories', () => ({
   useArchivedCategories: () => ({ data: rows, isLoading: false }),
   useUnarchiveCategories: () => ({ mutate: unarchive }),
+  useUnarchiveCategoryGroup: () => ({ mutate: unarchiveGroup }),
 }))
 
 function row(over: Record<string, unknown> = {}) {
   return {
     id: 'c1',
     name: 'Gym',
+    group_id: 'g1',
     group_name: 'Everyday',
     transaction_count: 12,
     archived_at: '2026-08-01T00:00:00Z',
     available: '0.00',
+    group_is_archived: false,
     ...over,
   }
 }
@@ -38,6 +42,11 @@ function show() {
     </QueryClientProvider>
   )
 }
+
+beforeEach(() => {
+  unarchive.mockClear()
+  unarchiveGroup.mockClear()
+})
 
 describe('ArchivedCategoriesModal', () => {
   it('shows the three facts that decide an envelope’s fate', () => {
@@ -80,6 +89,27 @@ describe('ArchivedCategoriesModal', () => {
     show()
     await userEvent.click(screen.getByRole('button', { name: /Restore/ }))
     expect(unarchive).toHaveBeenCalledWith({ ids: ['c1'], month: '2026-08-01' })
+  })
+
+  it('restores the group when the group is what archived the row', async () => {
+    // The row is listed because its *group* is archived; its own flag is
+    // false, so clearing that again is a button that does nothing. The client
+    // cannot work this out alone — archived groups are absent from the groups
+    // listing it holds — so the server says which case this is.
+    rows = [row({ group_is_archived: true })]
+    show()
+    await userEvent.click(screen.getByRole('button', { name: /Restore group/ }))
+    expect(unarchiveGroup).toHaveBeenCalledWith({ id: 'g1', month: '2026-08-01' })
+    expect(unarchive).not.toHaveBeenCalled()
+  })
+
+  it('says the group is what comes back, rather than promising one envelope', () => {
+    rows = [row({ group_is_archived: true })]
+    show()
+    expect(screen.getByRole('button', { name: /Restore group/ })).toHaveAttribute(
+      'title',
+      expect.stringContaining('Everyday')
+    )
   })
 
   it('explains itself when there is nothing archived', () => {

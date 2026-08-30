@@ -1,6 +1,9 @@
+import logging
 from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
@@ -24,12 +27,21 @@ async def process_due_scheduled_transactions() -> None:
                 ScheduledTransactionRepository(session), txn_svc
             )
 
+            # Per budget, so one budget's bad schedule cannot cost every other
+            # budget its nightly run. A schedule can outlive what it points at
+            # — archive the envelope it files into and the row it tries to
+            # enter is refused — and the rollback that used to follow discarded
+            # the work already done for every budget processed before it.
             for budget in budgets:
-                await sched_svc.process_due(budget.id)
-
-            await session.commit()
+                try:
+                    await sched_svc.process_due(budget.id)
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    logger.exception("Scheduled transactions failed for budget %s", budget.id)
         except Exception:
             await session.rollback()
+            logger.exception("Scheduled transaction run failed")
 
 
 async def process_auto_simplefin_sync() -> None:

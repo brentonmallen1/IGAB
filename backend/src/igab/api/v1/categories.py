@@ -29,6 +29,7 @@ from igab.api.v1.schemas.category import (
     CategoryDeletePreviewResponse,
     CategoryDeleteRequest,
     CategoryDeleteResultResponse,
+    CategoryGroupArchiveRequest,
     CategoryGroupCreate,
     CategoryGroupReorder,
     CategoryGroupResponse,
@@ -377,6 +378,7 @@ def _archive_preview_out(preview: CategoryArchivePreview) -> CategoryArchivePrev
         future_assigned=preview.future_assigned,
         blocked_by_balance=preview.blocked_by_balance,
         blocked_by_link=preview.blocked_by_link,
+        blocked_by_schedule=preview.blocked_by_schedule,
         may_archive=preview.may_archive,
     )
 
@@ -452,10 +454,12 @@ async def list_archived_categories(
         ArchivedCategoryResponse(
             id=r.id,
             name=r.name,
+            group_id=r.group_id,
             group_name=r.group_name,
             transaction_count=r.transaction_count,
             archived_at=r.archived_at,
             available=r.available,
+            group_is_archived=r.group_is_archived,
         )
         for r in rows
     ]
@@ -505,6 +509,47 @@ async def unarchive_categories(
     ids = await category_service.unarchive_categories(budget_id, body.category_ids)
     preview = await category_service.preview_archive(budget_id, ids, body.month or date.today())
     return _archive_preview_out(preview)
+
+
+@router.post(
+    "/{budget_id}/category-groups/{group_id}/archive",
+    response_model=CategoryArchivePreviewResponse,
+)
+async def archive_category_group(
+    budget_id: BudgetAccess,
+    group_id: uuid.UUID,
+    body: CategoryGroupArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """Archive a whole group, refused while anything in it still holds money.
+
+    Not `PATCH /category-groups/{id}` with the flag: that is a plain column
+    write, and archiving a group takes every envelope under it off the budget
+    (`IN_ARCHIVED_GROUP`), money included.
+    """
+    preview = await category_service.archive_group(budget_id, group_id, month=body.month)
+    return _archive_preview_out(preview)
+
+
+@router.post(
+    "/{budget_id}/category-groups/{group_id}/unarchive",
+    response_model=CategoryArchivePreviewResponse,
+)
+async def unarchive_category_group(
+    budget_id: BudgetAccess,
+    group_id: uuid.UUID,
+    body: CategoryGroupArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """Bring a group back. Never refused — no money moves."""
+    await category_service.unarchive_group(budget_id, group_id)
+    return _archive_preview_out(
+        await category_service.preview_archive_group(
+            budget_id, group_id, body.month or date.today()
+        )
+    )
 
 
 @router.post("/{budget_id}/categories/delete", response_model=CategoryDeleteResultResponse)

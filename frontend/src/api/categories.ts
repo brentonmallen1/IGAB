@@ -244,10 +244,16 @@ export interface CategoryDeleteResult {
 export interface ArchivedCategory {
   id: string
   name: string
+  group_id: string
   group_name: string
   transaction_count: number
   archived_at: string | null
   available: string
+  /** The *group* is why this row is listed, not the category's own flag.
+   *  Restoring the category alone is a no-op then — the group still hides it —
+   *  so the modal offers to restore the group. Served: the client cannot see
+   *  the group's flag, because archived groups are not in `useCategoryGroups`. */
+  group_is_archived: boolean
 }
 
 export function useArchivedCategories(budgetId: string | null, month: string, enabled = true) {
@@ -275,6 +281,9 @@ export interface ArchivePreview {
   future_assigned: string
   blocked_by_balance: string[]
   blocked_by_link: string[]
+  blocked_by_schedule: string[]
+  /** Served, never recomputed here: a client deriving it from the three lists
+   *  is how the button and the endpoint come to disagree. */
   may_archive: boolean
 }
 
@@ -321,6 +330,40 @@ export function useArchiveCategories(budgetId: string) {
 
 export function useUnarchiveCategories(budgetId: string) {
   return useArchiveMutation(budgetId, 'unarchive', 'Restored to the budget')
+}
+
+/** Archive or restore a whole group.
+ *
+ *  Not `useUpdateCategoryGroup({ is_archived })`: that PATCH is a plain column
+ *  write, and archiving a group takes every envelope under it off the budget
+ *  with whatever money is still inside. This route runs the same refusal one
+ *  envelope gets, and surfaces the server's sentence naming which one stopped
+ *  it.
+ */
+function useGroupArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', done: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, month }: { id: string; month: string }) => {
+      const { data } = await apiClient.post<ArchivePreview>(
+        `/${budgetId}/category-groups/${id}/${path}`,
+        { month }
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await invalidateAfterCategoryChange(qc, budgetId)
+      toast.success(done)
+    },
+    onError: (e) => toast.error(apiErrorMessage(e, 'Could not update the archive')),
+  })
+}
+
+export function useArchiveCategoryGroup(budgetId: string) {
+  return useGroupArchiveMutation(budgetId, 'archive', 'Group archived')
+}
+
+export function useUnarchiveCategoryGroup(budgetId: string) {
+  return useGroupArchiveMutation(budgetId, 'unarchive', 'Group restored to the budget')
 }
 
 /** What the delete dialog is about to act on: a selection of categories, or a

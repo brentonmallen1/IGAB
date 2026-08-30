@@ -229,6 +229,8 @@ class UndoService:
             entity.is_deleted = True
         elif change.action == "reorder":
             await self._apply_order(change, force, target="after")
+        elif change.action in ("archive", "unarchive"):
+            await self._apply_archive(change, target="after")
         else:
             raise UndoConflict(f"Changes of type '{change.action}' cannot be redone")
 
@@ -298,8 +300,32 @@ class UndoService:
             await self._undo_merge(change, entity)
         elif change.action == "reorder":
             await self._apply_order(change, force, target="before")
+        elif change.action in ("archive", "unarchive"):
+            await self._apply_archive(change, target="before")
         else:
             raise UndoConflict(f"Changes of type '{change.action}' cannot be undone")
+
+    async def _apply_archive(self, change: ChangeLog, *, target: str) -> None:
+        """Put the archived flag and its stamp back for every row one archive touched.
+
+        Recorded keyed by id because a single archive covers many envelopes —
+        the shape a bulk delete already uses — where the generic update path
+        reads a flat field dict. Without this case both `_apply` and `_reapply`
+        fell through to "cannot be undone", and `undo_newer` has no per-item
+        handling, so one archive anywhere in the range aborted the whole
+        "Revert to here".
+
+        Covers groups as well as categories: `_set_group_archived` records in
+        the same shape under `entity_type="category_group"`, so the model comes
+        from `ENTITY_MODELS` rather than being assumed.
+        """
+        model = ENTITY_MODELS[change.entity_type]
+        for raw_id, fields in (getattr(change, target) or {}).items():
+            entity = await self.session.get(model, uuid.UUID(str(raw_id)))
+            if entity is None:
+                continue
+            for name, value in fields.items():
+                setattr(entity, name, coerce_value(model, name, value))
 
     async def _apply_order(self, change: ChangeLog, force: bool, *, target: str) -> None:
         """Put a reordered list back the way the record says.
@@ -650,7 +676,8 @@ class UndoService:
                     view_id=uuid.UUID(row["view_id"]),
                     category_id=uuid.UUID(row["category_id"]),
                     group_id=uuid.UUID(row["group_id"]) if row.get("group_id") else None,
-                    is_archived=bool(row.get("is_archived")),
+                    is_hidden=bool(row.get("is_hidden")),
+                    sort_order=int(row.get("sort_order") or 0),
                 )
             )
         for row in before.get("_filter_selections") or []:

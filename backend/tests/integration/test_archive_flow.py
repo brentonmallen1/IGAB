@@ -31,6 +31,7 @@ from .factories import (
     create_budget,
     create_category,
     create_category_group,
+    create_scheduled_transaction,
     create_transaction,
     create_user,
     make_services,
@@ -235,3 +236,179 @@ class TestTheArchivedListing:
     async def test_a_live_envelope_is_not_listed(self, db_session):
         services, budget, _checking, _group, _cat = await _world(db_session)
         assert await _svc(services, db_session).list_archived(budget.id, AUG) == []
+
+
+class TestALiveScheduleStopsIt:
+    """Archiving leaves a schedule's pointer where it was, and the next time it
+    fires the row it tries to enter is refused by `require_categorizable`.
+
+    That is a landmine, not an error at the time: nothing tells the user, and
+    the failure surfaces weeks later inside a cron job. The delete preview
+    already counts schedules for the same reason; the archive preview did not.
+    """
+
+    async def test_a_schedule_filing_into_it_blocks_the_archive(self, db_session):
+        services, budget, checking, _group, cat = await _world(db_session)
+        await create_scheduled_transaction(
+            db_session, budget, checking, "-15.00", "monthly", SEP, category=cat
+        )
+
+        svc = _svc(services, db_session)
+        preview = await svc.preview_archive(budget.id, [cat.id], AUG)
+        assert preview.blocked_by_schedule == ["Gym"]
+        assert preview.may_archive is False
+
+        with pytest.raises(InvariantViolation) as e:
+            await svc.archive_categories(budget.id, [cat.id], month=AUG)
+        # Names the envelope and the next action, not "cannot archive".
+        assert "Gym" in str(e.value)
+        assert "schedule" in str(e.value).lower()
+
+    async def test_a_deleted_schedule_does_not(self, db_session):
+        """A cancelled schedule never fires, so it strands nothing."""
+        services, budget, checking, _group, cat = await _world(db_session)
+        await create_scheduled_transaction(
+            db_session,
+            budget,
+            checking,
+            "-15.00",
+            "monthly",
+            SEP,
+            category=cat,
+            is_deleted=True,
+        )
+
+        svc = _svc(services, db_session)
+        preview = await svc.preview_archive(budget.id, [cat.id], AUG)
+        assert preview.blocked_by_schedule == []
+        assert preview.may_archive is True
+        await svc.archive_categories(budget.id, [cat.id], month=AUG)
+        await db_session.refresh(cat)
+        assert cat.is_archived is True
+
+    async def test_re_filing_the_schedule_unblocks_it(self, db_session):
+        """The refusal has to be a door, not a wall — the message tells the
+        user to re-file the schedule, so doing that must actually work."""
+        services, budget, checking, group, cat = await _world(db_session)
+        elsewhere = await create_category(db_session, budget, group, "Dining")
+        sched = await create_scheduled_transaction(
+            db_session, budget, checking, "-15.00", "monthly", SEP, category=cat
+        )
+        svc = _svc(services, db_session)
+        with pytest.raises(InvariantViolation):
+            await svc.archive_categories(budget.id, [cat.id], month=AUG)
+
+        sched.category_id = elsewhere.id
+        await db_session.flush()
+        await svc.archive_categories(budget.id, [cat.id], month=AUG)
+        await db_session.refresh(cat)
+        assert cat.is_archived is True
+
+
+class TestArchivingAGroupRunsTheSameRefusal:
+    """The "Hide group" button used to PATCH the flag straight onto the row — a
+    plain column write with no balance check behind it. Archiving a group takes
+    every envelope under it off the budget (`IN_ARCHIVED_GROUP`), so that route
+    could stand a whole group's money somewhere unreachable in one click.
+    """
+
+    async def test_money_in_any_envelope_refuses_the_whole_group(self, db_session):
+        services, budget, _checking, group, cat = await _world(db_session)
+        await create_category(db_session, budget, group, "Dining")
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
+
+        svc = _svc(services, db_session)
+        preview = await svc.preview_archive_group(budget.id, group.id, AUG)
+        assert preview.blocked_by_balance == ["Gym"]
+
+        with pytest.raises(InvariantViolation) as e:
+            await svc.archive_group(budget.id, group.id, month=AUG)
+        assert "Gym" in str(e.value)
+        await db_session.refresh(group)
+        assert group.is_archived is False, "nothing moved, including the flag"
+
+    async def test_an_empty_group_archives_and_stamps_the_date(self, db_session):
+        services, budget, _checking, group, _cat = await _world(db_session)
+
+        await _svc(services, db_session).archive_group(budget.id, group.id, month=AUG)
+        await db_session.refresh(group)
+        assert group.is_archived is True
+        assert group.archived_at is not None
+
+    async def test_the_categories_keep_their_own_flag(self, db_session):
+        """The group's flag is the whole fact. Setting the categories' too
+        would record one state in two places, and they would part company the
+        first time the group came back with an envelope archived on its own
+        merits inside it."""
+        services, budget, _checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+
+        await svc.archive_group(budget.id, group.id, month=AUG)
+        await db_session.refresh(cat)
+        assert cat.is_archived is False
+
+        await svc.unarchive_group(budget.id, group.id)
+        await db_session.refresh(group)
+        await db_session.refresh(cat)
+        assert group.is_archived is False
+        assert group.archived_at is None
+        assert cat.is_archived is False
+
+
+class TestTheListingSaysWhyARowIsThere:
+    """A category under an archived group is listed but is not itself archived,
+    so "Restore" on it cleared a flag that was already false and the row stayed
+    exactly where it was — a button that did nothing, twice in a row.
+
+    The client cannot work this out for itself: archived groups are not in the
+    groups listing it holds, so it cannot see the flag that put the row here.
+    """
+
+    async def test_a_group_archived_row_says_so(self, db_session):
+        services, budget, _checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        await svc.archive_group(budget.id, group.id, month=AUG)
+
+        rows = await svc.list_archived(budget.id, AUG)
+        row = next(r for r in rows if r.id == cat.id)
+        assert row.group_is_archived is True
+        assert row.group_id == group.id
+        # Its own flag is untouched — which is exactly why restoring it alone
+        # would have changed nothing.
+        await db_session.refresh(cat)
+        assert cat.is_archived is False
+
+    async def test_an_individually_archived_row_does_not(self, db_session):
+        services, budget, _checking, _group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        await svc.archive_categories(budget.id, [cat.id], month=AUG)
+
+        rows = await svc.list_archived(budget.id, AUG)
+        row = next(r for r in rows if r.id == cat.id)
+        assert row.group_is_archived is False
+
+    async def test_restoring_the_group_takes_the_row_off_the_listing(self, db_session):
+        services, budget, _checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        await svc.archive_group(budget.id, group.id, month=AUG)
+        assert any(r.id == cat.id for r in await svc.list_archived(budget.id, AUG))
+
+        await svc.unarchive_group(budget.id, group.id)
+        assert not any(r.id == cat.id for r in await svc.list_archived(budget.id, AUG))
+
+    async def test_a_row_archived_both_ways_stays_until_both_are_undone(self, db_session):
+        """Two states, two restores. Restoring the group leaves an envelope
+        that was also archived on its own merits still archived, which is the
+        honest answer rather than a surprise un-archive."""
+        services, budget, _checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        await svc.archive_categories(budget.id, [cat.id], month=AUG)
+        await svc.archive_group(budget.id, group.id, month=AUG)
+
+        await svc.unarchive_group(budget.id, group.id)
+        rows = await svc.list_archived(budget.id, AUG)
+        row = next(r for r in rows if r.id == cat.id)
+        assert row.group_is_archived is False, "now it offers the plain Restore"
+
+        await svc.unarchive_categories(budget.id, [cat.id])
+        assert not any(r.id == cat.id for r in await svc.list_archived(budget.id, AUG))

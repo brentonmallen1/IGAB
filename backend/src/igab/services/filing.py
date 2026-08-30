@@ -21,13 +21,49 @@ not be filed today are a hygiene finding, not an error.
 """
 
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category
 from igab.domain.exceptions import InvariantViolation
-from igab.repositories.category_filters import IS_CATEGORIZABLE
+from igab.repositories.category_filters import IS_CATEGORIZABLE, LIVE_CATEGORY
+
+
+async def _filing_row(session: AsyncSession, category_id: uuid.UUID) -> Any:
+    """The one query behind both the refusal and the question below."""
+    return (
+        await session.execute(
+            select(
+                Category.linked_account_id,
+                Category.linked_liability_id,
+                IS_CATEGORIZABLE.label("categorizable"),
+                LIVE_CATEGORY.label("live"),
+            ).where(Category.id == category_id)
+        )
+    ).first()
+
+
+async def may_be_filed_to(session: AsyncSession, category_id: uuid.UUID | None) -> bool:
+    """`IS_CATEGORIZABLE` asked as a question rather than enforced as a refusal.
+
+    Auto-categorization resolves a category *after* the caller's has been
+    validated, so it needs the same rule with a different answer shape: an
+    inherited category that may not be filed to is dropped and the row lands
+    uncategorized, where a hand-picked one raises. Re-checking the terms in
+    Python here is how the inherited path and the typed path come to disagree
+    about where money may go.
+
+    Liveness is part of the question on this path and not on the other one:
+    `require_categorizable` sits behind `require_in_budget`, which rejects an
+    id that resolves to nothing, while a payee's stored default can outlive
+    the envelope it points at.
+    """
+    if category_id is None:
+        return False
+    row = await _filing_row(session, category_id)
+    return row is not None and bool(row.categorizable) and bool(row.live)
 
 
 async def require_categorizable(session: AsyncSession, category_id: uuid.UUID | None) -> None:
@@ -46,15 +82,7 @@ async def require_categorizable(session: AsyncSession, category_id: uuid.UUID | 
     """
     if category_id is None:
         return
-    row = (
-        await session.execute(
-            select(
-                Category.linked_account_id,
-                Category.linked_liability_id,
-                IS_CATEGORIZABLE.label("categorizable"),
-            ).where(Category.id == category_id)
-        )
-    ).first()
+    row = await _filing_row(session, category_id)
     if row is None or row.categorizable:
         return
     if row.linked_account_id is not None:

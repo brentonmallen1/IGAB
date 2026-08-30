@@ -21,6 +21,11 @@ const deleteMutate = vi.hoisted(() =>
 )
 let preview: CategoryDeletePreview
 let previewFailed = false
+/** The archive endpoint's own answer. The dialog gates "Archive instead" on
+ *  this and not on the delete preview's `blocked_by`: the two refuse on
+ *  different grounds, so reading the delete's answer offered the button on an
+ *  envelope the archive would then refuse over its balance. */
+let archivePreview: { may_archive: boolean; blocked_by_balance: string[]; blocked_by_link: string[]; blocked_by_schedule: string[] }
 const refetchSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../api/categories', async () => {
@@ -35,6 +40,7 @@ vi.mock('../../../api/categories', async () => {
       isError: previewFailed,
       refetch: refetchSpy,
     }),
+    useArchivePreview: () => ({ data: archivePreview, isLoading: false, isError: false }),
     useCategories: () => ({
       data: [
         { id: 'c1', name: 'Groceries', category_group_id: 'g1', is_categorizable: true },
@@ -109,6 +115,12 @@ beforeEach(() => {
   deleteMutate.mockClear()
   refetchSpy.mockClear()
   previewFailed = false
+  archivePreview = {
+    may_archive: true,
+    blocked_by_balance: [],
+    blocked_by_link: [],
+    blocked_by_schedule: [],
+  }
 })
 
 describe('DeleteCategoryModal', () => {
@@ -192,7 +204,43 @@ describe('DeleteCategoryModal', () => {
     // the user then had to go and act on somewhere else. Archiving is the
     // non-destructive way out of this dialog, so it is a button in it.
     renderModal()
-    expect(screen.getByRole('button', { name: /Archive instead/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Archive instead/i })).toBeEnabled()
+  })
+
+  it('gates Archive on the archive endpoint, not on the delete preview', () => {
+    // The delete may proceed — its own `blocked_by` is empty, because a
+    // balance is something delete moves rather than refuses over. Archiving
+    // refuses, and this button used to read the wrong one of the two and
+    // present itself as available.
+    archivePreview = {
+      may_archive: false,
+      blocked_by_balance: ['Groceries'],
+      blocked_by_link: [],
+      blocked_by_schedule: [],
+    }
+    // No transactions, so the Delete button is not held back by the
+    // destination picker — the only thing left that could disable it is the
+    // block, and the delete is not blocked.
+    renderModal({ blocked_by: [], transaction_count: 0 })
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled()
+    const archive = screen.getByRole('button', { name: /Archive instead/i })
+    expect(archive).toBeDisabled()
+    // And says which envelope stopped it, rather than being inert in silence.
+    expect(archive).toHaveAttribute('title', expect.stringContaining('Groceries'))
+  })
+
+  it('names a blocking schedule too', () => {
+    archivePreview = {
+      may_archive: false,
+      blocked_by_balance: [],
+      blocked_by_link: [],
+      blocked_by_schedule: ['Groceries'],
+    }
+    renderModal()
+    expect(screen.getByRole('button', { name: /Archive instead/i })).toHaveAttribute(
+      'title',
+      expect.stringContaining('Groceries')
+    )
   })
 
   it('says whether the row itself is about to go', () => {

@@ -14,7 +14,6 @@ from sqlalchemy import (
     func,
     insert,
     literal_column,
-    not_,
     or_,
     select,
     update,
@@ -34,7 +33,7 @@ from igab.db.models import (
 )
 from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
-from igab.repositories.category_filters import LINKED_TO_CARD
+from igab.repositories.category_filters import IS_CATEGORIZABLE
 from igab.repositories.txn_filters import (
     BANK_UNLINKED,
     CARD_PAYMENT_FROM_CASH,
@@ -1416,12 +1415,14 @@ class TransactionRepository(BaseRepository[Transaction]):
         transaction for that payee into an envelope the budget no longer
         shows — the orphan population growing on its own.
 
-        A card's set-aside envelope is excluded for the same reason and a
-        sharper one: `TransactionService.create` validates the category the
-        *caller* supplied, then resolves this one afterwards. Nothing may be
-        filed to a card envelope, so inheriting one here would walk straight
-        past that guard — and one historical bad row would then re-file every
-        future transaction for that payee into money the budget cannot show.
+        `IS_CATEGORIZABLE` for the same reason and a sharper one:
+        `TransactionService.create` validates the category the *caller*
+        supplied, then resolves this one afterwards. Inheriting somewhere the
+        guard refuses would walk straight past it — and one historical bad row
+        would then re-file every future transaction for that payee into money
+        the budget cannot show. It is the whole rule rather than the card term
+        alone because an archived envelope strands a row exactly as well as a
+        card's does, and there is no longer a grid toggle to find it behind.
         """
         result = await self.session.execute(
             select(Transaction.category_id)
@@ -1432,7 +1433,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.category_id.isnot(None),
                 Transaction.is_deleted == False,  # noqa: E712
                 Category.is_deleted == False,  # noqa: E712
-                not_(LINKED_TO_CARD),
+                IS_CATEGORIZABLE,
             )
             .order_by(Transaction.date.desc(), Transaction.created_at.desc())
             .limit(1)

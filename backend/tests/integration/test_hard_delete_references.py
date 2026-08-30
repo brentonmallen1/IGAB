@@ -124,20 +124,38 @@ class TestSomethingRecordsIt:
         kept = await db_session.get(Category, cat.id)
         assert kept is not None and kept.is_deleted is True
 
-    async def test_a_target_is_named_but_does_not_block(self, db_session):
+    async def test_a_target_is_named_and_keeps_the_row(self, db_session):
         """A target describes the category and means nothing without it, so it
-        is listed for the dialog to mention and severed by the cascade."""
+        does not *block* the delete — it is severed by the cascade.
+
+        It does stop the *hard* delete, which is a different question.
+        `CategoryTarget` is `ondelete="CASCADE"` and nothing snapshots it on
+        the way past, so removing the row outright would take the target with
+        it with no bookkeeping to put back — and `_undo_hard_category_delete`
+        rebuilds the category and stops, which is only the whole inverse when
+        there was nothing else. It also made the dialog contradict itself: it
+        listed the target under "Also pointing at it" directly above the
+        sentence "Nothing else refers to it".
+        """
         services, budget, _checking, _group, cat = await _world(db_session)
         db_session.add(
             CategoryTarget(category_id=cat.id, target_type="monthly", target_amount=D("100"))
         )
         await db_session.flush()
 
-        preview = await _service(db_session, services).preview_delete(budget.id, [cat.id], AUG)
+        svc = _service(db_session, services)
+        preview = await svc.preview_delete(budget.id, [cat.id], AUG)
 
         assert [r.kind for r in preview.clearable_references] == ["target"]
         assert preview.blocking_references == []
-        assert preview.may_hard_delete is True
+        # Empty, but not unrecorded.
+        assert preview.is_empty is True
+        assert preview.may_hard_delete is False
+
+        await svc.delete_categories(budget.id, [cat.id], month=AUG)
+        db_session.expunge_all()
+        kept = await db_session.get(Category, cat.id)
+        assert kept is not None and kept.is_deleted is True
 
     async def test_a_saved_filter_selection_is_named(self, db_session):
         services, budget, _checking, _group, cat = await _world(db_session)

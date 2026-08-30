@@ -172,8 +172,17 @@ class CategoryDeletePreview:
         `BudgetMove` row needs to go on saying where £50 went — so anything
         with history stays soft-deleted, and the dialog says which record is
         holding it.
+
+        Clearable references count here too, though they do not block the
+        delete itself. A target and a month snapshot are `ondelete="CASCADE"`,
+        so a hard delete takes them with it and no bookkeeping row remembers
+        they were there — `_undo_hard_category_delete` rebuilds the category
+        and stops, which is only the whole inverse if there was nothing else.
+        Reading `blocking_references` alone made the dialog contradict itself
+        as well: it listed what still pointed at the category directly above
+        the sentence "nothing else refers to it".
         """
-        return self.is_empty and not self.blocking_references
+        return self.is_empty and not self.references
 
 
 def _touched(bookkeeping: dict[str, Any]) -> bool:
@@ -207,10 +216,17 @@ class ArchivedCategory:
 
     id: uuid.UUID
     name: str
+    group_id: uuid.UUID
     group_name: str
     transaction_count: int
     archived_at: datetime | None
     available: Decimal
+    #: The *group* is why this row is here, not the category's own flag.
+    #: Restoring the category alone would be a no-op — `IN_ARCHIVED_GROUP`
+    #: keeps it out of the budget either way — so the modal has to offer the
+    #: group. Served rather than inferred from the two flags on the client,
+    #: which cannot see the group's.
+    group_is_archived: bool = False
 
 
 @dataclass
@@ -244,10 +260,40 @@ class CategoryArchivePreview:
     #: A card's payment envelope or a debt category: the machinery owns it, and
     #: archiving it would leave the card with no envelope to reserve into.
     blocked_by_link: list[str] = field(default_factory=list)
+    #: Names a live schedule still files into. Archiving is write-time-visible
+    #: in a way deleting is not: the schedule keeps its pointer, and the next
+    #: time it fires `require_categorizable` refuses the row it was going to
+    #: enter. The delete preview counts these for the same reason.
+    blocked_by_schedule: list[str] = field(default_factory=list)
 
     @property
     def may_archive(self) -> bool:
-        return not self.blocked_by_balance and not self.blocked_by_link
+        return not (self.blocked_by_balance or self.blocked_by_link or self.blocked_by_schedule)
+
+
+def _refuse_archive(preview: CategoryArchivePreview) -> None:
+    """The archive refusal, in one place for the envelope and the group paths.
+
+    Each message names the envelope and the next action. "Cannot archive" sends
+    someone hunting through a group for which of twelve rows stopped it.
+    """
+    if preview.blocked_by_link:
+        raise InvariantViolation(
+            f"{preview.blocked_by_link[0]} belongs to a card or a tracked debt. "
+            "Its envelope is maintained by that account, not by you"
+        )
+    if preview.blocked_by_balance:
+        raise InvariantViolation(
+            f"{preview.blocked_by_balance[0]} still holds money. Move it out first — "
+            "an archived envelope is off the budget entirely, so anything left in it "
+            "would be unreachable"
+        )
+    if preview.blocked_by_schedule:
+        raise InvariantViolation(
+            f"{preview.blocked_by_schedule[0]} still has a scheduled transaction filing "
+            "into it. Re-file or delete that schedule first — an archived envelope "
+            "refuses new rows, so the schedule would fail every time it came due"
+        )
 
 
 @dataclass
@@ -518,10 +564,12 @@ class CategoryService:
                 ArchivedCategory(
                     id=cat.id,
                     name=cat.name,
+                    group_id=cat.category_group_id,
                     group_name=group.name if group is not None else "",
                     transaction_count=counts.get(cat.id, 0),
                     archived_at=cat.archived_at,
                     available=balance.available,
+                    group_is_archived=group is not None and group.is_archived,
                 )
             )
         out.sort(key=lambda r: (r.group_name.lower(), r.name.lower()))
@@ -559,6 +607,22 @@ class CategoryService:
         # the viewed month's `available` cannot see it.
         if preview.future_assigned != Decimal("0") and not preview.blocked_by_balance:
             preview.blocked_by_balance = list(preview.category_names)
+        by_id = {c.id: c.name for c in cats}
+        scheduled = (
+            await self.session.execute(
+                select(ScheduledTransaction.category_id)
+                .where(
+                    ScheduledTransaction.category_id.in_(ids),
+                    ScheduledTransaction.is_deleted == False,  # noqa: E712
+                )
+                .distinct()
+            )
+        ).scalars()
+        # The `in_(ids)` above already excludes NULL, but the column is
+        # nullable and the type checker reads it as such.
+        preview.blocked_by_schedule = sorted(
+            by_id[cid] for cid in scheduled if cid is not None and cid in by_id
+        )
         return preview
 
     async def preview_archive_group(
@@ -581,19 +645,62 @@ class CategoryService:
         """
         as_of = first_of_month(month or date.today())
         preview = await self.preview_archive(budget_id, category_ids, as_of)
-        if preview.blocked_by_link:
-            raise InvariantViolation(
-                f"{preview.blocked_by_link[0]} belongs to a card or a tracked debt. "
-                "Its envelope is maintained by that account, not by you"
-            )
-        if preview.blocked_by_balance:
-            raise InvariantViolation(
-                f"{preview.blocked_by_balance[0]} still holds money. Move it out first — "
-                "an archived envelope is off the budget entirely, so anything left in it "
-                "would be unreachable"
-            )
+        _refuse_archive(preview)
         await self._set_archived(budget_id, preview.category_ids, archived=True)
         return preview
+
+    async def archive_group(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, *, month: date | None = None
+    ) -> CategoryArchivePreview:
+        """Archive a whole group, refusing on exactly the terms one envelope does.
+
+        The group's own flag is the whole fact: `IN_ARCHIVED_GROUP` already puts
+        every category under it out of reach, so setting the categories' flags
+        as well would record one state in two places — and the two would part
+        company the first time a group was restored with a category archived on
+        its own merits inside it.
+
+        This exists because the "Hide group" button used to `PATCH` the flag
+        straight onto the row, which is a plain column write with no balance
+        check behind it. Archiving a group that way took every envelope in it
+        off the budget with the money still inside.
+        """
+        as_of = first_of_month(month or date.today())
+        preview = await self.preview_archive_group(budget_id, group_id, as_of)
+        _refuse_archive(preview)
+        await self._set_group_archived(budget_id, group_id, archived=True)
+        return preview
+
+    async def unarchive_group(self, budget_id: uuid.UUID, group_id: uuid.UUID) -> None:
+        """Bring a group back. No money is involved, so nothing can block it."""
+        await self._set_group_archived(budget_id, group_id, archived=False)
+
+    async def _set_group_archived(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, *, archived: bool
+    ) -> None:
+        """The group half of `_set_archived`, recorded in the same shape so one
+        undo handler covers both."""
+        group = await self.group_repo.get(group_id)
+        if group is None:
+            raise NotFoundError("category_group", str(group_id))
+        before = {
+            str(group.id): {
+                "is_archived": group.is_archived,
+                "archived_at": _iso(group.archived_at),
+            }
+        }
+        stamp = datetime.now(UTC) if archived else None
+        group.is_archived = archived
+        group.archived_at = stamp
+        await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="category_group",
+            entity_id=group.id,
+            action="archive" if archived else "unarchive",
+            before=before,
+            after={str(group.id): {"is_archived": archived, "archived_at": _iso(stamp)}},
+        )
 
     async def unarchive_categories(
         self, budget_id: uuid.UUID, category_ids: list[uuid.UUID]
@@ -1029,7 +1136,16 @@ class CategoryService:
                 "view_id": str(p.view_id),
                 "category_id": str(p.category_id),
                 "group_id": str(p.group_id) if p.group_id else None,
-                "is_archived": bool(getattr(p, "is_archived", False)),
+                # `is_hidden`, not `is_archived`: a placement's flag is per-view
+                # visibility and was deliberately left out of the rename. The
+                # `getattr` default that used to stand here read a field this
+                # model does not have, so every placement was recorded as
+                # visible and the undo below could not be constructed at all.
+                "is_hidden": bool(p.is_hidden),
+                # A placement is a position as much as a membership; without
+                # this the undo put every restored row back at the top of the
+                # view, which is a saved layout silently rearranged.
+                "sort_order": p.sort_order,
             }
             for p in placements
         ]

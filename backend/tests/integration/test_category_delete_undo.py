@@ -13,7 +13,13 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from igab.db.models import BudgetAssignment, Category, ChangeLog
+from igab.db.models import (
+    BudgetAssignment,
+    BudgetView,
+    BudgetViewPlacement,
+    Category,
+    ChangeLog,
+)
 from igab.domain.exceptions import UndoConflict
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -550,3 +556,121 @@ async def test_undoing_a_repair_restores_the_category_to_the_budget(db_session):
     tba_after = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
     assert tba_after == Decimal("900.0000")
     assert tba_after == (await services.budgets.get_budget_summary(budget.id, SEP)).to_be_assigned
+
+
+# ─── The referrers the delete clears on its way past ──────────────────────────
+
+
+async def test_undo_restores_a_saved_view_placement(db_session):
+    """The rename bled across a boundary the migration protected.
+
+    `budget_view_placements.is_hidden` is per-view visibility and was
+    deliberately left out of the `is_hidden` -> `is_archived` rename. The
+    bookkeeping still reached for `is_archived` on it — via a `getattr` default
+    that quietly returned False for every placement — and the undo then passed
+    `is_archived=` to a constructor that has no such field, so undoing the
+    delete of any category placed in a saved view raised `TypeError` instead of
+    putting the placement back.
+    """
+    services = make_services(db_session)
+    budget, _group, _account, groceries, _other, _spends = await _setup(db_session)
+
+    view = BudgetView(budget_id=budget.id, name="Need / Want")
+    db_session.add(view)
+    await db_session.flush()
+    db_session.add(
+        BudgetViewPlacement(
+            view_id=view.id, category_id=groceries.id, sort_order=3, is_hidden=True
+        )
+    )
+    await db_session.flush()
+
+    svc = _service(db_session, services)
+    result = await svc.delete_categories(budget.id, [groceries.id], move_to=None, month=AUG)
+    await db_session.flush()
+    assert await _placement(db_session, view.id, groceries.id) is None
+
+    await UndoService(db_session).undo_change(budget.id, result.change_id)
+    await db_session.flush()
+
+    back = await _placement(db_session, view.id, groceries.id)
+    assert back is not None
+    assert back.sort_order == 3
+    # The flag the delete recorded, not the False the broken `getattr` gave
+    # every placement regardless of what the user had chosen.
+    assert back.is_hidden is True
+
+
+async def _placement(db_session, view_id, category_id) -> BudgetViewPlacement | None:
+    return (
+        await db_session.execute(
+            select(BudgetViewPlacement).where(
+                BudgetViewPlacement.view_id == view_id,
+                BudgetViewPlacement.category_id == category_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+# ─── Archiving is undoable too ────────────────────────────────────────────────
+
+
+async def test_undo_puts_an_archived_envelope_back(db_session):
+    """Archive/unarchive record a change row with an action `_apply` had no
+    case for, so both fell through to "cannot be undone" — and `undo_newer`,
+    which backs the Activity page's "Revert to here", has no per-item handling,
+    so one archive anywhere in the range aborted the whole revert."""
+    services = make_services(db_session)
+    budget, _group, _account, _groceries, other, _spends = await _setup(db_session)
+    svc = _service(db_session, services)
+
+    # `other` holds nothing; archiving refuses while an envelope still has money.
+    await svc.archive_categories(budget.id, [other.id], month=AUG)
+    await db_session.flush()
+    await db_session.refresh(other)
+    assert other.is_archived is True
+    assert other.archived_at is not None
+
+    change = (
+        await db_session.execute(
+            select(ChangeLog)
+            .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "archive")
+            .order_by(ChangeLog.created_at.desc())
+        )
+    ).scalars().first()
+    assert change is not None
+
+    await UndoService(db_session).undo_change(budget.id, change.id)
+    await db_session.flush()
+    await db_session.refresh(other)
+    assert other.is_archived is False
+    # Cleared, not left stale: a date on a live envelope answers "when was
+    # this archived" with something untrue.
+    assert other.archived_at is None
+
+
+async def test_undo_of_a_restore_archives_it_again(db_session):
+    """The other direction, so the pair is symmetric rather than one-way."""
+    services = make_services(db_session)
+    budget, _group, _account, _groceries, other, _spends = await _setup(db_session)
+    svc = _service(db_session, services)
+
+    await svc.archive_categories(budget.id, [other.id], month=AUG)
+    await svc.unarchive_categories(budget.id, [other.id])
+    await db_session.flush()
+    await db_session.refresh(other)
+    assert other.is_archived is False
+
+    change = (
+        await db_session.execute(
+            select(ChangeLog)
+            .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "unarchive")
+            .order_by(ChangeLog.created_at.desc())
+        )
+    ).scalars().first()
+    assert change is not None
+
+    await UndoService(db_session).undo_change(budget.id, change.id)
+    await db_session.flush()
+    await db_session.refresh(other)
+    assert other.is_archived is True

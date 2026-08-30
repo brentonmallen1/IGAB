@@ -30,6 +30,7 @@ from .factories import (
     create_budget,
     create_category,
     create_category_group,
+    create_payee,
     create_transaction,
     create_user,
     make_services,
@@ -150,3 +151,121 @@ class TestTheReadSideDoesNot:
         )
         assert updated.memo == "reimbursed"
         assert updated.category_id == cat.id
+
+
+class TestTheGuardReachesWhatTheServerResolves:
+    """`require_categorizable` validates the category the *caller* supplied.
+    Auto-categorization then resolves a different one, afterwards — from the
+    payee's history or from its stored default — and neither path was held to
+    the rule the typed path had just been held to.
+
+    Both were already excluding a card's set-aside envelope, for exactly this
+    reason: commit 8ac9d15, "Nothing is filed to a card's set-aside envelope".
+    Archiving is the same shape of mistake and a quieter one, because an
+    archived envelope is off the grid entirely — there is no toggle to find
+    the money behind any more.
+    """
+
+    async def test_history_in_an_archived_envelope_is_not_inherited(self, db_session):
+        services, budget, checking, _group, cat = await _world(db_session)
+        payee = await create_payee(db_session, budget, "Blue Bottle")
+        await create_transaction(
+            db_session, budget, checking, "-12.00", TODAY, category=cat, payee=payee
+        )
+        await _archive(db_session, cat)
+
+        created = await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id, date=TODAY, amount=D("-12.00"), payee_id=payee.id
+            ),
+        )
+        # Uncategorized, not refused: the user picked a payee, not a category,
+        # so the row lands in the needs-a-category pile where they can see it.
+        assert created.category_id is None
+
+    async def test_history_in_a_live_envelope_still_is(self, db_session):
+        """The guard must not cost auto-categorization its whole job."""
+        services, budget, checking, _group, cat = await _world(db_session)
+        payee = await create_payee(db_session, budget, "Blue Bottle")
+        await create_transaction(
+            db_session, budget, checking, "-12.00", TODAY, category=cat, payee=payee
+        )
+
+        created = await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id, date=TODAY, amount=D("-12.00"), payee_id=payee.id
+            ),
+        )
+        assert created.category_id == cat.id
+
+    async def test_a_payee_default_pointing_at_an_archived_envelope_is_not_used(
+        self, db_session
+    ):
+        """The default is a stored pointer, so it outlives what it points at —
+        no transaction history is needed to reach this path."""
+        services, budget, checking, _group, cat = await _world(db_session)
+        payee = await create_payee(db_session, budget, "Blue Bottle")
+        payee.default_category_id = cat.id
+        await db_session.flush()
+        await _archive(db_session, cat)
+
+        created = await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id, date=TODAY, amount=D("-12.00"), payee_id=payee.id
+            ),
+        )
+        assert created.category_id is None
+
+    async def test_a_payee_default_in_an_archived_group_is_not_used_either(self, db_session):
+        """The group's flag, not the category's — `IS_CATEGORIZABLE` covers
+        both and a hand-rolled `is_archived` check would have covered one."""
+        services, budget, checking, group, cat = await _world(db_session)
+        payee = await create_payee(db_session, budget, "Blue Bottle")
+        payee.default_category_id = cat.id
+        await db_session.flush()
+        await _archive(db_session, group)
+
+        created = await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id, date=TODAY, amount=D("-12.00"), payee_id=payee.id
+            ),
+        )
+        assert created.category_id is None
+
+    async def test_a_live_payee_default_still_is(self, db_session):
+        services, budget, checking, _group, cat = await _world(db_session)
+        payee = await create_payee(db_session, budget, "Blue Bottle")
+        payee.default_category_id = cat.id
+        await db_session.flush()
+
+        created = await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id, date=TODAY, amount=D("-12.00"), payee_id=payee.id
+            ),
+        )
+        assert created.category_id == cat.id
+
+    async def test_a_card_envelope_default_is_still_refused(self, db_session):
+        """The narrower rule this replaced. It has to keep holding."""
+        services, budget, checking, _group, _cat = await _world(db_session)
+        card = await create_account(
+            db_session, budget, "Sapphire Visa", account_type="credit_card", on_budget=True
+        )
+        envelope = await ensure_payment_category(db_session, card)
+        assert envelope is not None
+        payee = await create_payee(db_session, budget, "Blue Bottle")
+        payee.default_category_id = envelope.id
+        await db_session.flush()
+
+        created = await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id, date=TODAY, amount=D("-12.00"), payee_id=payee.id
+            ),
+        )
+        assert created.category_id is None

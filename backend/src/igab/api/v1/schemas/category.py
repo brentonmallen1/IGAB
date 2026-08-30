@@ -135,10 +135,16 @@ class ArchivedCategoryResponse(BaseModel):
 
     id: uuid.UUID
     name: str
+    group_id: uuid.UUID
     group_name: str
     transaction_count: int
     archived_at: datetime.datetime | None
     available: Decimal
+    #: True when the row is archived because its *group* is. Restoring the
+    #: category alone does nothing in that case, so the modal offers the group
+    #: instead — required, not optional, so a path that forgets it raises
+    #: rather than drawing a button that silently no-ops.
+    group_is_archived: bool
 
 
 class CategoryArchiveRequest(BaseModel):
@@ -148,10 +154,17 @@ class CategoryArchiveRequest(BaseModel):
     month: datetime.date | None = None
 
 
+class CategoryGroupArchiveRequest(BaseModel):
+    """Archive or restore a whole group. The group is in the path; the month
+    only decides which month's balances the refusal is measured against."""
+
+    month: datetime.date | None = None
+
+
 class CategoryArchivePreviewResponse(BaseModel):
     """What archiving would do, and what stands in the way.
 
-    `may_archive` is served rather than derived from the two lists: the dialog
+    `may_archive` is served rather than derived from the three lists: the dialog
     disables its button on one field, and a client recomputing the condition is
     how the button and the endpoint come to disagree about whether an archive
     is allowed.
@@ -164,6 +177,7 @@ class CategoryArchivePreviewResponse(BaseModel):
     future_assigned: Decimal
     blocked_by_balance: list[str]
     blocked_by_link: list[str]
+    blocked_by_schedule: list[str]
     may_archive: bool
 
 

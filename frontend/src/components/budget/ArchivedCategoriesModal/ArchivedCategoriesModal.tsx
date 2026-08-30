@@ -3,6 +3,7 @@ import { Modal } from '../../common/Modal/Modal'
 import {
   useArchivedCategories,
   useUnarchiveCategories,
+  useUnarchiveCategoryGroup,
   type ArchivedCategory,
   type DeleteTarget,
 } from '../../../api/categories'
@@ -36,6 +37,7 @@ export function ArchivedCategoriesModal({ budgetId, month, onClose, onDelete }: 
   const { formatMoney } = useFormatters()
   const { data: rows = [], isLoading } = useArchivedCategories(budgetId, month)
   const unarchive = useUnarchiveCategories(budgetId)
+  const unarchiveGroup = useUnarchiveCategoryGroup(budgetId)
 
   const stranded = rows.filter((r) => parseApiDecimal(r.available) !== 0)
 
@@ -75,7 +77,14 @@ export function ArchivedCategoriesModal({ budgetId, month, onClose, onDelete }: 
                 key={row.id}
                 row={row}
                 formatMoney={formatMoney}
-                onRestore={() => unarchive.mutate({ ids: [row.id], month })}
+                onRestore={() =>
+                  // A row listed because its group is archived is not archived
+                  // itself, so clearing its own flag changes nothing the user
+                  // can see. The group is what has to come back.
+                  row.group_is_archived
+                    ? unarchiveGroup.mutate({ id: row.group_id, month })
+                    : unarchive.mutate({ ids: [row.id], month })
+                }
                 onDelete={() => onDelete({ kind: 'categories', ids: [row.id], name: row.name })}
               />
             ))}
@@ -116,8 +125,17 @@ function Row({
         )}
       </div>
       <div className="archived-modal__actions">
-        <button type="button" className="archived-modal__btn" onClick={onRestore}>
-          <RotateCcw size={12} /> Restore
+        <button
+          type="button"
+          className="archived-modal__btn"
+          onClick={onRestore}
+          title={
+            row.group_is_archived
+              ? `Brings back all of ${row.group_name}, which is what archived this`
+              : undefined
+          }
+        >
+          <RotateCcw size={12} /> {row.group_is_archived ? 'Restore group' : 'Restore'}
         </button>
         <button
           type="button"
