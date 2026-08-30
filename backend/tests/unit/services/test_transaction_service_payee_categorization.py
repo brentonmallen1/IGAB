@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from igab.services.transaction_service import TransactionCreate, TransactionService
 
+from ..session_stubs import writable_session
+
 BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 PAYEE_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
@@ -102,12 +104,9 @@ def make_service(payee: MockPayee | None) -> TransactionService:
     session.get = AsyncMock(return_value=payee)
     # require_in_budget runs session.execute(...).scalar_one_or_none(); return a
     # truthy row so body-supplied ids validate as belonging to the budget.
-    ownership_result = MagicMock()
-    ownership_result.scalar_one_or_none = MagicMock(return_value=MagicMock())
-    session.execute = AsyncMock(return_value=ownership_result)
-    # require_not_card_envelope runs session.scalar(...) for the category's
-    # linked_account_id; None means "an ordinary envelope, file away".
-    session.scalar = AsyncMock(return_value=None)
+    _stub = writable_session()
+    session.execute = _stub.execute
+    session.scalar = _stub.scalar
 
     return TransactionService(
         session=session,

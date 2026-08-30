@@ -378,7 +378,7 @@ class IntegrityService:
         The budget summary computes that envelope's balance from card
         arithmetic and overwrites its transaction sums, so such a row shows
         nowhere: not in the envelope, not in Ready to Assign, not as
-        overspending. `require_not_card_envelope` makes new ones impossible;
+        overspending. `filing.require_categorizable` makes new ones impossible;
         this finds any the register's old category dropdown let through,
         because nothing else in the app would ever mention them.
         """

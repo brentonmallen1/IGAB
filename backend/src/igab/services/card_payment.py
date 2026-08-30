@@ -11,10 +11,13 @@ coincidence, not a rule) — and the budget page's card section is its only
 face. Its *assignments* are real BudgetAssignment rows, so moving money to
 a card is the same operation as moving money anywhere, undo included.
 
-Nothing may be *filed* here, and `require_not_card_envelope` below is what
-enforces it: the budget summary computes this envelope's balance from card
-arithmetic and overwrites whatever its transaction sums say, so a row filed
-to it is money that leaves the budget with no red anywhere to explain it.
+Nothing may be *filed* here: the budget summary computes this envelope's
+balance from card arithmetic and overwrites whatever its transaction sums say,
+so a row filed to it is money that leaves the budget with no red anywhere to
+explain it. `services/filing.require_categorizable` is what enforces that now
+— it reads `IS_CATEGORIZABLE`, which already names `LINKED_TO_CARD`, so the
+card case is one branch of the whole rule rather than the only third of it the
+server checked.
 
 Mirrors `liability_service.ensure_for_account`: idempotent, adopts a
 soft-deleted row rather than inserting beside it, returns None when there
@@ -27,7 +30,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
-from igab.domain.exceptions import InvariantViolation
 
 #: One group holds every card's envelope. Hidden, not system: a system group
 #: means income (activity_class reads it that way), while hidden means "not
@@ -40,32 +42,6 @@ def is_card_account(account: Account) -> bool:
     """The Python twin of txn_filters.CARD_ACCOUNT — one definition per side,
     both spelling `classification == 'liability' AND on_budget`."""
     return account.on_budget and account.classification == "liability"
-
-
-async def require_not_card_envelope(session: AsyncSession, category_id: uuid.UUID | None) -> None:
-    """Refuse a transaction filed to a card's set-aside envelope.
-
-    A no-op for `None` and for every ordinary category, so it sits beside
-    `require_in_budget` at the same three call sites: create, update (bulk
-    categorize included) and split lines.
-
-    The rule is enforced here rather than left to the pickers because the
-    pickers were where it lived, and they lost it: the register's inline
-    category dropdown listed every category the API returned, and a card
-    envelope is not hidden (only its group is), so it was one click away in
-    the most-used control in the app. A rule the server does not enforce is
-    one client away from coming back.
-    """
-    if category_id is None:
-        return
-    linked_account_id = await session.scalar(
-        select(Category.linked_account_id).where(Category.id == category_id)
-    )
-    if linked_account_id is not None:
-        raise InvariantViolation(
-            "That category is a credit card's payment envelope. Nothing can be filed to it — "
-            "assign money to the card in the budget's Credit cards section instead"
-        )
 
 
 async def ensure_payment_category(session: AsyncSession, account: Account) -> Category | None:
