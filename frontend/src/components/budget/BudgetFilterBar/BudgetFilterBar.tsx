@@ -99,11 +99,17 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
   // Why the drag handles are gone, from the module the grid gates on — so the
   // bar cannot name a reason the grid is not actually using. Nothing is shown
   // when reordering is available, which is the ordinary case.
+  //
+  // `viewActive` is the RESOLVED view, not the stored id, because that is what
+  // the grid gates on. While the view list is still loading — or while a
+  // persisted id points at a view this budget doesn't have, before the
+  // self-heal above runs — the id is set and the view is not, and the two
+  // surfaces would tell different stories about the same handles.
   const blocked = reorderBlock({
     savedFilterActive: activeFilterId != null,
     quickFilterActive: activeQuickFilter != null,
     search: categorySearch,
-    viewActive: activeViewId != null,
+    viewActive: views?.some((v) => v.id === activeViewId) ?? false,
   })
 
   const isAllActive = activeFilterId === null && activeQuickFilter === null

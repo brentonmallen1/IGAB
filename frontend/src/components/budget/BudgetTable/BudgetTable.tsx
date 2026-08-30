@@ -53,7 +53,16 @@ export function BudgetTable() {
   const { data: views } = useBudgetViews(budgetId)
   const createGroup = useCreateCategoryGroup(budgetId ?? '')
   const { mutate: reorderGroups } = useReorderCategoryGroups(budgetId ?? '')
-  const groupIds = useMemo(() => groups?.map((g) => g.id) ?? [], [groups])
+  // A group holding nothing but card envelopes is never drawn — its rows all
+  // belong to the cards section — and the server's reorder rule lets it be
+  // omitted for exactly that reason (`is_card_only`).
+  const ownDrawn = useMemo(() => drawnGroups(groups), [groups])
+  // The ids dragging indexes into, and the order it writes back. These must be
+  // the groups the grid DRAWS: built from `groups` they included a card-only
+  // group that renders nowhere, so with "Show hidden" on, position i in the
+  // rendered list addressed a different group here and every drag moved the
+  // wrong one — silently reordering the hidden card group among them.
+  const groupIds = useMemo(() => ownDrawn?.map((g) => g.id) ?? [], [ownDrawn])
   const moveGroup = useCallback(
     (from: number, to: number) => reorderGroups([...moveItem(groupIds, from, to)]),
     [groupIds, reorderGroups]
@@ -140,12 +149,11 @@ export function BudgetTable() {
   )
 
   const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
-  const sourceGroups = arranged?.groups ?? groups
-  // A group holding nothing but card envelopes is not drawn even with hidden
-  // groups shown: "Credit Card Payments" never renders as a bare header. The
-  // server decides it (`is_card_only`) and the server's reorder rule reads the
-  // same expression, so the grid and the write cannot disagree about it.
-  const drawn = drawnGroups(sourceGroups)
+  // "Credit Card Payments" never renders as a bare header, even with hidden
+  // groups shown. The server decides it (`is_card_only`) and the server's
+  // reorder rule reads the same expression, so the grid and the write cannot
+  // disagree about it. A view arranges its own groups; dragging is off there.
+  const drawn = arranged ? drawnGroups(arranged.groups) : ownDrawn
   const visibleGroups =
     isFiltered || activeView
       ? drawn?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)

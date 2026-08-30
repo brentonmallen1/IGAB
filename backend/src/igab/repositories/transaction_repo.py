@@ -23,7 +23,6 @@ from sqlalchemy.orm import with_expression
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
-    Account,
     Category,
     CategoryGroup,
     Payee,
@@ -38,7 +37,7 @@ from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import LINKED_TO_CARD
 from igab.repositories.txn_filters import (
     BANK_UNLINKED,
-    CASH_ACCOUNT,
+    CARD_PAYMENT_FROM_CASH,
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
     DEBT_INTEREST_ROW,
@@ -54,7 +53,6 @@ from igab.repositories.txn_filters import (
     PLAIN_DEPOSIT_ROW,
     POSTED,
     PROVISIONALLY_LINKED,
-    TRANSFER_LEG,
     UNBUDGETED_CARD_CREDIT,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
@@ -757,14 +755,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         paying the card company themselves, a balance adjustment) reduces
         what is owed but drew on nobody's set-aside, so it is not counted —
         and a card→card balance transfer moves debt, not reserved cash, so
-        the cash-counterpart test excludes it too.
+        the cash-counterpart test excludes it too. Both of those land in
+        `sum_unbudgeted_card_credits` instead, which selects on the negation
+        of the very same expression.
         """
-        counterpart_is_cash = (
-            select(Account.id)
-            .where(Account.id == COUNTERPART_ACCOUNT_ID, CASH_ACCOUNT)
-            .correlate(Transaction)
-            .exists()
-        )
         yr = cast(func.extract("year", Transaction.date), Integer)
         mo = cast(func.extract("month", Transaction.date), Integer)
         result = await self.session.execute(
@@ -780,9 +774,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 PARENT_ROW,
                 POSTED,
                 ON_CARD_ACCOUNT,
-                Transaction.amount > 0,
-                TRANSFER_LEG,
-                counterpart_is_cash,
+                CARD_PAYMENT_FROM_CASH,
                 Transaction.date <= end_date,
             )
             .group_by(Transaction.account_id, yr, mo)

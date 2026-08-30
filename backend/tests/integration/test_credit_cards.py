@@ -13,6 +13,7 @@ from decimal import Decimal
 
 import pytest
 
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.card_payment import ensure_payment_category
 
 from .factories import (
@@ -26,6 +27,7 @@ from .factories import (
     create_user,
     make_services,
 )
+from .invariants import assert_card_reserve_identity
 
 JUL, AUG, SEP, OCT = (date(2026, m, 1) for m in (7, 8, 9, 10))
 D = Decimal
@@ -730,3 +732,99 @@ class TestTheRefusedRepayment:
         register_sum = D("30.00")
         assert row.repaid_uncovered_debt == D("30.00")
         assert row.activity == register_sum - row.repaid_uncovered_debt == D("0.00")
+
+
+class TestTheThreeTermsPartitionCardInflows:
+    """Every inflow on a card lands in exactly one of the three terms the
+    reserve identity is built from: a payment from the budget's cash, a
+    category's own money coming back, or a credit the budget has no claim on.
+
+    "Exactly one" is the whole content. Both ways of getting it wrong are
+    silent — a row in no term reads as drift on an ordinary history, a row in
+    two widens the bounds by its own size and hides real drift behind it — and
+    neither moves a figure the user can see.
+    """
+
+    async def test_a_card_paid_from_an_off_budget_account_is_not_drift(self, db_session):
+        """Somebody outside the budget pays the card off.
+
+        The debt goes; the reserve behind it does not, because no envelope
+        gave anything back — over-reserved by exactly the payment, which is
+        true and is the user's cue to move that money somewhere. It counted
+        as a *card payment* only when the counterpart was cash, and as an
+        *unbudgeted credit* only when the row was not a transfer, so this
+        landed in neither and the check called the whole reserve unexplained.
+        """
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        partner = await create_account(db_session, budget, "Outside", on_budget=False)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
+        from igab.services.transaction_service import TransactionCreate
+
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=partner.id,
+                date=date(2026, 8, 25),
+                amount=D("-150.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+
+        card = (await _summary(services, budget, AUG)).cards[0]
+        assert card.balance == D("0.00")
+        assert card.set_aside == D("150.00")
+        assert card.reserve_discrepancy == D("0")
+        await assert_card_reserve_identity(db_session, budget.id)
+
+    async def test_a_split_refund_on_a_card_is_counted_once(self, db_session):
+        """A refund arriving as a split, its legs filed to real envelopes.
+
+        Splitting forces the parent's category to NULL, so measured on the
+        parent the refund looked like money nobody claimed — while its legs
+        were simultaneously releasing their envelopes' reservations. The same
+        120 in two terms, widening the bounds by 120 and hiding real drift of
+        that size from the check that exists to find it.
+        """
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        dining = await create_category(
+            db_session, budget, await create_category_group(db_session, budget, "Fun"), "Dining"
+        )
+        await create_budget_assignment(db_session, budget, groceries, JUL, "200.00")
+        await create_transaction(
+            db_session, budget, visa, "-200.00", date(2026, 7, 9), category=groceries
+        )
+        parent = await create_transaction(
+            db_session, budget, visa, "120.00", date(2026, 8, 9), is_split=True
+        )
+        for amount, category in ((D("100.00"), groceries), (D("20.00"), dining)):
+            await create_transaction(
+                db_session,
+                budget,
+                visa,
+                amount,
+                date(2026, 8, 9),
+                category=category,
+                parent_transaction_id=parent.id,
+            )
+        await db_session.flush()
+
+        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        assert credits.get(visa.id, {}) == {}
+        await assert_card_reserve_identity(db_session, budget.id)
+
+    async def test_an_uncategorized_card_inflow_still_counts(self, db_session):
+        """The positive control for the two above: a promotional credit, filed
+        nowhere and paid by nobody, is exactly what the term is for."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-200.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(db_session, budget, visa, "25.00", date(2026, 8, 9))
+        await db_session.flush()
+
+        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        assert credits[visa.id] == {AUG: D("25.00")}
