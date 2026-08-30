@@ -172,3 +172,58 @@ class TestTheDeliberateDivergence:
 
         result = await ReportService(db_session).budget_vs_actual(budget.id, FIRST, TODAY)
         assert result["total_assigned"] == D("0"), result
+
+
+class TestArchivedEnvelopes:
+    """Archived is not deleted, and the reports say so.
+
+    Neither constant mentions `is_archived`, so archived envelopes count in
+    both — which is right, and is exactly the reason to archive rather than
+    delete. But nothing said so: it was an accident of the flag not appearing
+    in either expression, and an accident is one edit from being reversed.
+    These are that decision, on the record.
+    """
+
+    async def test_its_past_spending_still_counts(self, db_session):
+        services, budget, checking, _group, cat = await _world(db_session)
+        await create_transaction(db_session, budget, checking, "-40.00", RECENT, category=cat)
+        cat.is_archived = True
+        await db_session.flush()
+
+        grouped = await ReportService(db_session).spending_grouped(budget.id, FIRST, TODAY)
+
+        assert grouped, "archiving an envelope must not unspend its history"
+
+    async def test_its_past_plans_still_count(self, db_session):
+        """The other side. An archived envelope's assignments were real plans,
+        and a plan-vs-actual report that drops them understates what was
+        budgeted for a month that has already happened."""
+        services, budget, _checking, _group, cat = await _world(db_session)
+        await create_budget_assignment(db_session, budget, cat, FIRST, "100.00")
+        cat.is_archived = True
+        await db_session.flush()
+
+        result = await ReportService(db_session).budget_vs_actual(budget.id, FIRST, TODAY)
+
+        assert result["total_assigned"] == D("100.00")
+
+    async def test_an_archived_group_makes_no_difference_either(self, db_session):
+        """The group's flag, not the category's — the asymmetry
+        `category_filters` opens with, and the one the archived listing had to
+        account for too."""
+        services, budget, checking, group, cat = await _world(db_session)
+        await create_transaction(db_session, budget, checking, "-40.00", RECENT, category=cat)
+        group.is_archived = True
+        await db_session.flush()
+
+        grouped = await ReportService(db_session).spending_grouped(budget.id, FIRST, TODAY)
+
+        assert grouped
+
+    async def test_neither_constant_mentions_archived(self):
+        """Stated directly, so a future edit that adds `NOT_ARCHIVED` to either
+        one fails here rather than quietly shrinking a report."""
+        from igab.repositories.category_filters import BUDGETED_ENVELOPE, SPENT_ENVELOPE
+
+        assert "is_archived" not in str(BUDGETED_ENVELOPE)
+        assert "is_archived" not in str(SPENT_ENVELOPE)

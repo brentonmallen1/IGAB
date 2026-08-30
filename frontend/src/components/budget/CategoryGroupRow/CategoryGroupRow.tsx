@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, EyeOff, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Archive, ChevronDown, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useUIStore } from '../../../stores/uiStore'
 import {
+  useArchiveCategoryGroup,
   useCreateCategory,
   useReorderCategories,
   useUpdateCategoryGroup,
@@ -73,6 +74,7 @@ export function CategoryGroupRow({
   const addCatRef = useRef<HTMLInputElement>(null)
 
   const updateGroup = useUpdateCategoryGroup(budgetId)
+  const archiveGroup = useArchiveCategoryGroup(budgetId)
   const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(budgetId)
   const createCategory = useCreateCategory(budgetId)
   const { mutate: reorderCategories } = useReorderCategories(budgetId)
@@ -105,8 +107,13 @@ export function CategoryGroupRow({
     if (e.key === 'Escape') setIsRenaming(false)
   }
 
-  function handleHide() {
-    updateGroup.mutate({ id: group.id, is_hidden: true })
+  function handleArchive() {
+    // The archive endpoint, not a PATCH of the flag. Archiving a group takes
+    // every envelope under it off the budget (`IN_ARCHIVED_GROUP`), so the
+    // plain column write this used to do could strand a whole group's money
+    // in one click. The endpoint refuses and names the envelope that stopped
+    // it; the mutation surfaces that sentence.
+    archiveGroup.mutate({ id: group.id, month })
   }
 
   function handleDelete() {
@@ -219,8 +226,8 @@ export function CategoryGroupRow({
               </button>
             )}
             {canEditGroup && (
-              <button className="category-group-row__action-btn" onClick={handleHide} aria-label={`Hide group ${group.name}`} title="Hide group">
-                <EyeOff size={12} />
+              <button className="category-group-row__action-btn" onClick={handleArchive} aria-label={`Archive group ${group.name}`} title="Archive group">
+                <Archive size={12} />
               </button>
             )}
             {canRenameOrDelete && (

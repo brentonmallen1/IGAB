@@ -315,11 +315,11 @@ async def test_system_and_hidden_categories_are_excluded(db_session):
     # give the system Inflow category a June assignment. Planted directly:
     # the service refuses to assign to an income category now, but rows
     # written before it did still exist in real budgets.
-    dining.is_hidden = True
+    dining.is_archived = True
     # Listings refresh every row's served fields, so a pending edit has to
     # be flushed first — as the update endpoint does before it lists.
     await db_session.flush()
-    categories = await services.category_repo.get_all(budget.id, include_hidden=True)
+    categories = await services.category_repo.get_all(budget.id, include_archived=True)
     inflow = next(c for c in categories if c.name == "Inflow")
     await create_budget_assignment(db_session, budget, inflow, PREV_MONTH, "999.00")
     await db_session.flush()
@@ -335,8 +335,8 @@ async def test_system_and_hidden_categories_are_excluded(db_session):
 async def test_a_category_in_a_hidden_group_is_excluded_too(db_session):
     """Hiding the group hides the categories, and assign must agree.
 
-    The eligibility set was rebuilt here from `get_all(include_hidden=False)`,
-    which filters the *category's* is_hidden and not the *group's*. So a
+    The eligibility set was rebuilt here from `get_all(include_archived=False)`,
+    which filters the *category's* is_archived and not the *group's*. So a
     visible category inside a hidden group stayed a Fill/Assign target while
     the budget table could not render it — the group list is filtered and the
     category list is not, so the row had no group to be drawn under. Money
@@ -346,7 +346,7 @@ async def test_a_category_in_a_hidden_group_is_excluded_too(db_session):
     """
     services, budget, checking, groceries, dining = await _history_setup(db_session)
     group = await services.category_group_repo.get(dining.category_group_id)
-    group.is_hidden = True
+    group.is_archived = True
     await db_session.flush()
     assign = make_assign(db_session, services)
 

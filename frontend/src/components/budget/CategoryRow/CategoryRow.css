@@ -307,18 +307,6 @@
   font-weight: 600;
 }
 
-/* Hidden category */
-.category-row--hidden {
-  opacity: 0.5;
-}
-
-.category-row--hidden .category-row__name-text::after {
-  content: '(hidden)';
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  margin-left: 4px;
-}
-
 .category-row__assigned,
 .category-row__activity,
 .category-row__available {

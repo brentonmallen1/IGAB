@@ -128,7 +128,7 @@ class WishlistService:
         projects = await self._projects(budget_id)
         items = await self._items(budget_id)
         names = {
-            c.id: c.name for c in await self.categories.get_all(budget_id, include_hidden=True)
+            c.id: c.name for c in await self.categories.get_all(budget_id, include_archived=True)
         }
         project_inputs = {p.id: ProjectInput(id=p.id, category_id=p.category_id) for p in projects}
         wish_inputs = [self._input(i) for i in items]

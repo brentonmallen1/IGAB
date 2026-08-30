@@ -7,24 +7,10 @@
 import { describe, expect, it } from 'vitest'
 import { categoryOptions } from './categoryOptions'
 import type { BudgetView, Category } from '../../../types'
+import { makeCategory } from '../../../test-utils/factories'
 
 function cat(id: string, name: string, group = 'g-real'): Category {
-  return {
-    id,
-    category_group_id: group,
-    budget_id: 'b1',
-    name,
-    subtitle: null,
-    sort_order: 0,
-    note: null,
-    is_hidden: false,
-    linked_account_id: null,
-    linked_liability_id: null,
-    is_assignable: true,
-    is_categorizable: true,
-    created_at: '2026-08-01T00:00:00Z',
-    updated_at: '2026-08-01T00:00:00Z',
-  }
+  return makeCategory({ id, name, category_group_id: group })
 }
 
 function view(
@@ -86,10 +72,20 @@ describe('categoryOptions', () => {
     expect(opts.map((o) => o.group)).toEqual(['Need', 'Unassigned'])
   })
 
-  it('hidden categories stay hidden regardless of the view', () => {
-    const hidden = { ...cat('c1', 'Old'), is_hidden: true }
+  it('offers archived categories, labelled', () => {
+    // They used to be dropped. Their spending still counts in every report,
+    // so leaving them out put money in a total that no filter could isolate —
+    // and a chart segment for an envelope the grid no longer draws reads as a
+    // bug unless the picker says what it is.
+    const archived = { ...cat('c1', 'Old'), is_archived: true }
     const v = view([['need', 'Need']], [{ category_id: 'c1', group_id: 'need' }])
-    expect(categoryOptions([hidden], GROUPS, v)).toEqual([])
+    expect(categoryOptions([archived], GROUPS, v)).toEqual([
+      { id: 'c1', label: 'Old (archived)', group: 'Need' },
+    ])
+  })
+
+  it('leaves a live category unlabelled', () => {
+    expect(categoryOptions([cat('c1', 'Groceries')], GROUPS, null)[0].label).toBe('Groceries')
   })
 
   // Composing groupByView rather than restating it: a placement pointing at a

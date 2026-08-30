@@ -14,7 +14,6 @@ from sqlalchemy import (
     func,
     insert,
     literal_column,
-    not_,
     or_,
     select,
     update,
@@ -34,7 +33,7 @@ from igab.db.models import (
 )
 from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
-from igab.repositories.category_filters import LINKED_TO_CARD
+from igab.repositories.category_filters import IS_CATEGORIZABLE
 from igab.repositories.txn_filters import (
     BANK_UNLINKED,
     CARD_PAYMENT_FROM_CASH,
@@ -552,6 +551,26 @@ class TransactionRepository(BaseRepository[Transaction]):
             .group_by(TXN_YEAR, TXN_MONTH)
         )
         return {month_of(row): row["total"] for row in result.mappings()}
+
+    async def count_by_category(self, category_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        """Live rows filed in each category: {category: count}.
+
+        One grouped query rather than a count per category. The archived
+        listing shows a count per row, and a loop there would be the same 3N+1
+        the accounts listing was just cured of.
+
+        Categories with no rows are absent from the result — the caller reads
+        it with a zero default, since a missing key would otherwise render as
+        "unknown" where the answer is none.
+        """
+        if not category_ids:
+            return {}
+        result = await self.session.execute(
+            select(Transaction.category_id, func.count().label("n"))
+            .where(Transaction.category_id.in_(category_ids), NOT_DELETED)
+            .group_by(Transaction.category_id)
+        )
+        return {row["category_id"]: int(row["n"]) for row in result.mappings()}
 
     async def count_for_account(self, account_id: uuid.UUID) -> int:
         """Live rows on the account — zero means the register is empty."""
@@ -1396,12 +1415,14 @@ class TransactionRepository(BaseRepository[Transaction]):
         transaction for that payee into an envelope the budget no longer
         shows — the orphan population growing on its own.
 
-        A card's set-aside envelope is excluded for the same reason and a
-        sharper one: `TransactionService.create` validates the category the
-        *caller* supplied, then resolves this one afterwards. Nothing may be
-        filed to a card envelope, so inheriting one here would walk straight
-        past that guard — and one historical bad row would then re-file every
-        future transaction for that payee into money the budget cannot show.
+        `IS_CATEGORIZABLE` for the same reason and a sharper one:
+        `TransactionService.create` validates the category the *caller*
+        supplied, then resolves this one afterwards. Inheriting somewhere the
+        guard refuses would walk straight past it — and one historical bad row
+        would then re-file every future transaction for that payee into money
+        the budget cannot show. It is the whole rule rather than the card term
+        alone because an archived envelope strands a row exactly as well as a
+        card's does, and there is no longer a grid toggle to find it behind.
         """
         result = await self.session.execute(
             select(Transaction.category_id)
@@ -1412,7 +1433,7 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.category_id.isnot(None),
                 Transaction.is_deleted == False,  # noqa: E712
                 Category.is_deleted == False,  # noqa: E712
-                not_(LINKED_TO_CARD),
+                IS_CATEGORIZABLE,
             )
             .order_by(Transaction.date.desc(), Transaction.created_at.desc())
             .limit(1)

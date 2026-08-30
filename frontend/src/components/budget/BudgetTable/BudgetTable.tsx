@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { ChevronsDownUp, ChevronsUpDown, Eye, Plus } from 'lucide-react'
+import { Archive, ChevronsDownUp, ChevronsUpDown, Plus } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useBudgetMonth } from '../../../api/budgets'
@@ -24,6 +24,8 @@ import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
+import { ArchivedCategoriesModal } from '../ArchivedCategoriesModal/ArchivedCategoriesModal'
+import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import type { CategoryBalance, CategoryGroup } from '../../../types'
 import './BudgetTable.css'
 
@@ -39,15 +41,19 @@ export function BudgetTable() {
   const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
   const categorySearch = useUIStore((s) => s.categorySearch)
 
-  const [showHidden, setShowHidden] = useState(false)
+  const [archivedOpen, setArchivedOpen] = useState(false)
+  // The archived listing's Delete hands straight to the delete flow, so the
+  // app has one delete dialog rather than a second that could disagree with
+  // it about what a delete does.
+  const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(budgetId ?? '')
   const [isAddingGroup, setIsAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const addGroupRef = useRef<HTMLInputElement>(null)
 
-  const { data: allGroups, isLoading: groupsLoading } = useCategoryGroups(budgetId, showHidden)
+  const { data: allGroups, isLoading: groupsLoading } = useCategoryGroups(budgetId)
   // The budget's envelope groups: the system (Income) group is not drawn.
   const groups = useMemo(() => (allGroups ? renderableGroups(allGroups) : allGroups), [allGroups])
-  const { data: categories, isLoading: catsLoading } = useCategories(budgetId, showHidden)
+  const { data: categories, isLoading: catsLoading } = useCategories(budgetId)
   const { data: budgetMonth, isLoading: monthLoading } = useBudgetMonth(budgetId, month)
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: views } = useBudgetViews(budgetId)
@@ -237,13 +243,15 @@ export function BudgetTable() {
                 <Plus size={11} /> Add Group
               </button>
             )}
+            {/* Archived envelopes are not in the grid at all — greyed,
+                unusable rows mixed into the live budget were the worst of
+                both states. They get their own room instead. */}
             <button
-              className={`budget-table__header-btn ${showHidden ? 'active' : ''}`}
-              onClick={() => setShowHidden((v) => !v)}
-              title={showHidden ? 'Hide hidden items' : 'Show hidden items'}
+              className="budget-table__header-btn"
+              onClick={() => setArchivedOpen(true)}
+              title="Archived envelopes: their history, and anything left in them"
             >
-              <Eye size={11} />
-              {showHidden ? 'Hide hidden' : 'Show hidden'}
+              <Archive size={11} /> See archived
             </button>
           </div>
         </div>
@@ -268,6 +276,18 @@ export function BudgetTable() {
           />
         ))}
       </div>
+      {archivedOpen && budgetId && (
+        <ArchivedCategoriesModal
+          budgetId={budgetId}
+          month={month}
+          onClose={() => setArchivedOpen(false)}
+          onDelete={(target) => {
+            setArchivedOpen(false)
+            void requestDelete(target)
+          }}
+        />
+      )}
+      {deleteModal}
     </div>
   )
 }

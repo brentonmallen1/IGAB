@@ -18,6 +18,8 @@ import pytest
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.integrations.simplefin.client import SimpleFINFeed
 
+from .session_stubs import writable_session
+
 # ─── Import ID Generation Tests ──────────────────────────────────────────────
 
 
@@ -281,12 +283,9 @@ class TestHistoricalCategoryInference:
         session = AsyncMock()
         # require_in_budget runs session.execute(...).scalar_one_or_none(); return
         # a truthy row so body-supplied ids validate as belonging to the budget.
-        ownership_result = MagicMock()
-        ownership_result.scalar_one_or_none = MagicMock(return_value=MagicMock())
-        session.execute = AsyncMock(return_value=ownership_result)
-        # require_not_card_envelope runs session.scalar(...) for the category's
-        # linked_account_id; None means "an ordinary envelope, file away".
-        session.scalar = AsyncMock(return_value=None)
+        _stub = writable_session()
+        session.execute = _stub.execute
+        session.scalar = _stub.scalar
         txn_repo = MagicMock()
         txn_repo.refresh = AsyncMock()
         account_repo = MagicMock()

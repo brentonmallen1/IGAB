@@ -4,6 +4,8 @@ import { Modal } from '../../common/Modal/Modal'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import {
   useCategories,
+  useArchiveCategories,
+  useArchivePreview,
   useCategoryDeletePreview,
   useCategoryGroups,
   useDeleteCategories,
@@ -50,6 +52,7 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const deleteCategories = useDeleteCategories(budgetId)
+  const archiveCategories = useArchiveCategories(budgetId)
 
   const doomed = useMemo(() => new Set(preview?.category_ids ?? []), [preview?.category_ids])
 
@@ -70,6 +73,24 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
     [groups, categories, doomed]
   )
 
+  // Whether an *archive* may proceed is a different question from whether a
+  // delete may, and the delete preview cannot answer it: `blocked_by` covers
+  // links only, where archiving is also refused over a balance, a future
+  // assignment or a live schedule. Asking the archive endpoint is what keeps
+  // this button and that endpoint from disagreeing — `may_archive` is served
+  // precisely so it is never recomputed here.
+  const archive = useArchivePreview(budgetId, preview?.category_ids ?? [], month)
+  const mayArchive = archive.data?.may_archive ?? false
+  //: Which envelope stopped it, straight from the served lists — presentation
+  //: of a decision the server already made, not a second copy of the rule.
+  const archiveBlockedBy =
+    archive.data && !archive.data.may_archive
+      ? (archive.data.blocked_by_link[0] ??
+        archive.data.blocked_by_balance[0] ??
+        archive.data.blocked_by_schedule[0] ??
+        null)
+      : null
+
   const blocked = (preview?.blocked_by.length ?? 0) > 0
   const txnCount = preview?.transaction_count ?? 0
   // Only when there is actually something to move. The choice is hidden with
@@ -85,6 +106,14 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
       )
     : 0
   const movingActivity = preview ? parseApiDecimal(preview.moving_activity) : 0
+
+  async function handleArchive() {
+    if (!preview) return
+    // Archiving a group means archiving what is in it, which is what the
+    // preview already resolved the target to.
+    await archiveCategories.mutateAsync({ ids: preview.category_ids, month })
+    onClose()
+  }
 
   async function handleDelete() {
     if (!preview) return
@@ -225,10 +254,28 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
               </fieldset>
             )}
 
+            {preview.references.length > 0 && (
+              // What else points at this category. Named rather than severed
+              // silently: a saved view losing its layout is the user's to know
+              // about, and a recorded money move is why the row is kept at all.
+              <div className="delete-category-modal__refs">
+                <p className="delete-category-modal__refs-title">Also pointing at it:</p>
+                <ul>
+                  {preview.references.map((r) => (
+                    <li key={r.kind}>
+                      {r.label}
+                      {r.clearable ? '' : ' — kept, so this stays in the budget’s history'}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <p className="delete-category-modal__undo">
-              This can be undone from Activity. If you only want it out of the way, you can{' '}
-              <strong>hide</strong> it instead — hidden categories keep their history and their
-              money.
+              This can be undone from Activity.{' '}
+              {preview.may_hard_delete
+                ? 'Nothing else refers to it, so the category itself is removed.'
+                : 'The category is kept as deleted history, so the records that mention it can still name it.'}
             </p>
           </>
         )}
@@ -236,6 +283,24 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
         <div className="delete-category-modal__actions">
           <button type="button" className="delete-category-modal__cancel" onClick={onClose}>
             Cancel
+          </button>
+          {/* The third choice, and the one that loses nothing. Gated on the
+              archive endpoint's own `may_archive` rather than the delete
+              preview's `blocked_by`: the two refuse on different grounds, and
+              reading the delete's answer here offered the button on an
+              envelope the archive would then refuse over its balance. */}
+          <button
+            type="button"
+            className="delete-category-modal__archive"
+            onClick={handleArchive}
+            disabled={!preview || !mayArchive || archiveCategories.isPending}
+            title={
+              archiveBlockedBy
+                ? `Cannot archive: ${archiveBlockedBy}`
+                : 'Keep its history and stop new use, instead of deleting'
+            }
+          >
+            {archiveCategories.isPending ? 'Archiving…' : 'Archive instead'}
           </button>
           <button
             type="button"

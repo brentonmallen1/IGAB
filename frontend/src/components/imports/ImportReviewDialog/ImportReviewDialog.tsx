@@ -103,7 +103,7 @@ export function ImportReviewDialog({
     // server scopes suggestions by: income holds no envelope money, so
     // classifying its spending is meaningless.
     const names = new Map(renderableGroups(groups).map((g) => [g.id, g.name]))
-    // `renderableGroups` drops system groups, not hidden ones, so the card
+    // `renderableGroups` drops system groups, not archived ones, so the card
     // envelopes' group survives it — and a set-aside envelope cannot carry a
     // classification tag, since nothing is ever filed to it.
     return renderableCategories(categories)
@@ -112,7 +112,7 @@ export function ImportReviewDialog({
         id: c.id,
         name: c.name,
         groupName: names.get(c.category_group_id) as string,
-        hidden: c.is_hidden,
+        archived: c.is_archived,
         tagIds: (c.tags ?? []).map((t) => t.id),
       }))
   }, [categories, groups])
@@ -526,9 +526,12 @@ function TagsStep({
             <div className="import-review__cat">
               <span className="import-review__cat-n">
                 {row.category.name}
-                {row.category.hidden && (
-                  <span className="import-review__hidden" title="Hidden on the budget page">
-                    hidden
+                {row.category.archived && (
+                  <span
+                    className="import-review__hidden"
+                    title="Archived — off the budget page, but its spending still counts in reports"
+                  >
+                    archived
                   </span>
                 )}
               </span>

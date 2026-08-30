@@ -23,6 +23,13 @@ vi.mock('../../../api/categories', () => ({
   useCategories: () => ({ data: [], isLoading: false }),
   useCreateCategoryGroup: () => ({ mutate: vi.fn() }),
   useReorderCategoryGroups: () => ({ mutate: reorderGroups }),
+  // The header's "See archived" button brings the delete flow with it, so the
+  // mock has to answer for what that hook reaches for.
+  useDeleteCategories: () => ({ mutateAsync: vi.fn() }),
+  deletePreviewOptions: () => ({ queryKey: ['noop'], queryFn: async () => ({}) }),
+}))
+vi.mock('../ArchivedCategoriesModal/ArchivedCategoriesModal', () => ({
+  ArchivedCategoriesModal: () => null,
 }))
 vi.mock('../../../api/budgets', () => ({
   useBudgetMonth: () => ({ data: { category_balances: [] }, isLoading: false }),
@@ -62,7 +69,7 @@ function group(id: string, name: string, extra: Record<string, unknown> = {}) {
     id,
     name,
     budget_id: 'b1',
-    is_hidden: false,
+    is_archived: false,
     is_system: false,
     is_card_only: false,
     sort_order: 0,
@@ -99,7 +106,7 @@ describe('group reorder wiring', () => {
     // written either: built from the full list, index 0 addressed the card
     // group while the user was dragging the first row they could see.
     groupsData = [
-      group('cards', 'Credit Card Payments', { is_hidden: true, is_card_only: true }),
+      group('cards', 'Credit Card Payments', { is_archived: true, is_card_only: true }),
       group('bills', 'Bills'),
       group('fun', 'Fun'),
     ]
@@ -118,7 +125,7 @@ describe('group reorder wiring', () => {
     // The gate this replaced compared array identity, so the mere presence of
     // a dropped group turned dragging off with nothing to explain it.
     groupsData = [
-      group('cards', 'Credit Card Payments', { is_hidden: true, is_card_only: true }),
+      group('cards', 'Credit Card Payments', { is_archived: true, is_card_only: true }),
       group('bills', 'Bills'),
       group('fun', 'Fun'),
     ]

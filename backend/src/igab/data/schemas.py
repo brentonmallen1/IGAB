@@ -47,7 +47,7 @@ CATEGORY_SCHEMA: dict[str, PolarsDataType] = {
     "category_group_id": pl.String,
     "name": pl.String,
     "sort_order": pl.Int32,
-    "is_hidden": pl.Boolean,
+    "is_archived": pl.Boolean,
 }
 
 BUDGET_ASSIGNMENT_SCHEMA: dict[str, PolarsDataType] = {

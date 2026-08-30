@@ -30,6 +30,8 @@ import pytest
 from igab.domain.exceptions import InvariantViolation
 from igab.services.transaction_service import TransactionService, TransactionUpdate
 
+from ..session_stubs import writable_session
+
 BUDGET_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
@@ -72,10 +74,7 @@ def make_service(txn: MockTransaction) -> TransactionService:
     # tests about reconciliation, not about the rule.
     account_repo = MagicMock()
     account_repo.get_or_raise = AsyncMock(return_value=MagicMock(on_budget=True))
-    # require_not_card_envelope runs session.scalar(...) for the category's
-    # linked_account_id; None means "an ordinary envelope, file away".
-    session = AsyncMock()
-    session.scalar = AsyncMock(return_value=None)
+    session = writable_session()
     return TransactionService(
         session=session,
         transaction_repo=txn_repo,

@@ -20,26 +20,28 @@ const toastError = vi.hoisted(() => vi.fn())
 
 vi.mock('react-hot-toast', () => ({ default: { error: toastError, success: vi.fn() } }))
 
-const GROUPS = vi.hoisted(() => [{ id: 'g1', name: 'Everyday', is_hidden: false }])
+const GROUPS = vi.hoisted(() => [{ id: 'g1', name: 'Everyday', is_archived: false }])
 const CATEGORIES = vi.hoisted(() => [
   {
     id: 'cat-1',
     category_group_id: 'g1',
     name: 'Groceries',
-    is_hidden: false,
+    is_archived: false,
     linked_account_id: null,
     linked_liability_id: null,
     is_assignable: true,
+    is_fundable: true,
     is_categorizable: true,
   },
   {
     id: 'cat-2',
     category_group_id: 'g1',
     name: 'Fun',
-    is_hidden: false,
+    is_archived: false,
     linked_account_id: null,
     linked_liability_id: null,
     is_assignable: true,
+    is_fundable: true,
     is_categorizable: true,
   },
 ])

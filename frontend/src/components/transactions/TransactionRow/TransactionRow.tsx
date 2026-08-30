@@ -371,7 +371,7 @@ export const TransactionRow = memo(function TransactionRow({
   }
 
   async function handleCreateCategory(name: string): Promise<ComboboxOption | void> {
-    const defaultGroup = categoryGroups.find((g) => !g.is_hidden && !g.is_system)
+    const defaultGroup = categoryGroups.find((g) => !g.is_archived && !g.is_system)
     if (!defaultGroup || !name.trim()) return
     const cat = await createCat.mutateAsync({
       category_group_id: defaultGroup.id,

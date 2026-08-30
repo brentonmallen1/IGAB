@@ -4,10 +4,10 @@
  * Six components each spelled their own eligibility predicate, and they
  * disagreed three ways:
  *
- *  - The scheduled-transaction editor checked only `is_hidden`, so it offered
+ *  - The scheduled-transaction editor checked only `is_archived`, so it offered
  *    credit-card payment categories no other surface did.
  *  - Two pickers built a system-group set from the group list, which
- *    `CategoryGroupRepository.get_all` filters by `is_hidden` while
+ *    `CategoryGroupRepository.get_all` filters by `is_archived` while
  *    `CategoryRepository.get_all` does not — so a hidden system group's
  *    categories leaked into them.
  *  - The liability screen's rule needs `linked_liability_id`, which the API did
@@ -63,7 +63,7 @@ function ungroupedFallback(budgetId: string): CategoryGroup {
     budget_id: budgetId,
     name: UNGROUPED_LABEL,
     sort_order: Number.MAX_SAFE_INTEGER,
-    is_hidden: false,
+    is_archived: false,
     is_system: false,
     system_key: null,
   } as CategoryGroup

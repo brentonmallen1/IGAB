@@ -5,12 +5,12 @@ import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { reorderMembers } from '../utils/listOrder'
 import type { Category, CategoryGroup, CategoryClassification } from '../types'
 
-export function useCategoryGroups(budgetId: string | null, includeHidden = false) {
+export function useCategoryGroups(budgetId: string | null, includeArchived = false) {
   return useQuery({
-    queryKey: ['categoryGroups', budgetId, includeHidden],
+    queryKey: ['categoryGroups', budgetId, includeArchived],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryGroup[]>(`/${budgetId}/category-groups`, {
-        params: { include_hidden: includeHidden },
+        params: { include_archived: includeArchived },
       })
       return data
     },
@@ -19,12 +19,12 @@ export function useCategoryGroups(budgetId: string | null, includeHidden = false
   })
 }
 
-export function useCategories(budgetId: string | null, includeHidden = false) {
+export function useCategories(budgetId: string | null, includeArchived = false) {
   return useQuery({
-    queryKey: ['categories', budgetId, includeHidden],
+    queryKey: ['categories', budgetId, includeArchived],
     queryFn: async () => {
       const { data } = await apiClient.get<Category[]>(`/${budgetId}/categories`, {
-        params: { include_hidden: includeHidden },
+        params: { include_archived: includeArchived },
       })
       return data
     },
@@ -110,7 +110,10 @@ export function useUpdateCategory(budgetId: string) {
 export function useUpdateCategoryGroup(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; is_hidden?: boolean; sort_order?: number }) =>
+    // No `is_archived`: archiving a group takes every envelope under it off
+    // the budget, so it goes through `useArchiveCategoryGroup`, which runs the
+    // refusal. The server stopped accepting the flag here for the same reason.
+    mutationFn: ({ id, ...data }: { id: string; name?: string; sort_order?: number }) =>
       apiClient.patch<CategoryGroup>(`/category-groups/${id}`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
@@ -127,7 +130,7 @@ type CachedLists<T> = [readonly unknown[], T[] | undefined][]
  *  name every visible group exactly once, so a stale client fails loudly
  *  instead of shuffling rows it never showed.
  *
- *  Optimistic over every cached variant of the list (`includeHidden` on and
+ *  Optimistic over every cached variant of the list (`includeArchived` on and
  *  off): a drag that snaps back for a round trip reads as a failed drag. This
  *  used to write to `['categoryGroups', budgetId]` alone, a key nothing reads,
  *  so the grid never showed the new order until the refetch — and a refused
@@ -185,6 +188,13 @@ export function useReorderCategories(budgetId: string) {
 /** What deleting will do, so the dialog can say it before the user commits.
  *  The same numbers the delete then reports back — pinned by a differential
  *  test on the server (test_category_delete.py). */
+export interface CategoryReference {
+  kind: string
+  label: string
+  count: number
+  clearable: boolean
+}
+
 export interface CategoryDeletePreview {
   category_ids: string[]
   category_names: string[]
@@ -196,6 +206,13 @@ export interface CategoryDeletePreview {
   future_assigned: string
   payee_count: number
   scheduled_count: number
+  /** Everything else still pointing at these categories. `clearable` ones go
+   *  with the delete and cost nothing; the rest are records of what happened,
+   *  and are why a row is kept rather than removed. */
+  references: CategoryReference[]
+  /** Whether the row is about to be removed outright or soft-deleted. Served,
+   *  so the dialog's wording and the delete's behaviour cannot disagree. */
+  may_hard_delete: boolean
   /** Net posted spending filed here over the categories' whole life
    *  (positive = outflow) — what the destination absorbs, or what leaves
    *  category-keyed reports until re-filed. */
@@ -221,6 +238,135 @@ export interface CategoryDeleteResult {
   /** What actually reached Ready to Assign. Not the assignments removed —
    *  money already spent out of an envelope does not come back. */
   released: string
+}
+
+/** One archived envelope, as the archived listing serves it. `available` is
+ *  normally zero — the archive flow refuses otherwise — but rows archived
+ *  before that flow existed can carry a balance, and this listing is the only
+ *  place the budget still shows it. */
+export interface ArchivedCategory {
+  id: string
+  name: string
+  group_id: string
+  group_name: string
+  transaction_count: number
+  archived_at: string | null
+  available: string
+  /** The *group* is why this row is listed, not the category's own flag.
+   *  Restoring the category alone is a no-op then — the group still hides it —
+   *  so the modal offers to restore the group. Served: the client cannot see
+   *  the group's flag, because archived groups are not in `useCategoryGroups`. */
+  group_is_archived: boolean
+}
+
+export function useArchivedCategories(budgetId: string | null, month: string, enabled = true) {
+  return useQuery({
+    queryKey: ['archivedCategories', budgetId, month],
+    queryFn: async () => {
+      const { data } = await apiClient.get<ArchivedCategory[]>(
+        `/${budgetId}/categories/archived`,
+        { params: { month } }
+      )
+      return data
+    },
+    enabled: !!budgetId && enabled,
+    // Quantifies money, like the delete preview: an answer from before the
+    // user's last edit is the wrong thing to show beside a Delete button.
+    staleTime: 0,
+  })
+}
+
+export interface ArchivePreview {
+  category_ids: string[]
+  category_names: string[]
+  transaction_count: number
+  available: string
+  future_assigned: string
+  blocked_by_balance: string[]
+  blocked_by_link: string[]
+  blocked_by_schedule: string[]
+  /** Served, never recomputed here: a client deriving it from the three lists
+   *  is how the button and the endpoint come to disagree. */
+  may_archive: boolean
+}
+
+export function useArchivePreview(budgetId: string, categoryIds: string[], month: string) {
+  return useQuery({
+    queryKey: ['categoryArchivePreview', budgetId, categoryIds.join(','), month],
+    queryFn: async () => {
+      const { data } = await apiClient.post<ArchivePreview>(
+        `/${budgetId}/categories/archive-preview`,
+        { category_ids: categoryIds, month }
+      )
+      return data
+    },
+    enabled: categoryIds.length > 0,
+    staleTime: 0,
+    gcTime: 0,
+  })
+}
+
+function useArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', done: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ ids, month }: { ids: string[]; month: string }) => {
+      const { data } = await apiClient.post<ArchivePreview>(
+        `/${budgetId}/categories/${path}`,
+        { category_ids: ids, month }
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await invalidateAfterCategoryChange(qc, budgetId)
+      toast.success(done)
+    },
+    // The server's sentence names which envelope still holds money and what to
+    // do about it. A generic fallback here would throw that away, which is the
+    // mistake AddAccountModal made with the 409.
+    onError: (e) => toast.error(apiErrorMessage(e, 'Could not update the archive')),
+  })
+}
+
+export function useArchiveCategories(budgetId: string) {
+  return useArchiveMutation(budgetId, 'archive', 'Archived')
+}
+
+export function useUnarchiveCategories(budgetId: string) {
+  return useArchiveMutation(budgetId, 'unarchive', 'Restored to the budget')
+}
+
+/** Archive or restore a whole group.
+ *
+ *  Not `useUpdateCategoryGroup({ is_archived })`: that PATCH is a plain column
+ *  write, and archiving a group takes every envelope under it off the budget
+ *  with whatever money is still inside. This route runs the same refusal one
+ *  envelope gets, and surfaces the server's sentence naming which one stopped
+ *  it.
+ */
+function useGroupArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', done: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, month }: { id: string; month: string }) => {
+      const { data } = await apiClient.post<ArchivePreview>(
+        `/${budgetId}/category-groups/${id}/${path}`,
+        { month }
+      )
+      return data
+    },
+    onSuccess: async () => {
+      await invalidateAfterCategoryChange(qc, budgetId)
+      toast.success(done)
+    },
+    onError: (e) => toast.error(apiErrorMessage(e, 'Could not update the archive')),
+  })
+}
+
+export function useArchiveCategoryGroup(budgetId: string) {
+  return useGroupArchiveMutation(budgetId, 'archive', 'Group archived')
+}
+
+export function useUnarchiveCategoryGroup(budgetId: string) {
+  return useGroupArchiveMutation(budgetId, 'unarchive', 'Group restored to the budget')
 }
 
 /** What the delete dialog is about to act on: a selection of categories, or a

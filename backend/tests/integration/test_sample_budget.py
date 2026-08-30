@@ -96,7 +96,7 @@ async def test_generation_covers_every_entity_kind(db_session):
     assert leg.amount == -partner.amount
 
     # Targets: three distinct types
-    categories = await CategoryRepository(db_session).get_all(budget.id, include_hidden=True)
+    categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     targets = await TargetRepository(db_session).get_by_category_ids([c.id for c in categories])
     assert {t.target_type for t in targets} >= {
         "needed_for_spending",
@@ -215,7 +215,7 @@ async def test_budget_summary_hits_target_with_one_overspend(db_session):
     assert summary.to_be_assigned == Decimal("150.00")
     assert summary.total_overspent == Decimal("45.00")
 
-    categories = await CategoryRepository(db_session).get_all(budget.id, include_hidden=True)
+    categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
     overspent = [
         names[b.category_id]

@@ -61,7 +61,7 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   const [error, setError] = useState<string | null>(null)
   const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
-  // Was `!is_hidden` alone, which offered credit-card payment categories that
+  // Was `!is_archived` alone, which offered credit-card payment categories that
   // no other surface does.
   const groupedCategories = groupedCategorySections(
     categories.filter((c) => c.is_categorizable),

@@ -517,7 +517,7 @@ class AIService:
             .where(
                 Category.budget_id == budget_id,
                 Category.is_deleted == False,  # noqa: E712
-                Category.is_hidden == False,  # noqa: E712
+                Category.is_archived == False,  # noqa: E712
             )
         )
         return [{"id": r.id, "name": r.name, "group": r.group} for r in result.all()]

@@ -26,22 +26,26 @@ transaction. See :meth:`_record_delete`.
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
     BudgetAssignment,
     BudgetFilterCategory,
+    BudgetMove,
     BudgetViewPlacement,
     Category,
     CategoryGroup,
+    CategoryMonthSnapshot,
+    CategoryTarget,
     Payee,
     ScheduledTransaction,
     Transaction,
+    WishlistItem,
 )
 from igab.domain.dates import month_start as first_of_month
 from igab.domain.exceptions import InvariantViolation, NotFoundError
@@ -54,6 +58,43 @@ from igab.repositories.category_repo import (
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.budget_service import BudgetService
 from igab.services.change_log import ChangeRecorder, snapshot
+
+#: What still points at a category, and whether removing it costs anything.
+#:
+#: Fourteen tables carry a foreign key to `categories`, and the delete
+#: preview's `is_empty` checked five of them. The rest would have gone with the
+#: row: `ondelete="CASCADE"` on targets, view placements, filter selections and
+#: snapshots, and `SET NULL` on budget moves and wishes — so a "hard delete" of
+#: a category the user believed empty would have taken a saved view's layout
+#: with it and blanked the from/to on historical money moves, silently.
+#:
+#: The two lists are the honest division:
+#:
+#: - **clearable** — the reference exists only to describe this category, so it
+#:   means nothing once the category is gone. Removing it costs nothing, and
+#:   the dialog offers to do it.
+#: - **blocking** — the reference is a record of something that happened, or a
+#:   pointer someone else set. Those are the user's to resolve, and the dialog
+#:   names them rather than quietly severing them.
+#:
+#: `BudgetMove` is the sharp one. It is the audit trail of money moving between
+#: envelopes; SET NULL would leave a row saying £50 moved from nowhere to
+#: nowhere. A soft delete keeps the name resolvable forever, which is why a
+#: category with move history is never hard-deleted.
+_CLEARABLE_REFERENCES = "clearable"
+_BLOCKING_REFERENCES = "blocking"
+
+
+@dataclass
+class CategoryReference:
+    """One kind of thing still pointing at the categories being deleted."""
+
+    kind: str
+    #: Shown to the user, already pluralised by the caller's count.
+    label: str
+    count: int
+    #: True when removing it costs nothing — see the note above.
+    clearable: bool
 
 
 @dataclass
@@ -92,10 +133,20 @@ class CategoryDeletePreview:
     released_if_uncategorized: Decimal = Decimal("0")
     #: Non-empty only when something blocks the delete outright.
     blocked_by: list[str] = field(default_factory=list)
+    #: Everything else still pointing at these categories. See
+    #: `CategoryReference` for why the two halves are treated differently.
+    references: list[CategoryReference] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
-        """Nothing to decide — the client may skip the dialog entirely."""
+        """Nothing to decide — the client may skip the dialog entirely.
+
+        Deliberately unchanged when `references` is non-empty: a saved view
+        placing this category is not something the user has to *decide* about,
+        it is something the delete clears on the way through. What references
+        gate is whether the row can be removed outright (`may_hard_delete`),
+        which is a different question.
+        """
         return (
             self.transaction_count == 0
             and self.available == 0
@@ -103,6 +154,35 @@ class CategoryDeletePreview:
             and self.payee_count == 0
             and self.scheduled_count == 0
         )
+
+    @property
+    def blocking_references(self) -> list[CategoryReference]:
+        return [r for r in self.references if not r.clearable]
+
+    @property
+    def clearable_references(self) -> list[CategoryReference]:
+        return [r for r in self.references if r.clearable]
+
+    @property
+    def may_hard_delete(self) -> bool:
+        """May the row be removed outright rather than soft-deleted?
+
+        Only when the category is empty AND nothing records that it existed.
+        A soft delete keeps the name resolvable forever, which is what a
+        `BudgetMove` row needs to go on saying where £50 went — so anything
+        with history stays soft-deleted, and the dialog says which record is
+        holding it.
+
+        Clearable references count here too, though they do not block the
+        delete itself. A target and a month snapshot are `ondelete="CASCADE"`,
+        so a hard delete takes them with it and no bookkeeping row remembers
+        they were there — `_undo_hard_category_delete` rebuilds the category
+        and stops, which is only the whole inverse if there was nothing else.
+        Reading `blocking_references` alone made the dialog contradict itself
+        as well: it listed what still pointed at the category directly above
+        the sentence "nothing else refers to it".
+        """
+        return self.is_empty and not self.references
 
 
 def _touched(bookkeeping: dict[str, Any]) -> bool:
@@ -116,6 +196,104 @@ def _touched(bookkeeping: dict[str, Any]) -> bool:
             "_filter_selections",
         )
     )
+
+
+def _iso(value: datetime | None) -> str | None:
+    """Change-log payloads are JSON, so a timestamp travels as a string."""
+    return value.isoformat() if value is not None else None
+
+
+@dataclass
+class ArchivedCategory:
+    """One row of the archived listing.
+
+    Everything the modal shows comes from here, including `available`. That
+    figure should be zero for anything archived through the flow — it refuses
+    otherwise — but rows archived before that existed can carry a balance, and
+    those are the ones the user most needs to see: the budget page no longer
+    draws them at all, so this listing is the only place the money is visible.
+    """
+
+    id: uuid.UUID
+    name: str
+    group_id: uuid.UUID
+    group_name: str
+    transaction_count: int
+    archived_at: datetime | None
+    available: Decimal
+    #: The *group* is why this row is here, not the category's own flag.
+    #: Restoring the category alone would be a no-op — `IN_ARCHIVED_GROUP`
+    #: keeps it out of the budget either way — so the modal has to offer the
+    #: group. Served rather than inferred from the two flags on the client,
+    #: which cannot see the group's.
+    group_is_archived: bool = False
+
+
+@dataclass
+class CategoryArchivePreview:
+    """What archiving is about to do, and whether it may proceed at all.
+
+    Archiving is not deleting: every row keeps its category and every report
+    still counts the spending (`category_filters.SPENT_ENVELOPE`). The one
+    thing that must not survive it is money.
+
+    An archived envelope is off the budget grid entirely — there is no "show
+    archived" toggle to find it behind — so a balance left in one is
+    unreachable, not merely tidy. `blocked_by_balance` is what the dialog reads
+    to insist the money moves first, and the amount comes from here rather than
+    being re-derived on the client, the same rule the delete preview follows.
+    """
+
+    category_ids: list[uuid.UUID] = field(default_factory=list)
+    category_names: list[str] = field(default_factory=list)
+    transaction_count: int = 0
+    #: Available in the viewed month, summed across the categories. Must reach
+    #: zero before the archive is allowed.
+    available: Decimal = Decimal("0")
+    #: Assigned in months after the viewed one. Also money, also stranded, and
+    #: invisible in the viewed month's `available` — the delete preview learned
+    #: this the same way.
+    future_assigned: Decimal = Decimal("0")
+    #: Names carrying a non-zero balance, so the dialog can point at them
+    #: rather than at a total.
+    blocked_by_balance: list[str] = field(default_factory=list)
+    #: A card's payment envelope or a debt category: the machinery owns it, and
+    #: archiving it would leave the card with no envelope to reserve into.
+    blocked_by_link: list[str] = field(default_factory=list)
+    #: Names a live schedule still files into. Archiving is write-time-visible
+    #: in a way deleting is not: the schedule keeps its pointer, and the next
+    #: time it fires `require_categorizable` refuses the row it was going to
+    #: enter. The delete preview counts these for the same reason.
+    blocked_by_schedule: list[str] = field(default_factory=list)
+
+    @property
+    def may_archive(self) -> bool:
+        return not (self.blocked_by_balance or self.blocked_by_link or self.blocked_by_schedule)
+
+
+def _refuse_archive(preview: CategoryArchivePreview) -> None:
+    """The archive refusal, in one place for the envelope and the group paths.
+
+    Each message names the envelope and the next action. "Cannot archive" sends
+    someone hunting through a group for which of twelve rows stopped it.
+    """
+    if preview.blocked_by_link:
+        raise InvariantViolation(
+            f"{preview.blocked_by_link[0]} belongs to a card or a tracked debt. "
+            "Its envelope is maintained by that account, not by you"
+        )
+    if preview.blocked_by_balance:
+        raise InvariantViolation(
+            f"{preview.blocked_by_balance[0]} still holds money. Move it out first — "
+            "an archived envelope is off the budget entirely, so anything left in it "
+            "would be unreachable"
+        )
+    if preview.blocked_by_schedule:
+        raise InvariantViolation(
+            f"{preview.blocked_by_schedule[0]} still has a scheduled transaction filing "
+            "into it. Re-file or delete that schedule first — an archived envelope "
+            "refuses new rows, so the schedule would fail every time it came due"
+        )
 
 
 @dataclass
@@ -189,12 +367,111 @@ class CategoryService:
         )
 
     async def _group_order(self, budget_id: uuid.UUID) -> list[uuid.UUID]:
-        return [g.id for g in await self.group_repo.get_all(budget_id, include_hidden=True)]
+        return [g.id for g in await self.group_repo.get_all(budget_id, include_archived=True)]
 
     async def _category_order(self, group_id: uuid.UUID) -> list[uuid.UUID]:
         return [c.id for c in await self.category_repo.get_by_group(group_id)]
 
     # ─── Preview ──────────────────────────────────────────────────────────────
+
+    async def _references(self, ids: list[uuid.UUID]) -> list[CategoryReference]:
+        """Everything still pointing at these categories, counted and classified.
+
+        One query per referent kind rather than per category: a group delete
+        passes every category in the group, and a loop here would be the same
+        N+1 the accounts listing was cured of.
+        """
+        if not ids:
+            return []
+
+        async def count(stmt) -> int:
+            return await self._count(stmt)
+
+        found: list[CategoryReference] = []
+
+        def add(kind: str, singular: str, plural: str, n: int, *, clearable: bool) -> None:
+            if n:
+                found.append(
+                    CategoryReference(
+                        kind=kind,
+                        label=f"{n} {singular if n == 1 else plural}",
+                        count=n,
+                        clearable=clearable,
+                    )
+                )
+
+        # Clearable: each of these exists only to describe the category.
+        add(
+            "target",
+            "savings target",
+            "savings targets",
+            await count(select(CategoryTarget.id).where(CategoryTarget.category_id.in_(ids))),
+            clearable=True,
+        )
+        add(
+            "view_placement",
+            "saved view places it",
+            "saved views place it",
+            await count(
+                select(BudgetViewPlacement.id).where(BudgetViewPlacement.category_id.in_(ids))
+            ),
+            clearable=True,
+        )
+        add(
+            "filter_selection",
+            "saved filter includes it",
+            "saved filters include it",
+            await count(
+                select(BudgetFilterCategory.id).where(BudgetFilterCategory.category_id.in_(ids))
+            ),
+            clearable=True,
+        )
+        add(
+            "snapshot",
+            "cached month balance",
+            "cached month balances",
+            await count(
+                select(CategoryMonthSnapshot.id).where(CategoryMonthSnapshot.category_id.in_(ids))
+            ),
+            clearable=True,
+        )
+
+        # Blocking: a record of something that happened, or someone else's
+        # pointer. Severing these loses information the row cannot restate.
+        add(
+            "budget_move",
+            "recorded money move",
+            "recorded money moves",
+            await count(
+                select(BudgetMove.id).where(
+                    or_(
+                        BudgetMove.from_category_id.in_(ids),
+                        BudgetMove.to_category_id.in_(ids),
+                    )
+                )
+            ),
+            clearable=False,
+        )
+        add(
+            "wish",
+            "wishlist item funds it",
+            "wishlist items fund it",
+            await count(select(WishlistItem.id).where(WishlistItem.category_id.in_(ids))),
+            clearable=False,
+        )
+        add(
+            "prior_category",
+            "transaction remembers it",
+            "transactions remember it",
+            await count(
+                select(Transaction.id).where(
+                    Transaction.prior_category_id.in_(ids),
+                    Transaction.is_deleted == False,  # noqa: E712
+                )
+            ),
+            clearable=False,
+        )
+        return found
 
     async def preview_delete(
         self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], month: date
@@ -249,6 +526,7 @@ class CategoryService:
                 ScheduledTransaction.is_deleted == False,  # noqa: E712
             )
         )
+        preview.references = await self._references(ids)
         return preview
 
     async def preview_delete_group(
@@ -256,6 +534,213 @@ class CategoryService:
     ) -> CategoryDeletePreview:
         cats = await self.category_repo.get_by_group(group_id)
         return await self.preview_delete(budget_id, [c.id for c in cats], month)
+
+    # ─── Archive ──────────────────────────────────────────────────────────────
+
+    async def list_archived(
+        self, budget_id: uuid.UUID, month: date | None = None
+    ) -> list[ArchivedCategory]:
+        """Every archived envelope, with what a person needs to decide its fate.
+
+        Archived categories are off the budget grid entirely, so this listing
+        is their only face. It includes those whose *group* is archived while
+        their own flag is not: `CategoryRepository.get_all` filters the
+        category's flag and not the group's, so they would otherwise be
+        invisible in both places at once.
+        """
+        as_of = first_of_month(month or date.today())
+        groups = {g.id: g for g in await self.group_repo.get_all(budget_id, include_archived=True)}
+        cats = [
+            c
+            for c in await self.category_repo.get_all(budget_id, include_archived=True)
+            if c.is_archived or (g := groups.get(c.category_group_id)) is not None and g.is_archived
+        ]
+        counts = await self.transaction_repo.count_by_category([c.id for c in cats])
+        out: list[ArchivedCategory] = []
+        for cat in cats:
+            balance = await self.budget_service.get_category_balance(cat.id, as_of)
+            group = groups.get(cat.category_group_id)
+            out.append(
+                ArchivedCategory(
+                    id=cat.id,
+                    name=cat.name,
+                    group_id=cat.category_group_id,
+                    group_name=group.name if group is not None else "",
+                    transaction_count=counts.get(cat.id, 0),
+                    archived_at=cat.archived_at,
+                    available=balance.available,
+                    group_is_archived=group is not None and group.is_archived,
+                )
+            )
+        out.sort(key=lambda r: (r.group_name.lower(), r.name.lower()))
+        return out
+
+    async def preview_archive(
+        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], month: date
+    ) -> CategoryArchivePreview:
+        """What archiving these would do, and what stands in the way."""
+        cats = await self._live_categories(budget_id, category_ids)
+        preview = CategoryArchivePreview(
+            category_ids=[c.id for c in cats],
+            category_names=[c.name for c in cats],
+        )
+        if not cats:
+            return preview
+
+        ids = [c.id for c in cats]
+        month_start = first_of_month(month)
+        preview.transaction_count = await self._count(
+            select(Transaction.id).where(
+                Transaction.category_id.in_(ids),
+                Transaction.is_deleted == False,  # noqa: E712
+            )
+        )
+        preview.future_assigned = await self._sum_assigned(ids, after=month_start)
+        for cat in cats:
+            balance = await self.budget_service.get_category_balance(cat.id, month_start)
+            preview.available += balance.available
+            if balance.available != Decimal("0"):
+                preview.blocked_by_balance.append(cat.name)
+            if cat.linked_account_id is not None or cat.linked_liability_id is not None:
+                preview.blocked_by_link.append(cat.name)
+        # Money committed to a later month is stranded just as thoroughly, and
+        # the viewed month's `available` cannot see it.
+        if preview.future_assigned != Decimal("0") and not preview.blocked_by_balance:
+            preview.blocked_by_balance = list(preview.category_names)
+        by_id = {c.id: c.name for c in cats}
+        scheduled = (
+            await self.session.execute(
+                select(ScheduledTransaction.category_id)
+                .where(
+                    ScheduledTransaction.category_id.in_(ids),
+                    ScheduledTransaction.is_deleted == False,  # noqa: E712
+                )
+                .distinct()
+            )
+        ).scalars()
+        # The `in_(ids)` above already excludes NULL, but the column is
+        # nullable and the type checker reads it as such.
+        preview.blocked_by_schedule = sorted(
+            by_id[cid] for cid in scheduled if cid is not None and cid in by_id
+        )
+        return preview
+
+    async def preview_archive_group(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, month: date
+    ) -> CategoryArchivePreview:
+        """Archiving a group archives everything in it, so it previews as the
+        bulk action it is — the shape `preview_delete_group` already uses."""
+        cats = await self.category_repo.get_by_group(group_id)
+        return await self.preview_archive(budget_id, [c.id for c in cats], month)
+
+    async def archive_categories(
+        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], *, month: date | None = None
+    ) -> CategoryArchivePreview:
+        """Archive, refusing while money would be left behind.
+
+        Refuses rather than sweeping. Moving someone's money without asking is
+        the wrong default for the one screen whose whole job is telling them
+        where their money is; the dialog offers the move and this enforces that
+        it happened.
+        """
+        as_of = first_of_month(month or date.today())
+        preview = await self.preview_archive(budget_id, category_ids, as_of)
+        _refuse_archive(preview)
+        await self._set_archived(budget_id, preview.category_ids, archived=True)
+        return preview
+
+    async def archive_group(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, *, month: date | None = None
+    ) -> CategoryArchivePreview:
+        """Archive a whole group, refusing on exactly the terms one envelope does.
+
+        The group's own flag is the whole fact: `IN_ARCHIVED_GROUP` already puts
+        every category under it out of reach, so setting the categories' flags
+        as well would record one state in two places — and the two would part
+        company the first time a group was restored with a category archived on
+        its own merits inside it.
+
+        This exists because the "Hide group" button used to `PATCH` the flag
+        straight onto the row, which is a plain column write with no balance
+        check behind it. Archiving a group that way took every envelope in it
+        off the budget with the money still inside.
+        """
+        as_of = first_of_month(month or date.today())
+        preview = await self.preview_archive_group(budget_id, group_id, as_of)
+        _refuse_archive(preview)
+        await self._set_group_archived(budget_id, group_id, archived=True)
+        return preview
+
+    async def unarchive_group(self, budget_id: uuid.UUID, group_id: uuid.UUID) -> None:
+        """Bring a group back. No money is involved, so nothing can block it."""
+        await self._set_group_archived(budget_id, group_id, archived=False)
+
+    async def _set_group_archived(
+        self, budget_id: uuid.UUID, group_id: uuid.UUID, *, archived: bool
+    ) -> None:
+        """The group half of `_set_archived`, recorded in the same shape so one
+        undo handler covers both."""
+        group = await self.group_repo.get(group_id)
+        if group is None:
+            raise NotFoundError("category_group", str(group_id))
+        before = {
+            str(group.id): {
+                "is_archived": group.is_archived,
+                "archived_at": _iso(group.archived_at),
+            }
+        }
+        stamp = datetime.now(UTC) if archived else None
+        group.is_archived = archived
+        group.archived_at = stamp
+        await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="category_group",
+            entity_id=group.id,
+            action="archive" if archived else "unarchive",
+            before=before,
+            after={str(group.id): {"is_archived": archived, "archived_at": _iso(stamp)}},
+        )
+
+    async def unarchive_categories(
+        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID]
+    ) -> list[uuid.UUID]:
+        """Bring them back. No money is involved, so nothing can block it."""
+        cats = await self._live_categories(budget_id, category_ids)
+        ids = [c.id for c in cats]
+        await self._set_archived(budget_id, ids, archived=False)
+        return ids
+
+    async def _set_archived(
+        self, budget_id: uuid.UUID, ids: list[uuid.UUID], *, archived: bool
+    ) -> None:
+        """Flip the flag and stamp the date, recorded so undo can put it back.
+
+        `archived_at` is cleared on the way out rather than kept: it answers
+        "when was this archived", and a stale date on a live envelope is a
+        worse answer than none.
+        """
+        if not ids:
+            return
+        before = {
+            str(c.id): {"is_archived": c.is_archived, "archived_at": _iso(c.archived_at)}
+            for c in await self._live_categories(budget_id, ids)
+        }
+        stamp = datetime.now(UTC) if archived else None
+        await self.session.execute(
+            update(Category)
+            .where(Category.id.in_(ids))
+            .values(is_archived=archived, archived_at=stamp)
+        )
+        await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="category",
+            entity_id=ids[0],
+            action="archive" if archived else "unarchive",
+            before=before,
+            after={str(i): {"is_archived": archived, "archived_at": _iso(stamp)} for i in ids},
+        )
 
     # ─── Delete ───────────────────────────────────────────────────────────────
 
@@ -287,6 +772,14 @@ class CategoryService:
         await self._validate_move_target(budget_id, move_to, ids)
 
         as_of = first_of_month(month or date.today())
+        # Measured before anything is cleared. `_retarget_transactions` and
+        # `_clear_assignments` below empty the category by construction, so
+        # asking afterwards would call every delete a hard one.
+        #
+        # Recomputed here rather than trusted from the client's preview: this
+        # decides whether a row is removed outright, and a destructive decision
+        # taken on request input is one forged request from being wrong.
+        hard = (await self.preview_delete(budget_id, ids, as_of)).may_hard_delete
         tba_before = (await self.budget_service.get_budget_summary(budget_id, as_of)).to_be_assigned
 
         bookkeeping: dict[str, Any] = {}
@@ -299,6 +792,7 @@ class CategoryService:
         await self._clear_referrers(ids, bookkeeping)
 
         group = await self._prepare_group(group_id, ids, bookkeeping)
+
         for cat in cats:
             cat.is_deleted = True
         if group is not None:
@@ -314,7 +808,16 @@ class CategoryService:
             await self.budget_service.get_budget_summary(budget_id, as_of)
         ).to_be_assigned - tba_before
 
-        change_id = await self._record_delete(budget_id, cats, group, bookkeeping)
+        change_id = await self._record_delete(budget_id, cats, group, bookkeeping, hard=hard)
+        if hard:
+            # Last, so the change row above captured the rows while they still
+            # existed. Undo recreates them from that snapshot.
+            await self.session.execute(delete(Category).where(Category.id.in_(ids)))
+            if group is not None:
+                await self.session.execute(
+                    delete(CategoryGroup).where(CategoryGroup.id == group.id)
+                )
+            await self.session.flush()
         return CategoryDeleteResult(
             change_id=change_id,
             category_ids=ids,
@@ -633,7 +1136,16 @@ class CategoryService:
                 "view_id": str(p.view_id),
                 "category_id": str(p.category_id),
                 "group_id": str(p.group_id) if p.group_id else None,
-                "is_hidden": bool(getattr(p, "is_hidden", False)),
+                # `is_hidden`, not `is_archived`: a placement's flag is per-view
+                # visibility and was deliberately left out of the rename. The
+                # `getattr` default that used to stand here read a field this
+                # model does not have, so every placement was recorded as
+                # visible and the undo below could not be constructed at all.
+                "is_hidden": bool(p.is_hidden),
+                # A placement is a position as much as a membership; without
+                # this the undo put every restored row back at the top of the
+                # view, which is a saved layout silently rearranged.
+                "sort_order": p.sort_order,
             }
             for p in placements
         ]
@@ -678,6 +1190,8 @@ class CategoryService:
         cats: list[Category],
         group: CategoryGroup | None,
         bookkeeping: dict[str, Any],
+        *,
+        hard: bool = False,
     ) -> uuid.UUID:
         """One change row for the whole operation.
 
@@ -697,6 +1211,15 @@ class CategoryService:
         before = snapshot("category", primary) | bookkeeping
         if len(cats) > 1 or group is not None:
             before["_categories"] = [{"id": str(c.id)} | snapshot("category", c) for c in cats]
+        if hard:
+            # The rows are about to stop existing, so undo cannot flip a flag
+            # back — it has to build them again. `_hard` tells it so, and
+            # `_categories` (forced on even for a single one) carries what to
+            # build from. `_group` does the same for a group cascade.
+            before["_hard"] = True
+            before["_categories"] = [{"id": str(c.id)} | snapshot("category", c) for c in cats]
+            if group is not None:
+                before["_group"] = {"id": str(group.id)} | snapshot("category_group", group)
         row = await self.changes.record(
             budget_id=budget_id,
             entity_type="category",

@@ -29,6 +29,21 @@ class CategoryReorder(BaseModel):
     category_ids: list[uuid.UUID]
 
 
+class CategoryReferenceResponse(BaseModel):
+    """One kind of thing still pointing at the categories being deleted.
+
+    `clearable` is the whole point of the split. A saved view placing this
+    category means nothing once it is gone, so removing it costs nothing and
+    the dialog can say so plainly. A recorded money move is a fact about what
+    happened, and severing it would leave a row saying money went nowhere.
+    """
+
+    kind: str
+    label: str
+    count: int
+    clearable: bool
+
+
 class CategoryDeletePreviewResponse(BaseModel):
     """What deleting these categories is about to do.
 
@@ -47,6 +62,15 @@ class CategoryDeletePreviewResponse(BaseModel):
     future_assigned: Decimal
     payee_count: int
     scheduled_count: int
+    #: Everything else still pointing at these categories, named so the dialog
+    #: can list the contact points rather than leaving the user to guess why a
+    #: delete behaves the way it does.
+    references: list[CategoryReferenceResponse]
+    #: May the row be removed outright rather than soft-deleted? False whenever
+    #: anything *records* that the category existed. Served rather than derived
+    #: from `references`, so the dialog's wording and the delete's behaviour
+    #: cannot disagree about which one is about to happen.
+    may_hard_delete: bool
     #: Net posted spending filed here over the categories' whole life
     #: (positive = outflow). Moving hands it to the destination along with the
     #: assignment that covered it, so the destination's balance is unchanged;
@@ -100,6 +124,63 @@ class CategoryDeletePreviewRequest(BaseModel):
     month: datetime.date | None = None
 
 
+class ArchivedCategoryResponse(BaseModel):
+    """One row of the archived listing — the modal's only source of truth.
+
+    `available` should be zero for anything archived through the flow, which
+    refuses otherwise. It is served anyway because rows archived before that
+    existed can carry a balance, and the budget page no longer draws them: this
+    listing is the only place that money is visible at all.
+    """
+
+    id: uuid.UUID
+    name: str
+    group_id: uuid.UUID
+    group_name: str
+    transaction_count: int
+    archived_at: datetime.datetime | None
+    available: Decimal
+    #: True when the row is archived because its *group* is. Restoring the
+    #: category alone does nothing in that case, so the modal offers the group
+    #: instead — required, not optional, so a path that forgets it raises
+    #: rather than drawing a button that silently no-ops.
+    group_is_archived: bool
+
+
+class CategoryArchiveRequest(BaseModel):
+    """Archive or restore a selection, as one operation and one undo row."""
+
+    category_ids: list[uuid.UUID]
+    month: datetime.date | None = None
+
+
+class CategoryGroupArchiveRequest(BaseModel):
+    """Archive or restore a whole group. The group is in the path; the month
+    only decides which month's balances the refusal is measured against."""
+
+    month: datetime.date | None = None
+
+
+class CategoryArchivePreviewResponse(BaseModel):
+    """What archiving would do, and what stands in the way.
+
+    `may_archive` is served rather than derived from the three lists: the dialog
+    disables its button on one field, and a client recomputing the condition is
+    how the button and the endpoint come to disagree about whether an archive
+    is allowed.
+    """
+
+    category_ids: list[uuid.UUID]
+    category_names: list[str]
+    transaction_count: int
+    available: Decimal
+    future_assigned: Decimal
+    blocked_by_balance: list[str]
+    blocked_by_link: list[str]
+    blocked_by_schedule: list[str]
+    may_archive: bool
+
+
 class RepairOrphansResponse(BaseModel):
     """What the hygiene repair found and fixed."""
 
@@ -119,9 +200,14 @@ class RepairOrphansResponse(BaseModel):
 
 
 class CategoryGroupUpdate(BaseModel):
+    """No `is_archived`. Archiving is not a field edit: it takes every envelope
+    under the group off the budget, so it goes through
+    `POST /category-groups/{id}/archive`, which refuses while any of them still
+    holds money. Accepting the flag here was a second way to set the same state
+    that skipped the rule — the exact door this release closed on the client."""
+
     name: str | None = None
     sort_order: int | None = None
-    is_hidden: bool | None = None
 
 
 class CategoryGroupResponse(BaseModel):
@@ -129,7 +215,7 @@ class CategoryGroupResponse(BaseModel):
     budget_id: uuid.UUID
     name: str
     sort_order: int
-    is_hidden: bool
+    is_archived: bool
     is_system: bool
     #: Every live category in this group is a card's set-aside envelope, so the
     #: budget grid draws no header for it (`GROUP_IS_CARD_ONLY`).
@@ -162,11 +248,13 @@ class CategoryCreate(BaseModel):
 
 
 class CategoryUpdate(BaseModel):
+    """No `is_archived` — see `CategoryGroupUpdate`. Use
+    `POST /categories/archive` and `/unarchive`, which run the refusal."""
+
     name: str | None = None
     subtitle: str | None = None
     sort_order: int | None = None
     note: str | None = None
-    is_hidden: bool | None = None
     category_group_id: uuid.UUID | None = None
 
 
@@ -259,7 +347,7 @@ class CategoryResponse(BaseModel):
     subtitle: str | None
     sort_order: int
     note: str | None
-    is_hidden: bool
+    is_archived: bool
     linked_account_id: uuid.UUID | None
     #: The liability that owns this category, if any. Exposed because the
     #: liability-binding screen's rule needs it: without it the client could
@@ -273,6 +361,14 @@ class CategoryResponse(BaseModel):
     #: that forgets to load it should raise rather than report every category
     #: as ineligible, which would empty the move-money picker silently.
     is_assignable: bool
+    #: May money ENTER this envelope? `IS_FUNDABLE`, not the same question as
+    #: what a picker may offer: a card's payment envelope is fundable (that is
+    #: how a card is paid down) and offered by nothing. The two were one field
+    #: read two ways, and each side got the other's answer — a paydown target
+    #: never filled, and money could be assigned into an archived envelope.
+    #:
+    #: Required for the same reason its siblings are.
+    is_fundable: bool
     #: May a transaction leg be filed here? Differs from is_assignable on
     #: system groups — income is filed into one — and on linked categories.
     is_categorizable: bool

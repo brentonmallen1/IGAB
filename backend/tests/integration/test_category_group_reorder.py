@@ -117,7 +117,7 @@ class TestHiddenGroups:
 
     async def test_reorder_succeeds_with_a_hidden_group_omitted(self, api_client, db_session):
         budget, groups = await _budget_with_groups(db_session, user=api_client.test_user)
-        groups[1].is_hidden = True  # Wants, holding slot 1
+        groups[1].is_archived = True  # Wants, holding slot 1
         await db_session.flush()
 
         resp = await api_client.post(
@@ -132,32 +132,32 @@ class TestHiddenGroups:
         """Re-showing the group later must find it where the user left it,
         not dumped at the end."""
         budget, groups = await _budget_with_groups(db_session)
-        groups[1].is_hidden = True
+        groups[1].is_archived = True
         await db_session.flush()
 
         repo = CategoryGroupRepository(db_session)
         await repo.reorder(budget.id, [groups[2].id, groups[0].id])
         db_session.expunge_all()
-        everyone = [g.name for g in await repo.get_all(budget.id, include_hidden=True)]
+        everyone = [g.name for g in await repo.get_all(budget.id, include_archived=True)]
         assert everyone == ["Savings", "Wants", "Bills"]
 
     async def test_a_hidden_group_may_still_be_listed(self, db_session):
         """Show-hidden mode sends the full list; that keeps working."""
         budget, groups = await _budget_with_groups(db_session)
-        groups[0].is_hidden = True
+        groups[0].is_archived = True
         await db_session.flush()
 
         repo = CategoryGroupRepository(db_session)
         await repo.reorder(budget.id, [groups[1].id, groups[0].id, groups[2].id])
         db_session.expunge_all()
-        everyone = [g.name for g in await repo.get_all(budget.id, include_hidden=True)]
+        everyone = [g.name for g in await repo.get_all(budget.id, include_archived=True)]
         assert everyone == ["Wants", "Bills", "Savings"]
 
     async def test_a_missing_visible_group_is_still_refused(self, db_session):
         """Omission is a hidden-group privilege; a missing visible group is
         still the stale-client case and fails loudly."""
         budget, groups = await _budget_with_groups(db_session)
-        groups[1].is_hidden = True
+        groups[1].is_archived = True
         await db_session.flush()
 
         with pytest.raises(InvariantViolation, match="visible groups"):
@@ -187,7 +187,7 @@ class TestCardOnlyGroups:
         budget, groups = await _budget_with_groups(db_session, user=user)
         cards = await create_category_group(db_session, budget, "Credit Card Payments")
         cards.sort_order = 3
-        cards.is_hidden = hidden
+        cards.is_archived = hidden
         visa = await create_account(
             db_session, budget, "Sapphire Visa", account_type="credit_card"
         )
@@ -201,7 +201,7 @@ class TestCardOnlyGroups:
         budget, groups, cards = await self._with_card_group(
             db_session, user=api_client.test_user
         )
-        assert not cards.is_hidden and not cards.is_system
+        assert not cards.is_archived and not cards.is_system
 
         resp = await api_client.post(
             f"/api/v1/{budget.id}/category-groups/reorder",
@@ -272,7 +272,7 @@ class TestCardOnlyGroups:
             db_session, user=api_client.test_user
         )
         listed = (
-            await api_client.get(f"/api/v1/{budget.id}/category-groups?include_hidden=true")
+            await api_client.get(f"/api/v1/{budget.id}/category-groups?include_archived=true")
         ).json()
         by_name = {g["name"]: g["is_card_only"] for g in listed}
         assert by_name["Credit Card Payments"] is True

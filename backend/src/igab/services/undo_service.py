@@ -229,6 +229,8 @@ class UndoService:
             entity.is_deleted = True
         elif change.action == "reorder":
             await self._apply_order(change, force, target="after")
+        elif change.action in ("archive", "unarchive"):
+            await self._apply_archive(change, target="after")
         else:
             raise UndoConflict(f"Changes of type '{change.action}' cannot be redone")
 
@@ -274,6 +276,14 @@ class UndoService:
             raise UndoConflict(f"Unknown entity type '{change.entity_type}'")
         entity = await self.session.get(model, change.entity_id)
         if entity is None:
+            # A hard delete removed the row outright, so there is no flag to
+            # flip back — the record carries what to rebuild from. Only a
+            # category delete takes that path, and only when nothing recorded
+            # that the category existed, which is why rebuilding the bare rows
+            # is a complete inverse here and would not be anywhere else.
+            if (change.before or {}).get("_hard") and change.entity_type == "category":
+                await self._undo_hard_category_delete(change)
+                return
             raise UndoConflict("The affected item no longer exists")
 
         if change.action in ("create", "import"):
@@ -290,8 +300,32 @@ class UndoService:
             await self._undo_merge(change, entity)
         elif change.action == "reorder":
             await self._apply_order(change, force, target="before")
+        elif change.action in ("archive", "unarchive"):
+            await self._apply_archive(change, target="before")
         else:
             raise UndoConflict(f"Changes of type '{change.action}' cannot be undone")
+
+    async def _apply_archive(self, change: ChangeLog, *, target: str) -> None:
+        """Put the archived flag and its stamp back for every row one archive touched.
+
+        Recorded keyed by id because a single archive covers many envelopes —
+        the shape a bulk delete already uses — where the generic update path
+        reads a flat field dict. Without this case both `_apply` and `_reapply`
+        fell through to "cannot be undone", and `undo_newer` has no per-item
+        handling, so one archive anywhere in the range aborted the whole
+        "Revert to here".
+
+        Covers groups as well as categories: `_set_group_archived` records in
+        the same shape under `entity_type="category_group"`, so the model comes
+        from `ENTITY_MODELS` rather than being assumed.
+        """
+        model = ENTITY_MODELS[change.entity_type]
+        for raw_id, fields in (getattr(change, target) or {}).items():
+            entity = await self.session.get(model, uuid.UUID(str(raw_id)))
+            if entity is None:
+                continue
+            for name, value in fields.items():
+                setattr(entity, name, coerce_value(model, name, value))
 
     async def _apply_order(self, change: ChangeLog, force: bool, *, target: str) -> None:
         """Put a reordered list back the way the record says.
@@ -309,7 +343,7 @@ class UndoService:
         wanted = [uuid.UUID(x) for x in (getattr(change, target) or {}).get("_order", [])]
         if change.entity_type == "budget":
             groups = CategoryGroupRepository(self.session)
-            live = [g.id for g in await groups.get_all(change.entity_id, include_hidden=True)]
+            live = [g.id for g in await groups.get_all(change.entity_id, include_archived=True)]
         elif change.entity_type == "category_group":
             categories = CategoryRepository(self.session)
             live = [c.id for c in await categories.get_by_group(change.entity_id)]
@@ -405,6 +439,55 @@ class UndoService:
                 .where(TransactionAttachment.id.in_([uuid.UUID(a) for a in attachment_ids]))
                 .values(transaction_id=change.entity_id)
             )
+
+    async def _undo_hard_category_delete(self, change: ChangeLog) -> None:
+        """Rebuild categories (and their group) that were removed outright.
+
+        `CategoryService` only hard-deletes when the preview says nothing
+        recorded the category — no transactions, no assignments, no money
+        moves, no wishes, no saved-view placement. So there is nothing to
+        re-point afterwards and the rows themselves are the whole inverse.
+
+        Ids are restored as they were rather than reissued: a change row and a
+        `_categories` payload both name them, and a rebuilt category with a new
+        id would leave those pointing at nothing.
+        """
+        before = change.before or {}
+        rows = before.get("_categories") or []
+        if not rows:
+            raise UndoConflict("This delete did not record what to restore")
+
+        group_payload = before.get("_group")
+        if group_payload:
+            group_id = uuid.UUID(group_payload["id"])
+            if await self.session.get(CategoryGroup, group_id) is None:
+                self.session.add(
+                    CategoryGroup(
+                        id=group_id,
+                        budget_id=change.budget_id,
+                        **{
+                            f: coerce_value(CategoryGroup, f, v)
+                            for f, v in group_payload.items()
+                            if f != "id"
+                        },
+                    )
+                )
+                await self.session.flush()
+
+        for row in rows:
+            cat_id = uuid.UUID(row["id"])
+            if await self.session.get(Category, cat_id) is not None:
+                # Something already put it back. Leave it as it stands rather
+                # than overwriting — the rule every other branch here follows.
+                continue
+            self.session.add(
+                Category(
+                    id=cat_id,
+                    budget_id=change.budget_id,
+                    **{f: coerce_value(Category, f, v) for f, v in row.items() if f != "id"},
+                )
+            )
+        await self.session.flush()
 
     async def _undo_category_delete(self, change: ChangeLog, entity) -> None:
         """Reverse a real category delete: the category, and everything the
@@ -594,6 +677,7 @@ class UndoService:
                     category_id=uuid.UUID(row["category_id"]),
                     group_id=uuid.UUID(row["group_id"]) if row.get("group_id") else None,
                     is_hidden=bool(row.get("is_hidden")),
+                    sort_order=int(row.get("sort_order") or 0),
                 )
             )
         for row in before.get("_filter_selections") or []:

@@ -96,11 +96,11 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "subtitle",
         "sort_order",
         "note",
-        "is_hidden",
+        "is_archived",
         "linked_account_id",
         "linked_liability_id",
     ),
-    "category_group": ("name", "sort_order", "is_hidden", "is_system"),
+    "category_group": ("name", "sort_order", "is_archived", "is_system"),
     "assignment": ("category_id", "month", "assigned"),
 }
 

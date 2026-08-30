@@ -30,8 +30,8 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.card_payment import require_not_card_envelope
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match, source_for
+from igab.services.filing import may_be_filed_to, require_categorizable
 from igab.services.ownership import require_in_budget
 
 if TYPE_CHECKING:
@@ -213,7 +213,7 @@ class TransactionService:
         # Body-supplied ids bypass the route's BudgetAccess guard; reject any
         # that point at another budget's category/payee before persisting.
         await require_in_budget(self.session, Category, data.category_id, budget_id, "Category")
-        await require_not_card_envelope(self.session, data.category_id)
+        await require_categorizable(self.session, data.category_id)
         await require_in_budget(self.session, Payee, data.payee_id, budget_id, "Payee")
 
         if data.transfer_account_id:
@@ -244,17 +244,14 @@ class TransactionService:
                 budget_id, payee.id
             )
             if not category_id and payee.default_category_id:
-                # Liveness-checked for the same reason the lookup above joins
-                # `categories`: the delete clears these, but a default set
-                # before that shipped (or restored by an undo mid-flight) must
-                # not file a brand-new row into a deleted envelope.
-                default = await self.category_repo.get(payee.default_category_id)
-                # `linked_account_id` for the same reason the history lookup
-                # excludes it: this resolution happens *after* the caller's
-                # category was validated, so inheriting a card's set-aside
-                # envelope here would file a row the budget cannot show.
-                if default is not None and default.linked_account_id is None:
-                    category_id = default.id
+                # The same rule the caller's own category was held to, asked
+                # rather than enforced. This resolution happens *after*
+                # `require_categorizable`, so a default pointing at a card's
+                # set-aside envelope, a tracked debt or an archived envelope
+                # would file a brand-new row somewhere the guard refuses — and
+                # it is a stored pointer, so it outlives what it points at.
+                if await may_be_filed_to(self.session, payee.default_category_id):
+                    category_id = payee.default_category_id
 
         created_via = data.created_via or origin_of(data)
         txn = await self.transaction_repo.create(
@@ -404,7 +401,7 @@ class TransactionService:
             if spec.id is not None and spec.id not in existing_by_id:
                 raise InvariantViolation("Split line does not belong to this transaction")
             await require_in_budget(self.session, Category, spec.category_id, budget_id, "Category")
-            await require_not_card_envelope(self.session, spec.category_id)
+            await require_categorizable(self.session, spec.category_id)
 
         kept: list[Transaction] = []
         for spec in specs:
@@ -501,7 +498,7 @@ class TransactionService:
         await require_in_budget(
             self.session, Category, changes.get("category_id"), budget_id, "Category"
         )
-        await require_not_card_envelope(self.session, changes.get("category_id"))
+        await require_categorizable(self.session, changes.get("category_id"))
         await require_in_budget(self.session, Payee, changes.get("payee_id"), budget_id, "Payee")
         if changes.get("cleared") in _SYSTEM_CLEARED_VALUES:
             raise InvariantViolation(

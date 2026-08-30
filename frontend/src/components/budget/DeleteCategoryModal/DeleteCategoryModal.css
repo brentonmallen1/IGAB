@@ -220,3 +220,49 @@
 .delete-category-modal__error button:hover {
   background: color-mix(in srgb, var(--color-negative) 12%, transparent);
 }
+
+/* What else still points at the category. Listed, not severed silently. */
+.delete-category-modal__refs {
+  padding: var(--spacing-sm);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.delete-category-modal__refs-title {
+  margin: 0 0 4px;
+  color: var(--text-primary);
+}
+
+.delete-category-modal__refs ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Sits between Cancel and Delete: the non-destructive way out, so it reads
+   as an ordinary action rather than as the confirm or the escape. */
+.delete-category-modal__archive {
+  margin-right: auto;
+  padding: 6px var(--spacing-md);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius-sm);
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.delete-category-modal__archive:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.delete-category-modal__archive:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

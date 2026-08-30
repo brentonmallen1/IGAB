@@ -117,7 +117,7 @@ async def test_preview_includes_hidden_overspent_categories(db_session):
     """Hidden categories participate in TBA math, so leaving them out would
     leave TBA short after a 'full' cover."""
     services, budget, checking, groceries, dining, fun = await _setup(db_session)
-    fun.is_hidden = True
+    fun.is_archived = True
     await db_session.flush()
 
     preview = await services.budgets.cover_overspent_preview(budget.id, MONTH)

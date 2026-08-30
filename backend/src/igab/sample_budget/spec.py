@@ -79,7 +79,7 @@ class CategorySpec:
     # Present ⇒ this category's current month is assigned exactly this much
     # BELOW its spending to date, guaranteeing one intentional overspend.
     overspend_this_month: Decimal | None = None
-    is_hidden: bool = False
+    is_archived: bool = False
     tiers: tuple[str, ...] = BOTH_TIERS
 
 

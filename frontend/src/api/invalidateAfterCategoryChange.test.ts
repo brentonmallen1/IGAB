@@ -26,6 +26,7 @@ describe('invalidateAfterCategoryChange', () => {
     const expected = [
       ['categories'],
       ['categoryGroups'],
+      ['archivedCategories'],
       ['categoryClassification'],
       ['budgetMonth', 'b1'],
       ['transactions'],

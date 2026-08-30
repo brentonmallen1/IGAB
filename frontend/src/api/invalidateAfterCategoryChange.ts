@@ -23,6 +23,10 @@ export function invalidateAfterCategoryChange(
     // The grid and its money.
     ['categories'],
     ['categoryGroups'],
+    // Archiving moves a row between the grid and this listing, so a change to
+    // either has to stale both or one of them keeps showing an envelope the
+    // other has already moved.
+    ['archivedCategories'],
     ['categoryClassification'],
     // Ready to Assign, every category balance, every target status.
     ...(budgetId ? [['budgetMonth', budgetId]] : [['budgetMonth']]),

@@ -249,7 +249,7 @@ async def _plan_rows(
     months: list[date],
 ) -> Iterator[dict[str, str]]:
     """One row per (category, month), straight from the budget summary."""
-    named = await category_repo.get_all_with_group_names(budget_id, include_hidden=True)
+    named = await category_repo.get_all_with_group_names(budget_id, include_archived=True)
     names = {category.id: (group_name, category.name) for category, group_name in named}
 
     rows: list[dict[str, str]] = []

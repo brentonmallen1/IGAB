@@ -104,18 +104,27 @@ class GuideService:
             merged["checkup"] = False
         await self.repo.set_state(budget_id, PREFS_KEY, merged)
         if "wishlist" in changes:
-            # The Wishlist group follows the switch: off hides it (money stays
-            # where it is; hidden groups are already out of every picker), on
-            # brings it back — seeding it the first time.
+            # The Wishlist group follows the switch: off archives it, on brings
+            # it back — seeding it the first time.
+            #
+            # KNOWN GAP: this writes the flag directly, so it is the one route
+            # left that can archive a group without the refusal
+            # `CategoryService.archive_group` runs. Money in a wish envelope
+            # when the switch goes off is stranded — the group leaves the grid
+            # entirely now, where it only used to grey out. It is caught after
+            # the fact by `account_hygiene._money_in_an_archived_envelope`, not
+            # prevented. Making a preference toggle able to *refuse* is a
+            # product decision, not a mechanical fix, which is why it is
+            # written down here rather than quietly changed.
             groups = CategoryGroupRepository(self.session)
             if changes["wishlist"]:
                 group = await groups.ensure_system_group(budget_id, "wishlist")
-                if group.is_hidden:
-                    await groups.update(group.id, is_hidden=False)
+                if group.is_archived:
+                    await groups.update(group.id, is_archived=False)
             else:
                 group = await groups.get_by_system_key(budget_id, "wishlist")
-                if group is not None and not group.is_hidden:
-                    await groups.update(group.id, is_hidden=True)
+                if group is not None and not group.is_archived:
+                    await groups.update(group.id, is_archived=True)
         return merged
 
     # ── step progress ────────────────────────────────────────────────────────
@@ -443,7 +452,7 @@ class GuideService:
                     .where(
                         Category.budget_id == budget_id,
                         Category.is_deleted == False,  # noqa: E712
-                        Category.is_hidden == False,  # noqa: E712
+                        Category.is_archived == False,  # noqa: E712
                     )
                     .order_by(Category.name)
                 )

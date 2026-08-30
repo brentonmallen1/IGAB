@@ -359,7 +359,7 @@ async def test_invalidates_on_category_soft_delete(db_session, world):
 
 async def test_invalidates_on_category_hide(db_session, world):
     snap, live = await _prime(db_session, world)
-    await CategoryRepository(db_session).update(world.dining.id, is_hidden=True)
+    await CategoryRepository(db_session).update(world.dining.id, is_archived=True)
     assert not await _meta_exists(db_session, world.budget.id)
     await _assert_parity(snap, live, world.budget.id)
 

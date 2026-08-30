@@ -126,7 +126,7 @@ class TestHiddenCategories:
 
     async def test_reorder_succeeds_with_a_hidden_category_omitted(self, api_client, db_session):
         budget, group, cats = await _group_with_categories(db_session, user=api_client.test_user)
-        cats[1].is_hidden = True  # Power, holding slot 1
+        cats[1].is_archived = True  # Power, holding slot 1
         await db_session.flush()
 
         resp = await api_client.post(
@@ -138,7 +138,7 @@ class TestHiddenCategories:
 
     async def test_a_missing_visible_category_is_still_refused(self, db_session):
         budget, group, cats = await _group_with_categories(db_session)
-        cats[1].is_hidden = True
+        cats[1].is_archived = True
         await db_session.flush()
         with pytest.raises(InvariantViolation, match="visible categories"):
             await CategoryRepository(db_session).reorder(group.id, [cats[0].id])
@@ -275,5 +275,5 @@ class TestSystemGroupsMayBeOmitted:
         )
         assert resp.status_code == 204
         db_session.expunge_all()
-        everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+        everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_archived=True)
         assert [g.name for g in everyone] == ["Income", "Wants", "Bills"]

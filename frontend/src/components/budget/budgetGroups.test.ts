@@ -14,7 +14,7 @@ function group(id: string, is_system = false, is_card_only = false) {
     budget_id: 'b1',
     name: id,
     sort_order: 0,
-    is_hidden: false,
+    is_archived: false,
     is_system,
     is_card_only,
     system_key: null,

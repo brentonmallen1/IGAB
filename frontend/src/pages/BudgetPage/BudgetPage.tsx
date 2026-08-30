@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { EyeOff, FolderInput, Trash2 } from 'lucide-react'
+import { Archive, FolderInput, Trash2 } from 'lucide-react'
 import { BudgetTable } from '../../components/budget/BudgetTable/BudgetTable'
 import { CategoryInspector } from '../../components/budget/CategoryInspector/CategoryInspector'
 import { CategoryMobileActions } from '../../components/budget/CategoryInspector/CategoryMobileActions'
@@ -20,6 +20,7 @@ import { useSwipeNavigation } from '../../hooks/useSwipeNavigation'
 import { addMonths } from '../../utils/dates'
 import { useBudgets, useCreateBudget } from '../../api/budgets'
 import {
+  useArchiveCategories,
   useCategories,
   useCategoryGroups,
   useReorderCategories,
@@ -60,6 +61,7 @@ export function BudgetPage() {
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const updateCategory = useUpdateCategory(budgetId ?? '')
+  const archiveCategories = useArchiveCategories(budgetId ?? '')
   const reorderCategories = useReorderCategories(budgetId ?? '')
   const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(
     budgetId ?? '',
@@ -97,16 +99,21 @@ export function BudgetPage() {
     clearCategorySelection()
   }
 
-  async function handleHideSelected() {
+  async function handleArchiveSelected() {
+    // Routed through the archive endpoint, not a PATCH of the flag: it refuses
+    // while an envelope still holds money, because an archived envelope is off
+    // the budget entirely and anything left in one is unreachable. One request
+    // for the whole selection, so the refusal names the envelope that stopped
+    // it instead of half the rows archiving and the rest failing.
     const count = selectedCategoryIds.size
     const ok = await confirmAsync({
-      title: `Hide ${count} categor${count !== 1 ? 'ies' : 'y'}?`,
-      message: 'Hidden categories keep their history and can be unhidden later.',
-      confirmLabel: 'Hide',
+      title: `Archive ${count} categor${count !== 1 ? 'ies' : 'y'}?`,
+      message:
+        'They leave the budget but keep their history — their spending still counts in reports. Restore them any time from See archived.',
+      confirmLabel: 'Archive',
     })
     if (!ok) return
-    const ids = Array.from(selectedCategoryIds)
-    await Promise.all(ids.map((id) => updateCategory.mutateAsync({ id, is_hidden: true })))
+    await archiveCategories.mutateAsync({ ids: Array.from(selectedCategoryIds), month })
     clearCategorySelection()
   }
 
@@ -216,11 +223,11 @@ export function BudgetPage() {
             Move to Group
           </button>
           <FloatingSelectionBar.Button
-            onClick={handleHideSelected}
-            title={`Hide ${selectedCount} categories`}
+            onClick={handleArchiveSelected}
+            title={`Archive ${selectedCount} categories`}
           >
-            <EyeOff size={14} />
-            Hide
+            <Archive size={14} />
+            Archive
           </FloatingSelectionBar.Button>
           <FloatingSelectionBar.Button
             onClick={handleDeleteSelected}

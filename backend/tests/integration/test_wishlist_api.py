@@ -35,7 +35,7 @@ async def _add(api_client, budget, **body):
 
 
 async def _groups(api_client, budget):
-    r = await api_client.get(f"/api/v1/{budget.id}/category-groups?include_hidden=true")
+    r = await api_client.get(f"/api/v1/{budget.id}/category-groups?include_archived=true")
     return r.json()
 
 
@@ -52,7 +52,7 @@ class TestTheGroup:
         group = await _wishlist_group(api_client, budget)
         assert group["name"] == "Wishlist"
         assert group["is_system"] is False  # an ordinary, assignable group
-        assert group["is_hidden"] is False
+        assert group["is_archived"] is False
 
     async def test_adopts_an_existing_group_of_the_same_name(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
@@ -61,7 +61,7 @@ class TestTheGroup:
         group = await _wishlist_group(api_client, budget)
         assert group["id"] == str(mine.id)
 
-    async def test_rename_refused_delete_refused_hide_allowed(self, db_session, api_client):
+    async def test_rename_refused_delete_refused_archive_allowed(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         await api_client.get(_url(budget))
         group = await _wishlist_group(api_client, budget)
@@ -69,8 +69,15 @@ class TestTheGroup:
         assert r.status_code == 400
         r = await api_client.delete(f"/api/v1/category-groups/{group['id']}")
         assert r.status_code in (400, 409), r.text
-        r = await api_client.patch(f"/api/v1/category-groups/{group['id']}", json={"is_hidden": True})
-        assert r.status_code == 200 and r.json()["is_hidden"] is True
+        # Through the archive route, not a PATCH of the flag: the generic
+        # update no longer accepts it, because setting it there skipped the
+        # refusal that keeps money from being stranded.
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/category-groups/{group['id']}/archive", json={}
+        )
+        assert r.status_code == 200, r.text
+        groups = (await api_client.get(f"/api/v1/{budget.id}/category-groups?include_archived=true")).json()
+        assert next(g for g in groups if g["id"] == group["id"])["is_archived"] is True
 
     async def test_its_envelopes_count_against_to_be_assigned(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
@@ -287,7 +294,7 @@ class TestProjects:
 
 class TestTheTag:
     async def _tag_on(self, api_client, budget, cat_id) -> bool:
-        cats = (await api_client.get(f"/api/v1/{budget.id}/categories?include_hidden=true")).json()
+        cats = (await api_client.get(f"/api/v1/{budget.id}/categories?include_archived=true")).json()
         cat = next(c for c in cats if c["id"] == cat_id)
         return any(t.get("system_key") == "wishlist" or t.get("name") == "Wishlist" for t in cat.get("tags", []))
 
@@ -363,13 +370,13 @@ class TestSwitchAndBoundaries:
         await _add(api_client, budget, funding={"mode": "own"})
         r = await api_client.put(f"/api/v1/{budget.id}/guide/preferences", json={"wishlist": False})
         assert r.status_code == 200 and r.json()["wishlist"] is False
-        assert (await _wishlist_group(api_client, budget))["is_hidden"] is True
+        assert (await _wishlist_group(api_client, budget))["is_archived"] is True
         body = (await api_client.get(_url(budget))).json()
         assert body["enabled"] is False and body["items"] == []
         assert (await api_client.post(_url(budget), json={"name": "X", "cost": "1"})).status_code == 409
         # And back on: the group returns, the wish was never lost.
         await api_client.put(f"/api/v1/{budget.id}/guide/preferences", json={"wishlist": True})
-        assert (await _wishlist_group(api_client, budget))["is_hidden"] is False
+        assert (await _wishlist_group(api_client, budget))["is_archived"] is False
         assert len((await api_client.get(_url(budget))).json()["items"]) == 1
 
     async def test_self_reported_money_does_not_reach_the_wishlist(self, db_session, api_client):

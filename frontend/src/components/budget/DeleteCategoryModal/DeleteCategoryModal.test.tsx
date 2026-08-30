@@ -21,6 +21,11 @@ const deleteMutate = vi.hoisted(() =>
 )
 let preview: CategoryDeletePreview
 let previewFailed = false
+/** The archive endpoint's own answer. The dialog gates "Archive instead" on
+ *  this and not on the delete preview's `blocked_by`: the two refuse on
+ *  different grounds, so reading the delete's answer offered the button on an
+ *  envelope the archive would then refuse over its balance. */
+let archivePreview: { may_archive: boolean; blocked_by_balance: string[]; blocked_by_link: string[]; blocked_by_schedule: string[] }
 const refetchSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../api/categories', async () => {
@@ -35,6 +40,7 @@ vi.mock('../../../api/categories', async () => {
       isError: previewFailed,
       refetch: refetchSpy,
     }),
+    useArchivePreview: () => ({ data: archivePreview, isLoading: false, isError: false }),
     useCategories: () => ({
       data: [
         { id: 'c1', name: 'Groceries', category_group_id: 'g1', is_categorizable: true },
@@ -57,6 +63,8 @@ function makePreview(over: Partial<CategoryDeletePreview> = {}): CategoryDeleteP
     future_assigned: '50.0000',
     payee_count: 0,
     scheduled_count: 0,
+    references: [],
+    may_hard_delete: true,
     moving_activity: '40.0000',
     released_if_moved: '110.0000',
     released_if_uncategorized: '110.0000',
@@ -107,6 +115,12 @@ beforeEach(() => {
   deleteMutate.mockClear()
   refetchSpy.mockClear()
   previewFailed = false
+  archivePreview = {
+    may_archive: true,
+    blocked_by_balance: [],
+    blocked_by_link: [],
+    blocked_by_schedule: [],
+  }
 })
 
 describe('DeleteCategoryModal', () => {
@@ -185,9 +199,70 @@ describe('DeleteCategoryModal', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
   })
 
-  it('mentions hiding, which keeps the history and the money', () => {
+  it('offers archiving as a real choice, not as prose', () => {
+    // It used to say "you can hide it instead" in a paragraph, which is advice
+    // the user then had to go and act on somewhere else. Archiving is the
+    // non-destructive way out of this dialog, so it is a button in it.
     renderModal()
-    expect(screen.getByText(/hidden categories keep their history/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Archive instead/i })).toBeEnabled()
+  })
+
+  it('gates Archive on the archive endpoint, not on the delete preview', () => {
+    // The delete may proceed — its own `blocked_by` is empty, because a
+    // balance is something delete moves rather than refuses over. Archiving
+    // refuses, and this button used to read the wrong one of the two and
+    // present itself as available.
+    archivePreview = {
+      may_archive: false,
+      blocked_by_balance: ['Groceries'],
+      blocked_by_link: [],
+      blocked_by_schedule: [],
+    }
+    // No transactions, so the Delete button is not held back by the
+    // destination picker — the only thing left that could disable it is the
+    // block, and the delete is not blocked.
+    renderModal({ blocked_by: [], transaction_count: 0 })
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled()
+    const archive = screen.getByRole('button', { name: /Archive instead/i })
+    expect(archive).toBeDisabled()
+    // And says which envelope stopped it, rather than being inert in silence.
+    expect(archive).toHaveAttribute('title', expect.stringContaining('Groceries'))
+  })
+
+  it('names a blocking schedule too', () => {
+    archivePreview = {
+      may_archive: false,
+      blocked_by_balance: [],
+      blocked_by_link: [],
+      blocked_by_schedule: ['Groceries'],
+    }
+    renderModal()
+    expect(screen.getByRole('button', { name: /Archive instead/i })).toHaveAttribute(
+      'title',
+      expect.stringContaining('Groceries')
+    )
+  })
+
+  it('says whether the row itself is about to go', () => {
+    // `may_hard_delete` is served precisely so the wording and the behaviour
+    // cannot disagree about which of the two deletes is about to happen.
+    renderModal()
+    expect(screen.getByText(/the category itself is removed/i)).toBeInTheDocument()
+  })
+
+  it('names what else points at the category', () => {
+    renderModal({
+      may_hard_delete: false,
+      references: [
+        { kind: 'target', label: '1 savings target', count: 1, clearable: true },
+        { kind: 'budget_move', label: '2 recorded money moves', count: 2, clearable: false },
+      ],
+    })
+    expect(screen.getByText(/1 savings target/)).toBeInTheDocument()
+    // The blocking one says why the row survives, rather than being severed
+    // quietly the way a CASCADE would have done it.
+    expect(screen.getByText(/2 recorded money moves/)).toBeInTheDocument()
+    expect(screen.getByText(/kept as deleted history/i)).toBeInTheDocument()
   })
 
   it('skips the transaction choice when there is nothing filed there', () => {

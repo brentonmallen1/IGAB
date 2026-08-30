@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from igab.api.v1.schemas.category import (
+    ArchivedCategoryResponse,
     AssignApplyRequest,
     AssignApplyResponse,
     AssignmentUpdate,
@@ -18,6 +19,8 @@ from igab.api.v1.schemas.category import (
     BudgetMonthResponse,
     BudgetMoveResponse,
     CardStatusOut,
+    CategoryArchivePreviewResponse,
+    CategoryArchiveRequest,
     CategoryBalance,
     CategoryClassification,
     CategoryClassSlice,
@@ -26,12 +29,14 @@ from igab.api.v1.schemas.category import (
     CategoryDeletePreviewResponse,
     CategoryDeleteRequest,
     CategoryDeleteResultResponse,
+    CategoryGroupArchiveRequest,
     CategoryGroupCreate,
     CategoryGroupReorder,
     CategoryGroupResponse,
     CategoryGroupUpdate,
     CategoryHistoryBatchRequest,
     CategoryHistoryResponse,
+    CategoryReferenceResponse,
     CategoryReorder,
     CategoryResponse,
     CategoryTargetCreate,
@@ -82,6 +87,7 @@ from igab.repositories.txn_filters import LEAF, NOT_DELETED, POSTED
 from igab.services.assign_service import AssignPreview, AssignService
 from igab.services.budget_service import BudgetService
 from igab.services.category_service import (
+    CategoryArchivePreview,
     CategoryDeletePreview,
     CategoryDeleteResult,
     CategoryService,
@@ -101,9 +107,9 @@ async def list_category_groups(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     group_repo: Annotated[CategoryGroupRepository, Depends(get_category_group_repo)],
-    include_hidden: bool = False,
+    include_archived: bool = False,
 ) -> list[CategoryGroupResponse]:
-    groups = await group_repo.get_all(budget_id, include_hidden=include_hidden)
+    groups = await group_repo.get_all(budget_id, include_archived=include_archived)
     return [CategoryGroupResponse.model_validate(g) for g in groups]
 
 
@@ -280,9 +286,9 @@ async def list_categories(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
-    include_hidden: bool = False,
+    include_archived: bool = False,
 ) -> list[CategoryResponse]:
-    cats = await category_repo.get_all(budget_id, include_hidden=include_hidden)
+    cats = await category_repo.get_all(budget_id, include_archived=include_archived)
     return [CategoryResponse.model_validate(c) for c in cats]
 
 
@@ -363,8 +369,29 @@ async def update_category(
     return CategoryResponse.model_validate(await category_repo.get_with_tags(category_id))
 
 
+def _archive_preview_out(preview: CategoryArchivePreview) -> CategoryArchivePreviewResponse:
+    return CategoryArchivePreviewResponse(
+        category_ids=preview.category_ids,
+        category_names=preview.category_names,
+        transaction_count=preview.transaction_count,
+        available=preview.available,
+        future_assigned=preview.future_assigned,
+        blocked_by_balance=preview.blocked_by_balance,
+        blocked_by_link=preview.blocked_by_link,
+        blocked_by_schedule=preview.blocked_by_schedule,
+        may_archive=preview.may_archive,
+    )
+
+
 def _preview_out(preview: CategoryDeletePreview) -> CategoryDeletePreviewResponse:
     return CategoryDeletePreviewResponse(
+        references=[
+            CategoryReferenceResponse(
+                kind=r.kind, label=r.label, count=r.count, clearable=r.clearable
+            )
+            for r in preview.references
+        ],
+        may_hard_delete=preview.may_hard_delete,
         category_ids=preview.category_ids,
         category_names=preview.category_names,
         transaction_count=preview.transaction_count,
@@ -408,6 +435,121 @@ async def preview_delete_categories(
         budget_id, body.category_ids, body.month or date.today()
     )
     return _preview_out(preview)
+
+
+@router.get("/{budget_id}/categories/archived", response_model=list[ArchivedCategoryResponse])
+async def list_archived_categories(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+    month: date | None = None,
+) -> list[ArchivedCategoryResponse]:
+    """Every archived envelope, with its history and anything still in it.
+
+    A GET: the budget id is the whole input, and the modal wants it cached the
+    way every other listing is.
+    """
+    rows = await category_service.list_archived(budget_id, month)
+    return [
+        ArchivedCategoryResponse(
+            id=r.id,
+            name=r.name,
+            group_id=r.group_id,
+            group_name=r.group_name,
+            transaction_count=r.transaction_count,
+            archived_at=r.archived_at,
+            available=r.available,
+            group_is_archived=r.group_is_archived,
+        )
+        for r in rows
+    ]
+
+
+@router.post(
+    "/{budget_id}/categories/archive-preview", response_model=CategoryArchivePreviewResponse
+)
+async def preview_archive_categories(
+    budget_id: BudgetAccess,
+    body: CategoryArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """What archiving this selection would do, before the user commits.
+
+    POST for the same reason the delete preview is: the id list is the input.
+    """
+    preview = await category_service.preview_archive(
+        budget_id, body.category_ids, body.month or date.today()
+    )
+    return _archive_preview_out(preview)
+
+
+@router.post("/{budget_id}/categories/archive", response_model=CategoryArchivePreviewResponse)
+async def archive_categories(
+    budget_id: BudgetAccess,
+    body: CategoryArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """Archive a selection. Refused while any of them still holds money."""
+    preview = await category_service.archive_categories(
+        budget_id, body.category_ids, month=body.month
+    )
+    return _archive_preview_out(preview)
+
+
+@router.post("/{budget_id}/categories/unarchive", response_model=CategoryArchivePreviewResponse)
+async def unarchive_categories(
+    budget_id: BudgetAccess,
+    body: CategoryArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """Bring a selection back to the budget. Never refused — no money moves."""
+    ids = await category_service.unarchive_categories(budget_id, body.category_ids)
+    preview = await category_service.preview_archive(budget_id, ids, body.month or date.today())
+    return _archive_preview_out(preview)
+
+
+@router.post(
+    "/{budget_id}/category-groups/{group_id}/archive",
+    response_model=CategoryArchivePreviewResponse,
+)
+async def archive_category_group(
+    budget_id: BudgetAccess,
+    group_id: uuid.UUID,
+    body: CategoryGroupArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """Archive a whole group, refused while anything in it still holds money.
+
+    Not `PATCH /category-groups/{id}` with the flag: that is a plain column
+    write, and archiving a group takes every envelope under it off the budget
+    (`IN_ARCHIVED_GROUP`), money included.
+    """
+    preview = await category_service.archive_group(budget_id, group_id, month=body.month)
+    return _archive_preview_out(preview)
+
+
+@router.post(
+    "/{budget_id}/category-groups/{group_id}/unarchive",
+    response_model=CategoryArchivePreviewResponse,
+)
+async def unarchive_category_group(
+    budget_id: BudgetAccess,
+    group_id: uuid.UUID,
+    body: CategoryGroupArchiveRequest,
+    current_user: CurrentUser,
+    category_service: Annotated[CategoryService, Depends(get_category_service)],
+) -> CategoryArchivePreviewResponse:
+    """Bring a group back. Never refused — no money moves."""
+    await category_service.unarchive_group(budget_id, group_id)
+    return _archive_preview_out(
+        await category_service.preview_archive_group(
+            budget_id, group_id, body.month or date.today()
+        )
+    )
 
 
 @router.post("/{budget_id}/categories/delete", response_model=CategoryDeleteResultResponse)

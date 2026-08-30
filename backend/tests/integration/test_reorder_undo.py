@@ -166,5 +166,5 @@ async def test_a_group_reorder_is_recorded_against_the_budget_and_undoes(api_cli
 
     await UndoService(db_session).undo_change(budget.id, row.id)
     db_session.expunge_all()
-    everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_hidden=True)
+    everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_archived=True)
     assert [g.name for g in everyone] == ["Income", "Bills", "Wants"]
