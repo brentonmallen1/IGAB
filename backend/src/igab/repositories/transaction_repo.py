@@ -709,6 +709,11 @@ class TransactionRepository(BaseRepository[Transaction]):
         `sum_all_categories_by_month`, narrowed to card accounts
         (`ON_CARD_ACCOUNT`), so the split can never claim more credit
         spending than the activity sum counted.
+
+        `category_ids` is `CategoryRepository.spendable_ids`
+        (`category_filters.SPENDABLE`). Whatever is not in that set and is not
+        a payment from cash is an unbudgeted card credit, by construction —
+        see `sum_unbudgeted_card_credits`.
         """
         if not category_ids:
             return {}
@@ -802,9 +807,16 @@ class TransactionRepository(BaseRepository[Transaction]):
         this term the only honest form of `set_aside + uncovered == -balance`
         was one qualified into uselessness — "for a card with no assignments
         and no inflows that predate their reservations" — and those were
-        precisely the histories that broke it. The predicate is the complement
-        of the other two sums (`txn_filters.UNBUDGETED_CARD_CREDIT`), so the
-        three cannot drift apart.
+        precisely the histories that broke it.
+
+        `txn_filters.UNBUDGETED_CARD_CREDIT` is the complement of the other two
+        sums *written as one*: it negates `category_filters.SPENDABLE`, the
+        same expression that picks the ids passed to
+        `sum_credit_outflows_by_category`, and `CARD_PAYMENT_FROM_CASH`, the
+        same expression `sum_card_payments_by_month` selects on. Spelled out
+        independently it said `category_id IS NULL`, which excludes a row filed
+        to a category that exists but cannot release — income, a card's own
+        envelope — so such a row reached no term at all.
         """
         yr = cast(func.extract("year", Transaction.date), Integer)
         mo = cast(func.extract("month", Transaction.date), Integer)

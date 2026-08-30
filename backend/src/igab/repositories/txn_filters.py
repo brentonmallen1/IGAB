@@ -19,7 +19,16 @@ from datetime import date
 from sqlalchemy import Boolean, and_, func, not_, or_, select
 from sqlalchemy.orm import aliased
 
-from igab.db.models import Account, Payee, Tag, Transaction, category_tags, payee_tags
+from igab.db.models import (
+    Account,
+    Category,
+    Payee,
+    Tag,
+    Transaction,
+    category_tags,
+    payee_tags,
+)
+from igab.repositories.category_filters import SPENDABLE
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -387,19 +396,48 @@ COUNTERPART_IS_CASH = (
 #: is perfectly ordinary.
 CARD_PAYMENT_FROM_CASH = and_(Transaction.amount > 0, TRANSFER_LEG, COUNTERPART_IS_CASH)
 
-#: A card inflow the budget has no claim on. Defined as the complement of the
-#: two sums that DO claim card inflows, so the three cannot drift apart:
+
+def row_category(predicate):
+    """A row whose own category satisfies a `category_filters` predicate.
+
+    EXISTS rather than `category_id IN (subquery)`: two-valued, so it is safe
+    under negation, and a row with no category simply fails it — exactly the
+    trap `TRANSFER_PAYEE` and `IN_SYSTEM_GROUP` each document. This is the one
+    lift from a category rule to a row rule; spelling a second one inline is
+    how "the row's category is in a system group" came to exist twice.
+    """
+    return (
+        select(Category.id)
+        .where(Category.id == Transaction.category_id, predicate)
+        .correlate(Transaction)
+        .exists()
+    )
+
+
+#: A card inflow the budget has no claim on: **the complement**, written as
+#: one, of the two sums that DO claim card inflows —
 #:
 #: - not a payment from the budget's cash — `CARD_PAYMENT_FROM_CASH` above,
 #:   the same expression `sum_card_payments_by_month` selects on;
-#: - not a category's own money coming back — that is a categorized row
-#:   (`sum_credit_outflows_by_category`).
+#: - not a category's own money coming back — `category_filters.SPENDABLE`,
+#:   the same expression that picks the ids handed to
+#:   `sum_credit_outflows_by_category`.
+#:
+#: Both sides read the same two constants, so they cannot stop being
+#: complements. They stopped twice when they were spelled out separately, and
+#: the second time it was this line: `category_id IS NULL` is not the negation
+#: of "the row's category is spendable", and the gap between them is precisely
+#: a row filed to a category that exists but cannot release — a system-group
+#: (income) category, a card's own envelope, a soft-deleted one. A rewards
+#: credit filed to Ready to Assign therefore reduced a card's balance and
+#: reached no term at all: reported as drift, permanently, growing with every
+#: such row. `NOT EXISTS` subsumes the NULL case rather than naming it.
 #:
 #: What is left is a partner paying the card themselves, a promotional credit,
-#: a bank adjustment, a balance transfer from another card. It reduces what is
-#: owed and touches no envelope, which is correct — and is exactly why the
-#: reserve identity has to name it rather than read it as drift
-#: (`domain/cards.py reserve_discrepancy`, bounds T1 and T3).
+#: a bank adjustment, a balance transfer from another card, a rebate the user
+#: called income. It reduces what is owed and touches no envelope, which is
+#: correct — and is exactly why the reserve identity has to name it rather than
+#: read it as drift (`domain/cards.py reserve_discrepancy`, bounds T1 and T3).
 #:
 #: **Shape: LEAF, matching `sum_credit_outflows_by_category`**, because the
 #: question this asks — did a category claim this money? — is answered on the
@@ -414,7 +452,7 @@ UNBUDGETED_CARD_CREDIT = and_(
     POSTED,
     ON_CARD_ACCOUNT,
     Transaction.amount > 0,
-    Transaction.category_id.is_(None),
+    not_(row_category(SPENDABLE)),
     not_(CARD_PAYMENT_FROM_CASH),
 )
 

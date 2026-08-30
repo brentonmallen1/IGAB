@@ -456,11 +456,13 @@ class BudgetService:
             linked_by_account = {
                 cat.linked_account_id: cat for cat in categories if cat.linked_account_id
             }
-            spending_ids = [
-                c.id
-                for c in categories
-                if c.linked_account_id is None and c.category_group_id not in system_group_ids
-            ]
+            # `category_filters.SPENDABLE`, whose complement
+            # `txn_filters.UNBUDGETED_CARD_CREDIT` selects on. Read from the
+            # one expression rather than re-filtered out of `categories`: the
+            # two spellings disagreed about income, so a rewards credit filed
+            # to Ready to Assign on a card belonged to neither and the reserve
+            # identity reported it as drift forever.
+            spending_ids = await self.category_repo.spendable_ids(budget_id)
             spending_activity = await self.transaction_repo.sum_all_categories_by_month(
                 spending_ids, end_date=month_end_date
             )

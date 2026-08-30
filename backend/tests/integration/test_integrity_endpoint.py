@@ -232,6 +232,36 @@ class TestTheCardReserveIdentity:
         await create_transaction(db_session, budget, visa, "400.00", TODAY)
         assert (await self._check(db_session, budget)).passed is True
 
+    async def test_a_card_credit_filed_as_income_passes(self, db_session):
+        """The Watchman's Arithmetic, finding two. A rewards credit on the card
+        filed to Ready to Assign rather than left uncategorized: still nobody's
+        envelope money, still an outside credit. The complement was spelled
+        `category_id IS NULL`, so this row reached no term and the check
+        reported its amount as drift forever."""
+        budget, _checking, visa, _linked, cat = await self._card_budget(db_session)
+        income_group = await create_category_group(db_session, budget, "Income", is_system=True)
+        income = await create_category(db_session, budget, income_group, "Inflow")
+        await make_services(db_session).budgets.set_assignment(
+            budget.id, cat.id, TODAY.replace(day=1), Decimal("100.00")
+        )
+        await create_transaction(db_session, budget, visa, "-100.00", TODAY, category=cat)
+        await create_transaction(db_session, budget, visa, "25.00", TODAY, category=income)
+        assert (await self._check(db_session, budget)).passed is True
+
+    async def test_a_reserve_moved_back_out_passes(self, db_session):
+        """The Watchman's Arithmetic, finding one. Moving money back out of a
+        card's payment envelope drives its lifetime assignment total negative;
+        unfloored, T1's `L - R` reported that shortfall as unexplained drift on
+        a card with nothing over-reserved. The loudest number on this page was
+        the one that was not real."""
+        budget, _checking, visa, linked, cat = await self._card_budget(db_session)
+        first = TODAY.replace(day=1)
+        services = make_services(db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, first, Decimal("100.00"))
+        await create_transaction(db_session, budget, visa, "-100.00", TODAY, category=cat)
+        await services.budgets.set_assignment(budget.id, linked.id, first, Decimal("-100.00"))
+        assert (await self._check(db_session, budget)).passed is True
+
     async def test_a_reserve_that_outlived_its_debt_is_named(self, db_session):
         """The failure direction, seeded directly: a set-aside with nothing
         behind it. Without a case that fails, the check above proves nothing.

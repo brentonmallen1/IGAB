@@ -2,9 +2,9 @@
 
 The counterpart to `txn_filters.py`, for categories rather than transactions.
 
-There is not one rule here but two, and conflating them is the mistake the six
-client-side spellings made. They differ on system groups, and the difference is
-load-bearing:
+Two of these answer "which envelopes may a surface offer", and conflating them
+is the mistake the six client-side spellings made. They differ on system groups,
+and the difference is load-bearing:
 
 - `IS_ASSIGNABLE` — money may be budgeted or moved into this envelope. System
   groups are excluded: the seeded system group holds Ready-to-Assign-shaped
@@ -39,6 +39,10 @@ not, twice over:
 
 Both flags read the group, which changes without the category row being
 touched — the same reason `needs_category` cannot be a column.
+
+`SPENDABLE` further down answers a different question — whose money can come
+back on a credit card — and is deliberately not an offering rule; see its own
+comment for why hidden categories stay in it.
 """
 
 from sqlalchemy import and_, not_, or_, select
@@ -101,6 +105,29 @@ IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP))
 #: A transaction leg may be filed here. System groups stay in — that is where
 #: income goes.
 IS_CATEGORIZABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(LINKED))
+
+#: A category whose own money can come back on a card: the envelopes
+#: `sum_credit_outflows_by_category` releases against, and so exactly the set
+#: whose complement is an inflow the budget has no claim on
+#: (`txn_filters.UNBUDGETED_CARD_CREDIT`). **Both sides read this constant.**
+#:
+#: Not an offering rule, so hidden is not in it: a hidden envelope still holds
+#: money and its spending still reserves against a card. `LINKED_TO_CARD` is
+#: out because a card's own set-aside is maintained by the arithmetic rather
+#: than by a row filed to it — but `linked_liability_id` stays IN, because a
+#: debt envelope is an ordinary spending envelope to this question.
+#: `IN_SYSTEM_GROUP` is out because income is not a category's money coming
+#: back; it is money arriving.
+#:
+#: Written out separately, this and its complement stopped being complements
+#: twice. First over transfers: one side required `NON_TRANSFER` while the
+#: other required a *cash* counterpart, so a card paid off from an off-budget
+#: account fell into no term and the reserve identity read the whole set-aside
+#: as drift. Then over income: the complement was spelled `category_id IS
+#: NULL`, so a rewards credit filed to Ready to Assign reduced a card's balance
+#: and reached no term at all — permanent, invisible, growing with every such
+#: row ("The Watchman's Arithmetic").
+SPENDABLE = and_(LIVE_CATEGORY, not_(LINKED_TO_CARD), not_(IN_SYSTEM_GROUP))
 
 #: A group holding nothing but card set-aside envelopes. The budget grid never
 #: draws it — every one of its rows belongs to the cards section — so
