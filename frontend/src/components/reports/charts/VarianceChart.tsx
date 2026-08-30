@@ -12,6 +12,7 @@ import { CHART_COLORS, COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportRangeButtons } from './rangeButtons'
 
 interface Props { budgetId: string }
 
@@ -47,16 +48,10 @@ export function VarianceReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Running budget drift over time</p>
         <div className="flex-row ms-auto">
-          {([6, 12, 24] as const).map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeButtons
+            months={months}
+            onChange={setMonths}
+          />
           <ReportExportButton
             reportId="variance"
             getRows={() =>

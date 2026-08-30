@@ -14,6 +14,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportRangeButtons } from './rangeButtons'
 import './IncomeExpenseChart.css'
 
 interface Props { budgetId: string }
@@ -77,16 +78,11 @@ export function IncomeExpenseReport({ budgetId }: Props) {
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
-          {([3, 6, 12, 24] as const).map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeButtons
+            months={months}
+            onChange={setMonths}
+            ranges={[3, 6, 12, 24]}
+          />
           <ReportExportButton
             reportId="income-expense"
             getRows={() =>

@@ -13,6 +13,9 @@ from decimal import Decimal
 
 import pytest
 
+from sqlalchemy import select
+
+from igab.db.models import Category, CategoryGroup
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.card_payment import ensure_payment_category
 
@@ -52,6 +55,17 @@ async def _setup(db_session):
 
 async def _summary(services, budget, month):
     return await services.budgets.get_budget_summary(budget.id, month)
+
+
+async def _income_category(db_session, budget):
+    """`_setup`'s seeded Ready-to-Assign envelope — the one place a paycheque
+    goes, and the one a rewards credit on a card is reasonably filed to."""
+    result = await db_session.execute(
+        select(Category)
+        .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+        .where(Category.budget_id == budget.id, CategoryGroup.is_system == True)  # noqa: E712
+    )
+    return result.scalars().one()
 
 
 class TestTheIdentity:
@@ -788,6 +802,9 @@ class TestTheThreeTermsPartitionCardInflows:
         were simultaneously releasing their envelopes' reservations. The same
         120 in two terms, widening the bounds by 120 and hiding real drift of
         that size from the check that exists to find it.
+
+        Also the guard on the widened predicate: legs filed to real envelopes
+        are SPENDABLE, so negating that must still leave them out.
         """
         services, budget, _, visa, _, groceries = await _setup(db_session)
         dining = await create_category(
@@ -828,3 +845,76 @@ class TestTheThreeTermsPartitionCardInflows:
 
         credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
         assert credits[visa.id] == {AUG: D("25.00")}
+
+    async def test_a_card_credit_filed_as_income_is_an_outside_credit(self, db_session):
+        """The Watchman's Arithmetic, finding two. A rewards credit, a rebate,
+        a class-action cheque — money a person reasonably calls income rather
+        than a refund to an envelope.
+
+        The release path claims rows whose category is SPENDABLE; the
+        complement was spelled `category_id IS NULL`. Those are different sets,
+        and the difference is exactly this row: a category that exists but is
+        not spendable. The card's balance fell by 50 and no term moved, so the
+        reserve identity reported 50 of drift — permanently, growing with every
+        such row, and invisible to the person using the app.
+        """
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        income = await _income_category(db_session, budget)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "200.00")
+        await create_transaction(
+            db_session, budget, visa, "-200.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "50.00", date(2026, 8, 9), category=income
+        )
+        await db_session.flush()
+
+        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        assert credits[visa.id] == {AUG: D("50.00")}
+        card = (await _summary(services, budget, AUG)).cards[0]
+        assert card.balance == D("-150.00")
+        assert card.reserve_discrepancy == D("0")
+        await assert_card_reserve_identity(db_session, budget.id)
+
+    async def test_a_credit_filed_to_the_cards_own_envelope_is_an_outside_credit(self, db_session):
+        """The other half of the same gap. A card's set-aside envelope is
+        maintained by the arithmetic, never by a row filed into it — so a row
+        that nonetheless points there (an import, a register that used to offer
+        it) releases nothing, and must reach the unbudgeted term rather than no
+        term at all."""
+        services, budget, _, visa, linked, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-200.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "30.00", date(2026, 8, 9), category=linked
+        )
+        await db_session.flush()
+
+        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        assert credits[visa.id] == {AUG: D("30.00")}
+        await assert_card_reserve_identity(db_session, budget.id)
+
+    async def test_money_moved_back_out_of_a_card_envelope_is_not_a_violation(self, db_session):
+        """The Watchman's Arithmetic, finding one, through the whole service.
+
+        July funds 100 of groceries on the card and reserves it. August moves
+        that 100 back out of the card's envelope to cover something else —
+        ordinary reallocation — leaving the reserve at zero against 100 still
+        owed. Nothing is over-reserved, so bound T1 has nothing to account for;
+        before the allowances were floored it read `0 - (-100)` and failed the
+        integrity page with a four-figure alarm on a card whose arithmetic was
+        entirely consistent.
+        """
+        services, budget, _, visa, linked, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await create_budget_assignment(db_session, budget, linked, AUG, "-100.00")
+        await db_session.flush()
+
+        card = (await _summary(services, budget, AUG)).cards[0]
+        assert (card.balance, card.set_aside) == (D("-100.00"), D("0.00"))
+        assert card.reserve_discrepancy == D("0")
+        await assert_card_reserve_identity(db_session, budget.id)

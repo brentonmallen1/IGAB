@@ -13,6 +13,7 @@ import { MetricCard } from '../MetricCard'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportRangeButtons } from './rangeButtons'
 
 interface Props { budgetId: string }
 
@@ -48,16 +49,10 @@ export function BurnRateReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Monthly spending rolling averages</p>
         <div className="flex-row ms-auto">
-          {([6, 12, 24] as const).map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeButtons
+            months={months}
+            onChange={setMonths}
+          />
           <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
           <ReportExportButton
             reportId="burn-rate"

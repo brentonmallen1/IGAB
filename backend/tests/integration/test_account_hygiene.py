@@ -19,6 +19,8 @@ from igab.services.account_hygiene import AccountHygieneService
 from .factories import (
     create_account,
     create_budget,
+    create_category,
+    create_category_group,
     create_payee,
     create_transaction,
     create_user,
@@ -260,6 +262,73 @@ class TestStaleCompanionLiabilities:
         await db_session.flush()
 
         assert "stale_companion_liability" not in await _run(db_session, budget)
+
+
+class TestCardRowsFiledAsIncome:
+    """A charge on a card filed to an income category, which reaches no
+    envelope at all. Untested until the predicate it asks with moved to
+    `row_category(IN_SYSTEM_GROUP)`; the file's own rule is that each check is
+    tested with and without its condition, and this one had neither."""
+
+    async def _world_with_a_card(self, db_session):
+        services, budget = await _world(db_session)
+        card = await create_account(
+            db_session, budget, "Visa", account_type="credit_card", on_budget=True
+        )
+        income_group = await create_category_group(db_session, budget, "Income", is_system=True)
+        income = await create_category(db_session, budget, income_group, "Inflow")
+        everyday = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, everyday, "Groceries")
+        return budget, card, income, groceries
+
+    async def test_a_card_charge_filed_to_income_is_reported(self, db_session):
+        budget, card, income, _ = await self._world_with_a_card(db_session)
+        await create_transaction(db_session, budget, card, "-30.00", RECENT, category=income)
+        await create_transaction(db_session, budget, card, "-12.00", RECENT, category=income)
+        await db_session.flush()
+
+        finding = (await _run(db_session, budget))["card_rows_filed_as_income"]
+        assert finding.transaction_count == 2
+
+    async def test_an_uncategorized_card_charge_is_not(self, db_session):
+        """The NULL-category case. The old spelling dropped these by inner
+        joining Category; the EXISTS form has to drop them too, and the check
+        would be useless if it did not — an uncategorized charge is the state
+        this finding tells you to move toward."""
+        budget, card, _, _ = await self._world_with_a_card(db_session)
+        await create_transaction(db_session, budget, card, "-30.00", RECENT)
+        await db_session.flush()
+
+        assert "card_rows_filed_as_income" not in await _run(db_session, budget)
+
+    async def test_a_card_charge_in_a_real_envelope_is_not(self, db_session):
+        budget, card, _, groceries = await self._world_with_a_card(db_session)
+        await create_transaction(db_session, budget, card, "-30.00", RECENT, category=groceries)
+        await db_session.flush()
+
+        assert "card_rows_filed_as_income" not in await _run(db_session, budget)
+
+    async def test_a_cash_charge_filed_to_income_is_not(self, db_session):
+        """Deliberately excluded: on a cash account this is YNAB's own
+        convention for a reconciliation adjustment, and flagging those would
+        bury the signal."""
+        budget, _card, income, _ = await self._world_with_a_card(db_session)
+        checking = await create_account(db_session, budget, "Redwood Checking")
+        await create_transaction(db_session, budget, checking, "-30.00", RECENT, category=income)
+        await db_session.flush()
+
+        assert "card_rows_filed_as_income" not in await _run(db_session, budget)
+
+    async def test_a_card_inflow_filed_to_income_is_not(self, db_session):
+        """The other side of the same misfiling, and not this check's job: a
+        credit filed to income is money arriving, not a charge. It is named by
+        `txn_filters.UNBUDGETED_CARD_CREDIT` instead, which is what stops the
+        card reserve identity reporting it as drift."""
+        budget, card, income, _ = await self._world_with_a_card(db_session)
+        await create_transaction(db_session, budget, card, "50.00", RECENT, category=income)
+        await db_session.flush()
+
+        assert "card_rows_filed_as_income" not in await _run(db_session, budget)
 
 
 async def test_a_healthy_budget_reports_nothing(db_session):

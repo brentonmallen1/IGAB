@@ -2,9 +2,9 @@
 
 The counterpart to `txn_filters.py`, for categories rather than transactions.
 
-There is not one rule here but two, and conflating them is the mistake the six
-client-side spellings made. They differ on system groups, and the difference is
-load-bearing:
+Two of these answer "which envelopes may a surface offer", and conflating them
+is the mistake the six client-side spellings made. They differ on system groups,
+and the difference is load-bearing:
 
 - `IS_ASSIGNABLE` — money may be budgeted or moved into this envelope. System
   groups are excluded: the seeded system group holds Ready-to-Assign-shaped
@@ -39,6 +39,10 @@ not, twice over:
 
 Both flags read the group, which changes without the category row being
 touched — the same reason `needs_category` cannot be a column.
+
+`SPENDABLE` further down answers a different question — whose money can come
+back on a credit card — and is deliberately not an offering rule; see its own
+comment for why hidden categories stay in it.
 """
 
 from sqlalchemy import and_, not_, or_, select
@@ -101,6 +105,67 @@ IS_ASSIGNABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(IN_SYSTEM_GROUP))
 #: A transaction leg may be filed here. System groups stay in — that is where
 #: income goes.
 IS_CATEGORIZABLE = and_(NOT_HIDDEN, not_(IN_HIDDEN_GROUP), not_(LINKED))
+
+#: A category whose own money can come back on a card: the envelopes
+#: `sum_credit_outflows_by_category` releases against, and so exactly the set
+#: whose complement is an inflow the budget has no claim on
+#: (`txn_filters.UNBUDGETED_CARD_CREDIT`). **Both sides read this constant.**
+#:
+#: Not an offering rule, so hidden is not in it: a hidden envelope still holds
+#: money and its spending still reserves against a card. `LINKED_TO_CARD` is
+#: out because a card's own set-aside is maintained by the arithmetic rather
+#: than by a row filed to it — but `linked_liability_id` stays IN, because a
+#: debt envelope is an ordinary spending envelope to this question.
+#: `IN_SYSTEM_GROUP` is out because income is not a category's money coming
+#: back; it is money arriving.
+#:
+#: Written out separately, this and its complement stopped being complements
+#: twice. First over transfers: one side required `NON_TRANSFER` while the
+#: other required a *cash* counterpart, so a card paid off from an off-budget
+#: account fell into no term and the reserve identity read the whole set-aside
+#: as drift. Then over income: the complement was spelled `category_id IS
+#: NULL`, so a rewards credit filed to Ready to Assign reduced a card's balance
+#: and reached no term at all — permanent, invisible, growing with every such
+#: row ("The Watchman's Arithmetic").
+SPENDABLE = and_(LIVE_CATEGORY, not_(LINKED_TO_CARD), not_(IN_SYSTEM_GROUP))
+
+#: The two envelope rules the reports ask with. They differ by one term, on
+#: purpose, and the difference is stated here because it was previously
+#: unstated and had drifted ten ways across ten queries.
+#:
+#: `report_service` wrote these out by hand at ten call sites and no two
+#: clusters agreed. Five queries over assignments: four excluded categories
+#: under a soft-deleted group, one did not. Five over spending rows: one
+#: excluded them, four did not. So `budget_vs_actual` and `cumulative_variance`
+#: gave different answers about the same assignments, and `plan_vs_reality`
+#: and `spending_grouped` about the same spending. That is a budgeting app
+#: contradicting itself, which is the failure this module exists to prevent.
+#:
+#: **Neither excludes a soft-deleted GROUP.** A live category under a deleted
+#: group is a real, reachable state — `UNDER_DELETED_GROUP` below is the check
+#: that reports it — and `get_budget_summary` counts it, because
+#: `CategoryRepository.get_all` filters the category's `is_deleted` and not the
+#: group's. A report that drops it disagrees with the budget page it reports
+#: on, silently and in the shrinking direction. The anomaly gets named by the
+#: integrity check and repaired; it does not get hidden by the reports.
+#:
+#: The one term that differs is the category's own liveness:
+#:
+#: - **`BUDGETED_ENVELOPE`** — where the budget PLANS money. Excludes a deleted
+#:   category, because `get_budget_summary` does, and a plan-vs-actual report
+#:   whose plan disagrees with the budget grid is worse than no report.
+#: - **`SPENT_ENVELOPE`** — where money WAS spent. Keeps a deleted category:
+#:   the money moved, and deleting the envelope afterwards does not unspend it.
+#:   Under-reporting spending is the dangerous direction for this app.
+#:
+#: On the happy path the two agree, which is why the divergence went unnoticed:
+#: `CategoryService.delete_categories` calls `_clear_assignments` and
+#: `_retarget_transactions`, so a deleted category is left holding neither. The
+#: gap opens only on rows an older delete path or an import left behind — and
+#: those are exactly the rows a person would notice missing from a total.
+#: Pinned by `test_report_envelope_rules.py`, which fails if the gap widens.
+BUDGETED_ENVELOPE = and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP))
+SPENT_ENVELOPE = not_(IN_SYSTEM_GROUP)
 
 #: A group holding nothing but card set-aside envelopes. The budget grid never
 #: draws it — every one of its rows belongs to the cards section — so

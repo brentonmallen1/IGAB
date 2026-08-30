@@ -14,6 +14,7 @@ from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
     IS_ASSIGNABLE,
     IS_CATEGORIZABLE,
+    SPENDABLE,
 )
 
 #: Groups the app seeds and protects by key. Kept the way SYSTEM_TAGS is —
@@ -305,6 +306,23 @@ class CategoryRepository(BaseRepository[Category]):
         # session already holds keeps whatever `is_assignable` it was loaded
         # with, so hiding its group mid-session left it eligible to assign to.
         result = await self.session.execute(q.execution_options(populate_existing=True))
+        return list(result.scalars().all())
+
+    async def spendable_ids(self, budget_id: uuid.UUID) -> list[uuid.UUID]:
+        """The envelopes a card inflow can release — `category_filters.SPENDABLE`.
+
+        The card model reads this to decide which categories'
+        `sum_credit_outflows_by_category` covers, and
+        `txn_filters.UNBUDGETED_CARD_CREDIT` selects on the complement of the
+        very same expression. Derived here rather than filtered out of a
+        loaded category list, because the two spellings are what stopped being
+        complements: the list comprehension in `get_budget_summary` and the
+        predicate in `txn_filters` each said "spendable" and disagreed about
+        income.
+        """
+        result = await self.session.execute(
+            select(Category.id).where(Category.budget_id == budget_id, SPENDABLE)
+        )
         return list(result.scalars().all())
 
     async def get_all_with_group_names(

@@ -35,16 +35,16 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
     Account,
-    Category,
-    CategoryGroup,
     Payee,
     Transaction,
 )
+from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.txn_filters import (
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
     TRANSFER_LEG,
     category_tagged,
+    row_category,
 )
 
 
@@ -161,14 +161,13 @@ _tagged = category_tagged
 #: ordinary category is a refund, which nets against that category's spending —
 #: calling it income would double-count it and inflate a savings rate's
 #: denominator.
-_IN_SYSTEM_GROUP = and_(
-    Transaction.category_id.isnot(None),
-    Transaction.category_id.in_(
-        select(Category.id)
-        .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-        .where(CategoryGroup.is_system == True)  # noqa: E712
-    ),
-)
+#:
+#: The rule itself lives in `category_filters.IN_SYSTEM_GROUP` and is lifted
+#: onto the row by `txn_filters.row_category` — the same lift the reserve
+#: identity's unbudgeted-credit term uses. It was spelled out here as a second
+#: `category_id IN (...)` subquery, which also needed its own NULL guard; the
+#: EXISTS form is two-valued and does not.
+_IN_SYSTEM_GROUP = row_category(IN_SYSTEM_GROUP)
 
 _CATEGORIZED = Transaction.category_id.isnot(None)
 _TRACKED_COUNTERPART = COUNTERPART_OFF_BUDGET

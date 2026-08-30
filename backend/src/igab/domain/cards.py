@@ -332,6 +332,22 @@ def set_aside_through(
     )
 
 
+def _allowance(*terms: Decimal) -> Decimal:
+    """Capacity to explain a gap, from terms that are each allowed to be zero
+    but never negative.
+
+    Each term floors **on its own**, not after summing. `assigned` is a signed
+    lifetime total and goes negative the moment someone moves more money back
+    out of a card's payment envelope than they ever put in — ordinary
+    reallocation. Unfloored, `L - R` with `R < 0` reported the shortfall as
+    drift on a card with nothing wrong ("The Watchman's Arithmetic"). Flooring
+    the *sum* instead would fix that case and break another: a negative
+    assignment total would cancel an outside credit that genuinely does explain
+    an over-reserve, inventing a fresh false positive of the credit's size.
+    """
+    return sum((max(ZERO, t) for t in terms), ZERO)
+
+
 def reserve_discrepancy(
     set_aside: Decimal,
     balance: Decimal,
@@ -355,7 +371,10 @@ def reserve_discrepancy(
 
     The equation is an algebraic identity given those definitions, so it
     catches nothing on its own. **The content is the three bounds**, and each
-    one replaces a clause the old invariant used to excuse:
+    one replaces a clause the old invariant used to excuse. Every right-hand
+    side is an allowance — capacity to explain something — so every term on it
+    floors at zero individually (`_allowance`); a bound written `L - R` is only
+    sound while `R >= 0`, and `assigned` is signed:
 
     - **T1** `over_reserved <= assigned + unbudgeted_credits`. A reserve
       exceeds its debt only by money someone deliberately assigned to the
@@ -369,7 +388,9 @@ def reserve_discrepancy(
       balance on a card is either budget money or somebody else's. This is the
       one that catches a repayment landing where no category ever charged.
 
-    `assigned` is assignments to the card's own linked category, `payments`
+    `assigned` is the *net* lifetime assignment to the card's own linked
+    category — negative where more has been moved out than in, which is why it
+    is floored rather than trusted to be positive. `payments`
     are transfers from the budget's cash, `residual_releases` is
     `CardFunding.residual_by_card` summed for this card through the month, and
     `unbudgeted_credits` is `txn_filters.UNBUDGETED_CARD_CREDIT` — a card
@@ -380,8 +401,8 @@ def reserve_discrepancy(
     short_reserved = max(ZERO, -set_aside)
     card_credit = max(ZERO, -owed)
     worst = max(
-        over_reserved - (assigned + unbudgeted_credits),
-        short_reserved - (payments + residual_releases),
-        card_credit - (short_reserved + unbudgeted_credits),
+        over_reserved - _allowance(assigned, unbudgeted_credits),
+        short_reserved - _allowance(payments, residual_releases),
+        card_credit - _allowance(short_reserved, unbudgeted_credits),
     )
     return worst if worst > ZERO else ZERO

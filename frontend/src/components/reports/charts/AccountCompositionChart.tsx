@@ -13,6 +13,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportRangeButtons } from './rangeButtons'
 
 interface Props { budgetId: string }
 
@@ -47,16 +48,10 @@ export function AccountCompositionReport({ budgetId }: Props) {
           <ReportScopeNote scope="all-accounts" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
-          {([6, 12, 24] as const).map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeButtons
+            months={months}
+            onChange={setMonths}
+          />
           <ReportExportButton
             reportId="account-composition"
             getRows={() =>

@@ -9,6 +9,7 @@ import { MetricCard } from '../MetricCard'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import type { PlanRealityCell } from '../../../types'
+import { ReportRangeButtons } from './rangeButtons'
 import './PlanVsRealityReport.css'
 
 interface Props { budgetId: string }
@@ -74,16 +75,10 @@ export function PlanVsRealityReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Assigned vs spent per month — carryover ignored</p>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
-          {([6, 12, 24] as const).map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeButtons
+            months={months}
+            onChange={setMonths}
+          />
           <label className="report-toggle">
             <input
               type="checkbox"
