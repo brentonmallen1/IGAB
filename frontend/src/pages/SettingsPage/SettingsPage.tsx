@@ -126,11 +126,19 @@ export function SettingsPage() {
     if (!account) return
     const choice = await confirmAccountDeletion(account, liabilities)
     if (!choice.proceed) return
-    await deleteAccount.mutateAsync({ accountId: id, liability: choice.liability })
+    try {
+      await deleteAccount.mutateAsync({ accountId: id, liability: choice.liability })
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Could not delete the account'))
+    }
   }
 
   async function handleToggleClose(id: string, isClosed: boolean) {
-    await updateAccount.mutateAsync({ id, is_closed: !isClosed })
+    try {
+      await updateAccount.mutateAsync({ id, is_closed: !isClosed })
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, isClosed ? 'Could not reopen the account' : 'Could not close the account'))
+    }
   }
 
   const [newAccName, setNewAccName] = useState('')
@@ -140,7 +148,14 @@ export function SettingsPage() {
   async function handleAddAccount(e: React.FormEvent) {
     e.preventDefault()
     if (!newAccName.trim() || !budgetId) return
-    await createAccount.mutateAsync({ name: newAccName.trim(), account_type: newAccType })
+    try {
+      await createAccount.mutateAsync({ name: newAccName.trim(), account_type: newAccType })
+    } catch (err: unknown) {
+      // The server's message is the useful one — a name collision names the
+      // problem exactly. Swallowing it left the form looking inert.
+      toast.error(apiErrorMessage(err, 'Could not create the account'))
+      return
+    }
     setNewAccName('')
   }
 

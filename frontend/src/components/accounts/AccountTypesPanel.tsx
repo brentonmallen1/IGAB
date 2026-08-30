@@ -8,16 +8,12 @@ import {
   useUpdateAccountType,
   type AccountTypeInfo,
 } from '../../api/accountTypes'
+import { apiErrorMessage } from '../../api/client'
 import { confirmAsync } from '../../stores/confirmStore'
 import './AccountTypesPanel.css'
 
 interface Props {
   budgetId: string
-}
-
-function errorDetail(err: unknown, fallback: string): string {
-  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-  return detail ?? fallback
 }
 
 /** Manage this budget's account types: built-ins are shown read-only; custom
@@ -68,7 +64,7 @@ export function AccountTypesPanel({ budgetId }: Props) {
       }
       setFormTarget(null)
     } catch (err: unknown) {
-      toast.error(errorDetail(err, 'Failed to save account type'))
+      toast.error(apiErrorMessage(err, 'Failed to save account type'))
     }
   }
 
@@ -83,7 +79,7 @@ export function AccountTypesPanel({ budgetId }: Props) {
     try {
       await deleteType.mutateAsync(t.id)
     } catch (err: unknown) {
-      toast.error(errorDetail(err, 'Failed to delete account type'))
+      toast.error(apiErrorMessage(err, 'Failed to delete account type'))
     }
   }
 
