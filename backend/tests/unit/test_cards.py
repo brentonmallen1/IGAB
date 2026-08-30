@@ -358,6 +358,27 @@ class TestReserveDiscrepancy:
         assert reserve_discrepancy(D("-50"), D("50"), D("0"), D("0"), D("50"), D("0")) == D("0")
         assert reserve_discrepancy(D("-50"), D("50"), D("0"), D("0"), D("0"), D("0")) == D("50")
 
+    def test_a_reserve_moved_back_out_is_not_a_violation(self):
+        """The Watchman's Arithmetic, finding one. `assigned` is a signed
+        lifetime total: moving more money back out of a card's payment envelope
+        than was ever put in makes it negative, and an unfloored `L - R` then
+        reported that shortfall as drift on a card with nothing over-reserved.
+        A four-figure false alarm on a real budget, louder than the one genuine
+        finding on the same page."""
+        # Nothing over-reserved (0 against 100 owed), so T1 has nothing to
+        # account for — yet it reported 100 before the floor.
+        assert reserve_discrepancy(D("0"), D("-100"), D("-100"), D("0"), D("0"), D("0")) == D("0")
+
+    def test_a_negative_assignment_does_not_cancel_a_real_credit(self):
+        """Why the floor is per-term and not on the sum. 50 over-reserved with
+        a 50 outside credit behind it is explained; a lifetime assignment total
+        of -100 must contribute no capacity, not negative capacity that eats
+        the credit's. Flooring `assigned + unbudgeted_credits` together reports
+        50 here — a fresh false positive in place of the old one."""
+        assert reserve_discrepancy(D("50"), D("0"), D("-100"), D("0"), D("0"), D("50")) == D("0")
+        # And the floor may not weaken a genuine catch: same shape, no credit.
+        assert reserve_discrepancy(D("50"), D("0"), D("-100"), D("0"), D("0"), D("0")) == D("50")
+
     def test_a_card_credit_is_always_someones(self):
         # T3, and the case the pre-fix code got wrong: a 50 credit sat on the
         # card with the reserve at zero — belonging to nobody.
