@@ -109,6 +109,19 @@ export function useDeleteBudgetSnapshot(budgetId: string | null) {
   })
 }
 
+/** A readable, portable export — YNAB-shaped, so a spreadsheet opens it and
+ *  IGAB's own YNAB importer reads it back. Lossy, and the file says so. */
+export function downloadBudgetExport(budgetId: string, budgetName: string): Promise<void> {
+  const slug = budgetName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+  return downloadAuthed(
+    `/budgets/${budgetId}/export?format=ynab`,
+    `${slug || 'budget'}-export.zip`,
+  )
+}
+
 /** Export now and hand the file straight to the browser. */
 export function downloadSnapshotNow(budgetId: string): Promise<void> {
   return downloadAuthed(`/budgets/${budgetId}/snapshot`, `${budgetId}.igab.zip`)

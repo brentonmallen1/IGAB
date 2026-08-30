@@ -441,10 +441,11 @@ export function BudgetSelectorPage() {
           </form>
         </SelectorSection>
 
-        {/* Import from YNAB */}
+        {/* Import from YNAB — or from IGAB's own export, which is written in
+            the same shape on purpose, so this reader takes both. */}
         <SelectorSection
-          title="Import from YNAB"
-          subtitle="Migrate an existing YNAB budget — creates a new budget from your export ZIP"
+          title="Import from YNAB or an IGAB export"
+          subtitle="Creates a new budget from an export ZIP — YNAB's, or one IGAB wrote"
           open={importOpen}
           onToggle={() => setImportOpen((v) => !v)}
         >
@@ -464,7 +465,7 @@ export function BudgetSelectorPage() {
               />
             </div>
             <div className="selector-field">
-              <label className="selector-field__label">YNAB export file (.zip)</label>
+              <label className="selector-field__label">Export file (.zip)</label>
               <input
                 ref={importFileRef}
                 type="file"
@@ -494,6 +495,13 @@ export function BudgetSelectorPage() {
                   it, and transfers to it won't match up. Need a type that isn't listed?
                   You can add custom ones after the import.
                 </p>
+                {!previewAccounts.some((a) => a.needs_review) && (
+                  <p className="ynab-mapping__note">
+                    An IGAB export carries the real account types, so there is nothing to guess
+                    here. A YNAB export does not, and the types below would be read from account
+                    names instead.
+                  </p>
+                )}
                 {previewAccounts.some((a) => a.needs_review) && (
                   <p className="ynab-mapping__review-note">
                     We couldn't tell what{' '}

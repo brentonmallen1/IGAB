@@ -167,8 +167,12 @@ class YNABParser:
         with zipfile.ZipFile(path) as zf:
             register_content: str | None = None
             plan_content: str | None = None
+            accounts_content: str | None = None
             for name in zf.namelist():
                 lower = name.lower()
+                if lower.endswith("accounts.csv"):
+                    with zf.open(name) as f:
+                        accounts_content = f.read().decode("utf-8-sig")
                 if lower.endswith("- register.csv"):
                     with zf.open(name) as f:
                         register_content = f.read().decode("utf-8-sig")
@@ -201,7 +205,27 @@ class YNABParser:
             budget_entries=_assigned_entries(plan_rows),
             plan_rows=plan_rows,
             errors=list(self.errors),
+            account_types=self.parse_accounts_csv(accounts_content) if accounts_content else {},
         )
+
+    def parse_accounts_csv(self, content: str) -> dict[str, tuple[str, bool]]:
+        """An Accounts.csv member: the real account types, when the file has
+        them.
+
+        Only IGAB's own export writes this. It turns a re-import from a
+        re-mapping chore into two clicks — without it the preview guesses a
+        type from the account's name, which is right often and not always.
+        An unreadable row is skipped rather than guessed at.
+        """
+        out: dict[str, tuple[str, bool]] = {}
+        for row in csv.DictReader(io.StringIO(content)):
+            name = (row.get("Account") or "").strip()
+            type_key = (row.get("Type") or "").strip()
+            if not name or not type_key:
+                continue
+            on_budget = (row.get("On Budget") or "").strip().lower() in ("true", "yes", "1")
+            out[name] = (type_key, on_budget)
+        return out
 
     def parse_register_csv(self, content: str) -> list[YNABTransaction]:
         reader = csv.DictReader(io.StringIO(content))

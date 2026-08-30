@@ -15,6 +15,7 @@ the numbers has ``/{budget_id}/reports/export`` under BudgetAccess.
 """
 
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -30,9 +31,17 @@ from igab.api.v1.schemas.budget_snapshots import (
     SnapshotInspection,
 )
 from igab.db.session import get_session
-from igab.dependencies import BudgetAccess, BudgetOwnerAccess, CurrentUser
+from igab.dependencies import (
+    BudgetAccess,
+    BudgetOwnerAccess,
+    CurrentUser,
+    get_budget_service,
+    get_category_repo,
+)
 from igab.domain.snapshot_format import check_compatibility
-from igab.services import budget_snapshot
+from igab.repositories.category_repo import CategoryRepository
+from igab.services import budget_export, budget_snapshot
+from igab.services.budget_service import BudgetService
 from igab.services.update_service import current_version
 
 router = APIRouter()
@@ -242,4 +251,51 @@ async def restore_snapshot(
         attachments_omitted=report.attachments_omitted,
         attachments_dropped=report.attachments_dropped,
         warnings=report.warnings,
+    )
+
+
+@router.get("/budgets/{budget_id}/export")
+async def export_budget(
+    budget_id: BudgetAccess,
+    session: SessionDep,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    format: str = "ynab",
+) -> FileResponse:
+    """This budget as a readable, portable file.
+
+    BudgetAccess rather than owner: a member can already export the register
+    through /{budget_id}/reports/export, and this is the same data in a better
+    shape. The snapshot beside it is owner-only because it is the input to
+    "create a budget I own containing your data" — a different question.
+    """
+    if format != "ynab":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown export format {format!r}. The only shape is 'ynab'.",
+        )
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        with tmp_path.open("wb") as handle:
+            manifest = await budget_export.export_budget_ynab(
+                session,
+                budget_service,
+                category_repo,
+                budget_id,
+                handle,
+                app_version=current_version(),
+                exported_at=datetime.now(tz=UTC).isoformat(),
+            )
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    name = budget_snapshot.slugify(str(manifest["budget_name"]))
+    return FileResponse(
+        path=tmp_path,
+        media_type=MEDIA_TYPE,
+        filename=f"{name}-export.zip",
+        background=BackgroundTask(tmp_path.unlink, missing_ok=True),
     )

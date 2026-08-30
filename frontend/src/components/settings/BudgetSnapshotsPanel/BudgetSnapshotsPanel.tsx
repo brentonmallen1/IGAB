@@ -16,9 +16,18 @@
  */
 
 import { useRef, useState } from 'react'
-import { AlertTriangle, Database, Download, HardDriveDownload, Trash2, Upload } from 'lucide-react'
+import {
+  AlertTriangle,
+  Database,
+  Download,
+  FileSpreadsheet,
+  HardDriveDownload,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
+  downloadBudgetExport,
   downloadKeptSnapshot,
   downloadSnapshotNow,
   inspectSnapshot,
@@ -223,6 +232,29 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
           >
             <HardDriveDownload size={14} aria-hidden="true" />
             {create.isPending ? 'Saving…' : 'Keep on server'}
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <div>
+          <div className="settings-row__label">Export it to read elsewhere</div>
+          <div className="settings-row__desc">
+            A spreadsheet-friendly file in YNAB&rsquo;s shape — it opens in Excel or Numbers, and
+            IGAB reads it back. It cannot carry everything a snapshot does, and the file lists
+            what it left behind.
+          </div>
+        </div>
+        <div className="snap-actions">
+          <button
+            className="settings-btn settings-btn--secondary"
+            onClick={() =>
+              downloadBudgetExport(budgetId, budgetName).catch(() =>
+                toast.error('Export failed.'),
+              )
+            }
+          >
+            <FileSpreadsheet size={14} aria-hidden="true" /> Export
           </button>
         </div>
       </div>
