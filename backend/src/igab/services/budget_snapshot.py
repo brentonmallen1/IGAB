@@ -25,15 +25,17 @@ without a database. This module is the wiring.
 import json
 import os
 import re
+import tempfile
 import zipfile
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, BinaryIO
 from uuid import UUID, uuid4
 
-from sqlalchemy import bindparam, func, insert, select, text, update
+from sqlalchemy import bindparam, delete, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.config import settings
@@ -42,6 +44,7 @@ from igab.db.budget_scope import (
     SOFT_REFERENCES,
     budget_predicate,
     deferred_columns,
+    delete_order,
 )
 from igab.db.models import Base
 from igab.domain.exceptions import IGABError, InvariantViolation, NotFoundError
@@ -370,7 +373,12 @@ class ImportReport:
     budget_id: UUID
     budget_name: str
     row_counts: dict[str, int]
+    #: Receipts the file does not carry. Always the whole count for an
+    #: import-as-new; for a restore, only those that could not be put back.
     attachments_omitted: int
+    #: Receipts a restore could not re-attach, because the transaction they
+    #: hung on is not in the snapshot.
+    attachments_dropped: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -402,7 +410,7 @@ async def import_snapshot_as_new_budget(
             report = await _load(
                 session,
                 archive,
-                ImportPlan(id_strategy="remap", redact=REDACT_ON_NEW_BUDGET),
+                plan_for(manifest, None),
                 owner_user_id=user_id,
                 budget_name=resolved,
             )
@@ -482,17 +490,35 @@ async def _load(
     budget_id = remap["budgets"][str(source["id"])]
 
     row = decode_row(budgets, source)
-    row["id"] = budget_id
-    if owner_user_id is not None:
+    if target_budget_id is None:
+        if owner_user_id is None or budget_name is None:
+            raise InvariantViolation(
+                "A snapshot landing in a new budget needs an owner and a name."
+            )
+        row["id"] = budget_id
         # Never the file's user_id: the person importing owns what they
         # import, and the exporter may not exist on this installation.
         row["user_id"] = owner_user_id
-    if budget_name is not None:
         row["name"] = budget_name
-    await session.execute(insert(budgets).values(**row))
-    if owner_user_id is not None:
+        await session.execute(insert(budgets).values(**row))
         grant_owner(session, budget_id, owner_user_id)
         await session.flush()
+        name = str(row["name"])
+    else:
+        # The budget row survives a restore, and only the settings the file
+        # carries are applied to it. Not the name and not the owner — see
+        # RESTORED_BUDGET_COLUMNS.
+        settings_from_file = {
+            column: value for column, value in row.items() if column in RESTORED_BUDGET_COLUMNS
+        }
+        await session.execute(
+            update(budgets).where(budgets.c.id == budget_id).values(**settings_from_file)
+        )
+        name = str(
+            (
+                await session.execute(select(budgets.c.name).where(budgets.c.id == budget_id))
+            ).scalar_one()
+        )
 
     counts: dict[str, int] = {"budgets": 1}
     for table in carried_tables():
@@ -513,7 +539,7 @@ async def _load(
 
     return ImportReport(
         budget_id=budget_id,
-        budget_name=str(row["name"]),
+        budget_name=name,
         row_counts=counts,
         attachments_omitted=0,
     )
@@ -685,3 +711,194 @@ async def _link_deferred(
             chunk = []
     if chunk:
         await session.execute(statement, chunk)
+
+
+# ─── Restore in place ─────────────────────────────────────────────────────────
+
+
+class PreSnapshotUnavailable(IGABError):
+    """The safety copy could not be written, so the restore did not start.
+
+    A silent no-op here is the whole trust failure this feature exists to
+    prevent: "we took a backup first" has to be true or said out loud.
+    """
+
+
+#: Left alone by a restore. Membership is authorization — a restore must not
+#: un-share a shared budget or lock its owner out of it.
+PRESERVED_ON_RESTORE: Mapping[str, str] = MappingProxyType(
+    {
+        "budget_members": "Membership is authorization. Restoring last month's "
+        "file must not un-share a shared budget or remove the person doing it.",
+    }
+)
+
+#: What a restore takes from the file's budget row. Everything else on that
+#: row stays as it is — the id (so links, bookmarks and the frontend's stored
+#: currentBudgetId still resolve), and deliberately **not** the name or the
+#: owner: restoring a name risks colliding with uq_budget_user_name and
+#: silently renaming the budget the person just picked out of a list.
+RESTORED_BUDGET_COLUMNS = frozenset(
+    {
+        "currency_code",
+        "number_format",
+        "date_format",
+        "time_format",
+        "import_summary",
+        "import_reviewed_at",
+    }
+)
+
+
+def plan_for(manifest: SnapshotManifest, target_budget_id: UUID | None) -> ImportPlan:
+    """One rule, asked once: did this file leave the budget it is landing in?
+
+    If it did, ids are kept — that is what a restore should mean, and what
+    keeps attachment paths and anything else holding a transaction id
+    resolving afterwards. If it did not, every id is replaced (its originals
+    are still in use in the budget it came from) and the bank link is dropped
+    (two accounts on one simplefin_account_id means one sync writes the same
+    rows into both).
+    """
+    if target_budget_id is not None and manifest.source_budget_id == str(target_budget_id):
+        return ImportPlan(id_strategy="preserve", redact={})
+    return ImportPlan(id_strategy="remap", redact=REDACT_ON_NEW_BUDGET)
+
+
+async def write_kept_snapshot(
+    session: AsyncSession, budget_id: UUID, *, app_version: str
+) -> tuple[Path, SnapshotManifest]:
+    """Export a budget into its own folder on the backups volume.
+
+    Written under a temporary name and renamed on success, so a failed export
+    never leaves a half-written file in the list. Shared by "keep a snapshot"
+    and by the safety copy a restore takes first — one way to put a snapshot
+    on disk.
+    """
+    directory = snapshots_dir(budget_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=directory, suffix=".partial", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        with tmp_path.open("wb") as handle:
+            manifest = await export_budget_snapshot(
+                session,
+                budget_id,
+                handle,
+                app_version=app_version,
+                alembic_revision=await current_revision(session),
+            )
+        final = directory / snapshot_filename(manifest.budget_name)
+        tmp_path.replace(final)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    return final, manifest
+
+
+async def restore_snapshot_into_budget(
+    session: AsyncSession,
+    path: Path,
+    *,
+    budget_id: UUID,
+    confirm_name: str,
+    app_version: str,
+    pre_snapshot: bool = True,
+) -> ImportReport:
+    """Replace a budget's contents with a snapshot's, keeping the budget.
+
+    The id survives, so sharing survives and the frontend's persisted
+    currentBudgetId still resolves — MainLayout bounces to the selector when
+    it does not, which is exactly what a new-id restore would trigger.
+    """
+    manifest, verdict = await validate_snapshot(session, path)
+
+    target = await _budget_row(session, budget_id)
+    if confirm_name.strip() != target.name:
+        raise InvariantViolation(
+            f"Type the budget's name exactly to confirm. This budget is called {target.name!r}."
+        )
+
+    if pre_snapshot:
+        try:
+            await write_kept_snapshot(session, budget_id, app_version=app_version)
+        except OSError as e:
+            raise PreSnapshotUnavailable(
+                "A copy of this budget could not be saved before restoring, so "
+                "nothing was changed. Check that the backups volume is mounted "
+                "and writable."
+            ) from e
+
+    plan = plan_for(manifest, budget_id)
+    with zipfile.ZipFile(path) as archive:
+        _check_members(archive, manifest)
+        async with session.begin_nested():
+            # Only worth holding when the ids come back: a foreign snapshot
+            # remaps every transaction, so no receipt could be re-attached.
+            held = (
+                await _read_attachments(session, budget_id)
+                if plan.id_strategy == "preserve"
+                else []
+            )
+            await _clear_budget(session, budget_id)
+            report = await _load(session, archive, plan, target_budget_id=budget_id)
+            report.attachments_dropped = await _reattach(session, held)
+    report.warnings = list(verdict.warnings)
+    report.attachments_omitted = manifest.attachments.omitted_count
+    return report
+
+
+async def _clear_budget(session: AsyncSession, budget_id: UUID) -> None:
+    """Everything this budget owns, in an order the foreign keys allow.
+
+    Children first, and the budgets row itself is never touched — that is what
+    makes the id survive. Deleting the derived cache here is also what makes
+    the rebuild happen: absence of budget_snapshot_meta *is* the invalidation,
+    and db/invalidation's hooks short-circuit on the Core statements this
+    module uses, so nothing else would have signalled it.
+    """
+    for table in delete_order():
+        if table.name in PRESERVED_ON_RESTORE:
+            continue
+        await session.execute(delete(table).where(budget_predicate(table, budget_id)))
+
+
+async def _read_attachments(session: AsyncSession, budget_id: UUID) -> list[dict[str, Any]]:
+    """Attachment rows, held aside while the budget is cleared.
+
+    A snapshot does not carry receipts — the bytes are not in the file — but
+    they are still this budget's data, and a restore that keeps every
+    transaction id keeps the transactions those receipts hang on. Deleting
+    them would destroy the only link to files that are still on disk and
+    still correct.
+
+    Held in memory rather than joined around, because the rows go away with
+    their transactions the moment the delete pass runs: attachments cascade
+    from transactions, so skipping the explicit delete would not have saved
+    them either.
+    """
+    attachments = Base.metadata.tables["transaction_attachments"]
+    rows = await session.execute(
+        select(attachments).where(budget_predicate(attachments, budget_id))
+    )
+    return [dict(row) for row in rows.mappings()]
+
+
+async def _reattach(session: AsyncSession, rows: list[dict[str, Any]]) -> int:
+    """Put back the receipts whose transaction came back. Returns how many
+    could not be — their transaction is not in the snapshot, so there is
+    nothing left for them to hang on."""
+    if not rows:
+        return 0
+    attachments = Base.metadata.tables["transaction_attachments"]
+    transactions = Base.metadata.tables["transactions"]
+    wanted = {row["transaction_id"] for row in rows}
+    alive = set(
+        (await session.execute(select(transactions.c.id).where(transactions.c.id.in_(wanted))))
+        .scalars()
+        .all()
+    )
+    keep = [row for row in rows if row["transaction_id"] in alive]
+    for start in range(0, len(keep), IMPORT_CHUNK):
+        await session.execute(insert(attachments), keep[start : start + IMPORT_CHUNK])
+    return len(rows) - len(keep)

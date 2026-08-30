@@ -89,22 +89,9 @@ async def create_snapshot(budget_id: BudgetOwnerAccess, session: SessionDep) -> 
     volume, under this budget's own folder, so the list below is genuinely
     per-budget.
     """
-    directory = budget_snapshot.snapshots_dir(budget_id)
-    directory.mkdir(parents=True, exist_ok=True)
-
-    # Named from the budget, so the file is recognisable a year later; the
-    # temporary name means a failed export never leaves a half-written file
-    # in the list.
-    with tempfile.NamedTemporaryFile(dir=directory, suffix=".partial", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
-        manifest = await _write_snapshot(session, budget_id, tmp_path)
-        final = directory / budget_snapshot.snapshot_filename(manifest.budget_name)
-        tmp_path.replace(final)
-    except BaseException:
-        tmp_path.unlink(missing_ok=True)
-        raise
-
+    final, manifest = await budget_snapshot.write_kept_snapshot(
+        session, budget_id, app_version=current_version()
+    )
     return SnapshotCreated(
         name=final.name,
         size_bytes=final.stat().st_size,
@@ -209,5 +196,50 @@ async def import_snapshot(
         budget_name=report.budget_name,
         row_counts=report.row_counts,
         attachments_omitted=report.attachments_omitted,
+        warnings=report.warnings,
+    )
+
+
+@router.post("/budgets/{budget_id}/snapshot/restore", response_model=SnapshotImportResult)
+async def restore_snapshot(
+    budget_id: BudgetOwnerAccess,
+    session: SessionDep,
+    file: UploadFile,
+    confirm_name: Annotated[str, Form()],
+    pre_snapshot: Annotated[bool, Form()] = True,
+) -> SnapshotImportResult:
+    """Replace this budget's contents with a snapshot's, keeping the budget.
+
+    Destructive and confirmed by typing the budget's name, not by ticking a
+    box. A copy of the current state is taken first by default; if that copy
+    cannot be written the restore does not start, because "we backed it up
+    first" has to be true rather than hoped for.
+    """
+    with tempfile.NamedTemporaryFile(suffix=budget_snapshot.SNAPSHOT_SUFFIX, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
+    try:
+        report = await budget_snapshot.restore_snapshot_into_budget(
+            session,
+            tmp_path,
+            budget_id=budget_id,
+            confirm_name=confirm_name,
+            app_version=current_version(),
+            pre_snapshot=pre_snapshot,
+        )
+    except budget_snapshot.PreSnapshotUnavailable as e:
+        # 409, not the 400 an IGABError would get: nothing about the request
+        # is wrong, the server is not in a state to do it safely.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return SnapshotImportResult(
+        budget_id=str(report.budget_id),
+        budget_name=report.budget_name,
+        row_counts=report.row_counts,
+        attachments_omitted=report.attachments_omitted,
+        attachments_dropped=report.attachments_dropped,
         warnings=report.warnings,
     )

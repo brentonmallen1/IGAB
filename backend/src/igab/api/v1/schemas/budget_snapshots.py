@@ -55,4 +55,7 @@ class SnapshotImportResult(BaseModel):
     budget_name: str
     row_counts: dict[str, int]
     attachments_omitted: int
-    warnings: list[str]
+    #: Restore only: receipts that could not be put back, because the
+    #: transaction they hung on is not in the snapshot.
+    attachments_dropped: int = 0
+    warnings: list[str] = []

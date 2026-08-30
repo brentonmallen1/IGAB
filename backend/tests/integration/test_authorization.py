@@ -63,6 +63,11 @@ async def test_foreign_resources_return_404(api_client, db_session):
         ("delete", f"/api/v1/category-groups/{group.id}", None),
         ("get", f"/api/v1/{budget.id}/reports/spending", None),
         ("get", f"/api/v1/budgets/{budget.id}", None),
+        # A snapshot is the whole budget in one file; a stranger must not
+        # learn that it exists, let alone download it.
+        ("get", f"/api/v1/budgets/{budget.id}/snapshot", None),
+        ("get", f"/api/v1/budgets/{budget.id}/snapshots", None),
+        ("post", f"/api/v1/budgets/{budget.id}/snapshots", None),
     ]
 
     for method, url, body in checks:
