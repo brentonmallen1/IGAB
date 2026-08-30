@@ -1,7 +1,8 @@
 import uuid
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import func, select, update
 
@@ -53,14 +54,70 @@ class AccountRepository(BaseRepository[Account]):
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
-    async def get_balance(self, account_id: uuid.UUID) -> Decimal:
+    async def _sums_by_account(
+        self, account_ids: Sequence[uuid.UUID], *predicates: Any
+    ) -> dict[uuid.UUID, Decimal]:
+        """One grouped aggregate for many accounts, over `predicates`.
+
+        The listing endpoint asked per account in a Python loop — three
+        queries each, so sixteen accounts cost forty-nine round-trips and the
+        cost grew with the account count. The predicates are the same shared
+        constants either way, so the rule still has one home; only the number
+        of statements changes.
+
+        Every requested id appears in the result: an account with no matching
+        rows contributes no group, and a missing key would read as "unknown"
+        where the answer is zero.
+        """
+        if not account_ids:
+            return {}
         result = await self.session.execute(
-            select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                Transaction.account_id == account_id,
-                BALANCE_ROW,
+            select(
+                Transaction.account_id,
+                func.coalesce(func.sum(Transaction.amount), 0),
             )
+            .where(Transaction.account_id.in_(account_ids), *predicates)
+            .group_by(Transaction.account_id)
         )
-        return result.scalar_one()
+        sums = {account_id: total for account_id, total in result.all()}
+        return {account_id: sums.get(account_id, Decimal("0")) for account_id in account_ids}
+
+    async def balances_for(self, account_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+        return await self._sums_by_account(account_ids, BALANCE_ROW)
+
+    async def cleared_balances_for(
+        self, account_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, Decimal]:
+        return await self._sums_by_account(account_ids, BALANCE_ROW, CLEARED)
+
+    async def uncategorized_counts_for(
+        self, account_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        """Unfiled leaf rows per account.
+
+        No on-budget check here or in the caller: `NEEDS_CATEGORY` already
+        carries `ON_BUDGET_ACCOUNT`, so an off-budget account matches no rows
+        and lands on the zero default — which is what the per-account version
+        spent an extra SELECT to discover.
+        """
+        if not account_ids:
+            return {}
+        result = await self.session.execute(
+            select(Transaction.account_id, func.count(Transaction.id))
+            .select_from(Transaction)
+            .where(
+                Transaction.account_id.in_(account_ids),
+                NOT_DELETED,
+                POSTED,
+                NEEDS_CATEGORY,
+            )
+            .group_by(Transaction.account_id)
+        )
+        counts = {account_id: n for account_id, n in result.all()}
+        return {account_id: counts.get(account_id, 0) for account_id in account_ids}
+
+    async def get_balance(self, account_id: uuid.UUID) -> Decimal:
+        return (await self.balances_for([account_id]))[account_id]
 
     async def get_cleared_balance(self, account_id: uuid.UUID) -> Decimal:
         """The confirmed part of `get_balance`, over the same rows.
@@ -71,14 +128,7 @@ class AccountRepository(BaseRepository[Account]):
         excluding it. Reconciliation asks a narrower question and adds
         `not_future` itself — see that function for why the two differ.
         """
-        result = await self.session.execute(
-            select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                Transaction.account_id == account_id,
-                BALANCE_ROW,
-                CLEARED,
-            )
-        )
-        return result.scalar_one()
+        return (await self.cleared_balances_for([account_id]))[account_id]
 
     async def get_uncategorized_count(self, account_id: uuid.UUID) -> int:
         # Leaf rows: split parents legitimately have no category, while an
@@ -88,25 +138,11 @@ class AccountRepository(BaseRepository[Account]):
         # Off-budget accounts don't use categories at all — the categorized
         # side of a spending transfer lives on the on-budget leg, and plain
         # rows here are net-worth movement, not unfiled spending.
-        account = await self.get(account_id)
-        if account is None or not account.on_budget:
-            return 0
-
         # Was a hand-rolled partner join reading `transfer_id IS NULL`, which
         # counted an unpaired transfer leg as unfiled. NEEDS_CATEGORY reaches
         # the counterpart through the transfer payee as well as the link, so a
         # leg whose partner never imported is still recognised as a transfer.
-        result = await self.session.execute(
-            select(func.count(Transaction.id))
-            .select_from(Transaction)
-            .where(
-                Transaction.account_id == account_id,
-                NOT_DELETED,
-                POSTED,
-                NEEDS_CATEGORY,
-            )
-        )
-        return result.scalar_one()
+        return (await self.uncategorized_counts_for([account_id]))[account_id]
 
     async def sum_on_budget_balance(self, budget_id: uuid.UUID, as_of: date) -> Decimal:
         """The budget's cash as of the end of a day — the balance term of

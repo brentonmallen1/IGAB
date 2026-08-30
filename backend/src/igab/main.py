@@ -153,17 +153,17 @@ async def igab_error_handler(request: Request, exc: IGABError) -> JSONResponse:
 #: PLACEMENT surface as 'a view named "" already exists'.
 _UNIQUE_CONSTRAINT_DETAIL: dict[str, str] = {
     "uq_budget_user_name": "You already have a budget with that name",
-    "uq_account_budget_name": "An account with that name already exists in this budget",
+    "uq_account_budget_name_live": "An account with that name already exists in this budget",
     "uq_account_type_budget_key": "An account type with that key already exists",
-    "uq_payee_budget_name": "A payee with that name already exists in this budget",
-    "uq_category_group_budget_name": "A category group with that name already exists",
-    "uq_category_group_name": "A category with that name already exists in this group",
+    "uq_payee_budget_name_live": "A payee with that name already exists in this budget",
+    "uq_category_group_budget_name_live": "A category group with that name already exists",
+    "uq_category_group_name_live": "A category with that name already exists in this group",
     "uq_budget_filter_budget_name_live": "A filter with that name already exists in this budget",
     "uq_filter_category": "That category is already in this filter",
     "uq_budget_view_budget_name_live": "A view with that name already exists in this budget",
     "uq_budget_view_group_name": "This view already has a group with that name",
     "uq_budget_view_placement": "That category is placed more than once in this view",
-    "uq_tag_budget_name": "A tag with that name already exists in this budget",
+    "uq_tag_budget_name_live": "A tag with that name already exists in this budget",
 }
 
 

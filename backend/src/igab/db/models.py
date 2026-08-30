@@ -186,7 +186,18 @@ class AccountType(Base):
 
 class Account(Base):
     __tablename__ = "accounts"
-    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_account_budget_name"),)
+    __table_args__ = (
+        # Unique among LIVE rows only: deletes are soft, so a full constraint
+        # burned a deleted row's name forever — "already exists" against a
+        # list showing nothing. Same rule as budget_views/budget_filters.
+        Index(
+            "uq_account_budget_name_live",
+            "budget_id",
+            "name",
+            unique=True,
+            postgresql_where=text("NOT is_deleted"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -258,7 +269,18 @@ class Account(Base):
 
 class Payee(Base):
     __tablename__ = "payees"
-    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_payee_budget_name"),)
+    __table_args__ = (
+        # Unique among LIVE rows only: deletes are soft, so a full constraint
+        # burned a deleted row's name forever — "already exists" against a
+        # list showing nothing. Same rule as budget_views/budget_filters.
+        Index(
+            "uq_payee_budget_name_live",
+            "budget_id",
+            "name",
+            unique=True,
+            postgresql_where=text("NOT is_deleted"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -301,7 +323,16 @@ class Payee(Base):
 class CategoryGroup(Base):
     __tablename__ = "category_groups"
     __table_args__ = (
-        UniqueConstraint("budget_id", "name", name="uq_category_group_budget_name"),
+        # Unique among LIVE rows only: deletes are soft, so a full constraint
+        # burned a deleted row's name forever — "already exists" against a
+        # list showing nothing. Same rule as budget_views/budget_filters.
+        Index(
+            "uq_category_group_budget_name_live",
+            "budget_id",
+            "name",
+            unique=True,
+            postgresql_where=text("NOT is_deleted"),
+        ),
         UniqueConstraint("budget_id", "system_key", name="uq_category_group_budget_system_key"),
     )
 
@@ -352,7 +383,18 @@ class CategoryGroup(Base):
 
 class Category(Base):
     __tablename__ = "categories"
-    __table_args__ = (UniqueConstraint("category_group_id", "name", name="uq_category_group_name"),)
+    __table_args__ = (
+        # Unique among LIVE rows only: deletes are soft, so a full constraint
+        # burned a deleted row's name forever — "already exists" against a
+        # list showing nothing. Same rule as budget_views/budget_filters.
+        Index(
+            "uq_category_group_name_live",
+            "category_group_id",
+            "name",
+            unique=True,
+            postgresql_where=text("NOT is_deleted"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     category_group_id: Mapped[uuid.UUID] = mapped_column(
@@ -1459,7 +1501,16 @@ payee_tags = Table(
 class Tag(Base):
     __tablename__ = "tags"
     __table_args__ = (
-        UniqueConstraint("budget_id", "name", name="uq_tag_budget_name"),
+        # Unique among LIVE rows only: deletes are soft, so a full constraint
+        # burned a deleted row's name forever — "already exists" against a
+        # list showing nothing. Same rule as budget_views/budget_filters.
+        Index(
+            "uq_tag_budget_name_live",
+            "budget_id",
+            "name",
+            unique=True,
+            postgresql_where=text("NOT is_deleted"),
+        ),
         UniqueConstraint("budget_id", "system_key", name="uq_tag_budget_system_key"),
     )
 

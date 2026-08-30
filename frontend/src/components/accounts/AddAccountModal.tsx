@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { HelpCircle, X } from 'lucide-react'
 import { useCreateAccount } from '../../api/accounts'
+import { apiErrorMessage } from '../../api/client'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
@@ -56,8 +57,11 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
         note: note.trim() || undefined,
       })
       onClose()
-    } catch {
-      setError('Failed to create account — please try again')
+    } catch (err: unknown) {
+      // The server names the problem — "An account with that name already
+      // exists in this budget" — and "please try again" was the one piece of
+      // advice guaranteed not to work for it.
+      setError(apiErrorMessage(err, 'Could not create the account'))
     }
   }
 
