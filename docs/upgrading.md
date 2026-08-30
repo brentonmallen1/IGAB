@@ -151,6 +151,31 @@ pre-update dump in that case.
 
 ## One-time notes for specific releases
 
+### Upgrading to the release where hidden categories became archived
+
+The flag behind "hidden" categories and groups is renamed to `is_archived`,
+and a `archived_at` column is added beside it. Nothing is reclassified: every
+category and group that was hidden is now archived, which is what the flag
+already meant — it blocked assigning and blocked filing, it just also drew the
+row greyed out in the grid.
+
+No manual steps are required. Two things to expect afterwards:
+
+1. **"Show hidden" is gone.** Archived envelopes are no longer drawn in the
+   budget grid at all; **See archived** in the budget header opens them, with
+   their transaction count, the date they were archived, and anything still
+   left in one.
+2. **Rows archived before this release have no date.** The column cannot be
+   backfilled honestly — `updated_at` moves on any edit — so those read
+   "Archived before dates were kept" rather than showing an invented date.
+
+**Rolling back to an older image** needs the migration's downgrade, which the
+older image will not run for you: restore the pre-update dump, per *Rolling
+back* above. The downgrade also does not restore one thing on purpose — the
+Credit Card Payments group was previously kept hidden only to keep card
+envelopes out of the pickers, and that is now decided on the group's own
+merits, so the migration un-hides it and leaves it visible either way.
+
 ### Upgrading to the release with the backup-path fix
 
 This release fixes the AIO backup agent writing to ephemeral container
