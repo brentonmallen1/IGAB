@@ -8,7 +8,7 @@ Assigned, so the category reads permanently low.
 from datetime import date
 from decimal import Decimal
 
-from igab.domain.carryover import available_through
+from igab.domain.carryover import available_at, available_through, next_carryover
 
 JAN, FEB, MAR, APR = (date(2026, m, 1) for m in (1, 2, 3, 4))
 D = Decimal
@@ -95,6 +95,37 @@ class TestAmountEdges:
     def test_a_negative_assignment_is_honoured(self):
         # Pulling money back out of a category is a real operation.
         assert available_through({JAN: D("100"), FEB: D("-40")}, {}, FEB) == D("60")
+
+
+class TestThePiecesTheCardWalkShares:
+    """`next_carryover` and `available_at` exist so `domain.cards` can run the
+    same simulation with card corrections folded into each month's activity.
+    Stated twice, the floor and the read would drift, and the card walk's whole
+    claim is that its answer is this rule.
+    """
+
+    def test_the_floor_between_months_is_stated_once(self):
+        assert next_carryover(D("50")) == D("50")
+        assert next_carryover(D("0")) == D("0")
+        # The write-off: a negative month hands the next one nothing.
+        assert next_carryover(D("-50")) == D("0")
+
+    def test_available_at_reads_the_viewed_month_out_of_a_supplied_series(self):
+        series = {JAN: D("100"), FEB: D("-30"), MAR: D("20")}
+        # The month with its own data keeps its raw value, negative included.
+        assert available_at(series, FEB) == D("-30")
+        assert available_at(series, MAR) == D("20")
+
+    def test_available_at_floors_the_carryover_for_a_month_with_no_data(self):
+        assert available_at({JAN: D("-30")}, FEB) == D("0")
+        assert available_at({JAN: D("30")}, FEB) == D("30")
+        assert available_at({}, JAN) == D("0")
+
+    def test_available_at_ignores_months_after_the_one_asked_for(self):
+        # The card walk holds the whole history so it can carry reservations
+        # forward; asking for an early month must not see the later ones.
+        series = {JAN: D("10"), MAR: D("999")}
+        assert available_at(series, FEB) == D("10")
 
 
 class TestQuantizeCents:

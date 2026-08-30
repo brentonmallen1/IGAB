@@ -10,6 +10,7 @@ from igab.db.models import BudgetAssignment, Category, CategoryGroup
 from igab.domain.ordering import merge_reorder
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
+    GROUP_IS_CARD_ONLY,
     IN_SYSTEM_GROUP,
     IS_ASSIGNABLE,
     IS_CATEGORIZABLE,
@@ -70,6 +71,33 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
             is_system=False,
         )
 
+    @staticmethod
+    def with_card_only(stmt: Select[tuple[CategoryGroup]]) -> Select[tuple[CategoryGroup]]:
+        """Load `is_card_only` on a CategoryGroup statement.
+
+        Every path that serializes a `CategoryGroupResponse` has to go through
+        here. The field is required in the schema, so a path that skips it
+        raises rather than quietly drawing "Credit Card Payments" as an empty
+        header — and rather than letting the grid and the reorder rule form two
+        opinions about which groups the grid draws, which is the bug this
+        field exists to end.
+        """
+        return stmt.options(with_expression(CategoryGroup.is_card_only, GROUP_IS_CARD_ONLY))
+
+    async def get(self, id: uuid.UUID) -> CategoryGroup | None:
+        # Overrides BaseRepository.get to carry `is_card_only`.
+        # populate_existing is load-bearing: after a flush the row is already in
+        # the identity map, and SQLAlchemy leaves a with_expression attribute
+        # unset on an object it has seen before — which surfaces as None on
+        # exactly the create/update responses.
+        stmt = self.with_card_only(
+            select(CategoryGroup).where(
+                CategoryGroup.id == id,
+                CategoryGroup.is_deleted == False,  # noqa: E712
+            )
+        ).execution_options(populate_existing=True)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def next_sort_order(self, budget_id: uuid.UUID) -> int:
         """The position after the budget's last live group."""
         last = (
@@ -89,35 +117,58 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
         # whatever it was sent, and the importer sent nothing.
         if kwargs.get("sort_order") is None:
             kwargs["sort_order"] = await self.next_sort_order(kwargs["budget_id"])
-        return await super().create(**kwargs)
+        created = await super().create(**kwargs)
+        # Re-read through the loader: a freshly created group has no
+        # `is_card_only`, and the create endpoint serializes this very object.
+        return await self.get(created.id) or created
 
     async def reorder(self, budget_id: uuid.UUID, group_ids: list[uuid.UUID]) -> None:
         """Set every group's sort_order from its position in `group_ids`.
 
-        The list must name each of the budget's *visible* live groups exactly
-        once. **Hidden** groups may be omitted, because the budget page drags
-        against the list it shows and by default that list excludes them —
-        demanding completeness the caller structurally cannot provide made
-        every reorder fail for any budget that had ever hidden a group. So may
-        **system** groups (Income), which the grid never draws. An omitted
-        group keeps its old position among the others (stable interleave), so
-        it re-appears where the user left it when shown. The rule itself is
-        `domain.ordering.merge_reorder`, shared with categories.
+        The list must name each of the budget's *drawn* live groups exactly
+        once. A group the grid never draws may be omitted, because the budget
+        page drags against the list it shows — demanding completeness the
+        caller structurally cannot provide made every reorder fail for any
+        budget that had ever hidden a group. Three kinds are never drawn:
+
+        - **hidden** groups, which the page excludes by default;
+        - **system** groups (Income), which it never draws at all;
+        - **card-only** groups, whose every row belongs to the cards section —
+          `GROUP_IS_CARD_ONLY`, the same expression the grid filters on.
+
+        The third was the gap. The grid dropped card-only groups while this
+        rule allowed omitting only the first two.
+
+        What made it hard to see is that it depended on the grid's **show
+        hidden** toggle. "Credit Card Payments" is created hidden, so with the
+        toggle off it is not in the client's list at all, nothing is dropped,
+        and reorder works. Turn the toggle on and the group appears, the grid
+        drops it as card-only, and dragging goes dead with nothing on screen
+        connecting the two. One person could reorder and another could not, on
+        the same build and the same budget.
+
+        An omitted group keeps its old position among the others (stable
+        interleave), so it re-appears where the user left it when shown. The
+        rule itself is `domain.ordering.merge_reorder`, shared with categories.
         """
         live = list(
             (
                 await self.session.execute(
-                    select(CategoryGroup)
-                    .where(
-                        CategoryGroup.budget_id == budget_id,
-                        CategoryGroup.is_deleted == False,  # noqa: E712
+                    self.with_card_only(
+                        select(CategoryGroup)
+                        .where(
+                            CategoryGroup.budget_id == budget_id,
+                            CategoryGroup.is_deleted == False,  # noqa: E712
+                        )
+                        .order_by(CategoryGroup.sort_order, CategoryGroup.name)
                     )
-                    .order_by(CategoryGroup.sort_order, CategoryGroup.name)
                 )
             ).scalars()
         )
         final = merge_reorder(
-            [(g.id, g.is_hidden or g.is_system) for g in live], group_ids, noun="group"
+            [(g.id, g.is_hidden or g.is_system or g.is_card_only) for g in live],
+            group_ids,
+            noun="group",
         )
         for position, group_id in enumerate(final):
             await self.session.execute(
@@ -130,7 +181,7 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
     async def get_all(
         self, budget_id: uuid.UUID, include_hidden: bool = False
     ) -> list[CategoryGroup]:
-        q = select(CategoryGroup).where(
+        q = self.with_card_only(select(CategoryGroup)).where(
             CategoryGroup.budget_id == budget_id,
             CategoryGroup.is_deleted == False,  # noqa: E712
         )
@@ -217,7 +268,13 @@ class CategoryRepository(BaseRepository[Category]):
             ).scalars()
         )
         final = merge_reorder(
-            [(c.id, c.is_hidden) for c in live],
+            # The same rule one level down, and the same trap: the grid never
+            # draws a card's set-aside envelope (the cards section owns it), so
+            # a client dragging within a group cannot list it. Omittability has
+            # to match what is drawn, not what is hidden — card envelopes are
+            # usually hidden too, which is the only reason this had not yet
+            # produced the failure its group-level twin did.
+            [(c.id, c.is_hidden or c.linked_account_id is not None) for c in live],
             category_ids,
             noun="category",
             plural="categories",

@@ -90,7 +90,7 @@ export const CategoryRow = memo(function CategoryRow({
   // could not release a reservation this envelope never made. Already out of
   // `available` (domain/cards.py), so the only job here is to say so — an
   // unexplained deduction is the defect this whole mechanism exists to fix.
-  const refusedCardInflows = Number(balance?.refused_card_inflows ?? 0)
+  const repaidUncoveredDebt = Number(balance?.repaid_uncovered_debt ?? 0)
   // How much of this row's red was swiped on a card (domain/cards.py). That
   // part costs nothing: it never charges Ready to Assign, and at the month
   // boundary it rides onto the card as debt rather than being written off.
@@ -455,10 +455,10 @@ export const CategoryRow = memo(function CategoryRow({
             setMovePopoverPos({ x: Math.max(8, rect.right - 280), y: rect.bottom + 4 })
           }}
           title={
-            refusedCardInflows > 0
-              ? `${formatMoney(refusedCardInflows)} of card inflows filed here paid down ` +
-                'card debt instead of returning to this envelope, because this envelope ' +
-                'had not reserved that money on the card. Not included above.'
+            repaidUncoveredDebt > 0
+              ? `${formatMoney(repaidUncoveredDebt)} of this month's card inflows here paid ` +
+                'down debt this envelope had already been overspent on, so it stays with the ' +
+                'card rather than becoming money to spend. Already reflected above.'
               : overspentOnCardOnly
                 ? `${formatMoney(-available)} of this was spent on a card, so it rides there as ` +
                   'debt. It never charges To Be Assigned — pay it down by assigning to the card.'
@@ -472,12 +472,12 @@ export const CategoryRow = memo(function CategoryRow({
           }
         >
           {formatMoney(available)}
-          {refusedCardInflows > 0 && (
+          {repaidUncoveredDebt > 0 && (
             <span
-              className="category-row__refused"
-              aria-label={`${formatMoney(refusedCardInflows)} of card inflows paid down debt instead of this envelope`}
+              className="category-row__repaid"
+              aria-label={`${formatMoney(repaidUncoveredDebt)} of card inflows paid down debt this envelope had ridden, rather than returning here`}
             >
-              ↩{formatMoney(refusedCardInflows)}
+              ↩{formatMoney(repaidUncoveredDebt)}
             </span>
           )}
         </div>

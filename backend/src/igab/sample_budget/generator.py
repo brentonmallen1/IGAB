@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
 from igab.domain.cards import card_funding, set_aside_through, synthetic_activity
-from igab.domain.carryover import available_through, monthly_end_balances
+from igab.domain.carryover import available_at, available_through
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -608,7 +608,8 @@ class SampleBudgetGenerator:
         )
 
         available_total = _ZERO
-        ends_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
+        assigned_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
+        activity_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
         credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
         card_assigned: dict[uuid.UUID, dict[date, Decimal]] = {}
         for group_spec in spec.groups:
@@ -625,8 +626,8 @@ class SampleBudgetGenerator:
                     card_assigned[self._accounts[cat_spec.linked_account].id] = asg
                     continue
                 inserted_activity = activity_by_month(inserted, category.id)
-                ends_by_cat[category.id] = monthly_end_balances(asg, inserted_activity)
-                available_total += available_through(asg, inserted_activity, current_month)
+                assigned_by_cat[category.id] = asg
+                activity_by_cat[category.id] = inserted_activity
                 by_card: dict[uuid.UUID, dict[date, Decimal]] = {}
                 for r in inserted:
                     if (
@@ -642,9 +643,24 @@ class SampleBudgetGenerator:
                     if net:
                         credit_outflows.setdefault(category.id, {})[card_id] = net
 
-        # Third return (truncated releases) is unused: the generated register has
-        # no card inflow beyond what its category reserved. See domain/cards.py.
-        funded_by_card, floored_by_category, _, _ = card_funding(ends_by_cat, credit_outflows)
+        funding = card_funding(assigned_by_cat, activity_by_cat, credit_outflows)
+        # The envelope term of the identity, read the way the budget page reads
+        # it: out of `card_funding`'s adjusted series for any category a card
+        # inflow corrected, and the ordinary simulation for the rest. Summing
+        # the raw series here while the page sums the adjusted one is how a
+        # generated budget silently misses its own TBA target.
+        for cat_id, asg in assigned_by_cat.items():
+            adjusted = funding.end_balances.get(cat_id)
+            available_total += (
+                available_at(adjusted, current_month)
+                if adjusted is not None
+                else available_through(asg, activity_by_cat[cat_id], current_month)
+            )
+        # The generated register has no card inflow at all, so nothing should
+        # ever be repaid or left over. Asserted rather than assumed: the comment
+        # that used to say so was the only thing checking it.
+        assert not funding.repaid_by_category, "sample register grew an uncovered-debt repayment"
+        assert not funding.residual_by_card, "sample register grew an unmatched card inflow"
         # Payments come from the captured link pairs — generate() strips
         # `transfer_id` off these very dicts before bulk insert, so the rows
         # themselves no longer say they are transfers.
@@ -665,13 +681,16 @@ class SampleBudgetGenerator:
                 per[key] = per.get(key, _ZERO) + leg["amount"]
         for card_id in card_ids:
             synthetic = synthetic_activity(
-                funded_by_card.get(card_id, {}), payments.get(card_id, {})
+                funding.funded_by_card.get(card_id, {}), payments.get(card_id, {})
             )
             available_total += set_aside_through(
                 card_assigned.get(card_id, {}), synthetic, current_month
             )
         uncovered_current = sum(
-            (by_month.get(current_month, _ZERO) for by_month in floored_by_category.values()),
+            (
+                by_month.get(current_month, _ZERO)
+                for by_month in funding.floored_by_category.values()
+            ),
             _ZERO,
         )
 

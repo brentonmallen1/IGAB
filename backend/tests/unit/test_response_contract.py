@@ -27,7 +27,9 @@ from pydantic import BaseModel
 from igab.api.v1.schemas.account import AccountResponse
 from igab.api.v1.schemas.category import (
     BudgetMonthResponse,
+    CardStatusOut,
     CategoryBalance,
+    CategoryGroupResponse,
     CategoryResponse,
 )
 from igab.api.v1.schemas.transaction import TransactionResponse
@@ -43,10 +45,20 @@ TS_TYPES = Path(__file__).resolve().parents[3] / "frontend" / "src" / "types" / 
 CONTRACT: dict[type[BaseModel], str] = {
     TransactionResponse: "Transaction",
     CategoryResponse: "Category",
+    CategoryGroupResponse: "CategoryGroup",
     CategoryBalance: "CategoryBalance",
+    CardStatusOut: "CardStatus",
     BudgetMonthResponse: "BudgetMonth",
     AccountResponse: "Account",
 }
+
+
+#: Row bookkeeping, not served rules. A client interface may declare these or
+#: not — several do — but requiring them buys nothing and costs something real:
+#: the synthetic groups a saved view builds client-side have no timestamps to
+#: give, so demanding them would push invented ones into the code the check
+#: exists to protect. Fields that encode a *rule* are what this suite is for.
+AUDIT_FIELDS = {"created_at", "updated_at"}
 
 
 def _ts_interface_fields(name: str) -> set[str]:
@@ -79,7 +91,7 @@ def test_required_fields_exist_in_typescript(model: type[BaseModel], ts_name: st
     required = {
         name for name, field in model.model_fields.items() if field.is_required()
     }
-    missing = sorted(required - declared)
+    missing = sorted(required - declared - AUDIT_FIELDS)
     assert not missing, (
         f"{model.__name__} requires {missing}, which `interface {ts_name}` does not declare. "
         f"The client will read undefined and treat it as false. Add the field to "

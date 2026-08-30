@@ -355,3 +355,87 @@ class TestExportConsistency:
             [plan(JUL, "Savings", "Vanguard", activity="-30", available="-30")],
         )
         assert export_consistency(b).activity_cells_disagreeing == 0
+
+
+class TestNetCardMovement:
+    """The oracle nets a month's card charges against its refunds, because
+    `credit_floored_by_month` does. Accumulating only the negative legs made
+    the two disagree on any month that had both — independently of any defect
+    in the engine, and before this was fixed nothing compared them."""
+
+    def _budget(self):
+        return budget(
+            [
+                inflow("Checking", date(2026, 7, 1), "1000"),
+                txn("Visa", date(2026, 7, 5), "-100", "Everyday", "Groceries"),
+                txn("Visa", date(2026, 7, 20), "80", "Everyday", "Groceries"),
+            ],
+            [
+                plan(JUL, "Everyday", "Groceries", "0", "-50"),
+                plan(AUG, "Everyday", "Groceries", "0", "0"),
+                plan(JUL, "Credit Card Payments", "Visa", "0", "0"),
+                plan(AUG, "Credit Card Payments", "Visa", "0", "0"),
+            ],
+        )
+
+    def test_a_month_with_a_charge_and_a_refund_writes_off_the_net(self):
+        # Net card spending is 20, so of the 50 shortfall only 20 rode; 30 is
+        # cash overspending. Read gross (100), the whole 50 looked credit-funded
+        # and nothing was written off — a 30 gap against IGAB.
+        o = ynab_rta(self._budget(), AUG, credit_card_accounts={"Visa"})
+        assert o.cash_overspending_written_off == D("30")
+        assert o.rta == D("970")
+
+    def test_the_open_month_uncovers_only_the_net(self):
+        o = ynab_rta(self._budget(), JUL, credit_card_accounts={"Visa"})
+        assert o.uncovered_current == D("20")
+
+    def test_a_month_that_nets_to_a_refund_rides_nothing(self):
+        b = budget(
+            [
+                inflow("Checking", date(2026, 7, 1), "1000"),
+                txn("Visa", date(2026, 7, 5), "-40", "Everyday", "Groceries"),
+                txn("Visa", date(2026, 7, 20), "90", "Everyday", "Groceries"),
+            ],
+            [plan(JUL, "Everyday", "Groceries", "0", "-50")],
+        )
+        o = ynab_rta(b, JUL, credit_card_accounts={"Visa"})
+        assert o.uncovered_current == D("0")
+
+
+
+class TestParityExplanations:
+    """A difference the parity check can account for is not a defect. Both
+    kinds are bounded and named at the definition, per the repo's rule that
+    deliberate divergence is fine but silence is not."""
+
+    def test_an_uncleared_row_explains_its_own_gap(self):
+        from igab.integrations.ynab.parity import ParityDifference
+
+        d = ParityDifference("Everyday: Groceries", D("80"), D("100"), pending=D("-20"))
+        assert d.explained
+
+    def test_a_repaid_card_debt_explains_the_gap_it_causes(self):
+        """YNAB releases a card refund from the CCP reserve uncapped and hands
+        the whole thing back to the envelope; IGAB routes the part that met
+        debt nobody reserved cash for to the card, so its Available is lower by
+        exactly that. The two still agree on Ready to Assign."""
+        from igab.integrations.ynab.parity import ParityDifference
+
+        d = ParityDifference(
+            "Everyday: Groceries", D("0"), D("100"), repaid_uncovered_debt=D("100")
+        )
+        assert d.explained
+
+    def test_a_gap_the_repayment_does_not_account_for_is_still_a_difference(self):
+        from igab.integrations.ynab.parity import ParityDifference
+
+        d = ParityDifference(
+            "Everyday: Groceries", D("0"), D("175"), repaid_uncovered_debt=D("100")
+        )
+        assert not d.explained
+
+    def test_a_matching_envelope_is_not_explained_away(self):
+        from igab.integrations.ynab.parity import ParityDifference
+
+        assert not ParityDifference("Everyday: Groceries", D("100"), D("100")).explained

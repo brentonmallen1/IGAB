@@ -38,11 +38,21 @@ class ParityDifference:
     #: register ships such rows, the plan counts them once approved. Zero
     #: when no such rows do.
     pending: Decimal = Decimal("0")
+    #: A card inflow filed here that repaid uncovered debt. A stated, bounded
+    #: divergence, not a defect: YNAB releases a card refund from the CCP
+    #: reserve uncapped and hands the whole thing back to the envelope, so its
+    #: Available is higher by exactly this. IGAB routes the part that met debt
+    #: nobody had reserved cash for to the card instead, because no cash
+    #: arrived and the envelope cannot spend it. The two still agree on Ready
+    #: to Assign — the errors cancel in YNAB's ledger — which is why this shows
+    #: up here and nowhere else.
+    repaid_uncovered_debt: Decimal = Decimal("0")
 
     @property
     def explained(self) -> bool:
-        return self.pending != 0 and quantize_cents(self.igab - self.ynab) == quantize_cents(
-            self.pending
+        gap = quantize_cents(self.igab - self.ynab)
+        return (self.pending != 0 and gap == quantize_cents(self.pending)) or (
+            self.repaid_uncovered_debt != 0 and gap == quantize_cents(-self.repaid_uncovered_debt)
         )
 
 
@@ -128,6 +138,7 @@ async def check_parity(
                     balance.available,
                     theirs,
                     pending=gap if gap in candidates else Decimal("0"),
+                    repaid_uncovered_debt=balance.repaid_uncovered_debt,
                 )
             )
     unexplained = [d for d in differences if not d.explained]

@@ -131,6 +131,19 @@ class CategoryGroupResponse(BaseModel):
     sort_order: int
     is_hidden: bool
     is_system: bool
+    #: Every live category in this group is a card's set-aside envelope, so the
+    #: budget grid draws no header for it (`GROUP_IS_CARD_ONLY`).
+    #:
+    #: Served rather than derived because the client cannot compute it — its
+    #: category list filters hidden categories, so a group whose only non-card
+    #: row is hidden reads as card-only there and not here. It had been deriving
+    #: it anyway, and `CategoryGroupRepository.reorder` had a second, narrower
+    #: idea of which groups the grid skips, so dragging a group was refused
+    #: outright on any budget with a card group.
+    #:
+    #: Required, not optional: a path that forgets it must raise, not silently
+    #: draw an empty "Credit Card Payments" header and turn reordering off.
+    is_card_only: bool
     #: 'wishlist' for the group the Guide keeps; rename and delete are refused.
     system_key: str | None = None
     created_at: datetime.datetime
@@ -205,16 +218,25 @@ class CategoryBalance(BaseModel):
     #: Required, not optional: a path that forgets it must raise, not draw
     #: every card envelope as an ordinary row.
     is_card_payment: bool
-    #: Card inflows filed here that could not release a reservation this
-    #: envelope never made, summed through the viewed month, and already
-    #: deducted from `available` (domain/cards.py). Almost always 0.
+    #: How much of THIS MONTH's card inflows filed here repaid uncovered debt
+    #: instead of returning money to this envelope (domain/cards.py
+    #: `release_split`). The card owes less; no cash arrived, so this envelope
+    #: cannot spend it. Almost always 0.
+    #:
+    #: Already inside `available` — it is an adjustment to the month's activity
+    #: made within the carryover walk, not a deduction applied after it — which
+    #: is also why `activity` here differs from the register's raw sum by
+    #: exactly this amount.
     #:
     #: Served rather than derived because the client cannot compute it: it
-    #: needs every month's reservation walk per (category, card). It exists so
-    #: the deduction is never silent — the whole defect it fixes was money
-    #: moving with nothing on screen to explain it, and an unexplained
-    #: counterweight would be the same bug wearing a different hat.
-    refused_card_inflows: Decimal
+    #: needs every month's exposure walk per (category, card). It exists so the
+    #: adjustment is never silent; money moving with nothing on screen to
+    #: explain it was the whole defect this model keeps producing.
+    #:
+    #: **This month's, never a running total.** Its predecessor was cumulative
+    #: since inception, subtracted from a floored carryover, and reached ~31x
+    #: its first year's value on a real budget — all of it drawn as red.
+    repaid_uncovered_debt: Decimal
     #: How much of this row's red was spent on a card (domain/cards.py). Zero
     #: whenever `available` is not negative.
     #:
@@ -287,6 +309,15 @@ class CardStatusOut(BaseModel):
     #: `uncovered` already; served so a budget with more than one card can say
     #: which card carries it, since they are paid separately.
     overspent_this_month: Decimal
+    #: 0 when this card's reserve identity holds with all three of its bounds
+    #: met, otherwise the amount by which one does not (domain/cards.py
+    #: `reserve_discrepancy`). The integrity check reads this rather than
+    #: re-deriving it, so the page and the check cannot disagree about whether
+    #: a card's reserve makes sense.
+    #:
+    #: Required, not optional: a path that forgets it must raise, not report a
+    #: drifting reserve as healthy.
+    reserve_discrepancy: Decimal
 
 
 class BudgetMonthResponse(BaseModel):

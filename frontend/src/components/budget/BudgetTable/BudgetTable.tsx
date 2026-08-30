@@ -16,8 +16,9 @@ import {
   renderableCategories,
   renderableCategoryIds,
   renderableGroups,
-  withoutCardOnlyGroups,
+  drawnGroups,
 } from '../budgetGroups'
+import { canReorderCategories, canReorderGroups } from '../reorderAvailability'
 import { CreditCardsSection } from '../CreditCardsSection/CreditCardsSection'
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
@@ -52,7 +53,16 @@ export function BudgetTable() {
   const { data: views } = useBudgetViews(budgetId)
   const createGroup = useCreateCategoryGroup(budgetId ?? '')
   const { mutate: reorderGroups } = useReorderCategoryGroups(budgetId ?? '')
-  const groupIds = useMemo(() => groups?.map((g) => g.id) ?? [], [groups])
+  // A group holding nothing but card envelopes is never drawn — its rows all
+  // belong to the cards section — and the server's reorder rule lets it be
+  // omitted for exactly that reason (`is_card_only`).
+  const ownDrawn = useMemo(() => drawnGroups(groups), [groups])
+  // The ids dragging indexes into, and the order it writes back. These must be
+  // the groups the grid DRAWS: built from `groups` they included a card-only
+  // group that renders nowhere, so with "Show hidden" on, position i in the
+  // rendered list addressed a different group here and every drag moved the
+  // wrong one — silently reordering the hidden card group among them.
+  const groupIds = useMemo(() => ownDrawn?.map((g) => g.id) ?? [], [ownDrawn])
   const moveGroup = useCallback(
     (from: number, to: number) => reorderGroups([...moveItem(groupIds, from, to)]),
     [groupIds, reorderGroups]
@@ -139,28 +149,37 @@ export function BudgetTable() {
   )
 
   const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
-  const sourceGroups = arranged?.groups ?? groups
-  // The card envelopes' hidden group holds nothing renderable — every one of
-  // its categories is linked and excluded above — so it is not drawn even
-  // with hidden groups shown: "Credit Card Payments" never renders as a bare
-  // header. The helper preserves identity when nothing is dropped, which the
-  // reorder gate below depends on.
-  const withoutCardGroups = withoutCardOnlyGroups(sourceGroups, categories ?? [])
+  // "Credit Card Payments" never renders as a bare header, even with hidden
+  // groups shown. The server decides it (`is_card_only`) and the server's
+  // reorder rule reads the same expression, so the grid and the write cannot
+  // disagree about it. A view arranges its own groups; dragging is off there.
+  const drawn = arranged ? drawnGroups(arranged.groups) : ownDrawn
   const visibleGroups =
     isFiltered || activeView
-      ? withoutCardGroups?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
-      : withoutCardGroups
+      ? drawn?.filter((g) => (catsByGroup.get(g.id)?.length ?? 0) > 0)
+      : drawn
 
   const allGroupIds = visibleGroups?.map((g) => g.id) ?? []
 
-  // Dragging is offered only on the budget's own arrangement, showing every
-  // group. A filtered or searched grid hides groups, so a drop there would
-  // reorder against a list the user cannot see; a view has its own order,
-  // which is edited in the view editor. Categories follow the same rule
-  // within their group.
-  const canReorderGroups =
-    !isFiltered && !activeView && (groups?.length ?? 0) > 1 && visibleGroups === groups
-  const canReorderCategories = !isFiltered && !activeView
+  // Whether dragging is offered, and the reason when it is not, both come from
+  // `reorderAvailability` — the same module the filter bar explains itself
+  // with, so the grid and the explanation cannot tell different stories.
+  //
+  // The one condition that stays here is content, not identity: every group the
+  // grid draws must be on screen. This asked `visibleGroups === groups`, an
+  // ARRAY IDENTITY check that held only while nothing was dropped — so the
+  // moment a card-only group reached the client the handles vanished with
+  // nothing to explain it.
+  const reorderState = {
+    savedFilterActive: activeFilterId != null,
+    quickFilterActive: activeQuickFilter != null,
+    search: categorySearch,
+    viewActive: activeView != null,
+  }
+  const allDrawnOnScreen = visibleGroups?.length === drawn?.length
+  const groupsReorderable =
+    canReorderGroups(reorderState, visibleGroups?.length ?? 0) && allDrawnOnScreen
+  const categoriesReorderable = canReorderCategories(reorderState)
 
   const allCollapsed = allGroupIds.length > 0 && allGroupIds.every((id) => collapsedGroups.has(id))
 
@@ -244,8 +263,8 @@ export function BudgetTable() {
             month={month}
             readOnlyGroup={activeView != null}
             index={index}
-            reorder={canReorderGroups ? groupDrag : undefined}
-            canReorderCategories={canReorderCategories}
+            reorder={groupsReorderable ? groupDrag : undefined}
+            canReorderCategories={categoriesReorderable}
           />
         ))}
       </div>

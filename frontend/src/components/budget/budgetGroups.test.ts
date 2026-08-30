@@ -4,12 +4,21 @@ import { describe, expect, it } from 'vitest'
 import {
   renderableCategories,
   renderableCategoryIds,
+  drawnGroups,
   renderableGroups,
-  withoutCardOnlyGroups,
 } from './budgetGroups'
 
-function group(id: string, is_system = false) {
-  return { id, budget_id: 'b1', name: id, sort_order: 0, is_hidden: false, is_system, system_key: null }
+function group(id: string, is_system = false, is_card_only = false) {
+  return {
+    id,
+    budget_id: 'b1',
+    name: id,
+    sort_order: 0,
+    is_hidden: false,
+    is_system,
+    is_card_only,
+    system_key: null,
+  }
 }
 
 describe('renderableGroups', () => {
@@ -40,46 +49,55 @@ describe('renderableGroups', () => {
   })
 })
 
-describe('withoutCardOnlyGroups', () => {
-  const groups = [group('cards'), group('bills')]
-  const cats = [
-    { category_group_id: 'cards', linked_account_id: 'acct-1' },
-    { category_group_id: 'bills', linked_account_id: null },
-  ]
-
-  it('drops a group whose every category is a card envelope', () => {
-    expect(withoutCardOnlyGroups(groups, cats)?.map((g) => g.id)).toEqual(['bills'])
+describe('drawnGroups', () => {
+  it('drops a group the server marked card-only', () => {
+    const groups = [group('cards', false, true), group('bills')]
+    expect(drawnGroups(groups)?.map((g) => g.id)).toEqual(['bills'])
   })
 
   it('keeps a group that still has an ordinary category', () => {
-    const mixed = [...cats, { category_group_id: 'cards', linked_account_id: null }]
-    expect(withoutCardOnlyGroups(groups, mixed)?.map((g) => g.id)).toEqual(['cards', 'bills'])
+    // The server decides this: a group with one non-card row is not card-only,
+    // even when that row is hidden — which the client could not have seen,
+    // because its category list filters hidden categories out.
+    const groups = [group('cards'), group('bills')]
+    expect(drawnGroups(groups)?.map((g) => g.id)).toEqual(['cards', 'bills'])
   })
 
   it('keeps an empty group — a new group needs its header to drop into', () => {
-    expect(withoutCardOnlyGroups([group('fresh')], [])?.map((g) => g.id)).toEqual(['fresh'])
-  })
-
-  it('returns the very same array when nothing is dropped', () => {
-    // BudgetTable's reorder gate is `visibleGroups === groups`; a new array
-    // with identical contents turns dragging off with nothing to explain it.
-    const untouched = [group('bills')]
-    expect(withoutCardOnlyGroups(untouched, cats)).toBe(untouched)
+    expect(drawnGroups([group('fresh')])?.map((g) => g.id)).toEqual(['fresh'])
   })
 
   it('passes undefined through', () => {
-    expect(withoutCardOnlyGroups(undefined, cats)).toBeUndefined()
+    expect(drawnGroups(undefined)).toBeUndefined()
   })
 
-  it('treats a category with no link field at all as an ordinary one', () => {
-    // A strict `!== null` reads a missing key as *linked* and hides the
-    // whole group; the matching `=== null` in renderableCategories drops
-    // every category. One predicate, so the two cannot disagree.
-    const noField: { category_group_id: string; linked_account_id?: string | null }[] = [
-      { category_group_id: 'bills' },
-    ]
-    expect(withoutCardOnlyGroups(groups, noField)?.map((g) => g.id)).toEqual(['cards', 'bills'])
-    expect(renderableCategories(noField)).toHaveLength(1)
+  it('reorders the same way with hidden groups shown and hidden', () => {
+    // The bug's actual trigger, and why it read as a version or browser
+    // difference: the card group is created hidden, so "show hidden" decides
+    // whether it reaches the client at all. Under the old identity gate the
+    // toggle silently turned dragging off. The answer must not depend on it.
+    const withoutHidden = [group('bills'), group('wants')]
+    const withHidden = [...withoutHidden, group('cards', false, true)]
+    const gate = (all: ReturnType<typeof group>[]) => {
+      const drawn = drawnGroups(all)
+      return (drawn?.length ?? 0) > 1 && drawn?.length === drawnGroups(all)?.length
+    }
+    expect(gate(withoutHidden)).toBe(true)
+    expect(gate(withHidden)).toBe(true)
+    expect(drawnGroups(withHidden)?.map((g) => g.id)).toEqual(['bills', 'wants'])
+  })
+
+  it('still allows reordering once a card-only group is dropped', () => {
+    // The regression this replaced: the gate compared array identity, and this
+    // helper only preserved it when nothing was dropped. So the moment a card
+    // group reached the client the drag handles vanished with nothing to
+    // explain it — which is why it read as flaky. The card group is hidden, so
+    // it only reaches the client with "show hidden" on: the same build and the
+    // same budget reordered fine for one person and not for another.
+    const groups = [group('cards', false, true), group('bills'), group('wants')]
+    const drawn = drawnGroups(groups)
+    const visible = drawn
+    expect(visible?.length === drawn?.length && (visible?.length ?? 0) > 1).toBe(true)
   })
 })
 

@@ -5,8 +5,19 @@ from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 from igab.db.models import BudgetMove, Category
-from igab.domain.cards import card_funding, set_aside_through, synthetic_activity
-from igab.domain.carryover import available_through, monthly_end_balances
+from igab.domain.cards import (
+    CardFunding,
+    card_funding,
+    reserve_discrepancy,
+    set_aside_through,
+    synthetic_activity,
+)
+from igab.domain.carryover import (
+    available_at,
+    available_through,
+    monthly_end_balances,
+    sum_through,
+)
 
 # Aliased: `month_start` is also a local variable throughout this module
 # (`month_start = first_of_month(month)`), and one name meaning two things
@@ -69,13 +80,21 @@ class CategoryBalance:
     #: month endpoint blanks both figures rather than letting a lifetime total
     #: sit under a hero showing what is actually free to assign.
     in_system_group: bool = False
-    #: Card inflows filed here that `cap_releases` refused to let release a
-    #: reservation this category never made, summed through the viewed month.
-    #: Already deducted from `available` — carried so the card section and the
-    #: integrity check can name the amount instead of leaving a gap nobody can
-    #: explain. Zero for every budget without such an inflow, which after
-    #: synced card payments became transfers is nearly all of them.
-    refused_card_inflows: Decimal = Decimal("0")
+    #: The part of THIS MONTH's card inflows filed here that repaid uncovered
+    #: debt rather than returning money to this envelope — money that reduced
+    #: what the card owes while no cash arrived, so the envelope cannot spend
+    #: it (domain/cards.py `release_split`).
+    #:
+    #: Already inside `available`: it is an adjustment to the month's activity
+    #: made *inside* the carryover walk, not a deduction applied after it.
+    #: Carried so the row can say why its activity differs from the register's.
+    #:
+    #: **Never a running total.** Its predecessor summed every such inflow
+    #: since inception and subtracted that from a floored carryover balance —
+    #: two series that are not commensurable — and grew to roughly 31x its
+    #: first year's value on a real budget, all of it rendered as overspending
+    #: ("The Refused Repayment").
+    repaid_uncovered_debt: Decimal = Decimal("0")
     #: A card's set-aside envelope (Category.linked_account_id set). Its
     #: available is cash reserved for the card — in the envelope total, but
     #: not spending: excluded from total_activity (its synthetic inflows
@@ -134,6 +153,14 @@ class CardStatus:
     #: already — this names which card carries it, which only becomes a real
     #: question with more than one, because they are paid separately.
     overspent_this_month: Decimal = Decimal("0")
+    #: 0 when this card's reserve identity holds with all three of its bounds
+    #: met, otherwise the amount by which one does not
+    #: (domain/cards.py `reserve_discrepancy`). Served rather than re-derived
+    #: so the integrity check reads the same arithmetic the budget page does.
+    #: Every defect this model has had was visible in this one number, and the
+    #: invariant that would have caught them was excused for exactly the
+    #: histories that produce them.
+    reserve_discrepancy: Decimal = Decimal("0")
 
 
 @dataclass
@@ -418,9 +445,7 @@ class BudgetService:
         zero = Decimal("0")
         cards: list[CardStatus] = []
         uncovered_current = zero
-        truncated_by_category: dict[uuid.UUID, dict[date, Decimal]] = {}
-        floored_by_category: dict[uuid.UUID, dict[date, Decimal]] = {}
-        floored_by_card: dict[uuid.UUID, dict[date, Decimal]] = {}
+        funding: CardFunding[uuid.UUID, uuid.UUID] = CardFunding()
         card_accounts = [
             a
             for a in await self.account_repo.get_all(budget_id, include_closed=True)
@@ -443,26 +468,26 @@ class BudgetService:
             for a in await self.assignment_repo.get_all_for_budget(budget_id):
                 if a.month <= month_start:
                     assignments_by_cat.setdefault(a.category_id, {})[a.month] = a.assigned
-            end_balances = {
-                cid: monthly_end_balances(
-                    assignments_by_cat.get(cid, {}), spending_activity.get(cid, {})
-                )
-                for cid in spending_ids
-            }
             credit_outflows = await self.transaction_repo.sum_credit_outflows_by_category(
                 spending_ids, month_end_date
             )
-            funded_by_card, floored_by_category, truncated_by_category, floored_by_card = (
-                card_funding(end_balances, credit_outflows)
-            )
+            # `card_funding` runs the carryover simulation itself. The part of
+            # a card inflow that repays uncovered debt has to be taken off the
+            # month's activity *inside* that walk — subtracted after it, as a
+            # cumulative total against a floored balance, it ratcheted upward
+            # forever and rendered as overspending ("The Refused Repayment").
+            funding = card_funding(assignments_by_cat, spending_activity, credit_outflows)
             payments = await self.transaction_repo.sum_card_payments_by_month(
+                budget_id, month_end_date
+            )
+            credits = await self.transaction_repo.sum_unbudgeted_card_credits(
                 budget_id, month_end_date
             )
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
             for account in card_accounts:
                 linked = linked_by_account.get(account.id)
                 synthetic = synthetic_activity(
-                    funded_by_card.get(account.id, {}), payments.get(account.id, {})
+                    funding.funded_by_card.get(account.id, {}), payments.get(account.id, {})
                 )
                 card_assignments = assignments_by_cat.get(linked.id, {}) if linked else {}
                 # A running total, not `available_through`: an overpaid month
@@ -504,13 +529,29 @@ class BudgetService:
                         # subtracting.
                         uncovered=uncovered,
                         is_closed=account.is_closed,
-                        overspent_this_month=floored_by_card.get(account.id, {}).get(
+                        overspent_this_month=funding.floored_by_card.get(account.id, {}).get(
                             month_start, zero
+                        ),
+                        # Every defect this model has had was visible here, and
+                        # the invariant that would have caught them excused
+                        # exactly the histories that produce them. Computed
+                        # where all six inputs are already in hand, and read
+                        # back by the integrity check rather than re-derived.
+                        reserve_discrepancy=reserve_discrepancy(
+                            set_aside,
+                            balance,
+                            sum_through(card_assignments, month_start),
+                            sum_through(payments.get(account.id, {}), month_start),
+                            sum_through(funding.residual_by_card.get(account.id, {}), month_start),
+                            sum_through(credits.get(account.id, {}), month_start),
                         ),
                     )
                 )
             uncovered_current = sum(
-                (by_month.get(month_start, zero) for by_month in floored_by_category.values()),
+                (
+                    by_month.get(month_start, zero)
+                    for by_month in funding.floored_by_category.values()
+                ),
                 zero,
             )
 
@@ -530,28 +571,25 @@ class BudgetService:
             # the flag rather than re-deriving which groups are system.
             bal.in_system_group = cat.category_group_id in system_group_ids
             bal.is_card_payment = cat.linked_account_id is not None
-            # The counterweight to `cap_releases`. A card inflow raised this
-            # envelope through the ordinary activity sum before any card
-            # arithmetic ran; where the card refused to release a reservation
-            # it never held, the envelope must not keep the money either, or
-            # the same dollars are counted twice and Ready to Assign silently
-            # absorbs the difference (domain/cards.py).
+            # A card inflow filed here raised this envelope through the
+            # ordinary activity sum. The part of it that repaid *uncovered*
+            # debt has to come back off: the card's balance fell but no cash
+            # arrived, so the envelope cannot spend it (domain/cards.py
+            # `release_split`). The part that released reserved cash stays —
+            # that money was already the envelope's.
             #
-            # Applied AFTER the carryover simulation, never fed back into it:
-            # `card_funding` reads the raw month-end series, so adjusting the
-            # activity that produced it would change the truncation that is
-            # being applied — a cycle. The deduction is therefore the plain
-            # cumulative amount through the viewed month, which is exactly
-            # what the Ready to Assign identity needs. It is not re-floored
-            # per month; `refused_card_inflows` on the row is what the card
-            # section and the integrity check show so it is never silent.
-            refused = truncated_by_category.get(cat.id)
-            if refused and not bal.in_system_group and not bal.is_card_payment:
-                bal.refused_card_inflows = sum(
-                    (v for m, v in refused.items() if m <= month_start), zero
-                )
-                bal.available -= bal.refused_card_inflows
-                bal.activity -= refused.get(month_start, zero)
+            # The adjustment lives INSIDE the carryover walk, which is why
+            # `available` is re-read out of `card_funding`'s series rather
+            # than decremented here. Applied afterwards, as a running total
+            # against a floored balance, it survived into every later month
+            # and grew without bound. Only categories the walk actually
+            # corrected are re-read: for the rest the series is identical, and
+            # recomputing it would give the snapshot path a second opinion.
+            repaid = funding.repaid_by_category.get(cat.id)
+            if repaid and not bal.in_system_group and not bal.is_card_payment:
+                bal.repaid_uncovered_debt = repaid.get(month_start, zero)
+                bal.activity -= bal.repaid_uncovered_debt
+                bal.available = available_at(funding.end_balances[cat.id], month_start)
             balances.append(bal)
             # Exclude system (Income) categories: income adds to TBA, not
             # reduces it — and it is not envelope money, so the month's
@@ -570,17 +608,20 @@ class BudgetService:
             if bal.available < 0:
                 # Straight out of the dict `uncovered_current` is summed from,
                 # so the row and the Ready to Assign arithmetic cannot tell
-                # different stories. It cannot exceed the shortfall:
-                # `credit_floored_by_month` already caps it at the raw
-                # month-end deficit, and `available` only ever falls further
-                # from there (the `refused_card_inflows` deduction above).
+                # different stories. It cannot exceed the shortfall: both are
+                # read off the same adjusted month-end series, and
+                # `credit_floored` caps the ride at that month's deficit.
                 #
-                # Which means red created *by* that deduction counts as cash —
-                # `card_funding` reads the raw series, where the envelope was
-                # still in surplus, so it floored nothing. That is the
-                # conservative direction: Cover Overspent offers to cover it
-                # rather than quietly calling it the card's problem.
-                bal.credit_overspent = floored_by_category.get(cat.id, {}).get(month_start, zero)
+                # No red here is an artefact of the card correction. A
+                # repayment is bounded by the inflow that caused it, so at
+                # worst it returns the month to what it would have been with
+                # no refund at all — it cannot push a month negative that was
+                # not already negative. That is what lets Cover Overspent
+                # trust this split; the previous rule's counterweight could
+                # manufacture a shortfall no assignment was able to fix.
+                bal.credit_overspent = funding.floored_by_category.get(cat.id, {}).get(
+                    month_start, zero
+                )
                 total_overspent += -bal.available
                 total_overspent_credit += bal.credit_overspent
                 overspent_count += 1

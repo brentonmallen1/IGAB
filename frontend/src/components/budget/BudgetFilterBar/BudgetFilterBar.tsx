@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, ListFilter, Layers, Plus, Search, Settings2, AlignJustify, AlignLeft, X } from 'lucide-react'
+import { AlignJustify, AlignLeft, ArrowUpDown, ChevronDown, Layers, ListFilter, Plus, Search, Settings2, X } from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore, QUICK_FILTER_LABELS, QUICK_FILTER_VARIANTS } from '../../../stores/uiStore'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
 import type { CategoryBalance } from '../../../types'
+import { reorderBlock } from '../reorderAvailability'
 import './BudgetFilterBar.css'
 
 interface Props {
@@ -95,6 +96,22 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
     setActiveQuickFilter(null)
   }
 
+  // Why the drag handles are gone, from the module the grid gates on — so the
+  // bar cannot name a reason the grid is not actually using. Nothing is shown
+  // when reordering is available, which is the ordinary case.
+  //
+  // `viewActive` is the RESOLVED view, not the stored id, because that is what
+  // the grid gates on. While the view list is still loading — or while a
+  // persisted id points at a view this budget doesn't have, before the
+  // self-heal above runs — the id is set and the view is not, and the two
+  // surfaces would tell different stories about the same handles.
+  const blocked = reorderBlock({
+    savedFilterActive: activeFilterId != null,
+    quickFilterActive: activeQuickFilter != null,
+    search: categorySearch,
+    viewActive: views?.some((v) => v.id === activeViewId) ?? false,
+  })
+
   const isAllActive = activeFilterId === null && activeQuickFilter === null
 
   return (
@@ -170,6 +187,18 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
           </button>
         )
       })}
+
+      {blocked && (
+        <span
+          className="budget-filter-bar__reorder-note"
+          role="status"
+          title={blocked.detail}
+        >
+          <ArrowUpDown size={12} aria-hidden="true" />
+          <span className="budget-filter-bar__reorder-note-text">{blocked.short}</span>
+          <span className="sr-only">. {blocked.detail}</span>
+        </span>
+      )}
 
       {showRenameNotice && (
         <span className="budget-filter-bar__notice" role="status">

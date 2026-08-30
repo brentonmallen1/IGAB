@@ -74,6 +74,16 @@ export interface CategoryGroup {
   sort_order: number
   is_hidden: boolean
   is_system: boolean
+  /** Every live category here is a card's set-aside envelope, so the grid draws
+   *  no header for this group. Served, not derived — home is
+   *  `GROUP_IS_CARD_ONLY` in repositories/category_filters.py, and the server's
+   *  reorder rule reads the same expression.
+   *
+   *  The client cannot compute this: its category list filters hidden
+   *  categories, so a group whose only non-card row is hidden would read as
+   *  card-only here and not there. It used to compute it anyway, and the two
+   *  answers disagreed — which turned group dragging off entirely. */
+  is_card_only: boolean
   /** 'wishlist' for the group the Guide keeps: rename and delete are refused,
    *  hide is not. Served from `CategoryGroup.system_key`. */
   system_key: string | null
@@ -189,17 +199,24 @@ export interface CategoryBalance {
    *  see `CategoryBalance` in api/v1/schemas/category.py. */
   is_card_payment: boolean
   /**
-   * Card inflows filed here that could not release a reservation this envelope
-   * never made, already deducted from `available`. Almost always 0.
+   * How much of THIS MONTH's card inflows filed here repaid uncovered debt
+   * instead of returning money to this envelope. The card owes less; no cash
+   * arrived, so this envelope cannot spend it. Almost always 0.
    *
-   * Served, not derived — the client would need every month's reservation walk
+   * Already inside `available` — the adjustment is made within the carryover
+   * walk, not after it — which is also why `activity` differs from the
+   * register's raw sum by exactly this amount.
+   *
+   * Served, not derived — the client would need every month's exposure walk
    * per (category, card) to compute it. Home is `domain/cards.py`
-   * (`cap_releases` / `card_funding`); the deduction happens in
-   * `BudgetService.get_budget_summary`. Rendered so the deduction is never
-   * silent: the defect it fixes was money moving with nothing on screen to
-   * explain it.
+   * (`release_split` / `card_funding`). Rendered so the adjustment is never
+   * silent: money moving with nothing on screen to explain it is the defect
+   * this model keeps producing.
+   *
+   * This month's, never a running total: the cumulative version reached ~31x
+   * its first year's value on a real budget, all of it drawn as red.
    */
-  refused_card_inflows: number
+  repaid_uncovered_debt: number
   /**
    * How much of this row's red was spent on a card. 0 whenever `available`
    * is not negative.
@@ -240,6 +257,11 @@ export interface CardStatus {
    *  matters with more than one, since cards are paid separately. Attributed
    *  exactly, not apportioned: see `card_funding` in domain/cards.py. */
   overspent_this_month: number
+  /** 0 when this card's reserve agrees with what it owes, otherwise the amount
+   *  that does not add up. Served, not derived — home is `reserve_discrepancy`
+   *  in domain/cards.py, and the integrity check reads the same field, so the
+   *  page and the check cannot disagree about one card. */
+  reserve_discrepancy: number
 }
 
 export interface BudgetMonth {
