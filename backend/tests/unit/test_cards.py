@@ -936,3 +936,67 @@ class TestT1NoLongerExcusesTheDriftItCaused:
         equal, to the cent, to the rows it could not see."""
         # A net-negative unclaimed total (an unfiled charge) buys no capacity.
         assert discrepancy("100", "0", unclaimed="-30") == D("100")
+
+
+class TestTheStatementCycleTrap:
+    """A due date does not sit inside a calendar month, and one consequence of
+    that is real while the obvious one is not.
+
+    The obvious worry — envelopes zeroing out at a month end, so a statement
+    paid the next month reads as an overpayment — is not what happens. Nothing
+    zeroes: `reserved` and `ridden` are running state and `set_aside` sums from
+    the budget's first day, so the funded lag nets to zero
+    (`test_a_payment_landing_after_the_spending_it_covers` above pins it).
+
+    What does bite is the month-end FLOOR. A charge late in a month the
+    envelope could not cover is converted to riding debt at the boundary, and
+    next month's payment then runs past the reserve. The asymmetry in the
+    remedy is the part worth pinning, because it is invisible and permanent
+    in one direction and free in the other.
+    """
+
+    def walk(self, spending, outflows, payments=None):
+        cf = card_funding(
+            {"groceries": spending},
+            {"groceries": {m: -v for m, v in outflows.items()}},
+            {"groceries": {VISA: outflows}},
+            {},
+        )
+        return cf, card_reserve(cf, VISA, payments or {})
+
+    def test_a_late_month_charge_the_envelope_could_not_cover_rides(self):
+        # 500 charged in January against 200 funded: 300 rides, 200 reserves.
+        cf, reserve = self.walk({JAN: D("200")}, {JAN: D("500")})
+        assert sum_through(cf.floored_by_card[VISA], JAN) == D("300")
+        assert reserve.set_aside(JAN) == D("200")
+
+    def test_paying_that_statement_next_month_drives_the_reserve_negative(self):
+        # And the row shows it as a card still owing, not as an overpayment:
+        # `card_credit` is zero, which is the whole point of `card_position`.
+        _, reserve = self.walk({JAN: D("200")}, {JAN: D("500")}, payments={FEB: D("500")})
+        assert reserve.set_aside(FEB) == D("-300")
+        assert card_position(reserve.set_aside(FEB), D("0")).card_credit == D("0")
+
+    def test_funding_the_following_month_does_not_reach_back(self):
+        """The trap. Funding Groceries in February is the natural move when the
+        statement arrives, and it retires none of January's ride."""
+        cf, reserve = self.walk(
+            {JAN: D("200"), FEB: D("300")}, {JAN: D("500")}, payments={FEB: D("500")}
+        )
+        assert sum_through(cf.floored_by_card[VISA], FEB) == D("300")
+        assert reserve.set_aside(FEB) == D("-300")
+
+    def test_funding_the_month_that_ended_short_retires_the_ride_outright(self):
+        """The free remedy, and the reason it works: the walk is recomputed
+        from scratch on every request, so a backdated assignment is simply part
+        of the history the next walk sees. Nothing in the app said so."""
+        cf, reserve = self.walk({JAN: D("500")}, {JAN: D("500")}, payments={FEB: D("500")})
+        assert VISA not in cf.floored_by_card
+        assert reserve.set_aside(FEB) == D("0")
+
+    def test_the_funded_lag_across_the_boundary_costs_nothing(self):
+        # The reassurance the info dialog now gives, as an assertion: charge in
+        # January, pay in February, and the reserve nets to zero.
+        _, reserve = self.walk({JAN: D("500")}, {JAN: D("500")}, payments={FEB: D("500")})
+        assert reserve.set_aside(JAN) == D("500")
+        assert reserve.set_aside(FEB) == D("0")
