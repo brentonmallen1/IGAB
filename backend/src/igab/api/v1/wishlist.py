@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.wishlist import (
     DeleteWishResponse,
     ProjectCreate,
@@ -23,7 +24,7 @@ from igab.dependencies import BudgetAccess, CurrentUser, get_wishlist_service
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.guide.wishlist_service import WishlistService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 WishlistDep = Annotated[WishlistService, Depends(get_wishlist_service)]
 

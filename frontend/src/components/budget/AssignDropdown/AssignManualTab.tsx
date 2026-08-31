@@ -53,8 +53,7 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
       toast.success(`Assigned ${formatMoney(cents / 100)} to ${name}`)
       onDone()
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setError(detail ?? 'Assign failed')
     }
   }
@@ -90,11 +89,7 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
       )}
       {error && <div className="assign-dropdown__error">{error}</div>}
       <div className="assign-dropdown__manual-actions">
-        <button
-          type="submit"
-          className="assign-dropdown__submit"
-          disabled={moveMoney.isPending}
-        >
+        <button type="submit" className="assign-dropdown__submit" disabled={moveMoney.isPending}>
           {moveMoney.isPending ? 'Assigning…' : 'Assign'}
         </button>
       </div>

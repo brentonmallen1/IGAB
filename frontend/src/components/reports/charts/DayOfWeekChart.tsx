@@ -1,7 +1,14 @@
 import { useRef, useState } from 'react'
 import {
-  Bar, BarChart, CartesianGrid, ReferenceLine,
-  ResponsiveContainer, Tooltip, XAxis, YAxis, Cell,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  Cell,
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useDayPatternsReport, usePaydayEffectReport } from '../../../api/reports'
@@ -14,7 +21,9 @@ import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportI
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportNotes } from '../ReportNotes'
 
-interface Props { budgetId: string }
+interface Props {
+  budgetId: string
+}
 
 const WINDOW_OPTIONS = [7, 14, 21] as const
 
@@ -24,11 +33,21 @@ export function DayPatternsReport({ budgetId }: Props) {
   const { filters, setDrillDown } = useReportStore()
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, error, refetch } = useDayPatternsReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds)
+  const { data, isLoading, isError, error, refetch } = useDayPatternsReport(
+    budgetId,
+    filters.startDate,
+    filters.endDate,
+    catIds,
+    acctIds
+  )
   const captureRef = useRef<HTMLDivElement>(null)
 
   const [paydayWindow, setPaydayWindow] = useState<(typeof WINDOW_OPTIONS)[number]>(14)
-  const { data: paydayData, isLoading: paydayLoading } = usePaydayEffectReport(budgetId, paydayWindow, 12)
+  const { data: paydayData, isLoading: paydayLoading } = usePaydayEffectReport(
+    budgetId,
+    paydayWindow,
+    12
+  )
 
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
@@ -40,8 +59,14 @@ export function DayPatternsReport({ budgetId }: Props) {
   // a flat week captioned "Highest Spending Day — Sunday, $0.00".
   const hasSpending = days.some((d) => Number(d.total) > 0)
 
-  const maxDay = days.reduce((best, d) => (Number(d.total) > Number(best.total) ? d : best), days[0])
-  const minDay = days.reduce((least, d) => (Number(d.total) < Number(least.total) ? d : least), days[0])
+  const maxDay = days.reduce(
+    (best, d) => (Number(d.total) > Number(best.total) ? d : best),
+    days[0]
+  )
+  const minDay = days.reduce(
+    (least, d) => (Number(d.total) < Number(least.total) ? d : least),
+    days[0]
+  )
 
   const chartData = days.map((d) => ({
     name: d.day_name,
@@ -53,10 +78,14 @@ export function DayPatternsReport({ budgetId }: Props) {
 
   function drillTo(dayOfWeek: number, dayName: string) {
     setDrillDown({
-      kind: 'day-of-week', label: `${dayName}s`, scope: 'leaf', direction: 'outflow',
+      kind: 'day-of-week',
+      label: `${dayName}s`,
+      scope: 'leaf',
+      direction: 'outflow',
       dayOfWeek,
       categoryIds: filters.categoryIds.length > 0 ? filters.categoryIds : undefined,
-      startDate: filters.startDate, endDate: filters.endDate,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
     })
   }
 
@@ -82,12 +111,19 @@ export function DayPatternsReport({ budgetId }: Props) {
         <div className="report-section__header">
           <h2 className="report-section__title">Day-of-Week Spending Patterns</h2>
           <ReportInfoButton title="Day-of-Week Patterns">
-            <p>Total spending aggregated by day of week across all transactions in the selected period. The <strong>peak day is highlighted</strong> in a different color.</p>
-            <p>High weekday spending often signals structured habits (groceries, work lunches). High weekend spending can indicate impulse or leisure spending. Use this to identify which days need more discipline.</p>
+            <p>
+              Total spending aggregated by day of week across all transactions in the selected
+              period. The <strong>peak day is highlighted</strong> in a different color.
+            </p>
+            <p>
+              High weekday spending often signals structured habits (groceries, work lunches). High
+              weekend spending can indicate impulse or leisure spending. Use this to identify which
+              days need more discipline.
+            </p>
             <p>Click a bar to see that weekday's transactions.</p>
             <ReportScopeNote scope="on-budget-filterable" />
             <SpendingClassNote />
-        </ReportInfoButton>
+          </ReportInfoButton>
           <div className="ms-auto">
             <ReportExportButton
               reportId="day-patterns"
@@ -109,60 +145,76 @@ export function DayPatternsReport({ budgetId }: Props) {
         </p>
 
         <div ref={captureRef} className="report-capture">
-        {hasSpending && maxDay && minDay && (
-          <div className="report-metrics">
-            <MetricCard label="Highest Spending Day" value={maxDay.day_name} sub={formatMoney(Number(maxDay.total))} />
-            <MetricCard label="Lowest Spending Day" value={minDay.day_name} sub={formatMoney(Number(minDay.total))} />
-          </div>
-        )}
+          {hasSpending && maxDay && minDay && (
+            <div className="report-metrics">
+              <MetricCard
+                label="Highest Spending Day"
+                value={maxDay.day_name}
+                sub={formatMoney(Number(maxDay.total))}
+              />
+              <MetricCard
+                label="Lowest Spending Day"
+                value={minDay.day_name}
+                sub={formatMoney(Number(minDay.total))}
+              />
+            </div>
+          )}
 
-        {/* Before the empty state, not after: when the selection is all savings
+          {/* Before the empty state, not after: when the selection is all savings
             or debt the week is genuinely blank, and the note is the answer to
             why rather than a footnote under a chart that never drew. */}
-        <ReportNotes report={data} toggleAvailable={false} />
+          <ReportNotes report={data} toggleAvailable={false} />
 
-        {!hasSpending ? (
-          <div className="reports-empty">No spending data for this period.</div>
-        ) : (
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-muted)' }} />
-              <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={80} />
-              <Tooltip
-                formatter={(v: unknown, name: unknown) =>
-                  name === 'Amount' ? [formatMoney(Number(v)), name] : [Number(v), String(name)]
-                }
-                offset={16}
-                isAnimationActive={false}
-                {...TOOLTIP_STYLE}
-              />
-              <Bar
-                dataKey="Amount"
-                radius={[3, 3, 0, 0]}
-                barSize={44}
-                cursor="pointer"
-                onClick={(data) => {
-                  const d = data as { dayOfWeek?: number; name?: string; payload?: { dayOfWeek?: number; name?: string } }
-                  const dow = d.dayOfWeek ?? d.payload?.dayOfWeek
-                  const name = d.name ?? d.payload?.name
-                  if (dow != null && name) drillTo(dow, name)
-                }}
-              >
-                {chartData.map((entry, i) => {
-                  const isMax = maxDay && entry.name === maxDay.day_name
-                  return (
-                    <Cell
-                      key={i}
-                      fill={isMax ? CHART_COLORS[1] : CHART_COLORS[0]}
-                      fillOpacity={0.85}
-                    />
-                  )
-                })}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
+          {!hasSpending ? (
+            <div className="reports-empty">No spending data for this period.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <BarChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-muted)' }} />
+                <YAxis
+                  tickFormatter={(v) => formatMoney(v)}
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                  width={80}
+                />
+                <Tooltip
+                  formatter={(v: unknown, name: unknown) =>
+                    name === 'Amount' ? [formatMoney(Number(v)), name] : [Number(v), String(name)]
+                  }
+                  offset={16}
+                  isAnimationActive={false}
+                  {...TOOLTIP_STYLE}
+                />
+                <Bar
+                  dataKey="Amount"
+                  radius={[3, 3, 0, 0]}
+                  barSize={44}
+                  cursor="pointer"
+                  onClick={(data) => {
+                    const d = data as {
+                      dayOfWeek?: number
+                      name?: string
+                      payload?: { dayOfWeek?: number; name?: string }
+                    }
+                    const dow = d.dayOfWeek ?? d.payload?.dayOfWeek
+                    const name = d.name ?? d.payload?.name
+                    if (dow != null && name) drillTo(dow, name)
+                  }}
+                >
+                  {chartData.map((entry, i) => {
+                    const isMax = maxDay && entry.name === maxDay.day_name
+                    return (
+                      <Cell
+                        key={i}
+                        fill={isMax ? CHART_COLORS[1] : CHART_COLORS[0]}
+                        fillOpacity={0.85}
+                      />
+                    )
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
@@ -171,19 +223,25 @@ export function DayPatternsReport({ budgetId }: Props) {
           <h2 className="report-section__title">Payday Effect</h2>
           <ReportInfoButton title="Payday Effect">
             <p>
-              Analyzes your <strong>spending behavior after large income deposits</strong> (paychecks, bonuses, etc.).
-              Compares daily spending in the days following income events against your baseline daily spending.
+              Analyzes your <strong>spending behavior after large income deposits</strong>{' '}
+              (paychecks, bonuses, etc.). Compares daily spending in the days following income
+              events against your baseline daily spending.
             </p>
             <p>
-              Bars above the dashed baseline indicate higher-than-normal spending. Many people spend more
-              right after payday — this visualization helps you see if that pattern applies to you.
+              Bars above the dashed baseline indicate higher-than-normal spending. Many people spend
+              more right after payday — this visualization helps you see if that pattern applies to
+              you.
             </p>
             <p>
-              <strong>Note:</strong> Subscriptions and scheduled bills are excluded to isolate discretionary spending patterns.
+              <strong>Note:</strong> Subscriptions and scheduled bills are excluded to isolate
+              discretionary spending patterns.
             </p>
             <ReportScopeNote scope="on-budget" />
           </ReportInfoButton>
-          <div className="report-section__controls" style={{ gap: 4, marginLeft: 'var(--spacing-md)' }}>
+          <div
+            className="report-section__controls"
+            style={{ gap: 4, marginLeft: 'var(--spacing-md)' }}
+          >
             {WINDOW_OPTIONS.map((w) => (
               <button
                 key={w}
@@ -197,7 +255,8 @@ export function DayPatternsReport({ budgetId }: Props) {
           </div>
         </div>
         <p className="report-section__subtitle">
-          Do you spend more right after getting paid? Based on {paydayEventCount} income events in the last 12 months.
+          Do you spend more right after getting paid? Based on {paydayEventCount} income events in
+          the last 12 months.
         </p>
 
         {paydayLoading ? (
@@ -227,7 +286,11 @@ export function DayPatternsReport({ budgetId }: Props) {
               <BarChart data={paydayChartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-                <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={80} />
+                <YAxis
+                  tickFormatter={(v) => formatMoney(v)}
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                  width={80}
+                />
                 <ReferenceLine
                   y={paydayBaseline}
                   stroke="var(--text-muted)"

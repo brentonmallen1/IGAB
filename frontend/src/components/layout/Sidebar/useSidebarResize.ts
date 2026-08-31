@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { SIDEBAR_KEY_STEP, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, clampSidebarWidth } from './sidebarWidth'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react'
+import {
+  SIDEBAR_KEY_STEP,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  clampSidebarWidth,
+} from './sidebarWidth'
 
 /**
  * Drag and keyboard handling for the sidebar's resize handle. Pure event
@@ -42,7 +54,8 @@ export function useSidebarResize(width: number, setWidth: (px: number) => void) 
   const end = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (!drag.current) return
     drag.current = null
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    if (e.currentTarget.hasPointerCapture(e.pointerId))
+      e.currentTarget.releasePointerCapture(e.pointerId)
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
     setActive(false)
@@ -52,11 +65,15 @@ export function useSidebarResize(width: number, setWidth: (px: number) => void) 
     (e: KeyboardEvent<HTMLDivElement>) => {
       const w = widthRef.current
       const next =
-        e.key === 'ArrowRight' ? w + SIDEBAR_KEY_STEP
-        : e.key === 'ArrowLeft' ? w - SIDEBAR_KEY_STEP
-        : e.key === 'Home' ? SIDEBAR_MIN_WIDTH
-        : e.key === 'End' ? SIDEBAR_MAX_WIDTH
-        : null
+        e.key === 'ArrowRight'
+          ? w + SIDEBAR_KEY_STEP
+          : e.key === 'ArrowLeft'
+            ? w - SIDEBAR_KEY_STEP
+            : e.key === 'Home'
+              ? SIDEBAR_MIN_WIDTH
+              : e.key === 'End'
+                ? SIDEBAR_MAX_WIDTH
+                : null
       if (next === null) return
       e.preventDefault()
       apply(next)
@@ -68,6 +85,13 @@ export function useSidebarResize(width: number, setWidth: (px: number) => void) 
 
   return {
     active,
-    handleProps: { onPointerDown, onPointerMove, onPointerUp: end, onPointerCancel: end, onKeyDown, onDoubleClick },
+    handleProps: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp: end,
+      onPointerCancel: end,
+      onKeyDown,
+      onDoubleClick,
+    },
   }
 }

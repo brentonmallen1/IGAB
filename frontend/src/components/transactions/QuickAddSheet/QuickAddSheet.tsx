@@ -2,13 +2,35 @@ import { flatCategoryOptions } from '../../../utils/categoryPickers'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { AlertTriangle, Camera, ChevronRight, FileText, Images, MessageSquareText, Plus, Sparkles, Split, StickyNote, Trash2, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Camera,
+  ChevronRight,
+  FileText,
+  Images,
+  MessageSquareText,
+  Plus,
+  Sparkles,
+  Split,
+  StickyNote,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
-import { SelectionSheet, type SelectionSheetOption } from '../../common/SelectionSheet/SelectionSheet'
+import {
+  SelectionSheet,
+  type SelectionSheetOption,
+} from '../../common/SelectionSheet/SelectionSheet'
 import { ConfirmSheet } from '../../common/ConfirmSheet/ConfirmSheet'
 import { useCreateTransaction } from '../../../api/transactions'
 import { confirmFutureOverspend } from '../../../api/budgets'
-import { ATTACHMENT_ACCEPT, isAttachableFile, uploadFilesToTransaction } from '../../../api/attachments'
+import {
+  ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_LABEL,
+  isAttachableFile,
+  isTooLargeToAttach,
+  uploadFilesToTransaction,
+} from '../../../api/attachments'
 import { useAIStatus } from '../../../api/ai'
 import { useSubmitReceipt } from '../../../api/aiJobs'
 import { NLQuickEntry } from '../../ai/NLQuickEntry'
@@ -155,7 +177,10 @@ export function QuickAddSheet() {
       nearbyPayees.map((p) => ({
         id: p.id,
         label: p.name,
-        hint: p.distance_m < 950 ? `~${Math.round(p.distance_m / 10) * 10} m` : `~${(p.distance_m / 1000).toFixed(1)} km`,
+        hint:
+          p.distance_m < 950
+            ? `~${Math.round(p.distance_m / 10) * 10} m`
+            : `~${(p.distance_m / 1000).toFixed(1)} km`,
       })),
     [nearbyPayees]
   )
@@ -172,7 +197,11 @@ export function QuickAddSheet() {
   }, [payees, nearbyPayees])
 
   const categoryOptions = useMemo<SelectionSheetOption[]>(
-    () => flatCategoryOptions(categories.filter((c) => c.is_categorizable), categoryGroups),
+    () =>
+      flatCategoryOptions(
+        categories.filter((c) => c.is_categorizable),
+        categoryGroups
+      ),
     [categories, categoryGroups]
   )
 
@@ -187,9 +216,7 @@ export function QuickAddSheet() {
   )
 
   const payeeName = payeeId ? (payees.find((p) => p.id === payeeId)?.name ?? '') : ''
-  const categoryName = categoryId
-    ? (categories.find((c) => c.id === categoryId)?.name ?? '')
-    : ''
+  const categoryName = categoryId ? (categories.find((c) => c.id === categoryId)?.name ?? '') : ''
   const accountName = accountId ? (accounts.find((a) => a.id === accountId)?.name ?? '') : ''
   // One rule (utils/rowCategoryRule): tracking rows carry no category, so
   // neither the field nor payee-memory prefill is offered for them.
@@ -219,8 +246,8 @@ export function QuickAddSheet() {
         toast.error(`${file.name} is not an image or PDF`)
         continue
       }
-      if (file.size > 20 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 20MB)`)
+      if (isTooLargeToAttach(file)) {
+        toast.error(`${file.name} is too large (max ${MAX_ATTACHMENT_LABEL})`)
         continue
       }
       accepted.push(file)
@@ -245,8 +272,8 @@ export function QuickAddSheet() {
     for (const file of files) {
       if (!isAttachableFile(file)) {
         toast.error(`${file.name} is not an image or PDF`)
-      } else if (file.size > 20 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 20MB)`)
+      } else if (isTooLargeToAttach(file)) {
+        toast.error(`${file.name} is too large (max ${MAX_ATTACHMENT_LABEL})`)
       } else {
         accepted.push(file)
       }
@@ -474,7 +501,11 @@ export function QuickAddSheet() {
             >
               Save & add another
             </button>
-            <button className="quick-add__save press-scale" disabled={!canSave} onClick={() => save(false)}>
+            <button
+              className="quick-add__save press-scale"
+              disabled={!canSave}
+              onClick={() => save(false)}
+            >
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
@@ -487,7 +518,9 @@ export function QuickAddSheet() {
                 Describe it — the two things most likely to be wanted before an
                 amount is typed. A label, not a div, so the whole 0.00 display
                 raises the keypad now that focus isn't automatic. */}
-            <label className={`quick-add__amount ${direction === 'outflow' ? 'quick-add__amount--out' : 'quick-add__amount--in'}`}>
+            <label
+              className={`quick-add__amount ${direction === 'outflow' ? 'quick-add__amount--out' : 'quick-add__amount--in'}`}
+            >
               <span className="quick-add__amount-sign">
                 {direction === 'outflow' ? '−' : '+'}
                 {currencySymbol}
@@ -519,9 +552,9 @@ export function QuickAddSheet() {
                   aria-label={`Operator ${op}`}
                   onPointerDown={(e) => e.preventDefault()}
                   onClick={() => {
-                  hapticTick()
-                  setAmount((prev) => prev + op)
-                }}
+                    hapticTick()
+                    setAmount((prev) => prev + op)
+                  }}
                 >
                   {op === '*' ? '×' : op === '/' ? '÷' : op === '-' ? '−' : op}
                 </button>
@@ -569,7 +602,9 @@ export function QuickAddSheet() {
           <div className="quick-add__rows">
             <button className="quick-add__row" onClick={() => setPayeeSheetOpen(true)}>
               <span className="quick-add__row-label">Payee</span>
-              <span className={`quick-add__row-value ${payeeName ? '' : 'quick-add__row-value--empty'}`}>
+              <span
+                className={`quick-add__row-value ${payeeName ? '' : 'quick-add__row-value--empty'}`}
+              >
                 {payeeName || 'Choose payee'}
               </span>
               <ChevronRight size={16} className="quick-add__row-chevron" />
@@ -671,7 +706,9 @@ export function QuickAddSheet() {
 
             <button className="quick-add__row" onClick={() => setAccountSheetOpen(true)}>
               <span className="quick-add__row-label">Account</span>
-              <span className={`quick-add__row-value ${accountName ? '' : 'quick-add__row-value--empty'}`}>
+              <span
+                className={`quick-add__row-value ${accountName ? '' : 'quick-add__row-value--empty'}`}
+              >
                 {accountName || 'Choose account'}
               </span>
               <ChevronRight size={16} className="quick-add__row-chevron" />

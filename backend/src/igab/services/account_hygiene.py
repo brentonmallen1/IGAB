@@ -200,7 +200,7 @@ class AccountHygieneService:
         card's reservation arithmetic only walks spending categories
         (`category_filters.SPENDABLE`, which is why the *inflow* side of the
         same misfiling had to be named rather than dropped —
-        `txn_filters.UNBUDGETED_CARD_CREDIT`). The
+        `txn_filters.UNCLAIMED_CARD_ROW`). The
         balance moves and the budget never mentions it — the charge ends up in
         Uncovered with no envelope ever naming it.
 

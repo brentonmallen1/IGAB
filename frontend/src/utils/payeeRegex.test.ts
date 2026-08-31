@@ -103,7 +103,10 @@ describe('matchSpan', () => {
   })
 
   it('honours anchors', () => {
-    expect(matchSpan('^ACH DEPOSIT PAYROLL ', 'ACH DEPOSIT PAYROLL 123')).toEqual({ start: 0, end: 20 })
+    expect(matchSpan('^ACH DEPOSIT PAYROLL ', 'ACH DEPOSIT PAYROLL 123')).toEqual({
+      start: 0,
+      end: 20,
+    })
     expect(matchSpan('^PAYROLL', 'ACH DEPOSIT PAYROLL 123')).toBeNull()
   })
 

@@ -7,11 +7,7 @@ import { ReportRangeButtons } from './rangeButtons'
 describe('ReportRangeButtons', () => {
   it('offers 6/12/24 by default — what eight of the nine copies did', () => {
     render(<ReportRangeButtons months={12} onChange={() => {}} />)
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
-      '6mo',
-      '12mo',
-      '24mo',
-    ])
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['6mo', '12mo', '24mo'])
   })
 
   it('takes a different horizon as a parameter, not a second copy', () => {

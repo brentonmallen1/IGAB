@@ -24,7 +24,9 @@ class TestPromoSchedule:
     def test_segment_boundary_is_exact(self):
         """$1,200 at 12%/yr, $100/mo, 0% through Jul 1: five interest-free
         payments, then interest starts on the $700 remainder."""
-        result = amortization_schedule_with_promo(D("1200.00"), D("12"), D("100.00"), START, PROMO_END)
+        result = amortization_schedule_with_promo(
+            D("1200.00"), D("12"), D("100.00"), START, PROMO_END
+        )
 
         promo_part = result.schedule[:5]
         assert all(m.interest_paid == ZERO for m in promo_part)
@@ -42,7 +44,9 @@ class TestPromoSchedule:
         assert sum(m.principal_paid for m in result.schedule) == D("1200.00")
 
     def test_cleared_inside_promo_window_pays_zero_interest(self):
-        result = amortization_schedule_with_promo(D("300.00"), D("12"), D("100.00"), START, PROMO_END)
+        result = amortization_schedule_with_promo(
+            D("300.00"), D("12"), D("100.00"), START, PROMO_END
+        )
         assert not result.never_pays_off
         assert result.total_interest == ZERO
         assert result.payoff_date == date(2026, 4, 15)

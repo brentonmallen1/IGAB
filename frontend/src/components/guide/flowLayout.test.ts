@@ -157,8 +157,13 @@ describe('flow layout', () => {
 
   it('chains packed steps in reading order', () => {
     const chain = [
-      'create-budget', 'housing', 'groceries', 'essential-items',
-      'income-earning-expenses', 'health-care', 'minimum-payments',
+      'create-budget',
+      'housing',
+      'groceries',
+      'essential-items',
+      'income-earning-expenses',
+      'health-care',
+      'minimum-payments',
     ]
     for (let i = 0; i < chain.length - 1; i++) {
       expect(edge(chain[i], chain[i + 1])?.kind).toBe('sequence')
@@ -184,9 +189,7 @@ describe('flow layout', () => {
 
   it('leaves no node stranded without an inbound arrow, except the first', () => {
     const targeted = new Set(flow.edges.map((e) => e.to))
-    const orphans = flow.nodes
-      .map((n) => n.node.id)
-      .filter((id, i) => i > 0 && !targeted.has(id))
+    const orphans = flow.nodes.map((n) => n.node.id).filter((id, i) => i > 0 && !targeted.has(id))
     expect(orphans).toEqual([])
   })
 

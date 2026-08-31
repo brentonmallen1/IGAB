@@ -1,10 +1,6 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import {
-  formatSyncSummary,
-  useSimpleFINConnections,
-  useSyncAllSimpleFIN,
-} from '../api/simplefin'
+import { formatSyncSummary, useSimpleFINConnections, useSyncAllSimpleFIN } from '../api/simplefin'
 import { useAppStore } from '../stores/appStore'
 
 /**

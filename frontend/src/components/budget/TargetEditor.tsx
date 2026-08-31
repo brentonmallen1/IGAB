@@ -38,11 +38,18 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
   }
 
   return (
-    <div className="target-editor-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="target-editor-overlay"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="target-editor" role="dialog" aria-modal aria-labelledby="target-editor-title">
         <div className="target-editor__header">
-          <span id="target-editor-title" className="target-editor__title">Target: {categoryName}</span>
-          <button className="target-editor__close" onClick={onClose} aria-label="Close">×</button>
+          <span id="target-editor-title" className="target-editor__title">
+            Target: {categoryName}
+          </span>
+          <button className="target-editor__close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
         </div>
         <form onSubmit={handleSubmit} className="target-editor__form">
           <label className="target-editor__label">
@@ -53,7 +60,9 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
               onChange={(e) => setTargetType(e.target.value)}
             >
               {TARGET_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
               ))}
             </select>
           </label>
@@ -84,7 +93,11 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
             </label>
           )}
 
-          {error && <div className="target-editor__error" role="alert">{error}</div>}
+          {error && (
+            <div className="target-editor__error" role="alert">
+              {error}
+            </div>
+          )}
           <div className="target-editor__actions">
             <button type="submit" className="target-editor__btn target-editor__btn--primary">
               Save

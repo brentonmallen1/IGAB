@@ -329,14 +329,20 @@ describe('date: filters (now = Tue 2026-08-11)', () => {
 
 describe('category and payee filters', () => {
   it('matches category by name', () => {
-    const catMap = new Map([['cat-1', 'Groceries'], ['cat-2', 'Dining']])
+    const catMap = new Map([
+      ['cat-1', 'Groceries'],
+      ['cat-2', 'Dining'],
+    ])
     const result = parseTransactionSearch('category: groc', catMap, EMPTY_MAP)
     expect(result.categoryIds).toContain('cat-1')
     expect(result.categoryIds).not.toContain('cat-2')
   })
 
   it('matches payee by name', () => {
-    const payeeMap = new Map([['p-1', 'Starbucks'], ['p-2', 'Amazon']])
+    const payeeMap = new Map([
+      ['p-1', 'Starbucks'],
+      ['p-2', 'Amazon'],
+    ])
     const result = parseTransactionSearch('payee: star', EMPTY_MAP, payeeMap)
     expect(result.payeeIds).toContain('p-1')
     expect(result.payeeIds).not.toContain('p-2')
@@ -344,7 +350,10 @@ describe('category and payee filters', () => {
 })
 
 describe('account filter', () => {
-  const acctMap = new Map([['a-1', 'Checking'], ['a-2', 'Savings']])
+  const acctMap = new Map([
+    ['a-1', 'Checking'],
+    ['a-2', 'Savings'],
+  ])
 
   it('matches account by name when an account map is provided', () => {
     const result = parseTransactionSearch('account: check', EMPTY_MAP, EMPTY_MAP, acctMap)
@@ -365,7 +374,10 @@ describe('account filter', () => {
 
   it('merges account ids across OR segments', () => {
     const result = parseTransactionSearch(
-      'account: check OR account: sav', EMPTY_MAP, EMPTY_MAP, acctMap
+      'account: check OR account: sav',
+      EMPTY_MAP,
+      EMPTY_MAP,
+      acctMap
     )
     expect(result.accountIds).toEqual(['a-1', 'a-2'])
     expect(result.isOrMode).toBe(true)
@@ -415,7 +427,10 @@ describe('OR keyword', () => {
   })
 
   it('merges category IDs from both OR segments', () => {
-    const catMap = new Map([['cat-1', 'Groceries'], ['cat-2', 'Dining']])
+    const catMap = new Map([
+      ['cat-1', 'Groceries'],
+      ['cat-2', 'Dining'],
+    ])
     const result = parseTransactionSearch('category: groc OR category: din', catMap, EMPTY_MAP)
     expect(result.categoryIds).toContain('cat-1')
     expect(result.categoryIds).toContain('cat-2')
@@ -683,7 +698,10 @@ describe('describeSearchChips', () => {
   // the parser gets — that is the whole point of the change.
   const CATS = new Map([['cat-1', 'Groceries']])
   const PAYEES = new Map([['p-1', 'Starbucks']])
-  const ACCOUNTS = new Map([['a-1', 'Checking'], ['a-2', 'Savings']])
+  const ACCOUNTS = new Map([
+    ['a-1', 'Checking'],
+    ['a-2', 'Savings'],
+  ])
 
   function chips(query: string, accounts: Map<string, string> = EMPTY_MAP) {
     return describeSearchChips(query, CATS, PAYEES, accounts, NOW)

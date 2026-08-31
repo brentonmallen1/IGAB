@@ -84,11 +84,11 @@
   user-select: none;
 }
 
-.palette [cmdk-item][data-selected='true'] {
+.palette [cmdk-item][data-selected="true"] {
   background-color: var(--row-selected-bg, var(--bg-hover));
 }
 
-.palette [cmdk-item][data-disabled='true'] {
+.palette [cmdk-item][data-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }
@@ -98,7 +98,7 @@
   flex-shrink: 0;
 }
 
-.palette [cmdk-item][data-selected='true'] .palette__item-icon {
+.palette [cmdk-item][data-selected="true"] .palette__item-icon {
   color: var(--color-accent);
 }
 

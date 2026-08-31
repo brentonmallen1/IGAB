@@ -80,9 +80,7 @@ class TestACardPaydownTargetFinallyFills:
         linked = await ensure_payment_category(db_session, visa)
         assert linked is not None
         db_session.add(
-            CategoryTarget(
-                category_id=linked.id, target_type="monthly", target_amount=D("150.00")
-            )
+            CategoryTarget(category_id=linked.id, target_type="monthly", target_amount=D("150.00"))
         )
         await db_session.flush()
 

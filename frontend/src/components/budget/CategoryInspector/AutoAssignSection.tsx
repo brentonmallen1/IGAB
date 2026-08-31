@@ -21,7 +21,11 @@ export function AutoAssignSection({ categoryIds, budgetId }: Props) {
   }
 
   const actions: { action: AutoAssignAction; label: string; value: number }[] = [
-    { action: 'last_month_assigned', label: 'Assigned Last Month', value: aggregate('last_month_assigned') },
+    {
+      action: 'last_month_assigned',
+      label: 'Assigned Last Month',
+      value: aggregate('last_month_assigned'),
+    },
     { action: 'last_month_spent', label: 'Spent Last Month', value: aggregate('last_month_spent') },
     { action: 'average_assigned', label: 'Average Assigned', value: aggregate('average_assigned') },
     { action: 'average_spent', label: 'Average Spent', value: aggregate('average_spent') },

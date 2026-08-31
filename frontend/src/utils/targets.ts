@@ -56,5 +56,8 @@ export function targetMeasuresBalance(
  */
 export function monthsUntil(isoDate: string, now: Date = new Date()): number {
   const end = new Date(isoDate + 'T00:00:00')
-  return Math.max(1, (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth()))
+  return Math.max(
+    1,
+    (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth())
+  )
 }

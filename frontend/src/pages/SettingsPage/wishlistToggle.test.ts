@@ -30,8 +30,9 @@ function deps(opts: { facts?: WishlistRetireFacts; offline?: boolean; confirmed?
       if (opts.offline) throw new Error('offline')
       return opts.facts ?? EMPTY
     }),
-    confirm: vi.fn(async (_req: { title: string; message: string; confirmLabel: string }) =>
-      opts.confirmed ?? true
+    confirm: vi.fn(
+      async (_req: { title: string; message: string; confirmLabel: string }) =>
+        opts.confirmed ?? true
     ),
     formatMoney: (a: string) => `$${Number(a).toFixed(2)}`,
     onPreviewFailed: vi.fn(),

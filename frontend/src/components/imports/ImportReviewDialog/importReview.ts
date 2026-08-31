@@ -139,9 +139,7 @@ export type Draft = Record<string, string[]>
  */
 export function toggleTag(draft: Draft, category: ReviewCategory, tagId: string): Draft {
   const current = draft[category.id] ?? category.tagIds
-  const next = current.includes(tagId)
-    ? current.filter((id) => id !== tagId)
-    : [...current, tagId]
+  const next = current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId]
   return { ...draft, [category.id]: next }
 }
 

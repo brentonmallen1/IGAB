@@ -24,9 +24,7 @@ export function ClassificationSection({ categoryId }: Props) {
       {data.classes.length > 1 && (
         <>
           <br />
-          {data.classes
-            .map((c) => `${c.label}: ${formatMoney(Number(c.total))}`)
-            .join(' · ')}
+          {data.classes.map((c) => `${c.label}: ${formatMoney(Number(c.total))}`).join(' · ')}
         </>
       )}
     </span>
@@ -39,8 +37,8 @@ export function ClassificationSection({ categoryId }: Props) {
         <span className="classification-badge">{data.dominant_label}</span>
       </Tooltip>
       <p className="classification-hint">
-        Spending reports leave this out by default — it builds what you own or
-        pays down what you owe.
+        Spending reports leave this out by default — it builds what you own or pays down what you
+        owe.
       </p>
     </div>
   )

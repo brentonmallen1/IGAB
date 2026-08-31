@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Canonical result schema lives with the import endpoints — a local copy here
 # drifted the moment imports.py gained fields (imports.py has no module-level
 # api.v1 imports, so this cannot cycle).
+from igab.api.route import CommitRoute
 from igab.api.v1.imports import YNABImportResult, YNABTaggedCategory
 from igab.db.models import Budget, BudgetMember
 from igab.db.session import get_session
@@ -49,7 +50,7 @@ from igab.services.budget_provisioning import grant_owner, unique_budget_name
 from igab.services.budget_service import BudgetService
 from igab.services.transaction_service import TransactionService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 class BudgetCreate(BaseModel):

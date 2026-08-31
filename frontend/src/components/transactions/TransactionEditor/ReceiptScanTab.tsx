@@ -3,10 +3,17 @@ import { Link } from 'react-router-dom'
 import { Upload, X, Loader2, Sparkles, AlertTriangle, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
-import { ATTACHMENT_ACCEPT, isAttachableFile } from '../../../api/attachments'
+import {
+  ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_LABEL,
+  isAttachableFile,
+  isTooLargeToAttach,
+} from '../../../api/attachments'
 import { useSubmitReceipt, useAIJob, type AIJob } from '../../../api/aiJobs'
 import './ReceiptScanTab.css'
 import { apiErrorMessage } from '../../../api/client'
+import { invalidateAfterTransactionChange } from '../../../api/invalidateAfterTransactionChange'
+import { ROOT } from '../../../api/queryKeys'
 
 type Stage =
   | { kind: 'pick' }
@@ -44,10 +51,7 @@ export function ReceiptScanTab({
   const handled = useRef(false)
 
   // Poll the job while watching
-  const { data: job } = useAIJob(
-    budgetId,
-    stage.kind === 'watching' ? stage.jobId : null
-  )
+  const { data: job } = useAIJob(budgetId, stage.kind === 'watching' ? stage.jobId : null)
 
   // Object URL for preview thumbnail
   const previewUrl = useMemo(
@@ -79,18 +83,18 @@ export function ReceiptScanTab({
     if (job.status !== 'done' && job.status !== 'error') return
     handled.current = true
 
-    // The worker created/updated a transaction outside any mutation hook —
-    // refresh everything a manual create would have
-    qc.invalidateQueries({ queryKey: ['transactions'] })
-    qc.invalidateQueries({ queryKey: ['all-transactions'] })
-    qc.invalidateQueries({ queryKey: ['category-transactions'] })
-    qc.invalidateQueries({ queryKey: ['accounts'] })
-    qc.invalidateQueries({ queryKey: ['budgetMonth'] })
-    qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-    qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
-    qc.invalidateQueries({ queryKey: ['ai-jobs'] })
-    qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
-    qc.invalidateQueries({ queryKey: ['ai-job-for-txn'] })
+    // The worker created/updated a transaction outside any mutation hook, so
+    // this asks for exactly what a manual create asks for — by calling the
+    // same helper rather than by copying its list, which is how this copy
+    // came to be the only one carrying no account or budget id at all.
+    void invalidateAfterTransactionChange(qc, {
+      budgetId: null,
+      transactionIds: job.transaction_id ? [job.transaction_id] : [],
+    })
+    // Job state is this component's own, not a transaction's.
+    qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+    qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
+    qc.invalidateQueries({ queryKey: [ROOT.aiJobForTxn] })
 
     if (job.transaction_id) {
       onReviewReady(job)
@@ -104,8 +108,8 @@ export function ReceiptScanTab({
       toast.error(`${file.name} is not an image or PDF`)
       return
     }
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error(`${file.name} is too large (max 20MB)`)
+    if (isTooLargeToAttach(file)) {
+      toast.error(`${file.name} is too large (max ${MAX_ATTACHMENT_LABEL})`)
       return
     }
     setStage({ kind: 'preview', file })
@@ -137,11 +141,7 @@ export function ReceiptScanTab({
         <div className="receipt-scan__empty">
           <Sparkles size={20} />
           <p>Receipt scanning requires a configured Ollama server.</p>
-          <Link
-            to="/settings"
-            className="receipt-scan__link"
-            onClick={onClose}
-          >
+          <Link to="/settings" className="receipt-scan__link" onClick={onClose}>
             Configure AI in Settings
           </Link>
         </div>
@@ -156,11 +156,7 @@ export function ReceiptScanTab({
         <div className="receipt-scan__error">
           <AlertTriangle size={20} />
           <p>{stage.message}</p>
-          <Link
-            to="/ai-activity"
-            className="receipt-scan__link"
-            onClick={onClose}
-          >
+          <Link to="/ai-activity" className="receipt-scan__link" onClick={onClose}>
             View AI activity
           </Link>
         </div>
@@ -183,11 +179,7 @@ export function ReceiptScanTab({
       <div className="receipt-scan">
         <div className="receipt-scan__progress">
           {previewUrl && (
-            <img
-              src={previewUrl}
-              alt="Receipt preview"
-              className="receipt-scan__progress-thumb"
-            />
+            <img src={previewUrl} alt="Receipt preview" className="receipt-scan__progress-thumb" />
           )}
           <div className="receipt-scan__progress-status">
             <Loader2 size={20} className="spin" />
@@ -197,14 +189,10 @@ export function ReceiptScanTab({
             </span>
           </div>
           <p className="receipt-scan__progress-note">
-            You can close this window — the scan keeps running and the
-            transaction will arrive for review.
+            You can close this window — the scan keeps running and the transaction will arrive for
+            review.
           </p>
-          <Link
-            to="/ai-activity"
-            className="receipt-scan__link"
-            onClick={onClose}
-          >
+          <Link to="/ai-activity" className="receipt-scan__link" onClick={onClose}>
             View AI activity
           </Link>
         </div>
@@ -224,11 +212,7 @@ export function ReceiptScanTab({
               <span className="receipt-scan__preview-name">{stage.file.name}</span>
             </div>
           ) : (
-            <img
-              src={previewUrl!}
-              alt="Receipt preview"
-              className="receipt-scan__preview-img"
-            />
+            <img src={previewUrl!} alt="Receipt preview" className="receipt-scan__preview-img" />
           )}
           <button
             type="button"
@@ -267,7 +251,7 @@ export function ReceiptScanTab({
       >
         <Upload size={20} />
         <span>{dragOver ? 'Drop receipt to scan' : 'Click, drag, or paste a receipt'}</span>
-        <span className="receipt-scan__hint">Image or PDF, max 20MB</span>
+        <span className="receipt-scan__hint">Image or PDF, max {MAX_ATTACHMENT_LABEL}</span>
         <input
           ref={fileInputRef}
           type="file"

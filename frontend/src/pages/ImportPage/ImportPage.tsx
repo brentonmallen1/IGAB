@@ -33,7 +33,10 @@ export function ImportPage() {
       setCsvResult(result)
       if (csvFileRef.current) csvFileRef.current.value = ''
       if (result.batch_id && result.imported > 0) {
-        showUndo(result.batch_id, `Imported ${result.imported} transaction${result.imported > 1 ? 's' : ''}`)
+        showUndo(
+          result.batch_id,
+          `Imported ${result.imported} transaction${result.imported > 1 ? 's' : ''}`
+        )
       }
       invalidateAfterImport(qc, budgetId)
     } catch (err: unknown) {
@@ -61,7 +64,9 @@ export function ImportPage() {
         header={
           <div>
             <span className="section-label surface__title">Import Transactions</span>
-            <div className="import-card__subtitle">Import transactions from a bank export CSV file</div>
+            <div className="import-card__subtitle">
+              Import transactions from a bank export CSV file
+            </div>
           </div>
         }
       >
@@ -102,9 +107,7 @@ export function ImportPage() {
                 {csvResult.skipped ? `, ${csvResult.skipped} skipped` : ''}
               </div>
             )}
-            {csvError && (
-              <div className="import-result import-result--error">{csvError}</div>
-            )}
+            {csvError && <div className="import-result import-result--error">{csvError}</div>}
           </div>
         </form>
       </Surface>

@@ -2,7 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Landmark, Palette as PaletteIcon, Receipt, Search, User, Bookmark, X } from 'lucide-react'
+import {
+  BookOpen,
+  Landmark,
+  Palette as PaletteIcon,
+  Receipt,
+  Search,
+  User,
+  Bookmark,
+  X,
+} from 'lucide-react'
 import { apiClient } from '../../../api/client'
 import { useAccounts } from '../../../api/accounts'
 import { usePayees } from '../../../api/payees'
@@ -28,6 +37,7 @@ import { SearchHelp } from '../../transactions/TransactionSearch/SearchHelp'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { BudgetTransactionsResponse } from '../../../types'
 import './CommandPalette.css'
+import { ROOT } from '../../../api/queryKeys'
 
 /**
  * ⌘K command palette: navigation, budget actions, theme switching, and live
@@ -112,7 +122,7 @@ export function CommandPalette() {
   )
 
   const { data: txnResults } = useQuery({
-    queryKey: ['paletteSearch', budgetId, txnFilters],
+    queryKey: [ROOT.paletteSearch, budgetId, txnFilters],
     queryFn: () =>
       apiClient
         .get<BudgetTransactionsResponse>(`/${budgetId}/transactions`, {
@@ -173,7 +183,7 @@ export function CommandPalette() {
       })
     : []
   const visibleCommands = [...STATIC_COMMANDS, ...derived].filter((c) =>
-    hit(c.id, c.label, c.keywords),
+    hit(c.id, c.label, c.keywords)
   )
 
   // The definition itself is the answer, so it is rendered on the row rather
@@ -242,17 +252,19 @@ export function CommandPalette() {
 
           {sections.map((section) => (
             <Command.Group key={section} heading={section}>
-              {visibleCommands.filter((c) => c.section === section).map((c) => (
-                <Command.Item
-                  key={c.id}
-                  value={c.id}
-                  keywords={[c.label, ...(c.keywords?.split(' ') ?? [])]}
-                  onSelect={() => run(() => c.run(ctx))}
-                >
-                  <c.icon size={14} className="palette__item-icon" />
-                  {c.label}
-                </Command.Item>
-              ))}
+              {visibleCommands
+                .filter((c) => c.section === section)
+                .map((c) => (
+                  <Command.Item
+                    key={c.id}
+                    value={c.id}
+                    keywords={[c.label, ...(c.keywords?.split(' ') ?? [])]}
+                    onSelect={() => run(() => c.run(ctx))}
+                  >
+                    <c.icon size={14} className="palette__item-icon" />
+                    {c.label}
+                  </Command.Item>
+                ))}
               {section === 'Navigate' &&
                 visibleAccounts.map((a) => (
                   <Command.Item
@@ -393,7 +405,9 @@ export function CommandPalette() {
                     transactionDisplayPayee(t, payeeNameById, accountMap),
                     t.memo ?? '',
                   ]}
-                  onSelect={() => run(() => navigate(`/accounts/${t.account_id}?highlight=${t.id}`))}
+                  onSelect={() =>
+                    run(() => navigate(`/accounts/${t.account_id}?highlight=${t.id}`))
+                  }
                 >
                   <Receipt size={14} className="palette__item-icon" />
                   <span className="palette__txn-payee">

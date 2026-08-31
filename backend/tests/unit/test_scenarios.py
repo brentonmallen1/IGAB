@@ -111,7 +111,9 @@ class TestLoanCompare:
     def test_fees_count_toward_total_cost(self):
         c = loan_compare(
             [
-                LoanCandidate("Cheap rate, big fee", D("10000"), D("5"), term_months=12, fees=D("500")),
+                LoanCandidate(
+                    "Cheap rate, big fee", D("10000"), D("5"), term_months=12, fees=D("500")
+                ),
                 LoanCandidate("Dearer rate, no fee", D("10000"), D("7"), term_months=12),
             ],
             TODAY,

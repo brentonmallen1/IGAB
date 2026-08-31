@@ -198,7 +198,8 @@ export const ROADMAP: RoadmapStage[] = [
     id: 'foundation',
     step: 0,
     title: 'Cover your essentials',
-    summary: 'Know where your money goes, then cover the things that keep you housed, fed and earning.',
+    summary:
+      'Know where your money goes, then cover the things that keep you housed, fed and earning.',
     nodes: [
       {
         id: 'create-budget',
@@ -304,7 +305,8 @@ export const ROADMAP: RoadmapStage[] = [
     id: 'employer-match',
     step: 2,
     title: 'Take the full employer match',
-    summary: 'If your employer matches retirement contributions, this is the highest-return step on the roadmap.',
+    summary:
+      'If your employer matches retirement contributions, this is the highest-return step on the roadmap.',
     nodes: [
       {
         id: 'match-question',
@@ -314,9 +316,17 @@ export const ROADMAP: RoadmapStage[] = [
         detail:
           'Nothing in your budget can answer this; it lives in your employment paperwork or your payroll portal. Look for "employer match" or "company contribution" in your retirement plan documents.',
         branches: [
-          { answer: 'Yes', label: 'Contribute enough to get all of it', toNode: 'contribute-to-match' },
+          {
+            answer: 'Yes',
+            label: 'Contribute enough to get all of it',
+            toNode: 'contribute-to-match',
+          },
           { answer: 'No', label: 'Move on to high-interest debt', toStage: 'high-interest-debt' },
-          { answer: 'Not sure', label: 'Worth checking — it is the largest guaranteed return here', toNode: 'contribute-to-match' },
+          {
+            answer: 'Not sure',
+            label: 'Worth checking — it is the largest guaranteed return here',
+            toNode: 'contribute-to-match',
+          },
         ],
         glossary: ['employer-match'],
         signal: 'employer_match',
@@ -350,8 +360,16 @@ export const ROADMAP: RoadmapStage[] = [
         detail:
           'Ten percent is a rule of thumb, not a law. The reasoning: paying off a debt is a guaranteed, tax-free return equal to its rate, and a guaranteed 10% is hard to beat reliably anywhere else. Where a debt sits close to the line, either choice is defensible.',
         branches: [
-          { answer: 'Yes', label: 'Pick a payoff method and commit to it', toNode: 'choose-payoff-method' },
-          { answer: 'No', label: 'Grow the emergency fund instead', toStage: 'full-emergency-fund' },
+          {
+            answer: 'Yes',
+            label: 'Pick a payoff method and commit to it',
+            toNode: 'choose-payoff-method',
+          },
+          {
+            answer: 'No',
+            label: 'Grow the emergency fund instead',
+            toStage: 'full-emergency-fund',
+          },
         ],
         glossary: ['apr', 'high-interest-debt'],
         appLinks: [{ label: 'Your liabilities', to: '/liabilities' }],
@@ -385,7 +403,7 @@ export const ROADMAP: RoadmapStage[] = [
         id: 'card-carries-again-note',
         kind: 'note',
         title: 'When the card has to carry something again',
-        body: 'Put the expense in its real category and let it go red. At month end the shortfall becomes the card\'s Uncovered — the same paydown loop, just smaller.',
+        body: "Put the expense in its real category and let it go red. At month end the shortfall becomes the card's Uncovered — the same paydown loop, just smaller.",
         detail:
           "The category does not stay negative waiting to heal. At the month boundary it resets to zero, and the part the envelope could not fund moves to the card's Uncovered column — visible, calm, charged to nothing until you cover it. Fund the category first when you can: Ready to pay picks that cash up automatically the moment the spending is covered.\n\nNone of this is a failure state in the app. Uncovered exists to hold exactly this without alarms, so an emergency re-entering the card is a loop you already know how to run.",
         glossary: ['credit-overspending', 'uncovered'],
@@ -435,8 +453,16 @@ export const ROADMAP: RoadmapStage[] = [
         detail:
           'A mortgage is set aside here for two reasons: the rate is usually low, and the balance is large enough that paying it down early competes directly with retirement saving over decades rather than months. It is a genuine judgement call, and the roadmap leaves it as one.\n\nThis band is where "pay it off or invest instead" stops having an obvious answer. Below roughly 4%, many people reasonably choose to invest instead. The closer to 10%, the stronger the case for paying it off.',
         branches: [
-          { answer: 'Yes', label: 'Use the same method you chose before', toNode: 'pay-moderate-debt' },
-          { answer: 'No', label: 'Move on to retirement saving', toStage: 'retirement-and-near-term' },
+          {
+            answer: 'Yes',
+            label: 'Use the same method you chose before',
+            toNode: 'pay-moderate-debt',
+          },
+          {
+            answer: 'No',
+            label: 'Move on to retirement saving',
+            toStage: 'retirement-and-near-term',
+          },
         ],
         glossary: ['apr', 'avalanche', 'snowball'],
         appLinks: [{ label: 'Your liabilities', to: '/liabilities' }],
@@ -461,7 +487,8 @@ export const ROADMAP: RoadmapStage[] = [
     id: 'retirement-and-near-term',
     step: 4,
     title: 'Start retirement saving and fund what is coming',
-    summary: 'Open a retirement account beyond the match, and set aside money for large near-term needs.',
+    summary:
+      'Open a retirement account beyond the match, and set aside money for large near-term needs.',
     nodes: [
       {
         id: 'roth-vs-traditional',
@@ -516,7 +543,11 @@ export const ROADMAP: RoadmapStage[] = [
           'Fifteen percent is a common target for someone who starts in their twenties and works a full career. Starting later means the number needs to be higher — the arithmetic of compounding is unforgiving about lost years, and no amount of later saving fully replaces them.\n\nIf 15% is out of reach today, that is information rather than failure. Raise the rate when your income does, and treat each raise as the moment to move it up a point.',
         branches: [
           { answer: 'Yes', label: 'Move on to your other goals', toStage: 'other-goals' },
-          { answer: 'No', label: 'Look at where you could contribute more', toNode: 'employer-plan-question' },
+          {
+            answer: 'No',
+            label: 'Look at where you could contribute more',
+            toNode: 'employer-plan-question',
+          },
         ],
         glossary: ['savings-rate', 'compounding'],
         appLinks: [{ label: 'Savings rate report', to: '/reports?tab=savings-rate' }],
@@ -528,8 +559,16 @@ export const ROADMAP: RoadmapStage[] = [
         title: 'Does your employer offer a plan you could put more into?',
         body: 'A 401(k), 403(b) or similar workplace retirement plan.',
         branches: [
-          { answer: 'Yes', label: 'Raise your contribution toward 15%', toNode: 'increase-contributions' },
-          { answer: 'No', label: 'Look at the options outside work', toNode: 'self-employed-options' },
+          {
+            answer: 'Yes',
+            label: 'Raise your contribution toward 15%',
+            toNode: 'increase-contributions',
+          },
+          {
+            answer: 'No',
+            label: 'Look at the options outside work',
+            toNode: 'self-employed-options',
+          },
         ],
         glossary: ['401k'],
         region: 'us',

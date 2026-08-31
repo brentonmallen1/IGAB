@@ -29,9 +29,7 @@ async def test_explains_ordinary_spending(api_client, db_session):
     budget, checking = await _setup(db_session, api_client.test_user)
     group = await create_category_group(db_session, budget, "Everyday")
     cat = await create_category(db_session, budget, group, "Groceries")
-    txn = await create_transaction(
-        db_session, budget, checking, "-60.00", TODAY, category=cat
-    )
+    txn = await create_transaction(db_session, budget, checking, "-60.00", TODAY, category=cat)
 
     resp = await api_client.get(f"/api/v1/transactions/{txn.id}/classification")
     assert resp.status_code == 200

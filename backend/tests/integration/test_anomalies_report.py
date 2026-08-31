@@ -59,7 +59,10 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
 
     # Baseline alternates 80/120 (mean 100, population std 20)
     await _spend_series(
-        db_session, budget, checking, groceries,
+        db_session,
+        budget,
+        checking,
+        groceries,
         {6: "80.00", 5: "120.00", 4: "80.00", 3: "120.00", 2: "80.00", 1: "120.00"},
     )
     # Spike month is built from split children + noise that must not count
@@ -77,18 +80,31 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
             parent_transaction_id=parent.id,
         )
     await create_transaction(
-        db_session, budget, checking, "-100.00", months_ago(0),
-        category=groceries, cleared="pending",
+        db_session,
+        budget,
+        checking,
+        "-100.00",
+        months_ago(0),
+        category=groceries,
+        cleared="pending",
     )
     await create_transaction(
-        db_session, budget, checking, "-50.00", months_ago(0),
-        category=groceries, is_deleted=True,
+        db_session,
+        budget,
+        checking,
+        "-50.00",
+        months_ago(0),
+        category=groceries,
+        is_deleted=True,
     )
     # Identical spike in a system group: must stay invisible
     sys_group = await create_category_group(db_session, budget, "System", is_system=True)
     sys_cat = await create_category(db_session, budget, sys_group, "Hidden")
     await _spend_series(
-        db_session, budget, checking, sys_cat,
+        db_session,
+        budget,
+        checking,
+        sys_cat,
         {6: "80.00", 5: "120.00", 4: "80.00", 3: "120.00", 2: "80.00", 1: "120.00", 0: "300.00"},
     )
 
@@ -120,7 +136,10 @@ async def test_threshold_parameter_bounds_detection(db_session):
 
     # Baseline mean 120, std 20; 170 gives z = 2.5
     await _spend_series(
-        db_session, budget, checking, dining,
+        db_session,
+        budget,
+        checking,
+        dining,
         {6: "100.00", 5: "140.00", 4: "100.00", 3: "140.00", 2: "100.00", 1: "140.00", 0: "170.00"},
     )
 
@@ -139,13 +158,19 @@ async def test_guard_rails_silence_flat_and_small_dollar_baselines(db_session):
     # Flat baseline: std = 0 < 5, so even a 3x spike stays silent
     flat = await create_category(db_session, budget, group, "Flat")
     await _spend_series(
-        db_session, budget, checking, flat,
+        db_session,
+        budget,
+        checking,
+        flat,
         {6: "100.00", 5: "100.00", 4: "100.00", 3: "100.00", 2: "100.00", 1: "100.00", 0: "300.00"},
     )
     # Small wobble: z = 2.0 but |actual - mean| = 20 < 25 stays silent
     wobble = await create_category(db_session, budget, group, "Wobble")
     await _spend_series(
-        db_session, budget, checking, wobble,
+        db_session,
+        budget,
+        checking,
+        wobble,
         {6: "100.00", 5: "120.00", 4: "100.00", 3: "120.00", 2: "100.00", 1: "120.00", 0: "130.00"},
     )
 
@@ -158,7 +183,10 @@ async def test_low_side_anomaly_flags_with_direction_low(db_session):
     fuel = await create_category(db_session, budget, group, "Fuel")
 
     await _spend_series(
-        db_session, budget, checking, fuel,
+        db_session,
+        budget,
+        checking,
+        fuel,
         {6: "180.00", 5: "220.00", 4: "180.00", 3: "220.00", 2: "180.00", 1: "220.00", 0: "40.00"},
     )
 
@@ -175,7 +203,10 @@ async def test_fewer_than_six_category_months_never_flags(db_session):
     sparse = await create_category(db_session, budget, group, "Sparse")
 
     await _spend_series(
-        db_session, budget, checking, sparse,
+        db_session,
+        budget,
+        checking,
+        sparse,
         {4: "100.00", 3: "100.00", 2: "100.00", 1: "100.00", 0: "900.00"},
     )
 

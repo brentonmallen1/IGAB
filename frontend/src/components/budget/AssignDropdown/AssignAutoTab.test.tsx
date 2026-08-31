@@ -4,10 +4,19 @@ import { describe, expect, it, vi } from 'vitest'
 import { AssignAutoTab } from './AssignAutoTab'
 import type { AssignStrategyTotalsResponse } from '../../../api/assign'
 
-function totals(overrides: Partial<AssignStrategyTotalsResponse> = {}, underfundedNeeded = 0): AssignStrategyTotalsResponse {
+function totals(
+  overrides: Partial<AssignStrategyTotalsResponse> = {},
+  underfundedNeeded = 0
+): AssignStrategyTotalsResponse {
   const strategies = [
-    'underfunded', 'last_month_assigned', 'last_month_spent', 'average_assigned', 'average_spent',
-    'reduce_overfunded', 'reset_available', 'reset_assigned',
+    'underfunded',
+    'last_month_assigned',
+    'last_month_spent',
+    'average_assigned',
+    'average_spent',
+    'reduce_overfunded',
+    'reset_available',
+    'reset_assigned',
   ].map((strategy) => ({
     strategy,
     total_amount: strategy === 'underfunded' ? underfundedNeeded : 10,
@@ -30,7 +39,13 @@ function setup(t: AssignStrategyTotalsResponse, overspentCount = 0) {
   const onPickStrategy = vi.fn()
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <AssignAutoTab totals={t} isLoading={false} overspentCount={overspentCount} onPickStrategy={onPickStrategy} onCoverOverspent={onCoverOverspent} />
+      <AssignAutoTab
+        totals={t}
+        isLoading={false}
+        overspentCount={overspentCount}
+        onPickStrategy={onPickStrategy}
+        onCoverOverspent={onCoverOverspent}
+      />
     </QueryClientProvider>
   )
   const rows = screen.getAllByRole('button').filter((b) => b.hasAttribute('data-assign-row'))
@@ -47,7 +62,10 @@ describe('AssignAutoTab', () => {
   })
 
   it('shows the overspent amount and count, and opens the cover flow', () => {
-    const { rows, onCoverOverspent } = setup(totals({ total_overspent: 123.45, total_overspent_cash: 123.45 }), 3)
+    const { rows, onCoverOverspent } = setup(
+      totals({ total_overspent: 123.45, total_overspent_cash: 123.45 }),
+      3
+    )
     expect(rows[0]).toBeEnabled()
     expect(rows[0]).toHaveTextContent('3 categories')
     expect(rows[0]).toHaveTextContent('123.45')

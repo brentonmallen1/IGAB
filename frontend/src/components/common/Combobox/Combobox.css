@@ -71,7 +71,10 @@
   border-radius: var(--border-radius-sm);
   cursor: pointer;
   text-align: left;
-  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .combobox__create-btn svg {
@@ -116,7 +119,10 @@
   border-radius: var(--border-radius-sm);
   cursor: pointer;
   text-align: center;
-  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .combobox__footer-action:hover {

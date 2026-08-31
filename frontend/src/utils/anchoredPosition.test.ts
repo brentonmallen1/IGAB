@@ -7,8 +7,13 @@ import { describe, expect, it } from 'vitest'
 import { placeAnchored, samePlacement, type AnchorRect } from './anchoredPosition'
 
 const VIEWPORT = { width: 1200, height: 800 }
-const trigger = (over: Partial<AnchorRect> = {}): AnchorRect =>
-  ({ top: 100, bottom: 124, left: 300, width: 200, ...over })
+const trigger = (over: Partial<AnchorRect> = {}): AnchorRect => ({
+  top: 100,
+  bottom: 124,
+  left: 300,
+  width: 200,
+  ...over,
+})
 
 describe('placeAnchored — vertical', () => {
   it('hangs below the trigger when there is room', () => {
@@ -71,10 +76,14 @@ describe('placeAnchored — width', () => {
 
   it('applies min and max around a trigger-derived width', () => {
     const narrow = placeAnchored(trigger({ width: 90 }), VIEWPORT, {
-      width: 'trigger', minWidth: 200, maxWidth: 280,
+      width: 'trigger',
+      minWidth: 200,
+      maxWidth: 280,
     })
     const wide = placeAnchored(trigger({ width: 900 }), VIEWPORT, {
-      width: 'trigger', minWidth: 200, maxWidth: 280,
+      width: 'trigger',
+      minWidth: 200,
+      maxWidth: 280,
     })
     expect(narrow.width).toBe(200)
     expect(wide.width).toBe(280)

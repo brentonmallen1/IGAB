@@ -14,7 +14,12 @@ function Probe({ onLong, onTap }: { onLong: () => void; onTap: () => void }) {
   return <div data-testid="probe" {...handlers} />
 }
 
-function touch(el: Element, type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel', x = 10, y = 10) {
+function touch(
+  el: Element,
+  type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel',
+  x = 10,
+  y = 10
+) {
   fireEvent[type](el, { touches: [{ clientX: x, clientY: y }] })
 }
 

@@ -23,8 +23,8 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.category_service import CategoryService
 from igab.services.card_payment import ensure_payment_category
+from igab.services.category_service import CategoryService
 
 from .factories import (
     create_account,
@@ -75,9 +75,7 @@ class TestArchivingRefusesToStrandMoney:
         await services.budgets.set_assignment(budget.id, cat.id, AUG, D("100.00"))
 
         with pytest.raises(InvariantViolation, match="still holds money"):
-            await _svc(services, db_session).archive_categories(
-                budget.id, [cat.id], month=AUG
-            )
+            await _svc(services, db_session).archive_categories(budget.id, [cat.id], month=AUG)
 
         assert (await CategoryRepository(db_session).get(cat.id)).is_archived is False
 
@@ -115,9 +113,7 @@ class TestArchivingRefusesToStrandMoney:
         await db_session.flush()
 
         with pytest.raises(InvariantViolation, match="card or a tracked debt"):
-            await _svc(services, db_session).archive_categories(
-                budget.id, [linked.id], month=AUG
-            )
+            await _svc(services, db_session).archive_categories(budget.id, [linked.id], month=AUG)
 
 
 class TestArchivingWhenTheMoneyHasMoved:
@@ -441,9 +437,7 @@ class TestRetiringAGroupReturnsItsMoney:
         """Returning money does not fix a card envelope, so this is not swept
         past — it would strand the card instead of the money."""
         services, budget, _checking, _group, _cat = await _world(db_session)
-        visa = await create_account(
-            db_session, budget, "Sapphire Visa", account_type="credit_card"
-        )
+        visa = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
         linked = await ensure_payment_category(db_session, visa)
         assert linked is not None
         with pytest.raises(InvariantViolation):
@@ -460,9 +454,10 @@ class TestRetiringAGroupReturnsItsMoney:
             await _svc(services, db_session).retire_group(budget.id, group.id, month=AUG)
 
     async def test_undo_puts_the_money_and_the_group_back(self, db_session):
+        from sqlalchemy import select
+
         from igab.db.models import ChangeLog
         from igab.services.undo_service import UndoService
-        from sqlalchemy import select
 
         services, budget, _checking, group, cat = await _world(db_session)
         await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
@@ -472,12 +467,16 @@ class TestRetiringAGroupReturnsItsMoney:
         await db_session.flush()
 
         change = (
-            await db_session.execute(
-                select(ChangeLog)
-                .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "archive")
-                .order_by(ChangeLog.created_at.desc())
+            (
+                await db_session.execute(
+                    select(ChangeLog)
+                    .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "archive")
+                    .order_by(ChangeLog.created_at.desc())
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         assert change is not None
 
         await UndoService(db_session).undo_change(budget.id, change.id)

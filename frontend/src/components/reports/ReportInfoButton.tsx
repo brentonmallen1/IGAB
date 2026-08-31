@@ -39,8 +39,8 @@ const SCOPE_COPY: Record<ReportScope, string> = {
     "doesn't count, categorized transfers to them do. Picking accounts in the " +
     'filter bar overrides this, tracking accounts included.',
   categories:
-    'Accounts: follows categories, not accounts — anything categorized counts, '
-    + "matching the budget page's envelope math.",
+    'Accounts: follows categories, not accounts — anything categorized counts, ' +
+    "matching the budget page's envelope math.",
   'cash-projection': 'Accounts: open, on-budget accounts only.',
   liabilities:
     'Accounts: driven by your tracked liabilities, not account types — add a ' +
@@ -64,9 +64,9 @@ export function ReportScopeNote({ scope }: { scope: ReportScope }) {
 export function SpendingClassNote() {
   return (
     <p className="info-pop__note">
-      Counts spending only. Money moved into savings or investments, or used to
-      pay down a tracked debt, leaves your budget but stays yours — so it is not
-      counted here. Open any transaction to see how it is classified and why.
+      Counts spending only. Money moved into savings or investments, or used to pay down a tracked
+      debt, leaves your budget but stays yours — so it is not counted here. Open any transaction to
+      see how it is classified and why.
     </p>
   )
 }

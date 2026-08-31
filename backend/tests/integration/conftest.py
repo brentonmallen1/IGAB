@@ -24,9 +24,7 @@ from igab.db.models import Base
 
 # In-container, docker compose sets DATABASE_URL (host "db"). Locally, fall back
 # to the same credentials on localhost (matching the `just dev-backend` recipe).
-_BASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql+asyncpg://igab:changeme@localhost:5432/igab"
-)
+_BASE_URL = os.environ.get("DATABASE_URL", "postgresql+asyncpg://igab:changeme@localhost:5432/igab")
 
 
 def _db_name() -> str:

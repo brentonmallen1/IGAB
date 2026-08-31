@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -13,7 +14,7 @@ from igab.dependencies import CurrentUser, get_auth_service
 from igab.domain.exceptions import AuthenticationError
 from igab.services.auth_service import AuthService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.post("/login", response_model=TokenResponse)

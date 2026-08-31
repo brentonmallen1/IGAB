@@ -27,13 +27,7 @@ interface Props {
  * behind hover (or a drag handle) on desktop rows, which has no equivalent
  * on touch.
  */
-export function CategoryMobileActions({
-  budgetId,
-  category,
-  onDone,
-  onMoveUp,
-  onMoveDown,
-}: Props) {
+export function CategoryMobileActions({ budgetId, category, onDone, onMoveUp, onMoveDown }: Props) {
   const updateCategory = useUpdateCategory(budgetId)
   const archiveCategories = useArchiveCategories(budgetId)
   const unarchiveCategories = useUnarchiveCategories(budgetId)

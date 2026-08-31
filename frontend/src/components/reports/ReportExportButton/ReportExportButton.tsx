@@ -60,9 +60,15 @@ export function ReportExportButton({ reportId, getRows, captureRef, window }: Pr
       </button>
       {open && (
         <div className="report-export-btn__menu" role="menu">
-          <button role="menuitem" onClick={() => handle('csv')} type="button">CSV</button>
-          <button role="menuitem" onClick={() => handle('json')} type="button">JSON</button>
-          <button role="menuitem" onClick={() => handle('png')} type="button">PNG</button>
+          <button role="menuitem" onClick={() => handle('csv')} type="button">
+            CSV
+          </button>
+          <button role="menuitem" onClick={() => handle('json')} type="button">
+            JSON
+          </button>
+          <button role="menuitem" onClick={() => handle('png')} type="button">
+            PNG
+          </button>
         </div>
       )}
     </div>

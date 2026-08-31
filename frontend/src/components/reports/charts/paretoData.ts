@@ -33,7 +33,7 @@ export function buildParetoItems(
   groupBy: GroupBy,
   spendingItems: SpendingGroupItemLike[],
   payeeItems: PayeeItemLike[],
-  backendTotal: string | number | undefined,
+  backendTotal: string | number | undefined
 ): { sorted: ParetoItem[]; grandTotal: number } {
   if (groupBy === 'payee') {
     const items = [...payeeItems].sort((a, b) => Number(b.total) - Number(a.total))
@@ -88,7 +88,7 @@ export function buildParetoItems(
 export function cumulativePercents(items: ParetoItem[], grandTotal: number): number[] {
   const cumulative = items.reduce<number[]>(
     (acc, item) => [...acc, (acc[acc.length - 1] ?? 0) + item.total],
-    [],
+    []
   )
   return cumulative.map((c) => (grandTotal > 0 ? (c / grandTotal) * 100 : 0))
 }
@@ -97,13 +97,11 @@ export function cumulativePercents(items: ParetoItem[], grandTotal: number): num
  * and what fraction of ALL items that prefix represents. */
 export function paretoInsight(
   cumulativePcts: number[],
-  totalItemCount: number,
+  totalItemCount: number
 ): { idx80: number; pct80coverage: string | null } {
   const idx80 = cumulativePcts.findIndex((pct) => pct >= 80)
   const pct80coverage =
-    idx80 >= 0 && totalItemCount > 0
-      ? (((idx80 + 1) / totalItemCount) * 100).toFixed(0)
-      : null
+    idx80 >= 0 && totalItemCount > 0 ? (((idx80 + 1) / totalItemCount) * 100).toFixed(0) : null
   return { idx80, pct80coverage }
 }
 
@@ -119,7 +117,7 @@ export function shareOfTotal(total: number, grandTotal: number): number {
  * - message: guidance for the user */
 export function paretoAdherence(
   pct80coverage: string | null,
-  totalItemCount: number,
+  totalItemCount: number
 ): { adherent: boolean; pct: number; message: string } | null {
   if (!pct80coverage || totalItemCount < 3) return null
   const pct = parseApiDecimal(pct80coverage)

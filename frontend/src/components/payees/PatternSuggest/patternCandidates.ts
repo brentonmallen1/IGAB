@@ -16,6 +16,7 @@ export const NO_PATTERN_MESSAGE = "The AI's patterns matched none of these names
  *  first), then the structural suggestion unless the model already gave it. */
 export function patternCandidates(ai: string[], structural: string | null): PatternCandidate[] {
   const list: PatternCandidate[] = ai.map((pattern) => ({ pattern, source: 'ai' }))
-  if (structural && !ai.includes(structural)) list.push({ pattern: structural, source: 'structural' })
+  if (structural && !ai.includes(structural))
+    list.push({ pattern: structural, source: 'structural' })
   return list
 }

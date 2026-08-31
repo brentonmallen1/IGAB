@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.account import AccountCreate, AccountResponse, AccountUpdate
 from igab.dependencies import (
     AccountAccess,
@@ -27,7 +28,7 @@ from igab.services.liability_service import (
 from igab.services.transaction_matching_service import TransactionMatchingService
 from igab.services.transaction_service import TransactionService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get("/{budget_id}/accounts", response_model=list[AccountResponse])

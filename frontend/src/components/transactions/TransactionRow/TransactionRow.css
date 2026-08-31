@@ -57,8 +57,12 @@
 }
 
 @keyframes highlight-fade {
-  0% { background-color: color-mix(in srgb, var(--color-accent) 25%, transparent); }
-  100% { background-color: transparent; }
+  0% {
+    background-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -108,7 +112,9 @@
   border: none;
   cursor: pointer;
   border-radius: 3px;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .txn-status-icon:focus-visible {
@@ -329,7 +335,7 @@
 }
 
 .txn-checkbox:checked::before {
-  content: '';
+  content: "";
   width: 62%;
   height: 62%;
   background: var(--bg-primary);
@@ -337,7 +343,7 @@
 }
 
 .txn-checkbox:indeterminate::before {
-  content: '';
+  content: "";
   width: 62%;
   height: 2px;
   background: var(--bg-primary);
@@ -368,7 +374,9 @@
   padding: 2px;
   color: var(--text-muted);
   border-radius: var(--border-radius-sm);
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
   margin-left: 2px;
 }
 

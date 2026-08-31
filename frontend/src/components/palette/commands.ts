@@ -208,7 +208,6 @@ export const STATIC_COMMANDS: AppCommand[] = [
   },
 ]
 
-
 /**
  * Rows the palette derives rather than a person writing them.
  *
@@ -250,16 +249,16 @@ export function reportCommands(): AppCommand[] {
 }
 
 export function guideCommands(ctx: DerivedCommandCtx): AppCommand[] {
-  const tabs: AppCommand[] = GUIDE_TABS.filter(
-    (tab) => !ctx.hiddenGuideTabs.includes(tab.id),
-  ).map((tab) => ({
-    id: `guide-${tab.id}`,
-    label: `Guide: ${tab.label}`,
-    section: 'Navigate' as const,
-    keywords: 'guide roadmap',
-    icon: Compass,
-    run: (c: CommandCtx) => c.navigate(`/guide?tab=${tab.id}`),
-  }))
+  const tabs: AppCommand[] = GUIDE_TABS.filter((tab) => !ctx.hiddenGuideTabs.includes(tab.id)).map(
+    (tab) => ({
+      id: `guide-${tab.id}`,
+      label: `Guide: ${tab.label}`,
+      section: 'Navigate' as const,
+      keywords: 'guide roadmap',
+      icon: Compass,
+      run: (c: CommandCtx) => c.navigate(`/guide?tab=${tab.id}`),
+    })
+  )
   const tools: AppCommand[] = Object.values(TOOLS).map((tool) => ({
     id: `calc-${tool.id}`,
     label: `Calculator: ${tool.label}`,
@@ -280,7 +279,7 @@ export function settingsCommands(ctx: DerivedCommandCtx): AppCommand[] {
       keywords: `settings preferences ${section.keywords ?? ''}`,
       icon: Settings,
       run: (c: CommandCtx) => c.navigate(`/settings#${section.id}`),
-    }),
+    })
   )
 }
 

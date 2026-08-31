@@ -14,9 +14,9 @@ import pytest
 from igab.domain.money import format_csv_amount, parse_csv_amount
 from igab.integrations.ynab.parser import (
     _CLEARED_MAP,
+    _SPLIT_MEMO_RE,
     _parse_date,
     _parse_month,
-    _SPLIT_MEMO_RE,
 )
 from igab.integrations.ynab.writer import (
     CLEARED_LABELS,

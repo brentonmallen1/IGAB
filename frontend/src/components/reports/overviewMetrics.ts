@@ -32,6 +32,9 @@ export function roundedDaysUntilZero(days: number | string | null | undefined): 
 
 /** N months of essentials as a save target; null passes through (nothing is
  *  tagged Essential yet, so there is no figure to multiply). */
-export function essentialsReserve(monthly: number | null | undefined, months: number): number | null {
+export function essentialsReserve(
+  monthly: number | null | undefined,
+  months: number
+): number | null {
   return monthly == null ? null : monthly * months
 }

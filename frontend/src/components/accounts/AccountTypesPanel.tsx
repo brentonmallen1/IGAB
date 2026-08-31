@@ -91,11 +91,11 @@ export function AccountTypesPanel({ budgetId }: Props) {
         <div>
           <div className="acct-types__title">Account Types</div>
           <div className="acct-types__hint">
-            A type decides whether an account counts as an asset or a liability, and whether
-            new accounts of that type start on budget. Built-in types can't be changed.
-            {' '}For accounts kept <em>off</em> budget, these two answers also decide how
-            money you move there is read: into an asset it counts as saving, toward a
-            liability it counts as paying down debt. Neither is spending.
+            A type decides whether an account counts as an asset or a liability, and whether new
+            accounts of that type start on budget. Built-in types can't be changed. For accounts
+            kept <em>off</em> budget, these two answers also decide how money you move there is
+            read: into an asset it counts as saving, toward a liability it counts as paying down
+            debt. Neither is spending.
           </div>
         </div>
         <button
@@ -168,8 +168,8 @@ export function AccountTypesPanel({ budgetId }: Props) {
               <option value="liability">Liability (you owe it)</option>
             </select>
             <div className="acct-types__hint">
-              Off budget, an asset makes incoming money count as saving and a liability
-              makes it count as paying down debt. On budget, this only affects net worth.
+              Off budget, an asset makes incoming money count as saving and a liability makes it
+              count as paying down debt. On budget, this only affects net worth.
             </div>
             <label className="acct-types__checkbox">
               <input
@@ -187,11 +187,7 @@ export function AccountTypesPanel({ budgetId }: Props) {
             placeholder="Optional description shown wherever this type is offered…"
           />
           <div className="acct-types__form-actions">
-            <button
-              type="button"
-              className="acct-types__btn"
-              onClick={() => setFormTarget(null)}
-            >
+            <button type="button" className="acct-types__btn" onClick={() => setFormTarget(null)}>
               Cancel
             </button>
             <button

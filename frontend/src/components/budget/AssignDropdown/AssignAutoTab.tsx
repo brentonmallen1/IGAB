@@ -18,7 +18,13 @@ interface Props {
  * the same number the preview modal and apply will produce. Clicking a row
  * opens the preview modal; nothing applies from here.
  */
-export function AssignAutoTab({ totals, isLoading, overspentCount, onPickStrategy, onCoverOverspent }: Props) {
+export function AssignAutoTab({
+  totals,
+  isLoading,
+  overspentCount,
+  onPickStrategy,
+  onCoverOverspent,
+}: Props) {
   const { formatMoney } = useFormatters()
 
   if (isLoading || !totals) {

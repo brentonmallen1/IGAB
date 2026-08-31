@@ -35,9 +35,7 @@ async def _budget_with_checking(db_session, opening: str = "5000.00"):
     checking = await create_account(db_session, budget, "Checking")
     # Opening balance 200 days back: counts toward the balance but sits
     # outside the 180-day history window, keeping sampled flows empty.
-    await create_transaction(
-        db_session, budget, checking, opening, TODAY - timedelta(days=200)
-    )
+    await create_transaction(db_session, budget, checking, opening, TODAY - timedelta(days=200))
     return budget, checking
 
 
@@ -51,12 +49,22 @@ async def test_scheduled_transactions_drive_a_deterministic_path(db_session):
     rent_payee = await create_payee(db_session, budget, "Landlord")
     pay_payee = await create_payee(db_session, budget, "Employer")
     await create_scheduled_transaction(
-        db_session, budget, checking, "-1200.00", "monthly",
-        TODAY + timedelta(days=10), payee=rent_payee,
+        db_session,
+        budget,
+        checking,
+        "-1200.00",
+        "monthly",
+        TODAY + timedelta(days=10),
+        payee=rent_payee,
     )
     await create_scheduled_transaction(
-        db_session, budget, checking, "2000.00", "biweekly",
-        TODAY + timedelta(days=3), payee=pay_payee,
+        db_session,
+        budget,
+        checking,
+        "2000.00",
+        "biweekly",
+        TODAY + timedelta(days=3),
+        payee=pay_payee,
     )
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
@@ -108,9 +116,7 @@ async def test_off_budget_closed_pending_and_deleted_contribute_nothing(db_sessi
 
     # Each of these would distort the projection if it leaked in:
     tracking = await create_account(db_session, budget, "Brokerage", on_budget=False)
-    await create_transaction(
-        db_session, budget, tracking, "9999.00", TODAY - timedelta(days=50)
-    )
+    await create_transaction(db_session, budget, tracking, "9999.00", TODAY - timedelta(days=50))
     closed = await create_account(db_session, budget, "Old Checking")
     await create_transaction(db_session, budget, closed, "777.00", TODAY - timedelta(days=40))
     closed.is_closed = True
@@ -122,7 +128,12 @@ async def test_off_budget_closed_pending_and_deleted_contribute_nothing(db_sessi
         db_session, budget, tracking, "-999.00", "monthly", TODAY + timedelta(days=5)
     )
     await create_scheduled_transaction(
-        db_session, budget, checking, "-111.00", "monthly", TODAY + timedelta(days=3),
+        db_session,
+        budget,
+        checking,
+        "-111.00",
+        "monthly",
+        TODAY + timedelta(days=3),
         is_deleted=True,
     )
 
@@ -151,8 +162,13 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
     )
     # A pending auth must shift neither the typical amount nor the cadence
     await create_transaction(
-        db_session, budget, checking, "-99.00", TODAY - timedelta(days=10),
-        payee=netflix, cleared="pending",
+        db_session,
+        budget,
+        checking,
+        "-99.00",
+        TODAY - timedelta(days=10),
+        payee=netflix,
+        cleared="pending",
     )
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
@@ -169,8 +185,13 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
 async def test_scheduled_end_date_and_event_cap_respected(db_session):
     budget, checking = await _budget_with_checking(db_session)
     await create_scheduled_transaction(
-        db_session, budget, checking, "-5.00", "weekly",
-        TODAY + timedelta(days=2), end_date=TODAY + timedelta(days=9),
+        db_session,
+        budget,
+        checking,
+        "-5.00",
+        "weekly",
+        TODAY + timedelta(days=2),
+        end_date=TODAY + timedelta(days=9),
     )
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
@@ -181,9 +202,7 @@ async def test_scheduled_end_date_and_event_cap_respected(db_session):
 
     # A daily schedule floods the 30-day event window; the list caps at 20
     budget2, checking2 = await _budget_with_checking(db_session)
-    await create_scheduled_transaction(
-        db_session, budget2, checking2, "-1.00", "daily", TODAY
-    )
+    await create_scheduled_transaction(db_session, budget2, checking2, "-1.00", "daily", TODAY)
     data2 = await ReportService(db_session).cash_projection(budget2.id, horizon_days=90)
     assert len(data2["events"]) == 20
 

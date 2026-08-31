@@ -6,9 +6,9 @@ export function SystemTagsHelp() {
   return (
     <InfoPopover title="System tags" label="What system tags do" width={440}>
       <p>
-        Every budget gets these five tags. Their colour is yours to change; their names
-        are not, and they cannot be deleted — unlike your own tags they change how IGAB{' '}
-        <strong>counts</strong> money, and the name is how you know which is which.
+        Every budget gets these five tags. Their colour is yours to change; their names are not, and
+        they cannot be deleted — unlike your own tags they change how IGAB <strong>counts</strong>{' '}
+        money, and the name is how you know which is which.
       </p>
 
       <InfoSection title="Each one">
@@ -26,9 +26,8 @@ export function SystemTagsHelp() {
 
       <InfoSection title="Applying them">
         <p>
-          Tag a category from its inspector on the Budget page, or a payee from the Payees
-          page. Any other tag you create is a label for filtering and grouping — it changes
-          no number.
+          Tag a category from its inspector on the Budget page, or a payee from the Payees page. Any
+          other tag you create is a label for filtering and grouping — it changes no number.
         </p>
       </InfoSection>
     </InfoPopover>

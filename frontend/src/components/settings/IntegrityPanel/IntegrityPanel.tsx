@@ -92,16 +92,11 @@ export function IntegrityPanel({ budgetId }: Props) {
     <div className="integrity-panel">
       <div className="integrity-panel__intro">
         <p>
-          Verifies the financial invariants against your live data: splits sum
-          to their totals, transfer pairs balance to zero, account balances and
-          category activity see the same money, and no stale bank authorizations
-          or orphaned review matches linger.
+          Verifies the financial invariants against your live data: splits sum to their totals,
+          transfer pairs balance to zero, account balances and category activity see the same money,
+          and no stale bank authorizations or orphaned review matches linger.
         </p>
-        <button
-          className="integrity-panel__run-btn"
-          onClick={runChecks}
-          disabled={running}
-        >
+        <button className="integrity-panel__run-btn" onClick={runChecks} disabled={running}>
           <ShieldCheck size={14} />
           {running ? 'Checking…' : 'Run integrity check'}
         </button>

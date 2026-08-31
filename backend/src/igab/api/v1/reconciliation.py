@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.reconciliation import (
     ReconcileAdjustmentRequest,
     ReconcileFinishRequest,
@@ -12,7 +13,7 @@ from igab.api.v1.schemas.transaction import TransactionResponse
 from igab.dependencies import AccountAccess, CurrentUser, get_reconciliation_service
 from igab.services.reconciliation_service import ReconciliationService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get(

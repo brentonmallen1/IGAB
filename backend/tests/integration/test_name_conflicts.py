@@ -92,9 +92,7 @@ class TestViews:
 
 
 class TestCategories:
-    async def test_duplicate_category_name_in_a_group_is_a_conflict(
-        self, api_client, db_session
-    ):
+    async def test_duplicate_category_name_in_a_group_is_a_conflict(self, api_client, db_session):
         """Previously a 500 — the follow-up recorded when views gained their
         own handler and nothing else did."""
         budget = await _budget(db_session, api_client)
@@ -133,13 +131,17 @@ class TestNamesFreedByDeletion:
     async def test_an_accounts_name_is_reusable_after_deletion(self, api_client, db_session):
         budget = await _budget(db_session, api_client)
         created = await api_client.post(
-            f"/api/v1/{budget.id}/accounts", json={"name": "Harborstone", "account_type": "checking"}
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Harborstone", "account_type": "checking"},
         )
         assert created.status_code == 201
-        assert (await api_client.delete(f"/api/v1/accounts/{created.json()['id']}")).status_code == 204
+        assert (
+            await api_client.delete(f"/api/v1/accounts/{created.json()['id']}")
+        ).status_code == 204
 
         again = await api_client.post(
-            f"/api/v1/{budget.id}/accounts", json={"name": "Harborstone", "account_type": "checking"}
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Harborstone", "account_type": "checking"},
         )
 
         assert again.status_code == 201, again.json()
@@ -172,9 +174,7 @@ class TestNamesFreedByDeletion:
 
         assert again.status_code == 201, again.json()
 
-    async def test_an_account_can_be_renamed_onto_a_deleted_rows_name(
-        self, api_client, db_session
-    ):
+    async def test_an_account_can_be_renamed_onto_a_deleted_rows_name(self, api_client, db_session):
         """The rename path is a different statement (UPDATE, not INSERT) but
         the same index decides it. Creating under a workaround name and then
         renaming to the one you wanted is the obvious way out of the bug, so
@@ -182,9 +182,12 @@ class TestNamesFreedByDeletion:
         """
         budget = await _budget(db_session, api_client)
         first = await api_client.post(
-            f"/api/v1/{budget.id}/accounts", json={"name": "Harborstone", "account_type": "checking"}
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Harborstone", "account_type": "checking"},
         )
-        assert (await api_client.delete(f"/api/v1/accounts/{first.json()['id']}")).status_code == 204
+        assert (
+            await api_client.delete(f"/api/v1/accounts/{first.json()['id']}")
+        ).status_code == 204
         stand_in = await api_client.post(
             f"/api/v1/{budget.id}/accounts",
             json={"name": "Harborstone 2", "account_type": "checking"},
@@ -202,7 +205,8 @@ class TestNamesFreedByDeletion:
     ):
         budget = await _budget(db_session, api_client)
         await api_client.post(
-            f"/api/v1/{budget.id}/accounts", json={"name": "Harborstone", "account_type": "checking"}
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Harborstone", "account_type": "checking"},
         )
         other = await api_client.post(
             f"/api/v1/{budget.id}/accounts",
@@ -222,11 +226,13 @@ class TestNamesFreedByDeletion:
         """
         budget = await _budget(db_session, api_client)
         await api_client.post(
-            f"/api/v1/{budget.id}/accounts", json={"name": "Harborstone", "account_type": "checking"}
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Harborstone", "account_type": "checking"},
         )
 
         dupe = await api_client.post(
-            f"/api/v1/{budget.id}/accounts", json={"name": "Harborstone", "account_type": "checking"}
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Harborstone", "account_type": "checking"},
         )
 
         assert dupe.status_code == 409

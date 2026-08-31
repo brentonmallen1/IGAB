@@ -104,11 +104,7 @@ export function MoveMoneyForm({ budgetId, month, category, available, onClose }:
             inputMode="decimal"
           />
         </label>
-        <button
-          type="submit"
-          className="move-money-popover__submit"
-          disabled={moveMoney.isPending}
-        >
+        <button type="submit" className="move-money-popover__submit" disabled={moveMoney.isPending}>
           {moveMoney.isPending ? 'Moving…' : isCover ? 'Cover Overspending' : 'Move Money'}
         </button>
         {error && <div className="move-money-popover__error">{error}</div>}

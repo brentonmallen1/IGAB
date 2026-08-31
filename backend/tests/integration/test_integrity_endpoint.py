@@ -108,9 +108,7 @@ async def test_seeded_inconsistencies_are_each_detected(db_session):
     )
 
     # 4. Pending match pointing at a deleted transaction
-    dead = await create_transaction(
-        db_session, budget, account, "-5.00", TODAY, is_deleted=True
-    )
+    dead = await create_transaction(db_session, budget, account, "-5.00", TODAY, is_deleted=True)
     live = await create_transaction(db_session, budget, account, "-5.00", TODAY)
     await services.match_repo.create(
         synced_transaction_id=dead.id, manual_transaction_id=live.id, confidence_score=0.6
@@ -136,7 +134,6 @@ async def test_a_row_filed_to_a_card_envelope_is_detected(db_session):
     exactly how the register's old dropdown produced them."""
     from igab.services.card_payment import ensure_payment_category
 
-    services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
     checking = await create_account(db_session, budget, "Checking")
@@ -146,9 +143,7 @@ async def test_a_row_filed_to_a_card_envelope_is_detected(db_session):
     group = await create_category_group(db_session, budget, "Everyday")
     cat = await create_category(db_session, budget, group, "Groceries")
 
-    txn = await create_transaction(
-        db_session, budget, checking, "-40.00", TODAY, category=cat
-    )
+    txn = await create_transaction(db_session, budget, checking, "-40.00", TODAY, category=cat)
     await db_session.execute(
         update(Transaction).where(Transaction.id == txn.id).values(category_id=linked.id)
     )
@@ -177,9 +172,7 @@ class TestTheCardReserveIdentity:
         user = await create_user(db_session)
         budget = await create_budget(db_session, user)
         checking = await create_account(db_session, budget, "Checking")
-        visa = await create_account(
-            db_session, budget, "Sapphire Visa", account_type="credit_card"
-        )
+        visa = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
         linked = await ensure_payment_category(db_session, visa)
         group = await create_category_group(db_session, budget, "Everyday")
         cat = await create_category(db_session, budget, group, "Groceries")
@@ -272,6 +265,6 @@ class TestTheCardReserveIdentity:
         # 100 reserved against a card owing nothing, no assignment, no payment,
         # no residual, no outside credit — the shape the old code produced on
         # every refund that posted before its purchase.
-        assert reserve_discrepancy(
-            Decimal("100"), zero, zero, zero, zero, zero
-        ) == Decimal("100")
+        assert reserve_discrepancy(Decimal("100"), zero, zero, zero, zero, zero, zero) == Decimal(
+            "100"
+        )

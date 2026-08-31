@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { downscaleForUpload } from '../utils/imageUpload'
 import { confirmAsync } from '../stores/confirmStore'
+import { ROOT } from './queryKeys'
 
 export interface Attachment {
   id: string
@@ -22,13 +23,40 @@ export function isAttachableFile(file: File): boolean {
   return file.type.startsWith('image/') || file.type === 'application/pdf'
 }
 
+/** The upload ceiling, written once.
+ *
+ * `20 * 1024 * 1024` was inline in three components and the string "20MB" was
+ * typed six times across both languages, including a hint that promised it to
+ * the user. A number spelled that often is a number that eventually disagrees
+ * with the server that enforces it, and the first sign would have been an
+ * upload the client cheerfully accepted and the API rejected.
+ *
+ * The server is authoritative — this is a pre-check so a 20MB upload fails
+ * before it is sent, not instead of the server's check. The two are the
+ * irreducible duplication CLAUDE.md describes, so they are one constant per
+ * side plus a differential test: `tests/unit/test_upload_limit_agreement.py`
+ * reads this line and asserts it equals `MAX_FILE_SIZE`.
+ */
+const MAX_ATTACHMENT_MB = 20
+export const MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024
+/** The same ceiling as a person reads it. Derived, so the copy in a toast and
+ *  the number in the check cannot drift apart. */
+export const MAX_ATTACHMENT_LABEL = `${MAX_ATTACHMENT_MB}MB`
+
+export function isTooLargeToAttach(file: File): boolean {
+  return file.size > MAX_ATTACHMENT_BYTES
+}
+
 export function isPdfAttachment(a: Pick<Attachment, 'content_type'>): boolean {
   return a.content_type === 'application/pdf'
 }
 
 const blobCache = new Map<string, string>()
 
-export async function fetchAttachmentBlob(attachmentId: string, thumbnail = false): Promise<string> {
+export async function fetchAttachmentBlob(
+  attachmentId: string,
+  thumbnail = false
+): Promise<string> {
   const cacheKey = `${attachmentId}-${thumbnail}`
   if (blobCache.has(cacheKey)) return blobCache.get(cacheKey)!
 
@@ -70,8 +98,8 @@ export function useRotateAttachment() {
     },
     onSuccess: (data) => {
       invalidateAttachmentBlob(data.id)
-      qc.invalidateQueries({ queryKey: ['attachmentBlob', data.id] })
-      qc.invalidateQueries({ queryKey: ['attachments', data.transaction_id] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachmentBlob, data.id] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachments, data.transaction_id] })
     },
   })
 }
@@ -102,7 +130,7 @@ export async function downloadAttachment(
 
 export function useAttachments(transactionId: string | null) {
   return useQuery({
-    queryKey: ['attachments', transactionId],
+    queryKey: [ROOT.attachments, transactionId],
     queryFn: async () => {
       const { data } = await apiClient.get<Attachment[]>(
         `/transactions/${transactionId}/attachments`
@@ -132,8 +160,8 @@ export function useUploadAttachment(transactionId: string) {
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['attachments', transactionId] })
-      qc.invalidateQueries({ queryKey: ['attachmentCheck'] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachments, transactionId] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
     },
   })
 }
@@ -141,11 +169,10 @@ export function useUploadAttachment(transactionId: string) {
 export function useDeleteAttachment(transactionId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (attachmentId: string) =>
-      apiClient.delete(`/attachments/${attachmentId}`),
+    mutationFn: (attachmentId: string) => apiClient.delete(`/attachments/${attachmentId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['attachments', transactionId] })
-      qc.invalidateQueries({ queryKey: ['attachmentCheck'] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachments, transactionId] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
     },
   })
 }
@@ -186,9 +213,7 @@ export async function uploadFilesToTransaction(
 export async function confirmDeleteTransaction(transactionId: string): Promise<boolean> {
   let detail: string | undefined
   try {
-    const { data } = await apiClient.get<Attachment[]>(
-      `/transactions/${transactionId}/attachments`
-    )
+    const { data } = await apiClient.get<Attachment[]>(`/transactions/${transactionId}/attachments`)
     if (data.length === 1) {
       detail = 'The attached receipt image will be deleted with it.'
     } else if (data.length > 1) {
@@ -207,7 +232,7 @@ export async function confirmDeleteTransaction(transactionId: string): Promise<b
 
 export function useCheckAttachments(transactionIds: string[]) {
   return useQuery({
-    queryKey: ['attachmentCheck', transactionIds],
+    queryKey: [ROOT.attachmentCheck, transactionIds],
     queryFn: async () => {
       const { data } = await apiClient.post<Record<string, boolean>>(
         '/transactions/attachments/check',
@@ -222,7 +247,7 @@ export function useCheckAttachments(transactionIds: string[]) {
 
 export function useAttachmentUrl(attachmentId: string | null, thumbnail = false) {
   return useQuery({
-    queryKey: ['attachmentBlob', attachmentId, thumbnail],
+    queryKey: [ROOT.attachmentBlob, attachmentId, thumbnail],
     queryFn: () => fetchAttachmentBlob(attachmentId!, thumbnail),
     enabled: !!attachmentId,
     staleTime: Infinity,

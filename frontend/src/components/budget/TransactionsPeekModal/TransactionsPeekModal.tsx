@@ -85,9 +85,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
     if (scope.kind === 'account') {
       setTransactionSearch(`account:"${scope.accountName}"`)
     } else {
-      const accountToken = accountFilter
-        ? ` account:"${accountName.get(accountFilter) ?? ''}"`
-        : ''
+      const accountToken = accountFilter ? ` account:"${accountName.get(accountFilter) ?? ''}"` : ''
       setTransactionSearch(`category:"${scope.categoryName}"${accountToken}`)
     }
     onClose()
@@ -118,12 +116,21 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                 aria-label="Filter by account"
               >
                 <option value="">All accounts</option>
-                {accounts.filter((a) => !a.is_closed).map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
+                {accounts
+                  .filter((a) => !a.is_closed)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
               </select>
             )}
-            <button type="button" className="category-txns__close" onClick={onClose} aria-label="Close">
+            <button
+              type="button"
+              className="category-txns__close"
+              onClick={onClose}
+              aria-label="Close"
+            >
               <X size={18} />
             </button>
           </div>
@@ -147,16 +154,14 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                   <th scope="col">Date</th>
                   <th scope="col">Payee</th>
                   {scope.kind === 'category' && <th scope="col">Account</th>}
-                  <th scope="col" className="category-txns__amount-col">Amount</th>
+                  <th scope="col" className="category-txns__amount-col">
+                    Amount
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.map((t) => (
-                  <tr
-                    key={t.id}
-                    onClick={() => openInRegister(t)}
-                    title="Open in account register"
-                  >
+                  <tr key={t.id} onClick={() => openInRegister(t)} title="Open in account register">
                     <td className="category-txns__date">{formatDate(t.date)}</td>
                     <td className="category-txns__payee">
                       <span className="category-txns__payee-name">{describePayee(t)}</span>
@@ -181,11 +186,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
 
         <div className="category-txns__footer">
           {onAddTransaction && (
-            <button
-              type="button"
-              className="category-txns__footer-btn"
-              onClick={onAddTransaction}
-            >
+            <button type="button" className="category-txns__footer-btn" onClick={onAddTransaction}>
               <Plus size={13} />
               Add transaction
             </button>

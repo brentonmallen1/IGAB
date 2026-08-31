@@ -69,7 +69,10 @@ export function UsersPanel() {
     <div className="users-panel">
       <div className="users-panel__list">
         {users.map((u) => (
-          <div key={u.id} className={`users-panel__row ${u.is_active ? '' : 'users-panel__row--inactive'}`}>
+          <div
+            key={u.id}
+            className={`users-panel__row ${u.is_active ? '' : 'users-panel__row--inactive'}`}
+          >
             <div className="users-panel__identity">
               <span className="users-panel__name">
                 {u.display_name || u.email}
@@ -78,14 +81,19 @@ export function UsersPanel() {
                     <ShieldCheck size={11} /> admin
                   </span>
                 )}
-                {!u.is_active && <span className="users-panel__chip users-panel__chip--inactive">deactivated</span>}
+                {!u.is_active && (
+                  <span className="users-panel__chip users-panel__chip--inactive">deactivated</span>
+                )}
                 {u.id === me?.id && <span className="users-panel__chip">you</span>}
               </span>
               {u.display_name && <span className="users-panel__email">{u.email}</span>}
             </div>
             <div className="users-panel__actions">
               {u.is_env_admin ? (
-                <span className="users-panel__env-note" title="This credential is set by the ADMIN_PASSWORD environment variable and re-synced at every boot">
+                <span
+                  className="users-panel__env-note"
+                  title="This credential is set by the ADMIN_PASSWORD environment variable and re-synced at every boot"
+                >
                   managed by ADMIN_PASSWORD
                 </span>
               ) : (
@@ -222,7 +230,11 @@ function ResetPasswordDialog({
             autoComplete="new-password"
           />
           <div className="users-panel__dialog-actions">
-            <button type="button" className="settings-btn settings-btn--secondary" onClick={onClose}>
+            <button
+              type="button"
+              className="settings-btn settings-btn--secondary"
+              onClick={onClose}
+            >
               Cancel
             </button>
             <button

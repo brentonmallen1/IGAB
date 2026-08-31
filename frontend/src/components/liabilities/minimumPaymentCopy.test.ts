@@ -26,7 +26,7 @@ describe('describeMinimumRule', () => {
 
   it('says when interest rides on top', () => {
     expect(describeMinimumRule(rule({ minimum_payment_plus_interest: true }), money)).toBe(
-      '2% of balance plus interest, at least $35.00',
+      '2% of balance plus interest, at least $35.00'
     )
   })
 
@@ -40,8 +40,8 @@ describe('describeMinimumRule', () => {
           minimum_payment_floor: null,
           minimum_payment_plus_interest: false,
         },
-        money,
-      ),
+        money
+      )
     ).toBeNull()
   })
 
@@ -50,9 +50,7 @@ describe('describeMinimumRule', () => {
   })
 
   it('drops the floor clause rather than inventing one', () => {
-    expect(describeMinimumRule(rule({ minimum_payment_floor: null }), money)).toBe(
-      '2% of balance',
-    )
+    expect(describeMinimumRule(rule({ minimum_payment_floor: null }), money)).toBe('2% of balance')
   })
 })
 
@@ -68,7 +66,7 @@ describe('minimumDeclines', () => {
         minimum_payment_percent: null,
         minimum_payment_floor: null,
         minimum_payment_plus_interest: false,
-      }),
+      })
     ).toBe(false)
   })
 

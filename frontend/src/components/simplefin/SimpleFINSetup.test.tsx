@@ -15,7 +15,8 @@ vi.mock('../../api/auth', async (importOriginal) => ({
   useCurrentUser: vi.fn(),
 }))
 
-const GENERATE = 'python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+const GENERATE =
+  'python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
 
 type ConfigQuery = ReturnType<typeof useSimpleFINConfig>
 

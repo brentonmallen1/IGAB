@@ -1,6 +1,24 @@
-import { CheckCircle, Circle, Clock, Eye, Lock, MoreHorizontal, Sparkles, Split, Trash2, ChevronRight, Pencil, Unlock, CalendarClock } from 'lucide-react'
+import {
+  CheckCircle,
+  Circle,
+  Clock,
+  Eye,
+  Lock,
+  MoreHorizontal,
+  Sparkles,
+  Split,
+  Trash2,
+  ChevronRight,
+  Pencil,
+  Unlock,
+  CalendarClock,
+} from 'lucide-react'
 import { useState, useRef, useMemo, memo } from 'react'
-import { useUpdateTransaction, useDeleteTransaction, useUnreconcileTransaction } from '../../../api/transactions'
+import {
+  useUpdateTransaction,
+  useDeleteTransaction,
+  useUnreconcileTransaction,
+} from '../../../api/transactions'
 import { useScheduledTransactions } from '../../../api/scheduledTransactions'
 import { confirmDeleteTransaction } from '../../../api/attachments'
 import { useCreateCategory } from '../../../api/categories'
@@ -117,7 +135,8 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
     a.scheduled_transaction_id !== b.scheduled_transaction_id ||
     a.bank_payee !== b.bank_payee ||
     a.has_sync_source !== b.has_sync_source
-  ) return false
+  )
+    return false
   if (prev.payeeMap !== next.payeeMap) return false
   if (prev.accountMap !== next.accountMap) return false
   if (prev.categoryMap !== next.categoryMap) return false
@@ -169,7 +188,11 @@ export const TransactionRow = memo(function TransactionRow({
   const isMobile = useIsMobile()
   const anyTxnSelected = useUIStore((s) => s.selectedTransactionIds.size > 0)
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
-  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number; alignRight?: boolean }>({ x: 0, y: 0 })
+  const [contextMenuPos, setContextMenuPos] = useState<{
+    x: number
+    y: number
+    alignRight?: boolean
+  }>({ x: 0, y: 0 })
   const [approveMenuOpen, setApproveMenuOpen] = useState(false)
   const [approveMenuPos, setApproveMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const moreRef = useRef<HTMLButtonElement>(null)
@@ -183,7 +206,9 @@ export const TransactionRow = memo(function TransactionRow({
 
   const categoryName = txn.is_split
     ? 'Split Transaction'
-    : (txn.category_id ? (categoryMap.get(txn.category_id) ?? '—') : null)
+    : txn.category_id
+      ? (categoryMap.get(txn.category_id) ?? '—')
+      : null
 
   const isEditing = (field: string) =>
     editingField?.transactionId === txn.id && editingField.field === field
@@ -206,7 +231,9 @@ export const TransactionRow = memo(function TransactionRow({
   // Only rows entered from a schedule fetch the schedules (the query is
   // disabled otherwise), and the list is shared with the register's upcoming
   // rows, so this costs nothing extra.
-  const { data: schedules } = useScheduledTransactions(txn.scheduled_transaction_id ? budgetId : null)
+  const { data: schedules } = useScheduledTransactions(
+    txn.scheduled_transaction_id ? budgetId : null
+  )
   const schedule = txn.scheduled_transaction_id
     ? schedules?.find((s) => s.id === txn.scheduled_transaction_id)
     : undefined
@@ -353,10 +380,13 @@ export const TransactionRow = memo(function TransactionRow({
     // card's set-aside envelope in the register's most-used control, under
     // a blank group heading (its group is hidden, so no name resolved), and
     // filing a row there hid the money from the budget entirely.
-    () => categories.filter((c) => c.is_categorizable).map((c) => {
-      const group = categoryGroups.find((g) => g.id === c.category_group_id)
-      return { id: c.id, label: c.name, group: group?.name ?? '' }
-    }),
+    () =>
+      categories
+        .filter((c) => c.is_categorizable)
+        .map((c) => {
+          const group = categoryGroups.find((g) => g.id === c.category_group_id)
+          return { id: c.id, label: c.name, group: group?.name ?? '' }
+        }),
     [categories, categoryGroups]
   )
 
@@ -384,7 +414,11 @@ export const TransactionRow = memo(function TransactionRow({
     <button
       className="combobox__footer-action"
       type="button"
-      onMouseDown={(e) => { e.preventDefault(); onStartSplit(txn); stopEditing() }}
+      onMouseDown={(e) => {
+        e.preventDefault()
+        onStartSplit(txn)
+        stopEditing()
+      }}
     >
       <Split size={12} />
       Split (Multiple Categories)
@@ -529,7 +563,9 @@ export const TransactionRow = memo(function TransactionRow({
       {/* Payee */}
       <div
         className="txn-col txn-col--payee txn-text-clip"
-        onClick={() => !isMobile && !isReconciled && !txn.transfer_id && startEditing(txn.id, 'payee')}
+        onClick={() =>
+          !isMobile && !isReconciled && !txn.transfer_id && startEditing(txn.id, 'payee')
+        }
       >
         {isEditing('payee') ? (
           <Combobox
@@ -656,8 +692,10 @@ export const TransactionRow = memo(function TransactionRow({
             type="currency"
             placeholder="0.00"
           />
+        ) : outflow > 0 ? (
+          <span className="txn-outflow">{formatMoney(outflow)}</span>
         ) : (
-          outflow > 0 ? <span className="txn-outflow">{formatMoney(outflow)}</span> : ''
+          ''
         )}
       </div>
 
@@ -675,8 +713,10 @@ export const TransactionRow = memo(function TransactionRow({
             type="currency"
             placeholder="0.00"
           />
+        ) : inflow > 0 ? (
+          <span className="txn-inflow">{formatMoney(inflow)}</span>
         ) : (
-          inflow > 0 ? <span className="txn-inflow">{formatMoney(inflow)}</span> : ''
+          ''
         )}
       </div>
 
@@ -686,7 +726,10 @@ export const TransactionRow = memo(function TransactionRow({
           <Tooltip content="Reconciled — locked. Click to unlock (unreconcile).">
             <button
               className="txn-cleared-btn txn-cleared-btn--locked"
-              onClick={(e) => { e.stopPropagation(); handleUnreconcile() }}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleUnreconcile()
+              }}
               aria-label="Reconciled transaction — click to unreconcile"
             >
               <Lock size={12} />
@@ -694,7 +737,11 @@ export const TransactionRow = memo(function TransactionRow({
           </Tooltip>
         ) : isPending ? (
           <Tooltip content="Pending — the bank reports a hold that has not posted. Not counted in balances until it does.">
-            <span className="txn-cleared-btn txn-cleared-btn--pending" role="img" aria-label="Pending">
+            <span
+              className="txn-cleared-btn txn-cleared-btn--pending"
+              role="img"
+              aria-label="Pending"
+            >
               <Clock size={14} />
             </span>
           </Tooltip>
@@ -708,8 +755,15 @@ export const TransactionRow = memo(function TransactionRow({
           >
             <button
               className={`txn-cleared-btn ${txn.cleared !== 'uncleared' ? 'cleared' : ''}`}
-              onClick={(e) => { e.stopPropagation(); toggleCleared() }}
-              aria-label={txn.cleared === 'uncleared' ? 'Uncleared — mark cleared' : 'Cleared — mark uncleared'}
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleCleared()
+              }}
+              aria-label={
+                txn.cleared === 'uncleared'
+                  ? 'Uncleared — mark cleared'
+                  : 'Cleared — mark uncleared'
+              }
             >
               {txn.cleared !== 'uncleared' ? <CheckCircle size={14} /> : <Circle size={14} />}
             </button>

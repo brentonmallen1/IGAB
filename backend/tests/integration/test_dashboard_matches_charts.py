@@ -5,7 +5,7 @@ whole pass is about, and the dashboard had two of them. Both were covered by
 comments claiming agreement, which is exactly why they went unnoticed.
 """
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from igab.services.report_service import ReportService
@@ -112,9 +112,7 @@ class TestSavingsRate:
 
     async def test_both_agree_on_a_month_with_income(self, db_session):
         budget, checking, category = await _budget_with_checking(db_session)
-        await create_transaction(
-            db_session, budget, checking, "1000.00", TODAY, cleared="cleared"
-        )
+        await create_transaction(db_session, budget, checking, "1000.00", TODAY, cleared="cleared")
         await create_transaction(
             db_session, budget, checking, "-200.00", TODAY, category=category, cleared="cleared"
         )

@@ -46,7 +46,7 @@
 }
 
 .ai-settings__toggle span::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 2px;
   left: 2px;
@@ -54,7 +54,9 @@
   height: 14px;
   border-radius: 50%;
   background: var(--text-muted);
-  transition: transform var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .ai-settings__toggle input:checked + span {

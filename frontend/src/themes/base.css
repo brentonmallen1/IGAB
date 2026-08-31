@@ -73,8 +73,8 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
-  --font-sans: 'DM Sans Variable', 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+  --font-sans: "DM Sans Variable", "DM Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
   --toggle-knob: #f0f0f2;
 
   --transition-fast: 120ms ease;
@@ -135,23 +135,23 @@
      portal to document.body, so the most recently opened is last in the DOM
      and paints on top. That is the correct ordering, and sharing one value
      ends the arms race that previously produced 9999. */
-  --z-sticky: 10;          /* sticky table headers and rows                    */
-  --z-page-chrome: 20;     /* in-page floating chrome, search dropdowns        */
-  --z-nav: 30;             /* bottom nav — in flow; only for the ＋ overhang    */
-  --z-float: 100;          /* floating action bars over page content           */
+  --z-sticky: 10; /* sticky table headers and rows                    */
+  --z-page-chrome: 20; /* in-page floating chrome, search dropdowns        */
+  --z-nav: 30; /* bottom nav — in flow; only for the ＋ overhang    */
+  --z-float: 100; /* floating action bars over page content           */
   --z-overlay-backdrop: 400;
-  --z-overlay: 401;        /* every modal, sheet and drawer                    */
+  --z-overlay: 401; /* every modal, sheet and drawer                    */
 
   /* Above --z-overlay, and that ordering is load-bearing: these portal to
      document.body but are opened from a control INSIDE an overlay (the payee
      combobox in the transaction editor, the tag picker in the category
      inspector). Ranked below an overlay they render behind the thing that
      raised them. */
-  --z-dropdown: 500;       /* popover or menu attached to a control            */
+  --z-dropdown: 500; /* popover or menu attached to a control            */
   --z-nested-overlay: 600; /* a modal raised from inside a modal (lightbox)    */
 
-  --z-banner: 700;         /* connectivity / update banners                    */
-  --z-toast: 800;          /* must clear a modal that raised the toast         */
+  --z-banner: 700; /* connectivity / update banners                    */
+  --z-toast: 800; /* must clear a modal that raised the toast         */
   --z-tooltip: 900;
   --z-skip-link: 1000;
 
@@ -169,10 +169,10 @@
      viewport. iOS raises the keyboard without resizing the layout viewport —
      it shrinks the visual viewport inside it — so every fixed element ends up
      anchored to an edge that is no longer on screen. */
-  --vvh: 100dvh;    /* measured visible height                                */
-  --vv-top: 0px;    /* visual viewport's top offset in the layout viewport    */
+  --vvh: 100dvh; /* measured visible height                                */
+  --vv-top: 0px; /* visual viewport's top offset in the layout viewport    */
   --vv-bottom: 0px; /* layout-viewport band hidden below the visible region   */
-  --kb: 0px;        /* keyboard-only bottom inset                             */
+  --kb: 0px; /* keyboard-only bottom inset                             */
 
   /* Height of any full-screen shell. dvh handles UA chrome (the browser
      smooths it during toolbar animations); --kb handles the keyboard;
@@ -261,7 +261,9 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.5;
-  font-feature-settings: 'kern' 1, 'liga' 1;
+  font-feature-settings:
+    "kern" 1,
+    "liga" 1;
   /* Installed-app feel: no rubber-band bounce behind the fixed shell */
   overscroll-behavior-y: none;
 }
@@ -455,8 +457,14 @@ a {
 }
 
 /* Flex utilities */
-.ms-auto { margin-left: auto; }
-.flex-row { display: flex; align-items: center; gap: var(--spacing-sm); }
+.ms-auto {
+  margin-left: auto;
+}
+.flex-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
 
 /* Screen-reader-only content (e.g. table captions, hidden labels) */
 .sr-only {
@@ -709,7 +717,7 @@ a {
 
 /* Specificity 0,1,1 beats :root (0,1,0) regardless of media-query nesting, so
    this wins wherever the keyboard is up. */
-html[data-keyboard='open'] {
+html[data-keyboard="open"] {
   --nav-h: 0px;
 }
 
@@ -729,11 +737,11 @@ html[data-keyboard='open'] {
   a,
   label,
   summary,
-  [role='button'],
-  [role='option'],
-  [role='radio'],
-  [role='tab'],
-  [role='menuitem'] {
+  [role="button"],
+  [role="option"],
+  [role="radio"],
+  [role="tab"],
+  [role="menuitem"] {
     -webkit-tap-highlight-color: transparent;
     /* Also removes the legacy 300ms click delay and double-tap-to-zoom. */
     touch-action: manipulation;
@@ -745,16 +753,16 @@ html[data-keyboard='open'] {
   a:active,
   label:active,
   summary:active,
-  [role='button']:active,
-  [role='option']:active,
-  [role='radio']:active,
-  [role='tab']:active,
-  [role='menuitem']:active {
+  [role="button"]:active,
+  [role="option"]:active,
+  [role="radio"]:active,
+  [role="tab"]:active,
+  [role="menuitem"]:active {
     background-image: linear-gradient(var(--press-scrim), var(--press-scrim));
   }
 
   button:disabled:active,
-  [aria-disabled='true']:active {
+  [aria-disabled="true"]:active {
     background-image: none;
   }
 }
@@ -820,7 +828,7 @@ html[data-keyboard='open'] {
    Verified: all 25 matching classes are dismiss buttons; there are no other
    `__close*` classes in the codebase. */
 @media (max-width: 768px) {
-  button[class*='__close'] {
+  button[class*="__close"] {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -839,7 +847,7 @@ html[data-keyboard='open'] {
     position: relative;
   }
   .tap-expand::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 50%;
     left: 50%;
@@ -910,7 +918,6 @@ html[data-keyboard='open'] {
 [data-font-size="xxlarge"] {
   font-size: 129%;
 }
-
 
 /* Toast with inline undo button (toastUndo.tsx) */
 .toast-undo-content {

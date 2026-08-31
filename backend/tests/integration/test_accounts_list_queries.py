@@ -80,10 +80,12 @@ class TestAccountsListDoesNotScaleInQueries:
         funded = await create_account(db_session, budget, name="Harborstone")
         await create_transaction(db_session, budget, funded, "100.00", date(2026, 8, 1))
         await create_transaction(db_session, budget, funded, "-30.00", date(2026, 8, 2))
-        empty = await create_account(db_session, budget, name="Cascade Point HYSA")
+        await create_account(db_session, budget, name="Cascade Point HYSA")
         await db_session.flush()
 
-        rows = {a["name"]: a for a in (await api_client.get(f"/api/v1/{budget.id}/accounts")).json()}
+        rows = {
+            a["name"]: a for a in (await api_client.get(f"/api/v1/{budget.id}/accounts")).json()
+        }
 
         assert float(rows["Harborstone"]["balance"]) == 70.0
         # An account with no rows contributes no group to the aggregate; it

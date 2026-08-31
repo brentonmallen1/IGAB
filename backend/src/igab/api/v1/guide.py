@@ -9,6 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.guide import (
     BindingUpdate,
     CandidatesResponse,
@@ -36,7 +37,7 @@ from igab.guide.service import GuideService
 from igab.services.amortization import CascadeDebt
 from igab.utils.clock import today_utc
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 GuideServiceDep = Annotated[GuideService, Depends(get_guide_service)]
 

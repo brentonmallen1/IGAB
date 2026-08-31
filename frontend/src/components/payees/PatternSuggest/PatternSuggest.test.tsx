@@ -80,6 +80,8 @@ describe('PatternMatchPreview', () => {
 
   it('renders nothing for an empty or invalid pattern', () => {
     expect(render(<PatternMatchPreview pattern="" names={NAMES} />).container.firstChild).toBeNull()
-    expect(render(<PatternMatchPreview pattern="([bad" names={NAMES} />).container.firstChild).toBeNull()
+    expect(
+      render(<PatternMatchPreview pattern="([bad" names={NAMES} />).container.firstChild
+    ).toBeNull()
   })
 })

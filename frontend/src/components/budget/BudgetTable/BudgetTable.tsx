@@ -103,10 +103,14 @@ export function BudgetTable() {
     // The chip's count and the rows it filters read the same served field, so
     // they cannot disagree — they were computed from two different lists.
     switch (activeQuickFilter) {
-      case 'overspent': return (balance?.available ?? 0) < 0
-      case 'underfunded': return balance?.target_status === 'underfunded'
-      case 'money-available': return (balance?.available ?? 0) > 0
-      case 'overfunded': return balance?.target_status === 'overfunded'
+      case 'overspent':
+        return (balance?.available ?? 0) < 0
+      case 'underfunded':
+        return balance?.target_status === 'underfunded'
+      case 'money-available':
+        return (balance?.available ?? 0) > 0
+      case 'overfunded':
+        return balance?.target_status === 'overfunded'
     }
   }
 
@@ -151,7 +155,8 @@ export function BudgetTable() {
   // could not show.
   const renderableIds = renderableCategoryIds(groups ?? [], categories ?? [])
   const chipBalances = (budgetMonth?.category_balances ?? []).filter(
-    (b) => renderableIds.has(b.category_id) && (!viewVisibleIds || viewVisibleIds.has(b.category_id))
+    (b) =>
+      renderableIds.has(b.category_id) && (!viewVisibleIds || viewVisibleIds.has(b.category_id))
   )
 
   const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
@@ -203,8 +208,14 @@ export function BudgetTable() {
   }
 
   function handleAddGroupKey(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); commitAddGroup() }
-    if (e.key === 'Escape') { setIsAddingGroup(false); setNewGroupName('') }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      commitAddGroup()
+    }
+    if (e.key === 'Escape') {
+      setIsAddingGroup(false)
+      setNewGroupName('')
+    }
   }
 
   return (
@@ -219,7 +230,7 @@ export function BudgetTable() {
           <div className="budget-table__header-actions">
             <button
               className="budget-table__header-btn"
-              onClick={() => allCollapsed ? expandAll() : collapseAll(allGroupIds)}
+              onClick={() => (allCollapsed ? expandAll() : collapseAll(allGroupIds))}
               title={allCollapsed ? 'Expand all groups' : 'Collapse all groups'}
             >
               {allCollapsed ? <ChevronsUpDown size={11} /> : <ChevronsDownUp size={11} />}
@@ -239,7 +250,11 @@ export function BudgetTable() {
                 placeholder="Group name…"
               />
             ) : (
-              <button className="budget-table__header-btn" onClick={startAddGroup} title="Add group">
+              <button
+                className="budget-table__header-btn"
+                onClick={startAddGroup}
+                title="Add group"
+              >
                 <Plus size={11} /> Add Group
               </button>
             )}

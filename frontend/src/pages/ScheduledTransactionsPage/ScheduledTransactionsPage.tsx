@@ -31,7 +31,11 @@ export function ScheduledTransactionsPage() {
   const [editing, setEditing] = useState<ScheduledTransaction | null | 'new'>(null)
 
   if (!budgetId) {
-    return <div className="sched-page"><div className="sched-empty">Select a budget to view scheduled transactions.</div></div>
+    return (
+      <div className="sched-page">
+        <div className="sched-empty">Select a budget to view scheduled transactions.</div>
+      </div>
+    )
   }
 
   function accountName(id: string) {
@@ -62,7 +66,9 @@ export function ScheduledTransactionsPage() {
       )}
 
       {scheduled.length === 0 ? (
-        <div className="sched-empty">No scheduled transactions. Create one to auto-post recurring bills.</div>
+        <div className="sched-empty">
+          No scheduled transactions. Create one to auto-post recurring bills.
+        </div>
       ) : (
         <div className="sched-table surface scroll-fill">
           <div className="sched-table__head">
@@ -90,7 +96,9 @@ export function ScheduledTransactionsPage() {
             >
               <span className="sched-cell--account">{accountName(s.account_id)}</span>
               <span className="sched-cell--payee">{payeeName(s)}</span>
-              <span className={`sched-cell--amount ${Number(s.amount) < 0 ? 'negative' : 'positive'}`}>
+              <span
+                className={`sched-cell--amount ${Number(s.amount) < 0 ? 'negative' : 'positive'}`}
+              >
                 {formatMoney(Math.abs(Number(s.amount)))}
                 {Number(s.amount) < 0 ? ' out' : ' in'}
               </span>

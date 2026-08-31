@@ -8,9 +8,8 @@ from igab.db.models import BudgetMove, Category
 from igab.domain.cards import (
     CardFunding,
     card_funding,
+    card_reserve,
     reserve_discrepancy,
-    set_aside_through,
-    synthetic_activity,
 )
 from igab.domain.carryover import (
     available_at,
@@ -126,7 +125,7 @@ class CardStatus:
     `balance` is the ledger balance through the viewed month (negative =
     owed). `set_aside` is the card's envelope available: funded credit
     spending + assignments − payments, carried as a running total
-    (domain/cards.py `set_aside_through`). `uncovered` is what is owed
+    (domain/cards.py `CardReserve`). `uncovered` is what is owed
     beyond the set-aside — calm, informational, paid down by assigning to
     the card; a due date that crosses the month boundary is a normal state,
     not overspending.
@@ -161,6 +160,25 @@ class CardStatus:
     #: invariant that would have caught them was excused for exactly the
     #: histories that produce them.
     reserve_discrepancy: Decimal = Decimal("0")
+    #: The five legs `set_aside` is the running total of, each summed through
+    #: the viewed month, plus what is still riding uncovered on the card.
+    #:
+    #:     assigned + reserved − released − residual − payments == set_aside
+    #:
+    #: Served because every question this model has raised was answered by
+    #: decomposing one number into the flows that produced it, and the surface
+    #: showed only the total. The client renders them; it must not sum them —
+    #: `set_aside` is already served, and a second opinion about what a
+    #: reserve is is exactly what "Two Ledgers, One Debt" was.
+    assigned: Decimal = Decimal("0")
+    reserved: Decimal = Decimal("0")
+    released: Decimal = Decimal("0")
+    residual: Decimal = Decimal("0")
+    payments: Decimal = Decimal("0")
+    #: What is riding uncovered on this card, lifetime — what went on, less
+    #: what an inflow discharged, less what an assignment covered. Distinct
+    #: from `uncovered`, which is what the card OWES beyond its reserve.
+    riding: Decimal = Decimal("0")
 
 
 @dataclass
@@ -488,7 +506,7 @@ class BudgetService:
                 cat.linked_account_id: cat for cat in categories if cat.linked_account_id
             }
             # `category_filters.SPENDABLE`, whose complement
-            # `txn_filters.UNBUDGETED_CARD_CREDIT` selects on. Read from the
+            # `txn_filters.UNCLAIMED_CARD_ROW` selects on. Read from the
             # one expression rather than re-filtered out of `categories`: the
             # two spellings disagreed about income, so a rewards credit filed
             # to Ready to Assign on a card belonged to neither and the reserve
@@ -509,24 +527,33 @@ class BudgetService:
             # month's activity *inside* that walk — subtracted after it, as a
             # cumulative total against a floored balance, it ratcheted upward
             # forever and rendered as overspending ("The Refused Repayment").
-            funding = card_funding(assignments_by_cat, spending_activity, credit_outflows)
+            # Card payment categories go in by card: their assignments are the
+            # fifth leg of a reserve, and they have to retire the ride *inside*
+            # the walk. Added afterwards — which is what the old
+            # `set_aside_through(assignments, synthetic)` did — nothing ever
+            # took them back out ("Two Ledgers, One Debt").
+            card_categories = {
+                account.id: linked.id
+                for account in card_accounts
+                if (linked := linked_by_account.get(account.id)) is not None
+            }
+            funding = card_funding(
+                assignments_by_cat, spending_activity, credit_outflows, card_categories
+            )
             payments = await self.transaction_repo.sum_card_payments_by_month(
                 budget_id, month_end_date
             )
-            credits = await self.transaction_repo.sum_unbudgeted_card_credits(
+            unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(
                 budget_id, month_end_date
             )
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
             for account in card_accounts:
                 linked = linked_by_account.get(account.id)
-                synthetic = synthetic_activity(
-                    funding.funded_by_card.get(account.id, {}), payments.get(account.id, {})
-                )
-                card_assignments = assignments_by_cat.get(linked.id, {}) if linked else {}
-                # A running total, not `available_through`: an overpaid month
-                # is a credit balance carried forward, not an overspend for
-                # Ready to Assign to absorb — see set_aside_through.
-                set_aside = set_aside_through(card_assignments, synthetic, month_start)
+                # One assembler for all five legs. Composing a reserve at the
+                # call site is what let the assignment leg skip the walk.
+                reserve = card_reserve(funding, account.id, payments.get(account.id, {}))
+                set_aside = reserve.set_aside(month_start)
+                card_assignments = reserve.assignments
                 if linked is not None:
                     # The linked category's balance is this computation, not
                     # the transaction sums — nothing can be filed there, and
@@ -535,7 +562,12 @@ class BudgetService:
                         category_id=linked.id,
                         month=month_start,
                         assigned=card_assignments.get(month_start, zero),
-                        activity=synthetic.get(month_start, zero),
+                        activity=(
+                            reserve.reservations.get(month_start, zero)
+                            - reserve.released.get(month_start, zero)
+                            - reserve.residual.get(month_start, zero)
+                            - reserve.payments.get(month_start, zero)
+                        ),
                         available=set_aside,
                         is_card_payment=True,
                     )
@@ -565,6 +597,12 @@ class BudgetService:
                         overspent_this_month=funding.floored_by_card.get(account.id, {}).get(
                             month_start, zero
                         ),
+                        assigned=sum_through(card_assignments, month_start),
+                        reserved=sum_through(reserve.reservations, month_start),
+                        released=sum_through(reserve.released, month_start),
+                        residual=sum_through(reserve.residual, month_start),
+                        payments=sum_through(reserve.payments, month_start),
+                        riding=sum_through(funding.riding_by_card.get(account.id, {}), month_start),
                         # Every defect this model has had was visible here, and
                         # the invariant that would have caught them excused
                         # exactly the histories that produce them. Computed
@@ -574,9 +612,10 @@ class BudgetService:
                             set_aside,
                             balance,
                             sum_through(card_assignments, month_start),
-                            sum_through(payments.get(account.id, {}), month_start),
-                            sum_through(funding.residual_by_card.get(account.id, {}), month_start),
-                            sum_through(credits.get(account.id, {}), month_start),
+                            sum_through(funding.covered_by_card.get(account.id, {}), month_start),
+                            sum_through(reserve.payments, month_start),
+                            sum_through(reserve.residual, month_start),
+                            sum_through(unclaimed.get(account.id, {}), month_start),
                         ),
                     )
                 )

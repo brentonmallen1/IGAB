@@ -27,7 +27,7 @@ describe('the snapshot upload limit', () => {
       `MAX_SNAPSHOT_BYTES is ${MAX_SNAPSHOT_BYTES} but nginx allows ${nginxBytes}. ` +
         'A client check that is larger lets nginx answer 413 with nothing the ' +
         'SPA can explain; one that is smaller refuses uploads the server would ' +
-        'have taken.',
+        'have taken.'
     ).toBe(nginxBytes)
   })
 

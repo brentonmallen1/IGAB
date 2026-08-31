@@ -52,9 +52,7 @@ class TestReceiptAmounts:
         assert draft.amount == Decimal("-19.99")
 
     def test_float_precision_artifacts_quantized(self):
-        draft = parse_extraction(
-            receipt(total=0.1 + 0.2), kind="receipt", client_today=TODAY
-        )
+        draft = parse_extraction(receipt(total=0.1 + 0.2), kind="receipt", client_today=TODAY)
         assert draft.amount == Decimal("-0.30")
 
     @pytest.mark.parametrize("bad", [0, 0.0, "0.00", None, "abc", "", [], {}, True, False])
@@ -96,15 +94,11 @@ class TestNLAmounts:
 
     def test_negative_amount_with_outflow_direction_still_outflow(self):
         # Model sometimes pre-negates; sign comes from direction alone.
-        draft = parse_extraction(
-            self.nl(amount=-5.50), kind="nl_parse", client_today=TODAY
-        )
+        draft = parse_extraction(self.nl(amount=-5.50), kind="nl_parse", client_today=TODAY)
         assert draft.amount == Decimal("-5.50")
 
     def test_missing_direction_defaults_outflow(self):
-        draft = parse_extraction(
-            self.nl(direction=None), kind="nl_parse", client_today=TODAY
-        )
+        draft = parse_extraction(self.nl(direction=None), kind="nl_parse", client_today=TODAY)
         assert draft.amount == Decimal("-5.50")
 
     def test_unknown_kind_raises(self):
@@ -194,9 +188,7 @@ class TestPayeeMemoConfidence:
             == 1.0
         )
         assert (
-            parse_extraction(
-                receipt(confidence=-1), kind="receipt", client_today=TODAY
-            ).confidence
+            parse_extraction(receipt(confidence=-1), kind="receipt", client_today=TODAY).confidence
             == 0.0
         )
         assert (

@@ -17,7 +17,6 @@ from datetime import date
 from decimal import Decimal
 
 from igab.db.models import (
-    BudgetAssignment,
     BudgetFilter,
     BudgetFilterCategory,
     Category,
@@ -108,9 +107,7 @@ class TestSomethingRecordsIt:
         move is the only place that history exists."""
         services, budget, _checking, group, cat = await _world(db_session)
         other = await create_category(db_session, budget, group, "Dining")
-        await create_transaction(
-            db_session, budget, _checking, "500.00", AUG, category=None
-        )
+        await create_transaction(db_session, budget, _checking, "500.00", AUG, category=None)
         await services.budgets.set_assignment(budget.id, cat.id, AUG, D("50.00"))
         await services.budgets.move_money(budget.id, cat.id, other.id, D("50.00"), AUG)
 

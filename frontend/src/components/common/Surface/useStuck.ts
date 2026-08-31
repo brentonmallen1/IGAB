@@ -23,10 +23,10 @@ export function useStuck<T extends HTMLElement>(enabled: boolean) {
     sentinel.className = 'surface__sentinel'
     sentinel.setAttribute('aria-hidden', 'true')
     el.parentElement?.insertBefore(sentinel, el)
-    const observer = new IntersectionObserver(
-      ([entry]) => setStuck(!entry.isIntersecting),
-      { root: scrollParent(el), threshold: 0 }
-    )
+    const observer = new IntersectionObserver(([entry]) => setStuck(!entry.isIntersecting), {
+      root: scrollParent(el),
+      threshold: 0,
+    })
     observer.observe(sentinel)
     return () => {
       observer.disconnect()

@@ -388,13 +388,17 @@ async def test_stale_rows_pruned_on_rebuild(db_session, world):
 
     async def may_rows():
         return (
-            await db_session.execute(
-                select(CategoryMonthSnapshot).where(
-                    CategoryMonthSnapshot.budget_id == world.budget.id,
-                    CategoryMonthSnapshot.month == date(2026, 5, 1),
+            (
+                await db_session.execute(
+                    select(CategoryMonthSnapshot).where(
+                        CategoryMonthSnapshot.budget_id == world.budget.id,
+                        CategoryMonthSnapshot.month == date(2026, 5, 1),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     assert len(await may_rows()) == 1
 

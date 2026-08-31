@@ -2,12 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
-import {
-  ROADMAP,
-  ROADMAP_STEPS,
-  findNode,
-  findStage,
-  type RoadmapNode, TOOL_IDS } from './roadmap'
+import { ROADMAP, ROADMAP_STEPS, findNode, findStage, type RoadmapNode, TOOL_IDS } from './roadmap'
 import { GLOSSARY, GLOSSARY_IDS, glossaryEntry, searchGlossary } from './glossary'
 import { REPORT_TABS } from '../stores/reportStore'
 import { TOOLS } from '../components/guide/tools/toolRegistry'
@@ -27,8 +22,12 @@ const allNodes: RoadmapNode[] = ROADMAP.flatMap((s) => s.nodes)
  * Parameterised segments are dropped — content links to concrete pages, and
  * `/accounts/:accountId` is not somewhere a roadmap node can send anyone. */
 const APP_ROUTES: Set<string> = new Set(
-  [...readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'App.tsx'), 'utf8')
-    .matchAll(/path="([^"]+)"/g)]
+  [
+    ...readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'App.tsx'),
+      'utf8'
+    ).matchAll(/path="([^"]+)"/g),
+  ]
     .map((m) => m[1])
     .filter((p) => p.startsWith('/') && !p.includes(':'))
 )
@@ -134,8 +133,10 @@ describe('roadmap integrity', () => {
     const bad: string[] = []
     for (const node of allNodes) {
       const count = node.branches?.length ?? 0
-      if (node.kind === 'decision' && count < 2) bad.push(`${node.id} is a decision with ${count} branches`)
-      if (node.kind !== 'decision' && count > 0) bad.push(`${node.id} is a ${node.kind} with branches`)
+      if (node.kind === 'decision' && count < 2)
+        bad.push(`${node.id} is a decision with ${count} branches`)
+      if (node.kind !== 'decision' && count > 0)
+        bad.push(`${node.id} is a ${node.kind} with branches`)
     }
     expect(bad).toEqual([])
   })
@@ -370,11 +371,11 @@ describe('roadmap integrity', () => {
 
   it('states the source thresholds without inventing precision', () => {
     const text = allNodes.map((n) => `${n.title} ${n.body} ${n.detail ?? ''}`).join(' ')
-    expect(text).toContain('10% or higher')       // high interest
-    expect(text).toContain('4–5%')                 // moderate interest
-    expect(text).toContain('15%')                  // retirement target
-    expect(text).toContain('three to six months')  // full emergency fund
-    expect(text).toContain('$1,000')               // starter emergency fund
+    expect(text).toContain('10% or higher') // high interest
+    expect(text).toContain('4–5%') // moderate interest
+    expect(text).toContain('15%') // retirement target
+    expect(text).toContain('three to six months') // full emergency fund
+    expect(text).toContain('$1,000') // starter emergency fund
   })
 
   it('never states a figure that changes yearly', () => {
@@ -400,7 +401,6 @@ describe('roadmap integrity', () => {
     expect(unflagged).toEqual([])
   })
 })
-
 
 /**
  * Nothing addressable is unreachable by omission.
@@ -430,7 +430,7 @@ describe('every destination has a palette row', () => {
   it('covers every settings section', () => {
     for (const section of SETTINGS_SECTIONS) {
       expect(ids, `no palette row for settings section '${section.id}'`).toContain(
-        `settings-${section.id}`,
+        `settings-${section.id}`
       )
     }
   })

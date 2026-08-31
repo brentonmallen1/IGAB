@@ -50,7 +50,12 @@ def budget(transactions=(), plan_rows=()):
 
 class TestInflow:
     def test_counts_inflow_through_the_month_only(self):
-        b = budget([inflow("Checking", date(2026, 8, 3), "1000"), inflow("Checking", date(2026, 9, 1), "500")])
+        b = budget(
+            [
+                inflow("Checking", date(2026, 8, 3), "1000"),
+                inflow("Checking", date(2026, 9, 1), "500"),
+            ]
+        )
         assert ynab_rta(b, AUG).inflow == D("1000")
         assert ynab_rta(b, SEP).inflow == D("1500")
 
@@ -63,7 +68,9 @@ class TestInflow:
         assert ynab_rta(b, AUG).inflow == D("200")
 
     def test_a_skipped_account_is_out_of_scope(self):
-        b = budget([inflow("Checking", date(2026, 8, 3), "1000"), inflow("Old", date(2026, 8, 3), "5")])
+        b = budget(
+            [inflow("Checking", date(2026, 8, 3), "1000"), inflow("Old", date(2026, 8, 3), "5")]
+        )
         assert ynab_rta(b, AUG, accounts={"checking"}).inflow == D("1000")
         assert ynab_rta(b, AUG).inflow == D("1005")
 
@@ -74,7 +81,9 @@ class TestInflow:
 
 class TestAssigned:
     def test_every_month_counts_including_future_ones(self):
-        b = budget(plan_rows=[plan(JUL, "Bills", "Rent", "1200"), plan(SEP, "Bills", "Rent", "1200")])
+        b = budget(
+            plan_rows=[plan(JUL, "Bills", "Rent", "1200"), plan(SEP, "Bills", "Rent", "1200")]
+        )
         assert ynab_rta(b, AUG).assigned == D("2400")
 
     def test_card_payment_reserves_are_counted_and_reported(self):
@@ -92,7 +101,10 @@ class TestAssigned:
 class TestWriteOffs:
     def test_cash_overspending_in_an_earlier_month_is_written_off(self):
         b = budget(
-            [inflow("Checking", date(2026, 7, 1), "1000"), txn("Checking", date(2026, 7, 9), "-150", "Bills", "Gas")],
+            [
+                inflow("Checking", date(2026, 7, 1), "1000"),
+                txn("Checking", date(2026, 7, 9), "-150", "Bills", "Gas"),
+            ],
             [plan(JUL, "Bills", "Gas", "100", "-50")],
         )
         o = ynab_rta(b, AUG)
@@ -101,7 +113,10 @@ class TestWriteOffs:
 
     def test_the_current_months_overspending_is_not_written_off_yet(self):
         b = budget(
-            [inflow("Checking", date(2026, 7, 1), "1000"), txn("Checking", date(2026, 7, 9), "-150", "Bills", "Gas")],
+            [
+                inflow("Checking", date(2026, 7, 1), "1000"),
+                txn("Checking", date(2026, 7, 9), "-150", "Bills", "Gas"),
+            ],
             [plan(JUL, "Bills", "Gas", "100", "-50")],
         )
         assert ynab_rta(b, JUL).cash_overspending_written_off == D("0")
@@ -131,12 +146,24 @@ class TestCardAdjustment:
                 # The payment pair, named the way an export names it — an
                 # unmarked leg would read as an unfiled cash row.
                 YNABTransaction(
-                    "Checking", date(2026, 7, 25), "Transfer : Visa",
-                    None, None, None, D("-300"), "cleared",
+                    "Checking",
+                    date(2026, 7, 25),
+                    "Transfer : Visa",
+                    None,
+                    None,
+                    None,
+                    D("-300"),
+                    "cleared",
                 ),
                 YNABTransaction(
-                    "Visa", date(2026, 7, 25), "Transfer : Checking",
-                    None, None, None, D("300"), "cleared",
+                    "Visa",
+                    date(2026, 7, 25),
+                    "Transfer : Checking",
+                    None,
+                    None,
+                    None,
+                    D("300"),
+                    "cleared",
                 ),
             ],
             [
@@ -188,7 +215,9 @@ class TestPendingRows:
         the plan only once approved; the register only says "uncleared"."""
         b = budget(
             [
-                txn("Checking", date(2026, 8, 14), "-249.78", "Bills", "Loans", cleared="uncleared"),
+                txn(
+                    "Checking", date(2026, 8, 14), "-249.78", "Bills", "Loans", cleared="uncleared"
+                ),
                 txn("Checking", date(2026, 8, 10), "-40", "Bills", "Loans"),
                 txn("Checking", date(2026, 7, 30), "-5", "Bills", "Loans", cleared="uncleared"),
             ],
@@ -225,8 +254,26 @@ class TestUncategorized:
         b = budget(
             [
                 inflow("Checking", date(2026, 8, 1), "1000"),
-                YNABTransaction("Checking", date(2026, 8, 3), "Transfer : Savings", None, None, None, D("-200"), "cleared"),
-                YNABTransaction("Savings", date(2026, 8, 3), "Transfer : Checking", None, None, None, D("200"), "cleared"),
+                YNABTransaction(
+                    "Checking",
+                    date(2026, 8, 3),
+                    "Transfer : Savings",
+                    None,
+                    None,
+                    None,
+                    D("-200"),
+                    "cleared",
+                ),
+                YNABTransaction(
+                    "Savings",
+                    date(2026, 8, 3),
+                    "Transfer : Checking",
+                    None,
+                    None,
+                    None,
+                    D("200"),
+                    "cleared",
+                ),
             ]
         )
         assert ynab_rta(b, AUG).uncategorized_net == D("0")
@@ -280,7 +327,9 @@ class TestExportConsistency:
         the next month at zero. That is YNAB behaving, not a broken file."""
         b = budget(
             plan_rows=[
-                plan(JUL, "Everyday", "Groceries", assigned="100", activity="-150", available="-50"),
+                plan(
+                    JUL, "Everyday", "Groceries", assigned="100", activity="-150", available="-50"
+                ),
                 plan(AUG, "Everyday", "Groceries", assigned="0", activity="0", available="0"),
             ]
         )
@@ -291,7 +340,9 @@ class TestExportConsistency:
         rather than being written off, so available == expected."""
         b = budget(
             plan_rows=[
-                plan(JUL, "Everyday", "Groceries", assigned="100", activity="-150", available="-50"),
+                plan(
+                    JUL, "Everyday", "Groceries", assigned="100", activity="-150", available="-50"
+                ),
                 plan(AUG, "Everyday", "Groceries", assigned="0", activity="-10", available="-60"),
             ]
         )
@@ -401,7 +452,6 @@ class TestNetCardMovement:
         )
         o = ynab_rta(b, JUL, credit_card_accounts={"Visa"})
         assert o.uncovered_current == D("0")
-
 
 
 class TestParityExplanations:

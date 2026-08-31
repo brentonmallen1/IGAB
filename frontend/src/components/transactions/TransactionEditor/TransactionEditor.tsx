@@ -1,7 +1,21 @@
 import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Trash2, Sparkles, Split, Plus, AlertTriangle, ChevronDown, ChevronUp, MessageSquareText, Paperclip, ReceiptText, RefreshCw, Lock } from 'lucide-react'
+import {
+  X,
+  Trash2,
+  Sparkles,
+  Split,
+  Plus,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  MessageSquareText,
+  Paperclip,
+  ReceiptText,
+  RefreshCw,
+  Lock,
+} from 'lucide-react'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { NLEntryForm } from '../../ai/NLEntryForm'
 import { ReceiptPane } from '../../ai/ReceiptPane'
@@ -22,7 +36,11 @@ import {
 import toast from 'react-hot-toast'
 import { apiErrorMessage } from '../../../api/client'
 import { confirmDeleteTransaction } from '../../../api/attachments'
-import { useCategories, useCategoryGroups, useRecentPayeeForCategory } from '../../../api/categories'
+import {
+  useCategories,
+  useCategoryGroups,
+  useRecentPayeeForCategory,
+} from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
 import { confirmFutureOverspend, type OverspendProbe } from '../../../api/budgets'
 import { useAIStatus, useSuggestCategory } from '../../../api/ai'
@@ -37,10 +55,7 @@ import { isConfigFailure, scanFailureReason } from './scanFailure'
 import { today } from '../../../utils/dates'
 import { useToastUndo } from '../../../utils/toastUndo'
 import { fromCents, parseApiDecimal, toCents } from '../../../utils/money'
-import {
-  expressionToCents,
-  parseAmountExpressionInput,
-} from '../../../utils/amountExpression'
+import { expressionToCents, parseAmountExpressionInput } from '../../../utils/amountExpression'
 import { checkSplit, draftsFromLines } from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
@@ -134,9 +149,7 @@ export function TransactionEditor({
   }, [fixedAccountId, transaction, pickedAccountId, openAccounts, lastPickedAccountId])
   const accountId = fixedAccountId ?? transaction?.account_id ?? pickedAccountId
 
-  const [date, setDate] = useState(
-    transaction?.date.slice(0, 10) ?? initialDraft?.date ?? today()
-  )
+  const [date, setDate] = useState(transaction?.date.slice(0, 10) ?? initialDraft?.date ?? today())
   const [payeeQuery, setPayeeQuery] = useState(
     !transaction && initialDraft?.payeeName ? initialDraft.payeeName : ''
   )
@@ -261,9 +274,10 @@ export function TransactionEditor({
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const filteredPayees = payeeQuery.length > 0
-    ? payees.filter((p) => p.name.toLowerCase().includes(payeeQuery.toLowerCase())).slice(0, 8)
-    : payees.slice(0, 8)
+  const filteredPayees =
+    payeeQuery.length > 0
+      ? payees.filter((p) => p.name.toLowerCase().includes(payeeQuery.toLowerCase())).slice(0, 8)
+      : payees.slice(0, 8)
 
   const groupedCategories = groupedCategorySections(
     categories.filter((c) => c.is_categorizable),
@@ -344,9 +358,7 @@ export function TransactionEditor({
     if (!suggestedSplit || suggestedSplit.length < 2) return
     setSplits(
       suggestedSplit.map((line) => {
-        const cat = categories.find(
-          (c) => c.name.toLowerCase() === line.category.toLowerCase()
-        )
+        const cat = categories.find((c) => c.name.toLowerCase() === line.category.toLowerCase())
         return {
           tempId: randomUUID(),
           amount: Math.abs(parseApiDecimal(line.amount)).toFixed(2),
@@ -359,7 +371,7 @@ export function TransactionEditor({
   }
 
   function updateSplit(tempId: string, data: Partial<Omit<SplitDraft, 'tempId'>>) {
-    setSplits((prev) => prev.map((s) => s.tempId === tempId ? { ...s, ...data } : s))
+    setSplits((prev) => prev.map((s) => (s.tempId === tempId ? { ...s, ...data } : s)))
   }
 
   function addSplit() {
@@ -367,7 +379,7 @@ export function TransactionEditor({
   }
 
   function removeSplit(tempId: string) {
-    setSplits((prev) => prev.length > 2 ? prev.filter((s) => s.tempId !== tempId) : prev)
+    setSplits((prev) => (prev.length > 2 ? prev.filter((s) => s.tempId !== tempId) : prev))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -496,9 +508,7 @@ export function TransactionEditor({
     const proceed = await confirmFutureOverspend(
       budgetId,
       [
-        ...(savedCategoryId
-          ? [{ category_id: savedCategoryId, date, amount_delta: amount }]
-          : []),
+        ...(savedCategoryId ? [{ category_id: savedCategoryId, date, amount_delta: amount }] : []),
         ...reversal,
       ],
       formatMoney
@@ -581,7 +591,7 @@ export function TransactionEditor({
     accountId,
     similarAmount,
     date || null,
-    transaction?.id ?? null,
+    transaction?.id ?? null
   )
 
   // Derived exactly as handleSubmit derives the amount it saves. Picking the
@@ -612,37 +622,48 @@ export function TransactionEditor({
   }
 
   // Account field used in both tabs (shared state survives tab switches)
-  const accountField = !fixedAccountId && !isEdit ? (
-    <div className="txn-editor__field">
-      <label className="txn-editor__label">Account</label>
-      <select
-        className="txn-editor__select"
-        value={pickedAccountId}
-        onChange={(e) => setPickedAccountId(e.target.value)}
-        required
-      >
-        <option value="">Select account…</option>
-        {openAccounts.some((a) => !a.on_budget) ? (
-          <>
-            <optgroup label="Budget accounts">
-              {openAccounts.filter((a) => a.on_budget).map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Tracking">
-              {openAccounts.filter((a) => !a.on_budget).map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </optgroup>
-          </>
-        ) : (
-          openAccounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))
-        )}
-      </select>
-    </div>
-  ) : null
+  const accountField =
+    !fixedAccountId && !isEdit ? (
+      <div className="txn-editor__field">
+        <label className="txn-editor__label">Account</label>
+        <select
+          className="txn-editor__select"
+          value={pickedAccountId}
+          onChange={(e) => setPickedAccountId(e.target.value)}
+          required
+        >
+          <option value="">Select account…</option>
+          {openAccounts.some((a) => !a.on_budget) ? (
+            <>
+              <optgroup label="Budget accounts">
+                {openAccounts
+                  .filter((a) => a.on_budget)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Tracking">
+                {openAccounts
+                  .filter((a) => !a.on_budget)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+              </optgroup>
+            </>
+          ) : (
+            openAccounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))
+          )}
+        </select>
+      </div>
+    ) : null
 
   return (
     <Modal
@@ -774,8 +795,7 @@ export function TransactionEditor({
               {accountField}
               <div className="txn-editor__describe">
                 <p className="txn-editor__describe-intro">
-                  Type or dictate a transaction — AI drafts it into the form
-                  for you to review.
+                  Type or dictate a transaction — AI drafts it into the form for you to review.
                 </p>
                 <NLEntryForm budgetId={budgetId} onDraft={applyNLDraft} onNavigate={onClose} />
               </div>
@@ -803,465 +823,488 @@ export function TransactionEditor({
         ) : showTabs && activeTab === 'describe' ? null : (
           /* Manual entry tab content (default) */
           <>
-        <div className="txn-editor__main">
-          {isReview && aiJob!.attachment_id && (
-            <div className="txn-editor__receipt">
-              <ReceiptPane
-                attachmentId={aiJob!.attachment_id}
-                contentType={aiJob!.payload.content_type ?? null}
-              />
-            </div>
-          )}
-          <div className="txn-editor__body">
-          {accountField}
-          {isReconciled && (
-            <div className="txn-editor__lock-note" role="note">
-              <Lock size={12} aria-hidden />
-              Reconciled — the amount, date and cleared state are locked. Everything else
-              can be changed here; unlock from the row menu to change those.
-            </div>
-          )}
-          <div className="txn-editor__row">
-            <div className="txn-editor__field">
-              <label className="txn-editor__label">Date</label>
-              <input
-                type="date"
-                className="txn-editor__input"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-                disabled={isReconciled}
-              />
-            </div>
-            <div className="txn-editor__field">
-              <label className="txn-editor__label">Cleared</label>
-              {isReconciled ? (
-                <div className="txn-editor__input txn-editor__locked" aria-label="Cleared: reconciled">
-                  <Lock size={12} aria-hidden />
-                  Reconciled
-                </div>
-              ) : (
-                <select
-                  className="txn-editor__select"
-                  value={cleared}
-                  onChange={(e) => setCleared(e.target.value as 'uncleared' | 'cleared')}
-                >
-                  <option value="uncleared">Uncleared</option>
-                  <option value="cleared">Cleared</option>
-                </select>
-              )}
-            </div>
-          </div>
-
-          <div className="txn-editor__field">
-            <label className="txn-editor__label">Payee</label>
-            <div className="txn-editor__payee-wrap" ref={payeeRef}>
-              <input
-                type="text"
-                className="txn-editor__input"
-                value={payeeQuery}
-                onChange={handlePayeeChange}
-                onFocus={() => setShowPayeeDropdown(true)}
-                placeholder="Search or enter payee..."
-                autoComplete="off"
-              />
-              {showPayeeDropdown && filteredPayees.length > 0 && (
-                <div className="txn-editor__payee-dropdown">
-                  {filteredPayees.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className="txn-editor__payee-option"
-                      onMouseDown={() => handlePayeeSelect(p)}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="txn-editor__toggle-row">
-            <label className="txn-editor__toggle" aria-label="Transfer to account">
-              <input
-                type="checkbox"
-                checked={isTransfer}
-                onChange={(e) => setIsTransfer(e.target.checked)}
-                disabled={isReconciled}
-              />
-              <span className="txn-editor__toggle-slider" />
-            </label>
-            <span className="txn-editor__toggle-label">Transfer to account</span>
-          </div>
-
-          {isTransfer ? (
-            <>
-              <div className="txn-editor__field">
-                <label className="txn-editor__label">To Account</label>
-                <select
-                  className="txn-editor__select"
-                  value={transferAccountId}
-                  onChange={(e) => {
-                    setTransferAccountId(e.target.value)
-                    setPartnerChoice(null)
-                  }}
-                  required={isTransfer}
-                  aria-label="To Account"
-                >
-                  <option value="">Select account…</option>
-                  {transferAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* More than one row over there could be this transfer's other
-                  half. Guessing would either link the wrong money or write a
-                  duplicate, so the answer is the user's. */}
-              {partnerCandidates.length > 0 && (
-                <div className="txn-editor__field">
-                  <label className="txn-editor__label">
-                    Which transaction in {transferTarget?.name} is the other side?
-                  </label>
-                  <div className="txn-editor__partner-options">
-                    {partnerCandidates.map((c) => (
-                      <label key={c.id} className="txn-editor__partner-option">
-                        <input
-                          type="radio"
-                          name="transfer-partner"
-                          checked={partnerChoice === c.id}
-                          onChange={() => setPartnerChoice(c.id)}
-                        />
-                        <span>
-                          {c.date} · {formatMoney(Number(c.amount))}
-                          {c.memo ? ` · ${c.memo}` : ''}
-                          {c.cleared === 'reconciled' ? ' · reconciled' : ''}
-                        </span>
-                      </label>
-                    ))}
-                    <label className="txn-editor__partner-option">
-                      <input
-                        type="radio"
-                        name="transfer-partner"
-                        checked={partnerChoice === CREATE_NEW_PARTNER}
-                        onChange={() => setPartnerChoice(CREATE_NEW_PARTNER)}
-                      />
-                      <span>
-                        None of these — add the matching transaction to{' '}
-                        {transferTarget?.name}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              )}
-              {transferIsOffBudget && (
-                <div className="txn-editor__field">
-                  <label className="txn-editor__label">
-                    Category
-                    <span className="txn-editor__label-hint">
-                      {' '}— transfers to off-budget accounts count as spending
-                    </span>
-                  </label>
-                  <CategoryCombobox
-                    value={categoryId || null}
-                    onChange={(id) => setCategoryId(id ?? '')}
-                    groups={groupedCategories}
-                    allowNone
-                    aria-label="Category"
+            <div className="txn-editor__main">
+              {isReview && aiJob!.attachment_id && (
+                <div className="txn-editor__receipt">
+                  <ReceiptPane
+                    attachmentId={aiJob!.attachment_id}
+                    contentType={aiJob!.payload.content_type ?? null}
                   />
                 </div>
               )}
-            </>
-          ) : isSplit ? (
-            <div className="txn-editor__field">
-              <label className="txn-editor__label">
-                Split Transaction
-                {!editingExistingSplit && (
-                  <button
-                    type="button"
-                    className="txn-editor__ai-btn"
-                    onClick={() => { setIsSplit(false); setCategoryId('') }}
-                    title="Switch to single category"
-                  >
-                    <X size={12} />
-                    Cancel split
-                  </button>
-                )}
-              </label>
-              {splitLinesPending && (
-                <div className="txn-editor__split-loading" role="status">Loading lines…</div>
-              )}
-              <div className="txn-editor__splits">
-                {splits.map((s) => (
-                  <div key={s.tempId} className="txn-editor__split-row">
-                    {canCategorize && (
-                      <CategoryCombobox
-                        className="txn-editor__split-category"
-                        value={s.categoryId}
-                        onChange={(id) => updateSplit(s.tempId, { categoryId: id })}
-                        groups={groupedCategories}
-                        allowNone
-                        noneLabel="Category…"
-                        sheetTitle="Split category"
-                        aria-label="Split category"
-                      />
-                    )}
-                    <AmountInput
-                      className="txn-editor__input txn-editor__split-amount"
-                      value={s.amount}
-                      onValueChange={(v) => updateSplit(s.tempId, { amount: v })}
-                      placeholder="0.00"
-                    />
-                    <button
-                      type="button"
-                      className="txn-editor__split-remove"
-                      onClick={() => removeSplit(s.tempId)}
-                      disabled={splits.length <= 2}
-                      aria-label="Remove split"
-                      title="Remove"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+              <div className="txn-editor__body">
+                {accountField}
+                {isReconciled && (
+                  <div className="txn-editor__lock-note" role="note">
+                    <Lock size={12} aria-hidden />
+                    Reconciled — the amount, date and cleared state are locked. Everything else can
+                    be changed here; unlock from the row menu to change those.
                   </div>
-                ))}
-                <div className="txn-editor__split-footer">
-                  <button type="button" className="txn-editor__split-add" onClick={addSplit}>
-                    <Plus size={12} /> Add split
-                  </button>
-                  <span className={`txn-editor__split-remaining ${splitCheck.remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}>
-                    {splitCheck.remainingCents === 0
-                      ? 'Fully assigned'
-                      : `Remaining: ${formatMoney(fromCents(splitCheck.remainingCents))}`}
-                  </span>
+                )}
+                <div className="txn-editor__row">
+                  <div className="txn-editor__field">
+                    <label className="txn-editor__label">Date</label>
+                    <input
+                      type="date"
+                      className="txn-editor__input"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      required
+                      disabled={isReconciled}
+                    />
+                  </div>
+                  <div className="txn-editor__field">
+                    <label className="txn-editor__label">Cleared</label>
+                    {isReconciled ? (
+                      <div
+                        className="txn-editor__input txn-editor__locked"
+                        aria-label="Cleared: reconciled"
+                      >
+                        <Lock size={12} aria-hidden />
+                        Reconciled
+                      </div>
+                    ) : (
+                      <select
+                        className="txn-editor__select"
+                        value={cleared}
+                        onChange={(e) => setCleared(e.target.value as 'uncleared' | 'cleared')}
+                      >
+                        <option value="uncleared">Uncleared</option>
+                        <option value="cleared">Cleared</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                <div className="txn-editor__field">
+                  <label className="txn-editor__label">Payee</label>
+                  <div className="txn-editor__payee-wrap" ref={payeeRef}>
+                    <input
+                      type="text"
+                      className="txn-editor__input"
+                      value={payeeQuery}
+                      onChange={handlePayeeChange}
+                      onFocus={() => setShowPayeeDropdown(true)}
+                      placeholder="Search or enter payee..."
+                      autoComplete="off"
+                    />
+                    {showPayeeDropdown && filteredPayees.length > 0 && (
+                      <div className="txn-editor__payee-dropdown">
+                        {filteredPayees.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="txn-editor__payee-option"
+                            onMouseDown={() => handlePayeeSelect(p)}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="txn-editor__toggle-row">
+                  <label className="txn-editor__toggle" aria-label="Transfer to account">
+                    <input
+                      type="checkbox"
+                      checked={isTransfer}
+                      onChange={(e) => setIsTransfer(e.target.checked)}
+                      disabled={isReconciled}
+                    />
+                    <span className="txn-editor__toggle-slider" />
+                  </label>
+                  <span className="txn-editor__toggle-label">Transfer to account</span>
+                </div>
+
+                {isTransfer ? (
+                  <>
+                    <div className="txn-editor__field">
+                      <label className="txn-editor__label">To Account</label>
+                      <select
+                        className="txn-editor__select"
+                        value={transferAccountId}
+                        onChange={(e) => {
+                          setTransferAccountId(e.target.value)
+                          setPartnerChoice(null)
+                        }}
+                        required={isTransfer}
+                        aria-label="To Account"
+                      >
+                        <option value="">Select account…</option>
+                        {transferAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* More than one row over there could be this transfer's other
+                  half. Guessing would either link the wrong money or write a
+                  duplicate, so the answer is the user's. */}
+                    {partnerCandidates.length > 0 && (
+                      <div className="txn-editor__field">
+                        <label className="txn-editor__label">
+                          Which transaction in {transferTarget?.name} is the other side?
+                        </label>
+                        <div className="txn-editor__partner-options">
+                          {partnerCandidates.map((c) => (
+                            <label key={c.id} className="txn-editor__partner-option">
+                              <input
+                                type="radio"
+                                name="transfer-partner"
+                                checked={partnerChoice === c.id}
+                                onChange={() => setPartnerChoice(c.id)}
+                              />
+                              <span>
+                                {c.date} · {formatMoney(Number(c.amount))}
+                                {c.memo ? ` · ${c.memo}` : ''}
+                                {c.cleared === 'reconciled' ? ' · reconciled' : ''}
+                              </span>
+                            </label>
+                          ))}
+                          <label className="txn-editor__partner-option">
+                            <input
+                              type="radio"
+                              name="transfer-partner"
+                              checked={partnerChoice === CREATE_NEW_PARTNER}
+                              onChange={() => setPartnerChoice(CREATE_NEW_PARTNER)}
+                            />
+                            <span>
+                              None of these — add the matching transaction to {transferTarget?.name}
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                    {transferIsOffBudget && (
+                      <div className="txn-editor__field">
+                        <label className="txn-editor__label">
+                          Category
+                          <span className="txn-editor__label-hint">
+                            {' '}
+                            — transfers to off-budget accounts count as spending
+                          </span>
+                        </label>
+                        <CategoryCombobox
+                          value={categoryId || null}
+                          onChange={(id) => setCategoryId(id ?? '')}
+                          groups={groupedCategories}
+                          allowNone
+                          aria-label="Category"
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : isSplit ? (
+                  <div className="txn-editor__field">
+                    <label className="txn-editor__label">
+                      Split Transaction
+                      {!editingExistingSplit && (
+                        <button
+                          type="button"
+                          className="txn-editor__ai-btn"
+                          onClick={() => {
+                            setIsSplit(false)
+                            setCategoryId('')
+                          }}
+                          title="Switch to single category"
+                        >
+                          <X size={12} />
+                          Cancel split
+                        </button>
+                      )}
+                    </label>
+                    {splitLinesPending && (
+                      <div className="txn-editor__split-loading" role="status">
+                        Loading lines…
+                      </div>
+                    )}
+                    <div className="txn-editor__splits">
+                      {splits.map((s) => (
+                        <div key={s.tempId} className="txn-editor__split-row">
+                          {canCategorize && (
+                            <CategoryCombobox
+                              className="txn-editor__split-category"
+                              value={s.categoryId}
+                              onChange={(id) => updateSplit(s.tempId, { categoryId: id })}
+                              groups={groupedCategories}
+                              allowNone
+                              noneLabel="Category…"
+                              sheetTitle="Split category"
+                              aria-label="Split category"
+                            />
+                          )}
+                          <AmountInput
+                            className="txn-editor__input txn-editor__split-amount"
+                            value={s.amount}
+                            onValueChange={(v) => updateSplit(s.tempId, { amount: v })}
+                            placeholder="0.00"
+                          />
+                          <button
+                            type="button"
+                            className="txn-editor__split-remove"
+                            onClick={() => removeSplit(s.tempId)}
+                            disabled={splits.length <= 2}
+                            aria-label="Remove split"
+                            title="Remove"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      <div className="txn-editor__split-footer">
+                        <button type="button" className="txn-editor__split-add" onClick={addSplit}>
+                          <Plus size={12} /> Add split
+                        </button>
+                        <span
+                          className={`txn-editor__split-remaining ${splitCheck.remainingCents === 0 ? 'txn-editor__split-remaining--done' : ''}`}
+                        >
+                          {splitCheck.remainingCents === 0
+                            ? 'Fully assigned'
+                            : `Remaining: ${formatMoney(fromCents(splitCheck.remainingCents))}`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : canCategorize ? (
+                  <div className="txn-editor__field">
+                    <label className="txn-editor__label">
+                      Category
+                      <button
+                        type="button"
+                        className="txn-editor__ai-btn"
+                        title="Split this transaction"
+                        onClick={() => setIsSplit(true)}
+                      >
+                        <Split size={12} />
+                        Split
+                      </button>
+                      <button
+                        type="button"
+                        className="txn-editor__ai-btn"
+                        title="AI suggest category"
+                        disabled={suggestCategory.isPending}
+                        onClick={async () => {
+                          const outflowVal = parseAmountExpressionInput(outflow) || 0
+                          const inflowVal = parseAmountExpressionInput(inflow) || 0
+                          const amount = outflowVal > 0 ? -outflowVal : inflowVal
+                          const result = await suggestCategory.mutateAsync({
+                            payee_name: payeeQuery || 'Unknown',
+                            amount,
+                            memo: memo || undefined,
+                          })
+                          if (result.category_id) setCategoryId(result.category_id)
+                        }}
+                      >
+                        <Sparkles size={12} />
+                        {suggestCategory.isPending ? 'Thinking…' : 'AI Suggest'}
+                      </button>
+                    </label>
+                    <CategoryCombobox
+                      value={categoryId || null}
+                      onChange={(id) => setCategoryId(id ?? '')}
+                      groups={groupedCategories}
+                      allowNone
+                      aria-label="Category"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="txn-editor__field">
+                  <label className="txn-editor__label">Memo</label>
+                  <textarea
+                    className="txn-editor__input txn-editor__memo"
+                    rows={3}
+                    value={memo}
+                    onChange={(e) => setMemo(e.target.value)}
+                    placeholder="Optional note..."
+                  />
+                </div>
+
+                <div className="txn-editor__row">
+                  <div className="txn-editor__field">
+                    <label className="txn-editor__label">Outflow</label>
+                    <AmountInput
+                      className="txn-editor__input"
+                      value={outflow}
+                      onValueChange={handleOutflowChange}
+                      placeholder="0.00"
+                      disabled={editingExistingSplit || isReconciled}
+                      title={
+                        isReconciled
+                          ? 'Reconciled — the amount is locked'
+                          : editingExistingSplit
+                            ? 'A split’s total is the sum of its lines'
+                            : undefined
+                      }
+                    />
+                  </div>
+                  <div className="txn-editor__field">
+                    <label className="txn-editor__label">Inflow</label>
+                    <AmountInput
+                      className="txn-editor__input"
+                      value={inflow}
+                      onValueChange={handleInflowChange}
+                      placeholder="0.00"
+                      disabled={editingExistingSplit || isReconciled}
+                      title={
+                        isReconciled
+                          ? 'Reconciled — the amount is locked'
+                          : editingExistingSplit
+                            ? 'A split’s total is the sum of its lines'
+                            : undefined
+                      }
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          ) : canCategorize ? (
-            <div className="txn-editor__field">
-              <label className="txn-editor__label">
-                Category
+
+            {isEdit && transaction && bankRecord && (
+              <div className="txn-editor__bank-meta">
+                <span className="txn-editor__bank-meta-label">From your bank</span>
+                <dl className="txn-editor__bank-meta-fields">
+                  {bankRecord.postedDate && (
+                    <div
+                      className={`txn-editor__bank-meta-field${bankRecord.dateDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
+                    >
+                      <dt>Posted</dt>
+                      <dd>
+                        <Tooltip
+                          content={
+                            bankRecord.dateDiffers
+                              ? 'Differs from the date on this transaction'
+                              : null
+                          }
+                        >
+                          <span>{formatDate(bankRecord.postedDate)}</span>
+                        </Tooltip>
+                      </dd>
+                    </div>
+                  )}
+                  {bankRecord.amount !== null && (
+                    <div
+                      className={`txn-editor__bank-meta-field${bankRecord.amountDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
+                    >
+                      <dt>Amount</dt>
+                      <dd>
+                        <Tooltip
+                          content={
+                            bankRecord.amountDiffers
+                              ? 'Differs from the amount on this transaction'
+                              : null
+                          }
+                        >
+                          <span>{formatMoney(bankRecord.amount)}</span>
+                        </Tooltip>
+                      </dd>
+                    </div>
+                  )}
+                  {bankRecord.payee && (
+                    <div className="txn-editor__bank-meta-field txn-editor__bank-meta-field--wide">
+                      <dt>Payee</dt>
+                      <dd title={bankRecord.payee}>{bankRecord.payee}</dd>
+                    </div>
+                  )}
+                  {bankRecord.description && (
+                    <div className="txn-editor__bank-meta-field txn-editor__bank-meta-field--wide">
+                      <dt>Description</dt>
+                      <dd title={bankRecord.description}>{bankRecord.description}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+
+            {similarTxns.length > 0 && (
+              <div className="txn-editor__similar">
                 <button
                   type="button"
-                  className="txn-editor__ai-btn"
-                  title="Split this transaction"
-                  onClick={() => setIsSplit(true)}
+                  className="txn-editor__similar-toggle"
+                  onClick={() => setShowSimilar((v) => !v)}
                 >
-                  <Split size={12} />
-                  Split
+                  <AlertTriangle size={13} />
+                  {similarTxns.length} similar transaction{similarTxns.length !== 1 ? 's' : ''}{' '}
+                  found
+                  {showSimilar ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                 </button>
+                {showSimilar && (
+                  <ul className="txn-editor__similar-list">
+                    {similarTxns.map((t) => (
+                      <li key={t.id} className="txn-editor__similar-item">
+                        <span className="txn-editor__similar-date">{t.date}</span>
+                        <span className={t.amount < 0 ? 'txn-outflow' : 'txn-inflow'}>
+                          {t.amount < 0
+                            ? `-$${Math.abs(t.amount).toFixed(2)}`
+                            : `$${t.amount.toFixed(2)}`}
+                        </span>
+                        <span className="txn-editor__similar-desc">
+                          {t.import_description || t.memo || '—'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {isEdit && transaction && (
+              <div className="txn-editor__attachments">
                 <button
                   type="button"
-                  className="txn-editor__ai-btn"
-                  title="AI suggest category"
-                  disabled={suggestCategory.isPending}
-                  onClick={async () => {
-                    const outflowVal = parseAmountExpressionInput(outflow) || 0
-                    const inflowVal = parseAmountExpressionInput(inflow) || 0
-                    const amount = outflowVal > 0 ? -outflowVal : inflowVal
-                    const result = await suggestCategory.mutateAsync({
-                      payee_name: payeeQuery || 'Unknown',
-                      amount,
-                      memo: memo || undefined,
-                    })
-                    if (result.category_id) setCategoryId(result.category_id)
-                  }}
+                  className="txn-editor__similar-toggle"
+                  onClick={() => setShowAttachments((v) => !v)}
                 >
-                  <Sparkles size={12} />
-                  {suggestCategory.isPending ? 'Thinking…' : 'AI Suggest'}
+                  <Paperclip size={13} />
+                  Receipts & attachments
+                  {showAttachments ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                 </button>
-              </label>
-              <CategoryCombobox
-                value={categoryId || null}
-                onChange={(id) => setCategoryId(id ?? '')}
-                groups={groupedCategories}
-                allowNone
-                aria-label="Category"
-              />
-            </div>
-          ) : null}
-
-          <div className="txn-editor__field">
-            <label className="txn-editor__label">Memo</label>
-            <textarea
-              className="txn-editor__input txn-editor__memo"
-              rows={3}
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="Optional note..."
-            />
-          </div>
-
-          <div className="txn-editor__row">
-            <div className="txn-editor__field">
-              <label className="txn-editor__label">Outflow</label>
-              <AmountInput
-                className="txn-editor__input"
-                value={outflow}
-                onValueChange={handleOutflowChange}
-                placeholder="0.00"
-                disabled={editingExistingSplit || isReconciled}
-                title={
-                  isReconciled
-                    ? 'Reconciled — the amount is locked'
-                    : editingExistingSplit
-                      ? 'A split’s total is the sum of its lines'
-                      : undefined
-                }
-              />
-            </div>
-            <div className="txn-editor__field">
-              <label className="txn-editor__label">Inflow</label>
-              <AmountInput
-                className="txn-editor__input"
-                value={inflow}
-                onValueChange={handleInflowChange}
-                placeholder="0.00"
-                disabled={editingExistingSplit || isReconciled}
-                title={
-                  isReconciled
-                    ? 'Reconciled — the amount is locked'
-                    : editingExistingSplit
-                      ? 'A split’s total is the sum of its lines'
-                      : undefined
-                }
-              />
-            </div>
-          </div>
-          </div>
-        </div>
-
-        {isEdit && transaction && bankRecord && (
-          <div className="txn-editor__bank-meta">
-            <span className="txn-editor__bank-meta-label">From your bank</span>
-            <dl className="txn-editor__bank-meta-fields">
-              {bankRecord.postedDate && (
-                <div
-                  className={`txn-editor__bank-meta-field${bankRecord.dateDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
-                >
-                  <dt>Posted</dt>
-                  <dd>
-                    <Tooltip content={bankRecord.dateDiffers ? 'Differs from the date on this transaction' : null}>
-                      <span>{formatDate(bankRecord.postedDate)}</span>
-                    </Tooltip>
-                  </dd>
-                </div>
-              )}
-              {bankRecord.amount !== null && (
-                <div
-                  className={`txn-editor__bank-meta-field${bankRecord.amountDiffers ? ' txn-editor__bank-meta-field--differs' : ''}`}
-                >
-                  <dt>Amount</dt>
-                  <dd>
-                    <Tooltip content={bankRecord.amountDiffers ? 'Differs from the amount on this transaction' : null}>
-                      <span>{formatMoney(bankRecord.amount)}</span>
-                    </Tooltip>
-                  </dd>
-                </div>
-              )}
-              {bankRecord.payee && (
-                <div className="txn-editor__bank-meta-field txn-editor__bank-meta-field--wide">
-                  <dt>Payee</dt>
-                  <dd title={bankRecord.payee}>{bankRecord.payee}</dd>
-                </div>
-              )}
-              {bankRecord.description && (
-                <div className="txn-editor__bank-meta-field txn-editor__bank-meta-field--wide">
-                  <dt>Description</dt>
-                  <dd title={bankRecord.description}>{bankRecord.description}</dd>
-                </div>
-              )}
-            </dl>
-          </div>
-        )}
-
-        {similarTxns.length > 0 && (
-          <div className="txn-editor__similar">
-            <button
-              type="button"
-              className="txn-editor__similar-toggle"
-              onClick={() => setShowSimilar((v) => !v)}
-            >
-              <AlertTriangle size={13} />
-              {similarTxns.length} similar transaction{similarTxns.length !== 1 ? 's' : ''} found
-              {showSimilar ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            </button>
-            {showSimilar && (
-              <ul className="txn-editor__similar-list">
-                {similarTxns.map((t) => (
-                  <li key={t.id} className="txn-editor__similar-item">
-                    <span className="txn-editor__similar-date">{t.date}</span>
-                    <span className={t.amount < 0 ? 'txn-outflow' : 'txn-inflow'}>
-                      {t.amount < 0 ? `-$${Math.abs(t.amount).toFixed(2)}` : `$${t.amount.toFixed(2)}`}
-                    </span>
-                    <span className="txn-editor__similar-desc">
-                      {t.import_description || t.memo || '—'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                {showAttachments && <AttachmentPanel transactionId={transaction.id} embedded />}
+              </div>
             )}
-          </div>
-        )}
 
-        {isEdit && transaction && (
-          <div className="txn-editor__attachments">
-            <button
-              type="button"
-              className="txn-editor__similar-toggle"
-              onClick={() => setShowAttachments((v) => !v)}
-            >
-              <Paperclip size={13} />
-              Receipts & attachments
-              {showAttachments ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            </button>
-            {showAttachments && (
-              <AttachmentPanel transactionId={transaction.id} embedded />
+            {classification && (
+              <p className="txn-editor__classification">
+                Counts as <strong>{classification.label}</strong> in reports — because{' '}
+                {classification.explanation}.
+              </p>
             )}
-          </div>
-        )}
 
-        {classification && (
-          <p className="txn-editor__classification">
-            Counts as <strong>{classification.label}</strong> in reports — because{' '}
-            {classification.explanation}.
-          </p>
-        )}
-
-        <div className="txn-editor__footer">
-          {isEdit ? (
-            <button
-              type="button"
-              className="txn-editor__btn txn-editor__btn--danger"
-              onClick={handleDelete}
-              disabled={isPending}
-            >
-              <Trash2 size={14} />
-              Delete
-            </button>
-          ) : (
-            <span />
-          )}
-          <div className="txn-editor__footer-actions">
-            <button
-              type="button"
-              className="txn-editor__btn txn-editor__btn--secondary"
-              onClick={onClose}
-              disabled={isPending}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="txn-editor__btn txn-editor__btn--primary"
-              disabled={isPending || !splitIsValid || !accountId || needsPartnerChoice}
-            >
-              {isReview ? 'Approve' : isEdit ? 'Save' : 'Add'}
-            </button>
-          </div>
-        </div>
+            <div className="txn-editor__footer">
+              {isEdit ? (
+                <button
+                  type="button"
+                  className="txn-editor__btn txn-editor__btn--danger"
+                  onClick={handleDelete}
+                  disabled={isPending}
+                >
+                  <Trash2 size={14} />
+                  Delete
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="txn-editor__footer-actions">
+                <button
+                  type="button"
+                  className="txn-editor__btn txn-editor__btn--secondary"
+                  onClick={onClose}
+                  disabled={isPending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="txn-editor__btn txn-editor__btn--primary"
+                  disabled={isPending || !splitIsValid || !accountId || needsPartnerChoice}
+                >
+                  {isReview ? 'Approve' : isEdit ? 'Save' : 'Add'}
+                </button>
+              </div>
+            </div>
           </>
         )}
       </form>

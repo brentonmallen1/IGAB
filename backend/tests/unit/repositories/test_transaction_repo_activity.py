@@ -225,7 +225,7 @@ class TestCategoryActivityAggregation:
         g_bal = next(b for b in result.category_balances if b.category_id == groceries.id)
         d_bal = next(b for b in result.category_balances if b.category_id == dining.id)
         assert g_bal.available == D("100.00")  # 300 - 200
-        assert d_bal.available == D("50.00")   # 150 - 100
+        assert d_bal.available == D("50.00")  # 150 - 100
 
 
 class TestPendingConsistency:

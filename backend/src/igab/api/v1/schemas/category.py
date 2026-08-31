@@ -414,6 +414,26 @@ class CardStatusOut(BaseModel):
     #: Required, not optional: a path that forgets it must raise, not report a
     #: drifting reserve as healthy.
     reserve_discrepancy: Decimal
+    #: The five legs `set_aside` is the running total of, each through the
+    #: viewed month, plus what is still riding uncovered on the card:
+    #:
+    #:     assigned + reserved − released − residual − payments == set_aside
+    #:
+    #: The surface used to show only the total, and every question this model
+    #: raised was answered by decomposing it. The client renders these; it
+    #: must not sum them into a set-aside of its own.
+    #:
+    #: Required, not optional, all six — a path that forgets must raise rather
+    #: than show a reserve made of zeros.
+    assigned: Decimal
+    reserved: Decimal
+    released: Decimal
+    residual: Decimal
+    payments: Decimal
+    #: What is riding uncovered on this card, lifetime. Distinct from
+    #: `uncovered`, which is what the card OWES beyond its reserve: a card can
+    #: carry a ride while owing less than it has reserved.
+    riding: Decimal
 
 
 class BudgetMonthResponse(BaseModel):

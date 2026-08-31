@@ -9,7 +9,9 @@ import { MemoryRouter } from 'react-router-dom'
 
 const counts = vi.hoisted(() => ({ value: { active: 0, needsReview: 0 } }))
 vi.mock('../../api/aiJobs', () => ({ useAIJobCounts: () => ({ data: counts.value }) }))
-vi.mock('../../stores/appStore', () => ({ useAppStore: (sel: (s: unknown) => unknown) => sel({ currentBudgetId: 'b1' }) }))
+vi.mock('../../stores/appStore', () => ({
+  useAppStore: (sel: (s: unknown) => unknown) => sel({ currentBudgetId: 'b1' }),
+}))
 
 import { AIActivityBadge } from './AIActivityBadge'
 

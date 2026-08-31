@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react'
 import { useSettings, useUpdateSetting } from '../../../api/settings'
 import { useUpdateStatus } from '../../../api/system'
 import './UpdatesPanel.css'
+import { ROOT } from '../../../api/queryKeys'
 
 /** Opt-in update notification for self-hosted installs. Off by default —
  * the app never contacts GitHub until the toggle is switched on. */
@@ -12,13 +13,12 @@ export function UpdatesPanel() {
   const { data: status } = useUpdateStatus()
   const qc = useQueryClient()
 
-  const enabled =
-    settings?.find((s) => s.key === 'update_check_enabled')?.value === 'true'
+  const enabled = settings?.find((s) => s.key === 'update_check_enabled')?.value === 'true'
 
   function toggle(next: boolean) {
     updateSetting.mutate(
       { key: 'update_check_enabled', value: next ? 'true' : 'false' },
-      { onSuccess: () => qc.invalidateQueries({ queryKey: ['system'] }) }
+      { onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.system] }) }
     )
   }
 
@@ -28,9 +28,8 @@ export function UpdatesPanel() {
         <div>
           <div className="settings-row__label">Check for updates</div>
           <div className="settings-row__desc">
-            Compares this install against the latest GitHub release (checked at
-            most every 6 hours). Off by default — nothing is sent until you
-            enable it.
+            Compares this install against the latest GitHub release (checked at most every 6 hours).
+            Off by default — nothing is sent until you enable it.
           </div>
         </div>
         <input
@@ -45,9 +44,7 @@ export function UpdatesPanel() {
         <div>
           <div className="settings-row__label">Running version</div>
         </div>
-        <span className="updates-panel__version tabular">
-          {status?.current_version ?? '…'}
-        </span>
+        <span className="updates-panel__version tabular">{status?.current_version ?? '…'}</span>
       </div>
 
       {status?.enabled && status.update_available && (

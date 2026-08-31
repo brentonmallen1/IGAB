@@ -1,7 +1,14 @@
 import { useRef, useState } from 'react'
 import {
-  Bar, ComposedChart, CartesianGrid, Legend, Line,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar,
+  ComposedChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts'
 import { useReportStore } from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
@@ -17,7 +24,9 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeButtons } from './rangeButtons'
 import './IncomeExpenseChart.css'
 
-interface Props { budgetId: string }
+interface Props {
+  budgetId: string
+}
 
 export function IncomeExpenseReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
@@ -37,9 +46,11 @@ export function IncomeExpenseReport({ budgetId }: Props) {
       // and debt principal are separate series), so the panel must not list
       // every row of the matching sign. Classes live on leaves, not on a
       // split parent, so the scope has to match too.
-      scope: 'leaf', direction,
+      scope: 'leaf',
+      direction,
       activityClasses: direction === 'inflow' ? ['income'] : ['spending'],
-      startDate: window.start, endDate: window.end,
+      startDate: window.start,
+      endDate: window.end,
     })
   }
 
@@ -72,17 +83,23 @@ export function IncomeExpenseReport({ budgetId }: Props) {
       <div className="report-section__header">
         <h2 className="report-section__title">Income vs Expenses</h2>
         <ReportInfoButton title="Income vs Expenses">
-          <p>Monthly <strong>income</strong> (green) vs <strong>expenses</strong> (red) as bars, with the <strong>net cash flow</strong> (blue line) overlaid.</p>
-          <p><strong>Saved</strong> is money that left the budget but stayed yours — moved into savings or investments, or used to pay down a tracked debt. It sits beside expenses rather than inside them, because it isn't money spent.</p>
-          <p>Months where the blue line is above zero mean you spent less than you earned — a positive sign. Dipping below zero means you ran a deficit that month.</p>
+          <p>
+            Monthly <strong>income</strong> (green) vs <strong>expenses</strong> (red) as bars, with
+            the <strong>net cash flow</strong> (blue line) overlaid.
+          </p>
+          <p>
+            <strong>Saved</strong> is money that left the budget but stayed yours — moved into
+            savings or investments, or used to pay down a tracked debt. It sits beside expenses
+            rather than inside them, because it isn't money spent.
+          </p>
+          <p>
+            Months where the blue line is above zero mean you spent less than you earned — a
+            positive sign. Dipping below zero means you ran a deficit that month.
+          </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
-          <ReportRangeButtons
-            months={months}
-            onChange={setMonths}
-            ranges={[3, 6, 12, 24]}
-          />
+          <ReportRangeButtons months={months} onChange={setMonths} ranges={[3, 6, 12, 24]} />
           <ReportExportButton
             reportId="income-expense"
             getRows={() =>
@@ -107,13 +124,39 @@ export function IncomeExpenseReport({ budgetId }: Props) {
             <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-              <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
-              <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
+              <YAxis
+                tickFormatter={(v) => formatMoney(v)}
+                tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                width={90}
+              />
+              <Tooltip
+                content={<ChartTooltip showTotal={false} />}
+                offset={16}
+                isAnimationActive={false}
+              />
               <Legend />
-              <Bar dataKey="Income" fill={COLOR_POSITIVE} radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('inflow')} />
-              <Bar dataKey="Expenses" fill={COLOR_NEGATIVE} radius={[2, 2, 0, 0]} cursor="pointer" onClick={monthBarClick('outflow')} />
+              <Bar
+                dataKey="Income"
+                fill={COLOR_POSITIVE}
+                radius={[2, 2, 0, 0]}
+                cursor="pointer"
+                onClick={monthBarClick('inflow')}
+              />
+              <Bar
+                dataKey="Expenses"
+                fill={COLOR_NEGATIVE}
+                radius={[2, 2, 0, 0]}
+                cursor="pointer"
+                onClick={monthBarClick('outflow')}
+              />
               <Bar dataKey="Saved" fill={COLOR_NEUTRAL} radius={[2, 2, 0, 0]} />
-              <Line dataKey="Net" stroke={COLOR_NET} strokeWidth={2} dot={{ r: 3 }} type="monotone" />
+              <Line
+                dataKey="Net"
+                stroke={COLOR_NET}
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                type="monotone"
+              />
             </ComposedChart>
           </ResponsiveContainer>
           <DrillDownTable

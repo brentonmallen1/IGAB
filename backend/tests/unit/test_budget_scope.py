@@ -127,9 +127,9 @@ class TestDeferredColumns:
     def test_only_self_references_are_deferred(self):
         for table in budget_tables(METADATA):
             for column in deferred_columns(table):
-                assert any(
-                    fk.column.table.name == table.name for fk in column.foreign_keys
-                ), f"{table.name}.{column.name} is not self-referential"
+                assert any(fk.column.table.name == table.name for fk in column.foreign_keys), (
+                    f"{table.name}.{column.name} is not self-referential"
+                )
 
     def test_the_deferred_set_today(self):
         """Named here and nowhere else — an importer that hard-codes
@@ -216,9 +216,7 @@ class TestPredicates:
 
     def test_child_tables_filter_through_their_anchor(self):
         budget_id = uuid.uuid4()
-        clause = str(
-            budget_predicate(METADATA.tables["transaction_matches"], budget_id, METADATA)
-        )
+        clause = str(budget_predicate(METADATA.tables["transaction_matches"], budget_id, METADATA))
         assert "synced_transaction_id IN" in clause
         assert "transactions.budget_id" in clause
 

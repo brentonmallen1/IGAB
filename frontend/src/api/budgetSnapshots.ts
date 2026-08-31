@@ -12,6 +12,7 @@ import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import { downloadAuthed } from '../utils/exportFile'
+import { ROOT } from './queryKeys'
 
 export interface BudgetSnapshotFile {
   name: string
@@ -71,12 +72,10 @@ export function tooLargeMessage(bytes: number): string | null {
 
 export function useBudgetSnapshots(budgetId: string | null) {
   return useQuery({
-    queryKey: ['budget-snapshots', budgetId],
+    queryKey: [ROOT.budgetSnapshots, budgetId],
     enabled: !!budgetId,
     queryFn: async () => {
-      const { data } = await apiClient.get<BudgetSnapshotFile[]>(
-        `/budgets/${budgetId}/snapshots`,
-      )
+      const { data } = await apiClient.get<BudgetSnapshotFile[]>(`/budgets/${budgetId}/snapshots`)
       return data
     },
   })
@@ -90,7 +89,7 @@ export function useCreateBudgetSnapshot(budgetId: string | null) {
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budget-snapshots', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetSnapshots, budgetId] })
       toast.success('Snapshot saved')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Could not save a snapshot')),
@@ -102,7 +101,7 @@ export function useDeleteBudgetSnapshot(budgetId: string | null) {
   return useMutation({
     mutationFn: (name: string) => apiClient.delete(`/budgets/${budgetId}/snapshots/${name}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budget-snapshots', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetSnapshots, budgetId] })
       toast.success('Snapshot deleted')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Could not delete that snapshot')),
@@ -116,10 +115,7 @@ export function downloadBudgetExport(budgetId: string, budgetName: string): Prom
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-  return downloadAuthed(
-    `/budgets/${budgetId}/export?format=ynab`,
-    `${slug || 'budget'}-export.zip`,
-  )
+  return downloadAuthed(`/budgets/${budgetId}/export?format=ynab`, `${slug || 'budget'}-export.zip`)
 }
 
 /** Export now and hand the file straight to the browser. */
@@ -143,7 +139,7 @@ function asForm(file: File, fields: Record<string, string> = {}): FormData {
 export async function inspectSnapshot(file: File): Promise<SnapshotInspection> {
   const { data } = await apiClient.post<SnapshotInspection>(
     '/budgets/snapshot/inspect',
-    asForm(file),
+    asForm(file)
   )
   return data
 }
@@ -154,7 +150,7 @@ export function useImportSnapshot() {
     mutationFn: async ({ file, name }: { file: File; name?: string }) => {
       const { data } = await apiClient.post<SnapshotImportResult>(
         '/budgets/import-snapshot',
-        asForm(file, name ? { name } : {}),
+        asForm(file, name ? { name } : {})
       )
       return data
     },
@@ -180,13 +176,13 @@ export function useRestoreSnapshot(budgetId: string | null) {
     }) => {
       const { data } = await apiClient.post<SnapshotImportResult>(
         `/budgets/${budgetId}/snapshot/restore`,
-        asForm(file, { confirm_name: confirmName, pre_snapshot: String(preSnapshot) }),
+        asForm(file, { confirm_name: confirmName, pre_snapshot: String(preSnapshot) })
       )
       return data
     },
     onSuccess: (result) => {
       invalidateAfterImport(qc, result.budget_id)
-      qc.invalidateQueries({ queryKey: ['budget-snapshots', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetSnapshots, budgetId] })
     },
   })
 }

@@ -44,8 +44,8 @@ export function CheckupPanel() {
         <h2 className="guide-checkup__title">Financial checkup</h2>
         <p className="guide-checkup__lede">
           Financial health reviews are switched off for this budget. Turn them on in{' '}
-          <Link to="/settings">Settings</Link> and this tab, the health report and the quiet
-          markers on roadmap steps come back.
+          <Link to="/settings">Settings</Link> and this tab, the health report and the quiet markers
+          on roadmap steps come back.
         </p>
       </section>
     )
@@ -65,8 +65,8 @@ export function CheckupPanel() {
         <div>
           <h2 className="guide-checkup__title">Financial checkup</h2>
           <p className="guide-checkup__lede">
-            How things stand against the roadmap’s targets. Each figure says where it came
-            from; none of them are added up into a score.
+            How things stand against the roadmap’s targets. Each figure says where it came from;
+            none of them are added up into a score.
           </p>
         </div>
         <div className="guide-checkup__actions">
@@ -101,8 +101,8 @@ export function CheckupPanel() {
       )}
 
       <p className="guide-checkup__note">
-        Educational only — plain arithmetic, not advice. IGAB never sends a notification
-        about any of it.
+        Educational only — plain arithmetic, not advice. IGAB never sends a notification about any
+        of it.
       </p>
 
       {reportOpen && data && (

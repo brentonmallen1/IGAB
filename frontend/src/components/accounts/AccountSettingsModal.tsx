@@ -35,7 +35,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
 
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   const { data: remoteAccounts = [] } = useSimpleFINRemoteAccounts(
-    showLinkPicker ? (firstConnection?.id ?? null) : null,
+    showLinkPicker ? (firstConnection?.id ?? null) : null
   )
   const link = useLinkSimpleFINAccount(accountId)
   const unlink = useUnlinkSimpleFINAccount(accountId)
@@ -150,9 +150,18 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
 
   return (
     <div className="acct-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={trapRef} tabIndex={-1} className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="acct-modal-title">
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="acct-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="acct-modal-title"
+      >
         <div className="acct-modal__header">
-          <span id="acct-modal-title" className="acct-modal__title">Account Settings</span>
+          <span id="acct-modal-title" className="acct-modal__title">
+            Account Settings
+          </span>
           <button className="acct-modal__close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
@@ -357,7 +366,11 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
             {(saveError || closeError) && (
               <span className="acct-modal__save-error">{saveError ?? closeError}</span>
             )}
-            <button type="button" className="acct-modal__btn acct-modal__btn--cancel" onClick={onClose}>
+            <button
+              type="button"
+              className="acct-modal__btn acct-modal__btn--cancel"
+              onClick={onClose}
+            >
               Cancel
             </button>
             <button

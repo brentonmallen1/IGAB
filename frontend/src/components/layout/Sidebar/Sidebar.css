@@ -95,7 +95,9 @@
   border-radius: var(--border-radius-sm);
   color: var(--sidebar-text-secondary);
   font-size: var(--font-size-sm);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .sidebar__nav-item:hover {
@@ -247,7 +249,9 @@ button.sidebar__group-label:hover {
   border-radius: var(--border-radius-sm);
   color: var(--sidebar-text-muted);
   flex-shrink: 0;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .sidebar__group-action:hover {
@@ -283,7 +287,9 @@ button.sidebar__group-label:hover {
   font-size: var(--font-size-sm);
   color: var(--sidebar-text-secondary);
   border-radius: 0;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
   text-align: left;
   /* every row is a div[role=button]: liability rows nest a real <button> for
      the register shortcut, and a button inside a button is invalid HTML */
@@ -305,7 +311,9 @@ button.sidebar__group-label:hover {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--transition-fast), color var(--transition-fast),
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
     background-color var(--transition-fast);
 }
 
@@ -500,7 +508,9 @@ button.sidebar__group-label:hover {
   color: var(--sidebar-text-muted);
   flex-shrink: 0;
   margin-left: auto;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .sidebar__collapse-btn:hover {
@@ -535,7 +545,10 @@ button.sidebar__group-label:hover {
   border: 1px solid color-mix(in srgb, var(--sidebar-bg) 60%, white 40%);
   color: var(--sidebar-text-secondary);
   cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
   flex-shrink: 0;
 }
 
@@ -603,7 +616,6 @@ button.sidebar__group-label:hover {
     display: none;
   }
 }
-
 
 /* Identity line above Sign out — informational, not interactive */
 .sidebar__whoami {

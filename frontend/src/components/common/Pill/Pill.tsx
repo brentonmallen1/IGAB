@@ -17,7 +17,12 @@ export interface PillProps extends HTMLAttributes<HTMLSpanElement> {
  * account header status row and the liability type badges.
  */
 export function Pill({ tone = 'default', caps = false, className, children, ...rest }: PillProps) {
-  const classes = ['pill', tone !== 'default' ? `pill--${tone}` : '', caps ? 'pill--caps' : '', className ?? '']
+  const classes = [
+    'pill',
+    tone !== 'default' ? `pill--${tone}` : '',
+    caps ? 'pill--caps' : '',
+    className ?? '',
+  ]
     .filter(Boolean)
     .join(' ')
   return (

@@ -229,9 +229,7 @@ class TestReceiptFailures:
         with pytest.raises(NonRetryableJobError, match="vision override 'tiny-ocr'"):
             await process_one_job(db_session, job)
 
-    async def test_retryable_failure_requeues_with_backoff(
-        self, db_session, attachments_dir
-    ):
+    async def test_retryable_failure_requeues_with_backoff(self, db_session, attachments_dir):
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account, attempts=1)
         before = datetime.now(UTC)
@@ -241,9 +239,7 @@ class TestReceiptFailures:
         assert job.available_at > before
         assert job.transaction_id is None  # no stub while retries remain
 
-    async def test_terminal_failure_creates_stub_with_image(
-        self, db_session, attachments_dir
-    ):
+    async def test_terminal_failure_creates_stub_with_image(self, db_session, attachments_dir):
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account, attempts=3)
         await record_job_failure(db_session, job, httpx.ConnectError("refused"))
@@ -340,9 +336,7 @@ class TestReceiptGate:
             AIService, "check_vision_support", AsyncMock(return_value=(None, "gemma4", False))
         )
         monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=None))
-        monkeypatch.setattr(
-            AIService, "extract_receipt", AsyncMock(return_value=GOOD_EXTRACTION)
-        )
+        monkeypatch.setattr(AIService, "extract_receipt", AsyncMock(return_value=GOOD_EXTRACTION))
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account)
         await process_one_job(db_session, job)
@@ -384,9 +378,7 @@ class TestPDFReceipts:
 
 
 class TestStubRefillOnRetry:
-    async def test_retry_fills_untouched_stub(
-        self, db_session, attachments_dir, mock_extraction
-    ):
+    async def test_retry_fills_untouched_stub(self, db_session, attachments_dir, mock_extraction):
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account, attempts=3)
         await record_job_failure(db_session, job, httpx.ConnectError("refused"))
@@ -560,9 +552,7 @@ class TestRequestLogging:
 
         monkeypatch.setattr(AIService, "extract_receipt", fake_extract)
 
-    async def test_success_result_carries_request(
-        self, db_session, attachments_dir, monkeypatch
-    ):
+    async def test_success_result_carries_request(self, db_session, attachments_dir, monkeypatch):
         self._patch(monkeypatch)
         budget, account = await _setup(db_session, attachments_dir)
         job = await _make_job(db_session, attachments_dir, budget, account)
@@ -692,7 +682,9 @@ class TestImageOrientation:
 
         from igab.services.ai_service import prepare_image_for_model
 
-        decoded = PILImage.open(BytesIO(base64.b64decode(prepare_image_for_model(self._rotated_jpeg()))))
+        decoded = PILImage.open(
+            BytesIO(base64.b64decode(prepare_image_for_model(self._rotated_jpeg())))
+        )
         assert decoded.size == (80, 160), "model got the sideways frame"
 
     def test_untagged_images_are_left_alone(self):
@@ -712,9 +704,7 @@ class TestImageOrientation:
         from igab.services.attachment_service import AttachmentService
 
         budget, account = await _setup(db_session, attachments_dir)
-        txn = await create_transaction(
-            db_session, budget, account, "-5.00", date(2026, 8, 2)
-        )
+        txn = await create_transaction(db_session, budget, account, "-5.00", date(2026, 8, 2))
         svc = AttachmentService(AttachmentRepository(db_session))
         attachment = await svc.upload(txn, self._rotated_jpeg(), "receipt.jpg", "image/jpeg")
 

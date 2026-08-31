@@ -20,7 +20,9 @@ export function ShortcutHelp({ onClose }: Props) {
     >
       <div className="shortcut-help" role="dialog" aria-modal aria-labelledby="shortcut-help-title">
         <div className="shortcut-help__header">
-          <span id="shortcut-help-title" className="shortcut-help__title">Keyboard shortcuts</span>
+          <span id="shortcut-help-title" className="shortcut-help__title">
+            Keyboard shortcuts
+          </span>
           <button className="shortcut-help__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>

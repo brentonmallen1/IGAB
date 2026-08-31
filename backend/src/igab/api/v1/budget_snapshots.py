@@ -24,17 +24,18 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.budget_snapshots import (
     SnapshotCreated,
     SnapshotFile,
     SnapshotImportResult,
     SnapshotInspection,
 )
-from igab.db.session import get_session
 from igab.dependencies import (
     BudgetAccess,
     BudgetOwnerAccess,
     CurrentUser,
+    SessionDep,
     get_budget_service,
     get_category_repo,
 )
@@ -44,9 +45,8 @@ from igab.services import budget_export, budget_snapshot
 from igab.services.budget_service import BudgetService
 from igab.services.update_service import current_version
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 MEDIA_TYPE = "application/zip"
 

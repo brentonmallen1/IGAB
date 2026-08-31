@@ -73,8 +73,7 @@ async def test_foreign_resources_return_404(api_client, db_session):
     for method, url, body in checks:
         resp = await api_client.request(method, url, json=body)
         assert resp.status_code == 404, (
-            f"{method.upper()} {url} returned {resp.status_code}; foreign "
-            "resources must 404"
+            f"{method.upper()} {url} returned {resp.status_code}; foreign resources must 404"
         )
         # Guard against vacuous passes: a mistyped route also 404s, but with
         # FastAPI's generic {"detail": "Not Found"} rather than our

@@ -208,7 +208,6 @@ describe('CommandPalette help', () => {
   })
 })
 
-
 /**
  * The rows the palette derives rather than a person writing them.
  *
@@ -313,7 +312,7 @@ describe('CommandPalette glossary', () => {
     expect(await screen.findByText('To Be Assigned')).toBeInTheDocument()
     // The definition is the answer, so it is on the row.
     expect(
-      await screen.findByText('Money you have received but have not yet given a job.'),
+      await screen.findByText('Money you have received but have not yet given a job.')
     ).toBeInTheDocument()
   })
 

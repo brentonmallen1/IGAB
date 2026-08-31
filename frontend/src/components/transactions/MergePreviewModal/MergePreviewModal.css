@@ -74,7 +74,9 @@
   cursor: pointer;
   background: var(--color-surface);
   text-align: left;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
   position: relative;
   width: 100%;
 }
@@ -133,10 +135,22 @@
   font-weight: 500;
 }
 
-.merge-card__cleared--cleared { background: color-mix(in srgb, var(--color-success) 12%, transparent); color: var(--color-success); }
-.merge-card__cleared--uncleared { background: color-mix(in srgb, var(--color-text-muted) 12%, transparent); color: var(--color-text-muted); }
-.merge-card__cleared--pending { background: color-mix(in srgb, var(--color-warning) 12%, transparent); color: var(--color-warning); }
-.merge-card__cleared--reconciled { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
+.merge-card__cleared--cleared {
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  color: var(--color-success);
+}
+.merge-card__cleared--uncleared {
+  background: color-mix(in srgb, var(--color-text-muted) 12%, transparent);
+  color: var(--color-text-muted);
+}
+.merge-card__cleared--pending {
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+}
+.merge-card__cleared--reconciled {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+}
 
 .merge-modal__note {
   font-size: var(--font-size-xs);
@@ -163,7 +177,9 @@
   font-weight: 500;
   cursor: pointer;
   border: 1px solid var(--color-border);
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .merge-modal__btn:disabled {

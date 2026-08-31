@@ -55,9 +55,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [liabilityType, setLiabilityType] = useState<LiabilityType>(
     (liability?.mode === 'unmanaged' ? liability.liability_type : null) ?? 'personal'
   )
-  const [mode, setMode] = useState<'managed' | 'unmanaged'>(
-    liability?.mode ?? 'unmanaged'
-  )
+  const [mode, setMode] = useState<'managed' | 'unmanaged'>(liability?.mode ?? 'unmanaged')
   const [accountId, setAccountId] = useState(liability?.linked_account_id ?? '')
   const [balance, setBalance] = useState(
     liability && liability.mode === 'unmanaged' ? String(liability.current_balance) : ''
@@ -292,7 +290,11 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </label>
             <div className="liability-modal__field">
               <span>Minimum payment</span>
-              <div className="liability-modal__segmented" role="radiogroup" aria-label="Minimum payment">
+              <div
+                className="liability-modal__segmented"
+                role="radiogroup"
+                aria-label="Minimum payment"
+              >
                 <button
                   type="button"
                   role="radio"
@@ -375,66 +377,68 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               />
             </label>
           ) : (
-          <fieldset className="liability-modal__mode">
-            <legend>Where does the balance come from?</legend>
-            <label
-              className={`liability-modal__mode-option ${mode === 'managed' ? 'liability-modal__mode-option--active' : ''}`}
-            >
-              <input
-                type="radio"
-                name="liability-mode"
-                checked={mode === 'managed'}
-                onChange={() => setMode('managed')}
-              />
-              <span>
-                <strong>An account in this budget</strong>
-                <small>Balance and payments track the account's ledger automatically</small>
-              </span>
-            </label>
-            <label
-              className={`liability-modal__mode-option ${mode === 'unmanaged' ? 'liability-modal__mode-option--active' : ''}`}
-            >
-              <input
-                type="radio"
-                name="liability-mode"
-                checked={mode === 'unmanaged'}
-                onChange={() => setMode('unmanaged')}
-              />
-              <span>
-                <strong>I'll enter it myself</strong>
-                <small>For liabilities without an account here — update the balance as you pay</small>
-              </span>
-            </label>
-
-            {mode === 'managed' ? (
-              <label className="liability-modal__field liability-modal__mode-detail">
-                <span>Account</span>
-                <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                  <option value="" disabled>
-                    Choose an account…
-                  </option>
-                  {linkableAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <label className="liability-modal__field liability-modal__mode-detail">
-                <span>Current balance owed</span>
+            <fieldset className="liability-modal__mode">
+              <legend>Where does the balance come from?</legend>
+              <label
+                className={`liability-modal__mode-option ${mode === 'managed' ? 'liability-modal__mode-option--active' : ''}`}
+              >
                 <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={balance}
-                  onChange={(e) => setBalance(e.target.value)}
-                  placeholder="9480.00"
+                  type="radio"
+                  name="liability-mode"
+                  checked={mode === 'managed'}
+                  onChange={() => setMode('managed')}
                 />
+                <span>
+                  <strong>An account in this budget</strong>
+                  <small>Balance and payments track the account's ledger automatically</small>
+                </span>
               </label>
-            )}
-          </fieldset>
+              <label
+                className={`liability-modal__mode-option ${mode === 'unmanaged' ? 'liability-modal__mode-option--active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="liability-mode"
+                  checked={mode === 'unmanaged'}
+                  onChange={() => setMode('unmanaged')}
+                />
+                <span>
+                  <strong>I'll enter it myself</strong>
+                  <small>
+                    For liabilities without an account here — update the balance as you pay
+                  </small>
+                </span>
+              </label>
+
+              {mode === 'managed' ? (
+                <label className="liability-modal__field liability-modal__mode-detail">
+                  <span>Account</span>
+                  <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                    <option value="" disabled>
+                      Choose an account…
+                    </option>
+                    {linkableAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="liability-modal__field liability-modal__mode-detail">
+                  <span>Current balance owed</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={balance}
+                    onChange={(e) => setBalance(e.target.value)}
+                    placeholder="9480.00"
+                  />
+                </label>
+              )}
+            </fieldset>
           )}
 
           <details className="liability-modal__optional">

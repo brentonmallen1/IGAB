@@ -315,7 +315,7 @@ class CategoryRepository(BaseRepository[Category]):
 
         The card model reads this to decide which categories'
         `sum_credit_outflows_by_category` covers, and
-        `txn_filters.UNBUDGETED_CARD_CREDIT` selects on the complement of the
+        `txn_filters.UNCLAIMED_CARD_ROW` selects on the complement of the
         very same expression. Derived here rather than filtered out of a
         loaded category list, because the two spellings are what stopped being
         complements: the list comprehension in `get_budget_summary` and the

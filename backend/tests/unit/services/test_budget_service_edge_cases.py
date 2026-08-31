@@ -137,7 +137,7 @@ class TestYNABImportVsNative:
         checking = MockAccount()
         income_grp = MockCategoryGroup(name="Income", is_system=True)
         expense_grp = MockCategoryGroup(name="Food", is_system=False)
-        rta_cat = MockCategory(category_group_id=income_grp.id)   # Ready to Assign
+        rta_cat = MockCategory(category_group_id=income_grp.id)  # Ready to Assign
         food_cat = MockCategory(category_group_id=expense_grp.id)
 
         svc = make_service(
@@ -146,7 +146,9 @@ class TestYNABImportVsNative:
             categories=[rta_cat, food_cat],
             groups=[income_grp, expense_grp],
             assignments_by_category={
-                food_cat.id: [MockAssignment(category_id=food_cat.id, month=JAN, assigned=D("500.00"))],
+                food_cat.id: [
+                    MockAssignment(category_id=food_cat.id, month=JAN, assigned=D("500.00"))
+                ],
             },
             activity_by_category={
                 rta_cat.id: {JAN: D("3000.00")},  # income transactions
@@ -198,7 +200,9 @@ class TestYNABImportVsNative:
             categories=[rta_cat, food_cat],
             groups=[misconfigured_grp, expense_grp],
             assignments_by_category={
-                food_cat.id: [MockAssignment(category_id=food_cat.id, month=JAN, assigned=D("500.00"))],
+                food_cat.id: [
+                    MockAssignment(category_id=food_cat.id, month=JAN, assigned=D("500.00"))
+                ],
             },
             activity_by_category={
                 rta_cat.id: {JAN: D("3000.00")},

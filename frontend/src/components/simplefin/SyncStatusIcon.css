@@ -12,7 +12,9 @@
   color: var(--color-text-muted);
   flex-shrink: 0;
   opacity: 0.7;
-  transition: opacity 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
 }
 
 .sync-status-icon:hover {

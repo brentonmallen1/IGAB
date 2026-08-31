@@ -54,7 +54,14 @@ let manualCounter = 0
 
 export function blankRow(): PlannerRow {
   manualCounter += 1
-  return { key: `manual-${manualCounter}`, name: '', balance: '', rate: '', minimum: '', fromLiability: false }
+  return {
+    key: `manual-${manualCounter}`,
+    name: '',
+    balance: '',
+    rate: '',
+    minimum: '',
+    fromLiability: false,
+  }
 }
 
 export type RowField = 'name' | 'balance' | 'rate' | 'minimum'

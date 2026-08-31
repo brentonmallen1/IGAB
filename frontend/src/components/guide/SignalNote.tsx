@@ -52,9 +52,7 @@ export function SignalNote({
     <div className={`signal ${signal.met === true ? 'signal--met' : ''}`}>
       <div className="signal__head">
         <span className="signal__label">{label}</span>
-        <span
-          className={`signal__value ${headline.known ? 'tabular' : 'signal__value--unknown'}`}
-        >
+        <span className={`signal__value ${headline.known ? 'tabular' : 'signal__value--unknown'}`}>
           {headline.text}
         </span>
         {target !== null && signal.value !== null && (

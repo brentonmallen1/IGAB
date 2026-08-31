@@ -12,12 +12,7 @@ interface Props {
   assignedInFuture: number
 }
 
-export function TbaDrawer({
-  budgetId,
-  month,
-  open,
-  assignedInFuture,
-}: Props) {
+export function TbaDrawer({ budgetId, month, open, assignedInFuture }: Props) {
   const { formatMoney } = useFormatters()
   const { data: moves = [] } = useMoveHistory(budgetId, month, open)
 

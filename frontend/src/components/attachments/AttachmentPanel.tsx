@@ -3,6 +3,8 @@ import { Camera, Paperclip, Upload, Trash2, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_LABEL,
+  isTooLargeToAttach,
   fetchAttachmentBlob,
   isAttachableFile,
   isPdfAttachment,
@@ -35,7 +37,10 @@ function AttachmentThumb({
       )}
       <button
         className="attachment-thumb__delete"
-        onClick={(e) => { e.stopPropagation(); onDelete() }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onDelete()
+        }}
         aria-label="Delete"
       >
         <Trash2 size={12} />
@@ -63,32 +68,38 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
 
-  const handleFiles = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) return
+  const handleFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) return
 
-    for (const file of Array.from(files)) {
-      if (!isAttachableFile(file)) {
-        toast.error(`${file.name} is not an image or PDF`)
-        continue
+      for (const file of Array.from(files)) {
+        if (!isAttachableFile(file)) {
+          toast.error(`${file.name} is not an image or PDF`)
+          continue
+        }
+        if (isTooLargeToAttach(file)) {
+          toast.error(`${file.name} is too large (max ${MAX_ATTACHMENT_LABEL})`)
+          continue
+        }
+        try {
+          await upload.mutateAsync(file)
+          toast.success('Attachment uploaded')
+        } catch {
+          toast.error('Upload failed')
+        }
       }
-      if (file.size > 20 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 20MB)`)
-        continue
-      }
-      try {
-        await upload.mutateAsync(file)
-        toast.success('Attachment uploaded')
-      } catch {
-        toast.error('Upload failed')
-      }
-    }
-  }, [upload])
+    },
+    [upload]
+  )
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    handleFiles(e.dataTransfer.files)
-  }, [handleFiles])
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setDragOver(false)
+      handleFiles(e.dataTransfer.files)
+    },
+    [handleFiles]
+  )
 
   const handleDelete = async (attachmentId: string) => {
     try {
@@ -115,7 +126,10 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
 
       <div
         className={`attachment-panel__drop-zone ${dragOver ? 'attachment-panel__drop-zone--active' : ''}`}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragOver(true)
+        }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
@@ -188,7 +202,9 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
           attachment={imageAttachments[lightboxIndex]}
           onClose={() => setLightboxIndex(null)}
           onPrev={() => setLightboxIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
-          onNext={() => setLightboxIndex((i) => (i !== null && i < imageAttachments.length - 1 ? i + 1 : i))}
+          onNext={() =>
+            setLightboxIndex((i) => (i !== null && i < imageAttachments.length - 1 ? i + 1 : i))
+          }
           hasPrev={lightboxIndex > 0}
           hasNext={lightboxIndex < imageAttachments.length - 1}
         />

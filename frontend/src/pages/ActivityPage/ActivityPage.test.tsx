@@ -90,10 +90,7 @@ describe('ActivityPage', () => {
   })
 
   it('undoes a whole batch from its one line', async () => {
-    changes = [
-      change('a', { batch_id: 'batch-1' }),
-      change('b', { batch_id: 'batch-1' }),
-    ]
+    changes = [change('a', { batch_id: 'batch-1' }), change('b', { batch_id: 'batch-1' })]
     render(<ActivityPage />)
 
     await userEvent.click(screen.getByTitle('Undo this whole batch'))

@@ -21,7 +21,11 @@ describe('transactionDisplayPayee', () => {
   it('prefers the served counterpart over a stale payee', () => {
     // After a retarget the link is truth; the payee may still name the old
     // destination.
-    const txn = { payee_id: 'p-to-savings', transfer_id: 't2', counterpart_account_id: 'a-checking' }
+    const txn = {
+      payee_id: 'p-to-savings',
+      transfer_id: 't2',
+      counterpart_account_id: 'a-checking',
+    }
     expect(transactionDisplayPayee(txn, payees, accounts)).toBe('Transfer : Checking')
   })
 

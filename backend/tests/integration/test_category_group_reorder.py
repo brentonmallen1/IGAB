@@ -80,9 +80,7 @@ class TestReorder:
         budget, groups = await _budget_with_groups(db_session, user=api_client.test_user)
         resp = await api_client.post(
             f"/api/v1/{budget.id}/category-groups/reorder",
-            json={
-                "group_ids": [str(groups[0].id), str(groups[0].id), str(groups[1].id)]
-            },
+            json={"group_ids": [str(groups[0].id), str(groups[0].id), str(groups[1].id)]},
         )
         assert resp.status_code == 400
 
@@ -101,9 +99,7 @@ class TestReorder:
         budget, groups = await _budget_with_groups(db_session, user=api_client.test_user)
         resp = await api_client.post(
             f"/api/v1/{budget.id}/category-groups/reorder",
-            json={
-                "group_ids": [str(groups[0].id), str(groups[1].id), str(uuid.uuid4())]
-            },
+            json={"group_ids": [str(groups[0].id), str(groups[1].id), str(uuid.uuid4())]},
         )
         assert resp.status_code == 400
 
@@ -188,9 +184,7 @@ class TestCardOnlyGroups:
         cards = await create_category_group(db_session, budget, "Credit Card Payments")
         cards.sort_order = 3
         cards.is_archived = hidden
-        visa = await create_account(
-            db_session, budget, "Sapphire Visa", account_type="credit_card"
-        )
+        visa = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
         envelope = await create_category(db_session, budget, cards, "Sapphire Visa")
         envelope.linked_account_id = visa.id
         await db_session.flush()
@@ -198,9 +192,7 @@ class TestCardOnlyGroups:
 
     async def test_a_visible_card_only_group_may_be_omitted(self, api_client, db_session):
         """The YNAB-import shape: visible, non-system, and drawn by nothing."""
-        budget, groups, cards = await self._with_card_group(
-            db_session, user=api_client.test_user
-        )
+        budget, groups, cards = await self._with_card_group(db_session, user=api_client.test_user)
         assert not cards.is_archived and not cards.is_system
 
         resp = await api_client.post(
@@ -268,9 +260,7 @@ class TestCardOnlyGroups:
             )
 
     async def test_the_listing_serves_the_flag(self, api_client, db_session):
-        budget, _groups, _cards = await self._with_card_group(
-            db_session, user=api_client.test_user
-        )
+        budget, _groups, _cards = await self._with_card_group(db_session, user=api_client.test_user)
         listed = (
             await api_client.get(f"/api/v1/{budget.id}/category-groups?include_archived=true")
         ).json()

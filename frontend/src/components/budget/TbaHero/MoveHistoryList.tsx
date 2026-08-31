@@ -22,7 +22,9 @@ export function MoveHistoryList({ budgetId, moves }: Props) {
   async function undo(m: BudgetMove) {
     try {
       await undoMove.mutateAsync({ id: m.id, month: m.month })
-      toast.success(`Undid the ${formatMoney(Number(m.amount))} move to ${nameOf(m.to_category_id)}`)
+      toast.success(
+        `Undid the ${formatMoney(Number(m.amount))} move to ${nameOf(m.to_category_id)}`
+      )
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(typeof detail === 'string' ? detail : 'Could not undo this move')

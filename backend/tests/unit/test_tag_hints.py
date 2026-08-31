@@ -81,7 +81,10 @@ class TestWhatTheReviewProposes:
         # Real case from the dev database: tagged Long-term expense by the
         # import, but plainly a subscription. The review shows both rather
         # than picking for the user.
-        offered = {s.system_key: s.matched_on for s in suggest_review_tags("Amazon Prime", "Long Term Expenses")}
+        offered = {
+            s.system_key: s.matched_on
+            for s in suggest_review_tags("Amazon Prime", "Long Term Expenses")
+        }
         assert offered["long_term_expense"] == "Long Term Expenses"
         assert offered["subscription"] == "Amazon Prime"
 

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { Payee } from '../types'
+import { ROOT } from './queryKeys'
 
 export interface PayeeWithCount extends Payee {
   transaction_count: number
@@ -22,7 +23,7 @@ export function useNearbyPayees(
   coords: { latitude: number; longitude: number } | null
 ) {
   return useQuery({
-    queryKey: ['nearbyPayees', budgetId, coords?.latitude, coords?.longitude],
+    queryKey: [ROOT.nearbyPayees, budgetId, coords?.latitude, coords?.longitude],
     queryFn: async () => {
       const { data } = await apiClient.get<NearbyPayee[]>(`/${budgetId}/payees/nearby`, {
         params: { lat: coords!.latitude, lng: coords!.longitude },
@@ -36,7 +37,7 @@ export function useNearbyPayees(
 
 export function usePayees(budgetId: string | null) {
   return useQuery({
-    queryKey: ['payees', budgetId],
+    queryKey: [ROOT.payees, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<PayeeWithCount[]>(`/${budgetId}/payees`)
       return data
@@ -51,16 +52,24 @@ export function useCreatePayee(budgetId: string) {
   return useMutation({
     mutationFn: (name: string) =>
       apiClient.post<Payee>(`/${budgetId}/payees`, { name }).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payees', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] }),
   })
 }
 
 export function useUpdatePayee(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; default_category_id?: string; mapping_samples?: string[]; match_pattern?: string | null }) =>
-      apiClient.patch<Payee>(`/payees/${id}`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payees', budgetId] }),
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string
+      name?: string
+      default_category_id?: string
+      mapping_samples?: string[]
+      match_pattern?: string | null
+    }) => apiClient.patch<Payee>(`/payees/${id}`, body).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] }),
   })
 }
 
@@ -69,8 +78,8 @@ export function useDeletePayee(budgetId: string | null) {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/payees/${id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['payees', budgetId] })
-      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
     },
   })
 }
@@ -79,15 +88,14 @@ export function useMergePayee(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ sourceId, targetId }: { sourceId: string; targetId: string }) => {
-      const { data } = await apiClient.post<{ change_id: string }>(
-        `/payees/${sourceId}/merge`,
-        { target_id: targetId }
-      )
+      const { data } = await apiClient.post<{ change_id: string }>(`/payees/${sourceId}/merge`, {
+        target_id: targetId,
+      })
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['payees', budgetId] })
-      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
     },
   })
 }
@@ -107,9 +115,12 @@ export function useFetchPayeeDuplicates(budgetId: string | null) {
   return useMutation({
     mutationFn: async (threshold: number) => {
       if (!budgetId) throw new Error('No budget selected')
-      const { data } = await apiClient.get<DuplicatePayeeGroup[]>(`/${budgetId}/payees/duplicates`, {
-        params: { threshold },
-      })
+      const { data } = await apiClient.get<DuplicatePayeeGroup[]>(
+        `/${budgetId}/payees/duplicates`,
+        {
+          params: { threshold },
+        }
+      )
       return data
     },
   })

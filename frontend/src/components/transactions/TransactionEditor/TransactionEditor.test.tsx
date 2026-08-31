@@ -318,9 +318,7 @@ describe('TransactionEditor classification note', () => {
 
     expect(screen.getByText(/Counts as/)).toBeInTheDocument()
     expect(screen.getByText('Savings')).toBeInTheDocument()
-    expect(
-      screen.getByText(/moves money to a tracked account you own/)
-    ).toBeInTheDocument()
+    expect(screen.getByText(/moves money to a tracked account you own/)).toBeInTheDocument()
   })
 
   it('says nothing for an unsaved draft', () => {
@@ -404,7 +402,13 @@ describe('TransactionEditor transfers', () => {
 
   it('asks which row is the far leg when more than one could be', async () => {
     transferCandidates = [
-      { id: 'cand-1', date: '2026-08-20', amount: '500.00', memo: 'ACH credit', cleared: 'cleared' },
+      {
+        id: 'cand-1',
+        date: '2026-08-20',
+        amount: '500.00',
+        memo: 'ACH credit',
+        cleared: 'cleared',
+      },
       { id: 'cand-2', date: '2026-08-20', amount: '500.00', memo: 'Deposit', cleared: 'uncleared' },
     ]
     renderEditor({ transaction: orphanLeg })
@@ -424,7 +428,13 @@ describe('TransactionEditor transfers', () => {
     // the server can only refuse — and the refusal was swallowed, so Save
     // just re-enabled with nothing saved and nothing said.
     transferCandidates = [
-      { id: 'cand-1', date: '2026-08-20', amount: '500.00', memo: 'ACH credit', cleared: 'cleared' },
+      {
+        id: 'cand-1',
+        date: '2026-08-20',
+        amount: '500.00',
+        memo: 'ACH credit',
+        cleared: 'cleared',
+      },
       { id: 'cand-2', date: '2026-08-20', amount: '500.00', memo: 'Deposit', cleared: 'uncleared' },
     ]
     renderEditor({ transaction: orphanLeg })
@@ -467,7 +477,6 @@ describe('TransactionEditor transfers', () => {
     expect(screen.queryByText(/which transaction in/i)).not.toBeInTheDocument()
   })
 })
-
 
 describe('TransactionEditor on a reconciled transaction', () => {
   // Reconciliation locks the money (backend domain/reconciliation.py): the

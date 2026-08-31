@@ -189,8 +189,8 @@ function Comparison({
   if (avalanche.never_pays_off || snowball.never_pays_off) {
     return (
       <p className="tool__summary">
-        At these payments not every debt clears — the minimums do not cover the interest
-        somewhere. Add something extra and the picture changes.
+        At these payments not every debt clears — the minimums do not cover the interest somewhere.
+        Add something extra and the picture changes.
       </p>
     )
   }
@@ -209,7 +209,10 @@ function Comparison({
       )}
       {sooner > 0 ? (
         <>
-          Snowball clears its first debt <strong>{sooner} {sooner === 1 ? 'month' : 'months'}</strong>{' '}
+          Snowball clears its first debt{' '}
+          <strong>
+            {sooner} {sooner === 1 ? 'month' : 'months'}
+          </strong>{' '}
           sooner — pick the one you will actually stick to.
         </>
       ) : (
@@ -276,7 +279,10 @@ function BalanceChart({
   plan: PayoffPlanResponse
   formatMoney: (n: number) => string
 }) {
-  const series: { key: keyof PayoffPlanResponse & ('avalanche' | 'snowball' | 'minimums_only'); label: string }[] = [
+  const series: {
+    key: keyof PayoffPlanResponse & ('avalanche' | 'snowball' | 'minimums_only')
+    label: string
+  }[] = [
     { key: 'avalanche', label: 'Avalanche' },
     { key: 'snowball', label: 'Snowball' },
     { key: 'minimums_only', label: 'Minimums only' },
@@ -285,7 +291,10 @@ function BalanceChart({
   if (length === 0) return null
   const points = Array.from({ length }, (_, i) => {
     const point: Record<string, string | number | undefined> = {
-      month: plan.avalanche.months[i]?.date ?? plan.snowball.months[i]?.date ?? plan.minimums_only.months[i]?.date,
+      month:
+        plan.avalanche.months[i]?.date ??
+        plan.snowball.months[i]?.date ??
+        plan.minimums_only.months[i]?.date,
     }
     for (const s of series) {
       const m = plan[s.key].months[i]

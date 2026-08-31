@@ -190,7 +190,9 @@
   height: 26px;
   color: var(--text-muted);
   border-radius: var(--border-radius-sm);
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .manage-filters-modal__icon-btn:hover {

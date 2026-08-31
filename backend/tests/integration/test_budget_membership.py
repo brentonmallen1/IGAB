@@ -116,9 +116,7 @@ class TestOwnerControls:
         assert added.status_code == 201
         assert added.json()["role"] == "member"
 
-        dup = await api_client.post(
-            f"/api/v1/{budget.id}/members", json={"user_id": str(other.id)}
-        )
+        dup = await api_client.post(f"/api/v1/{budget.id}/members", json={"user_id": str(other.id)})
         assert dup.status_code == 409
 
         with as_user(other):

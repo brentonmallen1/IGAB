@@ -41,9 +41,36 @@ vi.mock('../../../api/payees', () => ({
 vi.mock('../../../api/categories', () => ({
   useCategories: () => ({
     data: [
-      { id: 'c1', category_group_id: 'g1', name: 'Groceries', is_archived: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
-      { id: 'c2', category_group_id: 'g1', name: 'Household', is_archived: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
-      { id: 'c3', category_group_id: 'g1', name: 'Treats', is_archived: false, linked_account_id: null, linked_liability_id: null, is_assignable: true, is_categorizable: true },
+      {
+        id: 'c1',
+        category_group_id: 'g1',
+        name: 'Groceries',
+        is_archived: false,
+        linked_account_id: null,
+        linked_liability_id: null,
+        is_assignable: true,
+        is_categorizable: true,
+      },
+      {
+        id: 'c2',
+        category_group_id: 'g1',
+        name: 'Household',
+        is_archived: false,
+        linked_account_id: null,
+        linked_liability_id: null,
+        is_assignable: true,
+        is_categorizable: true,
+      },
+      {
+        id: 'c3',
+        category_group_id: 'g1',
+        name: 'Treats',
+        is_archived: false,
+        linked_account_id: null,
+        linked_liability_id: null,
+        is_assignable: true,
+        is_categorizable: true,
+      },
     ],
   }),
   useCategoryGroups: () => ({ data: [{ id: 'g1', name: 'Everyday' }] }),
@@ -147,7 +174,7 @@ describe('reaching the split editor', () => {
     expect(screen.getByTitle('Split this across categories')).toBeTruthy()
   })
 
-  it('cancelling hands the first leg\'s category back, not nothing', () => {
+  it("cancelling hands the first leg's category back, not nothing", () => {
     // Symmetric with the carry-in above. Without this, pick a category, tap
     // split, change your mind, and the pick is silently gone.
     startSplit('10.00')
@@ -372,4 +399,3 @@ describe('leaving mid-split', () => {
     expect(screen.getByText('Discard this transaction?')).toBeTruthy()
   })
 })
-

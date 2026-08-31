@@ -64,8 +64,10 @@ async def _setup(db_session):
 
 async def _payees(db_session, budget) -> dict[str, Payee]:
     rows = (
-        await db_session.execute(select(Payee).where(Payee.budget_id == budget.id))
-    ).scalars().all()
+        (await db_session.execute(select(Payee).where(Payee.budget_id == budget.id)))
+        .scalars()
+        .all()
+    )
     return {p.name: p for p in rows}
 
 
@@ -92,8 +94,13 @@ class TestTransferPayeesAreLinked:
         services, budget = await _setup(db_session)
         data = YNABBudget(
             transactions=[
-                _txn("Checking", "Transfer : Brokerage", "-500.00",
-                     group="Savings", category="Investments"),
+                _txn(
+                    "Checking",
+                    "Transfer : Brokerage",
+                    "-500.00",
+                    group="Savings",
+                    category="Investments",
+                ),
                 _txn("Brokerage", "Transfer : Checking", "500.00"),
             ]
         )
@@ -163,9 +170,7 @@ class TestUnpairedLegsAreReported:
 
     async def test_missing_partner_is_counted(self, db_session):
         services, budget = await _setup(db_session)
-        data = YNABBudget(
-            transactions=[_txn("Checking", "Transfer : Nowhere", "-75.00")]
-        )
+        data = YNABBudget(transactions=[_txn("Checking", "Transfer : Nowhere", "-75.00")])
         result = await _importer(services, db_session, budget).import_budget(data)
         assert result.transfer_legs_unpaired == 1
 
@@ -199,8 +204,13 @@ class TestUnpairedLegsAreReported:
         services, budget = await _setup(db_session)
         data = YNABBudget(
             transactions=[
-                _txn("Checking", "Transfer : Brokerage", "-500.00",
-                     group="Savings", category="Investments"),
+                _txn(
+                    "Checking",
+                    "Transfer : Brokerage",
+                    "-500.00",
+                    group="Savings",
+                    category="Investments",
+                ),
                 _txn("Brokerage", "Transfer : Checking", "500.00"),
             ]
         )

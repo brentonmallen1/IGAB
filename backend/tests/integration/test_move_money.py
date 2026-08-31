@@ -48,9 +48,7 @@ async def _snapshot(services, budget):
 async def test_move_between_categories_conserves_tba(db_session):
     services, budget, groceries, dining = await _setup(db_session)
 
-    await services.budgets.move_money(
-        budget.id, groceries.id, dining.id, Decimal("150.00"), MONTH
-    )
+    await services.budgets.move_money(budget.id, groceries.id, dining.id, Decimal("150.00"), MONTH)
 
     summary, by_cat = await _snapshot(services, budget)
     assert by_cat[groceries.id].available == Decimal("450.00")
@@ -101,9 +99,7 @@ async def test_validation_rejections(db_session):
     services, budget, groceries, dining = await _setup(db_session)
 
     with pytest.raises(InvariantViolation, match="positive"):
-        await services.budgets.move_money(
-            budget.id, groceries.id, dining.id, Decimal("0"), MONTH
-        )
+        await services.budgets.move_money(budget.id, groceries.id, dining.id, Decimal("0"), MONTH)
     with pytest.raises(InvariantViolation, match="positive"):
         await services.budgets.move_money(
             budget.id, groceries.id, dining.id, Decimal("-5.00"), MONTH
@@ -163,9 +159,7 @@ async def test_move_money_api(api_client, db_session):
     )
     assert resp.status_code == 204
 
-    resp = await api_client.get(
-        f"/api/v1/{budget.id}/budget/moves", params={"month": "2026-07-01"}
-    )
+    resp = await api_client.get(f"/api/v1/{budget.id}/budget/moves", params={"month": "2026-07-01"})
     assert resp.status_code == 200
     moves = resp.json()
     assert len(moves) == 1
@@ -220,7 +214,16 @@ async def test_undo_move_after_log_undo_only_drops_the_row(db_session):
     # The batch undo already dropped the audit row; a stale row (from before
     # moves were linked to their changes) would still be listed — undo_move
     # on it must reverse nothing and just remove it.
-    db_session.add(type(move)(id=move.id, budget_id=budget.id, month=MONTH, from_category_id=groceries.id, to_category_id=dining.id, amount=Decimal("25.00")))
+    db_session.add(
+        type(move)(
+            id=move.id,
+            budget_id=budget.id,
+            month=MONTH,
+            from_category_id=groceries.id,
+            to_category_id=dining.id,
+            amount=Decimal("25.00"),
+        )
+    )
     await db_session.flush()
     assert await undo.undo_move(budget.id, move.id) == []
     assert await services.budgets.get_move_history(budget.id, MONTH) == []
@@ -235,8 +238,11 @@ async def test_undo_move_refuses_a_move_with_no_linked_rows(db_session):
     services, budget, groceries, dining = await _setup(db_session)
     # A row from before moves carried their change ids: nothing links back
     legacy = services.budgets.move_repo.model(
-        budget_id=budget.id, month=MONTH, from_category_id=groceries.id,
-        to_category_id=dining.id, amount=Decimal("5.00"),
+        budget_id=budget.id,
+        month=MONTH,
+        from_category_id=groceries.id,
+        to_category_id=dining.id,
+        amount=Decimal("5.00"),
     )
     db_session.add(legacy)
     await db_session.flush()

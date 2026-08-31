@@ -19,13 +19,7 @@ export function logAxisProps(enabled: boolean): LogAxisProps {
   return { scale: 'log', domain: [1, 'auto'], allowDataOverflow: true }
 }
 
-export function LogScaleToggle({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean
-  onToggle: () => void
-}) {
+export function LogScaleToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"

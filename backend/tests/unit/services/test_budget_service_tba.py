@@ -233,7 +233,9 @@ class TestTBAWithAssignments:
         assert result.to_be_assigned == D("1000.00")
 
     async def test_spent_against_assigned_reduces_available_and_affects_tba(self):
-        """Spending reduces both account balance and category available by the same amount, so TBA stays constant."""
+        """Spending reduces both account balance and category available by the same amount,
+        so TBA stays constant.
+        """
         acct = MockAccount()
         grp = MockCategoryGroup()
         cat = MockCategory(category_group_id=grp.id)
@@ -281,8 +283,12 @@ class TestTBASystemCategoryExclusion:
             categories=[income_cat, expense_cat],
             groups=[income_grp, expense_grp],
             assignments_by_category={
-                income_cat.id: [MockAssignment(category_id=income_cat.id, month=JAN, assigned=D("3000.00"))],
-                expense_cat.id: [MockAssignment(category_id=expense_cat.id, month=JAN, assigned=D("400.00"))],
+                income_cat.id: [
+                    MockAssignment(category_id=income_cat.id, month=JAN, assigned=D("3000.00"))
+                ],
+                expense_cat.id: [
+                    MockAssignment(category_id=expense_cat.id, month=JAN, assigned=D("400.00"))
+                ],
             },
         )
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
@@ -326,9 +332,15 @@ class TestTBASystemCategoryExclusion:
             categories=[sys_cat1, sys_cat2, reg_cat],
             groups=[sys_grp1, sys_grp2, reg_grp],
             assignments_by_category={
-                sys_cat1.id: [MockAssignment(category_id=sys_cat1.id, month=JAN, assigned=D("500.00"))],
-                sys_cat2.id: [MockAssignment(category_id=sys_cat2.id, month=JAN, assigned=D("300.00"))],
-                reg_cat.id: [MockAssignment(category_id=reg_cat.id, month=JAN, assigned=D("200.00"))],
+                sys_cat1.id: [
+                    MockAssignment(category_id=sys_cat1.id, month=JAN, assigned=D("500.00"))
+                ],
+                sys_cat2.id: [
+                    MockAssignment(category_id=sys_cat2.id, month=JAN, assigned=D("300.00"))
+                ],
+                reg_cat.id: [
+                    MockAssignment(category_id=reg_cat.id, month=JAN, assigned=D("200.00"))
+                ],
             },
         )
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
@@ -473,9 +485,7 @@ class TestTBAFutureAssignments:
 
     async def test_multiple_future_months_all_deducted(self):
         mar = date(2026, 3, 1)
-        svc = self._one_cat_service(
-            D("1000.00"), [(FEB, D("200.00")), (mar, D("300.00"))]
-        )
+        svc = self._one_cat_service(D("1000.00"), [(FEB, D("200.00")), (mar, D("300.00"))])
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
         assert result.assigned_in_future == D("500.00")
         assert result.to_be_assigned == D("500.00")
@@ -483,9 +493,7 @@ class TestTBAFutureAssignments:
     async def test_current_and_future_assignments_not_double_counted(self):
         """JAN's own assignment lands in category balances; only FEB's is a
         future commitment. 1000 - 400 - 100 = 500 from either month."""
-        svc = self._one_cat_service(
-            D("1000.00"), [(JAN, D("400.00")), (FEB, D("100.00"))]
-        )
+        svc = self._one_cat_service(D("1000.00"), [(JAN, D("400.00")), (FEB, D("100.00"))])
         jan = await svc.get_budget_summary(BUDGET_ID, JAN)
         feb = await svc.get_budget_summary(BUDGET_ID, FEB)
         assert jan.to_be_assigned == D("500.00")
@@ -508,9 +516,7 @@ class TestTBAFutureAssignments:
     async def test_negative_future_assignment_returns_money_to_tba(self):
         """A negative assignment in a future month (money pulled back out)
         increases current TBA symmetrically."""
-        svc = self._one_cat_service(
-            D("1000.00"), [(JAN, D("400.00")), (FEB, D("-100.00"))]
-        )
+        svc = self._one_cat_service(D("1000.00"), [(JAN, D("400.00")), (FEB, D("-100.00"))])
         result = await svc.get_budget_summary(BUDGET_ID, JAN)
         assert result.assigned_in_future == D("-100.00")
         assert result.to_be_assigned == D("700.00")

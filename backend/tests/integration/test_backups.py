@@ -66,9 +66,7 @@ class TestRunBackup:
         assert resp.status_code == 409
         assert "not running" in resp.json()["detail"]
 
-    async def test_queued_clears_once_the_agent_takes_the_command(
-        self, api_client, backups_dir
-    ):
+    async def test_queued_clears_once_the_agent_takes_the_command(self, api_client, backups_dir):
         await api_client.post("/api/v1/backups/run")
         # The agent consumes command.json and writes status.json — emulate it.
         os.remove(backups_dir / ".agent" / "command.json")

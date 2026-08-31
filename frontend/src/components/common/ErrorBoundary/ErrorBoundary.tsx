@@ -62,8 +62,8 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="error-boundary__card">
           <h1 className="error-boundary__title">Something went wrong</h1>
           <p className="error-boundary__body">
-            A part of the page failed to render. Your data is safe — this is a display
-            problem, and nothing was saved or changed.
+            A part of the page failed to render. Your data is safe — this is a display problem, and
+            nothing was saved or changed.
           </p>
           <pre className="error-boundary__detail">{this.state.error.message}</pre>
           <div className="error-boundary__actions">
@@ -79,9 +79,8 @@ export class ErrorBoundary extends Component<Props, State> {
             </button>
           </div>
           <p className="error-boundary__hint">
-            If reloading lands here again, the second button clears the remembered
-            view, filter and report selections — which is usually what a repeating
-            error is stuck on.
+            If reloading lands here again, the second button clears the remembered view, filter and
+            report selections — which is usually what a repeating error is stuck on.
           </p>
         </div>
       </div>

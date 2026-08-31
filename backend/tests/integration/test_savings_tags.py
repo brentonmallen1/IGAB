@@ -14,8 +14,8 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from igab.db.models import Tag
-from igab.integrations.ynab.models import YNABBudget, YNABTransaction
 from igab.domain.tag_hints import suggest_system_tag
+from igab.integrations.ynab.models import YNABBudget, YNABTransaction
 from igab.repositories.tag_repo import SYSTEM_TAGS, TagRepository, seed_system_tags
 
 from .factories import create_budget, create_category, create_category_group, create_user
@@ -76,9 +76,7 @@ class TestBackfill:
         await db_session.refresh(mine)
         assert mine.system_key == "savings", "the user's tag was adopted, not duplicated"
 
-        names = (
-            await db_session.execute(select(Tag).where(Tag.budget_id == budget.id))
-        ).scalars()
+        names = (await db_session.execute(select(Tag).where(Tag.budget_id == budget.id))).scalars()
         assert len([t for t in names if t.name.lower() == "savings"]) == 1
 
     async def test_running_it_twice_changes_nothing(self, db_session):
@@ -93,9 +91,7 @@ class TestBackfill:
         budget = await create_budget(db_session, api_client.test_user)
         repo = TagRepository(db_session)
         for key, name, colour in SYSTEM_TAGS[:3]:
-            await repo.create(
-                budget_id=budget.id, name=name, system_key=key, color_slot=colour
-            )
+            await repo.create(budget_id=budget.id, name=name, system_key=key, color_slot=colour)
 
         listed = (await api_client.get(f"/api/v1/{budget.id}/tags")).json()
         assert "debt_principal" in {t["system_key"] for t in listed if t["system_key"]}
@@ -130,9 +126,7 @@ class TestImportTagging:
         """Otherwise a YNAB import produces a savings report that is empty
         forever — nothing else tags categories, and the only place to do it by
         hand is a panel the user has no reason to open."""
-        budget, result = await self._import(
-            db_session, [self._txn("Emergency Fund", "Goals")]
-        )
+        budget, result = await self._import(db_session, [self._txn("Emergency Fund", "Goals")])
         assert result.categories_tagged == 1
 
         tag_repo = TagRepository(db_session)

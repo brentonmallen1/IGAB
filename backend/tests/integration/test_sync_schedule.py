@@ -10,7 +10,7 @@ And "Sync All" reached `connections[0]` only, so a household with two banks
 never synced the second one from that button.
 """
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -106,9 +106,7 @@ class TestTheSchedule:
             ([0], 0, True),
         ],
     )
-    async def test_which_hours_fire(
-        self, db_session, hours: list[int], hour_now: int, fires: bool
-    ):
+    async def test_which_hours_fire(self, db_session, hours: list[int], hour_now: int, fires: bool):
         conn, budget = await _scheduled(db_session, hours)
 
         synced = await _run_scheduler_at(db_session, hour_now)

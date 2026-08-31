@@ -102,11 +102,8 @@ export function LiabilitiesReport({ budgetId }: Props) {
   function sortableProps(key: SortKey) {
     return {
       tabIndex: 0,
-      'aria-sort': (sortKey === key
-        ? sortDesc
-          ? 'descending'
-          : 'ascending'
-        : undefined) as 'ascending' | 'descending' | undefined,
+      'aria-sort': (sortKey === key ? (sortDesc ? 'descending' : 'ascending') : undefined) as
+        'ascending' | 'descending' | undefined,
       onClick: () => toggleSort(key),
       onKeyDown: (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -211,8 +208,17 @@ export function LiabilitiesReport({ budgetId }: Props) {
               <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={chartPoints} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} minTickGap={40} />
-                  <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={85} {...logAxisProps(logScale)} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                    minTickGap={40}
+                  />
+                  <YAxis
+                    tickFormatter={(v) => formatMoney(v)}
+                    tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                    width={85}
+                    {...logAxisProps(logScale)}
+                  />
                   <Tooltip
                     content={<ChartTooltip showTotal />}
                     offset={16}
@@ -283,9 +289,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                         {item.interest_rate === null ? '—' : `${Number(item.interest_rate)}%`}
                       </td>
                       <td>
-                        {item.baseline_payoff_date
-                          ? formatMonth(item.baseline_payoff_date)
-                          : '—'}
+                        {item.baseline_payoff_date ? formatMonth(item.baseline_payoff_date) : '—'}
                       </td>
                       <td>
                         {item.never_pays_off ? (

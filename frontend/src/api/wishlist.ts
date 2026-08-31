@@ -2,6 +2,7 @@ import toast from 'react-hot-toast'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
+import { ROOT } from './queryKeys'
 
 // The wishlist lives inside the budget: a wish's money is an envelope's
 // money. Everything below is served — reach, rollups, cooling, review-due —
@@ -51,7 +52,8 @@ export interface Wish {
   reach: WishReach | null
 }
 
-export type ProjectState = 'now' | 'months' | 'no_rate' | 'unlinked' | 'mixed' | 'complete' | 'empty'
+export type ProjectState =
+  'now' | 'months' | 'no_rate' | 'unlinked' | 'mixed' | 'complete' | 'empty'
 
 export interface ProjectSummary {
   item_count: number
@@ -160,7 +162,7 @@ export interface DeleteWishResult {
 
 export function useWishlist(budgetId: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['wishlist', budgetId],
+    queryKey: [ROOT.wishlist, budgetId],
     queryFn: () => apiClient.get<Wishlist>(`/${budgetId}/wishlist`).then((r) => r.data),
     enabled: !!budgetId && enabled,
     staleTime: 30_000,
@@ -177,7 +179,7 @@ function useWishlistMutation<TVars, TResult>(
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['wishlist', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.wishlist, budgetId] })
       // An own envelope is a real category with a goal: the budget page and
       // every picker need to hear about it.
       invalidateAfterCategoryChange(qc, budgetId)
@@ -199,7 +201,8 @@ export function useCreateWish(budgetId: string) {
 export function useUpdateWish(budgetId: string) {
   return useWishlistMutation<{ id: string } & WishUpdate, Wish>(
     budgetId,
-    ({ id, ...body }) => apiClient.patch<Wish>(`/${budgetId}/wishlist/${id}`, body).then((r) => r.data),
+    ({ id, ...body }) =>
+      apiClient.patch<Wish>(`/${budgetId}/wishlist/${id}`, body).then((r) => r.data),
     'Could not save the wish'
   )
 }
@@ -223,7 +226,8 @@ export function useAffirmWish(budgetId: string) {
 export function useReorderWishes(budgetId: string) {
   return useWishlistMutation<string[], void>(
     budgetId,
-    (item_ids) => apiClient.post(`/${budgetId}/wishlist/reorder`, { item_ids }).then(() => undefined),
+    (item_ids) =>
+      apiClient.post(`/${budgetId}/wishlist/reorder`, { item_ids }).then(() => undefined),
     'Could not reorder'
   )
 }
@@ -231,7 +235,8 @@ export function useReorderWishes(budgetId: string) {
 export function useCreateProject(budgetId: string) {
   return useWishlistMutation<ProjectCreate, WishlistProject>(
     budgetId,
-    (body) => apiClient.post<WishlistProject>(`/${budgetId}/wishlist/projects`, body).then((r) => r.data),
+    (body) =>
+      apiClient.post<WishlistProject>(`/${budgetId}/wishlist/projects`, body).then((r) => r.data),
     'Could not add the project',
     true
   )
@@ -241,7 +246,9 @@ export function useUpdateProject(budgetId: string) {
   return useWishlistMutation<{ id: string } & ProjectUpdate, WishlistProject>(
     budgetId,
     ({ id, ...body }) =>
-      apiClient.patch<WishlistProject>(`/${budgetId}/wishlist/projects/${id}`, body).then((r) => r.data),
+      apiClient
+        .patch<WishlistProject>(`/${budgetId}/wishlist/projects/${id}`, body)
+        .then((r) => r.data),
     'Could not save the project'
   )
 }
@@ -258,7 +265,9 @@ export function useReorderProjects(budgetId: string) {
   return useWishlistMutation<string[], void>(
     budgetId,
     (project_ids) =>
-      apiClient.post(`/${budgetId}/wishlist/projects/reorder`, { project_ids }).then(() => undefined),
+      apiClient
+        .post(`/${budgetId}/wishlist/projects/reorder`, { project_ids })
+        .then(() => undefined),
     'Could not reorder'
   )
 }

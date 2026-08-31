@@ -57,7 +57,9 @@ export function TargetSection({ categoryId }: Props) {
               onChange={(e) => setTargetType(e.target.value)}
             >
               {TARGET_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
               ))}
             </select>
           </label>
@@ -85,9 +87,17 @@ export function TargetSection({ categoryId }: Props) {
               />
             </label>
           )}
-          {error && <div className="inspector-error" role="alert">{error}</div>}
+          {error && (
+            <div className="inspector-error" role="alert">
+              {error}
+            </div>
+          )}
           <div className="inspector-target-form__actions">
-            <button type="submit" className="inspector-btn inspector-btn--primary" disabled={upsert.isPending}>
+            <button
+              type="submit"
+              className="inspector-btn inspector-btn--primary"
+              disabled={upsert.isPending}
+            >
               Save
             </button>
             {target && (
@@ -115,10 +125,20 @@ export function TargetSection({ categoryId }: Props) {
         <span className="inspector-section__title">Target</span>
         {target && (
           <div className="inspector-section__actions">
-            <button className="inspector-icon-btn" onClick={startEdit} aria-label="Edit target" title="Edit target">
+            <button
+              className="inspector-icon-btn"
+              onClick={startEdit}
+              aria-label="Edit target"
+              title="Edit target"
+            >
               <Pencil size={12} />
             </button>
-            <button className="inspector-icon-btn inspector-icon-btn--danger" onClick={handleDelete} aria-label="Remove target" title="Remove target">
+            <button
+              className="inspector-icon-btn inspector-icon-btn--danger"
+              onClick={handleDelete}
+              aria-label="Remove target"
+              title="Remove target"
+            >
               <Trash2 size={12} />
             </button>
           </div>
@@ -129,9 +149,13 @@ export function TargetSection({ categoryId }: Props) {
           <div className="inspector-target-display__type">
             {TARGET_TYPES.find((t) => t.value === target.target_type)?.label}
           </div>
-          <div className="inspector-target-display__amount">{formatMoney(Number(target.target_amount))}</div>
+          <div className="inspector-target-display__amount">
+            {formatMoney(Number(target.target_amount))}
+          </div>
           {target.target_date && (
-            <div className="inspector-target-display__date">By {formatDate(target.target_date)}</div>
+            <div className="inspector-target-display__date">
+              By {formatDate(target.target_date)}
+            </div>
           )}
         </div>
       ) : (

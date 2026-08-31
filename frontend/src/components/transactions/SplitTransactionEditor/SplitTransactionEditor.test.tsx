@@ -28,8 +28,20 @@ import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { useAppStore } from '../../../stores/appStore'
 import type { Transaction } from '../../../types'
 
-const PARENT = { id: 't1', account_id: 'a1', amount: -100, is_split: true, cleared: 'uncleared' } as Transaction
-const FLAT = { id: 't2', account_id: 'a1', amount: -100, is_split: false, cleared: 'uncleared' } as Transaction
+const PARENT = {
+  id: 't1',
+  account_id: 'a1',
+  amount: -100,
+  is_split: true,
+  cleared: 'uncleared',
+} as Transaction
+const FLAT = {
+  id: 't2',
+  account_id: 'a1',
+  amount: -100,
+  is_split: false,
+  cleared: 'uncleared',
+} as Transaction
 
 function renderEditor(txn: Transaction) {
   const qc = new QueryClient()
@@ -101,7 +113,11 @@ describe('SplitTransactionEditor', () => {
     fireEvent.click(screen.getByText('Save Split'))
     await waitFor(() => expect(convertMutate).toHaveBeenCalledTimes(1))
     expect(convertMutate.mock.calls[0][0]).toMatchObject({ id: 't2' })
-    expect((convertMutate.mock.calls[0][0] as { splits: { id?: string }[] }).splits.every((s) => s.id === undefined)).toBe(true)
+    expect(
+      (convertMutate.mock.calls[0][0] as { splits: { id?: string }[] }).splits.every(
+        (s) => s.id === undefined
+      )
+    ).toBe(true)
     expect(replaceMutate).not.toHaveBeenCalled()
   })
 })

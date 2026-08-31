@@ -32,7 +32,11 @@ export function StageMark({
     return (
       <div className="guide-stage__mark">
         <span className={`guide-stage__marked guide-stage__marked--${mark}`}>
-          {mark === 'done' ? <Check size={12} aria-hidden /> : <MinusCircle size={12} aria-hidden />}
+          {mark === 'done' ? (
+            <Check size={12} aria-hidden />
+          ) : (
+            <MinusCircle size={12} aria-hidden />
+          )}
           {mark === 'done' ? 'you marked this done' : 'you skipped this'}
         </span>
         <button

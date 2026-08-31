@@ -27,7 +27,9 @@ async def _setup(db_session, owner):
     brokerage = await create_account(
         db_session, budget, "Brokerage", account_type="investment", on_budget=False
     )
-    loan = await create_account(db_session, budget, "Mortgage", account_type="loan", on_budget=False)
+    loan = await create_account(
+        db_session, budget, "Mortgage", account_type="loan", on_budget=False
+    )
 
     old = TODAY - timedelta(days=45)
     await create_transaction(db_session, budget, checking, "2500.00", old)
@@ -41,7 +43,11 @@ async def _setup(db_session, owner):
     )
     # Unmanaged debt joins the liability side through the manual bucket
     unmanaged = await create_liability(
-        db_session, budget, "Dental Plan", liability_type="medical", manual_balance=Decimal("855.00")
+        db_session,
+        budget,
+        "Dental Plan",
+        liability_type="medical",
+        manual_balance=Decimal("855.00"),
     )
     await create_liability_snapshot(db_session, unmanaged, old, Decimal("855.00"))
     return budget

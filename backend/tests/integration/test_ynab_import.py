@@ -175,8 +175,10 @@ async def test_imported_rows_are_stamped_import(db_session):
     )
     await _importer(services, db_session, budget).import_budget(data)
     rows = (
-        await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id))
-    ).scalars().all()
+        (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+        .scalars()
+        .all()
+    )
     assert rows and all(r.created_via == "import" for r in rows)
 
 
@@ -822,9 +824,7 @@ class TestSpendingTransfersPair:
 
     async def _rows_by_account(self, db_session, budget):
         rows = (
-            await db_session.execute(
-                select(Transaction).where(Transaction.budget_id == budget.id)
-            )
+            await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id))
         ).scalars()
         out: dict[str, list[Transaction]] = {}
         accounts = {
@@ -875,9 +875,7 @@ class TestSpendingTransfersPair:
         assert by_account["Checking"][0].transfer_id is None
         assert by_account["Savings"][0].transfer_id is None
 
-    async def test_a_categorized_leg_between_on_budget_accounts_is_left_unlinked(
-        self, db_session
-    ):
+    async def test_a_categorized_leg_between_on_budget_accounts_is_left_unlinked(self, db_session):
         """On↔on is internal movement; a category on it would count money that
         never left the budget as spending."""
         _, budget, _ = await self._import(
@@ -924,8 +922,6 @@ class TestSpendingTransfersPair:
             )
         ).scalar_one()
         assert predicate_count == result.transfer_legs_unpaired
-
-
 
 
 def _plan_row(month, group, category, assigned="0"):
@@ -1016,7 +1012,9 @@ async def test_hidden_categories_stay_hidden_and_card_payment_reserves_are_skipp
         transactions=[
             _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
             _txn("Checking", "Corner Market", "-60.00", group="Everyday", category="Groceries"),
-            _txn("Checking", "Hobby Shop", "-20.00", group="Hidden Categories", category="Old Hobby"),
+            _txn(
+                "Checking", "Hobby Shop", "-20.00", group="Hidden Categories", category="Old Hobby"
+            ),
         ],
         budget_entries=[e for e in plan if e.assigned != 0],
         plan_rows=plan,
@@ -1097,7 +1095,9 @@ async def test_card_payment_reserves_import_onto_the_cards_envelope(db_session):
     budget = await create_budget(db_session, user)
 
     data = YNABBudget(
-        transactions=[_txn("Visa", "Corner Market", "-60.00", group="Everyday", category="Groceries")],
+        transactions=[
+            _txn("Visa", "Corner Market", "-60.00", group="Everyday", category="Groceries")
+        ],
         budget_entries=[
             YNABBudgetEntry(
                 month=JAN5.replace(day=1),

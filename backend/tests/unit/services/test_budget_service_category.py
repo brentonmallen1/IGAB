@@ -107,9 +107,7 @@ class TestPositiveCarryover:
         """$100 assigned in Jan with no spend → $100 available in Feb."""
         jan_assign = MockAssignment(category_id=CAT_ID, month=JAN, assigned=D("100.00"))
         svc = make_service([jan_assign])
-        bal = await svc.get_category_balance(
-            CAT_ID, FEB, activity_by_month={JAN: D("0")}
-        )
+        bal = await svc.get_category_balance(CAT_ID, FEB, activity_by_month={JAN: D("0")})
         assert bal.available == D("100.00")
 
     async def test_surplus_plus_new_assignment(self):
@@ -117,9 +115,7 @@ class TestPositiveCarryover:
         jan_assign = MockAssignment(category_id=CAT_ID, month=JAN, assigned=D("100.00"))
         feb_assign = MockAssignment(category_id=CAT_ID, month=FEB, assigned=D("40.00"))
         svc = make_service([jan_assign, feb_assign])
-        bal = await svc.get_category_balance(
-            CAT_ID, FEB, activity_by_month={JAN: D("-60.00")}
-        )
+        bal = await svc.get_category_balance(CAT_ID, FEB, activity_by_month={JAN: D("-60.00")})
         # Jan: 0+100-60=40, carryover=40; Feb: 40+40+0=80
         assert bal.available == D("80.00")
 
@@ -150,9 +146,7 @@ class TestFloorSimulation:
         jan_assign = MockAssignment(category_id=CAT_ID, month=JAN, assigned=D("100.00"))
         feb_assign = MockAssignment(category_id=CAT_ID, month=FEB, assigned=D("50.00"))
         svc = make_service([jan_assign, feb_assign])
-        bal = await svc.get_category_balance(
-            CAT_ID, FEB, activity_by_month={JAN: D("-150.00")}
-        )
+        bal = await svc.get_category_balance(CAT_ID, FEB, activity_by_month={JAN: D("-150.00")})
         # Jan: 0+100-150=-50, carryover=max(0,-50)=0
         # Feb: 0+50+0=50
         assert bal.available == D("50.00")
@@ -161,9 +155,7 @@ class TestFloorSimulation:
         """The floor only applies between months. Current month CAN show negative."""
         assign = MockAssignment(category_id=CAT_ID, month=JAN, assigned=D("100.00"))
         svc = make_service([assign])
-        bal = await svc.get_category_balance(
-            CAT_ID, JAN, activity_by_month={JAN: D("-150.00")}
-        )
+        bal = await svc.get_category_balance(CAT_ID, JAN, activity_by_month={JAN: D("-150.00")})
         assert bal.available == D("-50.00")  # negative is allowed in current month
 
     async def test_three_month_floor_scenario(self):
@@ -179,7 +171,8 @@ class TestFloorSimulation:
         feb_assign = MockAssignment(category_id=CAT_ID, month=FEB, assigned=D("50.00"))
         svc = make_service([jan_assign, feb_assign])
         bal = await svc.get_category_balance(
-            CAT_ID, MAR,
+            CAT_ID,
+            MAR,
             activity_by_month={JAN: D("-150.00"), MAR: D("-30.00")},
         )
         assert bal.available == D("20.00")
@@ -191,7 +184,8 @@ class TestFloorSimulation:
         mar_assign = MockAssignment(category_id=CAT_ID, month=MAR, assigned=D("100.00"))
         svc = make_service([jan_assign, feb_assign, mar_assign])
         bal = await svc.get_category_balance(
-            CAT_ID, MAR,
+            CAT_ID,
+            MAR,
             activity_by_month={JAN: D("-150.00"), FEB: D("-150.00"), MAR: D("-150.00")},
         )
         # Jan: end=-50, carryover=0
@@ -204,9 +198,7 @@ class TestFloorSimulation:
         jan_assign = MockAssignment(category_id=CAT_ID, month=JAN, assigned=D("100.00"))
         feb_assign = MockAssignment(category_id=CAT_ID, month=FEB, assigned=D("50.00"))
         svc = make_service([jan_assign, feb_assign])
-        bal = await svc.get_category_balance(
-            CAT_ID, FEB, activity_by_month={JAN: D("-100.00")}
-        )
+        bal = await svc.get_category_balance(CAT_ID, FEB, activity_by_month={JAN: D("-100.00")})
         # Jan: end=0, carryover=0; Feb: end=0+50=50
         assert bal.available == D("50.00")
 
@@ -220,12 +212,13 @@ class TestFloorSimulation:
         ]
         svc = make_service(assigns)
         bal = await svc.get_category_balance(
-            CAT_ID, APR,
+            CAT_ID,
+            APR,
             activity_by_month={
                 JAN: D("-250.00"),  # overspend: end=-50, carryover=0
-                FEB: D("-30.00"),   # end=0+0-30=-30, carryover=0
-                MAR: D("-60.00"),   # end=0+100-60=40, carryover=40
-                APR: D("-20.00"),   # end=40+50-20=70
+                FEB: D("-30.00"),  # end=0+0-30=-30, carryover=0
+                MAR: D("-60.00"),  # end=0+100-60=40, carryover=40
+                APR: D("-20.00"),  # end=40+50-20=70
             },
         )
         assert bal.available == D("70.00")
@@ -240,9 +233,7 @@ class TestActivityBeforeAssignment:
         """
         feb_assign = MockAssignment(category_id=CAT_ID, month=FEB, assigned=D("100.00"))
         svc = make_service([feb_assign])
-        bal = await svc.get_category_balance(
-            CAT_ID, FEB, activity_by_month={JAN: D("-50.00")}
-        )
+        bal = await svc.get_category_balance(CAT_ID, FEB, activity_by_month={JAN: D("-50.00")})
         # Jan: 0+0-50=-50, carryover=0; Feb: 0+100+0=100
         assert bal.available == D("100.00")
 
@@ -250,7 +241,8 @@ class TestActivityBeforeAssignment:
         """Category with spend but no assignments ever — available tracks cumulative spend."""
         svc = make_service([])
         bal = await svc.get_category_balance(
-            CAT_ID, MAR,
+            CAT_ID,
+            MAR,
             activity_by_month={JAN: D("-50.00"), FEB: D("-30.00"), MAR: D("-20.00")},
         )
         # Jan: end=-50, carryover=0; Feb: end=0-30=-30, carryover=0; Mar: end=0-20=-20
@@ -278,7 +270,8 @@ class TestQueryMonthBoundary:
         mar_assign = MockAssignment(category_id=CAT_ID, month=MAR, assigned=D("50.00"))
         svc = make_service([jan_assign, feb_assign, mar_assign])
         bal = await svc.get_category_balance(
-            CAT_ID, FEB,
+            CAT_ID,
+            FEB,
             activity_by_month={JAN: D("-150.00"), FEB: D("-10.00"), MAR: D("-20.00")},
         )
         # Jan: 0+100-150=-50, carryover=0; Feb: 0+50-10=40

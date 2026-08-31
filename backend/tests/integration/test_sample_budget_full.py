@@ -61,17 +61,24 @@ async def generate_full(session, budget) -> "SampleBudgetGenerator":
 
 
 async def _transactions(session, budget_id) -> list[Transaction]:
-    result = await session.execute(
-        select(Transaction).where(Transaction.budget_id == budget_id)
-    )
+    result = await session.execute(select(Transaction).where(Transaction.budget_id == budget_id))
     return list(result.scalars().all())
 
 
 def test_starter_is_a_strict_subset_of_full():
     """Pure spec check: everything tagged for the starter is in the full tier
     too — the tiers can never drift apart."""
-    for field in ("accounts", "groups", "payees", "monthly", "weekly", "one_offs",
-                  "transfers", "scheduled", "liabilities"):
+    for field in (
+        "accounts",
+        "groups",
+        "payees",
+        "monthly",
+        "weekly",
+        "one_offs",
+        "transfers",
+        "scheduled",
+        "liabilities",
+    ):
         for element in getattr(SAMPLE_BUDGET, field):
             if "starter" in element.tiers:
                 assert "full" in element.tiers, f"{field}: {element} is starter-only"
@@ -86,8 +93,16 @@ async def test_full_tier_shape_and_texture(db_session):
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
     assert counts.accounts == 16
     types = {a.account_type for a in accounts}
-    assert {"checking", "savings", "cash", "credit_card", "auto_loan", "mortgage",
-            "investment", "other_asset"} <= types
+    assert {
+        "checking",
+        "savings",
+        "cash",
+        "credit_card",
+        "auto_loan",
+        "mortgage",
+        "investment",
+        "other_asset",
+    } <= types
     assert sum(1 for a in accounts if a.is_closed) == 1
     assert sum(1 for a in accounts if not a.on_budget) >= 8
     # Every account has a classification (the sidebar/net-worth contract)
@@ -198,8 +213,7 @@ async def test_full_tier_is_deterministic(db_session):
         payees = await PayeeRepository(db_session).get_all(budget_id)
         payee_names = {p.id: p.name for p in payees}
         return sorted(
-            (t.date, t.amount, payee_names.get(t.payee_id), t.cleared, t.is_split)
-            for t in txns
+            (t.date, t.amount, payee_names.get(t.payee_id), t.cleared, t.is_split) for t in txns
         )
 
     assert await signature(budget_a.id) == await signature(budget_b.id)

@@ -33,10 +33,7 @@ export function DrillDownPanel({ budgetId }: Props) {
   )
 }
 
-function DrillDownPanelInner({
-  budgetId,
-  drillDown,
-}: Props & { drillDown: DrillDownContext }) {
+function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: DrillDownContext }) {
   const { formatMoney } = useFormatters()
   const { setDrillDown, filters } = useReportStore()
   const [limit, setLimit] = useState(PAGE_SIZE)
@@ -63,23 +60,20 @@ function DrillDownPanelInner({
       accountIds: filters.accountIds.length > 0 ? filters.accountIds : undefined,
       limit,
     }),
-    [drillDown, filters.accountIds, limit],
+    [drillDown, filters.accountIds, limit]
   )
 
   const { data, isLoading, isError } = useBudgetTransactions(budgetId, params)
 
   const accountName = useMemo(
     () => new Map((accounts ?? []).map((a) => [a.id, a.name])),
-    [accounts],
+    [accounts]
   )
   const categoryName = useMemo(
     () => new Map((categories ?? []).map((c) => [c.id, c.name])),
-    [categories],
+    [categories]
   )
-  const payeeName = useMemo(
-    () => new Map((payees ?? []).map((p) => [p.id, p.name])),
-    [payees],
-  )
+  const payeeName = useMemo(() => new Map((payees ?? []).map((p) => [p.id, p.name])), [payees])
 
   const rows = data?.transactions ?? []
   const totalCount = data?.total_count ?? 0
@@ -127,7 +121,9 @@ function DrillDownPanelInner({
                 <th scope="col">Payee</th>
                 <th scope="col">Category</th>
                 <th scope="col">Memo</th>
-                <th scope="col" className="ddp__num">Amount</th>
+                <th scope="col" className="ddp__num">
+                  Amount
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -152,7 +148,9 @@ function DrillDownPanelInner({
                             : ''}
                     </td>
                     <td className="ddp__memo">{t.memo ?? ''}</td>
-                    <td className={`ddp__num ${amount < 0 ? 'ddp__amount--neg' : 'ddp__amount--pos'}`}>
+                    <td
+                      className={`ddp__num ${amount < 0 ? 'ddp__amount--neg' : 'ddp__amount--pos'}`}
+                    >
                       {formatMoney(amount)}
                     </td>
                   </tr>

@@ -1,1 +1,1 @@
-export { TagPicker, type TagOption } from './TagPicker';
+export { TagPicker, type TagOption } from './TagPicker'

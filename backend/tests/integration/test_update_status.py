@@ -31,9 +31,7 @@ class TestVersionCompare:
 
 
 class TestUpdateStatusEndpoint:
-    async def test_disabled_by_default_and_never_contacts_github(
-        self, api_client, monkeypatch
-    ):
+    async def test_disabled_by_default_and_never_contacts_github(self, api_client, monkeypatch):
         def boom(*args, **kwargs):  # pragma: no cover - must not be reached
             raise AssertionError("update check contacted GitHub while disabled")
 
@@ -51,9 +49,7 @@ class TestUpdateStatusEndpoint:
 
         monkeypatch.setattr(update_service, "fetch_latest_release", fake_fetch)
         monkeypatch.setenv("APP_VERSION", "1.0.0")
-        await api_client.put(
-            "/api/v1/settings/update_check_enabled", json={"value": "true"}
-        )
+        await api_client.put("/api/v1/settings/update_check_enabled", json={"value": "true"})
         resp = await api_client.get("/api/v1/system/update-status")
         assert resp.status_code == 200
         body = resp.json()
@@ -63,17 +59,13 @@ class TestUpdateStatusEndpoint:
         assert body["update_available"] is True
         assert body["release_url"].endswith("v9.9.9")
 
-    async def test_enabled_dev_build_reports_latest_without_nagging(
-        self, api_client, monkeypatch
-    ):
+    async def test_enabled_dev_build_reports_latest_without_nagging(self, api_client, monkeypatch):
         async def fake_fetch():
             return "v9.9.9", "https://example.test/release"
 
         monkeypatch.setattr(update_service, "fetch_latest_release", fake_fetch)
         monkeypatch.delenv("APP_VERSION", raising=False)
-        await api_client.put(
-            "/api/v1/settings/update_check_enabled", json={"value": "true"}
-        )
+        await api_client.put("/api/v1/settings/update_check_enabled", json={"value": "true"})
         resp = await api_client.get("/api/v1/system/update-status")
         body = resp.json()
         assert body["current_version"] == "dev"
@@ -81,7 +73,5 @@ class TestUpdateStatusEndpoint:
         assert body["update_available"] is False
 
     async def test_setting_rejects_non_boolean(self, api_client):
-        resp = await api_client.put(
-            "/api/v1/settings/update_check_enabled", json={"value": "yes"}
-        )
+        resp = await api_client.put("/api/v1/settings/update_check_enabled", json={"value": "yes"})
         assert resp.status_code == 422

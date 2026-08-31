@@ -26,7 +26,11 @@ export function ProjectForm({ budgetId, project, onClose }: Props) {
   // the ungrouped fallback surfaced every card's set-aside envelope under
   // "Other", because their group is hidden and never arrives with them.
   const sections = useMemo(
-    () => groupedCategorySections((categories ?? []).filter((c) => c.is_assignable), groups ?? []),
+    () =>
+      groupedCategorySections(
+        (categories ?? []).filter((c) => c.is_assignable),
+        groups ?? []
+      ),
     [categories, groups]
   )
   const create = useCreateProject(budgetId)
@@ -47,11 +51,20 @@ export function ProjectForm({ budgetId, project, onClose }: Props) {
   }
 
   return (
-    <GuideDialog title={editing ? 'Edit project' : 'Add a project'} onClose={onClose} historyKey="wishlist-project-form">
+    <GuideDialog
+      title={editing ? 'Edit project' : 'Add a project'}
+      onClose={onClose}
+      historyKey="wishlist-project-form"
+    >
       <form className="dialog__body wish-form" onSubmit={submit}>
         <label className="tool__field">
           <span>Project</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Japan trip, workshop, nursery…" autoFocus />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Japan trip, workshop, nursery…"
+            autoFocus
+          />
         </label>
         <div className="tool__field">
           <span>Funded from (optional — its wishes inherit this)</span>
@@ -74,7 +87,11 @@ export function ProjectForm({ budgetId, project, onClose }: Props) {
           <button type="button" className="guide-link-button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="guide-checkup__run" disabled={create.isPending || update.isPending}>
+          <button
+            type="submit"
+            className="guide-checkup__run"
+            disabled={create.isPending || update.isPending}
+          >
             {editing ? 'Save' : 'Add project'}
           </button>
         </div>

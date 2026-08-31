@@ -4,6 +4,7 @@ from typing import Annotated
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.simplefin import (
     AccountSyncStatusResponse,
     LinkSimpleFINRequest,
@@ -37,7 +38,7 @@ from igab.services.transaction_matching_service import TransactionMatchingServic
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 _CREATE_URL = "https://beta-bridge.simplefin.org/simplefin/create"
 

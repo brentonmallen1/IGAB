@@ -37,10 +37,7 @@ export function exportCsv(filename: string, rows: Record<string, unknown>[]): vo
 }
 
 export function exportJson(filename: string, data: unknown): void {
-  downloadBlob(
-    filename,
-    new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
-  )
+  downloadBlob(filename, new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
 }
 
 export async function exportPng(filename: string, node: HTMLElement): Promise<void> {
@@ -58,7 +55,7 @@ export async function exportPng(filename: string, node: HTMLElement): Promise<vo
 export function exportFilename(
   reportId: string,
   ext: string,
-  window?: { start: string; end: string },
+  window?: { start: string; end: string }
 ): string {
   const range = window ? `-${window.start}_${window.end}` : ''
   return `igab-${reportId}${range}.${ext}`

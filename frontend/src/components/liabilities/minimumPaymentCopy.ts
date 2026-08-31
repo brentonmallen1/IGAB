@@ -28,7 +28,7 @@ type RuleFields = Pick<
  */
 export function describeMinimumRule(
   liability: RuleFields,
-  formatMoney: (n: number) => string,
+  formatMoney: (n: number) => string
 ): string | null {
   if (liability.minimum_payment_kind !== 'percent_of_balance') return null
   const percent = liability.minimum_payment_percent

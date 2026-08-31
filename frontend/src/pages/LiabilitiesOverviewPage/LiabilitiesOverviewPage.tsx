@@ -1,9 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Link2, PenLine, Plus } from 'lucide-react'
 import { useLiabilities } from '../../api/liabilities'
-import {
-  LiabilitySettingsModal,
-} from '../../components/liabilities/LiabilitySettingsModal'
+import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -100,13 +98,11 @@ export function LiabilitiesOverviewPage() {
                   </span>
                   <span
                     className="liability-card__mode"
-                    title={liability.mode === 'managed' ? 'Tracked from account' : 'Manually tracked'}
+                    title={
+                      liability.mode === 'managed' ? 'Tracked from account' : 'Manually tracked'
+                    }
                   >
-                    {liability.mode === 'managed' ? (
-                      <Link2 size={12} />
-                    ) : (
-                      <PenLine size={12} />
-                    )}
+                    {liability.mode === 'managed' ? <Link2 size={12} /> : <PenLine size={12} />}
                     {liability.mode === 'managed' ? 'Linked' : 'Manual'}
                   </span>
                 </div>
@@ -134,8 +130,7 @@ export function LiabilitiesOverviewPage() {
                   !liability.promo_projection.clears_before_promo &&
                   liability.promo_end_date && (
                     <div className="liability-card__payoff liability-card__payoff--warning">
-                      <AlertTriangle size={12} /> Promo ends{' '}
-                      {formatMonth(liability.promo_end_date)}
+                      <AlertTriangle size={12} /> Promo ends {formatMonth(liability.promo_end_date)}
                     </div>
                   )}
               </button>

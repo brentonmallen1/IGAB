@@ -103,7 +103,9 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
   border-radius: var(--border-radius-sm);
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .tba-hero__months-btn:hover {
@@ -115,6 +117,12 @@
 .tba-hero__overspent-chip {
   display: inline-flex;
   align-items: center;
+  /* The separator between the amount and the word. These chips are flex
+     containers, so the amount and the word are separate flex items and a
+     literal space in the JSX is stripped — it rendered "$120.00overspent".
+     `em` so it tracks .tba-hero__chip-word shrinking at the mobile
+     breakpoint. One home for the spacing, and it is this one. */
+  gap: 0.25em;
   padding: 4px 10px;
   font-size: var(--font-size-sm);
   font-weight: 600;
@@ -137,6 +145,12 @@
 .tba-hero__on-cards {
   display: inline-flex;
   align-items: center;
+  /* The separator between the amount and the word. These chips are flex
+     containers, so the amount and the word are separate flex items and a
+     literal space in the JSX is stripped — it rendered "$120.00overspent".
+     `em` so it tracks .tba-hero__chip-word shrinking at the mobile
+     breakpoint. One home for the spacing, and it is this one. */
+  gap: 0.25em;
   padding: 4px 10px;
   font-size: var(--font-size-sm);
   font-weight: 500;
@@ -155,7 +169,9 @@
   padding: 4px;
   color: var(--text-muted);
   border-radius: var(--border-radius-sm);
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .tba-hero__history-btn:hover {
@@ -251,7 +267,6 @@
   min-width: 0;
 }
 
-
 .tba-drawer__empty {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
@@ -309,7 +324,10 @@
   color: var(--text-muted);
   border-radius: var(--border-radius-sm);
   opacity: 0;
-  transition: opacity var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .move-history__item:hover .move-history__back,

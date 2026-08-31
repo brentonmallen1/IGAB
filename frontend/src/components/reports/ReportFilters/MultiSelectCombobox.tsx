@@ -21,7 +21,15 @@ interface Props {
   title?: string
 }
 
-export function MultiSelectCombobox({ selectedIds, options, onChange, placeholder = 'All', label, disabled = false, title }: Props) {
+export function MultiSelectCombobox({
+  selectedIds,
+  options,
+  onChange,
+  placeholder = 'All',
+  label,
+  disabled = false,
+  title,
+}: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const triggerRef = useRef<HTMLDivElement>(null)
@@ -36,9 +44,7 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
     minWidth: 220,
   })
 
-  const filtered = options.filter((o) =>
-    o.label.toLowerCase().includes(query.toLowerCase())
-  )
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
 
   const grouped = filtered.reduce<{ group: string; items: MultiSelectOption[] }[]>((acc, opt) => {
     const g = opt.group ?? ''
@@ -77,105 +83,147 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (!open) { if (e.key === 'ArrowDown' || e.key === 'Enter') measureAndOpen(); return }
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter') measureAndOpen()
+      return
+    }
     switch (e.key) {
-      case 'ArrowDown': e.preventDefault(); setHighlightedIndex((i) => Math.min(i + 1, flatFiltered.length - 1)); break
-      case 'ArrowUp': e.preventDefault(); setHighlightedIndex((i) => Math.max(i - 1, 0)); break
-      case 'Enter': e.preventDefault(); if (flatFiltered[highlightedIndex]) toggle(flatFiltered[highlightedIndex].id); break
-      case 'Escape': close(); break
+      case 'ArrowDown':
+        e.preventDefault()
+        setHighlightedIndex((i) => Math.min(i + 1, flatFiltered.length - 1))
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedIndex((i) => Math.max(i - 1, 0))
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (flatFiltered[highlightedIndex]) toggle(flatFiltered[highlightedIndex].id)
+        break
+      case 'Escape':
+        close()
+        break
     }
   }
 
   const count = selectedIds.length
-  const displayLabel = count === 0 ? placeholder : count === 1
-    ? (options.find((o) => o.id === selectedIds[0])?.label ?? '1 selected')
-    : `${count} selected`
+  const displayLabel =
+    count === 0
+      ? placeholder
+      : count === 1
+        ? (options.find((o) => o.id === selectedIds[0])?.label ?? '1 selected')
+        : `${count} selected`
 
-  const dropdown = open && dropdownPos ? createPortal(
-    <div
-      ref={listRef}
-      className="msc__dropdown"
-      style={{
-        position: 'fixed',
-        top: dropdownPos.top,
-        bottom: dropdownPos.bottom,
-        left: dropdownPos.left,
-        width: dropdownPos.width,
-        maxHeight: dropdownPos.maxHeight,
-        zIndex: 'var(--z-dropdown)',
-      }}
-    >
-      <div className="msc__search-wrap">
-        <input
-          ref={inputRef}
-          className="msc__search"
-          value={query}
-          onChange={(e) => { setQuery(e.target.value); setHighlightedIndex(0) }}
-          onKeyDown={handleKeyDown}
-          placeholder="Search…"
-          autoFocus
-        />
-        <div className="msc__actions">
-          {options.length > 0 && selectedIds.length < options.length && (
-            <button className="msc__action-btn" onMouseDown={(e) => { e.preventDefault(); onChange(options.map(o => o.id)) }} type="button">
-              Select all
-            </button>
-          )}
-          {count > 0 && (
-            <button className="msc__action-btn" onMouseDown={(e) => { e.preventDefault(); onChange([]) }} type="button">
-              Clear all
-            </button>
-          )}
-        </div>
-      </div>
-      {filtered.length === 0 && <div className="msc__empty">No results</div>}
-      {grouped.map(({ group, items }) => {
-        const groupItemIds = items.map(o => o.id)
-        const allGroupSelected = groupItemIds.length > 0 && groupItemIds.every(id => selectedIds.includes(id))
-        const someGroupSelected = groupItemIds.some(id => selectedIds.includes(id)) && !allGroupSelected
-        function toggleGroup(e: React.MouseEvent) {
-          e.preventDefault()
-          if (allGroupSelected) {
-            onChange(selectedIds.filter(id => !groupItemIds.includes(id)))
-          } else {
-            onChange([...new Set([...selectedIds, ...groupItemIds])])
-          }
-        }
-        return (
-          <div key={group || '__ungrouped'} className="msc__group">
-            {group && (
-              <div
-                className={`msc__group-header msc__group-header--clickable ${allGroupSelected ? 'msc__group-header--selected' : ''} ${someGroupSelected ? 'msc__group-header--partial' : ''}`}
-                onMouseDown={toggleGroup}
-              >
-                <span className="msc__group-check">
-                  {allGroupSelected && <Check size={10} />}
-                  {someGroupSelected && <span className="msc__group-partial-dash">—</span>}
-                </span>
-                {group}
+  const dropdown =
+    open && dropdownPos
+      ? createPortal(
+          <div
+            ref={listRef}
+            className="msc__dropdown"
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              bottom: dropdownPos.bottom,
+              left: dropdownPos.left,
+              width: dropdownPos.width,
+              maxHeight: dropdownPos.maxHeight,
+              zIndex: 'var(--z-dropdown)',
+            }}
+          >
+            <div className="msc__search-wrap">
+              <input
+                ref={inputRef}
+                className="msc__search"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value)
+                  setHighlightedIndex(0)
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Search…"
+                autoFocus
+              />
+              <div className="msc__actions">
+                {options.length > 0 && selectedIds.length < options.length && (
+                  <button
+                    className="msc__action-btn"
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      onChange(options.map((o) => o.id))
+                    }}
+                    type="button"
+                  >
+                    Select all
+                  </button>
+                )}
+                {count > 0 && (
+                  <button
+                    className="msc__action-btn"
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      onChange([])
+                    }}
+                    type="button"
+                  >
+                    Clear all
+                  </button>
+                )}
               </div>
-            )}
-            {items.map((opt) => {
-              const idx = flatFiltered.indexOf(opt)
-              const checked = selectedIds.includes(opt.id)
+            </div>
+            {filtered.length === 0 && <div className="msc__empty">No results</div>}
+            {grouped.map(({ group, items }) => {
+              const groupItemIds = items.map((o) => o.id)
+              const allGroupSelected =
+                groupItemIds.length > 0 && groupItemIds.every((id) => selectedIds.includes(id))
+              const someGroupSelected =
+                groupItemIds.some((id) => selectedIds.includes(id)) && !allGroupSelected
+              function toggleGroup(e: React.MouseEvent) {
+                e.preventDefault()
+                if (allGroupSelected) {
+                  onChange(selectedIds.filter((id) => !groupItemIds.includes(id)))
+                } else {
+                  onChange([...new Set([...selectedIds, ...groupItemIds])])
+                }
+              }
               return (
-                <div
-                  key={opt.id}
-                  className={`msc__option ${idx === highlightedIndex ? 'msc__option--highlighted' : ''} ${checked ? 'msc__option--checked' : ''}`}
-                  onMouseDown={(e) => { e.preventDefault(); toggle(opt.id) }}
-                  onMouseEnter={() => setHighlightedIndex(idx)}
-                >
-                  <span className="msc__check">{checked && <Check size={11} />}</span>
-                  <span className="msc__option-label">{opt.label}</span>
+                <div key={group || '__ungrouped'} className="msc__group">
+                  {group && (
+                    <div
+                      className={`msc__group-header msc__group-header--clickable ${allGroupSelected ? 'msc__group-header--selected' : ''} ${someGroupSelected ? 'msc__group-header--partial' : ''}`}
+                      onMouseDown={toggleGroup}
+                    >
+                      <span className="msc__group-check">
+                        {allGroupSelected && <Check size={10} />}
+                        {someGroupSelected && <span className="msc__group-partial-dash">—</span>}
+                      </span>
+                      {group}
+                    </div>
+                  )}
+                  {items.map((opt) => {
+                    const idx = flatFiltered.indexOf(opt)
+                    const checked = selectedIds.includes(opt.id)
+                    return (
+                      <div
+                        key={opt.id}
+                        className={`msc__option ${idx === highlightedIndex ? 'msc__option--highlighted' : ''} ${checked ? 'msc__option--checked' : ''}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          toggle(opt.id)
+                        }}
+                        onMouseEnter={() => setHighlightedIndex(idx)}
+                      >
+                        <span className="msc__check">{checked && <Check size={11} />}</span>
+                        <span className="msc__option-label">{opt.label}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })}
-          </div>
+          </div>,
+          document.body
         )
-      })}
-    </div>,
-    document.body
-  ) : null
+      : null
 
   return (
     <div className={`msc ${disabled ? 'msc--disabled' : ''}`} title={disabled ? title : undefined}>
@@ -190,13 +238,19 @@ export function MultiSelectCombobox({ selectedIds, options, onChange, placeholde
         aria-label={label ?? placeholder}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') measureAndOpen() }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') measureAndOpen()
+        }}
       >
         <span className="msc__value">{displayLabel}</span>
         {count > 0 && (
           <button
             className="msc__remove"
-            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); onChange([]) }}
+            onMouseDown={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              onChange([])
+            }}
             type="button"
             aria-label="Clear"
           >

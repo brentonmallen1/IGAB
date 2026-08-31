@@ -1,7 +1,16 @@
 import { useState } from 'react'
 import { AccountHygienePanel } from '../../components/accounts/AccountHygienePanel'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, CloudOff, Plus, Pencil, Trash2, Eye, EyeOff, ArchiveRestore } from 'lucide-react'
+import {
+  RefreshCw,
+  CloudOff,
+  Plus,
+  Pencil,
+  Trash2,
+  Eye,
+  EyeOff,
+  ArchiveRestore,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts, useDeleteAccount, useUpdateAccount } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
@@ -28,7 +37,6 @@ import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
 
-
 function formatSyncAge(lastSyncAt: string | null): string {
   if (!lastSyncAt) return 'Never synced'
   const ageMs = Date.now() - new Date(lastSyncAt).getTime()
@@ -40,7 +48,10 @@ function formatSyncAge(lastSyncAt: string | null): string {
   return `${Math.floor(ageH / 24)}d ago`
 }
 
-function formatReconciled(lastReconciledAt: string | null, formatDate: (date: string) => string): string {
+function formatReconciled(
+  lastReconciledAt: string | null,
+  formatDate: (date: string) => string
+): string {
   if (!lastReconciledAt) return 'Never reconciled'
   return `Reconciled ${formatDate(lastReconciledAt.split('T')[0])}`
 }
@@ -80,7 +91,9 @@ function AccountRow({
       <div className="accounts-overview__row-main">
         <div className="accounts-overview__row-name-group">
           <span className="accounts-overview__row-name">{account.name}</span>
-          {account.is_closed && <span className="accounts-overview__tag accounts-overview__tag--closed">Closed</span>}
+          {account.is_closed && (
+            <span className="accounts-overview__tag accounts-overview__tag--closed">Closed</span>
+          )}
           {account.uncategorized_count > 0 && (
             <span
               className="accounts-overview__uncat-badge"
@@ -104,7 +117,9 @@ function AccountRow({
             </span>
           )}
           <span className="accounts-overview__separator">·</span>
-          <span className="accounts-overview__reconciled">{formatReconciled(account.last_reconciled_at, formatDate)}</span>
+          <span className="accounts-overview__reconciled">
+            {formatReconciled(account.last_reconciled_at, formatDate)}
+          </span>
         </div>
       </div>
 
@@ -148,7 +163,8 @@ function AccountRow({
             <span title="Cleared balance">C {formatMoney(cleared)}</span>
             {uncleared !== 0 && (
               <span title="Uncleared balance" className={uncleared < 0 ? 'negative' : 'positive'}>
-                {uncleared > 0 ? '+' : ''}{formatMoney(uncleared)}
+                {uncleared > 0 ? '+' : ''}
+                {formatMoney(uncleared)}
               </span>
             )}
           </span>
@@ -180,10 +196,9 @@ export function AccountsOverviewPage() {
   const { data: rateLimitStatus } = useSimpleFINRateLimitStatus(primaryConnection?.id ?? null)
   const syncMutation = useSyncSimpleFIN(budgetId)
 
-  const syncingAccountId =
-    syncMutation.isPending
-      ? (syncMutation.variables as { accountSimplefinId?: string })?.accountSimplefinId
-      : undefined
+  const syncingAccountId = syncMutation.isPending
+    ? (syncMutation.variables as { accountSimplefinId?: string })?.accountSimplefinId
+    : undefined
 
   // Every connection, not connections[0] — and the same call the sidebar and
   // the command palette make, so the three cannot behave differently.
@@ -191,7 +206,8 @@ export function AccountsOverviewPage() {
 
   function handleAccountSync(account: Account, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!primaryConnection || !budgetId || !account.simplefin_account_id || syncMutation.isPending) return
+    if (!primaryConnection || !budgetId || !account.simplefin_account_id || syncMutation.isPending)
+      return
     if (rateLimitStatus && !rateLimitStatus.can_sync_account) {
       toast.error('Daily sync limit reached. Resets at midnight UTC.')
       return
@@ -206,12 +222,12 @@ export function AccountsOverviewPage() {
             toast.success(
               result.review_queued
                 ? `Synced ${account.name} — ${result.review_queued} need review`
-                : `Synced ${account.name}`,
+                : `Synced ${account.name}`
             )
           }
         },
         onError: () => toast.error(`Failed to sync ${account.name}`),
-      },
+      }
     )
   }
 
@@ -305,14 +321,13 @@ export function AccountsOverviewPage() {
               <RefreshCw size={14} />
               <span>Sync All</span>
               {rateLimitStatus && (
-                <span className="accounts-overview__sync-badge">{rateLimitStatus.global_remaining}</span>
+                <span className="accounts-overview__sync-badge">
+                  {rateLimitStatus.global_remaining}
+                </span>
               )}
             </button>
           )}
-          <button
-            className="accounts-overview__add-btn"
-            onClick={() => setIsAddOpen(true)}
-          >
+          <button className="accounts-overview__add-btn" onClick={() => setIsAddOpen(true)}>
             <Plus size={14} />
             <span>Add Account</span>
           </button>
@@ -332,7 +347,9 @@ export function AccountsOverviewPage() {
                   <AccountRow
                     key={acc.id}
                     account={acc}
-                    isSyncing={syncMutation.isPending && syncingAccountId === acc.simplefin_account_id}
+                    isSyncing={
+                      syncMutation.isPending && syncingAccountId === acc.simplefin_account_id
+                    }
                     onSyncClick={(e) => handleAccountSync(acc, e)}
                     onEdit={(e) => handleEdit(acc, e)}
                     onDelete={(e) => handleDelete(acc, e)}

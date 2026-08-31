@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.auth import UserCreateRequest, UserListItem, UserUpdateRequest
 from igab.config import settings as app_settings
 from igab.db.models import User
@@ -22,7 +23,7 @@ from igab.dependencies import AdminUser, CurrentUser, get_auth_service
 from igab.domain.exceptions import DuplicateError
 from igab.services.auth_service import AuthService, hash_password
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 def _to_item(user: User) -> UserListItem:

@@ -34,7 +34,9 @@ export function WishlistProjectSection({ project, count, onEdit, onDelete, child
           <div className="wish-project__meta">
             <span className="wish-project__line">{projectLine(project, fmt)}</span>
             <span className="wish-project__envelope">
-              {project.category_name ? `funded from ${project.category_name}` : 'no funding category yet'}
+              {project.category_name
+                ? `funded from ${project.category_name}`
+                : 'no funding category yet'}
             </span>
             {onEdit && (
               <button type="button" className="guide-link-button" onClick={onEdit}>

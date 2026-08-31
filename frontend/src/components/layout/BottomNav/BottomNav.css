@@ -25,7 +25,7 @@
      is being typed. display:none rather than visibility/opacity so the row
      collapses and the form reclaims the height — which matters when the
      keyboard has already taken half the screen. */
-  html[data-keyboard='open'] .bottom-nav {
+  html[data-keyboard="open"] .bottom-nav {
     display: none;
   }
 
@@ -64,5 +64,4 @@
     color: var(--bg-primary);
     box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.3));
   }
-
 }

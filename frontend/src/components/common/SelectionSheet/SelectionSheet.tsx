@@ -102,7 +102,13 @@ export function SelectionSheet({
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={title} height="full" historyKey={`select-${title}`}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={title}
+      height="full"
+      historyKey={`select-${title}`}
+    >
       <div className="selection-sheet">
         <div className="selection-sheet__search">
           <Search size={16} aria-hidden />
@@ -140,8 +146,9 @@ export function SelectionSheet({
           )}
 
           {(() => {
-            const sections = (Array.isArray(topSection) ? topSection : topSection ? [topSection] : [])
-              .filter((s) => s.options.length > 0)
+            const sections = (
+              Array.isArray(topSection) ? topSection : topSection ? [topSection] : []
+            ).filter((s) => s.options.length > 0)
             const showSections = !query && sections.length > 0
             return (
               <>

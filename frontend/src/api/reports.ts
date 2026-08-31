@@ -24,6 +24,7 @@ import type {
   VarianceReport,
   VolatilityReport,
 } from '../types'
+import { ROOT } from './queryKeys'
 
 const STALE = 60_000
 
@@ -44,11 +45,11 @@ function params(obj: Record<string, string | number | undefined | null>) {
 
 export function useIncomeExpenseReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'income-expense', budgetId, months],
+    queryKey: [ROOT.reports, 'income-expense', budgetId, months],
     queryFn: async () => {
       const { data } = await apiClient.get<IncomeExpenseReport>(
         `/${budgetId}/reports/income-expense`,
-        { params: { months } },
+        { params: { months } }
       )
       return data
     },
@@ -64,7 +65,7 @@ export function exportTransactionsPath(
   budgetId: string,
   format: 'csv' | 'json',
   startDate?: string,
-  endDate?: string,
+  endDate?: string
 ): string {
   const p = new URLSearchParams({ format })
   if (startDate) p.set('start_date', startDate)
@@ -74,18 +75,13 @@ export function exportTransactionsPath(
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────
 
-export function useDashboardMetrics(
-  budgetId: string | null,
-  startDate?: string,
-  endDate?: string,
-) {
+export function useDashboardMetrics(budgetId: string | null, startDate?: string, endDate?: string) {
   return useQuery({
-    queryKey: ['reports', 'dashboard', budgetId, startDate, endDate],
+    queryKey: [ROOT.reports, 'dashboard', budgetId, startDate, endDate],
     queryFn: async () => {
-      const { data } = await apiClient.get<DashboardMetrics>(
-        `/${budgetId}/reports/dashboard`,
-        { params: params({ start_date: startDate, end_date: endDate }) },
-      )
+      const { data } = await apiClient.get<DashboardMetrics>(`/${budgetId}/reports/dashboard`, {
+        params: params({ start_date: startDate, end_date: endDate }),
+      })
       return data
     },
     enabled: !!budgetId,
@@ -97,12 +93,11 @@ export function useDashboardMetrics(
 
 export function useNetWorthReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'net-worth', budgetId, months],
+    queryKey: [ROOT.reports, 'net-worth', budgetId, months],
     queryFn: async () => {
-      const { data } = await apiClient.get<NetWorthReport>(
-        `/${budgetId}/reports/net-worth`,
-        { params: { months } },
-      )
+      const { data } = await apiClient.get<NetWorthReport>(`/${budgetId}/reports/net-worth`, {
+        params: { months },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -114,11 +109,11 @@ export function useNetWorthReport(budgetId: string | null, months = 12) {
 
 export function useAccountCompositionReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'account-composition', budgetId, months],
+    queryKey: [ROOT.reports, 'account-composition', budgetId, months],
     queryFn: async () => {
       const { data } = await apiClient.get<AccountCompositionReport>(
         `/${budgetId}/reports/account-composition`,
-        { params: { months } },
+        { params: { months } }
       )
       return data
     },
@@ -131,12 +126,11 @@ export function useAccountCompositionReport(budgetId: string | null, months = 12
 
 export function useBurnRateReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'burn-rate', budgetId, months],
+    queryKey: [ROOT.reports, 'burn-rate', budgetId, months],
     queryFn: async () => {
-      const { data } = await apiClient.get<BurnRateReport>(
-        `/${budgetId}/reports/burn-rate`,
-        { params: { months } },
-      )
+      const { data } = await apiClient.get<BurnRateReport>(`/${budgetId}/reports/burn-rate`, {
+        params: { months },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -152,16 +146,15 @@ export function useCashFlowReport(
   endDate?: string,
   mode: 'spent' | 'budgeted' = 'spent',
   accountIds?: string[],
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean }
 ) {
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'cash-flow', budgetId, startDate, endDate, mode, acctParam],
+    queryKey: [ROOT.reports, 'cash-flow', budgetId, startDate, endDate, mode, acctParam],
     queryFn: async () => {
-      const { data } = await apiClient.get<CashFlowReport>(
-        `/${budgetId}/reports/cash-flow`,
-        { params: params({ start_date: startDate, end_date: endDate, mode, account_ids: acctParam }) },
-      )
+      const { data } = await apiClient.get<CashFlowReport>(`/${budgetId}/reports/cash-flow`, {
+        params: params({ start_date: startDate, end_date: endDate, mode, account_ids: acctParam }),
+      })
       return data
     },
     enabled: !!budgetId && (options?.enabled ?? true),
@@ -175,15 +168,15 @@ export function useBudgetActualReport(
   budgetId: string | null,
   startDate?: string,
   endDate?: string,
-  categoryIds?: string[],
+  categoryIds?: string[]
 ) {
   const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'budget-actual', budgetId, startDate, endDate, catParam],
+    queryKey: [ROOT.reports, 'budget-actual', budgetId, startDate, endDate, catParam],
     queryFn: async () => {
       const { data } = await apiClient.get<BudgetActualReport>(
         `/${budgetId}/reports/budget-actual`,
-        { params: params({ start_date: startDate, end_date: endDate, category_ids: catParam }) },
+        { params: params({ start_date: startDate, end_date: endDate, category_ids: catParam }) }
       )
       return data
     },
@@ -196,11 +189,11 @@ export function useBudgetActualReport(
 
 export function usePlanVsRealityReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'plan-vs-reality', budgetId, months],
+    queryKey: [ROOT.reports, 'plan-vs-reality', budgetId, months],
     queryFn: async () => {
       const { data } = await apiClient.get<PlanRealityReport>(
         `/${budgetId}/reports/plan-vs-reality`,
-        { params: { months } },
+        { params: { months } }
       )
       return data
     },
@@ -213,12 +206,11 @@ export function usePlanVsRealityReport(budgetId: string | null, months = 12) {
 
 export function useVarianceReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'variance', budgetId, months],
+    queryKey: [ROOT.reports, 'variance', budgetId, months],
     queryFn: async () => {
-      const { data } = await apiClient.get<VarianceReport>(
-        `/${budgetId}/reports/variance`,
-        { params: { months } },
-      )
+      const { data } = await apiClient.get<VarianceReport>(`/${budgetId}/reports/variance`, {
+        params: { months },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -230,12 +222,11 @@ export function useVarianceReport(budgetId: string | null, months = 12) {
 
 export function useVolatilityReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'volatility', budgetId, months],
+    queryKey: [ROOT.reports, 'volatility', budgetId, months],
     queryFn: async () => {
-      const { data } = await apiClient.get<VolatilityReport>(
-        `/${budgetId}/reports/volatility`,
-        { params: { months } },
-      )
+      const { data } = await apiClient.get<VolatilityReport>(`/${budgetId}/reports/volatility`, {
+        params: { months },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -270,12 +261,11 @@ export interface SavingsRateReport {
 
 export function useSavingsRateReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'savings-rate', budgetId, months],
+    queryKey: [ROOT.reports, 'savings-rate', budgetId, months],
     queryFn: async () => {
-      const { data } = await apiClient.get<SavingsRateReport>(
-        `/${budgetId}/reports/savings-rate`,
-        { params: params({ months }) },
-      )
+      const { data } = await apiClient.get<SavingsRateReport>(`/${budgetId}/reports/savings-rate`, {
+        params: params({ months }),
+      })
       return data
     },
     enabled: !!budgetId,
@@ -293,12 +283,22 @@ export function useSpendingGroupedReport(
    *  out by default. Set to bring them back into the totals. */
   includeSavings?: boolean,
   /** Roll up by this view's groups instead of the budget's own. */
-  viewId?: string | null,
+  viewId?: string | null
 ) {
   const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'spending-grouped', budgetId, startDate, endDate, catParam, acctParam, includeSavings, viewId],
+    queryKey: [
+      ROOT.reports,
+      'spending-grouped',
+      budgetId,
+      startDate,
+      endDate,
+      catParam,
+      acctParam,
+      includeSavings,
+      viewId,
+    ],
     queryFn: async () => {
       const { data } = await apiClient.get<SpendingGroupedReport>(
         `/${budgetId}/reports/spending-grouped`,
@@ -311,7 +311,7 @@ export function useSpendingGroupedReport(
             include_savings: includeSavings ? 'true' : undefined,
             view_id: viewId ?? undefined,
           }),
-        },
+        }
       )
       return data
     },
@@ -324,12 +324,11 @@ export function useSpendingGroupedReport(
 
 export function useEssentialsReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'essentials', budgetId, months],
+    queryKey: [ROOT.reports, 'essentials', budgetId, months],
     queryFn: async () => {
-      const { data } = await apiClient.get<EssentialsReport>(
-        `/${budgetId}/reports/essentials`,
-        { params: { months } },
-      )
+      const { data } = await apiClient.get<EssentialsReport>(`/${budgetId}/reports/essentials`, {
+        params: { months },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -339,12 +338,11 @@ export function useEssentialsReport(budgetId: string | null, months = 12) {
 
 export function useSeasonalityReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'seasonality', budgetId, months],
+    queryKey: [ROOT.reports, 'seasonality', budgetId, months],
     queryFn: async () => {
-      const { data } = await apiClient.get<SeasonalityReport>(
-        `/${budgetId}/reports/seasonality`,
-        { params: { months } },
-      )
+      const { data } = await apiClient.get<SeasonalityReport>(`/${budgetId}/reports/seasonality`, {
+        params: { months },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -360,16 +358,33 @@ export function usePayeeAnalysisReport(
   endDate?: string,
   limit = 25,
   payeeIds?: string[],
-  accountIds?: string[],
+  accountIds?: string[]
 ) {
   const payeeParam = payeeIds?.length ? payeeIds.join(',') : undefined
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'payee-analysis', budgetId, startDate, endDate, limit, payeeParam, acctParam],
+    queryKey: [
+      ROOT.reports,
+      'payee-analysis',
+      budgetId,
+      startDate,
+      endDate,
+      limit,
+      payeeParam,
+      acctParam,
+    ],
     queryFn: async () => {
       const { data } = await apiClient.get<PayeeAnalysisReport>(
         `/${budgetId}/reports/payee-analysis`,
-        { params: params({ start_date: startDate, end_date: endDate, limit, payee_ids: payeeParam, account_ids: acctParam }) },
+        {
+          params: params({
+            start_date: startDate,
+            end_date: endDate,
+            limit,
+            payee_ids: payeeParam,
+            account_ids: acctParam,
+          }),
+        }
       )
       return data
     },
@@ -385,17 +400,21 @@ export function useDayPatternsReport(
   startDate?: string,
   endDate?: string,
   categoryIds?: string[],
-  accountIds?: string[],
+  accountIds?: string[]
 ) {
   const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'day-patterns', budgetId, startDate, endDate, catParam, acctParam],
+    queryKey: [ROOT.reports, 'day-patterns', budgetId, startDate, endDate, catParam, acctParam],
     queryFn: async () => {
-      const { data } = await apiClient.get<DayPatternsReport>(
-        `/${budgetId}/reports/day-patterns`,
-        { params: params({ start_date: startDate, end_date: endDate, category_ids: catParam, account_ids: acctParam }) },
-      )
+      const { data } = await apiClient.get<DayPatternsReport>(`/${budgetId}/reports/day-patterns`, {
+        params: params({
+          start_date: startDate,
+          end_date: endDate,
+          category_ids: catParam,
+          account_ids: acctParam,
+        }),
+      })
       return data
     },
     enabled: !!budgetId,
@@ -411,16 +430,24 @@ export function useTimelineReport(
   endDate?: string,
   limit = 50,
   categoryIds?: string[],
-  accountIds?: string[],
+  accountIds?: string[]
 ) {
   const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: ['reports', 'timeline', budgetId, startDate, endDate, limit, catParam, acctParam],
+    queryKey: [ROOT.reports, 'timeline', budgetId, startDate, endDate, limit, catParam, acctParam],
     queryFn: async () => {
       const { data } = await apiClient.get<TimelineReport>(
         `/${budgetId}/reports/large-transactions`,
-        { params: params({ start_date: startDate, end_date: endDate, limit, category_ids: catParam, account_ids: acctParam }) },
+        {
+          params: params({
+            start_date: startDate,
+            end_date: endDate,
+            limit,
+            category_ids: catParam,
+            account_ids: acctParam,
+          }),
+        }
       )
       return data
     },
@@ -435,12 +462,11 @@ export function useLiabilitiesReport(
   mode?: string
 ) {
   return useQuery({
-    queryKey: ['reports', 'liabilities', budgetId, liabilityType ?? null, mode ?? null],
+    queryKey: [ROOT.reports, 'liabilities', budgetId, liabilityType ?? null, mode ?? null],
     queryFn: async () => {
-      const { data } = await apiClient.get<LiabilitiesReport>(
-        `/${budgetId}/reports/liabilities`,
-        { params: params({ liability_type: liabilityType, mode }) }
-      )
+      const { data } = await apiClient.get<LiabilitiesReport>(`/${budgetId}/reports/liabilities`, {
+        params: params({ liability_type: liabilityType, mode }),
+      })
       return data
     },
     enabled: !!budgetId,
@@ -452,7 +478,7 @@ export function useLiabilitiesReport(
 
 export function useSubscriptionsReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'subscriptions', budgetId, months],
+    queryKey: [ROOT.reports, 'subscriptions', budgetId, months],
     queryFn: async () => {
       const { data } = await apiClient.get<SubscriptionsReport>(
         `/${budgetId}/reports/subscriptions`,
@@ -469,12 +495,11 @@ export function useSubscriptionsReport(budgetId: string | null, months = 12) {
 
 export function useSavingsReport(budgetId: string | null, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'savings', budgetId, months],
+    queryKey: [ROOT.reports, 'savings', budgetId, months],
     queryFn: async () => {
-      const { data } = await apiClient.get<SavingsReport>(
-        `/${budgetId}/reports/savings`,
-        { params: { months } }
-      )
+      const { data } = await apiClient.get<SavingsReport>(`/${budgetId}/reports/savings`, {
+        params: { months },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -484,18 +509,13 @@ export function useSavingsReport(budgetId: string | null, months = 12) {
 
 // ─── Anomalies ─────────────────────────────────────────────────────────────
 
-export function useAnomaliesReport(
-  budgetId: string | null,
-  months = 12,
-  threshold = 2.0
-) {
+export function useAnomaliesReport(budgetId: string | null, months = 12, threshold = 2.0) {
   return useQuery({
-    queryKey: ['reports', 'anomalies', budgetId, months, threshold],
+    queryKey: [ROOT.reports, 'anomalies', budgetId, months, threshold],
     queryFn: async () => {
-      const { data } = await apiClient.get<AnomalyReport>(
-        `/${budgetId}/reports/anomalies`,
-        { params: { months, threshold } }
-      )
+      const { data } = await apiClient.get<AnomalyReport>(`/${budgetId}/reports/anomalies`, {
+        params: { months, threshold },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -505,13 +525,9 @@ export function useAnomaliesReport(
 
 // ─── Payday Effect ────────────────────────────────────────────────────────────
 
-export function usePaydayEffectReport(
-  budgetId: string | null,
-  window = 14,
-  months = 12
-) {
+export function usePaydayEffectReport(budgetId: string | null, window = 14, months = 12) {
   return useQuery({
-    queryKey: ['reports', 'payday-effect', budgetId, window, months],
+    queryKey: [ROOT.reports, 'payday-effect', budgetId, window, months],
     queryFn: async () => {
       const { data } = await apiClient.get<PaydayEffectReport>(
         `/${budgetId}/reports/payday-effect`,
@@ -528,7 +544,7 @@ export function usePaydayEffectReport(
 
 export function useCashProjectionReport(budgetId: string | null, days = 90) {
   return useQuery({
-    queryKey: ['reports', 'cash-projection', budgetId, days],
+    queryKey: [ROOT.reports, 'cash-projection', budgetId, days],
     queryFn: async () => {
       const { data } = await apiClient.get<CashProjectionReport>(
         `/${budgetId}/reports/cash-projection`,

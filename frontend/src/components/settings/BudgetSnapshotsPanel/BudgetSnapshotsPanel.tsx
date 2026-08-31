@@ -81,7 +81,13 @@ function RestoreModal({
 
   return (
     <div className="bkp-overlay" role="presentation">
-      <div ref={ref} className="bkp-modal" role="dialog" aria-modal="true" aria-label="Restore budget">
+      <div
+        ref={ref}
+        className="bkp-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Restore budget"
+      >
         <div className="bkp-modal__header">
           <AlertTriangle size={18} className="bkp-modal__warn-icon" />
           <span>Restore “{budgetName}”</span>
@@ -94,8 +100,8 @@ function RestoreModal({
           </p>
           {inspection.attachments_omitted > 0 && (
             <p className="snap-note">
-              Receipts are not stored in the file. Those still attached to transactions the
-              snapshot contains are kept; any attached to newer transactions are let go.
+              Receipts are not stored in the file. Those still attached to transactions the snapshot
+              contains are kept; any attached to newer transactions are let go.
             </p>
           )}
           <label className="bkp-modal__prebackup">
@@ -197,7 +203,7 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
       toast.success(
         result.attachments_dropped > 0
           ? `Restored. ${result.attachments_dropped} receipt(s) had no transaction to return to.`
-          : 'Restored',
+          : 'Restored'
       )
     } catch (err) {
       setRestoreError(apiErrorMessage(err, 'The restore did not run'))
@@ -241,17 +247,15 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
           <div className="settings-row__label">Export it to read elsewhere</div>
           <div className="settings-row__desc">
             A spreadsheet-friendly file in YNAB&rsquo;s shape — it opens in Excel or Numbers, and
-            IGAB reads it back. It cannot carry everything a snapshot does, and the file lists
-            what it left behind.
+            IGAB reads it back. It cannot carry everything a snapshot does, and the file lists what
+            it left behind.
           </div>
         </div>
         <div className="snap-actions">
           <button
             className="settings-btn settings-btn--secondary"
             onClick={() =>
-              downloadBudgetExport(budgetId, budgetName).catch(() =>
-                toast.error('Export failed.'),
-              )
+              downloadBudgetExport(budgetId, budgetName).catch(() => toast.error('Export failed.'))
             }
           >
             <FileSpreadsheet size={14} aria-hidden="true" /> Export
@@ -295,7 +299,7 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
                       className="settings-btn settings-btn--secondary"
                       onClick={() =>
                         downloadKeptSnapshot(budgetId, f.name).catch(() =>
-                          toast.error('Download failed.'),
+                          toast.error('Download failed.')
                         )
                       }
                       aria-label={`Download ${f.name}`}
@@ -321,8 +325,8 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
         <div>
           <div className="settings-row__label">Load a snapshot file</div>
           <div className="settings-row__desc">
-            The file is read and checked before anything happens to your data. Then you choose
-            what to do with it.
+            The file is read and checked before anything happens to your data. Then you choose what
+            to do with it.
           </div>
         </div>
         <label className="settings-btn settings-btn--secondary snap-file-btn">

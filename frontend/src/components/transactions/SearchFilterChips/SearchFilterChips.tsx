@@ -29,8 +29,7 @@ export function SearchFilterChips({ query, categoryMap, payeeMap, accountMap, on
         <span
           key={chip.key}
           className={
-            'search-chips__chip' +
-            (chip.unrecognized ? ' search-chips__chip--unrecognized' : '')
+            'search-chips__chip' + (chip.unrecognized ? ' search-chips__chip--unrecognized' : '')
           }
           role="listitem"
           title={

@@ -24,10 +24,7 @@ JUL1 = date(2026, 7, 1)
 async def _clone_army(db_session, budget, account, n=12):
     """n rows identical in date, amount, cleared — and, because they are
     flushed in one DB transaction, identical in created_at too."""
-    return [
-        await create_transaction(db_session, budget, account, "-10.00", JUL1)
-        for _ in range(n)
-    ]
+    return [await create_transaction(db_session, budget, account, "-10.00", JUL1) for _ in range(n)]
 
 
 async def test_account_pages_partition_identical_rows(db_session):
@@ -90,9 +87,7 @@ async def test_budget_date_order_pages_partition_identical_rows(db_session):
     repo = services.transaction_repo
     seen: list = []
     for offset in range(0, len(created), 5):
-        rows, _, _ = await repo.list_for_budget(
-            budget.id, order="date", limit=5, offset=offset
-        )
+        rows, _, _ = await repo.list_for_budget(budget.id, order="date", limit=5, offset=offset)
         seen.extend(r.id for r in rows)
 
     assert set(seen) == {t.id for t in created}

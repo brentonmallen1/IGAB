@@ -22,9 +22,7 @@ from sqlalchemy.engine import make_url
 
 from igab.db.models import Base
 
-_BASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql+asyncpg://igab:changeme@localhost:5432/igab"
-)
+_BASE_URL = os.environ.get("DATABASE_URL", "postgresql+asyncpg://igab:changeme@localhost:5432/igab")
 
 #: Alembic owns this one; it is not in the models.
 _ALEMBIC_TABLE = "alembic_version"
@@ -64,8 +62,7 @@ def _run_migrations(database: str) -> None:
     database. A subprocess is also what production does.
     """
     assert database.startswith("igab_schema_"), (
-        f"refusing to migrate {database!r}: this test only ever touches its own "
-        "throwaway databases"
+        f"refusing to migrate {database!r}: this test only ever touches its own throwaway databases"
     )
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     env = {
@@ -88,9 +85,7 @@ def _run_migrations(database: str) -> None:
 def _shape(engine, table: str) -> dict:
     insp = inspect(engine)
     return {
-        "columns": {
-            c["name"]: (str(c["type"]), c["nullable"]) for c in insp.get_columns(table)
-        },
+        "columns": {c["name"]: (str(c["type"]), c["nullable"]) for c in insp.get_columns(table)},
         "unique": {u["name"] for u in insp.get_unique_constraints(table)},
         "foreign_keys": {
             (
@@ -127,9 +122,7 @@ def test_migrations_produce_the_model_schema(scratch_dbs):
             a, b = _shape(migrated, table), _shape(modelled, table)
             if a != b:
                 drift[table] = {
-                    key: {"migrated": a[key], "models": b[key]}
-                    for key in a
-                    if a[key] != b[key]
+                    key: {"migrated": a[key], "models": b[key]} for key in a if a[key] != b[key]
                 }
         assert not drift, f"migrated schema differs from the models: {drift}"
     finally:

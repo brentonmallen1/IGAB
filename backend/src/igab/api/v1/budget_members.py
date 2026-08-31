@@ -15,11 +15,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.api.route import CommitRoute
 from igab.db.models import BudgetMember, User
 from igab.db.session import get_session
 from igab.dependencies import BudgetAccess, BudgetOwnerAccess, CurrentUser
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 class MemberResponse(BaseModel):

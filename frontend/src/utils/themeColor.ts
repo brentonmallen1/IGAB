@@ -6,9 +6,7 @@
  */
 export function syncThemeColorMeta(): void {
   requestAnimationFrame(() => {
-    const value = getComputedStyle(document.documentElement)
-      .getPropertyValue('--header-bg')
-      .trim()
+    const value = getComputedStyle(document.documentElement).getPropertyValue('--header-bg').trim()
     if (!value) return
     let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
     if (!meta) {

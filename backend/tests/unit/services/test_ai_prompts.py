@@ -74,8 +74,7 @@ class TestSettingsOverrides:
     async def test_prompt_default_when_no_override(self):
         svc = SettingsService(self.make_repo())
         assert (
-            await svc.get("ai_prompt_suggest_regex")
-            == DEFAULT_PROMPTS["ai_prompt_suggest_regex"]
+            await svc.get("ai_prompt_suggest_regex") == DEFAULT_PROMPTS["ai_prompt_suggest_regex"]
         )
 
     async def test_override_then_unset_reverts_to_default(self):
@@ -84,8 +83,7 @@ class TestSettingsOverrides:
         assert await svc.get("ai_prompt_suggest_regex") == "my custom prompt {names}"
         await svc.unset("ai_prompt_suggest_regex")
         assert (
-            await svc.get("ai_prompt_suggest_regex")
-            == DEFAULT_PROMPTS["ai_prompt_suggest_regex"]
+            await svc.get("ai_prompt_suggest_regex") == DEFAULT_PROMPTS["ai_prompt_suggest_regex"]
         )
 
     async def test_get_all_detailed_reports_override_state(self):

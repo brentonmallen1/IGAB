@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import { downloadAuthed } from '../utils/exportFile'
+import { ROOT } from './queryKeys'
 
 export interface BackupFile {
   name: string
@@ -49,7 +50,7 @@ export function downloadBackupFile(name: string): Promise<void> {
 
 export function useBackups(options?: { poll?: boolean }) {
   return useQuery({
-    queryKey: ['backups'],
+    queryKey: [ROOT.backups],
     queryFn: async () => {
       const { data } = await apiClient.get<BackupsOverview>('/backups')
       return data
@@ -73,18 +74,17 @@ export async function fetchBackupStatus(): Promise<BackupStatus> {
 export function useRunBackup() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () =>
-      apiClient.post<{ job_id: string }>('/backups/run').then((r) => r.data),
+    mutationFn: () => apiClient.post<{ job_id: string }>('/backups/run').then((r) => r.data),
     onSuccess: () => {
       // Seed queued=true ourselves: a refetch right now races the agent's
       // ~10s command poll and can come back with the OLD state, which both
       // hides the click's effect and drops the poller back to its slow
       // interval. The seed keeps the UI honest (and the poll fast) until a
       // real response observes the queued command.
-      qc.setQueryData<BackupsOverview>(['backups'], (old) =>
+      qc.setQueryData<BackupsOverview>([ROOT.backups], (old) =>
         old ? { ...old, queued: true } : old
       )
-      qc.invalidateQueries({ queryKey: ['backups'] })
+      qc.invalidateQueries({ queryKey: [ROOT.backups] })
       toast.success('Backup queued')
     },
     onError: (err) => {

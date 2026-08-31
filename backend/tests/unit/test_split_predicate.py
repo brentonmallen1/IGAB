@@ -15,7 +15,9 @@ import pytest
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.splits import require_split_balances, split_balances, split_sum
 
-_CASES = json.loads((Path(__file__).resolve().parents[3] / "shared" / "split_cases.json").read_text())
+_CASES = json.loads(
+    (Path(__file__).resolve().parents[3] / "shared" / "split_cases.json").read_text()
+)
 
 
 def _ids(cases):

@@ -43,7 +43,9 @@ const names = () => qc.getQueryData<Category[]>(KEY)?.map((c) => c.name)
 
 describe('useReorderCategories', () => {
   beforeEach(() => {
-    qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
     qc.setQueryData(KEY, LIST)
     apiPost.mockReset()
     apiPost.mockResolvedValue({ data: null })

@@ -26,7 +26,16 @@ interface Props {
   attachment?: Pick<Attachment, 'id' | 'original_filename' | 'content_type'>
 }
 
-export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext, attachment }: Props) {
+export function Lightbox({
+  src,
+  alt,
+  onClose,
+  onPrev,
+  onNext,
+  hasPrev,
+  hasNext,
+  attachment,
+}: Props) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const { scale, translateX, translateY, isZoomed, reset, handlers: zoomHandlers } = usePinchZoom()
   const rotate = useRotateAttachment()
@@ -44,11 +53,14 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext, 
     w.document.close()
   }
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') onClose()
-    if (e.key === 'ArrowLeft' && hasPrev && onPrev) onPrev()
-    if (e.key === 'ArrowRight' && hasNext && onNext) onNext()
-  }, [onClose, onPrev, onNext, hasPrev, hasNext])
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft' && hasPrev && onPrev) onPrev()
+      if (e.key === 'ArrowRight' && hasNext && onNext) onNext()
+    },
+    [onClose, onPrev, onNext, hasPrev, hasNext]
+  )
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
@@ -135,7 +147,10 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext, 
       {hasPrev && onPrev && (
         <button
           className="lightbox-nav lightbox-nav--prev"
-          onClick={(e) => { e.stopPropagation(); onPrev() }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onPrev()
+          }}
           aria-label="Previous"
         >
           <ChevronLeft size={32} />
@@ -147,16 +162,23 @@ export function Lightbox({ src, alt, onClose, onPrev, onNext, hasPrev, hasNext, 
         src={src}
         alt={alt}
         onClick={(e) => e.stopPropagation()}
-        style={isZoomed ? {
-          transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
-        } : undefined}
+        style={
+          isZoomed
+            ? {
+                transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
+              }
+            : undefined
+        }
         {...zoomHandlers}
       />
 
       {hasNext && onNext && (
         <button
           className="lightbox-nav lightbox-nav--next"
-          onClick={(e) => { e.stopPropagation(); onNext() }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onNext()
+          }}
           aria-label="Next"
         >
           <ChevronRight size={32} />

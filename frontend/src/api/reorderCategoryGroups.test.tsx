@@ -42,7 +42,12 @@ function group(id: string, name: string, sort_order: number, is_archived = false
 
 const SHOWN = [group('g1', 'Bills', 0), group('g2', 'Wants', 1), group('g3', 'Savings', 2)]
 // With hidden groups shown, a hidden one sits between Bills and Wants.
-const EVERYONE = [SHOWN[0], group('g4', 'Old', 1, true), group('g2', 'Wants', 2), group('g3', 'Savings', 3)]
+const EVERYONE = [
+  SHOWN[0],
+  group('g4', 'Old', 1, true),
+  group('g2', 'Wants', 2),
+  group('g3', 'Savings', 3),
+]
 const VISIBLE_KEY = ['categoryGroups', 'b1', false]
 const EVERYONE_KEY = ['categoryGroups', 'b1', true]
 
@@ -54,7 +59,9 @@ const names = (key: unknown[]) => qc.getQueryData<CategoryGroup[]>(key)?.map((g)
 
 describe('useReorderCategoryGroups', () => {
   beforeEach(() => {
-    qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
     qc.setQueryData(VISIBLE_KEY, SHOWN)
     qc.setQueryData(EVERYONE_KEY, EVERYONE)
     apiPost.mockReset()

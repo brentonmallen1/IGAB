@@ -15,9 +15,7 @@ const settingsState = vi.hoisted(() => ({
   data: undefined as { key: string; value: string }[] | undefined,
 }))
 const aiStatusState = vi.hoisted(() => ({
-  data: undefined as
-    | { receipt_model: string; receipt_model_vision?: boolean | null }
-    | undefined,
+  data: undefined as { receipt_model: string; receipt_model_vision?: boolean | null } | undefined,
 }))
 
 vi.mock('../../api/settings', () => ({
@@ -121,8 +119,6 @@ describe('AIAdvancedSettings resolved receipt-model line', () => {
 
     aiStatusState.data = { receipt_model: 'gemma4:latest' }
     render(<AIAdvancedSettings />)
-    expect(screen.getAllByTestId('receipt-model-line')[1]).not.toHaveTextContent(
-      'does not support'
-    )
+    expect(screen.getAllByTestId('receipt-model-line')[1]).not.toHaveTextContent('does not support')
   })
 })

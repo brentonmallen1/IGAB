@@ -497,7 +497,9 @@ class TestSimpleFINSyncDeduplication:
         return svc
 
     async def test_matches_when_existing_match_found(self, mock_svc):
-        """Should match (not import) when find_existing_match_candidates returns a high-score match."""
+        """Should match (not import) when find_existing_match_candidates returns a high-
+        score match.
+        """
         from unittest.mock import patch
 
         budget_id = uuid.uuid4()
@@ -566,7 +568,9 @@ class TestSimpleFINSyncDeduplication:
         ]
 
         with (
-            patch.object(mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
+            patch.object(
+                mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))
+            ),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -649,7 +653,9 @@ class TestSimpleFINSyncDeduplication:
         ]
 
         with (
-            patch.object(mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
+            patch.object(
+                mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))
+            ),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",
@@ -666,7 +672,9 @@ class TestSimpleFINSyncDeduplication:
         assert call_kwargs["import_description"] == "STORE"
 
     async def test_stamps_sync_id_while_preserving_import_id(self, mock_svc):
-        """When matching a YNAB-imported transaction, should stamp sync_id but preserve import_id."""
+        """When matching a YNAB-imported transaction, should stamp sync_id but preserve
+        import_id.
+        """
         from unittest.mock import patch
 
         budget_id = uuid.uuid4()
@@ -737,7 +745,9 @@ class TestSimpleFINSyncDeduplication:
         ]
 
         with (
-            patch.object(mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))),
+            patch.object(
+                mock_svc.client, "get_feed", AsyncMock(return_value=SimpleFINFeed(raw_txns))
+            ),
             patch(
                 "igab.services.simplefin_service.decrypt",
                 return_value="https://user:pass@example.com",

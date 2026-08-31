@@ -72,7 +72,12 @@ export function SharingModal({
 
   return (
     <Modal onClose={onClose} historyKey="budget-sharing">
-      <div className="sharing-modal" role="dialog" aria-modal="true" aria-label={`Sharing for ${budgetName}`}>
+      <div
+        className="sharing-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Sharing for ${budgetName}`}
+      >
         <div className="sharing-modal__header">
           <div className="sharing-modal__title">Sharing — {budgetName}</div>
           <button className="sharing-modal__close" onClick={onClose} aria-label="Close">
@@ -120,8 +125,8 @@ export function SharingModal({
             <div className="sharing-modal__add">
               {addable.length === 0 ? (
                 <div className="sharing-modal__hint">
-                  Everyone in the household already has access. New people are added in
-                  Settings → Users first.
+                  Everyone in the household already has access. New people are added in Settings →
+                  Users first.
                 </div>
               ) : (
                 <>

@@ -80,9 +80,7 @@ class TestSoftDeleteLifecycle:
 
     async def test_deleted_name_is_reusable(self, api_client, db_session):
         budget, _ = await _budget_with_categories(db_session, api_client.test_user)
-        first = (
-            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})
-        ).json()
+        first = (await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})).json()
         assert (await api_client.delete(f"/api/v1/views/{first['id']}")).status_code == 204
 
         again = await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})
@@ -91,9 +89,7 @@ class TestSoftDeleteLifecycle:
 
     async def test_soft_deleted_view_is_gone_from_every_route(self, api_client, db_session):
         budget, _ = await _budget_with_categories(db_session, api_client.test_user)
-        view = (
-            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})
-        ).json()
+        view = (await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})).json()
         await api_client.delete(f"/api/v1/views/{view['id']}")
 
         assert (await api_client.get(f"/api/v1/views/{view['id']}")).status_code == 404
@@ -105,9 +101,7 @@ class TestSoftDeleteLifecycle:
 
     async def test_empty_patch_on_live_view_is_fine(self, api_client, db_session):
         budget, _ = await _budget_with_categories(db_session, api_client.test_user)
-        view = (
-            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})
-        ).json()
+        view = (await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "Lens"})).json()
         resp = await api_client.patch(f"/api/v1/views/{view['id']}", json={})
         assert resp.status_code == 200
         assert resp.json()["name"] == "Lens"
@@ -191,9 +185,7 @@ class TestPlacements:
 
     async def test_hidden_placement_round_trips(self, api_client, db_session):
         budget, cats = await _budget_with_categories(db_session, api_client.test_user)
-        view = (
-            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "NWS"})
-        ).json()
+        view = (await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "NWS"})).json()
 
         resp = await api_client.patch(
             f"/api/v1/views/{view['id']}",
@@ -209,9 +201,7 @@ class TestPlacements:
         repo = BudgetViewRepository(db_session)
         view = await repo.create(budget_id=budget.id, name="NWS")
         groups = await repo.set_groups(view.id, ["Need", "Want"])
-        await repo.set_placements(
-            view.id, [{"category_id": cats[0].id, "group_id": groups[0].id}]
-        )
+        await repo.set_placements(view.id, [{"category_id": cats[0].id, "group_id": groups[0].id}])
 
         await repo.set_groups(view.id, ["Need", "Want", "Save"])
         loaded = await repo.get_full(view.id)
@@ -225,9 +215,7 @@ class TestPlacements:
         repo = BudgetViewRepository(db_session)
         view = await repo.create(budget_id=budget.id, name="NWS")
         groups = await repo.set_groups(view.id, ["Need", "Want"])
-        await repo.set_placements(
-            view.id, [{"category_id": cats[0].id, "group_id": groups[0].id}]
-        )
+        await repo.set_placements(view.id, [{"category_id": cats[0].id, "group_id": groups[0].id}])
 
         await repo.set_groups(view.id, ["Want"])
         # The FK nulls the placement's group_id in the database; the identity
@@ -299,8 +287,7 @@ class TestIsolationFromDefaultArrangement:
             f"/api/v1/views/{view['id']}",
             json={
                 "placements": [
-                    {"category_id": str(c.id), "group_id": view["groups"][0]["id"]}
-                    for c in cats
+                    {"category_id": str(c.id), "group_id": view["groups"][0]["id"]} for c in cats
                 ]
             },
         )
@@ -320,9 +307,7 @@ class TestHideUnassigned:
         """A category the view has not placed must surface by default —
         silently dropping it is how a view goes stale without anyone noticing."""
         budget, _ = await _budget_with_categories(db_session, api_client.test_user)
-        body = (
-            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "NWS"})
-        ).json()
+        body = (await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "NWS"})).json()
         assert body["hide_unassigned"] is False
 
     async def test_can_be_set_on_create_and_toggled(self, api_client, db_session):
@@ -359,9 +344,7 @@ class TestHideUnassigned:
         )
 
         after = (
-            await api_client.patch(
-                f"/api/v1/views/{view['id']}", json={"hide_unassigned": True}
-            )
+            await api_client.patch(f"/api/v1/views/{view['id']}", json={"hide_unassigned": True})
         ).json()
         assert after["hide_unassigned"] is True
         assert [g["name"] for g in after["groups"]] == ["Need"]
@@ -376,9 +359,7 @@ class TestGroupsAndPlacementsInOneCall:
         breath. Splitting that into two requests leaves the view with renamed
         groups and no placements if the second one fails."""
         budget, cats = await _budget_with_categories(db_session, api_client.test_user)
-        view = (
-            await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "NWS"})
-        ).json()
+        view = (await api_client.post(f"/api/v1/{budget.id}/views", json={"name": "NWS"})).json()
 
         resp = await api_client.patch(
             f"/api/v1/views/{view['id']}",
@@ -420,9 +401,7 @@ class TestGroupsAndPlacementsInOneCall:
                 f"/api/v1/views/{view['id']}",
                 json={
                     "groups": ["Essential"],
-                    "placements": [
-                        {"category_id": str(cats[0].id), "group_name": "Essential"}
-                    ],
+                    "placements": [{"category_id": str(cats[0].id), "group_name": "Essential"}],
                 },
             )
         ).json()
@@ -439,11 +418,7 @@ class TestGroupsAndPlacementsInOneCall:
         body = (
             await api_client.patch(
                 f"/api/v1/views/{view['id']}",
-                json={
-                    "placements": [
-                        {"category_id": str(cats[0].id), "group_name": "Nope"}
-                    ]
-                },
+                json={"placements": [{"category_id": str(cats[0].id), "group_name": "Nope"}]},
             )
         ).json()
         assert body["placements"][0]["group_id"] is None

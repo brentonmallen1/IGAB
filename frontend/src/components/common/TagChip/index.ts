@@ -1,1 +1,1 @@
-export { TagChip, type TagColorSlot } from './TagChip';
+export { TagChip, type TagColorSlot } from './TagChip'

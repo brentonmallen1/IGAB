@@ -117,7 +117,9 @@ async def test_undo_restores_everything(db_session):
 
     tba_before = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
 
-    result = await _service(db_session, services).delete_categories(budget.id, [groceries.id], month=AUG)
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [groceries.id], month=AUG
+    )
     await db_session.flush()
 
     await UndoService(db_session).undo_change(budget.id, result.change_id)
@@ -204,7 +206,9 @@ async def test_refiled_rows_stay_where_the_user_put_them(db_session):
     services = make_services(db_session)
     budget, _, _, groceries, other, spends = await _setup(db_session)
 
-    result = await _service(db_session, services).delete_categories(budget.id, [groceries.id], month=AUG)
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [groceries.id], month=AUG
+    )
     await db_session.flush()
 
     # The user files one of the orphans somewhere else before undoing.
@@ -231,7 +235,9 @@ async def test_a_payee_default_set_in_the_meantime_survives(db_session):
     payee.default_category_id = groceries.id
     await db_session.flush()
 
-    result = await _service(db_session, services).delete_categories(budget.id, [groceries.id], month=AUG)
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [groceries.id], month=AUG
+    )
     await db_session.flush()
 
     payee.default_category_id = other.id
@@ -262,7 +268,9 @@ async def test_reconciled_rows_come_back_without_tripping_the_guard(db_session):
     )
     await db_session.flush()
 
-    result = await _service(db_session, services).delete_categories(budget.id, [groceries.id], month=AUG)
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [groceries.id], month=AUG
+    )
     await db_session.flush()
     await UndoService(db_session).undo_change(budget.id, result.change_id)
     await db_session.flush()
@@ -303,7 +311,9 @@ async def test_double_undo_conflicts(db_session):
     services = make_services(db_session)
     budget, _, _, groceries, _, _ = await _setup(db_session)
 
-    result = await _service(db_session, services).delete_categories(budget.id, [groceries.id], month=AUG)
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [groceries.id], month=AUG
+    )
     await db_session.flush()
     undo = UndoService(db_session)
     await undo.undo_change(budget.id, result.change_id)
@@ -317,7 +327,9 @@ async def test_undo_conflicts_when_the_category_was_restored_by_hand(db_session)
     services = make_services(db_session)
     budget, _, _, groceries, _, _ = await _setup(db_session)
 
-    result = await _service(db_session, services).delete_categories(budget.id, [groceries.id], month=AUG)
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [groceries.id], month=AUG
+    )
     await db_session.flush()
 
     groceries.is_deleted = False
@@ -344,7 +356,9 @@ async def test_undo_restores_a_link_that_is_still_free(db_session):
     # The account goes first, which clears the link — the only route by which
     # this category becomes deletable at all.
     await services.account_repo.soft_delete(card.id)
-    result = await _service(db_session, services).delete_categories(budget.id, [payment.id], month=AUG)
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [payment.id], month=AUG
+    )
     await db_session.flush()
 
     await UndoService(db_session).undo_change(budget.id, result.change_id)
@@ -506,10 +520,14 @@ async def test_undo_returns_the_cover_it_granted(db_session):
 
     tba = (await services.budgets.get_budget_summary(budget.id, AUG)).to_be_assigned
     groceries_rows = (
-        await db_session.execute(
-            select(BudgetAssignment).where(BudgetAssignment.category_id == groceries.id)
+        (
+            await db_session.execute(
+                select(BudgetAssignment).where(BudgetAssignment.category_id == groceries.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {(r.month, r.assigned) for r in groceries_rows} == {
         (AUG, Decimal("100.0000")),
         (SEP, Decimal("50.0000")),
@@ -579,9 +597,7 @@ async def test_undo_restores_a_saved_view_placement(db_session):
     db_session.add(view)
     await db_session.flush()
     db_session.add(
-        BudgetViewPlacement(
-            view_id=view.id, category_id=groceries.id, sort_order=3, is_hidden=True
-        )
+        BudgetViewPlacement(view_id=view.id, category_id=groceries.id, sort_order=3, is_hidden=True)
     )
     await db_session.flush()
 
@@ -632,12 +648,16 @@ async def test_undo_puts_an_archived_envelope_back(db_session):
     assert other.archived_at is not None
 
     change = (
-        await db_session.execute(
-            select(ChangeLog)
-            .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "archive")
-            .order_by(ChangeLog.created_at.desc())
+        (
+            await db_session.execute(
+                select(ChangeLog)
+                .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "archive")
+                .order_by(ChangeLog.created_at.desc())
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert change is not None
 
     await UndoService(db_session).undo_change(budget.id, change.id)
@@ -662,12 +682,16 @@ async def test_undo_of_a_restore_archives_it_again(db_session):
     assert other.is_archived is False
 
     change = (
-        await db_session.execute(
-            select(ChangeLog)
-            .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "unarchive")
-            .order_by(ChangeLog.created_at.desc())
+        (
+            await db_session.execute(
+                select(ChangeLog)
+                .where(ChangeLog.budget_id == budget.id, ChangeLog.action == "unarchive")
+                .order_by(ChangeLog.created_at.desc())
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert change is not None
 
     await UndoService(db_session).undo_change(budget.id, change.id)

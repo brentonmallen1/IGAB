@@ -27,9 +27,7 @@ export interface TargetPayload {
   target_date: string | null
 }
 
-export type TargetFormResult =
-  | { ok: true; payload: TargetPayload }
-  | { ok: false; error: string }
+export type TargetFormResult = { ok: true; payload: TargetPayload } | { ok: false; error: string }
 
 /** Build the upsert payload, or say why it cannot be built. */
 export function buildTargetPayload(

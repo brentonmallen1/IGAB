@@ -156,7 +156,9 @@ async def test_excludes_system_and_uncategorized(api_client, db_session):
     income_cat = await create_category(db_session, budget, income_group, "Ready to Assign")
 
     await create_transaction(db_session, budget, account, "-60.00", THIS_MONTH, category=groceries)
-    await create_transaction(db_session, budget, account, "3000.00", THIS_MONTH, category=income_cat)
+    await create_transaction(
+        db_session, budget, account, "3000.00", THIS_MONTH, category=income_cat
+    )
     await create_transaction(db_session, budget, account, "-45.00", THIS_MONTH)  # uncategorized
     await create_transaction(
         db_session, budget, account, "-99.00", THIS_MONTH, category=groceries, is_deleted=True
@@ -172,9 +174,7 @@ async def test_months_window_bounds(api_client, db_session):
     account = await create_account(db_session, budget, "Checking")
     group = await create_category_group(db_session, budget, "Everyday")
     cat = await create_category(db_session, budget, group, "Groceries")
-    await create_transaction(
-        db_session, budget, account, "-10.00", _months_back(8), category=cat
-    )
+    await create_transaction(db_session, budget, account, "-10.00", _months_back(8), category=cat)
 
     body = await _fetch(api_client, budget.id, months=6)
     assert body["categories"] == []  # activity is outside the 6-month window

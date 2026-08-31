@@ -89,7 +89,9 @@
   border-radius: var(--border-radius-sm);
   cursor: pointer;
   background: var(--bg-secondary);
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
 
 .pmerge-option:hover {
@@ -253,7 +255,7 @@
   border-color: var(--color-accent);
 }
 
-.pmerge-pattern__input[aria-invalid='true'] {
+.pmerge-pattern__input[aria-invalid="true"] {
   border-color: var(--color-danger);
 }
 
@@ -386,7 +388,9 @@
   font-weight: 500;
   cursor: pointer;
   border: 1px solid var(--border-color);
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .pmerge-btn:disabled {

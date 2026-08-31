@@ -35,7 +35,7 @@ export interface PrevTotals {
 export function formatDelta(
   current: number,
   prev: number,
-  formatMoney: (n: number) => string,
+  formatMoney: (n: number) => string
 ): string {
   const delta = current - prev
   const sign = delta >= 0 ? '+' : '−'
@@ -75,7 +75,7 @@ export function buildSankeyView(
   selectedGroupId: string | null,
   selectedCategoryId: string | null,
   prevTotals: PrevTotals | null,
-  prevData: CashFlowReport | undefined,
+  prevData: CashFlowReport | undefined
 ): SankeyView {
   if (!data || data.nodes.length === 0) {
     return {
@@ -118,7 +118,9 @@ export function buildSankeyView(
     if (group && category) {
       nodes.push({ id: group.id, name: group.name, type: 'category_group' })
       nodes.push({
-        id: category.id, name: category.name, type: 'category',
+        id: category.id,
+        name: category.name,
+        type: 'category',
         entity_id: category.entity_id,
       })
       links.push({ source: 0, target: 1, value: groupTotals.get(group.id) ?? 0 })
@@ -141,7 +143,10 @@ export function buildSankeyView(
       )
       groupCats.forEach((cat, i) => {
         nodes.push({
-          id: cat.id, name: cat.name, type: 'category', entity_id: cat.entity_id,
+          id: cat.id,
+          name: cat.name,
+          type: 'category',
+          entity_id: cat.entity_id,
         })
         links.push({ source: 1, target: 2 + i, value: catTotals.get(cat.id) ?? 0 })
       })
@@ -161,7 +166,7 @@ export function buildSankeyView(
           (prevData?.category_payees[selectedCategoryId] ?? []).map((p) => [
             p.name,
             Number(p.total),
-          ]),
+          ])
         )
       : null
     // The synthetic Income node's value is the sum of visible outflows, not

@@ -70,12 +70,16 @@ function TxnCard({
       {txn.import_description && (
         <div className="merge-card__row">
           <span className="merge-card__label">Bank desc</span>
-          <span className="merge-card__value merge-card__value--muted">{txn.import_description}</span>
+          <span className="merge-card__value merge-card__value--muted">
+            {txn.import_description}
+          </span>
         </div>
       )}
       <div className="merge-card__row">
         <span className="merge-card__label">Status</span>
-        <span className={`merge-card__cleared merge-card__cleared--${txn.cleared}`}>{txn.cleared}</span>
+        <span className={`merge-card__cleared merge-card__cleared--${txn.cleared}`}>
+          {txn.cleared}
+        </span>
       </div>
     </button>
   )
@@ -91,8 +95,10 @@ export function MergePreviewModal({
 }: Props) {
   const { formatMoney, formatDate } = useFormatters()
   const [txn1, txn2] = transactions
-  const reconciledTxn = txn1.cleared === 'reconciled' ? txn1 : txn2.cleared === 'reconciled' ? txn2 : null
-  const defaultSurvivor = reconciledTxn?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
+  const reconciledTxn =
+    txn1.cleared === 'reconciled' ? txn1 : txn2.cleared === 'reconciled' ? txn2 : null
+  const defaultSurvivor =
+    reconciledTxn?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
   const [survivorId, setSurvivorId] = useState<string>(defaultSurvivor)
   const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
 
@@ -105,7 +111,15 @@ export function MergePreviewModal({
 
   return (
     <div className="merge-modal-overlay" onClick={onCancel}>
-      <div ref={trapRef} tabIndex={-1} className="merge-modal" role="dialog" aria-modal aria-labelledby="merge-modal-title" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="merge-modal"
+        role="dialog"
+        aria-modal
+        aria-labelledby="merge-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="merge-modal__header">
           <span id="merge-modal-title" className="merge-modal__title">
             <GitMerge size={14} />
@@ -150,7 +164,11 @@ export function MergePreviewModal({
         )}
 
         <div className="merge-modal__footer">
-          <button className="merge-modal__btn merge-modal__btn--cancel" onClick={onCancel} disabled={isPending}>
+          <button
+            className="merge-modal__btn merge-modal__btn--cancel"
+            onClick={onCancel}
+            disabled={isPending}
+          >
             Cancel
           </button>
           <button

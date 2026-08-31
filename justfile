@@ -149,12 +149,12 @@ restore FILE:
 
 # Run backend linting
 lint-backend:
-    docker compose exec api uv run ruff check src/
-    docker compose exec api uv run ruff format --check src/
+    docker compose exec api uv run ruff check src/ tests/
+    docker compose exec api uv run ruff format --check src/ tests/
 
 # Format backend code
 format-backend:
-    docker compose exec api uv run ruff format src/
+    docker compose exec api uv run ruff format src/ tests/
 
 # Run ty type checking
 typecheck-backend:
@@ -167,9 +167,10 @@ check-backend:
 
 # Auto-fix ruff issues, format, then type-check with ty (runs locally)
 quality:
-    cd backend && uv run ruff check --fix src/
-    cd backend && uv run ruff format src/
+    cd backend && uv run ruff check --fix src/ tests/
+    cd backend && uv run ruff format src/ tests/
     cd backend && uv run ty check src/
+    cd frontend && npm run format
 
 # ─── Frontend ─────────────────────────────────────────────────────────────────
 
@@ -199,11 +200,17 @@ ci:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "── personal data ──"             && python3 scripts/check-pii.py
-    echo "── backend: ruff check ──"        && cd backend && uv run ruff check src/
-    echo "── backend: ruff format check ──" && uv run ruff format --check src/
+    # src/ AND tests/. Leaving tests out is how 110 of them drifted out of
+    # format and collected 141 lint errors while CI stayed green.
+    echo "── backend: ruff check ──"        && cd backend && uv run ruff check src/ tests/
+    echo "── backend: ruff format check ──" && uv run ruff format --check src/ tests/
     echo "── backend: ty ──"                && uv run ty check src/
     echo "── backend: pytest ──"            && uv run pytest
     cd ../frontend
+    # The formatter is a gate, not a suggestion. Without it `npx prettier`
+    # resolves its own defaults and rewrites the tree into a style nothing
+    # here uses — which happened, to 472 files.
+    echo "── frontend: prettier ──"         && npm run format:check
     echo "── frontend: typecheck ──"        && npm run typecheck
     echo "── frontend: eslint ──"           && npm run lint
     echo "── frontend: vitest ──"           && npm test

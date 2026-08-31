@@ -3,8 +3,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const updateMutate = vi.hoisted(() => vi.fn((_p: Record<string, unknown>) => Promise.resolve({})))
 const TAGS = vi.hoisted(() => [
-  { id: 'sys', name: 'Savings', system_key: 'savings', color_slot: 'green', category_count: 2, payee_count: 0 },
-  { id: 'mine', name: 'Holiday', system_key: null, color_slot: 'pink', category_count: 0, payee_count: 1 },
+  {
+    id: 'sys',
+    name: 'Savings',
+    system_key: 'savings',
+    color_slot: 'green',
+    category_count: 2,
+    payee_count: 0,
+  },
+  {
+    id: 'mine',
+    name: 'Holiday',
+    system_key: null,
+    color_slot: 'pink',
+    category_count: 0,
+    payee_count: 1,
+  },
 ])
 vi.mock('../../../api/tags', () => ({
   useTags: () => ({ data: TAGS, isLoading: false }),
@@ -40,6 +54,10 @@ describe('TagsPanel system tags', () => {
     fireEvent.change(input, { target: { value: 'Holidays' } })
     fireEvent.click(screen.getByText('Save'))
     await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(1))
-    expect(updateMutate.mock.calls[0][0]).toEqual({ id: 'mine', name: 'Holidays', color_slot: 'pink' })
+    expect(updateMutate.mock.calls[0][0]).toEqual({
+      id: 'mine',
+      name: 'Holidays',
+      color_slot: 'pink',
+    })
   })
 })

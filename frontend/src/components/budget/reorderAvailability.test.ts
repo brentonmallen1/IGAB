@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  canReorderCategories,
-  canReorderGroups,
-  reorderBlock,
-} from './reorderAvailability'
+import { canReorderCategories, canReorderGroups, reorderBlock } from './reorderAvailability'
 
 const OPEN = {
   savedFilterActive: false,

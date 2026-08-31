@@ -161,6 +161,20 @@ async def assert_ynab_agreement(
             f"expected {report.expected_ready_to_assign} (YNAB {report.ynab_ready_to_assign}, "
             f"uncovered card debt {report.uncovered_card_debt})"
         )
+        # Card reserves were asserted in exactly one place — `test_real_export`,
+        # which skips without an export on disk and therefore never ran in CI.
+        # So the one figure that disagreed with YNAB on a clean multi-year
+        # import was the one figure this shared helper could not see. A card
+        # reserve is inside `total_category_balance`, so every over-reserved
+        # dollar leaves Ready to Assign one for one: the assertion above and
+        # this one are the same money seen twice.
+        assert report.cards_differing == 0, (
+            f"{month:%b %Y}: {report.cards_differing}/{report.cards_compared} card "
+            "reserve(s) differ from what YNAB had set aside — "
+            + "; ".join(
+                f"{d.name}: IGAB {d.igab} vs YNAB {d.ynab}" for d in report.card_differences
+            )
+        )
 
 
 def oracle_for(ynab_budget: YNABBudget, month: date, **kwargs):

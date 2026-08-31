@@ -27,13 +27,7 @@ export type ReportTab =
   | 'anomalies'
   | 'plan-reality'
 
-export type TabGroup =
-  | 'overview'
-  | 'financial'
-  | 'cashflow'
-  | 'budget'
-  | 'spending'
-  | 'insights'
+export type TabGroup = 'overview' | 'financial' | 'cashflow' | 'budget' | 'spending' | 'insights'
 
 export interface TabDef {
   id: ReportTab
@@ -118,29 +112,80 @@ export interface TabFilterSupport {
  * the rest so filters never silently appear to apply. Months-based reports
  * (their own 6/12/24mo selector) ignore the date range too. */
 export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
-  'overview': { dates: true, categories: false, payees: false, accounts: false, groupBy: false },
+  overview: { dates: true, categories: false, payees: false, accounts: false, groupBy: false },
   'net-worth': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'savings-rate': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'account-composition': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'liabilities': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'income-expense': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'savings-rate': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
+  'account-composition': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
+  liabilities: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'income-expense': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
   'burn-rate': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'cash-flow': { dates: true, categories: false, payees: false, accounts: true, groupBy: false },
-  'projection': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'budget-actual': { dates: true, categories: true, payees: false, accounts: false, groupBy: false },
-  'variance': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'volatility': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'pareto': { dates: true, categories: true, payees: true, accounts: true, groupBy: true, views: true },
-  'treemap': { dates: true, categories: true, payees: false, accounts: true, groupBy: true, groupByModes: ['group', 'category'], views: true },
-  'seasonality': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'subscriptions': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'savings': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'essentials': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'anomalies': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'plan-reality': { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
-  'payees': { dates: true, categories: false, payees: true, accounts: true, groupBy: false },
+  projection: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'budget-actual': {
+    dates: true,
+    categories: true,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
+  variance: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  volatility: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  pareto: {
+    dates: true,
+    categories: true,
+    payees: true,
+    accounts: true,
+    groupBy: true,
+    views: true,
+  },
+  treemap: {
+    dates: true,
+    categories: true,
+    payees: false,
+    accounts: true,
+    groupBy: true,
+    groupByModes: ['group', 'category'],
+    views: true,
+  },
+  seasonality: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  subscriptions: {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
+  savings: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  essentials: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  anomalies: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  'plan-reality': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
+  payees: { dates: true, categories: false, payees: true, accounts: true, groupBy: false },
   'day-patterns': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
-  'timeline': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
+  timeline: { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
 }
 
 /** The mode a tab actually draws for the stored preference.

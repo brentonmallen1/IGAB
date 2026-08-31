@@ -69,11 +69,7 @@ export function LoginPage() {
             </div>
           )}
 
-          <button
-            type="submit"
-            className="login-card__submit"
-            disabled={loginMutation.isPending}
-          >
+          <button type="submit" className="login-card__submit" disabled={loginMutation.isPending}>
             {loginMutation.isPending ? 'Signing in…' : 'Sign in'}
           </button>
         </form>

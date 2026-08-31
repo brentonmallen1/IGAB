@@ -127,9 +127,7 @@ class TestGetForAccountFilterBranching:
 
         acct_id = uuid.uuid4()
         await repo1.get_for_account(acct_id, uncategorized=True, unapproved=True)
-        await repo2.get_for_account(
-            acct_id, uncategorized=True, unapproved=True, is_or_mode=False
-        )
+        await repo2.get_for_account(acct_id, uncategorized=True, unapproved=True, is_or_mode=False)
 
         sql1 = _captured_sql(repo1)
         sql2 = _captured_sql(repo2)

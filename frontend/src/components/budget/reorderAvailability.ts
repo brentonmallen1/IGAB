@@ -27,36 +27,36 @@
 
 export interface ReorderState {
   /** A saved filter is selected. */
-  savedFilterActive: boolean;
+  savedFilterActive: boolean
   /** One of the quick-filter chips is on. */
-  quickFilterActive: boolean;
+  quickFilterActive: boolean
   /** The category search box's raw value. */
-  search: string;
+  search: string
   /** A saved view is active. */
-  viewActive: boolean;
+  viewActive: boolean
 }
 
 export interface ReorderBlock {
-  reason: "view" | "filtered";
+  reason: 'view' | 'filtered'
   /** One line, for the filter bar. States the fact, not a warning. */
-  short: string;
+  short: string
   /** Why, and the way out — the accessible name and the tooltip. */
-  detail: string;
+  detail: string
 }
 
 const VIEW: ReorderBlock = {
-  reason: "view",
-  short: "This view keeps its own order",
+  reason: 'view',
+  short: 'This view keeps its own order',
   detail:
-    "Groups and categories follow this view’s own arrangement, which is edited in the view editor. Switch to Default groups to rearrange the budget itself.",
-};
+    'Groups and categories follow this view’s own arrangement, which is edited in the view editor. Switch to Default groups to rearrange the budget itself.',
+}
 
 const FILTERED: ReorderBlock = {
-  reason: "filtered",
-  short: "Ordering is off while filtered",
+  reason: 'filtered',
+  short: 'Ordering is off while filtered',
   detail:
-    "A filtered grid hides rows, so a drop here would rearrange a list you cannot fully see. Clear the search and filters to drag again.",
-};
+    'A filtered grid hides rows, so a drop here would rearrange a list you cannot fully see. Clear the search and filters to drag again.',
+}
 
 /**
  * Why reordering is unavailable, or null when it is available.
@@ -66,20 +66,16 @@ const FILTERED: ReorderBlock = {
  * user to do something that changes nothing.
  */
 export function reorderBlock(state: ReorderState): ReorderBlock | null {
-  if (state.viewActive) return VIEW;
-  if (
-    state.savedFilterActive ||
-    state.quickFilterActive ||
-    state.search.trim() !== ""
-  ) {
-    return FILTERED;
+  if (state.viewActive) return VIEW
+  if (state.savedFilterActive || state.quickFilterActive || state.search.trim() !== '') {
+    return FILTERED
   }
-  return null;
+  return null
 }
 
 /** Categories may be rearranged within their group. */
 export function canReorderCategories(state: ReorderState): boolean {
-  return reorderBlock(state) === null;
+  return reorderBlock(state) === null
 }
 
 /**
@@ -89,9 +85,6 @@ export function canReorderCategories(state: ReorderState): boolean {
  * It is deliberately NOT a reason: a single-group budget needs no explanation
  * for the absence of an ordering it could not have.
  */
-export function canReorderGroups(
-  state: ReorderState,
-  drawnGroupCount: number,
-): boolean {
-  return canReorderCategories(state) && drawnGroupCount > 1;
+export function canReorderGroups(state: ReorderState, drawnGroupCount: number): boolean {
+  return canReorderCategories(state) && drawnGroupCount > 1
 }

@@ -267,7 +267,9 @@ async def test_soft_deleted_transactions_are_cleared_as_well(db_session):
     )
     await db_session.flush()
 
-    result = await _service(db_session, services).delete_categories(budget.id, [groceries.id], month=AUG)
+    result = await _service(db_session, services).delete_categories(
+        budget.id, [groceries.id], month=AUG
+    )
     await db_session.refresh(gone)
 
     assert gone.category_id is None

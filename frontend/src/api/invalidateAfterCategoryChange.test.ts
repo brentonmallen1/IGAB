@@ -10,6 +10,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
+import { ROOT } from './queryKeys'
 
 function keysInvalidatedFor(budgetId: string | null): string[] {
   const qc = new QueryClient()
@@ -24,24 +25,24 @@ describe('invalidateAfterCategoryChange', () => {
     // failing anything (found in review). Removing OR adding a key now has
     // to happen here too, deliberately.
     const expected = [
-      ['categories'],
-      ['categoryGroups'],
-      ['archivedCategories'],
-      ['categoryClassification'],
+      [ROOT.categories],
+      [ROOT.categoryGroups],
+      [ROOT.archivedCategories],
+      [ROOT.categoryClassification],
       ['budgetMonth', 'b1'],
-      ['transactions'],
-      ['all-transactions'],
-      ['budget-transactions'],
-      ['category-transactions'],
-      ['payee-transactions'],
-      ['pending-review-count'],
-      ['pending-review-count-account'],
-      ['payees'],
-      ['scheduled-transactions'],
-      ['budgetViews'],
-      ['budgetFilters'],
-      ['reports'],
-      ['changes'],
+      [ROOT.transactions],
+      [ROOT.allTransactions],
+      [ROOT.budgetTransactions],
+      [ROOT.transactionsPeek],
+      [ROOT.payeeTransactions],
+      [ROOT.pendingReviewCount],
+      [ROOT.pendingReviewCountAccount],
+      [ROOT.payees],
+      [ROOT.scheduledTransactions],
+      [ROOT.budgetViews],
+      [ROOT.budgetFilters],
+      [ROOT.reports],
+      [ROOT.changes],
     ].map((k) => JSON.stringify(k))
 
     expect(keysInvalidatedFor('b1').sort()).toEqual(expected.sort())

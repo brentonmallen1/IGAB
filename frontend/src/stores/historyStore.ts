@@ -16,8 +16,7 @@ interface HistoryStore {
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
   stack: [],
 
-  push: (entry) =>
-    set((s) => ({ stack: [...s.stack.slice(-49), entry] })),
+  push: (entry) => set((s) => ({ stack: [...s.stack.slice(-49), entry] })),
 
   undo: () => {
     const { stack } = get()

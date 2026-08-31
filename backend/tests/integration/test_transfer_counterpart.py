@@ -16,7 +16,7 @@ from datetime import date
 
 from igab.repositories.payee_repo import PayeeRepository
 
-from .factories import create_account, create_budget, create_payee, create_transaction
+from .factories import create_account, create_budget, create_transaction
 
 TODAY = date(2026, 8, 20)
 
@@ -85,9 +85,7 @@ class TestListings:
         assert rows[str(plain.id)]["counterpart_account_id"] is None
 
     async def test_single_get_carries_it(self, api_client, db_session):
-        budget, _, savings, out_leg, *_ = await _transfer_fixture(
-            db_session, api_client.test_user
-        )
+        budget, _, savings, out_leg, *_ = await _transfer_fixture(db_session, api_client.test_user)
         body = (
             await api_client.get(
                 f"/api/v1/transactions/{out_leg.id}", params={"budget_id": str(budget.id)}
@@ -119,9 +117,7 @@ class TestMutatingEndpoints:
     async def test_it_survives_a_service_update(self, api_client, db_session):
         """PATCH goes create→flush→refresh; a refresh that drops the
         expression serializes the leg as a plain row."""
-        budget, _, savings, out_leg, *_ = await _transfer_fixture(
-            db_session, api_client.test_user
-        )
+        budget, _, savings, out_leg, *_ = await _transfer_fixture(db_session, api_client.test_user)
         resp = await api_client.patch(
             f"/api/v1/transactions/{out_leg.id}",
             params={"budget_id": str(budget.id)},
@@ -133,9 +129,7 @@ class TestMutatingEndpoints:
         assert body["counterpart_account_id"] == str(savings.id)
 
     async def test_approve_returns_it(self, api_client, db_session):
-        budget, checking, savings, *_ = await _transfer_fixture(
-            db_session, api_client.test_user
-        )
+        budget, checking, savings, *_ = await _transfer_fixture(db_session, api_client.test_user)
         payee_repo = PayeeRepository(db_session)
         to_savings = await payee_repo.find_or_create_transfer(budget.id, savings.id, savings.name)
         unapproved = await create_transaction(
@@ -160,7 +154,9 @@ class TestOffBudgetCounterpart:
             db_session, budget, "Mortgage", account_type="mortgage", on_budget=False
         )
         payee_repo = PayeeRepository(db_session)
-        to_mortgage = await payee_repo.find_or_create_transfer(budget.id, mortgage.id, mortgage.name)
+        to_mortgage = await payee_repo.find_or_create_transfer(
+            budget.id, mortgage.id, mortgage.name
+        )
         leg = await create_transaction(
             db_session, budget, checking, "-2000.00", TODAY, payee=to_mortgage
         )

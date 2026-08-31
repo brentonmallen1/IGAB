@@ -52,7 +52,7 @@ from igab.repositories.txn_filters import (
     PLAIN_DEPOSIT_ROW,
     POSTED,
     PROVISIONALLY_LINKED,
-    UNBUDGETED_CARD_CREDIT,
+    UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
     sync_created_pending,
@@ -740,7 +740,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         `category_ids` is `CategoryRepository.spendable_ids`
         (`category_filters.SPENDABLE`). Whatever is not in that set and is not
         a payment from cash is an unbudgeted card credit, by construction —
-        see `sum_unbudgeted_card_credits`.
+        see `sum_unclaimed_card_rows`.
         """
         if not category_ids:
             return {}
@@ -786,7 +786,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         what is owed but drew on nobody's set-aside, so it is not counted —
         and a card→card balance transfer moves debt, not reserved cash, so
         the cash-counterpart test excludes it too. Both of those land in
-        `sum_unbudgeted_card_credits` instead, which selects on the negation
+        `sum_unclaimed_card_rows` instead, which selects on the negation
         of the very same expression.
         """
         result = await self.session.execute(
@@ -813,18 +813,20 @@ class TransactionRepository(BaseRepository[Transaction]):
             out.setdefault(row["account_id"], {})[month] = Decimal(str(row["paid"]))
         return out
 
-    async def sum_unbudgeted_card_credits(
+    async def sum_unclaimed_card_rows(
         self,
         budget_id: uuid.UUID,
         end_date: date,
     ) -> dict[uuid.UUID, dict[date, Decimal]]:
-        """Card inflows the budget has no claim on: {card: {month: amount >= 0}}.
+        """Card rows the budget has no claim on: {card: {month: signed net}}.
 
         Neither a payment from the budget's cash (`sum_card_payments_by_month`)
         nor a category's own money coming back
         (`sum_credit_outflows_by_category`) — a partner paying the card
-        themselves, a promotional credit, a bank adjustment. It reduces what is
-        owed and touches no envelope, which is correct.
+        themselves, a promotional credit, a bank adjustment, and in the other
+        direction a charge that arrived from sync and has not been filed yet,
+        or a cash advance. It moves what is owed and touches no envelope, which
+        is correct.
 
         It exists because the card reserve identity has to *name* it. Without
         this term the only honest form of `set_aside + uncovered == -balance`
@@ -832,7 +834,13 @@ class TransactionRepository(BaseRepository[Transaction]):
         and no inflows that predate their reservations" — and those were
         precisely the histories that broke it.
 
-        `txn_filters.UNBUDGETED_CARD_CREDIT` is the complement of the other two
+        **The sum is a signed net, and that is load-bearing.** This was
+        `sum_unbudgeted_card_credits` and claimed only `amount > 0`, so an
+        unfiled charge reached no term — and a bound whose left side moves by
+        the net while its allowance moves by the positive half passes by
+        exactly the amount it fails to count. See `UNCLAIMED_CARD_ROW`.
+
+        `txn_filters.UNCLAIMED_CARD_ROW` is the complement of the other two
         sums *written as one*: it negates `category_filters.SPENDABLE`, the
         same expression that picks the ids passed to
         `sum_credit_outflows_by_category`, and `CARD_PAYMENT_FROM_CASH`, the
@@ -846,11 +854,11 @@ class TransactionRepository(BaseRepository[Transaction]):
                 Transaction.account_id,
                 TXN_YEAR.label("yr"),
                 TXN_MONTH.label("mo"),
-                func.sum(Transaction.amount).label("credited"),
+                func.sum(Transaction.amount).label("unclaimed"),
             )
             .where(
                 Transaction.budget_id == budget_id,
-                UNBUDGETED_CARD_CREDIT,
+                UNCLAIMED_CARD_ROW,
                 Transaction.date <= end_date,
             )
             .group_by(Transaction.account_id, TXN_YEAR, TXN_MONTH)
@@ -858,7 +866,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         out: dict[uuid.UUID, dict[date, Decimal]] = {}
         for row in result.mappings():
             month = month_of(row)
-            out.setdefault(row["account_id"], {})[month] = Decimal(str(row["credited"]))
+            out.setdefault(row["account_id"], {})[month] = Decimal(str(row["unclaimed"]))
         return out
 
     _BULK_CHUNK = 1000  # ~15k params/chunk, well under asyncpg's 32767 limit

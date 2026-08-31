@@ -169,10 +169,16 @@ export function metricStatus(
   if (m.key === 'categories_funded') {
     if (target === null || target === 0) return { status: 'neutral', text: 'no targets set' }
     const short = target - value
-    return short <= 0 ? { status: 'good', text: 'all funded' } : { status: 'neutral', text: `${short} underfunded` }
+    return short <= 0
+      ? { status: 'good', text: 'all funded' }
+      : { status: 'neutral', text: `${short} underfunded` }
   }
-  if (target === 0) return value <= 0 ? { status: 'good', text: 'none' } : { status: 'neutral', text: '' }
-  if (target !== null) return value >= target ? { status: 'good', text: 'on target' } : { status: 'neutral', text: 'below target' }
+  if (target === 0)
+    return value <= 0 ? { status: 'good', text: 'none' } : { status: 'neutral', text: '' }
+  if (target !== null)
+    return value >= target
+      ? { status: 'good', text: 'on target' }
+      : { status: 'neutral', text: 'below target' }
   return { status: 'neutral', text: '' }
 }
 
@@ -222,7 +228,9 @@ export function formatMetricTarget(
     case 'percent':
       return `target ${t}%`
     case 'money':
-      return t === 0 ? 'target: none' : `target ${fmt.formatMoney(t)}${m.key === 'emergency_fund' ? ' to start' : ''}`
+      return t === 0
+        ? 'target: none'
+        : `target ${fmt.formatMoney(t)}${m.key === 'emergency_fund' ? ' to start' : ''}`
     case 'count':
       return t === 0 ? 'target: none' : `target ${Math.round(t)}`
   }
@@ -254,7 +262,8 @@ export function checkCopyIntegrity(): string[] {
     const c = CHECKUP_COPY[key]
     if (!c.what || !c.why || c.decide.length === 0) problems.push(`${key}: incomplete`)
     if (c.stage && !findStage(c.stage)) problems.push(`${key}: stage ${c.stage}`)
-    if (c.tool && !(TOOL_IDS as readonly string[]).includes(c.tool)) problems.push(`${key}: tool ${c.tool}`)
+    if (c.tool && !(TOOL_IDS as readonly string[]).includes(c.tool))
+      problems.push(`${key}: tool ${c.tool}`)
     for (const g of c.glossary ?? []) {
       if (!(GLOSSARY_IDS as readonly string[]).includes(g)) problems.push(`${key}: glossary ${g}`)
     }

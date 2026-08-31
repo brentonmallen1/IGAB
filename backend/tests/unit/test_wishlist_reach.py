@@ -235,10 +235,14 @@ class TestCoolingAndReview:
         assert not review_due(TODAY - timedelta(days=89), None, None, 90, TODAY)
 
     def test_affirming_resets_the_clock(self):
-        assert not review_due(TODAY - timedelta(days=400), TODAY - timedelta(days=10), None, 90, TODAY)
+        assert not review_due(
+            TODAY - timedelta(days=400), TODAY - timedelta(days=10), None, 90, TODAY
+        )
 
     def test_a_cooling_wish_is_never_due(self):
-        assert not review_due(TODAY - timedelta(days=400), None, TODAY + timedelta(days=1), 90, TODAY)
+        assert not review_due(
+            TODAY - timedelta(days=400), None, TODAY + timedelta(days=1), 90, TODAY
+        )
         assert review_due(TODAY - timedelta(days=400), None, TODAY, 90, TODAY)
 
 

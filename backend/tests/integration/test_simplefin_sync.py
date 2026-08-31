@@ -21,8 +21,8 @@ import pytest
 from sqlalchemy import select
 
 from igab.db.models import ChangeLog, Transaction
-from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.domain.exceptions import InvariantViolation
+from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_service import SplitSpec, TransactionUpdate
 from igab.services.undo_service import UndoService
@@ -1370,4 +1370,3 @@ async def test_without_a_budget_start_date_every_row_is_categorized_as_before(db
 
     rows = await _live_rows(db_session, account.id)
     assert [t.category_id for t in rows if t.sync_id == "t-old"] == [groceries.id]
-

@@ -94,7 +94,12 @@ class TestCanonicalLabel:
 
 
 class TestParseExtractionMatching:
-    CATEGORIES = [("Tech {$10}*", "Fun"), ("Shipping {$10}", "Bills"), ("Gifts", "A"), ("Gifts", "B")]
+    CATEGORIES = [
+        ("Tech {$10}*", "Fun"),
+        ("Shipping {$10}", "Bills"),
+        ("Gifts", "A"),
+        ("Gifts", "B"),
+    ]
 
     def receipt(self, **overrides) -> dict:
         base = {"payee": "Store", "total": 20.0, "date": "2026-08-10", "category": None}

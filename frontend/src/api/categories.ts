@@ -4,10 +4,11 @@ import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { reorderMembers } from '../utils/listOrder'
 import type { Category, CategoryGroup, CategoryClassification } from '../types'
+import { ROOT } from './queryKeys'
 
 export function useCategoryGroups(budgetId: string | null, includeArchived = false) {
   return useQuery({
-    queryKey: ['categoryGroups', budgetId, includeArchived],
+    queryKey: [ROOT.categoryGroups, budgetId, includeArchived],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryGroup[]>(`/${budgetId}/category-groups`, {
         params: { include_archived: includeArchived },
@@ -21,7 +22,7 @@ export function useCategoryGroups(budgetId: string | null, includeArchived = fal
 
 export function useCategories(budgetId: string | null, includeArchived = false) {
   return useQuery({
-    queryKey: ['categories', budgetId, includeArchived],
+    queryKey: [ROOT.categories, budgetId, includeArchived],
     queryFn: async () => {
       const { data } = await apiClient.get<Category[]>(`/${budgetId}/categories`, {
         params: { include_archived: includeArchived },
@@ -41,7 +42,7 @@ export interface RecentPayee {
 /** Most recent (non-transfer) payee used in a category — add-transaction prefill */
 export function useRecentPayeeForCategory(budgetId: string, categoryId: string | null) {
   return useQuery({
-    queryKey: ['recentPayee', budgetId, categoryId],
+    queryKey: [ROOT.recentPayee, budgetId, categoryId],
     queryFn: async () => {
       const { data } = await apiClient.get<RecentPayee | null>(
         `/categories/${categoryId}/recent-payee`,
@@ -59,7 +60,7 @@ export function useRecentPayeeForCategory(budgetId: string, categoryId: string |
  *  about one row. `dominant` set = it deserves a badge. */
 export function useCategoryClassification(categoryId: string | null) {
   return useQuery({
-    queryKey: ['categoryClassification', categoryId],
+    queryKey: [ROOT.categoryClassification, categoryId],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryClassification>(
         `/categories/${categoryId}/classification`
@@ -78,7 +79,7 @@ export function useCreateCategoryGroup(budgetId: string) {
     mutationFn: (data: { name: string }) =>
       apiClient.post<CategoryGroup>(`/${budgetId}/category-groups`, data).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.categoryGroups, budgetId] })
     },
   })
 }
@@ -87,10 +88,14 @@ export function useCreateCategoryGroup(budgetId: string) {
 export function useCreateCategory(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { category_group_id: string; name: string; subtitle?: string; note?: string }) =>
-      apiClient.post<Category>(`/${budgetId}/categories`, data).then((r) => r.data),
+    mutationFn: (data: {
+      category_group_id: string
+      name: string
+      subtitle?: string
+      note?: string
+    }) => apiClient.post<Category>(`/${budgetId}/categories`, data).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] })
     },
   })
 }
@@ -116,7 +121,7 @@ export function useUpdateCategoryGroup(budgetId: string) {
     mutationFn: ({ id, ...data }: { id: string; name?: string; sort_order?: number }) =>
       apiClient.patch<CategoryGroup>(`/category-groups/${id}`, data).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categoryGroups', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.categoryGroups, budgetId] })
     },
   })
 }
@@ -143,7 +148,9 @@ export function useReorderCategoryGroups(budgetId: string) {
       apiClient.post(`/${budgetId}/category-groups/reorder`, { group_ids: groupIds }),
     onMutate: async (groupIds) => {
       await qc.cancelQueries({ queryKey: key })
-      const previous: CachedLists<CategoryGroup> = qc.getQueriesData<CategoryGroup[]>({ queryKey: key })
+      const previous: CachedLists<CategoryGroup> = qc.getQueriesData<CategoryGroup[]>({
+        queryKey: key,
+      })
       qc.setQueriesData<CategoryGroup[]>({ queryKey: key }, (cached) =>
         cached ? reorderMembers(cached, () => true, groupIds) : cached
       )
@@ -173,7 +180,9 @@ export function useReorderCategories(budgetId: string) {
       await qc.cancelQueries({ queryKey: key })
       const previous: CachedLists<Category> = qc.getQueriesData<Category[]>({ queryKey: key })
       qc.setQueriesData<Category[]>({ queryKey: key }, (cached) =>
-        cached ? reorderMembers(cached, (c) => c.category_group_id === groupId, categoryIds) : cached
+        cached
+          ? reorderMembers(cached, (c) => c.category_group_id === groupId, categoryIds)
+          : cached
       )
       return { previous }
     },
@@ -261,12 +270,11 @@ export interface ArchivedCategory {
 
 export function useArchivedCategories(budgetId: string | null, month: string, enabled = true) {
   return useQuery({
-    queryKey: ['archivedCategories', budgetId, month],
+    queryKey: [ROOT.archivedCategories, budgetId, month],
     queryFn: async () => {
-      const { data } = await apiClient.get<ArchivedCategory[]>(
-        `/${budgetId}/categories/archived`,
-        { params: { month } }
-      )
+      const { data } = await apiClient.get<ArchivedCategory[]>(`/${budgetId}/categories/archived`, {
+        params: { month },
+      })
       return data
     },
     enabled: !!budgetId && enabled,
@@ -292,7 +300,7 @@ export interface ArchivePreview {
 
 export function useArchivePreview(budgetId: string, categoryIds: string[], month: string) {
   return useQuery({
-    queryKey: ['categoryArchivePreview', budgetId, categoryIds.join(','), month],
+    queryKey: [ROOT.categoryArchivePreview, budgetId, categoryIds.join(','), month],
     queryFn: async () => {
       const { data } = await apiClient.post<ArchivePreview>(
         `/${budgetId}/categories/archive-preview`,
@@ -310,10 +318,10 @@ function useArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', don
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ ids, month }: { ids: string[]; month: string }) => {
-      const { data } = await apiClient.post<ArchivePreview>(
-        `/${budgetId}/categories/${path}`,
-        { category_ids: ids, month }
-      )
+      const { data } = await apiClient.post<ArchivePreview>(`/${budgetId}/categories/${path}`, {
+        category_ids: ids,
+        month,
+      })
       return data
     },
     onSuccess: async () => {
@@ -372,8 +380,7 @@ export function useUnarchiveCategoryGroup(budgetId: string) {
 /** What the delete dialog is about to act on: a selection of categories, or a
  *  whole group (which cascades over the categories inside it). */
 export type DeleteTarget =
-  | { kind: 'categories'; ids: string[]; name: string }
-  | { kind: 'group'; id: string; name: string }
+  { kind: 'categories'; ids: string[]; name: string } | { kind: 'group'; id: string; name: string }
 
 /** The one definition of the delete-preview fetch — the modal's query and the
  *  flow hook's skip-the-dialog prefetch both use it, so they cannot disagree
@@ -381,7 +388,7 @@ export type DeleteTarget =
 export function deletePreviewOptions(budgetId: string, target: DeleteTarget, month: string) {
   const key = target.kind === 'group' ? target.id : target.ids.join(',')
   return {
-    queryKey: ['categoryDeletePreview', budgetId, target.kind, key, month] as const,
+    queryKey: [ROOT.categoryDeletePreview, budgetId, target.kind, key, month] as const,
     queryFn: async (): Promise<CategoryDeletePreview> => {
       if (target.kind === 'group') {
         const { data } = await apiClient.get<CategoryDeletePreview>(
@@ -411,7 +418,7 @@ export function useCategoryDeletePreview(
 ) {
   const key = target?.kind === 'group' ? target.id : (target?.ids.join(',') ?? '')
   return useQuery({
-    queryKey: ['categoryDeletePreview', budgetId, target?.kind ?? 'none', key, month],
+    queryKey: [ROOT.categoryDeletePreview, budgetId, target?.kind ?? 'none', key, month],
     // Delegates to the shared definition — target is always set here because
     // the query is disabled without one.
     queryFn: (): Promise<CategoryDeletePreview> =>

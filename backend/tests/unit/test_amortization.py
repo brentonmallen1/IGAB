@@ -95,9 +95,7 @@ class TestNeverPaysOff:
 
     def test_cap_months_exceeded(self):
         # Payment barely above interest: pays down cents per month, blows the cap
-        result = amortization_schedule(
-            D("100000.00"), D("12"), D("1000.01"), START, cap_months=120
-        )
+        result = amortization_schedule(D("100000.00"), D("12"), D("1000.01"), START, cap_months=120)
         assert result.never_pays_off
         assert result.payoff_date is None
         assert len(result.schedule) == 120
@@ -278,18 +276,14 @@ class TestAPaymentRuleRatherThanANumber:
         assert ruled.payoff_date == scalar.payoff_date
 
     def test_a_percentage_payment_declines_month_over_month(self):
-        rule = MinimumPaymentRule(
-            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
-        )
+        rule = MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25"))
         result = amortization_schedule(D("5000.00"), D("18"), rule, START)
         payments = [m.payment for m in result.schedule[:6]]
         assert payments == sorted(payments, reverse=True)
         assert payments[0] > payments[-1]
 
     def test_the_floor_is_what_makes_it_end(self):
-        rule = MinimumPaymentRule(
-            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
-        )
+        rule = MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25"))
         result = amortization_schedule(D("5000.00"), D("18"), rule, START)
         assert not result.never_pays_off
         assert result.payoff_date is not None
@@ -305,9 +299,7 @@ class TestAPaymentRuleRatherThanANumber:
     def test_principal_still_sums_to_the_starting_balance(self):
         """The pinned exactness invariant, under a variable payment: no cent
         appears or disappears across the schedule."""
-        rule = MinimumPaymentRule(
-            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
-        )
+        rule = MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25"))
         result = amortization_schedule(D("5000.00"), D("18"), rule, START)
         assert sum((m.principal_paid for m in result.schedule), D("0")) == D("5000.00")
         assert result.schedule[-1].balance == D("0")
@@ -315,9 +307,7 @@ class TestAPaymentRuleRatherThanANumber:
     def test_a_rule_costs_more_and_takes_longer_than_its_month_one_figure(self):
         """The asymmetry that makes this worth building. Projecting a card
         from the number on one statement is optimistic in both directions."""
-        rule = MinimumPaymentRule(
-            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
-        )
+        rule = MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25"))
         month_one = rule.due(D("5000.00"))
 
         variable = amortization_schedule(D("5000.00"), D("18"), rule, START)
@@ -350,9 +340,7 @@ class TestInterestOverTakesARuleToo:
     def test_a_declining_rule_charges_more_than_its_month_one_figure(self):
         """Without this, pay-vs-save compares a declining minimum against a
         fixed one and reports a saving that is partly an artefact."""
-        rule = MinimumPaymentRule(
-            kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25")
-        )
+        rule = MinimumPaymentRule(kind=PERCENT_OF_BALANCE, percent=D("3"), floor=D("25"))
         variable = interest_over(D("5000.00"), D("18"), rule, 24)
         flat = interest_over(D("5000.00"), D("18"), rule.due(D("5000.00")), 24)
         assert variable > flat

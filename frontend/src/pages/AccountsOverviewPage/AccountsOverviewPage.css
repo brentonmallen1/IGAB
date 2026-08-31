@@ -231,13 +231,25 @@
   font-size: var(--font-size-xs);
 }
 
-.accounts-overview__sync-info--fresh { color: var(--color-positive); }
-.accounts-overview__sync-info--stale { color: var(--color-warning); }
-.accounts-overview__sync-info--error { color: var(--color-negative); }
-.accounts-overview__sync-info--never { color: var(--color-negative); }
+.accounts-overview__sync-info--fresh {
+  color: var(--color-positive);
+}
+.accounts-overview__sync-info--stale {
+  color: var(--color-warning);
+}
+.accounts-overview__sync-info--error {
+  color: var(--color-negative);
+}
+.accounts-overview__sync-info--never {
+  color: var(--color-negative);
+}
 .accounts-overview__sync-info--disabled,
-.accounts-overview__sync-info--manual { color: var(--text-muted); }
-.accounts-overview__sync-info--syncing { color: var(--color-accent); }
+.accounts-overview__sync-info--manual {
+  color: var(--text-muted);
+}
+.accounts-overview__sync-info--syncing {
+  color: var(--color-accent);
+}
 
 .accounts-overview__separator {
   color: var(--border-color);
@@ -280,7 +292,9 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .accounts-overview__action-btn:hover {
@@ -307,7 +321,9 @@
   color: var(--text-primary);
 }
 
-.accounts-overview__balance-main.negative { color: var(--color-negative); }
+.accounts-overview__balance-main.negative {
+  color: var(--color-negative);
+}
 
 .accounts-overview__balance-detail {
   display: flex;
@@ -317,8 +333,12 @@
   color: var(--text-muted);
 }
 
-.accounts-overview__balance-detail .negative { color: var(--color-negative); }
-.accounts-overview__balance-detail .positive { color: var(--color-positive); }
+.accounts-overview__balance-detail .negative {
+  color: var(--color-negative);
+}
+.accounts-overview__balance-detail .positive {
+  color: var(--color-positive);
+}
 
 .accounts-overview__empty {
   padding: var(--spacing-xl);

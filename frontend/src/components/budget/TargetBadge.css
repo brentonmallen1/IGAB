@@ -11,7 +11,7 @@
   white-space: nowrap;
 }
 
-.target-badge[role='button'] {
+.target-badge[role="button"] {
   cursor: pointer;
 }
 
@@ -24,4 +24,3 @@
   background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
   color: var(--color-negative);
 }
-

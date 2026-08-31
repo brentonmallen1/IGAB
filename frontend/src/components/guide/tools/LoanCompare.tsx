@@ -42,10 +42,15 @@ export function LoanCompare() {
       const paymentBad = payment !== null && (Number.isNaN(payment) || payment < 0)
       if (
         !r.name.trim() ||
-        Number.isNaN(principal) || principal < 0 ||
-        Number.isNaN(rate) || rate < 0 || rate > 100 ||
-        Number.isNaN(fees) || fees < 0 ||
-        termBad || paymentBad ||
+        Number.isNaN(principal) ||
+        principal < 0 ||
+        Number.isNaN(rate) ||
+        rate < 0 ||
+        rate > 100 ||
+        Number.isNaN(fees) ||
+        fees < 0 ||
+        termBad ||
+        paymentBad ||
         (term === null && payment === null)
       ) {
         bad.add(r.key)
@@ -96,15 +101,62 @@ export function LoanCompare() {
               const bad = parsed.bad.has(r.key) && touched(r) ? 'is-invalid' : ''
               return (
                 <tr key={r.key} className={bad}>
-                  <td><input aria-label="Loan name" value={r.name} onChange={(e) => update(r.key, 'name', e.target.value)} /></td>
-                  <td><input aria-label="Amount" inputMode="decimal" value={r.principal} onChange={(e) => update(r.key, 'principal', e.target.value)} /></td>
-                  <td><input aria-label="APR" inputMode="decimal" value={r.rate} onChange={(e) => update(r.key, 'rate', e.target.value)} /></td>
-                  <td><input aria-label="Term in months" inputMode="numeric" value={r.term} onChange={(e) => update(r.key, 'term', e.target.value)} /></td>
-                  <td><input aria-label="Payment per month" inputMode="decimal" value={r.payment} onChange={(e) => update(r.key, 'payment', e.target.value)} /></td>
-                  <td><input aria-label="Fees" inputMode="decimal" value={r.fees} onChange={(e) => update(r.key, 'fees', e.target.value)} placeholder="0" /></td>
+                  <td>
+                    <input
+                      aria-label="Loan name"
+                      value={r.name}
+                      onChange={(e) => update(r.key, 'name', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label="Amount"
+                      inputMode="decimal"
+                      value={r.principal}
+                      onChange={(e) => update(r.key, 'principal', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label="APR"
+                      inputMode="decimal"
+                      value={r.rate}
+                      onChange={(e) => update(r.key, 'rate', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label="Term in months"
+                      inputMode="numeric"
+                      value={r.term}
+                      onChange={(e) => update(r.key, 'term', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label="Payment per month"
+                      inputMode="decimal"
+                      value={r.payment}
+                      onChange={(e) => update(r.key, 'payment', e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label="Fees"
+                      inputMode="decimal"
+                      value={r.fees}
+                      onChange={(e) => update(r.key, 'fees', e.target.value)}
+                      placeholder="0"
+                    />
+                  </td>
                   <td>
                     {rows.length > 1 && (
-                      <button type="button" className="tool__icon-button" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} aria-label={`Remove ${r.name}`}>
+                      <button
+                        type="button"
+                        className="tool__icon-button"
+                        onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}
+                        aria-label={`Remove ${r.name}`}
+                      >
                         <X size={13} />
                       </button>
                     )}
@@ -118,7 +170,9 @@ export function LoanCompare() {
           <button
             type="button"
             className="guide-link-button tool__add"
-            onClick={() => setRows((rs) => [...rs, blank(`Loan ${String.fromCharCode(65 + rs.length)}`)])}
+            onClick={() =>
+              setRows((rs) => [...rs, blank(`Loan ${String.fromCharCode(65 + rs.length)}`)])
+            }
           >
             <Plus size={12} aria-hidden /> Add a loan
           </button>
@@ -145,14 +199,21 @@ export function LoanCompare() {
                     {l.name === data.cheapest && <span className="tool__badge">cheapest</span>}
                   </td>
                   <td className="tabular">{formatMoney(Number(l.payment))}</td>
-                  <td>{l.payoff_date ? `${formatDate(l.payoff_date)} (${l.months} mo)` : 'never at this payment'}</td>
+                  <td>
+                    {l.payoff_date
+                      ? `${formatDate(l.payoff_date)} (${l.months} mo)`
+                      : 'never at this payment'}
+                  </td>
                   <td className="tabular">{formatMoney(Number(l.total_interest))}</td>
                   <td className="tabular">{formatMoney(Number(l.total_cost))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="tool__aside">Total cost is the amount borrowed plus all interest plus fees — everything that leaves your pocket.</p>
+          <p className="tool__aside">
+            Total cost is the amount borrowed plus all interest plus fees — everything that leaves
+            your pocket.
+          </p>
         </div>
       )}
     </div>

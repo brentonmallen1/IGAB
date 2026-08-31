@@ -4,13 +4,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.settings import SettingResponse, SettingUpdate
 from igab.dependencies import AdminUser, CurrentUser, get_settings_service
 from igab.services.ai_prompts import DEFAULT_PROMPTS
 from igab.services.ai_service import invalidate_capabilities
 from igab.services.settings_service import SettingsService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 EDITABLE_KEYS = {
     "ai_enabled",

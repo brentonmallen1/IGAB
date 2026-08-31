@@ -3,7 +3,19 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Plus, ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
-import { useInfiniteTransactions, useInfiniteBudgetTransactions, usePayees, useBulkUpdateCleared, useBulkCategorize, useBulkDeleteTransactions, useCreateTransaction, useBulkApprove, useMergeTransactions, usePendingReviewCountForAccount, usePendingReviewCount } from '../../../api/transactions'
+import {
+  useInfiniteTransactions,
+  useInfiniteBudgetTransactions,
+  usePayees,
+  useBulkUpdateCleared,
+  useBulkCategorize,
+  useBulkDeleteTransactions,
+  useCreateTransaction,
+  useBulkApprove,
+  useMergeTransactions,
+  usePendingReviewCountForAccount,
+  usePendingReviewCount,
+} from '../../../api/transactions'
 import { useCheckAttachments } from '../../../api/attachments'
 import { useAIJobForTransaction } from '../../../api/aiJobs'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
@@ -14,7 +26,11 @@ import { TransactionRow } from '../TransactionRow/TransactionRow'
 import { TransactionEditor } from '../TransactionEditor/TransactionEditor'
 import { SplitTransactionEditor } from '../SplitTransactionEditor/SplitTransactionEditor'
 import { ScheduledTransactionEditor } from '../../scheduled/ScheduledTransactionEditor'
-import { useScheduledTransactionsByAccount, useEnterScheduledTransaction, useSkipScheduledTransaction } from '../../../api/scheduledTransactions'
+import {
+  useScheduledTransactionsByAccount,
+  useEnterScheduledTransaction,
+  useSkipScheduledTransaction,
+} from '../../../api/scheduledTransactions'
 import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
 import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
@@ -34,7 +50,12 @@ import { SHORTCUTS } from '../../../keyboard/shortcuts'
 import { today } from '../../../utils/dates'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import { useFormatters } from '../../../hooks/useFormatters'
-import type { Transaction, ClearedStatus, ScheduledTransaction, TransactionMatch } from '../../../types'
+import type {
+  Transaction,
+  ClearedStatus,
+  ScheduledTransaction,
+  TransactionMatch,
+} from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import './TransactionTable.css'
@@ -66,12 +87,22 @@ const ALL_ACCOUNTS_HEADER_COLS: { key: SortColumn; label: string }[] = [
 ]
 
 const FREQ_LABELS: Record<string, string> = {
-  daily: 'Daily', weekly: 'Weekly', biweekly: 'Every 2 weeks', monthly: 'Monthly', yearly: 'Yearly',
+  daily: 'Daily',
+  weekly: 'Weekly',
+  biweekly: 'Every 2 weeks',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
 }
 
 type RowItem =
   | { kind: 'single'; key: string; txn: Transaction }
-  | { kind: 'duplicate'; key: string; txn: Transaction; partner: Transaction; match: TransactionMatch }
+  | {
+      kind: 'duplicate'
+      key: string
+      txn: Transaction
+      partner: Transaction
+      match: TransactionMatch
+    }
 
 interface SortableHeaderProps {
   col: SortColumn
@@ -81,10 +112,19 @@ interface SortableHeaderProps {
   onSort: (col: SortColumn) => void
 }
 
-const SortableHeader = memo(function SortableHeader({ col, label, currentCol, currentDir, onSort }: SortableHeaderProps) {
+const SortableHeader = memo(function SortableHeader({
+  col,
+  label,
+  currentCol,
+  currentDir,
+  onSort,
+}: SortableHeaderProps) {
   const isActive = currentCol === col
   return (
-    <button className={`txn-col txn-col--${col} txn-sort-header ${isActive ? 'txn-sort-header--active' : ''}`} onClick={() => onSort(col)}>
+    <button
+      className={`txn-col txn-col--${col} txn-sort-header ${isActive ? 'txn-sort-header--active' : ''}`}
+      onClick={() => onSort(col)}
+    >
       {label}
       {isActive && (currentDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
     </button>
@@ -186,12 +226,13 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const filters = useMemo(
     // account: tokens resolve only in the all-accounts register — per-account
     // pages have no account dimension to filter on
-    () => parseTransactionSearch(
-      transactionSearchQuery,
-      categoryMap,
-      payeeMap,
-      allAccounts ? accountMap : undefined
-    ),
+    () =>
+      parseTransactionSearch(
+        transactionSearchQuery,
+        categoryMap,
+        payeeMap,
+        allAccounts ? accountMap : undefined
+      ),
     [transactionSearchQuery, categoryMap, payeeMap, allAccounts, accountMap]
   )
 
@@ -207,17 +248,13 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   } = allAccounts ? budgetScopedQuery : accountScopedQuery
 
   const transactions = useMemo(() => txnPages?.pages.flat() ?? [], [txnPages])
-  const transactionMap = useMemo(
-    () => new Map(transactions.map((t) => [t.id, t])),
-    [transactions]
-  )
+  const transactionMap = useMemo(() => new Map(transactions.map((t) => [t.id, t])), [transactions])
   const transactionIds = useMemo(() => transactions.map((t) => t.id), [transactions])
   const { data: attachmentMap = {} } = useCheckAttachments(transactionIds)
 
   // Only when the transaction editor is the dialog that is open — activeModal
   // carries one editingId for whichever kind holds the slot.
-  const editingTransactionId =
-    activeModal?.kind === 'transaction' ? activeModal.editingId : null
+  const editingTransactionId = activeModal?.kind === 'transaction' ? activeModal.editingId : null
   const editingTxn = useMemo(
     () => transactions.find((t) => t.id === editingTransactionId) ?? null,
     [transactions, editingTransactionId]
@@ -252,13 +289,19 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           cmp = a.date.localeCompare(b.date)
           break
         case 'account':
-          cmp = (accountMap.get(a.account_id) ?? '').localeCompare(accountMap.get(b.account_id) ?? '')
+          cmp = (accountMap.get(a.account_id) ?? '').localeCompare(
+            accountMap.get(b.account_id) ?? ''
+          )
           break
         case 'payee':
-          cmp = (payeeMap.get(a.payee_id ?? '') ?? '').localeCompare(payeeMap.get(b.payee_id ?? '') ?? '')
+          cmp = (payeeMap.get(a.payee_id ?? '') ?? '').localeCompare(
+            payeeMap.get(b.payee_id ?? '') ?? ''
+          )
           break
         case 'category':
-          cmp = (categoryMap.get(a.category_id ?? '') ?? '').localeCompare(categoryMap.get(b.category_id ?? '') ?? '')
+          cmp = (categoryMap.get(a.category_id ?? '') ?? '').localeCompare(
+            categoryMap.get(b.category_id ?? '') ?? ''
+          )
           break
         case 'memo':
           cmp = (a.memo ?? '').localeCompare(b.memo ?? '')
@@ -269,7 +312,14 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       }
       return transactionSortDirection === 'asc' ? cmp : -cmp
     })
-  }, [transactions, transactionSortColumn, transactionSortDirection, payeeMap, categoryMap, accountMap])
+  }, [
+    transactions,
+    transactionSortColumn,
+    transactionSortDirection,
+    payeeMap,
+    categoryMap,
+    accountMap,
+  ])
 
   // Off-budget accounts don't use categories — their rows never land in the
   // "Needs Review" section or wear the yellow chip
@@ -311,15 +361,15 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     return map
   }, [pendingMatches])
 
-
   const allOrderedIds = useMemo(() => sorted.map((t) => t.id), [sorted])
   const allSelected = sorted.length > 0 && sorted.every((t) => selectedTransactionIds.has(t.id))
   const someSelected = sorted.some((t) => selectedTransactionIds.has(t.id))
 
   const selectedTotal = useMemo(
-    () => transactions
-      .filter((t) => selectedTransactionIds.has(t.id))
-      .reduce((sum, t) => sum + Number(t.amount), 0),
+    () =>
+      transactions
+        .filter((t) => selectedTransactionIds.has(t.id))
+        .reduce((sum, t) => sum + Number(t.amount), 0),
     [transactions, selectedTransactionIds]
   )
   const headerCheckboxRef = useRef<HTMLInputElement>(null)
@@ -338,45 +388,57 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     if (linkedIds.length > 0) selectAllTransactions(linkedIds)
   }, [sorted, selectAllTransactions])
 
-  const hasLinkedTransactions = useMemo(
-    () => sorted.some((t) => t.has_sync_source),
-    [sorted]
+  const hasLinkedTransactions = useMemo(() => sorted.some((t) => t.has_sync_source), [sorted])
+
+  const handleSelect = useCallback(
+    (id: string, shiftKey: boolean) => {
+      toggleTransactionSelection(id, shiftKey, allOrderedIds)
+      onInteraction?.()
+    },
+    [toggleTransactionSelection, allOrderedIds, onInteraction]
   )
 
-  const handleSelect = useCallback((id: string, shiftKey: boolean) => {
-    toggleTransactionSelection(id, shiftKey, allOrderedIds)
-    onInteraction?.()
-  }, [toggleTransactionSelection, allOrderedIds, onInteraction])
+  const handleSort = useCallback(
+    (col: SortColumn) => {
+      if (transactionSortColumn === col) {
+        setTransactionSort(col, transactionSortDirection === 'asc' ? 'desc' : 'asc')
+      } else {
+        setTransactionSort(col, col === 'date' ? 'desc' : 'asc')
+      }
+    },
+    [transactionSortColumn, transactionSortDirection, setTransactionSort]
+  )
 
-  const handleSort = useCallback((col: SortColumn) => {
-    if (transactionSortColumn === col) {
-      setTransactionSort(col, transactionSortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setTransactionSort(col, col === 'date' ? 'desc' : 'asc')
-    }
-  }, [transactionSortColumn, transactionSortDirection, setTransactionSort])
-
-  const handleStartSplit = useCallback((txn: Transaction) => {
-    // An existing split's lines come from the server (the editor fetches
-    // them); this page never holds them, so rebuilding from it produced an
-    // empty draft that saved over the real lines.
-    startSplitEditing(txn.id, Number(txn.amount), txn.is_split)
-  }, [startSplitEditing])
+  const handleStartSplit = useCallback(
+    (txn: Transaction) => {
+      // An existing split's lines come from the server (the editor fetches
+      // them); this page never holds them, so rebuilding from it produced an
+      // empty draft that saved over the real lines.
+      startSplitEditing(txn.id, Number(txn.amount), txn.is_split)
+    },
+    [startSplitEditing]
+  )
 
   // Bulk operations
-  const handleBulkCategorize = useCallback((categoryId: string) => {
-    bulkCategorize.mutate(
-      { transactionIds: [...selectedTransactionIds], categoryId, accountId },
-      { onSuccess: clearTransactionSelection }
-    )
-  }, [bulkCategorize, selectedTransactionIds, accountId, clearTransactionSelection])
+  const handleBulkCategorize = useCallback(
+    (categoryId: string) => {
+      bulkCategorize.mutate(
+        { transactionIds: [...selectedTransactionIds], categoryId, accountId },
+        { onSuccess: clearTransactionSelection }
+      )
+    },
+    [bulkCategorize, selectedTransactionIds, accountId, clearTransactionSelection]
+  )
 
-  const handleBulkSetCleared = useCallback((clearedStatus: ClearedStatus) => {
-    bulkSetCleared.mutate(
-      { transactionIds: [...selectedTransactionIds], cleared: clearedStatus, accountId },
-      { onSuccess: clearTransactionSelection }
-    )
-  }, [bulkSetCleared, selectedTransactionIds, accountId, clearTransactionSelection])
+  const handleBulkSetCleared = useCallback(
+    (clearedStatus: ClearedStatus) => {
+      bulkSetCleared.mutate(
+        { transactionIds: [...selectedTransactionIds], cleared: clearedStatus, accountId },
+        { onSuccess: clearTransactionSelection }
+      )
+    },
+    [bulkSetCleared, selectedTransactionIds, accountId, clearTransactionSelection]
+  )
 
   const handleBulkDelete = useCallback(async () => {
     const eligibleIds = [...selectedTransactionIds].filter((id) => {
@@ -389,25 +451,37 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     if (count > 0) {
       showUndo(result.batch_id, `${count} transaction${count > 1 ? 's' : ''} deleted`)
     }
-  }, [bulkDelete, selectedTransactionIds, transactionMap, accountId, clearTransactionSelection, showUndo])
+  }, [
+    bulkDelete,
+    selectedTransactionIds,
+    transactionMap,
+    accountId,
+    clearTransactionSelection,
+    showUndo,
+  ])
 
-  const duplicateTransaction = useCallback((txn: Transaction) => {
-    createTxn.mutate({
-      account_id: txn.account_id,
-      date: today(),
-      amount: Number(txn.amount),
-      payee_id: txn.payee_id ?? undefined,
-      category_id: txn.category_id ?? undefined,
-      memo: txn.memo ?? undefined,
-      cleared: 'uncleared',
-      approved: false,
-    })
-  }, [createTxn])
+  const duplicateTransaction = useCallback(
+    (txn: Transaction) => {
+      createTxn.mutate({
+        account_id: txn.account_id,
+        date: today(),
+        amount: Number(txn.amount),
+        payee_id: txn.payee_id ?? undefined,
+        category_id: txn.category_id ?? undefined,
+        memo: txn.memo ?? undefined,
+        cleared: 'uncleared',
+        approved: false,
+      })
+    },
+    [createTxn]
+  )
 
   const handleBulkDuplicate = useCallback(() => {
     const selected = [...selectedTransactionIds]
       .map((id) => transactionMap.get(id))
-      .filter((t): t is Transaction => !!t && t.cleared !== 'reconciled' && !t.parent_transaction_id)
+      .filter(
+        (t): t is Transaction => !!t && t.cleared !== 'reconciled' && !t.parent_transaction_id
+      )
     selected.forEach(duplicateTransaction)
     clearTransactionSelection()
   }, [selectedTransactionIds, transactionMap, duplicateTransaction, clearTransactionSelection])
@@ -436,10 +510,11 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   }, [bulkApprove, selectedTransactionIds, accountId, clearTransactionSelection])
 
   const canApprove = useMemo(
-    () => [...selectedTransactionIds].some((id) => {
-      const t = transactionMap.get(id)
-      return t && !t.approved && t.cleared !== 'reconciled'
-    }),
+    () =>
+      [...selectedTransactionIds].some((id) => {
+        const t = transactionMap.get(id)
+        return t && !t.approved && t.cleared !== 'reconciled'
+      }),
     [selectedTransactionIds, transactionMap]
   )
 
@@ -451,7 +526,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     if (!t1 || !t2) return null
     if (t1.account_id !== t2.account_id) return null
     if (t1.cleared === 'reconciled' && t2.cleared === 'reconciled') return null
-    if (t1.is_split || t2.is_split || t1.parent_transaction_id || t2.parent_transaction_id) return null
+    if (t1.is_split || t2.is_split || t1.parent_transaction_id || t2.parent_transaction_id)
+      return null
     if (t1.transfer_id || t2.transfer_id) return null
     return [t1, t2]
   }, [selectedTransactionIds, transactionMap])
@@ -463,20 +539,22 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     return txn
   }, [selectedTransactionIds, transactionMap])
 
-  const handleConfirmMerge = useCallback(async (survivorId?: string) => {
-    await mergeTxns.mutateAsync(
-      { transactionIds: [...selectedTransactionIds], survivorId },
-    )
-    setShowMergeModal(false)
-    clearTransactionSelection()
-    toast.success('Transactions merged')
-  }, [mergeTxns, selectedTransactionIds, clearTransactionSelection])
+  const handleConfirmMerge = useCallback(
+    async (survivorId?: string) => {
+      await mergeTxns.mutateAsync({ transactionIds: [...selectedTransactionIds], survivorId })
+      setShowMergeModal(false)
+      clearTransactionSelection()
+      toast.success('Transactions merged')
+    },
+    [mergeTxns, selectedTransactionIds, clearTransactionSelection]
+  )
 
   const categoryComboboxOptions = useMemo<ComboboxOption[]>(
-    () => categories.map((c) => {
-      const group = categoryGroups.find((g) => g.id === c.category_group_id)
-      return { id: c.id, label: c.name, group: group?.name ?? '' }
-    }),
+    () =>
+      categories.map((c) => {
+        const group = categoryGroups.find((g) => g.id === c.category_group_id)
+        return { id: c.id, label: c.name, group: group?.name ?? '' }
+      }),
     [categories, categoryGroups]
   )
 
@@ -488,7 +566,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       payeeMap,
       accountMap
     )
-    const catName = s.category_id ? categoryMap.get(s.category_id) ?? '—' : '—'
+    const catName = s.category_id ? (categoryMap.get(s.category_id) ?? '—') : '—'
 
     return (
       <div
@@ -518,7 +596,10 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         <div className="txn-col txn-col--inflow tabular">
           {!isOutflow ? formatMoney(amount) : ''}
         </div>
-        <div className="txn-col txn-col--cleared upcoming-row__actions" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="txn-col txn-col--cleared upcoming-row__actions"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             className="upcoming-row__btn"
             title="Enter now"
@@ -540,9 +621,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     )
   }
 
-  const handleEdit = useCallback((txn: Transaction) => {
-    openModal('transaction', txn.id)
-  }, [openModal])
+  const handleEdit = useCallback(
+    (txn: Transaction) => {
+      openModal('transaction', txn.id)
+    },
+    [openModal]
+  )
 
   function renderTxnRow(txn: Transaction) {
     return (
@@ -582,35 +666,38 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // Group transactions into renderable units (single rows, or duplicate pairs
   // sharing one match bar) so both the small sections and the virtualized
   // main list render from the same structure.
-  const buildRowItems = useCallback((txns: Transaction[]): RowItem[] => {
-    const rendered = new Set<string>()
-    const items: RowItem[] = []
+  const buildRowItems = useCallback(
+    (txns: Transaction[]): RowItem[] => {
+      const rendered = new Set<string>()
+      const items: RowItem[] = []
 
-    for (const txn of txns) {
-      if (rendered.has(txn.id)) continue
+      for (const txn of txns) {
+        if (rendered.has(txn.id)) continue
 
-      const match = pendingMatchMap.get(txn.id)
-      if (match) {
-        const partnerId =
-          match.synced_transaction_id === txn.id
-            ? match.manual_transaction_id
-            : match.synced_transaction_id
-        const partnerTxn = txns.find((t) => t.id === partnerId)
+        const match = pendingMatchMap.get(txn.id)
+        if (match) {
+          const partnerId =
+            match.synced_transaction_id === txn.id
+              ? match.manual_transaction_id
+              : match.synced_transaction_id
+          const partnerTxn = txns.find((t) => t.id === partnerId)
 
-        if (partnerTxn && !rendered.has(partnerId)) {
-          rendered.add(txn.id)
-          rendered.add(partnerId)
-          items.push({ kind: 'duplicate', key: match.id, txn, partner: partnerTxn, match })
-          continue
+          if (partnerTxn && !rendered.has(partnerId)) {
+            rendered.add(txn.id)
+            rendered.add(partnerId)
+            items.push({ kind: 'duplicate', key: match.id, txn, partner: partnerTxn, match })
+            continue
+          }
         }
+
+        rendered.add(txn.id)
+        items.push({ kind: 'single', key: txn.id, txn })
       }
 
-      rendered.add(txn.id)
-      items.push({ kind: 'single', key: txn.id, txn })
-    }
-
-    return items
-  }, [pendingMatchMap])
+      return items
+    },
+    [pendingMatchMap]
+  )
 
   function renderItem(item: RowItem) {
     if (item.kind === 'duplicate') {
@@ -656,10 +743,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // accounts with thousands of transactions stay smooth. Row heights vary
   // (duplicate groups, inline split editor, mobile cards) so items are
   // measured dynamically.
-  const regularItems = useMemo(
-    () => buildRowItems(regularTxns),
-    [buildRowItems, regularTxns]
-  )
+  const regularItems = useMemo(() => buildRowItems(regularTxns), [buildRowItems, regularTxns])
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null)
@@ -781,99 +865,108 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
       {/* Toolbar, filter chips, selection bar and column header pin together */}
       <Surface variant="chrome" sticky className="transaction-table__chrome">
-      <div className="transaction-table__toolbar">
-        {/* The ⓘ sits beside the box, not inside it: inside, it shared an edge
+        <div className="transaction-table__toolbar">
+          {/* The ⓘ sits beside the box, not inside it: inside, it shared an edge
             with the clear ✕ and took the click meant for it. */}
-        <div className="transaction-table__search-group">
-          <TransactionSearch
-            value={transactionSearchQuery}
-            onChange={setTransactionSearch}
-          />
-          <span className="transaction-table__search-help">
-            <SearchHelp />
-          </span>
+          <div className="transaction-table__search-group">
+            <TransactionSearch value={transactionSearchQuery} onChange={setTransactionSearch} />
+            <span className="transaction-table__search-help">
+              <SearchHelp />
+            </span>
+          </div>
+          <button className="transaction-table__add-btn" onClick={() => openModal('transaction')}>
+            <Plus size={14} />
+            Add Transaction
+          </button>
         </div>
-        <button className="transaction-table__add-btn" onClick={() => openModal('transaction')}>
-          <Plus size={14} />
-          Add Transaction
-        </button>
-      </div>
 
-      <SearchFilterChips
-        query={transactionSearchQuery}
-        categoryMap={categoryMap}
-        payeeMap={payeeMap}
-        accountMap={allAccounts ? accountMap : EMPTY_ACCOUNT_MAP}
-        onChange={setTransactionSearch}
-      />
-
-      {/* Selection bar */}
-      {someSelected && (
-        <SelectionActionBar
-          selectedCount={selectedTransactionIds.size}
-          selectedTotal={selectedTotal}
-          categoryOptions={categoryComboboxOptions}
-          onCategorize={handleBulkCategorize}
-          onSetCleared={handleBulkSetCleared}
-          onDelete={handleBulkDelete}
-          onDuplicate={handleBulkDuplicate}
-          onClear={clearTransactionSelection}
-          onApprove={canApprove ? handleBulkApprove : undefined}
-          onMerge={() => setShowMergeModal(true)}
-          canMerge={!!mergeEligiblePair}
-          onEdit={editableSelectedTxn ? () => openModal('transaction', editableSelectedTxn.id) : undefined}
-          onAttachments={() => {
-            setShowAttachmentPanel(true)
-            setAttachmentTxnId(Array.from(selectedTransactionIds)[0])
-          }}
+        <SearchFilterChips
+          query={transactionSearchQuery}
+          categoryMap={categoryMap}
+          payeeMap={payeeMap}
+          accountMap={allAccounts ? accountMap : EMPTY_ACCOUNT_MAP}
+          onChange={setTransactionSearch}
         />
-      )}
 
-      {/* Sticky header */}
-      <div className="transaction-table__header">
-        <div className="txn-col txn-col--checkbox txn-col--checkbox-group">
-          <input
-            ref={headerCheckboxRef}
-            type="checkbox"
-            className="txn-checkbox txn-checkbox--header"
-            checked={allSelected}
-            onChange={handleSelectAll}
-            aria-label="Select all transactions"
+        {/* Selection bar */}
+        {someSelected && (
+          <SelectionActionBar
+            selectedCount={selectedTransactionIds.size}
+            selectedTotal={selectedTotal}
+            categoryOptions={categoryComboboxOptions}
+            onCategorize={handleBulkCategorize}
+            onSetCleared={handleBulkSetCleared}
+            onDelete={handleBulkDelete}
+            onDuplicate={handleBulkDuplicate}
+            onClear={clearTransactionSelection}
+            onApprove={canApprove ? handleBulkApprove : undefined}
+            onMerge={() => setShowMergeModal(true)}
+            canMerge={!!mergeEligiblePair}
+            onEdit={
+              editableSelectedTxn
+                ? () => openModal('transaction', editableSelectedTxn.id)
+                : undefined
+            }
+            onAttachments={() => {
+              setShowAttachmentPanel(true)
+              setAttachmentTxnId(Array.from(selectedTransactionIds)[0])
+            }}
           />
-          {hasLinkedTransactions && (
-            <button
-              className="txn-select-linked-btn"
-              onClick={handleSelectLinked}
-              aria-label="Select linked transactions"
-              title="Select linked transactions"
-            >
-              <Link2 size={10} />
-            </button>
-          )}
+        )}
+
+        {/* Sticky header */}
+        <div className="transaction-table__header">
+          <div className="txn-col txn-col--checkbox txn-col--checkbox-group">
+            <input
+              ref={headerCheckboxRef}
+              type="checkbox"
+              className="txn-checkbox txn-checkbox--header"
+              checked={allSelected}
+              onChange={handleSelectAll}
+              aria-label="Select all transactions"
+            />
+            {hasLinkedTransactions && (
+              <button
+                className="txn-select-linked-btn"
+                onClick={handleSelectLinked}
+                aria-label="Select linked transactions"
+                title="Select linked transactions"
+              >
+                <Link2 size={10} />
+              </button>
+            )}
+          </div>
+          <div
+            className="txn-col txn-col--status txn-col--status-header"
+            title="Transaction status"
+          >
+            <Info size={11} />
+          </div>
+          {(allAccounts ? ALL_ACCOUNTS_HEADER_COLS : HEADER_COLS).map(({ key, label }) => (
+            <SortableHeader
+              key={key}
+              col={key}
+              label={label}
+              currentCol={transactionSortColumn}
+              currentDir={transactionSortDirection}
+              onSort={handleSort}
+            />
+          ))}
+          <button
+            className={`txn-col txn-col--amount txn-col--header-center txn-sort-header ${transactionSortColumn === 'amount' ? 'txn-sort-header--active' : ''}`}
+            onClick={() => handleSort('amount')}
+          >
+            Outflow
+            {transactionSortColumn === 'amount' &&
+              (transactionSortDirection === 'asc' ? (
+                <ChevronUp size={11} />
+              ) : (
+                <ChevronDown size={11} />
+              ))}
+          </button>
+          <div className="txn-col txn-col--inflow txn-col--header-center">Inflow</div>
+          <div className="txn-col txn-col--cleared txn-col--header-center">Cleared</div>
         </div>
-        <div className="txn-col txn-col--status txn-col--status-header" title="Transaction status">
-          <Info size={11} />
-        </div>
-        {(allAccounts ? ALL_ACCOUNTS_HEADER_COLS : HEADER_COLS).map(({ key, label }) => (
-          <SortableHeader
-            key={key}
-            col={key}
-            label={label}
-            currentCol={transactionSortColumn}
-            currentDir={transactionSortDirection}
-            onSort={handleSort}
-          />
-        ))}
-        <button
-          className={`txn-col txn-col--amount txn-col--header-center txn-sort-header ${transactionSortColumn === 'amount' ? 'txn-sort-header--active' : ''}`}
-          onClick={() => handleSort('amount')}
-        >
-          Outflow
-          {transactionSortColumn === 'amount' && (transactionSortDirection === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
-        </button>
-        <div className="txn-col txn-col--inflow txn-col--header-center">Inflow</div>
-        <div className="txn-col txn-col--cleared txn-col--header-center">Cleared</div>
-      </div>
       </Surface>
 
       {isLoading ? (
@@ -939,9 +1032,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             })}
           </div>
           <div ref={sentinelRef} className="transaction-table__sentinel" />
-          {isFetchingNextPage && (
-            <div className="transaction-table__loading">Loading more…</div>
-          )}
+          {isFetchingNextPage && <div className="transaction-table__loading">Loading more…</div>}
         </>
       )}
 

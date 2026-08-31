@@ -84,9 +84,7 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
         </div>
         {liability.promo_end_date && (
           <div className="liability-terms__item">
-            <span className="liability-terms__value">
-              {formatMonth(liability.promo_end_date)}
-            </span>
+            <span className="liability-terms__value">{formatMonth(liability.promo_end_date)}</span>
             <span className="liability-terms__label">
               {liability.promo_deferred_interest ? 'Promo ends (deferred)' : 'Promo ends'}
             </span>

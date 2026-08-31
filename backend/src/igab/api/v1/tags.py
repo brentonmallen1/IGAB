@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.tag import (
     BulkSetCategoryTagsRequest,
     SetTagsRequest,
@@ -31,7 +32,7 @@ from igab.repositories.tag_repo import (
     seed_system_tags,
 )
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get("/{budget_id}/tags", response_model=list[TagOut])

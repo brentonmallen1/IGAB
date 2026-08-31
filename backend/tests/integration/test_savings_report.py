@@ -60,15 +60,11 @@ async def test_balances_carry_prior_history_then_accumulate_monthly(db_session):
 
     # Prior history (before the 3-month window): 1000 assigned, 100 spent
     await create_budget_assignment(db_session, budget, ef, months_ago(5), "1000.00")
-    await create_transaction(
-        db_session, budget, checking, "-100.00", months_ago(5), category=ef
-    )
+    await create_transaction(db_session, budget, checking, "-100.00", months_ago(5), category=ef)
     # In-window: two deposits, one withdrawal
     await create_budget_assignment(db_session, budget, ef, months_ago(2), "500.00")
     await create_budget_assignment(db_session, budget, ef, months_ago(1), "500.00")
-    await create_transaction(
-        db_session, budget, checking, "-200.00", months_ago(1), category=ef
-    )
+    await create_transaction(db_session, budget, checking, "-200.00", months_ago(1), category=ef)
     # long_term_expense categories belong in the report too
     await create_budget_assignment(db_session, budget, lt, months_ago(0), "250.00")
 

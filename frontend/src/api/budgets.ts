@@ -4,6 +4,7 @@ import { invalidateAfterImport } from './invalidateAfterImport'
 import { confirmAsync } from '../stores/confirmStore'
 import type { Budget, BudgetMonth } from '../types'
 import type { YnabImportResult } from './imports'
+import { ROOT } from './queryKeys'
 
 export interface YnabImportBudgetResult {
   budget: Budget
@@ -24,7 +25,7 @@ export async function fetchBudgetMonth(budgetId: string, month: string): Promise
 
 export function useBudgets() {
   return useQuery({
-    queryKey: ['budgets'],
+    queryKey: [ROOT.budgets],
     queryFn: fetchBudgets,
     staleTime: 60_000,
   })
@@ -32,7 +33,7 @@ export function useBudgets() {
 
 export function useBudgetMonth(budgetId: string | null, month: string) {
   return useQuery({
-    queryKey: ['budgetMonth', budgetId, month],
+    queryKey: [ROOT.budgetMonth, budgetId, month],
     queryFn: () => fetchBudgetMonth(budgetId!, month),
     enabled: !!budgetId,
     staleTime: 10_000,
@@ -119,14 +120,18 @@ export function useSetAssignment(budgetId: string) {
       month: string
       amount: number
     }) =>
-      apiClient.patch(`/categories/${categoryId}/assignment`, { amount }, {
-        params: { month, budget_id: budgetId },
-      }),
+      apiClient.patch(
+        `/categories/${categoryId}/assignment`,
+        { amount },
+        {
+          params: { month, budget_id: budgetId },
+        }
+      ),
     // Optimistic: the row and month totals update instantly; the server
     // refetch below reconciles cross-month ripple effects.
     onMutate: async ({ categoryId, month, amount }) => {
-      await qc.cancelQueries({ queryKey: ['budgetMonth', budgetId, month] })
-      const previous = qc.getQueryData<BudgetMonth>(['budgetMonth', budgetId, month])
+      await qc.cancelQueries({ queryKey: [ROOT.budgetMonth, budgetId, month] })
+      const previous = qc.getQueryData<BudgetMonth>([ROOT.budgetMonth, budgetId, month])
       if (previous) {
         const existing = previous.category_balances.find((b) => b.category_id === categoryId)
         const delta = amount - Number(existing?.assigned ?? 0)
@@ -161,7 +166,7 @@ export function useSetAssignment(budgetId: string) {
                 credit_overspent: 0,
               },
             ]
-        qc.setQueryData<BudgetMonth>(['budgetMonth', budgetId, month], {
+        qc.setQueryData<BudgetMonth>([ROOT.budgetMonth, budgetId, month], {
           ...previous,
           total_assigned: Number(previous.total_assigned) + delta,
           to_be_assigned: Number(previous.to_be_assigned) - delta,
@@ -172,7 +177,7 @@ export function useSetAssignment(budgetId: string) {
     },
     onError: (_err, { month }, context) => {
       if (context?.previous) {
-        qc.setQueryData(['budgetMonth', budgetId, month], context.previous)
+        qc.setQueryData([ROOT.budgetMonth, budgetId, month], context.previous)
       }
     },
     onSettled: () => {
@@ -181,7 +186,7 @@ export function useSetAssignment(budgetId: string) {
       // only once the last of rapid sequential edits settles, so an early
       // refetch can't clobber a later edit's optimistic state.
       if (qc.isMutating({ mutationKey: ['setAssignment', budgetId] }) === 1) {
-        qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+        qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
       }
     },
   })
@@ -207,8 +212,8 @@ export function useMoveMoney(budgetId: string) {
       month: string
     }) => apiClient.post(`/${budgetId}/budget/move-money`, data),
     onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })
     },
   })
 }
@@ -221,17 +226,17 @@ export function useUndoMove(budgetId: string) {
     mutationFn: (move: { id: string; month: string }) =>
       apiClient.post(`/${budgetId}/budget/moves/${move.id}/undo`),
     onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
-      qc.invalidateQueries({ queryKey: ['assignStrategies', budgetId, month] })
-      qc.invalidateQueries({ queryKey: ['changes', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.assignStrategies, budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.changes, budgetId] })
     },
   })
 }
 
 export function useMoveHistory(budgetId: string, month: string, enabled: boolean) {
   return useQuery({
-    queryKey: ['budgetMoves', budgetId, month],
+    queryKey: [ROOT.budgetMoves, budgetId, month],
     queryFn: () =>
       apiClient
         .get<BudgetMove[]>(`/${budgetId}/budget/moves`, { params: { month } })
@@ -252,10 +257,10 @@ function seedBudgetsCache(qc: ReturnType<typeof useQueryClient>, budget: Budget)
   // no-op on a cold cache, and refetchType 'all' reaches the selector's
   // query when it is not mounted at this moment (plain invalidation only
   // refetches active queries, which read as "budget missing until refresh").
-  qc.setQueryData<Budget[]>(['budgets'], (old) =>
+  qc.setQueryData<Budget[]>([ROOT.budgets], (old) =>
     old ? [...old.filter((b) => b.id !== budget.id), budget] : [budget]
   )
-  return qc.invalidateQueries({ queryKey: ['budgets'], refetchType: 'all' })
+  return qc.invalidateQueries({ queryKey: [ROOT.budgets], refetchType: 'all' })
 }
 
 export function useCreateBudget() {
@@ -297,7 +302,7 @@ export function useRenameBudget() {
   return useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       apiClient.patch<Budget>(`/budgets/${id}`, { name }).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.budgets] }),
   })
 }
 
@@ -314,7 +319,7 @@ export function useUpdateBudget() {
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string } & BudgetUpdate) =>
       apiClient.patch<Budget>(`/budgets/${id}`, data).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.budgets] }),
   })
 }
 
@@ -323,8 +328,12 @@ export function useDeleteBudget() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/budgets/${id}`),
     onSuccess: (_, id) => {
-      qc.setQueryData<Budget[]>(['budgets'], (old) => old?.filter((b) => b.id !== id))
-      return qc.invalidateQueries({ queryKey: ['budgets'] })
+      qc.setQueryData<Budget[]>([ROOT.budgets], (old) => old?.filter((b) => b.id !== id))
+      // `refetchType: 'all'`, matching `seedBudgetsCache` above. Plain
+      // invalidation only refetches ACTIVE queries, and a delete fires from a
+      // menu that may unmount the row it sits on — so the list came back from
+      // cache, still holding the budget, until a reload.
+      return qc.invalidateQueries({ queryKey: [ROOT.budgets], refetchType: 'all' })
     },
   })
 }
@@ -352,7 +361,7 @@ export interface CoverOverspentPreviewResponse {
 
 export function useCoverOverspentPreview(budgetId: string | null, month: string, enabled: boolean) {
   return useQuery({
-    queryKey: ['coverOverspentPreview', budgetId, month],
+    queryKey: [ROOT.coverOverspentPreview, budgetId, month],
     queryFn: () =>
       apiClient
         .get<CoverOverspentPreviewResponse>(`/${budgetId}/cover-overspent/preview`, {
@@ -377,10 +386,10 @@ export function useCoverOverspentApply(budgetId: string) {
         .post<{ batch_id: string | null }>(`/${budgetId}/cover-overspent/apply`, data)
         .then((r) => r.data),
     onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['coverOverspentPreview', budgetId, month] })
-      qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
-      qc.invalidateQueries({ queryKey: ['assignStrategies', budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.coverOverspentPreview, budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.assignStrategies, budgetId, month] })
     },
   })
 }

@@ -23,10 +23,14 @@
   gap: var(--spacing-md);
 }
 
-.dialog--md { --dialog-w: 520px; }
+.dialog--md {
+  --dialog-w: 520px;
+}
 /* Wide enough for a row that carries a name, a group, a tag and a control
    without any of them wrapping. */
-.dialog--lg { --dialog-w: 760px; }
+.dialog--lg {
+  --dialog-w: 760px;
+}
 
 .dialog__scroll {
   display: flex;
@@ -62,7 +66,9 @@
   display: flex;
 }
 
-.dialog__head button:hover { color: var(--text-primary); }
+.dialog__head button:hover {
+  color: var(--text-primary);
+}
 
 .dialog__footer {
   display: flex;
@@ -79,7 +85,9 @@
   line-height: 1.65;
 }
 
-.dialog__body--muted { color: var(--text-muted); }
+.dialog__body--muted {
+  color: var(--text-muted);
+}
 
 .dialog__link {
   display: inline-flex;
@@ -91,7 +99,9 @@
   text-decoration: none;
 }
 
-.dialog__link:hover { text-decoration: underline; }
+.dialog__link:hover {
+  text-decoration: underline;
+}
 
 @media (max-width: 768px) {
   /* The bottom sheet supplies the panel, the title and the footer slot, so
@@ -103,5 +113,7 @@
     max-height: none;
     overflow: visible;
   }
-  .dialog__scroll { overflow-y: visible; }
+  .dialog__scroll {
+    overflow-y: visible;
+  }
 }

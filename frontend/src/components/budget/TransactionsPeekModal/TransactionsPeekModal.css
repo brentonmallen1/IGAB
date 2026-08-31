@@ -195,7 +195,9 @@
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
   background-color: transparent;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .category-txns__footer-btn:hover {

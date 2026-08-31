@@ -12,7 +12,9 @@ import type { PlanRealityCell } from '../../../types'
 import { ReportRangeButtons } from './rangeButtons'
 import './PlanVsRealityReport.css'
 
-interface Props { budgetId: string }
+interface Props {
+  budgetId: string
+}
 
 /** A month is "active" when the plan or reality was non-zero — same rule the
  * backend uses for months_active/months_over. */
@@ -44,7 +46,10 @@ export function PlanVsRealityReport({ budgetId }: Props) {
 
   function drillTo(categoryId: string, label: string, startMonth: string, endMonth: string) {
     setDrillDown({
-      kind: 'category', label, scope: 'leaf', direction: 'outflow',
+      kind: 'category',
+      label,
+      scope: 'leaf',
+      direction: 'outflow',
       categoryIds: [categoryId],
       startDate: monthWindow(startMonth.slice(0, 7)).start,
       endDate: monthWindow(endMonth.slice(0, 7)).end,
@@ -60,7 +65,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
 
   const maxOver = Math.max(
     ...categories.flatMap((c) => c.monthly.map((m) => -Number(m.variance))),
-    1,
+    1
   )
 
   return (
@@ -68,17 +73,26 @@ export function PlanVsRealityReport({ budgetId }: Props) {
       <div className="report-section__header">
         <h2 className="report-section__title">Plan vs Reality</h2>
         <ReportInfoButton title="Plan vs Reality">
-          <p>Each cell compares what you <strong>assigned</strong> to a category in a month against what you actually <strong>spent</strong> that month. Red cells mean spending exceeded the month's plan; the deeper the red, the bigger the overrun.</p>
-          <p>Unlike the envelope view, this deliberately <strong>ignores carryover</strong> — a category coasting on last month's surplus is still over-plan if nothing was assigned this month. It measures planning discipline, not envelope health.</p>
-          <p>A category over plan in <strong>3 of the last 6 months</strong> is flagged as chronic — a sign its budget doesn't match how you actually spend. Click a cell to see that month's transactions.</p>
+          <p>
+            Each cell compares what you <strong>assigned</strong> to a category in a month against
+            what you actually <strong>spent</strong> that month. Red cells mean spending exceeded
+            the month's plan; the deeper the red, the bigger the overrun.
+          </p>
+          <p>
+            Unlike the envelope view, this deliberately <strong>ignores carryover</strong> — a
+            category coasting on last month's surplus is still over-plan if nothing was assigned
+            this month. It measures planning discipline, not envelope health.
+          </p>
+          <p>
+            A category over plan in <strong>3 of the last 6 months</strong> is flagged as chronic —
+            a sign its budget doesn't match how you actually spend. Click a cell to see that month's
+            transactions.
+          </p>
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Assigned vs spent per month — carryover ignored</p>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
-          <ReportRangeButtons
-            months={months}
-            onChange={setMonths}
-          />
+          <ReportRangeButtons months={months} onChange={setMonths} />
           <label className="report-toggle">
             <input
               type="checkbox"
@@ -133,13 +147,17 @@ export function PlanVsRealityReport({ budgetId }: Props) {
               <caption className="sr-only">Budget variance by category and month</caption>
               <thead>
                 <tr>
-                  <th scope="col" className="plan-reality__cat-header">Category</th>
+                  <th scope="col" className="plan-reality__cat-header">
+                    Category
+                  </th>
                   {allMonths.map((m) => (
                     <th scope="col" key={m} className="plan-reality__month-header">
                       {m.slice(0, 7)}
                     </th>
                   ))}
-                  <th scope="col" className="plan-reality__over-header">Over</th>
+                  <th scope="col" className="plan-reality__over-header">
+                    Over
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -152,7 +170,12 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                         title={`${cat.category_name} — all months`}
                         onClick={() =>
                           allMonths.length > 0 &&
-                          drillTo(cat.category_id, cat.category_name, allMonths[0], allMonths[allMonths.length - 1])
+                          drillTo(
+                            cat.category_id,
+                            cat.category_name,
+                            allMonths[0],
+                            allMonths[allMonths.length - 1]
+                          )
                         }
                       >
                         <span className="plan-reality__cat-name">{cat.category_name}</span>
@@ -177,7 +200,13 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                           title={`${cat.category_name} · ${ym} — assigned ${formatMoney(Number(cell.assigned))}, spent ${formatMoney(Number(cell.spent))}`}
                           onClick={
                             active
-                              ? () => drillTo(cat.category_id, `${cat.category_name} · ${ym}`, cell.month, cell.month)
+                              ? () =>
+                                  drillTo(
+                                    cat.category_id,
+                                    `${cat.category_name} · ${ym}`,
+                                    cell.month,
+                                    cell.month
+                                  )
                               : undefined
                           }
                         >

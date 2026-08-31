@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.backups import (
     BackupFile,
     BackupJob,
@@ -18,7 +19,7 @@ from igab.domain.exceptions import AuthenticationError
 from igab.services import backup_service
 from igab.services.auth_service import decode_token
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 async def _verify_token_only(

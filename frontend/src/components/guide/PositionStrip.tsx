@@ -27,7 +27,13 @@ function scrollToStage(view: RoadmapView, id: StageId) {
 }
 
 /** The quiet chip on a stage row: "you are here", or how it was settled. */
-export function StageStatusChip({ verdict, current }: { verdict?: StageVerdict; current: boolean }) {
+export function StageStatusChip({
+  verdict,
+  current,
+}: {
+  verdict?: StageVerdict
+  current: boolean
+}) {
   if (current) return <span className="guide-stage__here">you are here</span>
   if (verdict?.status !== 'settled') return null
   return (
@@ -47,8 +53,10 @@ export function StageStatusChip({ verdict, current }: { verdict?: StageVerdict; 
 
 /** The reader's mark as a glyph, for the Map's boxes. */
 export function MarkGlyph({ mark }: { mark?: 'done' | 'skipped' }) {
-  if (mark === 'done') return <Check size={9} className="guide-mark-glyph" aria-label="you marked this done" />
-  if (mark === 'skipped') return <Minus size={9} className="guide-mark-glyph" aria-label="you skipped this" />
+  if (mark === 'done')
+    return <Check size={9} className="guide-mark-glyph" aria-label="you marked this done" />
+  if (mark === 'skipped')
+    return <Minus size={9} className="guide-mark-glyph" aria-label="you skipped this" />
   return null
 }
 
@@ -59,7 +67,9 @@ export function PositionStrip() {
   const openStage = useGuideStore((s) => s.openStage)
 
   const current = position.currentStage ? findStage(position.currentStage) : null
-  const why = position.currentStage ? position.statuses.get(position.currentStage)?.reason : undefined
+  const why = position.currentStage
+    ? position.statuses.get(position.currentStage)?.reason
+    : undefined
 
   function goTo(id: StageId) {
     const target: RoadmapView = view === 'map' ? 'journey' : view

@@ -33,7 +33,8 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   'loan-compare': {
     id: 'loan-compare',
     label: 'Which loan?',
-    blurb: 'Two or more loans side by side: the payment, the interest, and what it all costs with fees.',
+    blurb:
+      'Two or more loans side by side: the payment, the interest, and what it all costs with fees.',
     linkLabel: 'Compare loans',
   },
   'emergency-fund': {

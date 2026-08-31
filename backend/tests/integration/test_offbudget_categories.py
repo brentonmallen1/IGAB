@@ -481,9 +481,7 @@ class TestACategoryMayNotLandOnATrackingAccount:
         # Clean now: the finding is gone and a second run strips nothing.
         report = await AccountHygieneService(db_session).run(budget.id)
         assert all(f.kind != "categorized_tracking_rows" for f in report.findings)
-        assert await services.transactions.repair_tracking_categories(budget.id) == {
-            "stripped": 0
-        }
+        assert await services.transactions.repair_tracking_categories(budget.id) == {"stripped": 0}
 
         # One batch, one undo — both categories come back.
         changes = list(
@@ -525,9 +523,7 @@ class TestHistoryBeforeAnAccountJoinedTheBudget:
         services = make_services(db_session)
         user = await create_user(db_session)
         budget = await create_budget(db_session, user)
-        card = await create_account(
-            db_session, budget, "Sapphire Visa", account_type="credit_card"
-        )
+        card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
         card.budget_start_date = start
         # One row on each side of the line, both plain purchases with no
         # category — identical in every respect except their date.
@@ -581,4 +577,3 @@ class TestHistoryBeforeAnAccountJoinedTheBudget:
 
         assert await services.account_repo.get_uncategorized_count(card.id) == 0
         assert await services.account_repo.get_uncategorized_count(checking.id) == 1
-

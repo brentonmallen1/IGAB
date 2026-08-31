@@ -278,7 +278,9 @@
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
   cursor: pointer;
-  transition: background-color var(--transition-fast), opacity var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    opacity var(--transition-fast);
 }
 
 .txn-duplicate-group__btn:disabled {
@@ -320,7 +322,9 @@
   color: var(--text-muted);
   border-radius: 2px;
   opacity: 0.6;
-  transition: opacity var(--transition-fast), color var(--transition-fast);
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .txn-select-linked-btn:hover {

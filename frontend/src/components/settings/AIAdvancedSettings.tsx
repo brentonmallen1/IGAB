@@ -65,8 +65,7 @@ export function AIAdvancedSettings() {
       toast.success('Saved')
       return true
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(detail ?? 'Save failed')
       return false
     }
@@ -104,8 +103,8 @@ export function AIAdvancedSettings() {
         <div>
           <div className="settings-row__label">Use a different model for vision tasks</div>
           <div className="settings-row__desc">
-            Receipt scanning needs a vision-capable model. Off = the main model handles
-            everything; on = pick a dedicated one (e.g. a small OCR model).
+            Receipt scanning needs a vision-capable model. Off = the main model handles everything;
+            on = pick a dedicated one (e.g. a small OCR model).
           </div>
         </div>
         <label className="ai-settings__toggle">
@@ -171,10 +170,7 @@ export function AIAdvancedSettings() {
         </select>
       </div>
 
-      <button
-        className="ai-settings__collapse-toggle"
-        onClick={() => setAdvancedOpen((v) => !v)}
-      >
+      <button className="ai-settings__collapse-toggle" onClick={() => setAdvancedOpen((v) => !v)}>
         {advancedOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         Advanced model options
       </button>
@@ -211,8 +207,8 @@ export function AIAdvancedSettings() {
             <div>
               <div className="settings-row__label">Ollama options (all tasks)</div>
               <div className="settings-row__desc">
-                JSON passed straight to Ollama's options — see your model's page for
-                supported keys, e.g. {'{"num_ctx": 8192}'}.
+                JSON passed straight to Ollama's options — see your model's page for supported keys,
+                e.g. {'{"num_ctx": 8192}'}.
               </div>
             </div>
             <textarea

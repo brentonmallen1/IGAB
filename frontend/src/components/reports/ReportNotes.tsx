@@ -62,8 +62,8 @@ export function ReportNotes({ report, toggleAvailable }: Props) {
             {report.view_hidden_categories === 1
               ? '1 category'
               : `${report.view_hidden_categories} categories`}{' '}
-            with {formatMoney(Number(report.view_hidden_total))} of spending in this window —
-            edit the view or switch it off to see everything.
+            with {formatMoney(Number(report.view_hidden_total))} of spending in this window — edit
+            the view or switch it off to see everything.
           </span>
         </p>
       )}
@@ -79,7 +79,6 @@ export function ReportNotes({ report, toggleAvailable }: Props) {
     </div>
   )
 }
-
 
 /**
  * The one control that adds savings and debt payments back into a spending

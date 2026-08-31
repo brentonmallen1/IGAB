@@ -54,12 +54,19 @@
 }
 
 @keyframes nl-mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent); }
-  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 12%, transparent); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nl-form__mic--listening { animation: none; }
+  .nl-form__mic--listening {
+    animation: none;
+  }
 }
 
 .nl-form__parse {

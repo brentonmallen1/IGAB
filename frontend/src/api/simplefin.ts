@@ -8,6 +8,7 @@ import type {
   SyncResult,
   TransactionMatch,
 } from '../types'
+import { ROOT } from './queryKeys'
 
 /**
  * Whether the server can run bank sync. Asked before the setup form is shown:
@@ -16,7 +17,7 @@ import type {
  */
 export function useSimpleFINConfig() {
   return useQuery({
-    queryKey: ['simplefin-config'],
+    queryKey: [ROOT.simplefinConfig],
     queryFn: async () => {
       const { data } = await apiClient.get<SimpleFINConfig>('/simplefin/config')
       return data
@@ -27,7 +28,7 @@ export function useSimpleFINConfig() {
 
 export function useSimpleFINConnections() {
   return useQuery({
-    queryKey: ['simplefin-connections'],
+    queryKey: [ROOT.simplefinConnections],
     queryFn: async () => {
       const { data } = await apiClient.get<SimpleFINConnection[]>('/simplefin/connections')
       return data
@@ -38,10 +39,10 @@ export function useSimpleFINConnections() {
 
 export function useSimpleFINRateLimitStatus(connectionId: string | null) {
   return useQuery({
-    queryKey: ['simplefin-rate-limit', connectionId],
+    queryKey: [ROOT.simplefinRateLimit, connectionId],
     queryFn: async () => {
       const { data } = await apiClient.get<SimpleFINRateLimitStatus>(
-        `/simplefin/connections/${connectionId}/status`,
+        `/simplefin/connections/${connectionId}/status`
       )
       return data
     },
@@ -56,11 +57,9 @@ export function useSetupSimpleFIN() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (setup_token: string) =>
-      apiClient
-        .post<SimpleFINConnection>('/simplefin/setup', { setup_token })
-        .then((r) => r.data),
+      apiClient.post<SimpleFINConnection>('/simplefin/setup', { setup_token }).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinConnections] })
     },
   })
 }
@@ -81,7 +80,7 @@ export function useUpdateSimpleFINConnection() {
         .put<SimpleFINConnection>(`/simplefin/connections/${id}`, updates)
         .then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinConnections] })
     },
   })
 }
@@ -91,7 +90,7 @@ export function useDeleteSimpleFINConnection() {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/simplefin/connections/${id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinConnections] })
     },
   })
 }
@@ -115,7 +114,7 @@ export function useSyncSimpleFIN(budgetId: string | null) {
               budget_id: budgetId,
               ...(accountSimplefinId ? { account_simplefin_id: accountSimplefinId } : {}),
             },
-          },
+          }
         )
         .then((r) => r.data),
     onSuccess: () => {
@@ -123,9 +122,9 @@ export function useSyncSimpleFIN(budgetId: string | null) {
       // hygiene — the shared sweep covers what per-key lists kept missing
       // (new payees rendered "—" until their staleTime lapsed).
       invalidateAfterImport(qc, budgetId)
-      qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
-      qc.invalidateQueries({ queryKey: ['simplefin-rate-limit'] })
-      qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinConnections] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinRateLimit] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
     },
   })
 }
@@ -165,9 +164,9 @@ export function useSyncAllSimpleFIN(budgetId: string | null) {
     onSuccess: () => {
       // A sync is an import — same sweep the single-connection sync uses.
       invalidateAfterImport(qc, budgetId)
-      qc.invalidateQueries({ queryKey: ['simplefin-connections'] })
-      qc.invalidateQueries({ queryKey: ['simplefin-rate-limit'] })
-      qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinConnections] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinRateLimit] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
     },
   })
 }
@@ -201,7 +200,7 @@ export function useLinkSimpleFINAccount(accountId: string) {
         simplefin_account_name: name,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accounts'] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
     },
   })
 }
@@ -211,7 +210,7 @@ export function useUnlinkSimpleFINAccount(accountId: string) {
   return useMutation({
     mutationFn: () => apiClient.delete(`/accounts/${accountId}/link-simplefin`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accounts'] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
     },
   })
 }
@@ -224,17 +223,17 @@ export function useUpdateAccountSimpleFINSettings(accountId: string) {
         params: { simplefin_sync_enabled },
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accounts'] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
     },
   })
 }
 
 export function useSimpleFINRemoteAccounts(connectionId: string | null) {
   return useQuery({
-    queryKey: ['simplefin-remote-accounts', connectionId],
+    queryKey: [ROOT.simplefinRemoteAccounts, connectionId],
     queryFn: async () => {
       const { data } = await apiClient.get<{ id: string; name: string }[]>(
-        `/simplefin/connections/${connectionId}/accounts`,
+        `/simplefin/connections/${connectionId}/accounts`
       )
       return data
     },
@@ -245,10 +244,10 @@ export function useSimpleFINRemoteAccounts(connectionId: string | null) {
 
 export function usePendingMatchesForAccount(accountId: string | null) {
   return useQuery({
-    queryKey: ['pending-matches-account', accountId],
+    queryKey: [ROOT.pendingMatchesAccount, accountId],
     queryFn: async () => {
       const { data } = await apiClient.get<TransactionMatch[]>(
-        `/accounts/${accountId}/pending-matches`,
+        `/accounts/${accountId}/pending-matches`
       )
       return data
     },
@@ -259,7 +258,7 @@ export function usePendingMatchesForAccount(accountId: string | null) {
 
 export function usePendingMatches(budgetId: string | null) {
   return useQuery({
-    queryKey: ['simplefin-matches', budgetId],
+    queryKey: [ROOT.simplefinMatches, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<TransactionMatch[]>('/simplefin/matches', {
         params: { budget_id: budgetId },
@@ -274,17 +273,16 @@ export function usePendingMatches(budgetId: string | null) {
 export function useAcceptMatch(accountId?: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (matchId: string) =>
-      apiClient.post(`/simplefin/matches/${matchId}/accept`),
+    mutationFn: (matchId: string) => apiClient.post(`/simplefin/matches/${matchId}/accept`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
-      qc.invalidateQueries({ queryKey: ['pending-matches-account', accountId] })
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
+      qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount, accountId] })
+      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
+      qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
       // Accepting merges away the duplicate — cleared/working balances change
-      qc.invalidateQueries({ queryKey: ['accounts'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
+      qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCount] })
+      qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCountAccount] })
     },
   })
 }
@@ -292,11 +290,10 @@ export function useAcceptMatch(accountId?: string) {
 export function useRejectMatch(accountId?: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (matchId: string) =>
-      apiClient.post(`/simplefin/matches/${matchId}/reject`),
+    mutationFn: (matchId: string) => apiClient.post(`/simplefin/matches/${matchId}/reject`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['simplefin-matches'] })
-      qc.invalidateQueries({ queryKey: ['pending-matches-account', accountId] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
+      qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount, accountId] })
     },
   })
 }

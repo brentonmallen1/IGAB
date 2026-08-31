@@ -1,7 +1,14 @@
 import { useState, useCallback } from 'react'
 import {
-  Area, ComposedChart, CartesianGrid, Line, ReferenceLine,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area,
+  ComposedChart,
+  CartesianGrid,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts'
 import { AlertTriangle, Calendar } from 'lucide-react'
 import { useCashProjectionReport } from '../../../api/reports'
@@ -24,12 +31,28 @@ export function CashProjectionReport({ budgetId }: Props) {
   const { data, isLoading, isError, error, refetch } = useCashProjectionReport(budgetId, horizon)
   const { formatMoney, formatDate, settings } = useFormatters()
 
-  const formatShortDate = useCallback((dateStr: string) => {
-    const d = new Date(dateStr + 'T00:00:00')
-    const day = d.getDate()
-    const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]
-    return settings.dateFormat === 'dmy' ? `${day} ${month}` : `${month} ${day}`
-  }, [settings.dateFormat])
+  const formatShortDate = useCallback(
+    (dateStr: string) => {
+      const d = new Date(dateStr + 'T00:00:00')
+      const day = d.getDate()
+      const month = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ][d.getMonth()]
+      return settings.dateFormat === 'dmy' ? `${day} ${month}` : `${month} ${day}`
+    },
+    [settings.dateFormat]
+  )
 
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
@@ -95,8 +118,7 @@ export function CashProjectionReport({ budgetId }: Props) {
         <div className="projection-warning">
           <AlertTriangle size={16} />
           <span>
-            Projection goes negative around{' '}
-            <strong>{formatDate(goesNegativeDate)}</strong>
+            Projection goes negative around <strong>{formatDate(goesNegativeDate)}</strong>
           </span>
         </div>
       )}
@@ -121,7 +143,11 @@ export function CashProjectionReport({ budgetId }: Props) {
               tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
               interval={Math.floor(chartData.length / 8)}
             />
-            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={80} />
+            <YAxis
+              tickFormatter={(v) => formatMoney(v)}
+              tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+              width={80}
+            />
             {goesNegativeDate && (
               <ReferenceLine y={0} stroke="var(--color-negative)" strokeWidth={1} />
             )}

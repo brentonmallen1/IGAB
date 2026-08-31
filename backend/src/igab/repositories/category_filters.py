@@ -142,7 +142,7 @@ IS_CATEGORIZABLE = and_(NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP), not_(LINKED))
 #: A category whose own money can come back on a card: the envelopes
 #: `sum_credit_outflows_by_category` releases against, and so exactly the set
 #: whose complement is an inflow the budget has no claim on
-#: (`txn_filters.UNBUDGETED_CARD_CREDIT`). **Both sides read this constant.**
+#: (`txn_filters.UNCLAIMED_CARD_ROW`). **Both sides read this constant.**
 #:
 #: Not an offering rule, so archived is not in it: an archived envelope still holds
 #: money and its spending still reserves against a card. `LINKED_TO_CARD` is

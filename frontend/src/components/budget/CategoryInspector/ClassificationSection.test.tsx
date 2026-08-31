@@ -7,7 +7,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CategoryClassification } from '../../../types'
 
-const classification = vi.hoisted(() => ({ current: undefined as CategoryClassification | undefined }))
+const classification = vi.hoisted(() => ({
+  current: undefined as CategoryClassification | undefined,
+}))
 
 vi.mock('../../../api/categories', () => ({
   useCategoryClassification: () => ({ data: classification.current }),
@@ -54,9 +56,7 @@ describe('ClassificationSection', () => {
 
   it('renders nothing for an ordinary category', () => {
     classification.current = {
-      classes: [
-        { activity_class: 'spending', label: 'Spending', total: '80.00', count: 4 },
-      ],
+      classes: [{ activity_class: 'spending', label: 'Spending', total: '80.00', count: 4 }],
       window_months: 12,
       dominant: null,
       dominant_label: null,

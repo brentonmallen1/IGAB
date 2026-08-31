@@ -79,16 +79,12 @@ async def test_account_is_transfer(api_client, db_session):
 
 async def test_account_direction_and_transfer_combine(api_client, db_session):
     _, checking, _, spend, _, _, _ = await _setup(api_client, db_session)
-    rows = await _fetch_account(
-        api_client, checking.id, direction="outflow", is_transfer="false"
-    )
+    rows = await _fetch_account(api_client, checking.id, direction="outflow", is_transfer="false")
     assert _ids(rows) == {str(spend.id)}
 
 
 async def test_budget_is_transfer(api_client, db_session):
-    budget, _, _, spend, income, transfer_out, transfer_in = await _setup(
-        api_client, db_session
-    )
+    budget, _, _, spend, income, transfer_out, transfer_in = await _setup(api_client, db_session)
     only_transfers = await _fetch_budget(api_client, budget.id, is_transfer="true")
     assert _ids(only_transfers) == {str(transfer_out.id), str(transfer_in.id)}
     no_transfers = await _fetch_budget(api_client, budget.id, is_transfer="false")

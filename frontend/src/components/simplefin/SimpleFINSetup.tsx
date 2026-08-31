@@ -72,15 +72,15 @@ function ConfigProblemPanel({
             <li>
               Set <code>SIMPLEFIN_ENCRYPTION_KEY</code> to that value wherever this server’s
               environment is configured. On Unraid it is on the container’s edit page with{' '}
-              <strong>Advanced View</strong> turned on — the field is hidden until then. With
-              Docker Compose it goes in <code>.env</code>.
+              <strong>Advanced View</strong> turned on — the field is hidden until then. With Docker
+              Compose it goes in <code>.env</code>.
             </li>
             <li>Restart IGAB, then check again.</li>
           </ol>
           <p className="sf-blocked__note">
-            Keep that key somewhere safe. Connections saved with it cannot be read by any other
-            key — if it is lost or changed, every SimpleFIN connection has to be removed and set
-            up again.
+            Keep that key somewhere safe. Connections saved with it cannot be read by any other key
+            — if it is lost or changed, every SimpleFIN connection has to be removed and set up
+            again.
           </p>
         </>
       ) : (
@@ -90,7 +90,12 @@ function ConfigProblemPanel({
         </p>
       )}
 
-      <button type="button" className="sf-blocked__recheck" onClick={onRecheck} disabled={rechecking}>
+      <button
+        type="button"
+        className="sf-blocked__recheck"
+        onClick={onRecheck}
+        disabled={rechecking}
+      >
         <RefreshCw size={13} className={rechecking ? 'sf-blocked__spin' : undefined} />
         {rechecking ? 'Checking…' : 'Check again'}
       </button>
@@ -146,17 +151,25 @@ export function SimpleFINSetup({ onDone }: Props) {
       <ol className="sf-setup__steps">
         <li>
           Go to{' '}
-          <a href="https://beta-bridge.simplefin.org/simplefin/create" target="_blank" rel="noreferrer">
+          <a
+            href="https://beta-bridge.simplefin.org/simplefin/create"
+            target="_blank"
+            rel="noreferrer"
+          >
             beta-bridge.simplefin.org/simplefin/create
           </a>
         </li>
-        <li>Click <strong>+New Token</strong> (or similar) to generate a <strong>Setup Token</strong></li>
-        <li>Copy the token — it starts with <code>aHR0c</code> or similar base64 characters</li>
+        <li>
+          Click <strong>+New Token</strong> (or similar) to generate a <strong>Setup Token</strong>
+        </li>
+        <li>
+          Copy the token — it starts with <code>aHR0c</code> or similar base64 characters
+        </li>
         <li>Paste it below and click Connect</li>
       </ol>
       <p className="sf-setup__note">
-        This is a one-time token — not your SimpleFIN password or any persistent API key.
-        Tokens expire quickly, so paste and connect within a minute or two of generating it.
+        This is a one-time token — not your SimpleFIN password or any persistent API key. Tokens
+        expire quickly, so paste and connect within a minute or two of generating it.
       </p>
       <div style={{ display: 'flex', gap: '8px' }}>
         <input
@@ -167,11 +180,7 @@ export function SimpleFINSetup({ onDone }: Props) {
           placeholder="Paste setup token here…"
           required
         />
-        <button
-          type="submit"
-          className="sf-setup__btn"
-          disabled={setup.isPending || !token.trim()}
-        >
+        <button type="submit" className="sf-setup__btn" disabled={setup.isPending || !token.trim()}>
           {setup.isPending ? 'Connecting…' : 'Connect'}
         </button>
       </div>

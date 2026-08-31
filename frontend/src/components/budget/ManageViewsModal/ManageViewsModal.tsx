@@ -76,9 +76,9 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
 
         <div className="manage-views-modal__body">
           <p className="manage-views-modal__hint">
-            A view arranges the same categories under groups you define — the same
-            budget read a different way. Your own category groups are never changed,
-            so you can switch back at any time.
+            A view arranges the same categories under groups you define — the same budget read a
+            different way. Your own category groups are never changed, so you can switch back at any
+            time.
           </p>
 
           <div className="manage-views-modal__section-header">
@@ -91,8 +91,8 @@ export function ManageViewsModal({ budgetId, onClose }: Props) {
 
           {!views || views.length === 0 ? (
             <p className="manage-views-modal__empty">
-              No views yet. Create one to group these categories another way — by
-              need and want, for instance — without touching your budget.
+              No views yet. Create one to group these categories another way — by need and want, for
+              instance — without touching your budget.
             </p>
           ) : (
             <div className="manage-views-modal__list">

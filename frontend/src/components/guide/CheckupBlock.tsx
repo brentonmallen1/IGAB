@@ -55,7 +55,9 @@ export function CheckupBlock({ metric, finding, thresholds, onGoToStage }: Props
               <p>{copy.why}</p>
             </InfoPopover>
           )}
-          {text && <span className={`checkup-block__status checkup-block__status--${status}`}>{text}</span>}
+          {text && (
+            <span className={`checkup-block__status checkup-block__status--${status}`}>{text}</span>
+          )}
         </header>
         <div className="checkup-block__figure">
           <span className="checkup-block__value tabular">{value}</span>
@@ -71,7 +73,10 @@ export function CheckupBlock({ metric, finding, thresholds, onGoToStage }: Props
             aria-valuenow={Math.round(progress * 100)}
             aria-label={`${Math.round(progress * 100)}% of target`}
           >
-            <div className="checkup-block__bar-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+            <div
+              className="checkup-block__bar-fill"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
           </div>
         )}
         {finding && <p className="checkup-block__finding">{finding.title}</p>}
@@ -95,7 +100,11 @@ export function CheckupBlock({ metric, finding, thresholds, onGoToStage }: Props
         )}
         <div className="checkup-block__actions">
           {stageDef && (
-            <button type="button" className="guide-link-button" onClick={() => onGoToStage(stageDef.id)}>
+            <button
+              type="button"
+              className="guide-link-button"
+              onClick={() => onGoToStage(stageDef.id)}
+            >
               Step {stageDef.step} — {stageDef.title}
               <ArrowRight size={11} aria-hidden />
             </button>

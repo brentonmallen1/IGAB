@@ -64,17 +64,13 @@ async def _preview(api_client, budget, items):
 
 async def test_future_spend_within_available_no_warning(db_session, api_client):
     _, budget, groceries = await _setup(db_session, api_client.test_user)
-    warnings = await _preview(
-        api_client, budget, [(groceries.id, NEXT.replace(day=15), "-100.00")]
-    )
+    warnings = await _preview(api_client, budget, [(groceries.id, NEXT.replace(day=15), "-100.00")])
     assert warnings == []
 
 
 async def test_future_spend_beyond_available_warns(db_session, api_client):
     _, budget, groceries = await _setup(db_session, api_client.test_user)
-    warnings = await _preview(
-        api_client, budget, [(groceries.id, NEXT.replace(day=15), "-150.00")]
-    )
+    warnings = await _preview(api_client, budget, [(groceries.id, NEXT.replace(day=15), "-150.00")])
     assert len(warnings) == 1
     w = warnings[0]
     assert w["category_id"] == str(groceries.id)
@@ -141,7 +137,5 @@ async def test_other_budgets_categories_are_ignored(db_session, api_client):
     other_budget = await create_budget(db_session, api_client.test_user)
     other_group = await create_category_group(db_session, other_budget, "Other")
     other_cat = await create_category(db_session, other_budget, other_group, "Elsewhere")
-    warnings = await _preview(
-        api_client, budget, [(other_cat.id, NEXT.replace(day=15), "-150.00")]
-    )
+    warnings = await _preview(api_client, budget, [(other_cat.id, NEXT.replace(day=15), "-150.00")])
     assert warnings == []

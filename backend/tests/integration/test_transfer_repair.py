@@ -171,9 +171,7 @@ class TestConvert:
         updated = await services.transactions.update(
             budget.id,
             near.id,
-            SvcTxnUpdate(
-                transfer_account_id=savings.id, transfer_partner_transaction_id=right.id
-            ),
+            SvcTxnUpdate(transfer_account_id=savings.id, transfer_partner_transaction_id=right.id),
         )
         assert updated.transfer_id == right.id
         repo = TransactionRepository(db_session)
@@ -471,9 +469,7 @@ class TestGuards:
 
         services = make_services(db_session)
         with pytest.raises(InvariantViolation, match="payee is its destination"):
-            await services.transactions.update(
-                budget.id, near.id, SvcTxnUpdate(payee_id=other.id)
-            )
+            await services.transactions.update(budget.id, near.id, SvcTxnUpdate(payee_id=other.id))
 
     async def test_a_split_cannot_become_a_transfer(self, db_session):
         budget, checking, savings = await _setup(db_session)
@@ -802,9 +798,7 @@ class TestRepairCategoryLegality:
         to_checking = await _transfer_payee(db_session, budget, checking)
         group = await create_category_group(db_session, budget, "Everyday")
         house = await create_category(db_session, budget, group, "House Fund")
-        await create_transaction(
-            db_session, budget, checking, "-500.00", TODAY, payee=to_tracking
-        )
+        await create_transaction(db_session, budget, checking, "-500.00", TODAY, payee=to_tracking)
         far = await create_transaction(
             db_session, budget, tracking, "500.00", TODAY, payee=to_checking, category=house
         )
@@ -814,6 +808,4 @@ class TestRepairCategoryLegality:
 
         assert result["linked"] == 0
         db_session.expunge_all()
-        assert (
-            await TransactionRepository(db_session).get_or_raise(far.id)
-        ).transfer_id is None
+        assert (await TransactionRepository(db_session).get_or_raise(far.id)).transfer_id is None

@@ -166,9 +166,7 @@ class TestKeepingSnapshots:
         assert deleted.status_code == 204
         assert (await api_client.get(f"/api/v1/budgets/{full.id}/snapshots")).json() == []
 
-    async def test_the_list_is_this_budgets_only(
-        self, api_client, db_session, snapshot_store
-    ):
+    async def test_the_list_is_this_budgets_only(self, api_client, db_session, snapshot_store):
         """The whole point. The global backups list could never do this."""
         mine = await build_full_budget(db_session, api_client.test_user)
         theirs = await build_full_budget(db_session, api_client.test_user)
@@ -228,9 +226,7 @@ class TestInspect:
         assert result["budget_name"] == full.budget.name
         assert result["row_counts"]["transactions"] > 0
 
-    async def test_a_newer_format_is_refused_and_nothing_is_written(
-        self, api_client, db_session
-    ):
+    async def test_a_newer_format_is_refused_and_nothing_is_written(self, api_client, db_session):
         full = await build_full_budget(db_session, api_client.test_user)
         before = await row_counts(db_session, full.id)
         body = _rewritten_manifest(await _download(api_client, full.id), format_version=99)
@@ -316,3 +312,78 @@ def _rewritten_manifest(body: bytes, **overrides) -> bytes:
                 data = json.dumps(manifest).encode()
             target.writestr(item, data)
     return out.getvalue()
+
+
+class TestASnapshotNameCannotReachOutsideItsBudget:
+    """The nine `py/path-injection` alerts, exercised where a client actually
+    reaches them.
+
+    `{name}` is a path parameter, so it is the one string in this feature an
+    attacker fully controls. The unit tests pin the guards; these pin that the
+    guards are wired to the routes — a validator nobody calls is the shape this
+    whole family of defects takes.
+    """
+
+    TRAVERSAL = [
+        "../../../../etc/passwd",
+        "..%2f..%2f..%2fetc%2fpasswd",
+        "%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+        "....//....//etc/passwd",
+        # No bare ".." — httpx and every proxy normalise it out of the URL
+        # before the app sees it, so it tests the client, not the route. The
+        # unit suite covers it where it is actually meaningful.
+        ".hidden.igab.zip",
+        "not-a-snapshot.txt",
+    ]
+
+    @pytest.mark.parametrize("name", TRAVERSAL)
+    async def test_download_refuses_it(self, api_client, db_session, snapshot_store, name):
+        full = await build_full_budget(db_session, api_client.test_user)
+        resp = await api_client.get(f"/api/v1/budgets/{full.id}/snapshots/{name}")
+
+        assert resp.status_code in (400, 404), resp.text
+        # Whatever it answered, it must not be a file.
+        assert b"root:" not in resp.content
+
+    @pytest.mark.parametrize("name", TRAVERSAL)
+    async def test_delete_refuses_it(self, api_client, db_session, snapshot_store, name):
+        """The one that unlinks. A traversal here is arbitrary file deletion."""
+        full = await build_full_budget(db_session, api_client.test_user)
+        resp = await api_client.delete(f"/api/v1/budgets/{full.id}/snapshots/{name}")
+
+        assert resp.status_code in (400, 404), resp.text
+
+    async def test_a_name_from_another_budget_is_not_reachable(
+        self, api_client, db_session, snapshot_store
+    ):
+        """Shape is not the only question. A perfectly well-formed name that
+        belongs to a different budget's folder must still miss, because the
+        listing is scoped per budget."""
+        mine = await build_full_budget(db_session, api_client.test_user)
+        theirs = await build_full_budget(db_session, api_client.test_user)
+
+        created = await api_client.post(f"/api/v1/budgets/{theirs.id}/snapshots")
+        assert created.status_code == 201, created.text
+        their_name = created.json()["name"]
+
+        resp = await api_client.get(f"/api/v1/budgets/{mine.id}/snapshots/{their_name}")
+        assert resp.status_code == 404, resp.text
+
+    async def test_a_hostile_budget_name_does_not_shape_the_file_on_disk(
+        self, api_client, db_session, snapshot_store
+    ):
+        """The other direction: the file name is built from the budget's own
+        name, which a user types. It is slugged, so the snapshot lands beside
+        its siblings whatever the budget is called."""
+        full = await build_full_budget(db_session, api_client.test_user)
+        full.budget.name = "../../../../etc/cron.d/evil"
+        await db_session.flush()
+
+        created = await api_client.post(f"/api/v1/budgets/{full.id}/snapshots")
+        assert created.status_code == 201, created.text
+        name = created.json()["name"]
+
+        assert "/" not in name and "\\" not in name and ".." not in name
+        assert name.startswith("etc-cron-d-evil-"), name
+        listed = await api_client.get(f"/api/v1/budgets/{full.id}/snapshots")
+        assert [f["name"] for f in listed.json()] == [name]

@@ -12,12 +12,7 @@ import {
   useUpdateAccount,
   type HygieneFinding,
 } from '../../../api/accounts'
-import {
-  useBulkSetCategoryTags,
-  useCreateTag,
-  useTagSuggestions,
-  useTags,
-} from '../../../api/tags'
+import { useBulkSetCategoryTags, useCreateTag, useTagSuggestions, useTags } from '../../../api/tags'
 import { useMarkImportReviewed, type YnabImportResult } from '../../../api/imports'
 import { apiErrorMessage } from '../../../api/client'
 import { renderableCategories, renderableGroups } from '../../budget/budgetGroups'
@@ -165,7 +160,12 @@ export function ImportReviewDialog({
               `${updates.length} categor${updates.length === 1 ? 'y' : 'ies'} to update`}
           </span>
           {last ? (
-            <button type="button" className="import-review__btn import-review__btn--primary" onClick={finish} disabled={saving}>
+            <button
+              type="button"
+              className="import-review__btn import-review__btn--primary"
+              onClick={finish}
+              disabled={saving}
+            >
               {saving ? 'Saving…' : updates.length > 0 ? 'Save and close' : 'Done'}
             </button>
           ) : (
@@ -393,9 +393,7 @@ function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity'
         <Stat label="YNAB's own figures" value={formatMoney(ynab)} />
         {expected !== ynab && <Stat label="expected here" value={formatMoney(expected)} />}
       </div>
-      <p
-        className={`import-review__verdict ${verdictModifier(parity.matches, incoherent)}`}
-      >
+      <p className={`import-review__verdict ${verdictModifier(parity.matches, incoherent)}`}>
         {incoherent
           ? `This export does not agree with itself, so it cannot say whether the import was faithful. ${parity.categories_differing} of ${parity.categories_compared} categories differ from the figures it shipped.`
           : parity.matches
@@ -478,10 +476,9 @@ function TagsStep({
   return (
     <>
       <p className="dialog__body">
-        A tag decides how a category's spending is counted — money leaving one
-        tagged Savings is saving, not spending, and what you mark Essential is
-        what an emergency fund is measured against. These are the ones the
-        import guessed, plus what the names suggest.
+        A tag decides how a category's spending is counted — money leaving one tagged Savings is
+        saving, not spending, and what you mark Essential is what an emergency fund is measured
+        against. These are the ones the import guessed, plus what the names suggest.
       </p>
 
       <div className="import-review__filters" role="group" aria-label="Which categories to show">
@@ -537,9 +534,7 @@ function TagsStep({
               </span>
               <span className="import-review__cat-g">{row.category.groupName}</span>
               {row.importTagged && row.importMatchedOn && (
-                <span className="import-review__why">
-                  tagged from “{row.importMatchedOn}”
-                </span>
+                <span className="import-review__why">tagged from “{row.importMatchedOn}”</span>
               )}
             </div>
             <div className="import-review__tags">
@@ -607,17 +602,13 @@ function AccountsStep({
   return (
     <>
       {findings.length > 0 ? (
-        <Surface
-          variant="sunken"
-          title="Worth a look"
-          className="import-review__block"
-        >
+        <Surface variant="sunken" title="Worth a look" className="import-review__block">
           <HygieneFindings findings={findings} budgetId={budgetId} onNavigate={onNavigate} />
         </Surface>
       ) : (
         <p className="dialog__body">
-          Nothing about these accounts looks wrong. Types, budget membership and
-          transfers all check out.
+          Nothing about these accounts looks wrong. Types, budget membership and transfers all check
+          out.
         </p>
       )}
 
@@ -628,9 +619,9 @@ function AccountsStep({
           className="import-review__block"
         >
           <p className="dialog__body dialog__body--muted">
-            Every transaction arrived — reports and net worth are untouched. Closing only takes
-            an account out of the pickers and report filters. This is the one thing the import
-            did that nothing else offers to undo.
+            Every transaction arrived — reports and net worth are untouched. Closing only takes an
+            account out of the pickers and report filters. This is the one thing the import did that
+            nothing else offers to undo.
           </p>
           <div className="import-review__reopen">
             {closed.map((a) => (
@@ -653,9 +644,8 @@ function AccountsStep({
           <p className="dialog__body">
             {summary.accounts_skipped} account
             {summary.accounts_skipped === 1 ? ' was' : 's were'} left out entirely, along with{' '}
-            {summary.transactions_excluded.toLocaleString()} of their transactions. That is
-            usually what leaves transfers without their other side. Re-import the export to
-            bring one in.
+            {summary.transactions_excluded.toLocaleString()} of their transactions. That is usually
+            what leaves transfers without their other side. Re-import the export to bring one in.
           </p>
         </Surface>
       )}

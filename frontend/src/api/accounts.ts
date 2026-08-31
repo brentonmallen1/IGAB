@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { Account, AccountType } from '../types'
+import { ROOT } from './queryKeys'
 
 export interface AccountCreate {
   name: string
@@ -20,7 +21,7 @@ export async function fetchAccounts(budgetId: string, include_closed = false): P
 export function useAccounts(budgetId: string | null, options?: { includeClosed?: boolean }) {
   const includeClosed = options?.includeClosed ?? false
   return useQuery({
-    queryKey: ['accounts', budgetId, { includeClosed }],
+    queryKey: [ROOT.accounts, budgetId, { includeClosed }],
     queryFn: () => fetchAccounts(budgetId!, includeClosed),
     enabled: !!budgetId,
     staleTime: 30_000,
@@ -33,7 +34,7 @@ export function useCreateAccount(budgetId: string) {
     mutationFn: (data: AccountCreate) =>
       apiClient.post<Account>(`/${budgetId}/accounts`, data).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts, budgetId] })
     },
   })
 }
@@ -44,7 +45,7 @@ export function useUpdateAccount(budgetId: string) {
     mutationFn: ({ id, ...data }: Partial<Account> & { id: string }) =>
       apiClient.patch<Account>(`/accounts/${id}`, data).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts, budgetId] })
     },
   })
 }
@@ -63,10 +64,10 @@ export function useDeleteAccount(budgetId: string) {
       liability?: 'keep' | 'delete'
     }) => apiClient.delete(`/accounts/${accountId}`, { params: { liability } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts, budgetId] })
       // Either disposition rewrites the companion, and both liability views
       // read it — the sidebar's debt section included.
-      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] })
     },
   })
 }
@@ -79,11 +80,10 @@ export function useScanDuplicates() {
         .post<{ created: number }>(`/accounts/${accountId}/scan-duplicates`)
         .then((r) => r.data),
     onSuccess: (_data, accountId) => {
-      qc.invalidateQueries({ queryKey: ['pending-matches-account', accountId] })
+      qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount, accountId] })
     },
   })
 }
-
 
 /** One thing about this budget's accounts that is probably wrong. */
 export interface HygieneFinding {
@@ -108,7 +108,7 @@ export interface HygieneReport {
  */
 export function useAccountHygiene(budgetId: string | null) {
   return useQuery({
-    queryKey: ['account-hygiene', budgetId],
+    queryKey: [ROOT.accountHygiene, budgetId],
     queryFn: () =>
       apiClient.get<HygieneReport>(`/${budgetId}/accounts/hygiene`).then((r) => r.data),
     enabled: !!budgetId,
@@ -138,9 +138,9 @@ export function useRepairTrackingCategories(budgetId: string) {
         )
         .then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['account-hygiene', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
+      qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
+      qc.invalidateQueries({ queryKey: [ROOT.accountHygiene, budgetId] })
     },
   })
 }
@@ -160,9 +160,9 @@ export function useRepairTransfers(budgetId: string) {
     onSuccess: () => {
       // Links change how every transfer row reads and what the register's
       // unpaired filter returns.
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['account-hygiene', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
+      qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
+      qc.invalidateQueries({ queryKey: [ROOT.accountHygiene, budgetId] })
     },
   })
 }

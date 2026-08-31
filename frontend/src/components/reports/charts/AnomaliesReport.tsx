@@ -22,7 +22,11 @@ const SENSITIVITY_OPTIONS = [
 export function AnomaliesReport({ budgetId }: Props) {
   const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
   const [threshold, setThreshold] = useState(2.5)
-  const { data, isLoading, isError, error, refetch } = useAnomaliesReport(budgetId, months, threshold)
+  const { data, isLoading, isError, error, refetch } = useAnomaliesReport(
+    budgetId,
+    months,
+    threshold
+  )
   const { setDrillDown } = useReportStore()
   const { formatMoney, formatMonth } = useFormatters()
 
@@ -91,8 +95,8 @@ export function AnomaliesReport({ budgetId }: Props) {
             <strong>percentage change</strong> indicating how much it differs from normal.
           </p>
           <p>
-            <strong>Sensitivity</strong> controls the threshold: Strict shows only extreme
-            outliers, Sensitive shows more subtle changes.
+            <strong>Sensitivity</strong> controls the threshold: Strict shows only extreme outliers,
+            Sensitive shows more subtle changes.
           </p>
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
@@ -160,9 +164,7 @@ export function AnomaliesReport({ budgetId }: Props) {
                           {formatMoney(actual)}
                         </span>
                         <span className="anomaly-card__vs">vs usual</span>
-                        <span className="anomaly-card__baseline">
-                          {formatMoney(baseline)}
-                        </span>
+                        <span className="anomaly-card__baseline">{formatMoney(baseline)}</span>
                       </div>
                     </div>
                     <div className="anomaly-card__sparkline">
@@ -171,7 +173,9 @@ export function AnomaliesReport({ budgetId }: Props) {
                           <Line
                             type="monotone"
                             dataKey="v"
-                            stroke={a.direction === 'high' ? 'var(--color-negative)' : 'var(--color-info)'}
+                            stroke={
+                              a.direction === 'high' ? 'var(--color-negative)' : 'var(--color-info)'
+                            }
                             strokeWidth={1.5}
                             dot={false}
                           />

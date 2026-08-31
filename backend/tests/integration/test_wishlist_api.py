@@ -76,7 +76,9 @@ class TestTheGroup:
             f"/api/v1/{budget.id}/category-groups/{group['id']}/archive", json={}
         )
         assert r.status_code == 200, r.text
-        groups = (await api_client.get(f"/api/v1/{budget.id}/category-groups?include_archived=true")).json()
+        groups = (
+            await api_client.get(f"/api/v1/{budget.id}/category-groups?include_archived=true")
+        ).json()
         assert next(g for g in groups if g["id"] == group["id"])["is_archived"] is True
 
     async def test_its_envelopes_count_against_to_be_assigned(self, db_session, api_client):
@@ -91,7 +93,9 @@ class TestTheGroup:
             json={"amount": "150.00"},
         )
         assert r.status_code == 204, r.text
-        month = (await api_client.get(f"/api/v1/{budget.id}/months/{THIS_MONTH.isoformat()}")).json()
+        month = (
+            await api_client.get(f"/api/v1/{budget.id}/months/{THIS_MONTH.isoformat()}")
+        ).json()
         assert Decimal(month["to_be_assigned"]) == Decimal("850.00")
         row = next(b for b in month["category_balances"] if b["category_id"] == cat_id)
         assert Decimal(row["available"]) == Decimal("150.00")
@@ -155,7 +159,10 @@ class TestOwnEnvelope:
         group = await create_category_group(db_session, budget, "Home")
         cat = await create_category(db_session, budget, group, "Home Upgrades")
         linked = await _add(
-            api_client, budget, name="Desk", cost="420",
+            api_client,
+            budget,
+            name="Desk",
+            cost="420",
             funding={"mode": "existing", "category_id": str(cat.id)},
         )
         r = await api_client.delete(f"{_url(budget)}/{owned['id']}")
@@ -178,10 +185,15 @@ class TestReach:
         account = await create_account(db_session, budget, account_type="checking")
         await create_transaction(db_session, budget, account, "-100.00", TODAY, category=cat)
         wish = await _add(
-            api_client, budget, name="Desk", cost="420",
+            api_client,
+            budget,
+            name="Desk",
+            cost="420",
             funding={"mode": "existing", "category_id": str(cat.id)},
         )
-        month = (await api_client.get(f"/api/v1/{budget.id}/months/{THIS_MONTH.isoformat()}")).json()
+        month = (
+            await api_client.get(f"/api/v1/{budget.id}/months/{THIS_MONTH.isoformat()}")
+        ).json()
         page = next(b for b in month["category_balances"] if b["category_id"] == str(cat.id))
         assert Decimal(page["available"]) == Decimal("510.00")
         assert wish["reach"]["state"] == "now"
@@ -192,9 +204,14 @@ class TestReach:
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Bike Fund")
         # 300 assigned last month reads as 100 a month on average...
-        await create_budget_assignment(db_session, budget, cat, add_months(THIS_MONTH, -1), "300.00")
+        await create_budget_assignment(
+            db_session, budget, cat, add_months(THIS_MONTH, -1), "300.00"
+        )
         wish = await _add(
-            api_client, budget, cost="1300", funding={"mode": "existing", "category_id": str(cat.id)},
+            api_client,
+            budget,
+            cost="1300",
+            funding={"mode": "existing", "category_id": str(cat.id)},
         )
         assert wish["reach"]["months"] == 10  # 1000 short at 100
         # ...but a monthly target of 250 is the pace the user committed to.
@@ -213,7 +230,10 @@ class TestReach:
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Empty")
         quiet = await _add(
-            api_client, budget, name="Lamp", cost="50",
+            api_client,
+            budget,
+            name="Lamp",
+            cost="50",
             funding={"mode": "existing", "category_id": str(cat.id)},
         )
         assert quiet["reach"]["state"] == "no_rate"
@@ -224,11 +244,17 @@ class TestReach:
         cat = await create_category(db_session, budget, group, "Home Upgrades")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "500.00")
         first = await _add(
-            api_client, budget, name="Desk", cost="420",
+            api_client,
+            budget,
+            name="Desk",
+            cost="420",
             funding={"mode": "existing", "category_id": str(cat.id)},
         )
         second = await _add(
-            api_client, budget, name="Chair", cost="300",
+            api_client,
+            budget,
+            name="Chair",
+            cost="300",
             funding={"mode": "existing", "category_id": str(cat.id)},
         )
         assert first["reach"]["state"] == "now"
@@ -261,13 +287,19 @@ class TestProjects:
         )
         assert r.status_code == 201, r.text
         project = r.json()
-        flights = await _add(api_client, budget, name="Flights", cost="1500", project_id=project["id"])
+        flights = await _add(
+            api_client, budget, name="Flights", cost="1500", project_id=project["id"]
+        )
         assert flights["funding"]["inherited"] is True
         assert flights["funding"]["category_name"] == "Japan Trip"
         assert flights["reach"]["state"] == "now"
         own = await create_category(db_session, budget, group, "Camera Fund")
         camera = await _add(
-            api_client, budget, name="Camera", cost="900", project_id=project["id"],
+            api_client,
+            budget,
+            name="Camera",
+            cost="900",
+            project_id=project["id"],
             funding={"mode": "existing", "category_id": str(own.id)},
         )
         assert camera["funding"]["inherited"] is False
@@ -282,7 +314,9 @@ class TestProjects:
 
     async def test_deleting_a_project_ungroups_and_keeps_its_wishes(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
-        project = (await api_client.post(f"{_url(budget)}/projects", json={"name": "Workshop"})).json()
+        project = (
+            await api_client.post(f"{_url(budget)}/projects", json={"name": "Workshop"})
+        ).json()
         wish = await _add(api_client, budget, project_id=project["id"])
         r = await api_client.delete(f"{_url(budget)}/projects/{project['id']}")
         assert r.status_code == 204
@@ -294,9 +328,14 @@ class TestProjects:
 
 class TestTheTag:
     async def _tag_on(self, api_client, budget, cat_id) -> bool:
-        cats = (await api_client.get(f"/api/v1/{budget.id}/categories?include_archived=true")).json()
+        cats = (
+            await api_client.get(f"/api/v1/{budget.id}/categories?include_archived=true")
+        ).json()
         cat = next(c for c in cats if c["id"] == cat_id)
-        return any(t.get("system_key") == "wishlist" or t.get("name") == "Wishlist" for t in cat.get("tags", []))
+        return any(
+            t.get("system_key") == "wishlist" or t.get("name") == "Wishlist"
+            for t in cat.get("tags", [])
+        )
 
     async def test_follows_the_funding_link(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
@@ -335,7 +374,12 @@ class TestCoolingReviewAndStillWanted:
         r = await api_client.put(f"{_url(budget)}/settings", json={"cooling_days": 10})
         assert r.status_code == 200 and r.json()["cooling_days"] == 10
         wish = await _add(api_client, budget)
-        assert wish["cooling_until"] == (TODAY.replace(day=TODAY.day) + __import__("datetime").timedelta(days=10)).isoformat()
+        assert (
+            wish["cooling_until"]
+            == (
+                TODAY.replace(day=TODAY.day) + __import__("datetime").timedelta(days=10)
+            ).isoformat()
+        )
         assert wish["cooling"] is True
         assert wish["review_due"] is False
         no_cooling = await _add(api_client, budget, name="Now", cooling_days=0)
@@ -373,7 +417,9 @@ class TestSwitchAndBoundaries:
         assert (await _wishlist_group(api_client, budget))["is_archived"] is True
         body = (await api_client.get(_url(budget))).json()
         assert body["enabled"] is False and body["items"] == []
-        assert (await api_client.post(_url(budget), json={"name": "X", "cost": "1"})).status_code == 409
+        assert (
+            await api_client.post(_url(budget), json={"name": "X", "cost": "1"})
+        ).status_code == 409
         # And back on: the group returns, the wish was never lost.
         await api_client.put(f"/api/v1/{budget.id}/guide/preferences", json={"wishlist": True})
         assert (await _wishlist_group(api_client, budget))["is_archived"] is False
@@ -385,11 +431,18 @@ class TestSwitchAndBoundaries:
         ef = await create_category(db_session, budget, group, "Emergency Fund")
         await api_client.put(
             f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
-            json={"mode": "manual", "entity_ids": {"category": [str(ef.id)]},
-                  "external": True, "external_amount": "250000"},
+            json={
+                "mode": "manual",
+                "entity_ids": {"category": [str(ef.id)]},
+                "external": True,
+                "external_amount": "250000",
+            },
         )
         wish = await _add(
-            api_client, budget, cost="100", funding={"mode": "existing", "category_id": str(ef.id)},
+            api_client,
+            budget,
+            cost="100",
+            funding={"mode": "existing", "category_id": str(ef.id)},
         )
         assert wish["reach"]["state"] == "no_rate"  # nothing actually in it
 
@@ -477,9 +530,14 @@ class TestDrains:
         group = await create_category_group(db_session, budget, "Home")
         cat = await create_category(db_session, budget, group, "Home Upgrades")
         # Money that was there before this month and nothing assigned lately.
-        await create_budget_assignment(db_session, budget, cat, add_months(THIS_MONTH, -6), "500.00")
+        await create_budget_assignment(
+            db_session, budget, cat, add_months(THIS_MONTH, -6), "500.00"
+        )
         await _add(
-            api_client, budget, name="Desk", cost="900",
+            api_client,
+            budget,
+            name="Desk",
+            cost="900",
             funding={"mode": "existing", "category_id": str(cat.id)},
         )
         await _move(api_client, budget, str(cat.id), None, "40.00")
@@ -550,9 +608,7 @@ class TestTurningTheWishlistOffDoesNotStrandMoney:
             f"/api/v1/{budget.id}/guide/preferences", json={"wishlist": on, **extra}
         )
 
-    async def test_it_refuses_without_confirmation_and_says_how_much(
-        self, db_session, api_client
-    ):
+    async def test_it_refuses_without_confirmation_and_says_how_much(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         await self._fund_a_wish(db_session, api_client, budget)
         before = await self._tba(api_client, budget)
@@ -579,9 +635,7 @@ class TestTurningTheWishlistOffDoesNotStrandMoney:
         assert body["envelopes"] == ["Bike"]
         assert Decimal(body["available"]) == Decimal("150.00")
 
-    async def test_confirming_returns_the_money_to_ready_to_assign(
-        self, db_session, api_client
-    ):
+    async def test_confirming_returns_the_money_to_ready_to_assign(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         await self._fund_a_wish(db_session, api_client, budget)
         before = await self._tba(api_client, budget)

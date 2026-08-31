@@ -70,11 +70,13 @@ def _mock_scalar(value):
 def make_status_service(cleared_bal, uncleared_count=0, pending_count=0):
     """ReconciliationService whose session returns pre-set get_status values."""
     session = AsyncMock()
-    session.execute = AsyncMock(side_effect=[
-        _mock_scalar(cleared_bal),
-        _mock_scalar(uncleared_count),
-        _mock_scalar(pending_count),
-    ])
+    session.execute = AsyncMock(
+        side_effect=[
+            _mock_scalar(cleared_bal),
+            _mock_scalar(uncleared_count),
+            _mock_scalar(pending_count),
+        ]
+    )
     return ReconciliationService(
         session=session,
         repo=MagicMock(),

@@ -8,6 +8,8 @@ import pytest
 
 from igab.integrations.ynab.parser import YNABParser, _parse_currency, _parse_date, _parse_month
 
+# ruff: noqa: E501 — these are YNAB export rows, verbatim. A wrapped
+# fixture is no longer the file the parser has to read.
 REGISTER_CSV = """\
 "Account","Flag","Date","Payee","Category Group/Category","Category Group","Category","Memo","Outflow","Inflow","Cleared"
 "Checking","","04/15/2026","Walmart","Food: Groceries","Food","Groceries","weekly shop",$45.00,$0.00,"Reconciled"
@@ -449,7 +451,9 @@ class TestOlderExportsStillCarryTheirAssignments:
         self.parser = YNABParser()
 
     def _entries(self, path: Path):
-        return {(e.category, e.month): e.assigned for e in self.parser.parse_zip(path).budget_entries}
+        return {
+            (e.category, e.month): e.assigned for e in self.parser.parse_zip(path).budget_entries
+        }
 
     def test_the_modern_spelling_is_the_baseline(self, tmp_path: Path):
         entries = self._entries(_make_zip(tmp_path, REGISTER_CSV, PLAN_CSV))

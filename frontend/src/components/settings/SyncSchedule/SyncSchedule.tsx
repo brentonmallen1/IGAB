@@ -47,7 +47,8 @@ export function SyncSchedule({ connection }: { connection: SimpleFINConnection }
   function chooseMode(next: Mode) {
     setMode(next)
     if (next === 'off') save([])
-    if (next === 'interval') save(hoursForInterval(every, localHourToUtcHour(anchor, offsetMinutes)))
+    if (next === 'interval')
+      save(hoursForInterval(every, localHourToUtcHour(anchor, offsetMinutes)))
     // 'times' keeps whatever is set; the user picks from here
   }
 

@@ -11,7 +11,11 @@ interface Props {
   placeholder?: string
 }
 
-export function TransactionSearch({ value, onChange, placeholder = 'Search transactions…' }: Props) {
+export function TransactionSearch({
+  value,
+  onChange,
+  placeholder = 'Search transactions…',
+}: Props) {
   const [localValue, setLocalValue] = useState(value)
   const [focused, setFocused] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -28,11 +32,13 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
   // Matching lives in searchParser alongside the list itself, so the palette
   // offers exactly the same vocabulary this box does.
   const activeSuggestions = matchSuggestions(localValue)
-  const shouldShowSuggestions = focused && showSuggestions &&
-    (localValue.length === 0 || activeSuggestions.length > 0)
+  const shouldShowSuggestions =
+    focused && showSuggestions && (localValue.length === 0 || activeSuggestions.length > 0)
 
   // Reset active index when suggestion list changes
-  useEffect(() => { setActiveIndex(-1) }, [activeSuggestions.length])
+  useEffect(() => {
+    setActiveIndex(-1)
+  }, [activeSuggestions.length])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -123,13 +129,18 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
 
   return (
     <div ref={containerRef} className={`txn-search ${focused ? 'txn-search--focused' : ''}`}>
-      <span className="txn-search__icon"><Search size={13} /></span>
+      <span className="txn-search__icon">
+        <Search size={13} />
+      </span>
       <input
         ref={inputRef}
         className="txn-search__input"
         value={localValue}
         onChange={(e) => handleChange(e.target.value)}
-        onFocus={() => { setFocused(true); setShowSuggestions(true) }}
+        onFocus={() => {
+          setFocused(true)
+          setShowSuggestions(true)
+        }}
         onBlur={() => setFocused(false)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
@@ -149,7 +160,10 @@ export function TransactionSearch({ value, onChange, placeholder = 'Search trans
               key={s.syntax}
               ref={i === activeIndex ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
               className={`txn-search__suggestion ${i === activeIndex ? 'txn-search__suggestion--active' : ''}`}
-              onMouseDown={(e) => { e.preventDefault(); appendSuggestion(s.syntax, s.matchedLen) }}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                appendSuggestion(s.syntax, s.matchedLen)
+              }}
               onMouseEnter={() => setActiveIndex(i)}
             >
               <code className="txn-search__syntax">{s.syntax}</code>

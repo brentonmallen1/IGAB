@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { ROOT } from './queryKeys'
 
 export interface BudgetMember {
   user_id: string
@@ -10,7 +11,7 @@ export interface BudgetMember {
 
 export function useBudgetMembers(budgetId: string | null) {
   return useQuery({
-    queryKey: ['budget-members', budgetId],
+    queryKey: [ROOT.budgetMembers, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<BudgetMember[]>(`/${budgetId}/members`)
       return data
@@ -25,8 +26,8 @@ export function useAddBudgetMember(budgetId: string) {
     mutationFn: (userId: string) =>
       apiClient.post<BudgetMember>(`/${budgetId}/members`, { user_id: userId }).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budget-members', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgets'] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMembers, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgets] })
     },
   })
 }
@@ -36,8 +37,8 @@ export function useRemoveBudgetMember(budgetId: string) {
   return useMutation({
     mutationFn: (userId: string) => apiClient.delete(`/${budgetId}/members/${userId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budget-members', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgets'] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMembers, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgets] })
     },
   })
 }

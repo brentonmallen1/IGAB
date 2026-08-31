@@ -109,8 +109,7 @@ export function orderedOnBudgetKeys(onBudgetByType: Map<string, Account[]>): str
 /** Where a sidebar row sends you. Shared by account rows and liability rows so
  *  the active-row rule below has one shape to reason about rather than two. */
 export type SidebarRowTarget =
-  | { kind: 'account'; accountId: string }
-  | { kind: 'liability'; liabilityId: string }
+  { kind: 'account'; accountId: string } | { kind: 'liability'; liabilityId: string }
 
 export interface LiabilityRow {
   key: string
@@ -238,9 +237,7 @@ export function onBudgetTotals(onBudgetByType: Map<string, Account[]>): OnBudget
  * than hand it `location.pathname`.
  */
 export type SidebarLocation =
-  | { kind: 'account'; id: string }
-  | { kind: 'liability'; id: string }
-  | null
+  { kind: 'account'; id: string } | { kind: 'liability'; id: string } | null
 
 export function parseSidebarLocation(pathname: string): SidebarLocation {
   const segments = pathname.split('/').filter(Boolean)

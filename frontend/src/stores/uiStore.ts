@@ -9,7 +9,12 @@ type SortDirection = 'asc' | 'desc'
 type CollapsibleSection = 'pending' | 'uncategorized' | 'upcoming'
 export type QuickFilter = 'overspent' | 'underfunded' | 'money-available' | 'overfunded'
 
-export const ALL_QUICK_FILTERS: QuickFilter[] = ['overspent', 'underfunded', 'money-available', 'overfunded']
+export const ALL_QUICK_FILTERS: QuickFilter[] = [
+  'overspent',
+  'underfunded',
+  'money-available',
+  'overfunded',
+]
 
 /** How a quick filter reads, and which state colour it carries. Here rather
  *  than in either component that draws them: the bar and the manage modal
@@ -179,238 +184,252 @@ interface UIState {
 export const useUIStore = create<UIState>()(
   persist(
     (set, get) => ({
-  collapsedGroups: new Set(),
-  creditCardsCollapsed: false,
-  activeModal: null,
-  sidebarCollapsed: false,
-  sidebarWidth: SIDEBAR_MIN_WIDTH,
-  budgetRowMode: 'expanded',
-  selectedCategoryIds: new Set(),
-  categoryInspectorOpen: true,
-  inspectorUserClosed: false,
-  lastSelectedCategoryId: null,
+      collapsedGroups: new Set(),
+      creditCardsCollapsed: false,
+      activeModal: null,
+      sidebarCollapsed: false,
+      sidebarWidth: SIDEBAR_MIN_WIDTH,
+      budgetRowMode: 'expanded',
+      selectedCategoryIds: new Set(),
+      categoryInspectorOpen: true,
+      inspectorUserClosed: false,
+      lastSelectedCategoryId: null,
 
-  selectedTransactionIds: new Set(),
-  lastSelectedTransactionId: null,
+      selectedTransactionIds: new Set(),
+      lastSelectedTransactionId: null,
 
-  selectedPayeeIds: new Set(),
-  lastSelectedPayeeId: null,
-  collapsedSections: new Set<CollapsibleSection>(['pending']),
-  transactionSortColumn: 'date',
-  transactionSortDirection: 'desc',
-  transactionSearchQuery: '',
+      selectedPayeeIds: new Set(),
+      lastSelectedPayeeId: null,
+      collapsedSections: new Set<CollapsibleSection>(['pending']),
+      transactionSortColumn: 'date',
+      transactionSortDirection: 'desc',
+      transactionSearchQuery: '',
 
-  toggleGroupExpanded: (groupId) => {
-    const groups = new Set(get().collapsedGroups)
-    if (groups.has(groupId)) {
-      groups.delete(groupId)
-    } else {
-      groups.add(groupId)
-    }
-    set({ collapsedGroups: groups })
-  },
+      toggleGroupExpanded: (groupId) => {
+        const groups = new Set(get().collapsedGroups)
+        if (groups.has(groupId)) {
+          groups.delete(groupId)
+        } else {
+          groups.add(groupId)
+        }
+        set({ collapsedGroups: groups })
+      },
 
-  collapseAll: (groupIds) => set({ collapsedGroups: new Set(groupIds) }),
-  expandAll: () => set({ collapsedGroups: new Set() }),
-  toggleCreditCardsCollapsed: () =>
-    set((s) => ({ creditCardsCollapsed: !s.creditCardsCollapsed })),
+      collapseAll: (groupIds) => set({ collapsedGroups: new Set(groupIds) }),
+      expandAll: () => set({ collapsedGroups: new Set() }),
+      toggleCreditCardsCollapsed: () =>
+        set((s) => ({ creditCardsCollapsed: !s.creditCardsCollapsed })),
 
-  openModal: (kind, editingId) => set({ activeModal: { kind, editingId: editingId ?? null } }),
-  closeModal: () => set({ activeModal: null }),
+      openModal: (kind, editingId) => set({ activeModal: { kind, editingId: editingId ?? null } }),
+      closeModal: () => set({ activeModal: null }),
 
+      toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      setSidebarWidth: (px) => set({ sidebarWidth: clampSidebarWidth(px) }),
 
-  toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  setSidebarWidth: (px) => set({ sidebarWidth: clampSidebarWidth(px) }),
+      collapsedSidebarGroups: new Set<string>(),
+      toggleSidebarGroup: (groupId) => {
+        const groups = new Set(get().collapsedSidebarGroups)
+        if (groups.has(groupId)) groups.delete(groupId)
+        else groups.add(groupId)
+        set({ collapsedSidebarGroups: groups })
+      },
 
-  collapsedSidebarGroups: new Set<string>(),
-  toggleSidebarGroup: (groupId) => {
-    const groups = new Set(get().collapsedSidebarGroups)
-    if (groups.has(groupId)) groups.delete(groupId)
-    else groups.add(groupId)
-    set({ collapsedSidebarGroups: groups })
-  },
+      quickAddOpen: false,
+      moreSheetOpen: false,
+      mobileInspectorOpen: false,
+      openQuickAdd: () => set({ quickAddOpen: true }),
+      closeQuickAdd: () => set({ quickAddOpen: false }),
+      openMoreSheet: () => set({ moreSheetOpen: true }),
+      closeMoreSheet: () => set({ moreSheetOpen: false }),
+      openMobileInspector: () => set({ mobileInspectorOpen: true }),
+      closeMobileInspector: () => set({ mobileInspectorOpen: false }),
+      toggleBudgetRowMode: () =>
+        set((s) => ({ budgetRowMode: s.budgetRowMode === 'expanded' ? 'compressed' : 'expanded' })),
 
-  quickAddOpen: false,
-  moreSheetOpen: false,
-  mobileInspectorOpen: false,
-  openQuickAdd: () => set({ quickAddOpen: true }),
-  closeQuickAdd: () => set({ quickAddOpen: false }),
-  openMoreSheet: () => set({ moreSheetOpen: true }),
-  closeMoreSheet: () => set({ moreSheetOpen: false }),
-  openMobileInspector: () => set({ mobileInspectorOpen: true }),
-  closeMobileInspector: () => set({ mobileInspectorOpen: false }),
-  toggleBudgetRowMode: () => set((s) => ({ budgetRowMode: s.budgetRowMode === 'expanded' ? 'compressed' : 'expanded' })),
+      toggleCategorySelection: (id, shiftKey = false, orderedIds = []) => {
+        const { selectedCategoryIds, lastSelectedCategoryId } = get()
+        const next = new Set(selectedCategoryIds)
 
-  toggleCategorySelection: (id, shiftKey = false, orderedIds = []) => {
-    const { selectedCategoryIds, lastSelectedCategoryId } = get()
-    const next = new Set(selectedCategoryIds)
+        if (shiftKey && lastSelectedCategoryId && orderedIds.length > 0) {
+          const fromIdx = orderedIds.indexOf(lastSelectedCategoryId)
+          const toIdx = orderedIds.indexOf(id)
+          if (fromIdx !== -1 && toIdx !== -1) {
+            const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
+            for (let i = start; i <= end; i++) next.add(orderedIds[i])
+            set({ selectedCategoryIds: next, lastSelectedCategoryId: id })
+            return
+          }
+        }
 
-    if (shiftKey && lastSelectedCategoryId && orderedIds.length > 0) {
-      const fromIdx = orderedIds.indexOf(lastSelectedCategoryId)
-      const toIdx = orderedIds.indexOf(id)
-      if (fromIdx !== -1 && toIdx !== -1) {
-        const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
-        for (let i = start; i <= end; i++) next.add(orderedIds[i])
-        set({ selectedCategoryIds: next, lastSelectedCategoryId: id })
-        return
-      }
-    }
+        if (next.has(id)) {
+          next.delete(id)
+        } else {
+          next.add(id)
+        }
+        set({
+          selectedCategoryIds: next,
+          lastSelectedCategoryId: next.has(id) ? id : lastSelectedCategoryId,
+        })
+      },
 
-    if (next.has(id)) {
-      next.delete(id)
-    } else {
-      next.add(id)
-    }
-    set({ selectedCategoryIds: next, lastSelectedCategoryId: next.has(id) ? id : lastSelectedCategoryId })
-  },
+      selectOnlyCategory: (id) => {
+        const { selectedCategoryIds } = get()
+        // Clicking the already-sole selection deselects it
+        if (selectedCategoryIds.size === 1 && selectedCategoryIds.has(id)) {
+          set({ selectedCategoryIds: new Set(), lastSelectedCategoryId: null })
+        } else {
+          set({ selectedCategoryIds: new Set([id]), lastSelectedCategoryId: id })
+        }
+      },
 
-  selectOnlyCategory: (id) => {
-    const { selectedCategoryIds } = get()
-    // Clicking the already-sole selection deselects it
-    if (selectedCategoryIds.size === 1 && selectedCategoryIds.has(id)) {
-      set({ selectedCategoryIds: new Set(), lastSelectedCategoryId: null })
-    } else {
-      set({ selectedCategoryIds: new Set([id]), lastSelectedCategoryId: id })
-    }
-  },
+      selectGroupCategories: (ids) => {
+        const { selectedCategoryIds } = get()
+        const allSelected = ids.every((id) => selectedCategoryIds.has(id))
+        const next = new Set(selectedCategoryIds)
+        if (allSelected) {
+          ids.forEach((id) => next.delete(id))
+        } else {
+          ids.forEach((id) => next.add(id))
+        }
+        set({ selectedCategoryIds: next })
+      },
 
-  selectGroupCategories: (ids) => {
-    const { selectedCategoryIds } = get()
-    const allSelected = ids.every((id) => selectedCategoryIds.has(id))
-    const next = new Set(selectedCategoryIds)
-    if (allSelected) {
-      ids.forEach((id) => next.delete(id))
-    } else {
-      ids.forEach((id) => next.add(id))
-    }
-    set({ selectedCategoryIds: next })
-  },
+      clearCategorySelection: () =>
+        set({ selectedCategoryIds: new Set(), lastSelectedCategoryId: null }),
 
-  clearCategorySelection: () => set({ selectedCategoryIds: new Set(), lastSelectedCategoryId: null }),
+      setCategoryInspectorOpen: (open) =>
+        set({ categoryInspectorOpen: open, inspectorUserClosed: !open }),
 
-  setCategoryInspectorOpen: (open) => set({ categoryInspectorOpen: open, inspectorUserClosed: !open }),
+      toggleTransactionSelection: (id, shiftKey = false, orderedIds = []) => {
+        const { selectedTransactionIds, lastSelectedTransactionId } = get()
+        const next = new Set(selectedTransactionIds)
 
-  toggleTransactionSelection: (id, shiftKey = false, orderedIds = []) => {
-    const { selectedTransactionIds, lastSelectedTransactionId } = get()
-    const next = new Set(selectedTransactionIds)
+        if (shiftKey && lastSelectedTransactionId && orderedIds.length > 0) {
+          const fromIdx = orderedIds.indexOf(lastSelectedTransactionId)
+          const toIdx = orderedIds.indexOf(id)
+          if (fromIdx !== -1 && toIdx !== -1) {
+            const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
+            for (let i = start; i <= end; i++) next.add(orderedIds[i])
+            set({ selectedTransactionIds: next, lastSelectedTransactionId: id })
+            return
+          }
+        }
 
-    if (shiftKey && lastSelectedTransactionId && orderedIds.length > 0) {
-      const fromIdx = orderedIds.indexOf(lastSelectedTransactionId)
-      const toIdx = orderedIds.indexOf(id)
-      if (fromIdx !== -1 && toIdx !== -1) {
-        const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
-        for (let i = start; i <= end; i++) next.add(orderedIds[i])
-        set({ selectedTransactionIds: next, lastSelectedTransactionId: id })
-        return
-      }
-    }
+        if (next.has(id)) {
+          next.delete(id)
+        } else {
+          next.add(id)
+        }
+        set({
+          selectedTransactionIds: next,
+          lastSelectedTransactionId: next.has(id) ? id : lastSelectedTransactionId,
+        })
+      },
 
-    if (next.has(id)) {
-      next.delete(id)
-    } else {
-      next.add(id)
-    }
-    set({ selectedTransactionIds: next, lastSelectedTransactionId: next.has(id) ? id : lastSelectedTransactionId })
-  },
+      selectAllTransactions: (ids) => set({ selectedTransactionIds: new Set(ids) }),
 
-  selectAllTransactions: (ids) => set({ selectedTransactionIds: new Set(ids) }),
+      clearTransactionSelection: () =>
+        set({ selectedTransactionIds: new Set(), lastSelectedTransactionId: null }),
 
-  clearTransactionSelection: () => set({ selectedTransactionIds: new Set(), lastSelectedTransactionId: null }),
+      togglePayeeSelection: (id, shiftKey = false, orderedIds = []) => {
+        const { selectedPayeeIds, lastSelectedPayeeId } = get()
+        const next = new Set(selectedPayeeIds)
 
-  togglePayeeSelection: (id, shiftKey = false, orderedIds = []) => {
-    const { selectedPayeeIds, lastSelectedPayeeId } = get()
-    const next = new Set(selectedPayeeIds)
+        if (shiftKey && lastSelectedPayeeId && orderedIds.length > 0) {
+          const fromIdx = orderedIds.indexOf(lastSelectedPayeeId)
+          const toIdx = orderedIds.indexOf(id)
+          if (fromIdx !== -1 && toIdx !== -1) {
+            const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
+            for (let i = start; i <= end; i++) next.add(orderedIds[i])
+            set({ selectedPayeeIds: next, lastSelectedPayeeId: id })
+            return
+          }
+        }
 
-    if (shiftKey && lastSelectedPayeeId && orderedIds.length > 0) {
-      const fromIdx = orderedIds.indexOf(lastSelectedPayeeId)
-      const toIdx = orderedIds.indexOf(id)
-      if (fromIdx !== -1 && toIdx !== -1) {
-        const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx]
-        for (let i = start; i <= end; i++) next.add(orderedIds[i])
-        set({ selectedPayeeIds: next, lastSelectedPayeeId: id })
-        return
-      }
-    }
+        if (next.has(id)) {
+          next.delete(id)
+        } else {
+          next.add(id)
+        }
+        set({
+          selectedPayeeIds: next,
+          lastSelectedPayeeId: next.has(id) ? id : lastSelectedPayeeId,
+        })
+      },
 
-    if (next.has(id)) {
-      next.delete(id)
-    } else {
-      next.add(id)
-    }
-    set({ selectedPayeeIds: next, lastSelectedPayeeId: next.has(id) ? id : lastSelectedPayeeId })
-  },
+      selectAllPayees: (ids) => set({ selectedPayeeIds: new Set(ids) }),
 
-  selectAllPayees: (ids) => set({ selectedPayeeIds: new Set(ids) }),
+      clearPayeeSelection: () => set({ selectedPayeeIds: new Set(), lastSelectedPayeeId: null }),
 
-  clearPayeeSelection: () => set({ selectedPayeeIds: new Set(), lastSelectedPayeeId: null }),
+      toggleSection: (section) => {
+        const sections = new Set(get().collapsedSections)
+        if (sections.has(section)) {
+          sections.delete(section)
+        } else {
+          sections.add(section)
+        }
+        set({ collapsedSections: sections })
+      },
 
-  toggleSection: (section) => {
-    const sections = new Set(get().collapsedSections)
-    if (sections.has(section)) {
-      sections.delete(section)
-    } else {
-      sections.add(section)
-    }
-    set({ collapsedSections: sections })
-  },
+      setTransactionSort: (column, direction) =>
+        set({
+          transactionSortColumn: column,
+          transactionSortDirection: direction,
+        }),
 
-  setTransactionSort: (column, direction) => set({
-    transactionSortColumn: column,
-    transactionSortDirection: direction,
-  }),
+      setTransactionSearch: (query) => set({ transactionSearchQuery: query }),
 
-  setTransactionSearch: (query) => set({ transactionSearchQuery: query }),
+      activeFilterId: null,
+      activeViewId: null,
+      setActiveView: (viewId) => set({ activeViewId: viewId }),
+      setActiveFilter: (filterId) => set({ activeFilterId: filterId, activeQuickFilter: null }),
 
-  activeFilterId: null,
-  activeViewId: null,
-  setActiveView: (viewId) => set({ activeViewId: viewId }),
-  setActiveFilter: (filterId) => set({ activeFilterId: filterId, activeQuickFilter: null }),
+      activeQuickFilter: null,
+      quickFilterOrder: [...ALL_QUICK_FILTERS],
+      setActiveQuickFilter: (filter) => set({ activeQuickFilter: filter, activeFilterId: null }),
+      reorderQuickFilters: (order) => set({ quickFilterOrder: order }),
 
-  activeQuickFilter: null,
-  quickFilterOrder: [...ALL_QUICK_FILTERS],
-  setActiveQuickFilter: (filter) => set({ activeQuickFilter: filter, activeFilterId: null }),
-  reorderQuickFilters: (order) => set({ quickFilterOrder: order }),
+      categorySearch: '',
+      setCategorySearch: (query) => set({ categorySearch: query }),
 
-  categorySearch: '',
-  setCategorySearch: (query) => set({ categorySearch: query }),
+      isPaletteOpen: false,
+      openPalette: () => set({ isPaletteOpen: true }),
+      closePalette: () => set({ isPaletteOpen: false }),
+      togglePalette: () => set((s) => ({ isPaletteOpen: !s.isPaletteOpen })),
 
+      assignDropdownOpen: false,
+      setAssignDropdownOpen: (open) => set({ assignDropdownOpen: open }),
+      assignPreviewStrategy: null,
+      setAssignPreviewStrategy: (strategy) => set({ assignPreviewStrategy: strategy }),
+      isCoverOverspentOpen: false,
+      setCoverOverspentOpen: (open) => set({ isCoverOverspentOpen: open }),
+      tbaDrawerOpen: false,
+      setTbaDrawerOpen: (open) => set({ tbaDrawerOpen: open }),
 
-  isPaletteOpen: false,
-  openPalette: () => set({ isPaletteOpen: true }),
-  closePalette: () => set({ isPaletteOpen: false }),
-  togglePalette: () => set((s) => ({ isPaletteOpen: !s.isPaletteOpen })),
+      multiMonthOpen: false,
+      setMultiMonthOpen: (open) => set({ multiMonthOpen: open }),
 
-  assignDropdownOpen: false,
-  setAssignDropdownOpen: (open) => set({ assignDropdownOpen: open }),
-  assignPreviewStrategy: null,
-  setAssignPreviewStrategy: (strategy) => set({ assignPreviewStrategy: strategy }),
-  isCoverOverspentOpen: false,
-  setCoverOverspentOpen: (open) => set({ isCoverOverspentOpen: open }),
-  tbaDrawerOpen: false,
-  setTbaDrawerOpen: (open) => set({ tbaDrawerOpen: open }),
-
-  multiMonthOpen: false,
-  setMultiMonthOpen: (open) => set({ multiMonthOpen: open }),
-
-  isReconciling: false,
-  reconcileAccountId: null,
-  reconcileStatementBalance: null,
-  reconcileAdjustmentTxnId: null,
-  startReconciliation: (accountId) => set({
-    isReconciling: true,
-    reconcileAccountId: accountId,
-    reconcileStatementBalance: null,
-    reconcileAdjustmentTxnId: null,
-  }),
-  setReconcileStatementBalance: (balance) => set({ reconcileStatementBalance: balance }),
-  setReconcileAdjustmentTxnId: (txnId) => set({ reconcileAdjustmentTxnId: txnId }),
-  cancelReconciliation: () => set({
-    isReconciling: false,
-    reconcileAccountId: null,
-    reconcileStatementBalance: null,
-    reconcileAdjustmentTxnId: null,
-  }),
-}),
+      isReconciling: false,
+      reconcileAccountId: null,
+      reconcileStatementBalance: null,
+      reconcileAdjustmentTxnId: null,
+      startReconciliation: (accountId) =>
+        set({
+          isReconciling: true,
+          reconcileAccountId: accountId,
+          reconcileStatementBalance: null,
+          reconcileAdjustmentTxnId: null,
+        }),
+      setReconcileStatementBalance: (balance) => set({ reconcileStatementBalance: balance }),
+      setReconcileAdjustmentTxnId: (txnId) => set({ reconcileAdjustmentTxnId: txnId }),
+      cancelReconciliation: () =>
+        set({
+          isReconciling: false,
+          reconcileAccountId: null,
+          reconcileStatementBalance: null,
+          reconcileAdjustmentTxnId: null,
+        }),
+    }),
     {
       name: PERSIST_KEYS.ui,
       // Only the two selections a user makes deliberately and expects to find
