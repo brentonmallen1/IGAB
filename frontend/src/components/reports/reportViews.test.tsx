@@ -140,7 +140,7 @@ describe('view-hidden note on the spending charts', () => {
     ],
     total: 205,
     view_hidden_categories: 31,
-    view_hidden_total: '14820.45',
+    view_hidden_total: 14820.45,
   }
 
   it.each([
@@ -196,8 +196,8 @@ describe('class-excluded note on the spending charts', () => {
     view_hidden_categories: 0,
     view_hidden_total: '0',
     class_excluded: [
-      { activity_class: 'debt_principal', label: 'Debt payment', categories: 1, total: '275.00' },
-      { activity_class: 'savings', label: 'Savings', categories: 2, total: '101.00' },
+      { activity_class: 'debt_principal', label: 'Debt payment', categories: 1, total: 275.0 },
+      { activity_class: 'savings', label: 'Savings', categories: 2, total: 101.0 },
     ],
   }
 
@@ -269,11 +269,11 @@ describe('OverviewReport metric cards', () => {
         burn_rate_30: '900',
         burn_rate_90: '850',
         savings_rate: 0.25,
-        days_until_zero: '45.6',
+        days_until_zero: 45.6,
         income_this_month: '4000',
         expenses_this_month: '3000',
         expenses_prev_month: '2500',
-        top_categories: [{ id: 'c1', name: 'Groceries', group_name: 'Everyday', total: '300' }],
+        top_categories: [{ id: 'c1', name: 'Groceries', group_name: 'Everyday', total: 300 }],
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
@@ -353,7 +353,7 @@ describe('ParetoReport insight', () => {
           {
             id: 'c1',
             name: 'Rent',
-            total: '500',
+            total: 500,
             count: 1,
             pct: 50,
             parent_id: 'g1',
@@ -362,7 +362,7 @@ describe('ParetoReport insight', () => {
           {
             id: 'c2',
             name: 'Groceries',
-            total: '300',
+            total: 300,
             count: 5,
             pct: 30,
             parent_id: 'g2',
@@ -371,7 +371,7 @@ describe('ParetoReport insight', () => {
           {
             id: 'c3',
             name: 'Gas',
-            total: '150',
+            total: 150,
             count: 3,
             pct: 15,
             parent_id: 'g2',
@@ -380,14 +380,14 @@ describe('ParetoReport insight', () => {
           {
             id: 'c4',
             name: 'Fun',
-            total: '50',
+            total: 50,
             count: 2,
             pct: 5,
             parent_id: 'g2',
             parent_name: 'Everyday',
           },
         ],
-        total: '1000',
+        total: 1000,
       },
     })
     renderReport(<ParetoReport budgetId="b1" />)
@@ -412,15 +412,15 @@ describe('PlanVsRealityReport matrix', () => {
         category_name: 'Dining',
         category_group_name: 'Everyday',
         monthly: [
-          { month: '2026-06-01', assigned: '100', spent: '140', variance: '-40' },
-          { month: '2026-07-01', assigned: '100', spent: '90', variance: '10' },
-          { month: '2026-08-01', assigned: '0', spent: '0', variance: '0' },
+          { month: '2026-06-01', assigned: 100, spent: 140, variance: -40 },
+          { month: '2026-07-01', assigned: 100, spent: 90, variance: 10 },
+          { month: '2026-08-01', assigned: 0, spent: 0, variance: 0 },
         ],
         months_over: 1,
         months_active: 2,
         total_assigned: '200',
         total_spent: '230',
-        avg_overspend: '40.00',
+        avg_overspend: 40.0,
         chronic: true,
       },
       {
@@ -428,9 +428,9 @@ describe('PlanVsRealityReport matrix', () => {
         category_name: 'Rent',
         category_group_name: 'Home',
         monthly: [
-          { month: '2026-06-01', assigned: '900', spent: '900', variance: '0' },
-          { month: '2026-07-01', assigned: '900', spent: '900', variance: '0' },
-          { month: '2026-08-01', assigned: '900', spent: '900', variance: '0' },
+          { month: '2026-06-01', assigned: 900, spent: 900, variance: 0 },
+          { month: '2026-07-01', assigned: 900, spent: 900, variance: 0 },
+          { month: '2026-08-01', assigned: 900, spent: 900, variance: 0 },
         ],
         months_over: 0,
         months_active: 3,
@@ -476,9 +476,9 @@ describe('BudgetActualReport values', () => {
             category_id: 'c1',
             category_name: 'Groceries',
             category_group_name: 'Everyday',
-            assigned: '500',
-            spent: '450',
-            variance: '50',
+            assigned: 500,
+            spent: 450,
+            variance: 50,
             variance_pct: 10,
           },
         ],

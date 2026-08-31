@@ -28,9 +28,9 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
   // attributes it exactly), never re-derived here — the split is a running walk
   // per (category, card) the client has no way to reproduce.
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
-  const riddenByCard = (budgetMonth?.cards ?? []).filter((c) => Number(c.overspent_this_month) > 0)
+  const riddenByCard = (budgetMonth?.cards ?? []).filter((c) => c.overspent_this_month > 0)
 
-  const canApply = preview != null && preview.items.length > 0 && Number(preview.total_addition) > 0
+  const canApply = preview != null && preview.items.length > 0 && preview.total_addition > 0
 
   async function handleApply() {
     if (!preview) return
@@ -45,7 +45,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
       })
       showUndo(
         result.batch_id,
-        `Covered ${formatMoney(Number(preview.total_addition))} of overspending across ${preview.items.length} ${preview.items.length === 1 ? 'category' : 'categories'}`
+        `Covered ${formatMoney(preview.total_addition)} of overspending across ${preview.items.length} ${preview.items.length === 1 ? 'category' : 'categories'}`
       )
       onClose()
     } catch (err: unknown) {
@@ -84,7 +84,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
             <div className="cover-modal__loading">Calculating…</div>
           ) : !preview || preview.items.length === 0 ? (
             <div className="cover-modal__empty">
-              {preview && Number(preview.total_overspent_credit) > 0 ? (
+              {preview && preview.total_overspent_credit > 0 ? (
                 <>
                   <p>Nothing here needs covering.</p>
                   <p className="cover-modal__on-cards">
@@ -106,7 +106,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
               {/* The grid's red is larger than this table, on purpose. Saying so
                   here is cheaper than letting someone find the gap and stop
                   trusting both numbers. */}
-              {Number(preview.total_overspent_credit) > 0 && (
+              {preview.total_overspent_credit > 0 && (
                 <>
                   <p className="cover-modal__on-cards">
                     A further {formatMoney(preview.total_overspent_credit)} was spent on a card.
@@ -156,7 +156,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                         +{formatMoney(item.proposed_addition)}
                       </td>
                       <td className="cover-modal__col-num">
-                        {Number(item.remaining_after) > 0
+                        {item.remaining_after > 0
                           ? formatMoney(-item.remaining_after)
                           : formatMoney(0)}
                       </td>
@@ -164,7 +164,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                   ))}
                 </tbody>
               </table>
-              {Number(preview.total_addition) <= 0 && (
+              {preview.total_addition <= 0 && (
                 <p className="cover-modal__no-funds">
                   Ready to Assign is empty — add or move money there first.
                 </p>
@@ -179,7 +179,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
             <div className="cover-modal__tba-summary">
               <span className="cover-modal__tba-label">TBA after:</span>
               <span
-                className={`cover-modal__tba-value ${Number(preview.tba_after) >= 0 ? 'positive' : 'negative'}`}
+                className={`cover-modal__tba-value ${preview.tba_after >= 0 ? 'positive' : 'negative'}`}
               >
                 {formatMoney(preview.tba_after)}
               </span>

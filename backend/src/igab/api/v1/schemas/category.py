@@ -2,34 +2,33 @@ import datetime
 import uuid
 from decimal import Decimal
 
-from pydantic import BaseModel
-
+from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.money import Money
 
 
-class CategoryGroupCreate(BaseModel):
+class CategoryGroupCreate(ApiModel):
     name: str
     #: Omit it and the group goes last — the server assigns positions, so a
     #: client can no longer send a count of the rows it happened to be showing.
     sort_order: int | None = None
 
 
-class CategoryGroupReorder(BaseModel):
+class CategoryGroupReorder(ApiModel):
     #: The budget's visible groups, in the order they should appear. Each
     #: exactly once; hidden and system groups may be omitted and keep their
     #: slot — see CategoryGroupRepository.reorder.
     group_ids: list[uuid.UUID]
 
 
-class CategoryReorder(BaseModel):
+class CategoryReorder(ApiModel):
     #: One group's visible categories, in the order they should appear. Each
     #: exactly once; hidden ones may be omitted — see CategoryRepository.reorder.
     category_ids: list[uuid.UUID]
 
 
-class CategoryReferenceResponse(BaseModel):
+class CategoryReferenceResponse(ApiModel):
     """One kind of thing still pointing at the categories being deleted.
 
     `clearable` is the whole point of the split. A saved view placing this
@@ -44,7 +43,7 @@ class CategoryReferenceResponse(BaseModel):
     clearable: bool
 
 
-class CategoryDeletePreviewResponse(BaseModel):
+class CategoryDeletePreviewResponse(ApiModel):
     """What deleting these categories is about to do.
 
     The dialog states these numbers before the user commits, and a differential
@@ -90,7 +89,7 @@ class CategoryDeletePreviewResponse(BaseModel):
     is_empty: bool
 
 
-class CategoryDeleteResultResponse(BaseModel):
+class CategoryDeleteResultResponse(ApiModel):
     #: The single change-log row this delete produced; undo it to reverse the
     #: whole operation.
     change_id: uuid.UUID
@@ -101,7 +100,7 @@ class CategoryDeleteResultResponse(BaseModel):
     released: Decimal
 
 
-class CategoryDeleteRequest(BaseModel):
+class CategoryDeleteRequest(ApiModel):
     """Delete one or many categories as a single operation.
 
     A list rather than a call per category: the budget page deletes
@@ -119,12 +118,12 @@ class CategoryDeleteRequest(BaseModel):
     month: datetime.date | None = None
 
 
-class CategoryDeletePreviewRequest(BaseModel):
+class CategoryDeletePreviewRequest(ApiModel):
     category_ids: list[uuid.UUID]
     month: datetime.date | None = None
 
 
-class ArchivedCategoryResponse(BaseModel):
+class ArchivedCategoryResponse(ApiModel):
     """One row of the archived listing — the modal's only source of truth.
 
     `available` should be zero for anything archived through the flow, which
@@ -147,21 +146,21 @@ class ArchivedCategoryResponse(BaseModel):
     group_is_archived: bool
 
 
-class CategoryArchiveRequest(BaseModel):
+class CategoryArchiveRequest(ApiModel):
     """Archive or restore a selection, as one operation and one undo row."""
 
     category_ids: list[uuid.UUID]
     month: datetime.date | None = None
 
 
-class CategoryGroupArchiveRequest(BaseModel):
+class CategoryGroupArchiveRequest(ApiModel):
     """Archive or restore a whole group. The group is in the path; the month
     only decides which month's balances the refusal is measured against."""
 
     month: datetime.date | None = None
 
 
-class CategoryArchivePreviewResponse(BaseModel):
+class CategoryArchivePreviewResponse(ApiModel):
     """What archiving would do, and what stands in the way.
 
     `may_archive` is served rather than derived from the three lists: the dialog
@@ -181,7 +180,7 @@ class CategoryArchivePreviewResponse(BaseModel):
     may_archive: bool
 
 
-class RepairOrphansResponse(BaseModel):
+class RepairOrphansResponse(ApiModel):
     """What the hygiene repair found and fixed."""
 
     categories_repaired: int
@@ -199,7 +198,7 @@ class RepairOrphansResponse(BaseModel):
     categories_under_deleted_groups: int
 
 
-class CategoryGroupUpdate(BaseModel):
+class CategoryGroupUpdate(ApiModel):
     """No `is_archived`. Archiving is not a field edit: it takes every envelope
     under the group off the budget, so it goes through
     `POST /category-groups/{id}/archive`, which refuses while any of them still
@@ -210,7 +209,7 @@ class CategoryGroupUpdate(BaseModel):
     sort_order: int | None = None
 
 
-class CategoryGroupResponse(BaseModel):
+class CategoryGroupResponse(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str
@@ -238,7 +237,7 @@ class CategoryGroupResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CategoryCreate(BaseModel):
+class CategoryCreate(ApiModel):
     category_group_id: uuid.UUID
     name: str
     subtitle: str | None = None
@@ -247,7 +246,7 @@ class CategoryCreate(BaseModel):
     note: str | None = None
 
 
-class CategoryUpdate(BaseModel):
+class CategoryUpdate(ApiModel):
     """No `is_archived` — see `CategoryGroupUpdate`. Use
     `POST /categories/archive` and `/unarchive`, which run the refusal."""
 
@@ -258,14 +257,14 @@ class CategoryUpdate(BaseModel):
     category_group_id: uuid.UUID | None = None
 
 
-class CategoryTargetCreate(BaseModel):
+class CategoryTargetCreate(ApiModel):
     target_type: TargetType
     target_amount: Money
     target_date: datetime.date | None = None
     repeat_frequency: str | None = None
 
 
-class CategoryTargetResponse(BaseModel):
+class CategoryTargetResponse(ApiModel):
     id: uuid.UUID
     category_id: uuid.UUID
     target_type: str
@@ -276,7 +275,7 @@ class CategoryTargetResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CategoryBalance(BaseModel):
+class CategoryBalance(ApiModel):
     category_id: uuid.UUID
     month: datetime.date
     #: Null on a category in a system (Income) group: income is filed there,
@@ -339,7 +338,7 @@ class CategoryBalance(BaseModel):
     credit_overspent: Decimal
 
 
-class CategoryResponse(BaseModel):
+class CategoryResponse(ApiModel):
     id: uuid.UUID
     category_group_id: uuid.UUID
     budget_id: uuid.UUID
@@ -379,7 +378,7 @@ class CategoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class RodeMonth(BaseModel):
+class RodeMonth(ApiModel):
     """One month that put riding debt on a card, and how much.
 
     A month, not just a total, because the two remedies differ by it: an
@@ -394,7 +393,7 @@ class RodeMonth(BaseModel):
     amount: Decimal
 
 
-class CardStatusOut(BaseModel):
+class CardStatusOut(ApiModel):
     """One card in the budget's cards section.
 
     `balance` is the ledger through the viewed month (negative = owed);
@@ -479,7 +478,7 @@ class CardStatusOut(BaseModel):
     rode_by_month: list[RodeMonth]
 
 
-class BudgetMonthResponse(BaseModel):
+class BudgetMonthResponse(ApiModel):
     month: datetime.date
     to_be_assigned: Decimal
     #: Envelope categories only — income appears in `to_be_assigned` and in
@@ -516,11 +515,11 @@ class BudgetMonthResponse(BaseModel):
     cards: list[CardStatusOut] = []
 
 
-class AssignmentUpdate(BaseModel):
+class AssignmentUpdate(ApiModel):
     amount: Money
 
 
-class FutureOverspendItem(BaseModel):
+class FutureOverspendItem(ApiModel):
     """One (category, month, delta) probe: the signed amount change a pending
     transaction edit would apply — outflow negative, reversals positive."""
 
@@ -529,11 +528,11 @@ class FutureOverspendItem(BaseModel):
     amount_delta: Money
 
 
-class FutureOverspendPreviewRequest(BaseModel):
+class FutureOverspendPreviewRequest(ApiModel):
     items: list[FutureOverspendItem]
 
 
-class FutureOverspendWarningOut(BaseModel):
+class FutureOverspendWarningOut(ApiModel):
     category_id: uuid.UUID
     category_name: str
     month: datetime.date
@@ -541,11 +540,11 @@ class FutureOverspendWarningOut(BaseModel):
     available_after: Decimal
 
 
-class FutureOverspendPreviewResponse(BaseModel):
+class FutureOverspendPreviewResponse(ApiModel):
     warnings: list[FutureOverspendWarningOut]
 
 
-class MoveMoneyRequest(BaseModel):
+class MoveMoneyRequest(ApiModel):
     """Move money between envelopes; a null side means To-Be-Assigned."""
 
     from_category_id: uuid.UUID | None = None
@@ -554,7 +553,7 @@ class MoveMoneyRequest(BaseModel):
     month: datetime.date
 
 
-class BudgetMoveResponse(BaseModel):
+class BudgetMoveResponse(ApiModel):
     id: uuid.UUID
     month: datetime.date
     from_category_id: uuid.UUID | None
@@ -565,7 +564,7 @@ class BudgetMoveResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CategoryHistoryResponse(BaseModel):
+class CategoryHistoryResponse(ApiModel):
     category_id: uuid.UUID
     last_month_assigned: Decimal
     last_month_spent: Decimal
@@ -574,17 +573,17 @@ class CategoryHistoryResponse(BaseModel):
     months_included: int
 
 
-class CategoryHistoryBatchRequest(BaseModel):
+class CategoryHistoryBatchRequest(ApiModel):
     category_ids: list[uuid.UUID]
 
 
-class AutoAssignRequest(BaseModel):
+class AutoAssignRequest(ApiModel):
     category_ids: list[uuid.UUID]
     action: str
     month: datetime.date
 
 
-class CoverOverspentPreviewItem(BaseModel):
+class CoverOverspentPreviewItem(ApiModel):
     category_id: uuid.UUID
     category_name: str
     overspent: Decimal
@@ -592,7 +591,7 @@ class CoverOverspentPreviewItem(BaseModel):
     remaining_after: Decimal
 
 
-class CoverOverspentPreviewResponse(BaseModel):
+class CoverOverspentPreviewResponse(ApiModel):
     items: list[CoverOverspentPreviewItem]
     #: What `items` sums to: the cash shortfall, the whole of what this dialog
     #: can act on.
@@ -606,17 +605,17 @@ class CoverOverspentPreviewResponse(BaseModel):
     tba_after: Decimal
 
 
-class CoverOverspentApplyItem(BaseModel):
+class CoverOverspentApplyItem(ApiModel):
     category_id: uuid.UUID
     proposed_addition: Money
 
 
-class CoverOverspentApplyRequest(BaseModel):
+class CoverOverspentApplyRequest(ApiModel):
     month: datetime.date
     items: list[CoverOverspentApplyItem]
 
 
-class AssignStrategyTotal(BaseModel):
+class AssignStrategyTotal(ApiModel):
     strategy: str
     total_amount: Decimal
     total_needed: Decimal | None = None
@@ -625,7 +624,7 @@ class AssignStrategyTotal(BaseModel):
     affected_count: int
 
 
-class AssignStrategyTotalsResponse(BaseModel):
+class AssignStrategyTotalsResponse(ApiModel):
     month: datetime.date
     tba: Decimal
     total_overspent: Decimal
@@ -636,7 +635,7 @@ class AssignStrategyTotalsResponse(BaseModel):
     strategies: list[AssignStrategyTotal]
 
 
-class AssignPreviewItemOut(BaseModel):
+class AssignPreviewItemOut(ApiModel):
     category_id: uuid.UUID
     category_name: str
     current_assigned: Decimal
@@ -644,7 +643,7 @@ class AssignPreviewItemOut(BaseModel):
     new_assigned: Decimal
 
 
-class AssignPreviewResponse(BaseModel):
+class AssignPreviewResponse(ApiModel):
     strategy: str
     items: list[AssignPreviewItemOut]
     total_needed: Decimal | None = None
@@ -654,12 +653,12 @@ class AssignPreviewResponse(BaseModel):
     tba_after: Decimal
 
 
-class AssignApplyRequest(BaseModel):
+class AssignApplyRequest(ApiModel):
     month: datetime.date
     strategy: str
 
 
-class AssignApplyResponse(BaseModel):
+class AssignApplyResponse(ApiModel):
     to_assign: Decimal
     to_return: Decimal
     categories_changed: int
@@ -668,11 +667,11 @@ class AssignApplyResponse(BaseModel):
     batch_id: uuid.UUID | None = None
 
 
-class CoverOverspentApplyResponse(BaseModel):
+class CoverOverspentApplyResponse(ApiModel):
     batch_id: uuid.UUID | None = None
 
 
-class RecentPayeeResponse(BaseModel):
+class RecentPayeeResponse(ApiModel):
     """Most recent payee used in a category — powers add-transaction prefill."""
 
     payee_id: uuid.UUID
@@ -682,14 +681,14 @@ class RecentPayeeResponse(BaseModel):
 # ─── Category classification ─────────────────────────────────────────────────
 
 
-class CategoryClassSlice(BaseModel):
+class CategoryClassSlice(ApiModel):
     activity_class: str
     label: str
     total: Decimal
     count: int
 
 
-class CategoryClassification(BaseModel):
+class CategoryClassification(ApiModel):
     """How this category's recent activity counts in reports.
 
     The badge contract: `dominant` is set only when a single non-spending

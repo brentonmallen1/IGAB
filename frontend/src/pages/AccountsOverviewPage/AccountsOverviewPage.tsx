@@ -76,9 +76,9 @@ function AccountRow({
   const { formatMoney, formatDate } = useFormatters()
   const navigate = useNavigate()
   const state = getSyncState(account, isSyncing)
-  const balance = Number(account.balance)
-  const cleared = Number(account.cleared_balance)
-  const uncleared = Number(account.uncleared_balance)
+  const balance = account.balance
+  const cleared = account.cleared_balance
+  const uncleared = account.uncleared_balance
 
   return (
     <div

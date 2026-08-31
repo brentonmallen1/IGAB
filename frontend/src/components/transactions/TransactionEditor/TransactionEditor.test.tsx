@@ -405,7 +405,7 @@ describe('TransactionEditor transfers', () => {
       {
         id: 'cand-1',
         date: '2026-08-20',
-        amount: '500.00',
+        amount: 500.0,
         memo: 'ACH credit',
         cleared: 'cleared',
       },
@@ -431,7 +431,7 @@ describe('TransactionEditor transfers', () => {
       {
         id: 'cand-1',
         date: '2026-08-20',
-        amount: '500.00',
+        amount: 500.0,
         memo: 'ACH credit',
         cleared: 'cleared',
       },

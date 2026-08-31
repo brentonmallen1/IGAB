@@ -150,7 +150,7 @@ export function TargetSection({ categoryId }: Props) {
             {TARGET_TYPES.find((t) => t.value === target.target_type)?.label}
           </div>
           <div className="inspector-target-display__amount">
-            {formatMoney(Number(target.target_amount))}
+            {formatMoney(target.target_amount)}
           </div>
           {target.target_date && (
             <div className="inspector-target-display__date">

@@ -2,13 +2,13 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 # payload keys safe to expose to the client (staged_path stays internal)
 PUBLIC_PAYLOAD_KEYS = ("account_id", "original_filename", "content_type", "text", "client_today")
 
 
-class AIJobResponse(BaseModel):
+class AIJobResponse(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     kind: str
@@ -50,12 +50,12 @@ class AIJobResponse(BaseModel):
         )
 
 
-class AIJobListResponse(BaseModel):
+class AIJobListResponse(ApiModel):
     jobs: list[AIJobResponse]
     total_count: int
 
 
-class ActiveCountResponse(BaseModel):
+class ActiveCountResponse(ApiModel):
     #: Jobs queued or processing right now.
     count: int
     #: AI-created transactions still awaiting review. Drives the header badge
@@ -64,12 +64,12 @@ class ActiveCountResponse(BaseModel):
     needs_review: int = 0
 
 
-class NLParseRequest(BaseModel):
+class NLParseRequest(ApiModel):
     text: str
     client_today: str | None = None  # ISO date from the browser (TZ-correct "today")
 
 
-class NLDraft(BaseModel):
+class NLDraft(ApiModel):
     payee: str | None
     amount: str  # signed decimal string, outflow-negative
     date: str
@@ -79,6 +79,6 @@ class NLDraft(BaseModel):
     confidence: float
 
 
-class NLParseResponse(BaseModel):
+class NLParseResponse(ApiModel):
     job_id: uuid.UUID
     draft: NLDraft

@@ -354,15 +354,15 @@ export interface BudgetMonth {
 export interface BudgetTransactionsResponse {
   transactions: Transaction[]
   total_count: number
-  /** Decimal serialized as string; totals cover the full filter match, not just the page */
-  total_amount: string
+  /** Totals cover the full filter match, not just the page */
+  total_amount: number
   /** Transaction id → the account's balance as of that row. Present only when
    *  `running_balance` was asked for on a single-account listing; `{}`
    *  otherwise. A pending row has no entry — it has not moved the balance, and
    *  a zero would read as one that had. Served rather than accumulated here:
    *  the server owns the row order, and a running total in a different order
    *  is nonsense that reads as arithmetic. */
-  running_balances: Record<string, string>
+  running_balances: Record<string, number>
 }
 
 export interface Transaction {
@@ -681,6 +681,7 @@ export interface SankeyNode {
 
 export interface SankeyLink {
   source: string
+  /** A node name, not money — Sankey links are named endpoints. */
   target: string
   value: number
 }

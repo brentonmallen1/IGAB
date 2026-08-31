@@ -36,7 +36,7 @@ function PastTargetRow({
       <div className="past-target-row__info">
         <span className="past-target-row__name">{categoryName}</span>
         <span className="past-target-row__meta">
-          {formatMoney(Number(target.target_amount))} ·{' '}
+          {formatMoney(target.target_amount)} ·{' '}
           {target.target_date ? formatDate(target.target_date) : ''}
         </span>
       </div>

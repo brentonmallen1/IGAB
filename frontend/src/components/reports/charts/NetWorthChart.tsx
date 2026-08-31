@@ -39,9 +39,9 @@ export function NetWorthReport({ budgetId }: Props) {
 
   const chartData = points.map((p) => ({
     date: p.date.slice(0, 7),
-    Assets: Number(p.total_assets),
-    Liabilities: Number(p.total_liabilities),
-    'Net Worth': Number(p.net_worth),
+    Assets: p.total_assets,
+    Liabilities: p.total_liabilities,
+    'Net Worth': p.net_worth,
   }))
 
   return (
@@ -68,9 +68,9 @@ export function NetWorthReport({ budgetId }: Props) {
             getRows={() =>
               points.map((p) => ({
                 date: p.date,
-                assets: Number(p.total_assets),
-                liabilities: Number(p.total_liabilities),
-                net_worth: Number(p.net_worth),
+                assets: p.total_assets,
+                liabilities: p.total_liabilities,
+                net_worth: p.net_worth,
               }))
             }
             captureRef={captureRef}
@@ -81,18 +81,15 @@ export function NetWorthReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {latest && (
           <div className="report-metrics">
-            <MetricCard label="Current Net Worth" value={formatMoney(Number(latest.net_worth))} />
-            <MetricCard label="Total Assets" value={formatMoney(Number(latest.total_assets))} />
-            <MetricCard
-              label="Total Liabilities"
-              value={formatMoney(Number(latest.total_liabilities))}
-            />
+            <MetricCard label="Current Net Worth" value={formatMoney(latest.net_worth)} />
+            <MetricCard label="Total Assets" value={formatMoney(latest.total_assets)} />
+            <MetricCard label="Total Liabilities" value={formatMoney(latest.total_liabilities)} />
           </div>
         )}
         {Number(data?.unmanaged_liability_total ?? 0) > 0 && (
           <p className="report-section__subtitle">
-            Liabilities include {formatMoney(Number(data!.unmanaged_liability_total))} of manually
-            tracked debt (no linked account).
+            Liabilities include {formatMoney(data!.unmanaged_liability_total)} of manually tracked
+            debt (no linked account).
           </p>
         )}
 

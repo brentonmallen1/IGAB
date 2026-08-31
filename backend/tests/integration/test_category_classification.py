@@ -63,7 +63,7 @@ class TestCategoryClassification:
             {
                 "activity_class": "debt_principal",
                 "label": "Debt payment",
-                "total": "275.00",
+                "total": 275.0,
                 "count": 1,
             }
         ]

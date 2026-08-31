@@ -18,6 +18,7 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
+    money,
 )
 
 JUL = date(2026, 7, 1)
@@ -74,10 +75,10 @@ async def test_the_months_totals_are_envelope_totals(api_client, db_session):
     what Ready to Assign is made of."""
     budget, _, _ = await _budget(db_session, api_client.test_user)
     body = await _month(api_client, budget, AUG)
-    assert Decimal(body["total_assigned"]) == Decimal("1200.00")
-    assert Decimal(body["total_activity"]) == Decimal("-1200.00")
+    assert money(body["total_assigned"]) == Decimal("1200.00")
+    assert money(body["total_activity"]) == Decimal("-1200.00")
     # 6100 in, 1200 assigned (and spent): the hero is untouched by the change.
-    assert Decimal(body["to_be_assigned"]) == Decimal("4900.00")
+    assert money(body["to_be_assigned"]) == Decimal("4900.00")
 
 
 async def test_assigning_to_an_income_category_is_refused(api_client, db_session):

@@ -1,10 +1,12 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
+
+from igab.api.v1.schemas.base import ApiModel
 
 
-class BudgetViewGroupResponse(BaseModel):
+class BudgetViewGroupResponse(ApiModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -12,7 +14,7 @@ class BudgetViewGroupResponse(BaseModel):
     sort_order: int
 
 
-class BudgetViewPlacementResponse(BaseModel):
+class BudgetViewPlacementResponse(ApiModel):
     model_config = ConfigDict(from_attributes=True)
 
     category_id: uuid.UUID
@@ -23,7 +25,7 @@ class BudgetViewPlacementResponse(BaseModel):
     is_hidden: bool
 
 
-class BudgetViewPlacementInput(BaseModel):
+class BudgetViewPlacementInput(ApiModel):
     category_id: uuid.UUID
     group_id: uuid.UUID | None = None
     #: Alternative to group_id, resolved against the groups saved in the same
@@ -37,7 +39,7 @@ class BudgetViewPlacementInput(BaseModel):
     is_hidden: bool = False
 
 
-class BudgetViewCreate(BaseModel):
+class BudgetViewCreate(ApiModel):
     name: str = Field(min_length=1, max_length=100)
     hide_unassigned: bool = False
     #: Group names in display order. Ids are assigned server-side.
@@ -48,7 +50,7 @@ class BudgetViewCreate(BaseModel):
     placements: list[BudgetViewPlacementInput] = Field(default_factory=list)
 
 
-class BudgetViewUpdate(BaseModel):
+class BudgetViewUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     sort_order: int | None = None
     hide_unassigned: bool | None = None
@@ -56,7 +58,7 @@ class BudgetViewUpdate(BaseModel):
     placements: list[BudgetViewPlacementInput] | None = None
 
 
-class BudgetViewResponse(BaseModel):
+class BudgetViewResponse(ApiModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID

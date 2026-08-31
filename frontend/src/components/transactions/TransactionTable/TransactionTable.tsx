@@ -307,7 +307,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           cmp = (a.memo ?? '').localeCompare(b.memo ?? '')
           break
         case 'amount':
-          cmp = Number(a.amount) - Number(b.amount)
+          cmp = a.amount - b.amount
           break
       }
       return transactionSortDirection === 'asc' ? cmp : -cmp
@@ -369,7 +369,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     () =>
       transactions
         .filter((t) => selectedTransactionIds.has(t.id))
-        .reduce((sum, t) => sum + Number(t.amount), 0),
+        .reduce((sum, t) => sum + t.amount, 0),
     [transactions, selectedTransactionIds]
   )
   const headerCheckboxRef = useRef<HTMLInputElement>(null)
@@ -414,7 +414,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       // An existing split's lines come from the server (the editor fetches
       // them); this page never holds them, so rebuilding from it produced an
       // empty draft that saved over the real lines.
-      startSplitEditing(txn.id, Number(txn.amount), txn.is_split)
+      startSplitEditing(txn.id, txn.amount, txn.is_split)
     },
     [startSplitEditing]
   )
@@ -465,7 +465,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       createTxn.mutate({
         account_id: txn.account_id,
         date: today(),
-        amount: Number(txn.amount),
+        amount: txn.amount,
         payee_id: txn.payee_id ?? undefined,
         category_id: txn.category_id ?? undefined,
         memo: txn.memo ?? undefined,
@@ -559,7 +559,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   )
 
   function renderUpcomingRow(s: ScheduledTransaction) {
-    const amount = Number(s.amount)
+    const amount = s.amount
     const isOutflow = amount < 0
     const payeeName = transactionDisplayPayee(
       { payee_id: s.payee_id, counterpart_account_id: s.transfer_account_id },
@@ -847,7 +847,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           existing={null}
           initial={{
             account_id: makeRepeatingTxn.account_id,
-            amount: Number(makeRepeatingTxn.amount),
+            amount: makeRepeatingTxn.amount,
             category_id: makeRepeatingTxn.category_id ?? undefined,
             memo: makeRepeatingTxn.memo ?? undefined,
           }}

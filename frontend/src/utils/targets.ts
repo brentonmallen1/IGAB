@@ -27,7 +27,7 @@ export function targetProgress(
   assigned: number,
   available: number
 ): number | null {
-  const amount = Number(target.target_amount)
+  const amount = target.target_amount
   if (amount <= 0) return null
   const numerator = targetMeasuresBalance(target) ? available : assigned
   return Math.min(Math.max(numerator / amount, 0), 1)

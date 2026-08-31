@@ -2,14 +2,14 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 
-class AttachmentRotateRequest(BaseModel):
+class AttachmentRotateRequest(ApiModel):
     degrees: Literal[90, 180, 270]
 
 
-class AttachmentResponse(BaseModel):
+class AttachmentResponse(ApiModel):
     id: uuid.UUID
     transaction_id: uuid.UUID
     filename: str

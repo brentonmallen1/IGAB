@@ -34,8 +34,8 @@ export function EssentialsReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return <div className="reports-empty">No data available.</div>
 
-  const maxAverage = Math.max(0, ...data.categories.map((c) => Number(c.monthly_average)))
-  const maxMonth = Math.max(0, ...data.monthly_series.map((m) => Number(m.total)))
+  const maxAverage = Math.max(0, ...data.categories.map((c) => c.monthly_average))
+  const maxMonth = Math.max(0, ...data.monthly_series.map((m) => m.total))
   const [rangeLow, rangeHigh] = data.roadmap_range
 
   return (
@@ -72,14 +72,14 @@ export function EssentialsReport({ budgetId }: Props) {
             <ReportExportButton
               reportId="essentials"
               getRows={() => [
-                { metric: 'essentials_90d', value: Number(data.essentials_90d) },
+                { metric: 'essentials_90d', value: data.essentials_90d },
                 ...data.reserve.map((r) => ({
                   metric: `reserve_${r.months}mo`,
-                  value: Number(r.amount),
+                  value: r.amount,
                 })),
                 ...data.categories.map((c) => ({
                   metric: `avg_${c.name}`,
-                  value: Number(c.monthly_average),
+                  value: c.monthly_average,
                 })),
               ]}
               captureRef={captureRef}
@@ -102,7 +102,7 @@ export function EssentialsReport({ budgetId }: Props) {
             <div className="overview-report__metrics-grid">
               <MetricCard
                 label="Essentials / month"
-                value={formatMoney(Number(data.essentials_90d))}
+                value={formatMoney(data.essentials_90d)}
                 sub="90-day average"
               />
               {data.reserve.map((r) => {
@@ -111,7 +111,7 @@ export function EssentialsReport({ budgetId }: Props) {
                   <MetricCard
                     key={r.months}
                     label={`${r.months}-month reserve`}
-                    value={formatMoney(Number(r.amount))}
+                    value={formatMoney(r.amount)}
                     sub={inRange ? 'Roadmap range' : r.months === 1 ? 'Starter buffer' : undefined}
                     accent={inRange}
                   />
@@ -144,7 +144,7 @@ export function EssentialsReport({ budgetId }: Props) {
                 </thead>
                 <tbody>
                   {data.categories.map((c) => {
-                    const avg = Number(c.monthly_average)
+                    const avg = c.monthly_average
                     const width = maxAverage > 0 ? (avg / maxAverage) * 100 : 0
                     return (
                       <tr key={c.category_id ?? 'uncategorized'}>
@@ -166,9 +166,7 @@ export function EssentialsReport({ budgetId }: Props) {
                             />
                           </div>
                         </td>
-                        <td className="essentials-report__num tabular">
-                          {formatMoney(Number(c.total))}
-                        </td>
+                        <td className="essentials-report__num tabular">{formatMoney(c.total)}</td>
                         <td className="essentials-report__num tabular">
                           {c.months_with_spend}/{months}
                         </td>
@@ -180,11 +178,11 @@ export function EssentialsReport({ budgetId }: Props) {
                   <tr>
                     <th scope="row">All essentials</th>
                     <td className="essentials-report__num tabular">
-                      {formatMoney(Number(data.monthly_total_average))}
+                      {formatMoney(data.monthly_total_average)}
                     </td>
                     <td />
                     <td className="essentials-report__num tabular">
-                      {formatMoney(Number(data.monthly_total_average) * months)}
+                      {formatMoney(data.monthly_total_average * months)}
                     </td>
                     <td />
                   </tr>
@@ -194,7 +192,7 @@ export function EssentialsReport({ budgetId }: Props) {
 
             <div className="essentials-report__months" aria-label="Essentials by month">
               {data.monthly_series.map((m) => {
-                const total = Number(m.total)
+                const total = m.total
                 const height = maxMonth > 0 ? (total / maxMonth) * 100 : 0
                 return (
                   <div

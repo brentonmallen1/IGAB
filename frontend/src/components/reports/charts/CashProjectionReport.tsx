@@ -67,12 +67,12 @@ export function CashProjectionReport({ budgetId }: Props) {
   const chartData = points.map((p) => ({
     date: formatShortDate(p.date),
     fullDate: p.date,
-    p10: Number(p.p10),
-    p25: Number(p.p25),
-    p50: Number(p.p50),
-    p75: Number(p.p75),
-    p90: Number(p.p90),
-    deterministic: Number(p.deterministic),
+    p10: p.p10,
+    p25: p.p25,
+    p50: p.p50,
+    p75: p.p75,
+    p90: p.p90,
+    deterministic: p.deterministic,
   }))
 
   const endPoint = chartData[chartData.length - 1]
@@ -257,9 +257,9 @@ export function CashProjectionReport({ budgetId }: Props) {
                 <span className="projection-event__date">{formatShortDate(e.date)}</span>
                 <span className="projection-event__payee">{e.payee}</span>
                 <span
-                  className={`projection-event__amount ${Number(e.amount) >= 0 ? 'projection-event__amount--positive' : ''}`}
+                  className={`projection-event__amount ${e.amount >= 0 ? 'projection-event__amount--positive' : ''}`}
                 >
-                  {formatMoney(Number(e.amount))}
+                  {formatMoney(e.amount)}
                 </span>
                 <span className={`projection-event__source projection-event__source--${e.source}`}>
                   {e.source}

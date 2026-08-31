@@ -33,7 +33,7 @@ export function seedRows(liabilities: Liability[]): Seed {
   const rows: PlannerRow[] = []
   const excluded: string[] = []
   for (const l of liabilities) {
-    if (!(Number(l.current_balance) > 0)) continue
+    if (!(l.current_balance > 0)) continue
     if (l.interest_rate === null || l.minimum_payment === null) {
       excluded.push(l.name)
       continue

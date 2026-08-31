@@ -57,23 +57,17 @@ export function DayPatternsReport({ budgetId }: Props) {
   // `days.length` never reports emptiness. Filter to a category whose activity
   // is all debt principal and this is the difference between "no spending" and
   // a flat week captioned "Highest Spending Day — Sunday, $0.00".
-  const hasSpending = days.some((d) => Number(d.total) > 0)
+  const hasSpending = days.some((d) => d.total > 0)
 
-  const maxDay = days.reduce(
-    (best, d) => (Number(d.total) > Number(best.total) ? d : best),
-    days[0]
-  )
-  const minDay = days.reduce(
-    (least, d) => (Number(d.total) < Number(least.total) ? d : least),
-    days[0]
-  )
+  const maxDay = days.reduce((best, d) => (d.total > best.total ? d : best), days[0])
+  const minDay = days.reduce((least, d) => (d.total < least.total ? d : least), days[0])
 
   const chartData = days.map((d) => ({
     name: d.day_name,
     dayOfWeek: d.day_of_week,
-    Amount: Number(d.total),
+    Amount: d.total,
     Transactions: d.count,
-    avgPerTxn: d.count > 0 ? Number(d.total) / d.count : 0,
+    avgPerTxn: d.count > 0 ? d.total / d.count : 0,
   }))
 
   function drillTo(dayOfWeek: number, dayName: string) {
@@ -96,12 +90,12 @@ export function DayPatternsReport({ budgetId }: Props) {
   const paydayChartData = paydayDays.map((d) => ({
     name: d.offset === 0 ? 'Payday' : `+${d.offset}`,
     offset: d.offset,
-    spend: Number(d.avg_spend),
-    aboveBaseline: Number(d.avg_spend) > paydayBaseline,
+    spend: d.avg_spend,
+    aboveBaseline: d.avg_spend > paydayBaseline,
   }))
 
   const paydayPeakDay = paydayDays.reduce(
-    (best, d) => (Number(d.avg_spend) > Number(best.avg_spend) ? d : best),
+    (best, d) => (d.avg_spend > best.avg_spend ? d : best),
     paydayDays[0]
   )
 
@@ -130,9 +124,9 @@ export function DayPatternsReport({ budgetId }: Props) {
               getRows={() =>
                 days.map((d) => ({
                   day: d.day_name,
-                  total: Number(d.total),
+                  total: d.total,
                   count: d.count,
-                  avg_transaction: d.count > 0 ? Number(d.total) / d.count : 0,
+                  avg_transaction: d.count > 0 ? d.total / d.count : 0,
                 }))
               }
               captureRef={captureRef}
@@ -150,12 +144,12 @@ export function DayPatternsReport({ budgetId }: Props) {
               <MetricCard
                 label="Highest Spending Day"
                 value={maxDay.day_name}
-                sub={formatMoney(Number(maxDay.total))}
+                sub={formatMoney(maxDay.total)}
               />
               <MetricCard
                 label="Lowest Spending Day"
                 value={minDay.day_name}
-                sub={formatMoney(Number(minDay.total))}
+                sub={formatMoney(minDay.total)}
               />
             </div>
           )}
@@ -277,7 +271,7 @@ export function DayPatternsReport({ budgetId }: Props) {
                 <MetricCard
                   label="Peak Spending Day"
                   value={paydayPeakDay.offset === 0 ? 'Payday' : `Day +${paydayPeakDay.offset}`}
-                  sub={formatMoney(Number(paydayPeakDay.avg_spend))}
+                  sub={formatMoney(paydayPeakDay.avg_spend)}
                 />
               )}
             </div>

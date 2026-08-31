@@ -451,3 +451,18 @@ def make_services(session: AsyncSession) -> Services:
         reconciliation=reconciliation,
         matching=matching,
     )
+
+
+def money(value: object) -> Decimal:
+    """A money field read back out of a JSON body, as an exact `Decimal`.
+
+    Money crosses the wire as a JSON **number** (`schemas/base.py`), and
+    `Decimal(1516.67)` is `Decimal('1516.670000000000072759576141834259...')`
+    — the binary expansion, not the number. `Decimal(str(x))` is exact.
+
+    A helper rather than the spelling inline at each assertion, because the
+    difference is invisible until it is not: of the assertions this replaced,
+    every one but a single 1516.67 passed on values that happened to be
+    exactly representable in binary, so the trap was already laid and silent.
+    """
+    return Decimal(str(value))

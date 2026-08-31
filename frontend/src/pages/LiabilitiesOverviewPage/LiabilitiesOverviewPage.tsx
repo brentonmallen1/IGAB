@@ -22,7 +22,7 @@ export function LiabilitiesOverviewPage() {
   if (!budgetId) return null
 
   const editingLiability = liabilities.find((d) => d.id === activeModal?.editingId) ?? null
-  const totalOwed = liabilities.reduce((sum, d) => sum + Number(d.current_balance), 0)
+  const totalOwed = liabilities.reduce((sum, d) => sum + d.current_balance, 0)
 
   // The "these accounts could be tracked as liabilities" panel used to live
   // here. It cannot have anything to suggest any more: every
@@ -88,13 +88,13 @@ export function LiabilitiesOverviewPage() {
                   </span>
                 </div>
                 <div className="liability-card__balance tabular">
-                  {formatMoney(Number(liability.current_balance))}
+                  {formatMoney(liability.current_balance)}
                 </div>
                 <div className="liability-card__meta">
                   <span>
                     {liability.interest_rate === null
                       ? 'APR not set'
-                      : `${Number(liability.interest_rate)}% APR`}
+                      : `${liability.interest_rate}% APR`}
                   </span>
                   <span
                     className="liability-card__mode"
@@ -109,7 +109,7 @@ export function LiabilitiesOverviewPage() {
                 <div
                   className={`liability-card__payoff ${neverPays ? 'liability-card__payoff--warning' : ''}`}
                 >
-                  {Number(liability.current_balance) === 0 ? (
+                  {liability.current_balance === 0 ? (
                     'Paid off'
                   ) : neverPays ? (
                     <>

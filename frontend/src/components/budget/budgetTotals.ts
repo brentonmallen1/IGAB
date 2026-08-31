@@ -34,9 +34,9 @@ export function sumBalances(balances: CategoryBalance[]): BalanceTotals {
   let available = 0
   for (const b of balances) {
     if (b.assigned === null || b.available === null) continue
-    assigned += Number(b.assigned)
-    activity += Number(b.activity)
-    available += Number(b.available)
+    assigned += b.assigned
+    activity += b.activity
+    available += b.available
   }
   return { assigned, activity, available, carriedOver: available - assigned - activity }
 }

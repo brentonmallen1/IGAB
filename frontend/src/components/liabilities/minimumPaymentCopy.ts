@@ -36,8 +36,8 @@ export function describeMinimumRule(
   if (percent === null) return null
 
   const plus = liability.minimum_payment_plus_interest ? ' plus interest' : ''
-  const atLeast = floor === null ? '' : `, at least ${formatMoney(Number(floor))}`
-  return `${Number(percent)}% of balance${plus}${atLeast}`
+  const atLeast = floor === null ? '' : `, at least ${formatMoney(floor)}`
+  return `${percent}% of balance${plus}${atLeast}`
 }
 
 /**

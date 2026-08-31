@@ -162,13 +162,13 @@ export function TransactionEditor({
   const [memo, setMemo] = useState(transaction?.memo ?? initialDraft?.memo ?? '')
   const [outflow, setOutflow] = useState(() => {
     if (!transaction) return initialDraft?.outflow ?? ''
-    if (Number(transaction.amount) >= 0) return ''
-    return String(Math.abs(Number(transaction.amount)))
+    if (transaction.amount >= 0) return ''
+    return String(Math.abs(transaction.amount))
   })
   const [inflow, setInflow] = useState(() => {
     if (!transaction) return initialDraft?.inflow ?? ''
-    if (Number(transaction.amount) < 0) return ''
-    return String(Number(transaction.amount))
+    if (transaction.amount < 0) return ''
+    return String(transaction.amount)
   })
   // Reconciled: the money is locked — amount, date, cleared state — and
   // everything else stays editable (domain/reconciliation.py, one rule).
@@ -409,7 +409,7 @@ export function TransactionEditor({
           {
             category_id: transaction.category_id,
             date: transaction.date.slice(0, 10),
-            amount_delta: -Number(transaction.amount),
+            amount_delta: -transaction.amount,
           },
         ]
       : []
@@ -959,7 +959,7 @@ export function TransactionEditor({
                                 onChange={() => setPartnerChoice(c.id)}
                               />
                               <span>
-                                {c.date} · {formatMoney(Number(c.amount))}
+                                {c.date} · {formatMoney(c.amount)}
                                 {c.memo ? ` · ${c.memo}` : ''}
                                 {c.cleared === 'reconciled' ? ' · reconciled' : ''}
                               </span>

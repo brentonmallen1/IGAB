@@ -41,10 +41,10 @@ export function VarianceReport({ budgetId }: Props) {
 
   const chartData = points.map((p) => ({
     month: p.month.slice(0, 7),
-    Assigned: Number(p.budget_assigned),
-    Spent: Number(p.actual_spent),
-    'Monthly Variance': Number(p.monthly_variance),
-    Cumulative: Number(p.cumulative_variance),
+    Assigned: p.budget_assigned,
+    Spent: p.actual_spent,
+    'Monthly Variance': p.monthly_variance,
+    Cumulative: p.cumulative_variance,
   }))
 
   return (
@@ -72,10 +72,10 @@ export function VarianceReport({ budgetId }: Props) {
             getRows={() =>
               points.map((p) => ({
                 month: p.month.slice(0, 7),
-                assigned: Number(p.budget_assigned),
-                spent: Number(p.actual_spent),
-                monthly_variance: Number(p.monthly_variance),
-                cumulative_variance: Number(p.cumulative_variance),
+                assigned: p.budget_assigned,
+                spent: p.actual_spent,
+                monthly_variance: p.monthly_variance,
+                cumulative_variance: p.cumulative_variance,
               }))
             }
             captureRef={captureRef}
@@ -88,18 +88,11 @@ export function VarianceReport({ budgetId }: Props) {
           <div className="report-metrics">
             <MetricCard
               label="Cumulative Variance"
-              value={formatMoney(Number(latest.cumulative_variance))}
-              sub={
-                Number(latest.cumulative_variance) > 0
-                  ? 'Under budget overall'
-                  : 'Over budget overall'
-              }
+              value={formatMoney(latest.cumulative_variance)}
+              sub={latest.cumulative_variance > 0 ? 'Under budget overall' : 'Over budget overall'}
             />
-            <MetricCard
-              label="Last Month Assigned"
-              value={formatMoney(Number(latest.budget_assigned))}
-            />
-            <MetricCard label="Last Month Spent" value={formatMoney(Number(latest.actual_spent))} />
+            <MetricCard label="Last Month Assigned" value={formatMoney(latest.budget_assigned)} />
+            <MetricCard label="Last Month Spent" value={formatMoney(latest.actual_spent)} />
           </div>
         )}
 

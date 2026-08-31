@@ -63,7 +63,7 @@ export function TimelineReport({ budgetId }: Props) {
   }
 
   const transactions = data?.transactions ?? []
-  const largestAmt = transactions.length > 0 ? Math.abs(Number(transactions[0].amount)) : 0
+  const largestAmt = transactions.length > 0 ? Math.abs(transactions[0].amount) : 0
 
   const dotSize = (amount: number) => {
     if (largestAmt === 0) return 8
@@ -110,7 +110,7 @@ export function TimelineReport({ budgetId }: Props) {
                 date: tx.date,
                 payee: tx.payee_name ?? '',
                 category: tx.category_name ?? '',
-                amount: Number(tx.amount),
+                amount: tx.amount,
                 memo: tx.memo ?? '',
               }))
             }
@@ -134,7 +134,7 @@ export function TimelineReport({ budgetId }: Props) {
           <div className="timeline">
             <div className="timeline__track" />
             {transactions.map((tx, i) => {
-              const amt = Number(tx.amount)
+              const amt = tx.amount
               // By class, not by sign. A transfer into savings is negative but is
               // not an expense, and drawing it red said otherwise.
               const tone = TONE_BY_CLASS[tx.activity_class] ?? (amt < 0 ? 'expense' : 'income')

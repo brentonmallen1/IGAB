@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 
-class BackupFile(BaseModel):
+class BackupFile(ApiModel):
     name: str
     kind: str  # db | attachments | prerestore
     size_bytes: int
@@ -11,7 +11,7 @@ class BackupFile(BaseModel):
     encrypted: bool
 
 
-class BackupJob(BaseModel):
+class BackupJob(ApiModel):
     id: str | None = None
     action: str | None = None
     state: str | None = None  # running | done | error
@@ -20,7 +20,7 @@ class BackupJob(BaseModel):
     finished_at: str | None = None
 
 
-class BackupsOverview(BaseModel):
+class BackupsOverview(ApiModel):
     agent_online: bool
     agent_last_seen: datetime | None
     maintenance: bool
@@ -33,14 +33,14 @@ class BackupsOverview(BaseModel):
     files: list[BackupFile]
 
 
-class BackupStatus(BaseModel):
+class BackupStatus(ApiModel):
     agent_online: bool
     maintenance: bool
     queued: bool
     job: BackupJob | None
 
 
-class RestoreRequest(BaseModel):
+class RestoreRequest(ApiModel):
     file: str
     pre_backup: bool = True
     # Deliberate speed bump: the client must assert the user confirmed a
@@ -48,5 +48,5 @@ class RestoreRequest(BaseModel):
     confirm: bool = False
 
 
-class JobStarted(BaseModel):
+class JobStarted(ApiModel):
     job_id: str

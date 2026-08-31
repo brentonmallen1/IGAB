@@ -1,24 +1,26 @@
 import uuid
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import EmailStr, Field
+
+from igab.api.v1.schemas.base import ApiModel
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(ApiModel):
     email: EmailStr
     password: str
 
 
-class TokenResponse(BaseModel):
+class TokenResponse(ApiModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
 
 
-class RefreshRequest(BaseModel):
+class RefreshRequest(ApiModel):
     refresh_token: str
 
 
-class UserResponse(BaseModel):
+class UserResponse(ApiModel):
     id: uuid.UUID
     email: str
     display_name: str | None
@@ -27,25 +29,25 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ChangePasswordRequest(BaseModel):
+class ChangePasswordRequest(ApiModel):
     current_password: str
     new_password: str = Field(min_length=8)
 
 
-class UserCreateRequest(BaseModel):
+class UserCreateRequest(ApiModel):
     email: EmailStr
     password: str = Field(min_length=8)
     display_name: str | None = None
 
 
-class UserUpdateRequest(BaseModel):
+class UserUpdateRequest(ApiModel):
     display_name: str | None = None
     is_active: bool | None = None
     #: Admin password reset — sets a new password without knowing the old one.
     password: str | None = Field(default=None, min_length=8)
 
 
-class UserListItem(BaseModel):
+class UserListItem(ApiModel):
     id: uuid.UUID
     email: str
     display_name: str | None

@@ -49,7 +49,7 @@ export function SavingsRateReport({ budgetId }: Props) {
     Spent: Number(m.spending),
     // null leaves a gap in the line rather than dropping it to zero, which
     // would read as "saved nothing" in a month with no income at all.
-    'Savings Rate': m[rateKey] === null ? null : Number(m[rateKey]) * 100,
+    'Savings Rate': m[rateKey] === null ? null : m[rateKey] * 100,
   }))
 
   const hasAnything = rows.some(

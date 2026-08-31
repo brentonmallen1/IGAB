@@ -15,6 +15,7 @@ from .factories import (
     create_liability,
     create_liability_snapshot,
     create_transaction,
+    money,
 )
 
 TODAY = date.today()
@@ -66,7 +67,7 @@ async def test_net_worth_includes_every_account(api_client, db_session):
     # mortgage is NOT double counted through the unmanaged bucket
     assert Decimal(latest["total_liabilities"]) == Decimal("251275.00")
     assert Decimal(latest["net_worth"]) == Decimal("-236775.00")
-    assert Decimal(body["unmanaged_liability_total"]) == Decimal("855.00")
+    assert money(body["unmanaged_liability_total"]) == Decimal("855.00")
 
     # The identity holds on every point, and snapshots carry classification
     for point in body["points"]:

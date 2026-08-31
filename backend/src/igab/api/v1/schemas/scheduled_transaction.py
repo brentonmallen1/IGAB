@@ -2,10 +2,10 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 
-class ScheduledTransactionCreate(BaseModel):
+class ScheduledTransactionCreate(ApiModel):
     account_id: uuid.UUID
     amount: Decimal
     frequency: str
@@ -18,7 +18,7 @@ class ScheduledTransactionCreate(BaseModel):
     days_before_reminder: int = 3
 
 
-class ScheduledTransactionUpdate(BaseModel):
+class ScheduledTransactionUpdate(ApiModel):
     amount: Decimal | None = None
     frequency: str | None = None
     start_date: date | None = None
@@ -31,7 +31,7 @@ class ScheduledTransactionUpdate(BaseModel):
     next_occurrence_date: date | None = None
 
 
-class ScheduledTransactionResponse(BaseModel):
+class ScheduledTransactionResponse(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     account_id: uuid.UUID

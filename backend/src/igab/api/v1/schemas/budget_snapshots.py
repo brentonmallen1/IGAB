@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 
-class SnapshotFile(BaseModel):
+class SnapshotFile(ApiModel):
     """One kept snapshot, as the per-budget list shows it."""
 
     name: str
@@ -11,7 +11,7 @@ class SnapshotFile(BaseModel):
     modified_at: datetime
 
 
-class SnapshotCreated(BaseModel):
+class SnapshotCreated(ApiModel):
     name: str
     size_bytes: int
     budget_name: str
@@ -24,7 +24,7 @@ class SnapshotCreated(BaseModel):
     attachments_omitted: int
 
 
-class SnapshotInspection(BaseModel):
+class SnapshotInspection(ApiModel):
     """What a file says about itself, and whether this installation can read
     it. Mutates nothing — this is what makes "check before you restore" a
     real option rather than an encouragement."""
@@ -43,7 +43,7 @@ class SnapshotInspection(BaseModel):
     warnings: list[str]
 
 
-class SnapshotImportResult(BaseModel):
+class SnapshotImportResult(ApiModel):
     """What an import actually did.
 
     Returned rather than written to ``budgets.import_summary``: that column is

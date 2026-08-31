@@ -27,6 +27,7 @@ from .factories import (
     create_tag,
     create_transaction,
     create_user,
+    money,
 )
 
 TODAY = date.today()
@@ -220,4 +221,4 @@ class TestEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["months"]) == 3
-        assert Decimal(body["summary"]["income"]) == Decimal("2000.00")
+        assert money(body["summary"]["income"]) == Decimal("2000.00")

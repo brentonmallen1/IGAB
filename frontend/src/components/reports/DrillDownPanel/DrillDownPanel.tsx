@@ -128,7 +128,7 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
             </thead>
             <tbody>
               {rows.map((t) => {
-                const amount = Number(t.amount)
+                const amount = t.amount
                 return (
                   <tr key={t.id}>
                     <td className="ddp__date">{t.date}</td>

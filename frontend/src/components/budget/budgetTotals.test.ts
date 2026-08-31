@@ -51,10 +51,16 @@ describe('sumBalances', () => {
     })
   })
 
-  it('handles decimal strings from the API', () => {
-    const asStrings = [
-      { ...bal(0, 0, 0), assigned: '10.50', activity: '-2.25', available: '8.25' },
-    ] as unknown as CategoryBalance[]
-    expect(sumBalances(asStrings).carriedOver).toBe(0)
+  it('sums the numbers the API now actually sends', () => {
+    // This used to pass STRINGS through `as unknown as CategoryBalance[]` and
+    // assert they summed — because the wire sent strings while the type said
+    // number, and `sumBalances` coerced. The server serializes Decimal as a
+    // JSON number now (`schemas/base.py`), enforced by the response-contract
+    // suite, so the cast is gone and the coercion with it. A string arriving
+    // here would produce NaN, which is the right kind of loud.
+    expect(
+      sumBalances([{ ...bal(0, 0, 0), assigned: 10.5, activity: -2.25, available: 8.25 }])
+        .carriedOver
+    ).toBe(0)
   })
 })

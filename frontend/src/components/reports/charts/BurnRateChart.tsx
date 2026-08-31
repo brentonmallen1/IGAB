@@ -41,8 +41,8 @@ export function BurnRateReport({ budgetId }: Props) {
 
   const chartData = points.map((p) => ({
     date: p.date.slice(0, 7),
-    '30-Day': Number(p.rolling_30),
-    '90-Day Avg': Number(p.rolling_90),
+    '30-Day': p.rolling_30,
+    '90-Day Avg': p.rolling_90,
   }))
 
   return (
@@ -71,8 +71,8 @@ export function BurnRateReport({ budgetId }: Props) {
             getRows={() =>
               points.map((p) => ({
                 date: p.date,
-                rolling_30: Number(p.rolling_30),
-                rolling_90: Number(p.rolling_90),
+                rolling_30: p.rolling_30,
+                rolling_90: p.rolling_90,
               }))
             }
             captureRef={captureRef}
@@ -83,11 +83,8 @@ export function BurnRateReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {latest && (
           <div className="report-metrics">
-            <MetricCard
-              label="Current 30-Day Burn"
-              value={formatMoney(Number(latest.rolling_30))}
-            />
-            <MetricCard label="Current 90-Day Avg" value={formatMoney(Number(latest.rolling_90))} />
+            <MetricCard label="Current 30-Day Burn" value={formatMoney(latest.rolling_30)} />
+            <MetricCard label="Current 90-Day Avg" value={formatMoney(latest.rolling_90)} />
           </div>
         )}
 

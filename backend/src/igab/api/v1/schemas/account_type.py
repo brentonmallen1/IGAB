@@ -1,19 +1,20 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from igab.api.v1.schemas.base import ApiModel
 from igab.domain.enums import AccountClassification
 
 
-class AccountTypeCreate(BaseModel):
+class AccountTypeCreate(ApiModel):
     label: str = Field(min_length=1, max_length=50)
     classification: AccountClassification
     default_on_budget: bool = False
     description: str | None = None
 
 
-class AccountTypeUpdate(BaseModel):
+class AccountTypeUpdate(ApiModel):
     label: str | None = Field(default=None, min_length=1, max_length=50)
     classification: AccountClassification | None = None
     default_on_budget: bool | None = None
@@ -21,7 +22,7 @@ class AccountTypeUpdate(BaseModel):
     sort_order: int | None = None
 
 
-class AccountTypeResponse(BaseModel):
+class AccountTypeResponse(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     key: str

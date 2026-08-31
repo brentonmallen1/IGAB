@@ -21,6 +21,7 @@ from .factories import (
     create_transaction,
     create_user,
     make_services,
+    money,
 )
 
 TODAY = date.today()
@@ -95,7 +96,7 @@ async def test_date_boundaries_inclusive(api_client, db_session):
     assert dates[0] == START.isoformat()
     assert dates[-1] == (START + timedelta(days=20)).isoformat()
     assert body["total_count"] == 3
-    assert Decimal(body["total_amount"]) == Decimal("-30.00")
+    assert money(body["total_amount"]) == Decimal("-30.00")
 
 
 async def test_split_leaf_scope_returns_children_not_parent(api_client, db_session):
@@ -104,9 +105,9 @@ async def test_split_leaf_scope_returns_children_not_parent(api_client, db_sessi
 
     body = await _fetch(api_client, budget.id, scope="leaf", category_ids=str(groceries.id))
     assert body["total_count"] == 1
-    assert Decimal(body["total_amount"]) == Decimal("-60.00")
+    assert money(body["total_amount"]) == Decimal("-60.00")
     row = body["transactions"][0]
-    assert Decimal(row["amount"]) == Decimal("-60.00")
+    assert money(row["amount"]) == Decimal("-60.00")
     assert row["category_id"] == str(groceries.id)
     assert row["parent_transaction_id"] is not None  # a split child, not the parent
 
@@ -125,13 +126,13 @@ async def test_parent_scope_returns_split_as_one_row(api_client, db_session):
     assert body["total_count"] == 1
     row = body["transactions"][0]
     assert row["is_split"] is True
-    assert Decimal(row["amount"]) == Decimal("-100.00")
+    assert money(row["amount"]) == Decimal("-100.00")
 
     # Reconciles with the payee-analysis aggregate (PARENT_ROW-based)
     reports = ReportService(db_session)
     payees, _total = await reports.payee_analysis(budget.id, START, TODAY)
     superstore = next(p for p in payees if p["payee_name"] == "Superstore")
-    assert abs(Decimal(body["total_amount"])) == Decimal(str(superstore["total"]))
+    assert abs(money(body["total_amount"])) == Decimal(str(superstore["total"]))
 
 
 async def test_leaf_reconciles_with_spending_report(api_client, db_session):
@@ -182,7 +183,7 @@ async def test_leaf_reconciles_with_spending_report(api_client, db_session):
         start_date=START.isoformat(),
         end_date=TODAY.isoformat(),
     )
-    assert abs(Decimal(body["total_amount"])) == Decimal(str(report_total))
+    assert abs(money(body["total_amount"])) == Decimal(str(report_total))
     assert body["total_count"] == 2  # plain -200 and split child -60
 
 
@@ -387,7 +388,7 @@ async def test_deleted_never_appears(api_client, db_session):
     for scope in ("parent", "leaf"):
         body = await _fetch(api_client, budget.id, scope=scope)
         assert body["total_count"] == 1
-        assert Decimal(body["total_amount"]) == Decimal("-30.00")
+        assert money(body["total_amount"]) == Decimal("-30.00")
 
 
 async def test_foreign_budget_404(api_client, db_session):
@@ -427,14 +428,14 @@ async def test_search_matches_payee_name(api_client, db_session):
     body = await _fetch(api_client, budget.id, search="Whole Foods")
     # Payee match (-50) plus memo match (-20)
     assert body["total_count"] == 2
-    assert Decimal(body["total_amount"]) == Decimal("-70.00")
+    assert money(body["total_amount"]) == Decimal("-70.00")
 
 
 async def test_search_matches_memo_only(api_client, db_session):
     budget = await _setup_search(api_client, db_session)
     body = await _fetch(api_client, budget.id, search="fuel")
     assert body["total_count"] == 1
-    assert Decimal(body["total_amount"]) == Decimal("-10.00")
+    assert money(body["total_amount"]) == Decimal("-10.00")
 
 
 async def test_search_case_insensitive(api_client, db_session):
@@ -622,7 +623,7 @@ class TestTheRunningBalance:
         # The oldest of the two shown is the account's FOURTH row, so it reads
         # -40 rather than the -10 a page-local sum would have produced.
         oldest = body["transactions"][-1]["id"]
-        assert Decimal(body["running_balances"][oldest]) == Decimal("-40.00")
+        assert money(body["running_balances"][oldest]) == Decimal("-40.00")
 
     async def test_a_filter_does_not_move_the_figures(self, api_client, db_session):
         """Each row keeps the balance it actually had. The numbers stop
@@ -651,7 +652,7 @@ class TestTheRunningBalance:
         newest = body["transactions"][0]["id"]
         # -40 -25 -5: the gas row is hidden but still counted, so the newest
         # groceries row reads -70, not -45.
-        assert Decimal(body["running_balances"][newest]) == Decimal("-70.00")
+        assert money(body["running_balances"][newest]) == Decimal("-70.00")
 
     async def test_it_is_refused_across_accounts(self, api_client, db_session):
         """A running total over two ledgers is not a balance of anything."""

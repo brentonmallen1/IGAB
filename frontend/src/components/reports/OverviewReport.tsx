@@ -39,11 +39,8 @@ export function OverviewReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return <div className="reports-empty">No data available.</div>
 
-  const netWorthDeltaPct = netWorthDelta(Number(data.net_worth), Number(data.net_worth_prev))
-  const spendingDeltaPct = spendingDelta(
-    Number(data.expenses_this_month),
-    Number(data.expenses_prev_month)
-  )
+  const netWorthDeltaPct = netWorthDelta(data.net_worth, data.net_worth_prev)
+  const spendingDeltaPct = spendingDelta(data.expenses_this_month, data.expenses_prev_month)
   const savingsRate = clampedSavingsRate(data.savings_rate)
   const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
   const sixMonthReserve = essentialsReserve(data.essentials_monthly, 6)
@@ -89,13 +86,13 @@ export function OverviewReport({ budgetId }: Props) {
               reportId="overview"
               getRows={() => [
                 ...(budgetMonth
-                  ? [{ metric: 'to_be_assigned', value: Number(budgetMonth.to_be_assigned) }]
+                  ? [{ metric: 'to_be_assigned', value: budgetMonth.to_be_assigned }]
                   : []),
-                { metric: 'net_worth', value: Number(data.net_worth) },
-                { metric: 'burn_rate_30', value: Number(data.burn_rate_30) },
-                { metric: 'burn_rate_90', value: Number(data.burn_rate_90) },
+                { metric: 'net_worth', value: data.net_worth },
+                { metric: 'burn_rate_30', value: data.burn_rate_30 },
+                { metric: 'burn_rate_90', value: data.burn_rate_90 },
                 ...(data.essentials_monthly != null
-                  ? [{ metric: 'essentials_monthly', value: Number(data.essentials_monthly) }]
+                  ? [{ metric: 'essentials_monthly', value: data.essentials_monthly }]
                   : []),
                 ...(savingsRate !== null
                   ? [{ metric: 'savings_rate_pct', value: savingsRate }]
@@ -103,8 +100,8 @@ export function OverviewReport({ budgetId }: Props) {
                 ...(daysUntilZero !== null
                   ? [{ metric: 'days_until_zero', value: daysUntilZero }]
                   : []),
-                { metric: 'income_this_period', value: Number(data.income_this_month) },
-                { metric: 'spent_this_period', value: Number(data.expenses_this_month) },
+                { metric: 'income_this_period', value: data.income_this_month },
+                { metric: 'spent_this_period', value: data.expenses_this_month },
               ]}
               captureRef={captureRef}
               window={{ start: filters.startDate, end: filters.endDate }}
@@ -115,29 +112,27 @@ export function OverviewReport({ budgetId }: Props) {
           {budgetMonth && (
             <MetricCard
               label="To Be Assigned"
-              value={formatMoney(Number(budgetMonth.to_be_assigned))}
-              accent={Number(budgetMonth.to_be_assigned) !== 0}
+              value={formatMoney(budgetMonth.to_be_assigned)}
+              accent={budgetMonth.to_be_assigned !== 0}
             />
           )}
           <MetricCard
             label="Net Worth"
-            value={formatMoney(Number(data.net_worth))}
+            value={formatMoney(data.net_worth)}
             delta={
-              Number(data.net_worth_prev) !== 0
+              data.net_worth_prev !== 0
                 ? { value: netWorthDeltaPct, label: 'vs prior period' }
                 : undefined
             }
           />
           <MetricCard
             label="30-Day Burn Rate"
-            value={formatMoney(Number(data.burn_rate_30))}
-            sub={`90-day avg: ${formatMoney(Number(data.burn_rate_90))}`}
+            value={formatMoney(data.burn_rate_30)}
+            sub={`90-day avg: ${formatMoney(data.burn_rate_90)}`}
           />
           <MetricCard
             label="Essentials / month"
-            value={
-              data.essentials_monthly != null ? formatMoney(Number(data.essentials_monthly)) : '—'
-            }
+            value={data.essentials_monthly != null ? formatMoney(data.essentials_monthly) : '—'}
             sub={
               sixMonthReserve != null
                 ? `6-month reserve: ${formatMoney(sixMonthReserve)}`
@@ -158,15 +153,12 @@ export function OverviewReport({ budgetId }: Props) {
               sub="At current 30-day burn"
             />
           )}
-          <MetricCard
-            label="Income This Period"
-            value={formatMoney(Number(data.income_this_month))}
-          />
+          <MetricCard label="Income This Period" value={formatMoney(data.income_this_month)} />
           <MetricCard
             label="Spent This Period"
-            value={formatMoney(Number(data.expenses_this_month))}
+            value={formatMoney(data.expenses_this_month)}
             delta={
-              Number(data.expenses_prev_month) > 0
+              data.expenses_prev_month > 0
                 ? { value: spendingDeltaPct, label: 'vs prior period' }
                 : undefined
             }
@@ -185,7 +177,7 @@ export function OverviewReport({ budgetId }: Props) {
                   <span className="overview-report__top-name">{c.name}</span>
                   <span className="overview-report__top-group">{c.group_name}</span>
                 </div>
-                <span className="overview-report__top-amount">{formatMoney(Number(c.total))}</span>
+                <span className="overview-report__top-amount">{formatMoney(c.total)}</span>
               </div>
             ))}
           </div>

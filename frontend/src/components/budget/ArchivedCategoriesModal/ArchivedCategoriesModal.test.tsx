@@ -23,7 +23,7 @@ function row(over: Record<string, unknown> = {}) {
     group_name: 'Everyday',
     transaction_count: 12,
     archived_at: '2026-08-01T00:00:00Z',
-    available: '0.00',
+    available: 0.0,
     group_is_archived: false,
     ...over,
   }

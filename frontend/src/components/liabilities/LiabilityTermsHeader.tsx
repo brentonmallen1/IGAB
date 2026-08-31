@@ -50,7 +50,7 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
       <div className="liability-terms__items">
         <div className="liability-terms__item">
           <span className="liability-terms__value">
-            {liability.interest_rate === null ? NOT_SET : `${Number(liability.interest_rate)}%`}
+            {liability.interest_rate === null ? NOT_SET : `${liability.interest_rate}%`}
           </span>
           <span className="liability-terms__label">APR</span>
         </div>
@@ -62,7 +62,7 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
                 the balance and the interest. */}
             {liability.minimum_payment_due_now === null
               ? NOT_SET
-              : formatMoney(Number(liability.minimum_payment_due_now))}
+              : formatMoney(liability.minimum_payment_due_now)}
           </span>
           <span className="liability-terms__label">Minimum payment</span>
           {minimumRule && <span className="liability-terms__sub">{minimumRule}</span>}

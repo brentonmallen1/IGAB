@@ -200,7 +200,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const neededByCategory = new Map(
     budgetMonth?.category_balances.map((b) => [b.category_id, b.needed_this_month]) ?? []
   )
-  const totalUncovered = cards.reduce((sum, c) => sum + Number(c.uncovered), 0)
+  const totalUncovered = cards.reduce((sum, c) => sum + c.uncovered, 0)
   // The payoff projection already exists on the Liability page — baseline
   // against the minimum payment versus the pace you are actually paying. The
   // strip never linked to it, so the one place that says "you are ahead" was
@@ -364,12 +364,12 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                           {formatMoney(assigned)}
                         </button>
                       )}
-                      {needed !== null && Number(needed) > 0 && (
+                      {needed !== null && needed > 0 && (
                         <span
                           className="credit-cards__hint"
                           title="What the paydown target still wants assigned this month"
                         >
-                          {formatMoney(Number(needed))} to go
+                          {formatMoney(needed)} to go
                         </span>
                       )}
                     </span>

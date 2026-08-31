@@ -13,6 +13,7 @@ from .factories import (
     create_category_group,
     create_liability,
     create_transaction,
+    money,
 )
 
 TODAY = date.today()
@@ -436,8 +437,8 @@ class TestCheckup:
 
         kinds = [f["kind"] for f in body["findings"]]
         assert kinds[:2] == ["high_interest_debt", "ef_below_starter"]
-        assert Decimal(body["findings"][0]["value"]) == Decimal("3410.00")
-        assert Decimal(body["findings"][1]["value"]) == Decimal("200.00")
+        assert money(body["findings"][0]["value"]) == Decimal("3410.00")
+        assert money(body["findings"][1]["value"]) == Decimal("200.00")
 
     async def test_an_empty_emergency_fund_is_not_started(self, db_session, api_client):
         """$0 is a different sentence from "below the starter amount"."""
@@ -564,7 +565,7 @@ class TestScenarios:
             assert len(body[key]["debts"]) == 2
         # Avalanche attacks the 22.9% card first; the baseline costs the most.
         assert body["avalanche"]["debts"][0]["key"] == "visa"
-        assert Decimal(body["minimums_only"]["total_interest"]) >= Decimal(
+        assert money(body["minimums_only"]["total_interest"]) >= Decimal(
             body["avalanche"]["total_interest"]
         )
         assert body["avalanche"]["months"][0]["balances"].keys() == {"visa", "car"}
@@ -653,11 +654,11 @@ class TestScenarios:
 
         assert r.status_code == 200, r.text
         body = r.json()
-        assert Decimal(body["essentials_monthly"]) == Decimal("1000.00")
+        assert money(body["essentials_monthly"]) == Decimal("1000.00")
         # 240 in the budget plus 500 declared elsewhere — the roadmap's number.
-        assert Decimal(body["current"]) == Decimal("740.00")
-        assert Decimal(body["target"]) == Decimal("3000.00")
-        assert Decimal(body["gap"]) == Decimal("2260.00")
+        assert money(body["current"]) == Decimal("740.00")
+        assert money(body["target"]) == Decimal("3000.00")
+        assert money(body["gap"]) == Decimal("2260.00")
         assert body["months_to_fund"] == 5  # 2260 / 500 = 4.52 → 5
         assert body["funded_by"] == add_months(TODAY, 5).isoformat()
         # And the declared 500 still reaches no report.

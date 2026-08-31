@@ -49,17 +49,13 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   const [accountId, setAccountId] = useState(existing?.account_id ?? initial?.account_id ?? '')
   const [amount, setAmount] = useState(
     existing
-      ? String(Math.abs(Number(existing.amount)))
+      ? String(Math.abs(existing.amount))
       : initial?.amount
         ? String(Math.abs(initial.amount))
         : ''
   )
   const [isOutflow, setIsOutflow] = useState(
-    existing
-      ? Number(existing.amount) < 0
-      : initial?.amount !== undefined
-        ? initial.amount < 0
-        : true
+    existing ? existing.amount < 0 : initial?.amount !== undefined ? initial.amount < 0 : true
   )
   const [frequency, setFrequency] = useState(existing?.frequency ?? 'monthly')
   const [startDate, setStartDate] = useState(existing?.start_date ?? today())

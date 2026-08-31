@@ -192,15 +192,15 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                         </td>
                       )}
                       <td
-                        className={`category-txns__amount tabular ${Number(t.amount) < 0 ? 'negative' : 'positive'}`}
+                        className={`category-txns__amount tabular ${t.amount < 0 ? 'negative' : 'positive'}`}
                       >
-                        {formatMoney(Number(t.amount))}
+                        {formatMoney(t.amount)}
                       </td>
                       {showRunning && (
                         <td className="category-txns__running tabular">
                           {/* A pending row has no entry: it has not moved the
                           balance, and a zero here would say it had. */}
-                          {running[t.id] === undefined ? '—' : formatMoney(Number(running[t.id]))}
+                          {running[t.id] === undefined ? '—' : formatMoney(running[t.id])}
                         </td>
                       )}
                     </tr>
