@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { ROOT } from './queryKeys'
 
 export type LiabilityType =
   | 'mortgage'
@@ -144,7 +145,7 @@ export interface AmortizationResponse {
 
 export function useLiabilities(budgetId: string | null) {
   return useQuery({
-    queryKey: ['liabilities', budgetId],
+    queryKey: [ROOT.liabilities, budgetId],
     queryFn: () => apiClient.get<Liability[]>(`/${budgetId}/liabilities`).then((r) => r.data),
     enabled: !!budgetId,
     staleTime: 30_000,
@@ -156,7 +157,7 @@ export function useCreateLiability(budgetId: string | null) {
   return useMutation({
     mutationFn: (body: LiabilityCreate) =>
       apiClient.post<Liability>(`/${budgetId}/liabilities`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['liabilities', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] }),
   })
 }
 
@@ -168,8 +169,8 @@ export function useUpdateLiability(budgetId: string | null) {
         .patch<Liability>(`/${budgetId}/liabilities/${liabilityId}`, body)
         .then((r) => r.data),
     onSuccess: (_, { liabilityId }) => {
-      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
-      qc.invalidateQueries({ queryKey: ['liabilityAmortization', budgetId, liabilityId] })
+      qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.liabilityAmortization, budgetId, liabilityId] })
     },
   })
 }
@@ -180,8 +181,8 @@ export function useDeleteLiability(budgetId: string | null) {
     mutationFn: (liabilityId: string) =>
       apiClient.delete(`/${budgetId}/liabilities/${liabilityId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] })
     },
   })
 }
@@ -203,9 +204,11 @@ export function useCreateLiabilitySnapshot(budgetId: string | null) {
         date,
       }),
     onSuccess: (_, { liabilityId }) => {
-      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
-      qc.invalidateQueries({ queryKey: ['liabilityAmortization', budgetId, liabilityId] })
-      qc.invalidateQueries({ queryKey: ['netWorth', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.liabilityAmortization, budgetId, liabilityId] })
+      // Recording a snapshot moves the net-worth line. The report's key is
+      // ['reports', 'net-worth', ...]; `['netWorth']` refreshed nothing.
+      qc.invalidateQueries({ queryKey: [ROOT.reports, 'net-worth', budgetId] })
     },
   })
 }
@@ -217,7 +220,7 @@ export function useLiabilityAmortization(
 ) {
   const { extraPayment = 0, fromOrigination = false } = options
   return useQuery({
-    queryKey: ['liabilityAmortization', budgetId, liabilityId, extraPayment, fromOrigination],
+    queryKey: [ROOT.liabilityAmortization, budgetId, liabilityId, extraPayment, fromOrigination],
     queryFn: () =>
       apiClient
         .get<AmortizationResponse>(`/${budgetId}/liabilities/${liabilityId}/amortization`, {
@@ -246,8 +249,8 @@ export function useLinkCategoryLiability(budgetId: string | null) {
         liability_id: liabilityId,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['liabilities', budgetId] })
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] })
     },
   })
 }

@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
+import { ROOT } from './queryKeys'
 
 /**
  * Every cache a category delete, restore or repair stales — in one list.
@@ -21,39 +22,39 @@ export function invalidateAfterCategoryChange(
 ): Promise<void> {
   const roots = [
     // The grid and its money.
-    ['categories'],
-    ['categoryGroups'],
+    [ROOT.categories],
+    [ROOT.categoryGroups],
     // Archiving moves a row between the grid and this listing, so a change to
     // either has to stale both or one of them keeps showing an envelope the
     // other has already moved.
-    ['archivedCategories'],
-    ['categoryClassification'],
+    [ROOT.archivedCategories],
+    [ROOT.categoryClassification],
     // Ready to Assign, every category balance, every target status.
     ...(budgetId ? [['budgetMonth', budgetId]] : [['budgetMonth']]),
     // The register's category column, and the rows that just became
     // uncategorized (or moved).
-    ['transactions'],
-    ['all-transactions'],
-    ['budget-transactions'],
-    ['category-transactions'],
-    ['payee-transactions'],
+    [ROOT.transactions],
+    [ROOT.allTransactions],
+    [ROOT.budgetTransactions],
+    [ROOT.transactionsPeek],
+    [ROOT.payeeTransactions],
     // The needs-a-category badge counts exactly those rows.
-    ['pending-review-count'],
-    ['pending-review-count-account'],
+    [ROOT.pendingReviewCount],
+    [ROOT.pendingReviewCountAccount],
     // A payee's default category and a scheduled transaction's category are
     // both cleared by the delete.
-    ['payees'],
-    ['scheduled-transactions'],
+    [ROOT.payees],
+    [ROOT.scheduledTransactions],
     // Saved views and filters lose their placements/selections.
-    ['budgetViews'],
-    ['budgetFilters'],
+    [ROOT.budgetViews],
+    [ROOT.budgetFilters],
     // Every report that groups by category. (`integrity` is deliberately not
     // here: IntegrityPanel holds its report in local state and re-runs on
     // demand, so there is no cache to stale — listing it would be a dead key
     // of exactly the kind this file exists to avoid.)
-    ['reports'],
+    [ROOT.reports],
     // Undoing shows up in the activity list — `changesKeys.all`.
-    ['changes'],
+    [ROOT.changes],
   ]
   return Promise.all(roots.map((queryKey) => qc.invalidateQueries({ queryKey }))).then(
     () => undefined

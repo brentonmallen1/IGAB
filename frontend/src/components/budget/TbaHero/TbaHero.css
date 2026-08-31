@@ -115,6 +115,12 @@
 .tba-hero__overspent-chip {
   display: inline-flex;
   align-items: center;
+  /* The separator between the amount and the word. These chips are flex
+     containers, so the amount and the word are separate flex items and a
+     literal space in the JSX is stripped — it rendered "$120.00overspent".
+     `em` so it tracks .tba-hero__chip-word shrinking at the mobile
+     breakpoint. One home for the spacing, and it is this one. */
+  gap: 0.25em;
   padding: 4px 10px;
   font-size: var(--font-size-sm);
   font-weight: 600;
@@ -137,6 +143,12 @@
 .tba-hero__on-cards {
   display: inline-flex;
   align-items: center;
+  /* The separator between the amount and the word. These chips are flex
+     containers, so the amount and the word are separate flex items and a
+     literal space in the JSX is stripped — it rendered "$120.00overspent".
+     `em` so it tracks .tba-hero__chip-word shrinking at the mobile
+     breakpoint. One home for the spacing, and it is this one. */
+  gap: 0.25em;
   padding: 4px 10px;
   font-size: var(--font-size-sm);
   font-weight: 500;

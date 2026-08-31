@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { ROOT } from './queryKeys'
 
 export interface ManagedUser {
   id: string
@@ -13,7 +14,7 @@ export interface ManagedUser {
 
 export function useUsers() {
   return useQuery({
-    queryKey: ['users'],
+    queryKey: [ROOT.users],
     queryFn: async () => {
       const { data } = await apiClient.get<ManagedUser[]>('/users')
       return data
@@ -26,7 +27,7 @@ export function useCreateUser() {
   return useMutation({
     mutationFn: (body: { email: string; password: string; display_name?: string | null }) =>
       apiClient.post<ManagedUser>('/users', body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.users] }),
   })
 }
 
@@ -43,6 +44,6 @@ export function useUpdateUser() {
       /** Admin password reset. */
       password?: string
     }) => apiClient.patch<ManagedUser>(`/users/${id}`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.users] }),
   })
 }

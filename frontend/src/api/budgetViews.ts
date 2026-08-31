@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { BudgetView } from '../types'
+import { ROOT } from './queryKeys'
 
-const key = (budgetId: string | null) => ['budgetViews', budgetId]
+const key = (budgetId: string | null) => [ROOT.budgetViews, budgetId]
 
 /** Editing a view changes how reports roll up, so their cache is stale the
  *  moment a mutation lands — without this, pareto/treemap keep showing the
@@ -12,7 +13,7 @@ function invalidate(qc: ReturnType<typeof useQueryClient>, budgetId: string) {
   // Only spending-grouped takes view_id. ['reports'] dumped all ~21 report
   // caches on any view mutation — including a rename, which changes no report
   // data — and a new-view save fires POST then PATCH, so it ran twice.
-  qc.invalidateQueries({ queryKey: ['reports', 'spending-grouped'] })
+  qc.invalidateQueries({ queryKey: [ROOT.reports, 'spending-grouped'] })
 }
 
 export function useBudgetViews(budgetId: string | null) {

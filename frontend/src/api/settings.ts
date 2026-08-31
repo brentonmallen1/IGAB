@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { ROOT } from './queryKeys'
 
 export interface AppSetting {
   key: string
@@ -19,7 +20,7 @@ export async function fetchSettings(): Promise<AppSetting[]> {
 
 export function useSettings() {
   return useQuery({
-    queryKey: ['settings'],
+    queryKey: [ROOT.settings],
     queryFn: fetchSettings,
     staleTime: 60_000,
     // app_settings is a global singleton shared by every device in the
@@ -37,11 +38,11 @@ export function useUpdateSetting() {
     mutationFn: ({ key, value }: { key: string; value: string }) =>
       apiClient.put<AppSetting>(`/settings/${key}`, { value }).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['settings'] })
+      qc.invalidateQueries({ queryKey: [ROOT.settings] })
       // /ai/status derives from settings (model, host, resolved receipt
       // model) and caches for 5 minutes — a model change must show up in the
       // "receipts are scanned by" line immediately, not five minutes later.
-      qc.invalidateQueries({ queryKey: ['ai-status'] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiStatus] })
     },
   })
 }
@@ -53,8 +54,8 @@ export function useResetSetting() {
     mutationFn: (key: string) =>
       apiClient.delete<AppSetting>(`/settings/${key}`).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['settings'] })
-      qc.invalidateQueries({ queryKey: ['ai-status'] })
+      qc.invalidateQueries({ queryKey: [ROOT.settings] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiStatus] })
     },
   })
 }

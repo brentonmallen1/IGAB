@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { CategoryTarget } from '../types'
+import { ROOT } from './queryKeys'
 
 export function useTargetsByBudget(budgetId: string | null) {
   return useQuery({
-    queryKey: ['targets', 'budget', budgetId],
+    queryKey: [ROOT.targets, 'budget', budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryTarget[]>(`/${budgetId}/targets`)
       return data
@@ -23,7 +24,7 @@ export interface TargetUpsert {
 
 export function useTarget(categoryId: string | null) {
   return useQuery({
-    queryKey: ['target', categoryId],
+    queryKey: [ROOT.target, categoryId],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryTarget | null>(
         `/categories/${categoryId}/target`,
@@ -41,8 +42,8 @@ export function useUpsertTarget(categoryId: string) {
     mutationFn: (body: TargetUpsert) =>
       apiClient.post<CategoryTarget>(`/categories/${categoryId}/target`, body).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['target', categoryId] })
-      qc.invalidateQueries({ queryKey: ['targets', 'budget'] })
+      qc.invalidateQueries({ queryKey: [ROOT.target, categoryId] })
+      qc.invalidateQueries({ queryKey: [ROOT.targets, 'budget'] })
     },
   })
 }
@@ -52,8 +53,8 @@ export function useDeleteTarget(categoryId: string) {
   return useMutation({
     mutationFn: () => apiClient.delete(`/categories/${categoryId}/target`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['target', categoryId] })
-      qc.invalidateQueries({ queryKey: ['targets', 'budget'] })
+      qc.invalidateQueries({ queryKey: [ROOT.target, categoryId] })
+      qc.invalidateQueries({ queryKey: [ROOT.targets, 'budget'] })
     },
   })
 }

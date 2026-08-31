@@ -3,6 +3,7 @@ import { ExternalLink } from 'lucide-react'
 import { useSettings, useUpdateSetting } from '../../../api/settings'
 import { useUpdateStatus } from '../../../api/system'
 import './UpdatesPanel.css'
+import { ROOT } from '../../../api/queryKeys'
 
 /** Opt-in update notification for self-hosted installs. Off by default —
  * the app never contacts GitHub until the toggle is switched on. */
@@ -18,7 +19,7 @@ export function UpdatesPanel() {
   function toggle(next: boolean) {
     updateSetting.mutate(
       { key: 'update_check_enabled', value: next ? 'true' : 'false' },
-      { onSuccess: () => qc.invalidateQueries({ queryKey: ['system'] }) }
+      { onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.system] }) }
     )
   }
 

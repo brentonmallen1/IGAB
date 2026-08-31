@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { ROOT } from './queryKeys'
 
 export interface CsvImportResult {
   imported: number
@@ -146,7 +147,7 @@ export interface ImportSummary {
   reviewed_at: string | null
 }
 
-export const importSummaryKey = (budgetId: string | null) => ['importSummary', budgetId]
+export const importSummaryKey = (budgetId: string | null) => [ROOT.importSummary, budgetId]
 
 export function useImportSummary(budgetId: string | null) {
   return useQuery({
@@ -156,8 +157,12 @@ export function useImportSummary(budgetId: string | null) {
       return data
     },
     enabled: !!budgetId,
-    // A record of a past event: it changes once, when an import writes it.
-    staleTime: Infinity,
+    // A record of a past event — but not a single one. A second import or a
+    // snapshot restore writes a new summary onto the same budget, and with
+    // `Infinity` the old one was pinned until a page reload. Both of those
+    // paths now go through `invalidateAfterImport`; the finite staleTime is
+    // the belt to that braces.
+    staleTime: 60_000,
   })
 }
 

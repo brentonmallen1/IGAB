@@ -7,6 +7,8 @@ import { ATTACHMENT_ACCEPT, isAttachableFile } from '../../../api/attachments'
 import { useSubmitReceipt, useAIJob, type AIJob } from '../../../api/aiJobs'
 import './ReceiptScanTab.css'
 import { apiErrorMessage } from '../../../api/client'
+import { invalidateAfterTransactionChange } from '../../../api/invalidateAfterTransactionChange'
+import { ROOT } from '../../../api/queryKeys'
 
 type Stage =
   | { kind: 'pick' }
@@ -79,18 +81,18 @@ export function ReceiptScanTab({
     if (job.status !== 'done' && job.status !== 'error') return
     handled.current = true
 
-    // The worker created/updated a transaction outside any mutation hook —
-    // refresh everything a manual create would have
-    qc.invalidateQueries({ queryKey: ['transactions'] })
-    qc.invalidateQueries({ queryKey: ['all-transactions'] })
-    qc.invalidateQueries({ queryKey: ['category-transactions'] })
-    qc.invalidateQueries({ queryKey: ['accounts'] })
-    qc.invalidateQueries({ queryKey: ['budgetMonth'] })
-    qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-    qc.invalidateQueries({ queryKey: ['pending-review-count-account'] })
-    qc.invalidateQueries({ queryKey: ['ai-jobs'] })
-    qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
-    qc.invalidateQueries({ queryKey: ['ai-job-for-txn'] })
+    // The worker created/updated a transaction outside any mutation hook, so
+    // this asks for exactly what a manual create asks for — by calling the
+    // same helper rather than by copying its list, which is how this copy
+    // came to be the only one carrying no account or budget id at all.
+    void invalidateAfterTransactionChange(qc, {
+      budgetId: null,
+      transactionIds: job.transaction_id ? [job.transaction_id] : [],
+    })
+    // Job state is this component's own, not a transaction's.
+    qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+    qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
+    qc.invalidateQueries({ queryKey: [ROOT.aiJobForTxn] })
 
     if (job.transaction_id) {
       onReviewReady(job)

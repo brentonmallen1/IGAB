@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { Transaction } from '../types'
+import { ROOT } from './queryKeys'
 
 export interface ReconciliationStatus {
   cleared_balance: number
@@ -23,7 +24,7 @@ export function useReconciliationStatus(
   options?: { refetchInterval?: number },
 ) {
   return useQuery({
-    queryKey: ['reconcile-status', accountId],
+    queryKey: [ROOT.reconcileStatus, accountId],
     queryFn: async () => {
       const { data } = await apiClient.get<ReconciliationStatus>(
         `/accounts/${accountId}/reconcile/status`,
@@ -46,9 +47,9 @@ export function useCreateAdjustment(accountId: string) {
         })
         .then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['accounts'] })
-      qc.invalidateQueries({ queryKey: ['reconcile-status', accountId] })
+      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
+      qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus, accountId] })
     },
   })
 }
@@ -66,16 +67,16 @@ export function useFinishReconciliation(accountId: string) {
         .post<ReconciliationSnapshot>(`/accounts/${accountId}/reconcile/finish`, params)
         .then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['accounts'] })
-      qc.invalidateQueries({ queryKey: ['reconcile-status', accountId] })
+      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts] })
+      qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus, accountId] })
     },
   })
 }
 
 export function useReconciliationHistory(accountId: string | null) {
   return useQuery({
-    queryKey: ['reconcile-history', accountId],
+    queryKey: [ROOT.reconcileHistory, accountId],
     queryFn: async () => {
       const { data } = await apiClient.get<ReconciliationSnapshot[]>(
         `/accounts/${accountId}/reconcile/history`,

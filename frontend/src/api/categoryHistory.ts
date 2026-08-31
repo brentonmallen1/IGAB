@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { CategoryHistory, AutoAssignAction } from '../types'
+import { ROOT } from './queryKeys'
 
 export function useCategoryHistory(budgetId: string | null, categoryId: string | null) {
   return useQuery({
-    queryKey: ['categoryHistory', budgetId, categoryId],
+    queryKey: [ROOT.categoryHistory, budgetId, categoryId],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryHistory>(
         `/${budgetId}/categories/${categoryId}/history`,
@@ -18,7 +19,7 @@ export function useCategoryHistory(budgetId: string | null, categoryId: string |
 
 export function useCategoryHistoryBatch(budgetId: string | null, categoryIds: string[]) {
   return useQuery({
-    queryKey: ['categoryHistoryBatch', budgetId, categoryIds],
+    queryKey: [ROOT.categoryHistoryBatch, budgetId, categoryIds],
     queryFn: async () => {
       const { data } = await apiClient.post<CategoryHistory[]>(
         `/${budgetId}/categories/history/batch`,
@@ -45,8 +46,8 @@ export function useAutoAssign(budgetId: string, month: string) {
         .post(`/${budgetId}/categories/auto-assign`, { category_ids: categoryIds, action, month })
         .then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['categoryHistoryBatch', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.categoryHistoryBatch, budgetId] })
     },
   })
 }

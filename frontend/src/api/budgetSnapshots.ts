@@ -12,6 +12,7 @@ import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import { downloadAuthed } from '../utils/exportFile'
+import { ROOT } from './queryKeys'
 
 export interface BudgetSnapshotFile {
   name: string
@@ -71,7 +72,7 @@ export function tooLargeMessage(bytes: number): string | null {
 
 export function useBudgetSnapshots(budgetId: string | null) {
   return useQuery({
-    queryKey: ['budget-snapshots', budgetId],
+    queryKey: [ROOT.budgetSnapshots, budgetId],
     enabled: !!budgetId,
     queryFn: async () => {
       const { data } = await apiClient.get<BudgetSnapshotFile[]>(
@@ -90,7 +91,7 @@ export function useCreateBudgetSnapshot(budgetId: string | null) {
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budget-snapshots', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetSnapshots, budgetId] })
       toast.success('Snapshot saved')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Could not save a snapshot')),
@@ -102,7 +103,7 @@ export function useDeleteBudgetSnapshot(budgetId: string | null) {
   return useMutation({
     mutationFn: (name: string) => apiClient.delete(`/budgets/${budgetId}/snapshots/${name}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budget-snapshots', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetSnapshots, budgetId] })
       toast.success('Snapshot deleted')
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Could not delete that snapshot')),
@@ -186,7 +187,7 @@ export function useRestoreSnapshot(budgetId: string | null) {
     },
     onSuccess: (result) => {
       invalidateAfterImport(qc, result.budget_id)
-      qc.invalidateQueries({ queryKey: ['budget-snapshots', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetSnapshots, budgetId] })
     },
   })
 }

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { ROOT } from './queryKeys'
 
 export interface UpdateStatus {
   enabled: boolean
@@ -13,7 +14,7 @@ export interface UpdateStatus {
  * from local state and never contacts GitHub. */
 export function useUpdateStatus() {
   return useQuery({
-    queryKey: ['system', 'update-status'],
+    queryKey: [ROOT.system, 'update-status'],
     queryFn: async () => {
       const { data } = await apiClient.get<UpdateStatus>('/system/update-status')
       return data

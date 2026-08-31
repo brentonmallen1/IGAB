@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from './client';
 import type { TagColorSlot } from '../components/common/TagChip';
+import { ROOT } from './queryKeys'
 
 export interface Tag {
   id: string;
@@ -19,7 +20,7 @@ export interface TagSimple {
 
 export function useTags(budgetId: string | null) {
   return useQuery({
-    queryKey: ['tags', budgetId],
+    queryKey: [ROOT.tags, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<Tag[]>(`/${budgetId}/tags`);
       return data;
@@ -34,7 +35,7 @@ export function useCreateTag(budgetId: string | null) {
   return useMutation({
     mutationFn: (body: { name: string; color_slot?: TagColorSlot | null }) =>
       apiClient.post<Tag>(`/${budgetId}/tags`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tags', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] }),
   });
 }
 
@@ -44,12 +45,12 @@ export function useUpdateTag(budgetId: string | null) {
     mutationFn: ({ id, ...body }: { id: string; name?: string; color_slot?: TagColorSlot | null }) =>
       apiClient.patch<Tag>(`/${budgetId}/tags/${id}`, body).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tags', budgetId] });
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] });
       // Tags are a classification override, so the "Counts as" badge
       // changes with them. Its key is not under ['categories'].
-      qc.invalidateQueries({ queryKey: ['categoryClassification'] });
-      qc.invalidateQueries({ queryKey: ['payees', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.categoryClassification] });
+      qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] });
     },
   });
 }
@@ -59,12 +60,12 @@ export function useDeleteTag(budgetId: string | null) {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/${budgetId}/tags/${id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tags', budgetId] });
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] });
       // Tags are a classification override, so the "Counts as" badge
       // changes with them. Its key is not under ['categories'].
-      qc.invalidateQueries({ queryKey: ['categoryClassification'] });
-      qc.invalidateQueries({ queryKey: ['payees', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.categoryClassification] });
+      qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] });
     },
   });
 }
@@ -75,11 +76,11 @@ export function useSetCategoryTags(budgetId: string | null) {
     mutationFn: ({ categoryId, tagIds }: { categoryId: string; tagIds: string[] }) =>
       apiClient.put<TagSimple[]>(`/${budgetId}/categories/${categoryId}/tags`, { tag_ids: tagIds }).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] });
       // Tags are a classification override, so the "Counts as" badge
       // changes with them. Its key is not under ['categories'].
-      qc.invalidateQueries({ queryKey: ['categoryClassification'] });
-      qc.invalidateQueries({ queryKey: ['tags', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.categoryClassification] });
+      qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] });
     },
   });
 }
@@ -101,7 +102,7 @@ export interface TagSuggestion {
 
 export function useTagSuggestions(budgetId: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['tagSuggestions', budgetId],
+    queryKey: [ROOT.tagSuggestions, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<TagSuggestion[]>(`/${budgetId}/tags/suggestions`);
       return data;
@@ -123,12 +124,12 @@ export function useBulkSetCategoryTags(budgetId: string | null) {
     mutationFn: (updates: { category_id: string; tag_ids: string[] }[]) =>
       apiClient.put(`/${budgetId}/categories/tags`, { updates }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['categories', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] });
       // Tags are a classification override, so the "Counts as" badge
       // changes with them. Its key is not under ['categories'].
-      qc.invalidateQueries({ queryKey: ['categoryClassification'] });
-      qc.invalidateQueries({ queryKey: ['tags', budgetId] });
-      qc.invalidateQueries({ queryKey: ['tagSuggestions', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.categoryClassification] });
+      qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.tagSuggestions, budgetId] });
     },
   });
 }
@@ -139,8 +140,8 @@ export function useSetPayeeTags(budgetId: string | null) {
     mutationFn: ({ payeeId, tagIds }: { payeeId: string; tagIds: string[] }) =>
       apiClient.put<TagSimple[]>(`/${budgetId}/payees/${payeeId}/tags`, { tag_ids: tagIds }).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['payees', budgetId] });
-      qc.invalidateQueries({ queryKey: ['tags', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] });
     },
   });
 }
@@ -156,8 +157,8 @@ export function useBulkAddPayeeTags(budgetId: string | null) {
       );
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['payees', budgetId] });
-      qc.invalidateQueries({ queryKey: ['tags', budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] });
+      qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] });
     },
   });
 }

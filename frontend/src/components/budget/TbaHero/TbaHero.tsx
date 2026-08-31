@@ -124,7 +124,7 @@ export function TbaHero({ budgetId, month }: Props) {
               }
             >
               {formatMoney(-overspent)}
-              <span className="tba-hero__chip-word"> overspent</span>
+              <span className="tba-hero__chip-word">overspent</span>
             </button>
           )}
 
@@ -145,7 +145,7 @@ export function TbaHero({ budgetId, month }: Props) {
               }
             >
               {formatMoney(-overspentOnCards)}
-              <span className="tba-hero__chip-word"> on cards</span>
+              <span className="tba-hero__chip-word">on cards</span>
             </span>
           )}
 

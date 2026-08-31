@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { ScheduledTransaction } from '../types'
+import { ROOT } from './queryKeys'
 
 export interface ScheduledTransactionCreate {
   account_id: string
@@ -17,7 +18,7 @@ export interface ScheduledTransactionCreate {
 
 export function useScheduledTransactions(budgetId: string | null) {
   return useQuery({
-    queryKey: ['scheduled-transactions', budgetId],
+    queryKey: [ROOT.scheduledTransactions, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<ScheduledTransaction[]>(
         `/${budgetId}/scheduled-transactions`,
@@ -44,7 +45,7 @@ export function useCreateScheduledTransaction(budgetId: string) {
       apiClient
         .post<ScheduledTransaction>(`/${budgetId}/scheduled-transactions`, body)
         .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-transactions', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }
 
@@ -55,7 +56,7 @@ export function useUpdateScheduledTransaction(budgetId: string) {
       apiClient
         .patch<ScheduledTransaction>(`/scheduled-transactions/${id}`, data)
         .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-transactions', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }
 
@@ -63,7 +64,7 @@ export function useDeleteScheduledTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/scheduled-transactions/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-transactions', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }
 
@@ -74,7 +75,7 @@ export function useSkipScheduledTransaction(budgetId: string) {
       apiClient
         .post<ScheduledTransaction>(`/scheduled-transactions/${id}/skip`, {})
         .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scheduled-transactions', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }
 
@@ -84,8 +85,8 @@ export function useEnterScheduledTransaction(budgetId: string) {
     mutationFn: (id: string) =>
       apiClient.post(`/scheduled-transactions/${id}/enter`, {}, { params: { budget_id: budgetId } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['scheduled-transactions', budgetId] })
-      qc.invalidateQueries({ queryKey: ['transactions'] })
+      qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.transactions] })
     },
   })
 }

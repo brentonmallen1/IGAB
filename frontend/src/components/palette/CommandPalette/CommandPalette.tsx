@@ -28,6 +28,7 @@ import { SearchHelp } from '../../transactions/TransactionSearch/SearchHelp'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { BudgetTransactionsResponse } from '../../../types'
 import './CommandPalette.css'
+import { ROOT } from '../../../api/queryKeys'
 
 /**
  * ⌘K command palette: navigation, budget actions, theme switching, and live
@@ -112,7 +113,7 @@ export function CommandPalette() {
   )
 
   const { data: txnResults } = useQuery({
-    queryKey: ['paletteSearch', budgetId, txnFilters],
+    queryKey: [ROOT.paletteSearch, budgetId, txnFilters],
     queryFn: () =>
       apiClient
         .get<BudgetTransactionsResponse>(`/${budgetId}/transactions`, {

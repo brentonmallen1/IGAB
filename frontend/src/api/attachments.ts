@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { downscaleForUpload } from '../utils/imageUpload'
 import { confirmAsync } from '../stores/confirmStore'
+import { ROOT } from './queryKeys'
 
 export interface Attachment {
   id: string
@@ -70,8 +71,8 @@ export function useRotateAttachment() {
     },
     onSuccess: (data) => {
       invalidateAttachmentBlob(data.id)
-      qc.invalidateQueries({ queryKey: ['attachmentBlob', data.id] })
-      qc.invalidateQueries({ queryKey: ['attachments', data.transaction_id] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachmentBlob, data.id] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachments, data.transaction_id] })
     },
   })
 }
@@ -102,7 +103,7 @@ export async function downloadAttachment(
 
 export function useAttachments(transactionId: string | null) {
   return useQuery({
-    queryKey: ['attachments', transactionId],
+    queryKey: [ROOT.attachments, transactionId],
     queryFn: async () => {
       const { data } = await apiClient.get<Attachment[]>(
         `/transactions/${transactionId}/attachments`
@@ -132,8 +133,8 @@ export function useUploadAttachment(transactionId: string) {
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['attachments', transactionId] })
-      qc.invalidateQueries({ queryKey: ['attachmentCheck'] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachments, transactionId] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
     },
   })
 }
@@ -144,8 +145,8 @@ export function useDeleteAttachment(transactionId: string) {
     mutationFn: (attachmentId: string) =>
       apiClient.delete(`/attachments/${attachmentId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['attachments', transactionId] })
-      qc.invalidateQueries({ queryKey: ['attachmentCheck'] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachments, transactionId] })
+      qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
     },
   })
 }
@@ -207,7 +208,7 @@ export async function confirmDeleteTransaction(transactionId: string): Promise<b
 
 export function useCheckAttachments(transactionIds: string[]) {
   return useQuery({
-    queryKey: ['attachmentCheck', transactionIds],
+    queryKey: [ROOT.attachmentCheck, transactionIds],
     queryFn: async () => {
       const { data } = await apiClient.post<Record<string, boolean>>(
         '/transactions/attachments/check',
@@ -222,7 +223,7 @@ export function useCheckAttachments(transactionIds: string[]) {
 
 export function useAttachmentUrl(attachmentId: string | null, thumbnail = false) {
   return useQuery({
-    queryKey: ['attachmentBlob', attachmentId, thumbnail],
+    queryKey: [ROOT.attachmentBlob, attachmentId, thumbnail],
     queryFn: () => fetchAttachmentBlob(attachmentId!, thumbnail),
     enabled: !!attachmentId,
     staleTime: Infinity,

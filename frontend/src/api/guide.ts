@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import type { SignalKey } from '../content/roadmap'
+import { ROOT } from './queryKeys'
 
 /** How a concept came to be answered. */
 export type SignalSource =
@@ -91,7 +92,7 @@ export interface BindingUpdate {
 
 export function useGuideOverview(budgetId: string | null) {
   return useQuery({
-    queryKey: ['guide', budgetId],
+    queryKey: [ROOT.guide, budgetId],
     queryFn: () => apiClient.get<GuideOverview>(`/${budgetId}/guide`).then((r) => r.data),
     enabled: !!budgetId,
     staleTime: 60_000,
@@ -100,7 +101,7 @@ export function useGuideOverview(budgetId: string | null) {
 
 export function useGuideSignals(budgetId: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['guide-signals', budgetId],
+    queryKey: [ROOT.guideSignals, budgetId],
     queryFn: () =>
       apiClient.get<SignalsResponse>(`/${budgetId}/guide/signals`).then((r) => r.data),
     enabled: !!budgetId && enabled,
@@ -112,7 +113,7 @@ export function useGuideSignals(budgetId: string | null, enabled = true) {
 
 export function useConceptCandidates(budgetId: string | null, conceptKey: string | null) {
   return useQuery({
-    queryKey: ['guide-candidates', budgetId, conceptKey],
+    queryKey: [ROOT.guideCandidates, budgetId, conceptKey],
     queryFn: () =>
       apiClient
         .get<{ concept_key: string; options: Partial<Record<EntityType, CandidateOption[]>> }>(
@@ -129,7 +130,7 @@ export function useSetBinding(budgetId: string) {
   return useMutation({
     mutationFn: ({ conceptKey, ...body }: BindingUpdate & { conceptKey: string }) =>
       apiClient.put(`/${budgetId}/guide/bindings/${conceptKey}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['guide-signals', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.guideSignals, budgetId] }),
   })
 }
 
@@ -165,11 +166,11 @@ export function useSetGuidePreferences(budgetId: string) {
     onSuccess: (prefs) => {
       // Seed rather than only invalidate: the toggle should settle instantly,
       // and the server may have forced checkup off alongside personalisation.
-      qc.setQueryData<GuideOverview | undefined>(['guide', budgetId], (old) =>
+      qc.setQueryData<GuideOverview | undefined>([ROOT.guide, budgetId], (old) =>
         old ? { ...old, preferences: prefs } : old
       )
-      qc.invalidateQueries({ queryKey: ['guide', budgetId] })
-      qc.invalidateQueries({ queryKey: ['guide-signals', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.guide, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.guideSignals, budgetId] })
     },
     // The server refuses a wishlist-off that would move money without an
     // explicit confirmation, and its sentence carries the figure. A silent
@@ -183,7 +184,7 @@ export function useSetGuideStep(budgetId: string) {
   return useMutation({
     mutationFn: ({ stageId, state }: { stageId: string; state: 'done' | 'skipped' | null }) =>
       apiClient.put(`/${budgetId}/guide/progress/${stageId}`, { state }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['guide', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.guide, budgetId] }),
   })
 }
 
@@ -245,7 +246,7 @@ export interface Checkup {
 
 export function useGuideCheckup(budgetId: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['guide-checkup', budgetId],
+    queryKey: [ROOT.guideCheckup, budgetId],
     queryFn: () => apiClient.get<Checkup>(`/${budgetId}/guide/checkup`).then((r) => r.data),
     // Gated on the preference by the caller: with reviews off, no request at all.
     enabled: !!budgetId && enabled,
@@ -259,7 +260,7 @@ export function useRunHealthReport(budgetId: string) {
     mutationFn: () =>
       apiClient.post<Checkup>(`/${budgetId}/guide/checkup/run`).then((r) => r.data),
     // The run returns the same payload the GET would, freshly stamped.
-    onSuccess: (checkup) => qc.setQueryData(['guide-checkup', budgetId], checkup),
+    onSuccess: (checkup) => qc.setQueryData([ROOT.guideCheckup, budgetId], checkup),
   })
 }
 
@@ -393,7 +394,7 @@ export interface EmergencyFundResponse {
 
 function useScenario<Req, Res>(kind: string, budgetId: string | null, body: Req | null) {
   return useQuery({
-    queryKey: ['guide-scenario', kind, budgetId, body],
+    queryKey: [ROOT.guideScenario, kind, budgetId, body],
     queryFn: () =>
       apiClient
         .post<Res>(`/${budgetId}/guide/scenarios/${kind}`, body)

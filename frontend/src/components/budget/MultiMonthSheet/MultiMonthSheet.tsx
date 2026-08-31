@@ -13,6 +13,7 @@ import { AmountInput } from '../../common/AmountInput/AmountInput'
 import type { BudgetMonth, Category, CategoryBalance } from '../../../types'
 import { renderableGroups } from '../budgetGroups'
 import './MultiMonthSheet.css'
+import { ROOT } from '../../../api/queryKeys'
 
 interface Props {
   budgetId: string
@@ -109,7 +110,7 @@ export function MultiMonthSheet({ budgetId }: Props) {
 
   const monthQueries = useQueries({
     queries: months.map((m) => ({
-      queryKey: ['budgetMonth', budgetId, m],
+      queryKey: [ROOT.budgetMonth, budgetId, m],
       queryFn: () => fetchBudgetMonth(budgetId, m),
       staleTime: 10_000,
     })),

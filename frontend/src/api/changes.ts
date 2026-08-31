@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
+import { ROOT } from './queryKeys'
 
 export interface Change {
   id: string
@@ -38,7 +39,7 @@ interface UndoResponse {
 
 // Query key factory for cache invalidation
 export const changesKeys = {
-  all: ['changes'] as const,
+  all: [ROOT.changes] as const,
   budget: (budgetId: string) => [...changesKeys.all, budgetId] as const,
 }
 
@@ -170,20 +171,24 @@ export function invalidateAfterUndo(
 ) {
   // Transaction data
   if (accountId) {
-    qc.refetchQueries({ queryKey: ['transactions', accountId] })
+    qc.refetchQueries({ queryKey: [ROOT.transactions, accountId] })
   } else {
-    qc.invalidateQueries({ queryKey: ['transactions'] })
+    qc.invalidateQueries({ queryKey: [ROOT.transactions] })
   }
-  qc.invalidateQueries({ queryKey: ['all-transactions'] })
-  qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
+  qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
+  qc.invalidateQueries({ queryKey: [ROOT.budgetTransactions] })
+  qc.invalidateQueries({ queryKey: [ROOT.transactionsPeek] })
+  qc.invalidateQueries({ queryKey: [ROOT.payeeTransactions] })
 
   // Budget/assignment data
-  qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-  qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+  qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
+  qc.invalidateQueries({ queryKey: [ROOT.accounts, budgetId] })
 
   // Payee data
-  qc.invalidateQueries({ queryKey: ['payees', budgetId] })
-  qc.invalidateQueries({ queryKey: ['duplicatePayees', budgetId] })
+  qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] })
+  // No duplicate-payee entry: `useFetchPayeeDuplicates` is a mutation that
+  // holds its result in component state, so there is no cache to refresh.
+  // `['duplicatePayees']` was invalidated here and answered by nothing.
 
   // Category data. Undoing a category delete restores the category, its
   // transactions, its assignments and its view placements at once, so this
@@ -193,8 +198,8 @@ export function invalidateAfterUndo(
   invalidateAfterCategoryChange(qc, budgetId)
 
   // Review counts
-  qc.invalidateQueries({ queryKey: ['pending-review-count'] })
+  qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCount] })
   if (accountId) {
-    qc.invalidateQueries({ queryKey: ['pending-review-count-account', accountId] })
+    qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCountAccount, accountId] })
   }
 }

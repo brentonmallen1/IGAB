@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import { X, Link2, ChevronLeft, ChevronRight, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { apiClient } from '../../api/client'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
 import { usePayees } from '../../api/payees'
 import { useCategories } from '../../api/categories'
@@ -9,18 +7,7 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { Transaction, TransactionMatch } from '../../types'
 import './MatchReviewModal.css'
-
-function useTransaction(id: string | null) {
-  return useQuery({
-    queryKey: ['transaction', id],
-    queryFn: async () => {
-      const { data } = await apiClient.get<Transaction>(`/transactions/${id}`)
-      return data
-    },
-    enabled: !!id,
-    staleTime: 60_000,
-  })
-}
+import { useTransaction } from '../../api/transactions'
 
 function ConfidenceBar({ score }: { score: number }) {
   const pct = Math.round(score * 100)

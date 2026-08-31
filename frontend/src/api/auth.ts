@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { User } from '../types'
+import { ROOT } from './queryKeys'
 
 export interface LoginCredentials {
   email: string
@@ -24,7 +25,7 @@ export async function fetchCurrentUser(): Promise<User> {
 
 export function useCurrentUser() {
   return useQuery({
-    queryKey: ['currentUser'],
+    queryKey: [ROOT.currentUser],
     queryFn: fetchCurrentUser,
     retry: false,
     staleTime: 5 * 60 * 1000,

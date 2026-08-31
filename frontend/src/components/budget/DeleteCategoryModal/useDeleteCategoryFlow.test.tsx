@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useDeleteCategoryFlow } from './useDeleteCategoryFlow'
 import type { CategoryDeletePreview } from '../../../api/categories'
+import { ROOT } from '../../../api/queryKeys'
 
 const deleteMutate = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ change_id: 'chg-9', category_ids: ['c1'] }))
@@ -24,7 +25,7 @@ vi.mock('../../../api/categories', async () => {
   return {
     ...actual,
     deletePreviewOptions: () => ({
-      queryKey: ['categoryDeletePreview', 'test'],
+      queryKey: [ROOT.categoryDeletePreview, 'test'],
       queryFn: () => previewResult(),
       staleTime: 0,
       gcTime: 0,

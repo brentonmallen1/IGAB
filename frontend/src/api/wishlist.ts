@@ -2,6 +2,7 @@ import toast from 'react-hot-toast'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
+import { ROOT } from './queryKeys'
 
 // The wishlist lives inside the budget: a wish's money is an envelope's
 // money. Everything below is served — reach, rollups, cooling, review-due —
@@ -160,7 +161,7 @@ export interface DeleteWishResult {
 
 export function useWishlist(budgetId: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['wishlist', budgetId],
+    queryKey: [ROOT.wishlist, budgetId],
     queryFn: () => apiClient.get<Wishlist>(`/${budgetId}/wishlist`).then((r) => r.data),
     enabled: !!budgetId && enabled,
     staleTime: 30_000,
@@ -177,7 +178,7 @@ function useWishlistMutation<TVars, TResult>(
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['wishlist', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.wishlist, budgetId] })
       // An own envelope is a real category with a goal: the budget page and
       // every picker need to hear about it.
       invalidateAfterCategoryChange(qc, budgetId)

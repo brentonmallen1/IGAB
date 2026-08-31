@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
+import { ROOT } from './queryKeys'
 
 /**
  * Every cache an import can have made stale, in one place.
@@ -27,31 +28,37 @@ import type { QueryClient } from '@tanstack/react-query'
  */
 export function invalidateAfterImport(qc: QueryClient, budgetId: string | null): Promise<void> {
   const roots = [
-    ['transactions'],
-    ['all-transactions'],
-    ['budget-transactions'],
-    ['category-transactions'],
-    ['payee-transactions'],
-    ['accounts'],
-    ['payees'],
-    ['pending-review-count'],
-    ['pending-review-count-account'],
-    ['pending-matches-account'],
-    ['account-hygiene'],
-    ['liabilities'],
-    ['reconcile-status'],
+    [ROOT.transactions],
+    [ROOT.allTransactions],
+    [ROOT.budgetTransactions],
+    [ROOT.transactionsPeek],
+    [ROOT.payeeTransactions],
+    [ROOT.accounts],
+    [ROOT.payees],
+    [ROOT.pendingReviewCount],
+    [ROOT.pendingReviewCountAccount],
+    [ROOT.pendingMatchesAccount],
+    [ROOT.accountHygiene],
+    [ROOT.liabilities],
+    [ROOT.reconcileStatus],
+    // A second import, or a snapshot restore, writes a new summary onto an
+    // existing budget. This cache is staleTime: Infinity, so without this
+    // line only a page reload ever replaced it.
+    [ROOT.importSummary],
+    // An import moves every chart. None of them were listed.
+    [ROOT.reports],
     // A snapshot restore is the first operation that can change any of
     // these: it replaces the whole budget, not just its ledger.
-    ['categories'],
-    ['tags'],
-    ['budgetFilters'],
-    ['budgetViews'],
-    ['scheduled-transactions'],
+    [ROOT.categories],
+    [ROOT.tags],
+    [ROOT.budgetFilters],
+    [ROOT.budgetViews],
+    [ROOT.scheduledTransactions],
     ...(budgetId ? [['guide', budgetId], ['wishlist', budgetId]] : [['guide'], ['wishlist']]),
     ...(budgetId ? [['budgetMonth', budgetId]] : [['budgetMonth']]),
   ]
   return Promise.all([
     ...roots.map((queryKey) => qc.invalidateQueries({ queryKey })),
-    qc.invalidateQueries({ queryKey: ['budgets'], refetchType: 'all' }),
+    qc.invalidateQueries({ queryKey: [ROOT.budgets], refetchType: 'all' }),
   ]).then(() => undefined)
 }

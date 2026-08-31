@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { AssignStrategy } from '../types'
+import { ROOT } from './queryKeys'
 
 export interface AssignStrategyTotal {
   strategy: AssignStrategy
@@ -51,7 +52,7 @@ export interface AssignApplyResponse {
 
 export function useAssignStrategyTotals(budgetId: string | null, month: string, enabled: boolean) {
   return useQuery({
-    queryKey: ['assignStrategies', budgetId, month],
+    queryKey: [ROOT.assignStrategies, budgetId, month],
     queryFn: () =>
       apiClient
         .get<AssignStrategyTotalsResponse>(`/${budgetId}/assign/strategies`, {
@@ -65,7 +66,7 @@ export function useAssignStrategyTotals(budgetId: string | null, month: string, 
 
 export function useAssignPreview(budgetId: string | null, month: string, strategy: AssignStrategy | null) {
   return useQuery({
-    queryKey: ['assignPreview', budgetId, month, strategy],
+    queryKey: [ROOT.assignPreview, budgetId, month, strategy],
     queryFn: () =>
       apiClient
         .get<AssignPreviewResponse>(`/${budgetId}/assign/preview`, {
@@ -85,12 +86,12 @@ export function useAssignApply(budgetId: string) {
         .post<AssignApplyResponse>(`/${budgetId}/assign/apply`, data)
         .then((r) => r.data),
     onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMoves', budgetId, month] })
-      qc.invalidateQueries({ queryKey: ['assignStrategies', budgetId, month] })
-      qc.invalidateQueries({ queryKey: ['assignPreview', budgetId, month] })
-      qc.invalidateQueries({ queryKey: ['categoryHistoryBatch', budgetId] })
-      qc.invalidateQueries({ queryKey: ['coverOverspentPreview', budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.assignStrategies, budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.assignPreview, budgetId, month] })
+      qc.invalidateQueries({ queryKey: [ROOT.categoryHistoryBatch, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.coverOverspentPreview, budgetId, month] })
     },
   })
 }

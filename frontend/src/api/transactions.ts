@@ -4,7 +4,6 @@ import { apiClient, apiErrorMessage } from './client'
 import type {
   BudgetTransactionsResponse,
   BulkActionResult,
-  Payee,
   SimilarTransaction,
   SplitCreate,
   Transaction,
@@ -12,6 +11,11 @@ import type {
 } from '../types'
 import type { TransactionFilters } from '../utils/searchParser'
 import { hasActiveFilters } from '../utils/searchParser'
+import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
+import { ROOT } from './queryKeys'
+// One implementation, in payees.ts. Re-exported because four components
+// import it from here and the name is the same hook either way.
+export { usePayees } from './payees'
 
 /** Surface per-item bulk failures instead of silently half-applying. */
 function reportBulkFailures(result: BulkActionResult, actionLabel: string) {
@@ -67,7 +71,7 @@ export function useInfiniteTransactions(accountId: string | null, filters: Trans
   const limit = filtered ? FILTERED_LIMIT : PAGE_SIZE
 
   return useInfiniteQuery({
-    queryKey: ['transactions', accountId, filters],
+    queryKey: [ROOT.transactions, accountId, filters],
     queryFn: async ({ pageParam }) => {
       const params: Record<string, unknown> = { limit, offset: pageParam }
       Object.assign(params, transactionFilterParams(filters))
@@ -94,7 +98,7 @@ export function useInfiniteBudgetTransactions(
   const limit = filtered ? FILTERED_LIMIT : PAGE_SIZE
 
   return useInfiniteQuery({
-    queryKey: ['all-transactions', budgetId, filters],
+    queryKey: [ROOT.allTransactions, budgetId, filters],
     queryFn: async ({ pageParam }) => {
       const params: Record<string, unknown> = { limit, offset: pageParam, order: 'register' }
       Object.assign(params, transactionFilterParams(filters))
@@ -137,7 +141,7 @@ export function useBudgetTransactions(
   params: BudgetTransactionParams | null,
 ) {
   return useQuery({
-    queryKey: ['budget-transactions', budgetId, params],
+    queryKey: [ROOT.budgetTransactions, budgetId, params],
     queryFn: async () => {
       const p: Record<string, unknown> = {
         start_date: params!.startDate,
@@ -178,7 +182,7 @@ export function useTransactionsPeek(
 ) {
   const { categoryId = null, accountId = null } = scope
   return useQuery({
-    queryKey: ['transactions-peek', budgetId, categoryId, accountId, limit],
+    queryKey: [ROOT.transactionsPeek, budgetId, categoryId, accountId, limit],
     queryFn: async () => {
       const params: Record<string, unknown> = categoryId
         ? { category_ids: categoryId, scope: 'leaf', limit }
@@ -203,7 +207,7 @@ export function usePayeeTransactions(
   limit: number,
 ) {
   return useQuery({
-    queryKey: ['payee-transactions', budgetId, payeeId, limit],
+    queryKey: [ROOT.payeeTransactions, budgetId, payeeId, limit],
     queryFn: async () => {
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
@@ -221,15 +225,12 @@ export function useCreateTransaction(budgetId: string) {
   return useMutation({
     mutationFn: (data: TransactionCreate) =>
       apiClient.post<Transaction>(`/${budgetId}/transactions`, data).then((r) => r.data),
-    onSuccess: (txn) => {
-      qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
-    },
+    onSuccess: (txn) =>
+      invalidateAfterTransactionChange(qc, {
+        budgetId,
+        accountId: txn.account_id,
+        transactionIds: [txn.id],
+      }),
   })
 }
 
@@ -250,21 +251,9 @@ export function useUpdateTransaction(budgetId: string) {
       apiClient
         .patch<Transaction>(`/transactions/${id}`, data, { params: { budget_id: budgetId } })
         .then((r) => r.data),
-    onSuccess: (txn) => {
-      qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['reconcile-status'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
-      // A link/retarget/break writes the OTHER account's row too.
-      qc.invalidateQueries({ queryKey: ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['account-hygiene', budgetId] })
-      // A parent's date/cleared edit mirrors onto its lines.
-      qc.invalidateQueries({ queryKey: ['transaction-splits', txn.id] })
-    },
+    // A link/retarget/break writes the OTHER account's row too, so the
+    // register goes wide rather than narrowing to `txn.account_id`.
+    onSuccess: (txn) => invalidateAfterTransactionChange(qc, { budgetId, transactionIds: [txn.id] }),
   })
 }
 
@@ -279,7 +268,7 @@ export function useTransferCandidates(
   accountId: string | null
 ) {
   return useQuery({
-    queryKey: ['transfer-candidates', budgetId, transactionId, accountId],
+    queryKey: [ROOT.transferCandidates, budgetId, transactionId, accountId],
     queryFn: async () => {
       const { data } = await apiClient.get<Transaction[]>(
         `/transactions/${transactionId}/transfer-candidates`,
@@ -299,7 +288,7 @@ export function useTransferCandidates(
  *  lines went "missing". */
 export function useTransactionSplits(transactionId: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['transaction-splits', transactionId],
+    queryKey: [ROOT.transactionSplits, transactionId],
     queryFn: async () => {
       const { data } = await apiClient.get<Transaction[]>(`/transactions/${transactionId}/splits`)
       return data
@@ -310,14 +299,11 @@ export function useTransactionSplits(transactionId: string | null, enabled = tru
 }
 
 function invalidateAfterSplitChange(qc: ReturnType<typeof useQueryClient>, budgetId: string, txn: { id: string; account_id: string }) {
-  qc.invalidateQueries({ queryKey: ['transaction-splits', txn.id] })
-  qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
-  qc.invalidateQueries({ queryKey: ['all-transactions'] })
-  qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
-  qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
-  qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-  qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-  qc.invalidateQueries({ queryKey: ['pending-review-count-account', txn.account_id] })
+  return invalidateAfterTransactionChange(qc, {
+    budgetId,
+    accountId: txn.account_id,
+    transactionIds: [txn.id],
+  })
 }
 
 export function useConvertToSplit(budgetId: string) {
@@ -351,7 +337,7 @@ export function useReplaceSplits(budgetId: string) {
         .then((r) => ({ id, lines: r.data })),
     onSuccess: ({ id, lines }) => {
       if (lines[0]) invalidateAfterSplitChange(qc, budgetId, { id, account_id: lines[0].account_id })
-      else qc.invalidateQueries({ queryKey: ['transaction-splits', id] })
+      else qc.invalidateQueries({ queryKey: [ROOT.transactionSplits, id] })
     },
   })
 }
@@ -371,13 +357,10 @@ export function useDeleteTransaction(budgetId: string) {
     // nothing happened.
     onError: (err) => toast.error(apiErrorMessage(err, 'Could not delete')),
     onSuccess: ({ accountId }) => {
-      qc.refetchQueries({ queryKey: ['transactions', accountId] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count-account', accountId] })
+      // Refetch, not invalidate: the deleted row has to leave the register on
+      // the spot, whether or not the query is currently active.
+      qc.refetchQueries({ queryKey: [ROOT.transactions, accountId] })
+      return invalidateAfterTransactionChange(qc, { budgetId, accountId })
     },
   })
 }
@@ -392,12 +375,9 @@ export function useBulkUpdateCleared(budgetId: string) {
       }).then((r) => ({ accountId, result: r.data })),
     onSuccess: ({ accountId, result }) => {
       reportBulkFailures(result, 'updated')
-      // Null account = all-accounts register: rows span accounts, refresh them all
-      qc.invalidateQueries({ queryKey: accountId ? ['transactions', accountId] : ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['reconcile-status'] })
+      // Null account = all-accounts register: rows span accounts, so the
+      // helper goes wide rather than narrowing the register and the counts.
+      return invalidateAfterTransactionChange(qc, { budgetId, accountId })
     },
   })
 }
@@ -410,14 +390,9 @@ export function useBulkCategorize(budgetId: string) {
         transaction_ids: transactionIds,
         category_id: categoryId,
       }).then((r) => ({ accountId, result: r.data })),
-    onSuccess: ({ accountId, result }) => {
+    onSuccess: ({ accountId, result }, { transactionIds }) => {
       reportBulkFailures(result, 'categorized')
-      qc.invalidateQueries({ queryKey: accountId ? ['transactions', accountId] : ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: accountId ? ['pending-review-count-account', accountId] : ['pending-review-count-account'] })
+      return invalidateAfterTransactionChange(qc, { budgetId, accountId, transactionIds })
     },
   })
 }
@@ -434,13 +409,10 @@ export function useBulkDeleteTransactions(budgetId: string) {
     },
     onSuccess: ({ accountId, result }) => {
       reportBulkFailures(result, 'deleted')
-      qc.refetchQueries({ queryKey: accountId ? ['transactions', accountId] : ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['category-transactions', budgetId] })
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count'] })
-      qc.invalidateQueries({ queryKey: accountId ? ['pending-review-count-account', accountId] : ['pending-review-count-account'] })
+      // Refetch, not invalidate: the deleted rows have to leave the register
+      // on the spot.
+      qc.refetchQueries({ queryKey: accountId ? [ROOT.transactions, accountId] : [ROOT.transactions] })
+      return invalidateAfterTransactionChange(qc, { budgetId, accountId })
     },
   })
 }
@@ -454,17 +426,21 @@ export function useUnreconcileTransaction(budgetId: string) {
           params: { budget_id: budgetId },
         })
         .then((r) => r.data),
-    onSuccess: (txn) => {
-      qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['reconcile-status'] })
-    },
+    // Unreconciling moves the account's cleared balance, so `budgetMonth` and
+    // `accounts` have to go too — this copy refreshed neither, and Ready to
+    // Assign stayed wrong while the register looked right.
+    onSuccess: (txn) =>
+      invalidateAfterTransactionChange(qc, {
+        budgetId,
+        accountId: txn.account_id,
+        transactionIds: [txn.id],
+      }),
   })
 }
 
 export function usePendingReviewCount(budgetId: string | null) {
   return useQuery({
-    queryKey: ['pending-review-count', budgetId],
+    queryKey: [ROOT.pendingReviewCount, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<{
         unapproved_only: number
@@ -483,7 +459,7 @@ export function usePendingReviewCount(budgetId: string | null) {
 
 export function usePendingReviewCountForAccount(accountId: string | null) {
   return useQuery({
-    queryKey: ['pending-review-count-account', accountId],
+    queryKey: [ROOT.pendingReviewCountAccount, accountId],
     queryFn: async () => {
       const { data } = await apiClient.get<{
         unapproved_only: number
@@ -506,13 +482,9 @@ export function useBulkApprove(budgetId: string) {
     mutationFn: ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string | null }) =>
       apiClient.patch<BulkActionResult>(`/${budgetId}/transactions/bulk-approve`, { transaction_ids: transactionIds })
         .then((r) => ({ accountId, result: r.data })),
-    onSuccess: ({ accountId, result }) => {
+    onSuccess: ({ accountId, result }, { transactionIds }) => {
       reportBulkFailures(result, 'approved')
-      qc.invalidateQueries({ queryKey: accountId ? ['transactions', accountId] : ['transactions'] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['pending-review-count', budgetId] })
-      qc.invalidateQueries({ queryKey: accountId ? ['pending-review-count-account', accountId] : ['pending-review-count-account'] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      return invalidateAfterTransactionChange(qc, { budgetId, accountId, transactionIds })
     },
   })
 }
@@ -528,10 +500,13 @@ export function useMergeTransactions(budgetId: string) {
         })
         .then((r) => r.data),
     onSuccess: (txn) => {
-      qc.invalidateQueries({ queryKey: ['transactions', txn.account_id] })
-      qc.invalidateQueries({ queryKey: ['all-transactions'] })
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
-      qc.invalidateQueries({ queryKey: ['budgetMonth', budgetId] })
+      // Merge-specific: the rows it absorbed were this row's own duplicates.
+      qc.invalidateQueries({ queryKey: [ROOT.similarTransactions] })
+      return invalidateAfterTransactionChange(qc, {
+        budgetId,
+        accountId: txn.account_id,
+        transactionIds: [txn.id],
+      })
     },
   })
 }
@@ -543,7 +518,7 @@ export function useSimilarTransactions(
   excludeId: string | null,
 ) {
   return useQuery({
-    queryKey: ['similar-transactions', accountId, amount, txnDate, excludeId],
+    queryKey: [ROOT.similarTransactions, accountId, amount, txnDate, excludeId],
     queryFn: async () => {
       const params: Record<string, unknown> = { amount, date: txnDate }
       if (excludeId) params.exclude_id = excludeId
@@ -558,22 +533,10 @@ export function useSimilarTransactions(
   })
 }
 
-export function usePayees(budgetId: string | null) {
-  return useQuery({
-    queryKey: ['payees', budgetId],
-    queryFn: async () => {
-      const { data } = await apiClient.get<Payee[]>(`/${budgetId}/payees`)
-      return data
-    },
-    enabled: !!budgetId,
-    staleTime: 60_000,
-  })
-}
-
 /** Fetch a single transaction by ID — powers the review handoff when an AI job completes. */
 export function useTransaction(transactionId: string | null) {
   return useQuery({
-    queryKey: ['transaction', transactionId],
+    queryKey: [ROOT.transaction, transactionId],
     queryFn: async () => {
       const { data } = await apiClient.get<Transaction>(`/transactions/${transactionId}`)
       return data
@@ -593,7 +556,7 @@ export interface TransactionClassification {
  *  the class is derived per row, so it is not carried on list responses. */
 export function useTransactionClassification(transactionId: string | null) {
   return useQuery({
-    queryKey: ['transaction-classification', transactionId],
+    queryKey: [ROOT.transactionClassification, transactionId],
     queryFn: async () => {
       const { data } = await apiClient.get<TransactionClassification>(
         `/transactions/${transactionId}/classification`,

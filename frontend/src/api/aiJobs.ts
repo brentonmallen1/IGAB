@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { downscaleForUpload } from '../utils/imageUpload'
 import { useAIStatus } from './ai'
+import { ROOT } from './queryKeys'
 
 export type AIJobStatus = 'queued' | 'processing' | 'done' | 'error'
 export type AIJobKind = 'receipt' | 'nl_parse'
@@ -96,7 +97,7 @@ export function useAIJobs(
   opts: { status?: AIJobStatus; kind?: AIJobKind; limit?: number; offset?: number } = {}
 ) {
   return useQuery({
-    queryKey: ['ai-jobs', budgetId, opts],
+    queryKey: [ROOT.aiJobs, budgetId, opts],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (opts.status) params.set('status_filter', opts.status)
@@ -129,7 +130,7 @@ export function useAIJobs(
  * when an AI transaction is opened from the register. */
 export function useAIJobForTransaction(budgetId: string | null, transactionId: string | null) {
   return useQuery({
-    queryKey: ['ai-job-for-txn', budgetId, transactionId],
+    queryKey: [ROOT.aiJobForTxn, budgetId, transactionId],
     queryFn: async () => {
       const { data } = await apiClient.get<AIJobListResponse>(`/${budgetId}/ai/jobs`, {
         params: { transaction_id: transactionId, limit: 1 },
@@ -156,7 +157,7 @@ export interface AIJobCounts {
 export function useAIJobCounts(budgetId: string | null) {
   const aiStatus = useAIStatus()
   return useQuery({
-    queryKey: ['ai-jobs-active', budgetId],
+    queryKey: [ROOT.aiJobsActive, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<{ count: number; needs_review?: number }>(
         `/${budgetId}/ai/jobs/active-count`
@@ -191,8 +192,8 @@ export function useSubmitReceipt(budgetId: string) {
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ai-jobs'] })
-      qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
   })
 }
@@ -203,8 +204,8 @@ export function useRetryAIJob(budgetId: string) {
     mutationFn: (jobId: string) =>
       apiClient.post<AIJob>(`/${budgetId}/ai/jobs/${jobId}/retry`).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ai-jobs'] })
-      qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
   })
 }
@@ -215,8 +216,8 @@ export function useReprocessAIJob(budgetId: string) {
     mutationFn: (jobId: string) =>
       apiClient.post<AIJob>(`/${budgetId}/ai/jobs/${jobId}/reprocess`).then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ai-jobs'] })
-      qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
   })
 }
@@ -226,8 +227,8 @@ export function useDeleteAIJob(budgetId: string) {
   return useMutation({
     mutationFn: (jobId: string) => apiClient.delete(`/${budgetId}/ai/jobs/${jobId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ai-jobs'] })
-      qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
   })
 }
@@ -245,8 +246,8 @@ export function useParseNLTransaction(budgetId: string) {
     // The endpoint writes an ai_jobs audit row whether the parse succeeds or
     // fails — the AI Activity log should show it either way.
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['ai-jobs'] })
-      qc.invalidateQueries({ queryKey: ['ai-jobs-active'] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobs] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiJobsActive] })
     },
   })
 }
@@ -254,7 +255,7 @@ export function useParseNLTransaction(budgetId: string) {
 /** Poll a single job while it's in flight — powers the in-modal receipt watch. */
 export function useAIJob(budgetId: string | null, jobId: string | null) {
   return useQuery({
-    queryKey: ['ai-job', budgetId, jobId],
+    queryKey: [ROOT.aiJob, budgetId, jobId],
     queryFn: async () => {
       const { data } = await apiClient.get<AIJob>(`/${budgetId}/ai/jobs/${jobId}`)
       return data

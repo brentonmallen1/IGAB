@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { ROOT } from './queryKeys'
 
 export interface AccountTypeInfo {
   id: string
@@ -30,7 +31,7 @@ export interface AccountTypeUpdate {
 
 export function useAccountTypes(budgetId: string | null) {
   return useQuery({
-    queryKey: ['account-types', budgetId],
+    queryKey: [ROOT.accountTypes, budgetId],
     queryFn: () =>
       apiClient.get<AccountTypeInfo[]>(`/${budgetId}/account-types`).then((r) => r.data),
     enabled: !!budgetId,
@@ -45,7 +46,7 @@ export function useCreateAccountType(budgetId: string) {
       apiClient
         .post<AccountTypeInfo>(`/${budgetId}/account-types`, data)
         .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['account-types', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.accountTypes, budgetId] }),
   })
 }
 
@@ -57,9 +58,9 @@ export function useUpdateAccountType(budgetId: string) {
         .patch<AccountTypeInfo>(`/${budgetId}/account-types/${id}`, data)
         .then((r) => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['account-types', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.accountTypes, budgetId] })
       // classification edits cascade onto accounts' mirrors
-      qc.invalidateQueries({ queryKey: ['accounts', budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.accounts, budgetId] })
     },
   })
 }
@@ -68,6 +69,6 @@ export function useDeleteAccountType(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (typeId: string) => apiClient.delete(`/${budgetId}/account-types/${typeId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['account-types', budgetId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.accountTypes, budgetId] }),
   })
 }

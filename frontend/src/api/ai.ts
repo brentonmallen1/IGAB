@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { ROOT } from './queryKeys'
 
 export interface AIStatus {
   enabled: boolean
@@ -34,7 +35,7 @@ export function sameOllamaModel(
 
 export function useAIStatus() {
   return useQuery({
-    queryKey: ['ai-status'],
+    queryKey: [ROOT.aiStatus],
     queryFn: async () => {
       const { data } = await apiClient.get<AIStatus>('/ai/status')
       return data
@@ -53,7 +54,7 @@ export function useTestAIConnection() {
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['ai-status'] })
+      qc.invalidateQueries({ queryKey: [ROOT.aiStatus] })
     },
   })
 }
@@ -66,7 +67,7 @@ export interface OllamaModel {
 
 export function useOllamaModels() {
   return useQuery({
-    queryKey: ['ollama-models'],
+    queryKey: [ROOT.ollamaModels],
     queryFn: async () => {
       const { data } = await apiClient.get<{ models: OllamaModel[] }>('/ai/models')
       return data.models
@@ -106,7 +107,7 @@ export function useSuggestRegex(budgetId: string) {
 
 export function useSpendingInsights(budgetId: string | null, month?: string) {
   return useQuery({
-    queryKey: ['ai-insights', budgetId, month],
+    queryKey: [ROOT.aiInsights, budgetId, month],
     queryFn: async () => {
       const { data } = await apiClient.get<{ insights: string }>(
         `/${budgetId}/ai/insights`,
