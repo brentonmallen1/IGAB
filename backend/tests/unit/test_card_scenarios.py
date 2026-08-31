@@ -1,0 +1,101 @@
+"""Every card scenario, checked against the pure domain.
+
+One of three suites over `ALL_SCENARIOS` — this one, the integration suite in
+`tests/integration/test_card_scenarios.py`, and the sample-budget assertions.
+Adding a scenario adds a case to all three; a scenario cannot exist without
+being asserted, and its coverage cannot be dropped without deleting it.
+
+The expectations live beside the scenarios and are written by hand. Deriving
+them from this walk would make every assertion here a tautology — the
+arithmetic is the thing under test.
+"""
+
+from datetime import date
+from decimal import Decimal
+
+import pytest
+
+from igab.domain.cards import card_funding, card_reserve
+from igab.domain.carryover import sum_through
+from igab.sample_budget.card_scenarios import (
+    ALL_SCENARIOS,
+    CardScenario,
+    scenarios_for,
+    to_funding_inputs,
+    walk,
+)
+
+ANCHOR = date(2026, 8, 15)
+IDS = [s.slug for s in ALL_SCENARIOS]
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_the_card_lands_where_the_scenario_says(scenario: CardScenario):
+    assert walk(scenario, ANCHOR) == scenario.expect, scenario.story
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_the_reserve_identity_holds(scenario: CardScenario):
+    """Zero for all six, including the two the check accepts by design — an
+    over-reserve explained by assignments and a negative reserve explained by
+    residual. That silence is why the row reads the position instead."""
+    assert walk(scenario, ANCHOR).reserve_discrepancy == Decimal("0")
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_the_five_legs_reconstruct_the_reserve(scenario: CardScenario):
+    inputs = to_funding_inputs(scenario, ANCHOR)
+    funding = card_funding(
+        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+    )
+    reserve = card_reserve(funding, scenario.card, inputs.payments)
+    month = date(ANCHOR.year, ANCHOR.month, 1)
+    legs = (
+        sum_through(reserve.assignments, month)
+        + sum_through(reserve.reservations, month)
+        - sum_through(reserve.released, month)
+        - sum_through(reserve.residual, month)
+        - sum_through(reserve.payments, month)
+    )
+    assert legs == scenario.expect.set_aside
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_the_scenario_is_anchor_relative(scenario: CardScenario):
+    """Every date is `RelDate`, so the same story told in a different month
+    lands in the same place. The sample budget always ends 'today', and a
+    scenario that drifted with the calendar would make the demo unstable and
+    these tests seasonal."""
+    other = date(2027, 2, 3)
+    assert walk(scenario, other) == walk(scenario, ANCHOR)
+
+
+def test_every_scenario_is_distinct_and_named():
+    slugs = [s.slug for s in ALL_SCENARIOS]
+    cards = [s.card for s in ALL_SCENARIOS]
+    assert len(set(slugs)) == len(slugs), "two scenarios share a slug"
+    assert len(set(cards)) == len(cards), "two scenarios share a card name"
+    for s in ALL_SCENARIOS:
+        assert s.story.strip() and s.title.strip(), f"{s.slug} has no story"
+
+
+def test_the_starter_tier_is_a_subset_that_still_teaches():
+    """Three shapes is enough to explain the model; six is the full tour.
+    The healthy card sorts first so the strip does not open on an oddity."""
+    starter = scenarios_for("starter")
+    assert [s.slug for s in starter] == ["paid-in-full", "carrying-debt", "month-ended-short"]
+    assert set(starter) <= set(scenarios_for("full")) == set(ALL_SCENARIOS)
+
+
+def test_an_event_cannot_be_spelled_backwards():
+    """Amounts are positive and `kind` carries the direction, so a refund
+    cannot be written as a negative charge and silently mean something else."""
+    from igab.sample_budget.card_scenarios import CardEvent
+    from igab.sample_budget.spec import RelDate
+
+    with pytest.raises(ValueError, match="must be positive"):
+        CardEvent(RelDate(0, 1), "spend", Decimal("-5"), "Groceries")
+    with pytest.raises(ValueError, match="needs category"):
+        CardEvent(RelDate(0, 1), "spend", Decimal("5"))
+    with pytest.raises(ValueError, match="takes no category"):
+        CardEvent(RelDate(0, 25), "pay", Decimal("5"), "Groceries")

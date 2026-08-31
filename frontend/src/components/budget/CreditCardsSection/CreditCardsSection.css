@@ -292,7 +292,7 @@
   color: inherit;
   font: inherit;
   padding: 2px 0;
-  width: 100%;
+  width: auto;
   text-align: right;
   cursor: pointer;
 }
