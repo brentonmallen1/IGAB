@@ -15,7 +15,7 @@ import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
-import { debtMovement, reserveNote, rideMonths } from './cardRow'
+import { debtMovement, reserveNote, rideMonths, unexplainedInflow } from './cardRow'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
@@ -62,6 +62,7 @@ function ReserveLegs({
   formatMonth: (m: string) => string
 }) {
   const rides = rideMonths(card)
+  const otherInflow = unexplainedInflow(card)
   const legs = [
     { label: 'Assigned to this card', value: card.assigned, sign: '+' },
     { label: 'Set aside by funded spending', value: card.reserved, sign: '+' },
@@ -112,6 +113,18 @@ function ReserveLegs({
             <dd className="tabular">{formatMoney(Math.abs(card.debt_change_this_month))}</dd>
           </div>
         </dl>
+      )}
+      {/* Named, not left as a silent gap between the three figures above.
+        Only a transfer spends the card's reserve, so a payment recorded as a
+        plain deposit lowers the balance while Ready to pay stands still —
+        which is one way a card ends up reserving far more than it owes. */}
+      {otherInflow !== 0 && (
+        <p className="credit-cards__legs-note">
+          {formatMoney(otherInflow)} also came onto this card without being a payment from your own
+          accounts — a refund, a credit, or a payment recorded as a deposit rather than a transfer.
+          Only a transfer spends the reserve, so the three figures above do not reconcile by that
+          much.
+        </p>
       )}
       {card.riding !== 0 && (
         <div className="credit-cards__legs-note">

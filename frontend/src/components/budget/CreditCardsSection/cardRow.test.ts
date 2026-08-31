@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reserveNote, debtMovement, rideMonths } from './cardRow'
+import { reserveNote, debtMovement, rideMonths, unexplainedInflow } from './cardRow'
 import type { CardStatus } from '../../../types'
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -164,5 +164,43 @@ describe('rideMonths', () => {
 
   it('elides nothing when everything fits', () => {
     expect(rideMonths(card({ rode_by_month: months(2) })).elided).toBe(0)
+  })
+})
+
+describe('unexplainedInflow', () => {
+  it('is zero when the month reconciles', () => {
+    // 412 charged, 640 paid, debt down 228: nothing else arrived.
+    expect(
+      unexplainedInflow(
+        card({ charged_this_month: 412, paid_this_month: 640, debt_change_this_month: 228 })
+      )
+    ).toBe(0)
+  })
+
+  it('names a payment recorded as a deposit rather than a transfer', () => {
+    // The balance fell 300 with nothing paired against it. Only a transfer
+    // spends the reserve, so Ready to pay stood still while the card's debt
+    // dropped — one way a card ends up reserving far more than it owes.
+    expect(
+      unexplainedInflow(
+        card({ charged_this_month: 412, paid_this_month: 0, debt_change_this_month: -112 })
+      )
+    ).toBe(300)
+  })
+
+  it('names a refund that was not a payment', () => {
+    expect(
+      unexplainedInflow(
+        card({ charged_this_month: 100, paid_this_month: 100, debt_change_this_month: 30 })
+      )
+    ).toBe(30)
+  })
+
+  it('does not draw a note for a floating-point residue', () => {
+    expect(
+      unexplainedInflow(
+        card({ charged_this_month: 0.1, paid_this_month: 0.3, debt_change_this_month: 0.2 })
+      )
+    ).toBe(0)
   })
 })

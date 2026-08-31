@@ -116,6 +116,25 @@ export function debtMovement(card: CardStatus, money: Money): RowNote | null {
     : { label: `up ${money(-moved)} this month`, title: `${detail} The debt grew.` }
 }
 
+/**
+ * Money that came onto the card this month and was not a payment from your own
+ * accounts — a refund, a statement credit, someone else paying the bill, or a
+ * payment recorded as a plain deposit instead of a transfer.
+ *
+ * The month block shows Charged, Paid and the net, and those three do not
+ * reconcile when this is non-zero. Leaving that as a silent gap is the thing
+ * worth avoiding: only a transfer spends the card's reserve, so a payment
+ * typed as a deposit lowers the balance while Ready to pay stands still — the
+ * exact shape that leaves a card reserving far more than it owes.
+ *
+ *     debt_change = paid + other − charged   ⇒   other = debt_change + charged − paid
+ */
+export function unexplainedInflow(card: CardStatus): number {
+  const other = card.debt_change_this_month + card.charged_this_month - card.paid_this_month
+  // Cents, not floats: a 1e-13 residue would draw a note about nothing.
+  return Math.round(other * 100) / 100
+}
+
 export interface RideMonths {
   shown: CardStatus['rode_by_month']
   elided: number
