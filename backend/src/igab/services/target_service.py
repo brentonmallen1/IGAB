@@ -66,6 +66,17 @@ class TargetService:
           it and must not have `assigned` subtracted again.
         - **Funding** (monthly, weekly, undated needed-for-spending) measure
           ASSIGNED — a duty owed every period regardless of the balance.
+
+        **A card's paydown target reads a signed `available`, and that is
+        deliberate.** For a card, `available` is its set-aside, which goes
+        NEGATIVE when a payment ran past what any envelope reserved — so
+        paying the card down directly makes a balance-measured target ask for
+        MORE, not less. It reads backwards and it is right: the payment has
+        left your account and nothing has been assigned to cover it, so the
+        target is naming a real duty. Do not floor `available` here to make
+        the number look friendlier; that would report a funded card while its
+        envelope is in the red. The card row explains the negative in words
+        (`cardRow.ts`), which is the place for the reassurance.
         """
         today = today or date.today()
         amount = target.target_amount

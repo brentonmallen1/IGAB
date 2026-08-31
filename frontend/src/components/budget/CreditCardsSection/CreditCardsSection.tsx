@@ -455,9 +455,22 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               <dt>Ready to pay</dt>
               <dd>
                 Cash waiting to pay this card, from both sources: what funded envelopes gave up when
-                you swiped, plus what you assigned. Payments drain it. Negative means payments have
-                outrun it — a credit balance on the card, carried forward until new spending or a
-                refund uses it up.
+                you swiped, plus what you assigned. Payments drain it. It is this card's envelope,
+                not a measurement of the card — so it can sit above what the card owes, or below
+                zero, and the row says which.
+              </dd>
+              <dd>
+                <em>Below zero</em> almost always means you paid more toward the card than any
+                envelope had set aside — it went straight to the balance. Assign that much to the
+                card to settle up. Only when the card owes nothing is it really a credit balance,
+                carried forward until new spending or a refund uses it up.
+              </dd>
+              <dd>
+                <em>Above what the card owes</em> means money is assigned to the card that no debt
+                needed. Assignments stay in a card's envelope until riding debt turns up to retire,
+                so on a card you always pay from funded envelopes they simply accumulate. Releasing
+                the surplus is safe — type a negative in Assigned — and it comes back to Ready to
+                Assign, because that is where it left from.
               </dd>
               <dt>Uncovered</dt>
               <dd>
@@ -473,6 +486,25 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               pay by transfer from a cash account. Categorize the card's new transactions freely — a
               category only ever gives up money it actually has; any shortfall becomes Uncovered,
               never a charge to Ready to Assign.
+            </p>
+            <p>
+              <strong>A due date that misses the month end</strong> is fine, and the totals are
+              built so it stays fine. Charges reserve in the month they post, payments drain in the
+              month they post, and both run from the beginning of your budget — so a statement paid
+              the following month nets out exactly. Nothing is lost across the boundary.
+            </p>
+            <p>
+              One thing does change at a month end: an envelope that finishes the month short sends
+              that shortfall onto the card as Uncovered, and funding it the following month does not
+              reach back. Funding it <em>in that month</em> does — a backdated assignment is
+              re-walked and the ride disappears. The Ready to pay breakdown names the months.
+            </p>
+            <p>
+              <strong>An expense you cannot cover</strong> still belongs in its real category. Let
+              that category go red: at month end the part it could not fund rides onto the card as
+              Uncovered, To Be Assigned is never charged, and your reports still know where the
+              money went. Leaving it uncategorized works too, but the row keeps asking for a
+              category and the spending shows up nowhere.
             </p>
             <p>
               <strong>Uncategorized card rows</strong> move only the card's balance, so they sit in
